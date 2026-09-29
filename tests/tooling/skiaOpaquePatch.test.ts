@@ -52,12 +52,42 @@ test("a patch that leaves out any one edit is caught", () => {
   }
 });
 
+function canvasTags(source: string): string[] {
+  const tags: string[] = [];
+  for (const start of source.matchAll(/<Canvas\b/g)) {
+    let depth = 0;
+    let i = start.index + 1;
+    for (; i < source.length && !(depth === 0 && source[i] === ">" && source[i - 1] !== "="); i += 1) {
+      if (source[i] === "{") depth += 1;
+      if (source[i] === "}") depth -= 1;
+    }
+    tags.push(source.slice(start.index, i + 1));
+  }
+  return tags;
+}
+
+const asksOpaque = (source: string) =>
+  canvasTags(source).some((tag) => /\bopaque\b(?!\s*=\s*\{\s*false\s*\})/.test(tag));
+
+test("an opaque canvas is found in every spelling", () => {
+  assert.equal(asksOpaque(`<Canvas style={s} opaque>`), true);
+  assert.equal(asksOpaque(`<Canvas onSize={() => {}} opaque={on} />`), true);
+  assert.equal(asksOpaque(`<Canvas\n  ref={r}\n  opaque\n/>`), true);
+  assert.equal(asksOpaque(`<Canvas opaque={false} />`), false);
+  assert.equal(asksOpaque(`// an opaque note\n<Canvas style={s} />`), false);
+});
+
 test("only the felt's canvas asks for an opaque layer", () => {
-  const dir = path.join(repoRoot, "components");
-  const opaque = readdirSync(dir, { recursive: true, encoding: "utf8" })
-    .filter((f) => /\.tsx$/.test(f))
-    .filter((f) => /<Canvas\b[^>]*\bopaque=/.test(readFileSync(path.join(dir, f), "utf8")))
-    .map((f) => f.replaceAll("\\", "/"));
-  assert.deepEqual(opaque, ["table/feltCanvas.tsx"]);
-  assert.doesNotMatch(read("components/table/particleLayer.tsx"), /opaque/);
+  const walk = (dir: string): string[] =>
+    readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((e) => {
+      const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (e.isDirectory()) return /^(node_modules|tests|dist|ios|android)$|^\./.test(e.name) ? [] : walk(rel);
+      return /\.[jt]sx$/.test(e.name) ? [rel] : [];
+    });
+  const files = walk("");
+  assert.ok(files.includes("components/table/particleLayer.tsx"), "the scan no longer reaches components/");
+  assert.deepEqual(
+    files.filter((f) => asksOpaque(read(f))),
+    ["components/table/feltCanvas.tsx"]
+  );
 });

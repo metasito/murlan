@@ -246,7 +246,7 @@ jobs:
             .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
             .maestro/rematch-prompt.yaml
 
-      # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/ (run 36626576875).
+      # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
       - name: Photograph the felt
         if: ${{ !cancelled() }}
         env:
@@ -257,12 +257,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           mkdir -p "$RUNNER_TEMP/felt"
-          for shot in felt-first felt-round-trip; do
+          for shot in felt-first felt-settled; do
             found=$(find "$HOME/.maestro/tests" -path "*/felt-opaque/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
             [ -n "$found" ] || { echo "::error::The felt flow wrote no $shot.png."; exit 1; }
             cp "$found" "$RUNNER_TEMP/felt/$shot.png"
           done
-          node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-round-trip.png"
+          node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
       - name: Upload the felt screenshots
         if: ${{ !cancelled() }}

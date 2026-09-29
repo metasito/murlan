@@ -7,8 +7,8 @@ import { readFileSync } from "node:fs";
 import { inflateSync } from "node:zlib";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-/** The room around the felt is #040605, so black is stricter than "dark". */
-const BLACK_MAX = 2;
+/** An uncovered opaque layer is 0; the darkest edge pixel the table draws is pinned in the test. */
+export const BLACK_MAX = 1;
 const BLACK_SHARE = 0.05;
 const BAND_PX = 2;
 const BAND_SHARE = 0.5;
@@ -48,13 +48,19 @@ export function decodePng(buffer) {
   for (let y = 0; y < height; y += 1) {
     const filter = raw[y * (stride + 1)];
     const src = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const predict = [
+      () => 0,
+      (a) => a,
+      (a, b) => b,
+      (a, b) => (a + b) >> 1,
+      paeth,
+    ][filter];
+    if (!predict) throw new Error(`row ${y}: unknown filter ${filter}`);
     for (let i = 0; i < stride; i += 1) {
       const a = i >= channels ? rows[y * stride + i - channels] : 0;
       const b = y > 0 ? rows[(y - 1) * stride + i] : 0;
       const c = y > 0 && i >= channels ? rows[(y - 1) * stride + i - channels] : 0;
-      const predicted = [0, a, b, (a + b) >> 1, paeth(a, b, c)][filter];
-      if (predicted === undefined) throw new Error(`row ${y}: unknown filter ${filter}`);
-      rows[y * stride + i] = (src[i] + predicted) & 0xff;
+      rows[y * stride + i] = (src[i] + predict(a, b, c)) & 0xff;
     }
   }
   const data = new Uint8Array(width * height * 4);
