@@ -102,7 +102,7 @@ export function StartReasonBanner({
         style={startReasonStyles.gate}
         {...a11yHidden()}
       >
-        <View style={startReasonStyles.card}>
+        <View testID="start-reason-card" style={startReasonStyles.card}>
           <LinearGradient
             colors={[Colors.goldMuted, Colors.goldClear]}
             start={{ x: 0, y: 0 }}

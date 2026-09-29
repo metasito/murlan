@@ -15,7 +15,7 @@ import { render } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
 import { BombBurst, LampLift } from "@/components/table/moments";
 import { SPARK_COUNT } from "@/components/flightPhysics";
-import { lampPool, restingLamp } from "@/components/table/lampRig";
+import { TABLE_CENTRE, restingLamp } from "@/components/table/lampRig";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 
 const IDLE = makeMutable(NO_LANDING);
@@ -112,7 +112,7 @@ describe("the bomb burst's own node budget (#765)", () => {
   });
 
   it("the lamp lift's own layers actually paint something, not a transparent fill", async () => {
-    const r = await render(<LampLift landing={IDLE} scale={1} rig={{ lamp: makeMutable(restingLamp(lampPool("bottom"))), sx: 1, sy: 1 }} />);
+    const r = await render(<LampLift landing={IDLE} scale={1} rig={{ lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 }} />);
 
     const lift = findByTestID(r.toJSON(), "lamp-lift");
     const layers = directChildren(lift);

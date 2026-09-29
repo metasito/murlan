@@ -1,20 +1,20 @@
 // The felt and the lamp across the whole grid, one `feltParityGrid*.spec.ts` file per viewport.
 //
 // `mockupParity.ts` holds the table to the Lantern mockup at the one seating and viewport the
-// mockup draws: four players, 874x402. Ours seats 2, 3 or 4 at any window size, and the lamp's
-// targets map by seat direction and scale with the table frame (#1257), so this walks every seating
-// at a phone and a tablet: the lamp over the seat on move, and the Skia cloth brighter and its weave
-// louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
+// mockup draws: four players, 874x402. Ours seats 2, 3 or 4 at any window size, and the lamp aims
+// at the seats the table laid out while the felt stretches to the window, so this walks every
+// seating at a phone and a tablet: the lamp over the seat on move, and the Skia cloth brighter and
+// its weave louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { openCaptureState } from "./offlineSeed";
-import { skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./tableTrace";
+import { settledLight, skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./tableTrace";
 import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
   type CaptureState,
 } from "../../../lib/captureStates";
 import { seatDirection } from "../../../components/seatLayout";
-import { DESIGN, LIGHT_ABOVE, lampTarget } from "../../../components/table/lampRig";
+import { DESIGN } from "../../../components/table/lampRig";
 
 /** The table's scale comes from the window's short edge, so a tablet is a different weave-to-card ratio. */
 const VIEWPORTS = {
@@ -33,6 +33,9 @@ const DEALT_MS = 2_000;
 
 /** The rig's resting sway, in design points. */
 const SWAY = 20;
+
+/** Plan 3 L6: how much more light the lit side's patch carries than the far side's. */
+const LIT_OVER_FAR = 1.5;
 
 /** The patch size `feltNap` uses, kept so the two files' numbers are comparable. */
 const PATCH_PX = 15;
@@ -238,13 +241,12 @@ export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount)
         if (!box) throw new Error(`${cell.id}: the felt has no box`);
 
         const sx = box.width / DESIGN.width;
-        const sy = box.height / DESIGN.height;
-        const [poolX, poolY] = lampTarget(cell.side);
+        const want = await settledLight(page, cell.side);
         const lamp = await tracedLamp(page);
-        if (Math.abs(lamp.x - poolX * sx) > (SWAY + 0.5) * sx || Math.abs(lamp.y - (poolY - LIGHT_ABOVE) * sy) > 0.5) {
+        if (Math.abs(lamp.x - want.x) > (SWAY + 0.5) * sx || Math.abs(lamp.y - want.y) > 0.5) {
           offenders.push(
             `${viewport.name}/${cell.id}: lamp at ${lamp.x.toFixed(1)},${lamp.y.toFixed(1)}, ` +
-              `not over the ${cell.side} seat at ${(poolX * sx).toFixed(1)},${((poolY - LIGHT_ABOVE) * sy).toFixed(1)}`
+              `not over the ${cell.side} seat at ${want.x.toFixed(1)},${want.y.toFixed(1)}`
           );
         }
 
@@ -267,9 +269,10 @@ export function gridTest(name: keyof typeof VIEWPORTS, playerCount: PlayerCount)
               `${viewport.name}/${cell.id}: the weave is as loud unlit, ${away.amplitude.toFixed(1)}, as lit, ${lit.amplitude.toFixed(1)}`
             );
           }
-          if (away.mean >= lit.mean) {
+          if (lit.mean < LIT_OVER_FAR * away.mean) {
             offenders.push(
-              `${viewport.name}/${cell.id}: lamp not at ${cell.side} — mean ${lit.mean.toFixed(1)} vs ${away.mean.toFixed(1)}`
+              `${viewport.name}/${cell.id}: the ${cell.side} side carries ${(lit.mean / away.mean).toFixed(2)}× the far side's light, ` +
+                `under ${LIT_OVER_FAR}× — mean ${lit.mean.toFixed(1)} vs ${away.mean.toFixed(1)}`
             );
           }
         }

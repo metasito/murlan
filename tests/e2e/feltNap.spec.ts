@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { DEPART_SCRIPT, MOCKUP_SEAT } from "./helpers/lanternDepartures";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -84,10 +85,7 @@ async function appCloth(page: Page, baseURL: string, id: string): Promise<Cloth>
   return sample(page, await page.screenshot({ type: "png" }), VIEWPORT.width);
 }
 
-/** The mockup's names for the seats, in its `POOL`. */
-const MOCKUP_SEAT = { left: "gent", right: "luan" } as const;
-
-/** The mockup at rest with its lamp moved over `side`, the way its `lampStep` would settle it. */
+/** The mockup at rest with its lamp moved over `side`, aimed the app's way, as its `lampStep` would settle it. */
 async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "left" | "right"): Promise<Cloth> {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor });
   const page = await context.newPage();
@@ -98,6 +96,7 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
   await page.setViewportSize({ width: VIEWPORT.width * 2 - Math.round(box.width), height: VIEWPORT.height * 2 });
   // Its motes sit wherever this load's `Math.random` put them, lit by the lamp, and ours has none.
   const air = await page.evaluate(`(() => {
+    ${DEPART_SCRIPT}
     T.go("rest", ${MOCKUP_REST_MS});
     lamp.m.length = 0;
     const [x, y] = POOL.${MOCKUP_SEAT[side]};

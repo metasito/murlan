@@ -12,12 +12,14 @@
 // announcement cannot outlive the turn it names.
 import { test, expect, type Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
-import { tracedLamp } from "./helpers/tableTrace";
+import { setSafeArea } from "./helpers/safeArea";
+import { settledLight, tracedLamp } from "./helpers/tableTrace";
 import { RANK_SLOTS } from "../../lib/game/gameEngine";
-import { LIGHT_ABOVE, lampTarget, type LampTarget } from "../../components/table/lampRig";
+import { LIGHT_ABOVE } from "../../components/table/lampRig";
 
 // The design size, so the trace's felt points are the rig's own.
 const VIEWPORT = { width: 874, height: 402 };
+const NEAREST_PT = 0.5;
 
 /** A manche just dealt, opened by the viewer's own seat because it lost the last round. */
 function openingSave() {
@@ -83,14 +85,17 @@ async function coveredByGate(page: Page, testId: string): Promise<boolean> {
   }, testId);
 }
 
-/** The pool the lamp throws, in design points. */
-async function lampPool(page: Page): Promise<[number, number]> {
-  const lamp = await tracedLamp(page);
-  return [Math.round(lamp.x), Math.round(lamp.y + LIGHT_ABOVE)];
+/** How far, in design points, the lamp's pool is from the centre of the announcement's words as laid out. */
+async function offTheWords(page: Page): Promise<number> {
+  const [lamp, words] = await Promise.all([tracedLamp(page), page.getByTestId("start-reason-card").boundingBox()]);
+  if (!words) throw new Error("the announcement has no words on screen");
+  return Math.max(Math.abs(lamp.x - (words.x + words.width / 2)), Math.abs(lamp.y + LIGHT_ABOVE - (words.y + words.height / 2)));
 }
 
-async function expectLampOver(page: Page, target: LampTarget, message: string): Promise<void> {
-  await expect.poll(() => lampPool(page), { message, timeout: 10_000 }).toEqual([...lampTarget(target)]);
+/** How far, to the nearest point, the light is from where the table's own hand zone puts it. */
+async function offTheHand(page: Page): Promise<number> {
+  const [lamp, want] = await Promise.all([tracedLamp(page), settledLight(page, "bottom")]);
+  return Math.round(Math.max(Math.abs(lamp.x - want.x), Math.abs(lamp.y - want.y)));
 }
 
 test("the opening announcement holds the table, and the lamp points at it", async ({
@@ -116,7 +121,13 @@ test("the opening announcement holds the table, and the lamp points at it", asyn
 
   // The owner's own remedy: the lamp is swung onto the middle, where the words
   // are, rather than sitting over the seat whose turn it happens to be.
-  await expectLampOver(page, "centre", "the lamp is not over the middle of the table");
+  await expect
+    .poll(() => offTheWords(page), { message: "the lamp is not over the announcement's words", timeout: 10_000 })
+    .toBeLessThanOrEqual(NEAREST_PT);
+  await setSafeArea(page, 62, 21, 62);
+  await expect
+    .poll(() => offTheWords(page), { message: "under 62/21/62 insets the lamp left the words", timeout: 10_000 })
+    .toBeLessThanOrEqual(NEAREST_PT);
 
   // One tap clears it — and is spent doing exactly that.
   await gate.click();
@@ -128,5 +139,7 @@ test("the opening announcement holds the table, and the lamp points at it", asyn
   // …and the lamp goes back to the seat on move, which is the viewer's own.
   // The floor for the check above: if the lamp never moved at all, "centred"
   // would have been a fact about this table rather than about the gate.
-  await expectLampOver(page, "bottom", "the lamp did not return to the seat on move");
+  await expect
+    .poll(() => offTheHand(page), { message: "the lamp did not return to the seat on move", timeout: 10_000 })
+    .toBe(0);
 });
