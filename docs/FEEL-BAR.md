@@ -170,7 +170,7 @@ repo's own comments already credit it for (`Hold.land`'s doc comment cites Nijma
 Ideas past anything cited above, each a checkable frame property rather than a claim of
 quality:
 
-- At `t = 90ms` (the bomb's hold), the pile's beaten cards (`pileState.prev`) show a
+- At `t = 90ms` (the bomb's hold), the pile's beaten cards (the trick's `beatenPlay`) show a
   6px horizontal displacement from rest, and by `t = 90ms + 170ms` that displacement has
   linearly interpolated back to 0px — a number already decided by #764, restated here as
   the frame check the critic should actually run against a capture, not re-decided.

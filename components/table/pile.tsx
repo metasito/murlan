@@ -28,7 +28,8 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection, type FlyDirection } from "@/components/seatLayout";
-import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrownPlay, roundClosedWithWinner, seatPoint, type ThrownPlayInput } from "@/components/flightPhysics";
+import { beatenPlay, clearTrick, NO_TRICK, playOnto, sweepEnded, sweepTrick, topPlay, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
 import { a11yHidden } from "@/lib/a11y";
@@ -144,13 +145,13 @@ const SWEEP_SCALE = 0.6;
 
 /** A closed round's cards collected toward the seat that won them. */
 export function SweepCards({
-  pile,
+  plays,
   origin,
   roomW,
   scale = 1,
   onDone,
 }: {
-  pile: PileState;
+  plays: readonly TrickPlay[];
   /** The winner's seat — components/flightPhysics.ts `seatPoint`. */
   origin: { dx: number; dy: number };
   roomW: number;
@@ -190,21 +191,23 @@ export function SweepCards({
   }));
 
   const cardScale = scale * FIELD_SCALE;
+  const prev = beatenPlay({ plays })?.combo;
+  const current = topPlay({ plays })?.combo;
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
       <Animated.View testID="sweep-cards" style={[pileStyles.pileStack, aStyle]}>
-        {pile.prev && (
+        {prev && (
           <View
             style={[
               pileStyles.pilePrevLayer,
               { transform: [{ rotate: `${PILE_PREV_ROTATE_DEG}deg` }, { translateY: PILE_PREV_Y }] },
             ]}
           >
-            <PileComboCards cards={pile.prev.cards} scale={cardScale} roomW={roomW} />
+            <PileComboCards cards={prev.cards} scale={cardScale} roomW={roomW} />
           </View>
         )}
-        {pile.current && (
-          <PileComboCards cards={pile.current.cards} scale={cardScale} roomW={roomW} />
+        {current && (
+          <PileComboCards cards={current.cards} scale={cardScale} roomW={roomW} />
         )}
       </Animated.View>
     </View>
@@ -614,8 +617,7 @@ export function usePileFlight({
   const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(
     null
   );
-  const [layers, setLayers] = useState<PileLayers>(NO_PILE);
-  const [sweepTo, setSweepTo] = useState<{ dx: number; dy: number } | null>(null);
+  const [trick, setTrick] = useState<Trick>(NO_TRICK);
   const [flights, setFlights] = useState<FlyInfo[]>([]);
   const flightsRef = useRef(flights);
   useEffect(() => {
@@ -664,7 +666,7 @@ export function usePileFlight({
     // happens now or after the winning cards have been held.
     const openNewRound = () => {
       playRoundStart();
-      setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
+      setTrick(clearTrick);
     };
 
     const geometry = {
@@ -687,7 +689,7 @@ export function usePileFlight({
       // felt out from under them until the hold expires or a new lead arrives.
       if (roundHoldRef.current) return;
       if (prevComboKeyRef.current === "") {
-        setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
+        setTrick(clearTrick);
         return;
       }
       prevComboKeyRef.current = "";
@@ -695,8 +697,7 @@ export function usePileFlight({
         const origin = seatPoint(geometry, seatDirection(roundWinner!, viewerSeat, players.length));
         const collect = () => {
           roundHoldRef.current = null;
-          setLayers(collectPile);
-          setSweepTo(origin);
+          setTrick((t) => sweepTrick(t, origin));
           openNewRound();
         };
         roundHoldRef.current = { timer: setTimeout(collect, ROUND_WINNER_MS), collect };
@@ -714,7 +715,6 @@ export function usePileFlight({
       roundHoldRef.current.collect();
     }
     prevComboKeyRef.current = key;
-    setLayers((l) => ({ ...l, onPile: advancePile(l.onPile, combo, lastPlayedBy) }));
 
     const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
 
@@ -735,8 +735,10 @@ export function usePileFlight({
       mine: thrown.dir === "bottom",
       pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
     };
+    const spec = flightSpec(key, thrown.from, to, catchUp, reduceMotion);
+    setTrick((t) => playOnto(t, { key, combo, playedBy: lastPlayedBy, spec }));
     const flight = {
-      key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing, comboType: combo.type, handOver: gameOver,
+      key, dir: thrown.dir, cards: thrown.cards, spec, landing, comboType: combo.type, handOver: gameOver,
       hidden: inBackground(),
     };
     const superseded = new Set([...touched.current, ...unseen]);
@@ -828,14 +830,10 @@ export function usePileFlight({
     [onClock]
   );
 
-  const endSweep = useCallback(() => {
-    setLayers((l) => ({ ...l, swept: null }));
-    setSweepTo(null);
-  }, []);
+  const endSweep = useCallback(() => setTrick(sweepEnded), []);
 
   return {
-    pileState: layers.onPile,
-    sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
+    trick,
     endSweep,
     flights,
     roundWinnerTag,
