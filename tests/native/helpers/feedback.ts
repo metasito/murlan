@@ -38,9 +38,10 @@ export function appStateHandler(): (state: string) => void {
   return calls.at(-1)![1] as (state: string) => void;
 }
 
+// Async, so event()'s microtask flush runs at each timer's own time, as on a device; the sync form stamps them all at the window's end.
 export const settle = (ms = 0) =>
   act(async () => {
-    jest.advanceTimersByTime(ms);
+    await jest.advanceTimersByTimeAsync(ms);
   });
 
 export const hapticCalls = () => turboHapticsState().calls;

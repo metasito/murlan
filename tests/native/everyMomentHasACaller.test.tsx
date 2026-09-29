@@ -18,7 +18,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[] };
+type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; selectedIds?: string[] };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -87,7 +87,7 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   deal: { sounds: ['deal'], run: botSounds },
   turn: { sounds: ['turn'], run: () => heard(table(human(1)), async (r) => { await act(async () => r.rerender(table(human(0)))); }) },
   select: { sounds: ['select'], run: () => heard(table(human(0)), () => press(seven())) },
-  deselect: { sounds: ['deselect'], run: () => heard(table(human(0)), async () => { await press(seven()); await settle(500); await press(seven()); }) },
+  deselect: { sounds: ['deselect'], run: () => heard(table(human(0), { selectedIds: [SEVEN_H.id] }), () => press(seven())) },
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
   give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
@@ -95,7 +95,7 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },
   clockRunningOut: {
     sounds: ['clockRunningOut'],
-    run: () => heard(<TurnChip seconds={CLOCK_RUNNING_OUT_SECONDS + 1} active resetKey="t" scale={1} lit chipText="" spokenSeat="" />, () => settle(2000)),
+    run: () => heard(<TurnChip seconds={CLOCK_RUNNING_OUT_SECONDS + 3} active resetKey="t" scale={1} lit chipText="" spokenSeat="" />, () => settle(2000)),
   },
 };
 

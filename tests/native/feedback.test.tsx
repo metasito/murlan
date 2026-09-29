@@ -63,6 +63,8 @@ describe('feedback', () => {
       { type: 'impactMedium', at: expect.closeTo(at - 300, 0) },
       { type: 'notificationSuccess', at: expect.closeTo(at, 0) },
     ]);
+    // An async act() leaves a faked queueMicrotask of its own, which getTimerCount() counts.
+    jest.runAllTicks();
     expect(jest.getTimerCount()).toBe(0);
   });
 
