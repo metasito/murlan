@@ -54,7 +54,8 @@ test("each landing sound is scheduled for the frame the cards touch the pile", a
   expect(contacts.length, "three flights traced").toBe(3);
   const sounds = (await page.evaluate(() => (window as unknown as { __scheduled: { at: number; state: string }[] }).__scheduled));
   expect(sounds.every((s) => s.state === "running"), "the audio context is running").toBe(true);
-  const badStamps = await page.evaluate(() => (window as unknown as { __badStamps: unknown[] }).__badStamps);  expect(badStamps, "every audio stamp lies between the clock reads around it").toEqual([]);
+  const badStamps = await page.evaluate(() => (window as unknown as { __badStamps: unknown[] }).__badStamps);
+  expect(badStamps, "every audio stamp lies between the clock reads around it").toEqual([]);
   for (const c of contacts) {
     const nearest = Math.min(...sounds.map((s) => Math.abs(s.at - c)));
     expect(nearest, `a landing sound within 16 ms of the contact frame at ${c} ms`).toBeLessThanOrEqual(16);
