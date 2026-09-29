@@ -10,7 +10,8 @@ import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
-import { exchangeAnnounceMs } from '@/lib/exchangeCeremony';
+import { LEG } from '@/lib/game/exchangeTimeline';
+import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -69,7 +70,8 @@ const tableWith = (holdMsOverride: number | undefined, onDismiss: () => void) =>
   </SafeAreaProvider>
 );
 
-const REAL_MS = exchangeAnnounceMs(false);
+/** Mounted with both cards known, both legs fly: the receive and its read, then the give and its read. */
+const REAL_MS = Motion.exchange.beat + 2 * (LEG.end + Motion.exchange.read);
 const FRAME_MS = 16;
 /** Frame by frame, so the legs' clock reports its landing before the reading hold is set. */
 const frames = async (ms: number) => {

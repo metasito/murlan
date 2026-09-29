@@ -6,8 +6,8 @@
 // cannot proceed until a card is given, so the player was stuck.
 //
 // The dialog is gone (#533) and the exchange is the table itself, which makes
-// the same defect cheaper to hit and no less fatal: the prompt sits in the
-// centre band, the giveable cards in the fan, and the confirm is the table's
+// the same defect cheaper to hit and no less fatal: the prompt is the turn
+// chip, the giveable cards are in the fan, and the confirm is the table's
 // own GIOCA. Any of the three off the edge, or covered, and the player is stuck
 // exactly as before.
 //
@@ -70,18 +70,6 @@ for (const vp of VIEWPORTS) {
     expect.soft(Math.round(promptBox.y + promptBox.height)).toBeLessThanOrEqual(vp.height);
     expect.soft(Math.round(promptBox.x)).toBeGreaterThanOrEqual(0);
     expect.soft(Math.round(promptBox.x + promptBox.width)).toBeLessThanOrEqual(vp.width);
-
-    // The prompt lives in the centre band, which is the space left below the
-    // top seat's whole column — so it must not reach that seat's own plate.
-    // That overlap is the condition #532's decision attached to this layout.
-    const topSeat = await page.getByTestId("top-seat").boundingBox();
-    if (topSeat) {
-      expect.soft(
-        Math.round(promptBox.y),
-        `the prompt starts at ${Math.round(promptBox.y)}, inside the top seat which ends at ` +
-          `${Math.round(topSeat.y + topSeat.height)} — the card would sit on that player's name`
-      ).toBeGreaterThanOrEqual(Math.round(topSeat.y + topSeat.height));
-    }
 
     // At least one card in the fan is giveable, and it is reachable.
     const giveable = page.locator(`${TABLE} button[aria-label]:not([aria-disabled="true"])`);

@@ -44,6 +44,13 @@ and sound fired at 56 % (Debug) and 78 % (Release) of the travel
    deleted.
 5. `Motion.duration.travel` stays for the deal and fades; the throw gets its own tokens
    (`Motion.throw.card`, `Motion.throw.stagger`, `Motion.throw.catchUpCard`, `Motion.throw.catchUpStagger`, in `lib/tokens.ts`).
+6. **The exchange goes through the pile** (amended 2026-09-29). Each traded card lifts at its
+   giver, flies to the pile centre, rests there still and face up for `Hold.reveal`, then flies to
+   its receiver: the receive first, the give after the choice, one leg at a time on one frame clock
+   (`components/table/ExchangeLegs.tsx`, `lib/game/exchangeTimeline.ts`, `Motion.exchange`).
+   Attribution is the pile label during each rest ("Luan dà 2♥ a Gent") and the lit seats: the
+   giver from the leg's first frame, the receiver from the rest. The owner rejected tags riding
+   with the cards on 2026-09-29. The approved design is `tests/e2e/fixtures/exchange-legs/index.html`.
 
 ## Consequences
 

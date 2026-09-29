@@ -22,7 +22,6 @@ const LEGACY: Record<string, number> = {
   "tests/e2e/cardScale.spec.ts": 3,
   "tests/e2e/controlRail.spec.ts": 4,
   "tests/e2e/exchangeFit.spec.ts": 1,
-  "tests/e2e/exchangeNoOverlap.spec.ts": 1,
   "tests/e2e/feltIdle.spec.ts": 3,
   "tests/e2e/feltNap.spec.ts": 1,
   "tests/e2e/handBudget.spec.ts": 3,

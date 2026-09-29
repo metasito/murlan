@@ -1,13 +1,14 @@
 // tests/e2e/exchangeTeleport.spec.ts — each traded card is drawn on every frame of its leg, one
-// frame's travel from the last, and face up from the lift to the tuck (#1259, D5 revised).
+// frame's travel from the last, and face up from the lift until it leaves the pile (#1259).
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { Motion } from "../../lib/tokens";
-import { REST_END_MS } from "../../lib/game/exchangeTimeline";
+import { LEG } from "../../lib/game/exchangeTimeline";
 
 const LEGS = ["exchange-flier-to-winner", "exchange-flier-to-loser"] as const;
-const SAMPLE_MS = 7000;
+/** The receive, its read, the choice, then the give. */
+const SAMPLE_MS = 2 * (LEG.end + Motion.exchange.read) + 4000;
 /** Above the legs' peak speed per 16 ms frame; a teleport is hundreds of points. */
 const MAX_STEP = 40;
 
@@ -40,10 +41,9 @@ const midExchangeSave = () => ({
   dealFirstSeat: 0,
 });
 
-test("the traded cards fly seat to seat, never jumping, face up the whole way", async ({ page, baseURL }) => {
+test("the traded cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await resumeSaved(page, baseURL!, midExchangeSave());
-  await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
 
   await page.evaluate(({ legs, sampleMs }) => {
     const out: Sample[] = [];
@@ -68,6 +68,7 @@ test("the traded cards fly seat to seat, never jumping, face up the whole way", 
     requestAnimationFrame(frame);
   }, { legs: LEGS, sampleMs: SAMPLE_MS });
 
+  await expect(page.getByTestId("exchange-prompt")).toBeVisible({ timeout: 15_000 });
   await tap(page, page.getByRole("button", { name: "5 di Cuori", exact: true }));
   await tap(page, page.getByTestId("btn-gioca"));
   await expect
@@ -84,7 +85,7 @@ test("the traded cards fly seat to seat, never jumping, face up the whole way", 
       expect(d, `${leg} jumped ${d.toFixed(1)} pt at ${path[i].t.toFixed(0)} ms`).toBeLessThanOrEqual(MAX_STEP * frames);
     }
     const first = path[0].t;
-    const facing = path.filter((p) => p.t > first + Motion.exchange.lift + 50 && p.t < first + REST_END_MS - 50);
+    const facing = path.filter((p) => p.t > first + Motion.exchange.lift + 50 && p.t < first + LEG.tuck - 50);
     expect(facing.length, `${leg} was sampled between its lift and its tuck`).toBeGreaterThan(10);
     expect(facing.filter((p) => p.back > 0).map((p) => p.t.toFixed(0)), `${leg} showed its back mid-leg`).toEqual([]);
   }

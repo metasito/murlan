@@ -228,8 +228,7 @@ export function ExchangeLegs({
     return () => clearTimeout(done);
   }, [holdMsOverride, chosen, jokers]);
 
-  const nameOf = (seat: number) =>
-    seat === viewerSeat ? t("gameShared.you") : seat === trade.winnerIdx ? trade.winnerName : trade.loserName;
+  const nameOf = (seat: number) => (seat === trade.winnerIdx ? trade.winnerName : trade.loserName);
   const shown = (stage: LegStage) => stage !== "waiting" && stage !== "flying";
   const giveLine = (card: Card, from: number, to: number) =>
     t("exchangeAnnouncement.giveLine", { from: nameOf(from), card: cardSpokenName(card, t), to: nameOf(to) });
