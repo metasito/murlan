@@ -1,8 +1,8 @@
 // tests/native/seatTurnClock.test.tsx — a seat's rim only sweeps a window that
 // is really armed.
 //
-// The ring is a display of the viewer's own chip, so the two have to answer one
-// gate (`turnTimerActive`): asked about the seat the ring is drawn on, not the
+// The ring answers the viewer's own chip's gate (`turnTimerActive`), leads
+// included even offline: asked about the seat the ring is drawn on, not the
 // viewer, since a seat that is not the viewer's can still have a server
 // deadline once the viewer is out.
 //
@@ -26,6 +26,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { GameTable } from '@/components/GameTable';
 import type { TurnTimerConfig } from '@/components/GameTable';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
+import { Reading } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -90,7 +91,8 @@ const table = (gameState: GameState, turnTimer: TurnTimerConfig) => (
   </SafeAreaProvider>
 );
 
-const clocks = () => screen.queryAllByTestId('seat-turn-clock').length;
+const clocks = () => screen.queryAllByTestId('seat-turn-clock', { includeHiddenElements: true }).length;
+const gate = () => screen.queryByTestId('start-reason-gate', { includeHiddenElements: true });
 
 /**
  * Mounting the table schedules the sweep rather than drawing it, so counting
@@ -184,9 +186,25 @@ describe("a seat's turn clock", () => {
     expect(clocks()).toBe(1);
   });
 
-  it('is dark offline while a seat leads a new round, where no deadline exists', async () => {
-    await renderSettled(table(state({}), OFFLINE_TIMER));
+  it.each([1, 2, 3])('sweeps offline for seat %i leading a new round', async (leader) => {
+    await renderSettled(table(state({ currentTurnIndex: leader }), OFFLINE_TIMER));
+    expect(clocks()).toBe(1);
+  });
+
+  it('is dark offline while the start announcement holds the table, and sweeps once it lets go', async () => {
+    const opening = state({
+      firstPlayMade: false,
+      startReason: { type: 'start_card', card: card('3_1', '3', 'spades'), playerIdx: 1 },
+      playedRanks: Array.from({ length: 15 }, () => 0),
+    });
+    await render(table(opening, { ...OFFLINE_TIMER, pausable: true }));
+    expect(gate()).not.toBeNull();
     expect(clocks()).toBe(0);
+    await act(async () => {
+      jest.advanceTimersByTime(Reading.notice);
+    });
+    expect(gate()).toBeNull();
+    expect(clocks()).toBe(1);
   });
 
   it('is dark through the exchange', async () => {
