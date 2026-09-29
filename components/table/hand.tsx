@@ -58,7 +58,7 @@ export function useHandArrival({
   hand: Card[];
   exchange: ExchangeView;
   announcement: { visible: boolean; data: ExchangeAnnounceData | null } | undefined;
-  /** `useTradedCardsLanded`'s answer, the one clock the flier reads too. */
+  /** The exchange legs have landed: `ExchangeLegs` reports it from their own clock. */
   landed: boolean;
   viewerSeat: number | null;
   reduceMotion: boolean;

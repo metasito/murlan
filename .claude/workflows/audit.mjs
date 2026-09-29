@@ -159,7 +159,7 @@ Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win,
 For each one:
 - what happens today, with path:line;
 - what would make it land like a top-tier card or casino game: easing, anticipation, stagger, sound layering and variation, haptics, particles and light, music cues, microcopy.
-Every proposal must respect Motion tokens, motionMs() under reduced motion, impactDelayMs() timing and the a11y invariants, and must name the assets it needs.
+Every proposal must respect Motion tokens, motionMs() under reduced motion, landing consequences derived from the flight's contact (landsAt) and the a11y invariants, and must name the assets it needs.
 Return up to 40 concrete, buildable proposals that clear FEEL-BAR, ranked by impact per size; each one costs a judge.`,
   },
   {
