@@ -22,7 +22,8 @@ Verify against source before changing any.
 - **The table's scale comes from the window's own short edge**, never that minus the safe-area
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
   the home indicator.
-- **The lamp aims at the laid-out seats**, never a design constant (`tests/e2e/lampSeats.spec.ts`).
+- **The lamp aims at the laid-out seats**, never a design constant (`tests/e2e/lampSeats.spec.ts`),
+  and the start announcement's light at its words as laid out (`tests/e2e/startAnnouncement.spec.ts`).
 - **No seat place takes a card count**; `fanGeometry.ts` imports `seatLayout.ts`, never the
   reverse (`tests/ui-rules/seatLayoutTakesNoCount.test.ts`).
 - **State which view covers which with a `Layer` role** (or a value derived from one), never

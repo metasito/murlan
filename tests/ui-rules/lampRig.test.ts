@@ -108,7 +108,6 @@ describe("the lamp rig", () => {
     const [x, y, reach] = pools.bottom;
     assert.deepEqual([Math.round(x), Math.round(y)], [443, 380], `the hand's pool at ${x}, ${y}`);
     assert.ok(Math.abs(reach - 1) < 1e-3, `the hand's reach ${reach}`);
-    assert.deepEqual([...pools.centre], [465, 201, 1], "the announcement's light, over the rail ring's centre");
   });
 
   test("every seat's light sits the same way round it: straight in, the sides mirrored, as far in per unit of reach", () => {

@@ -10,7 +10,7 @@ const RING_SEAT: Record<Exclude<FlyDirection, "bottom">, string> = { top: "top-s
 
 /**
  * Where the table laid a seat out, in window points: its ring's centre, the hand zone's before its
- * lift (`offsetTop` carries no transform), or the pile's.
+ * lift (its translations taken back off its box), or the pile's.
  */
 export async function seatAnchor(page: Page, side: FlyDirection | "pile"): Promise<Point> {
   const selector =
@@ -19,12 +19,15 @@ export async function seatAnchor(page: Page, side: FlyDirection | "pile"): Promi
     ({ selector, side }) => {
       const el = document.querySelector<HTMLElement>(selector);
       if (!el) throw new Error(`the table has no ${side}: ${selector}`);
-      if (side !== "bottom") {
-        const r = el.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const r = el.getBoundingClientRect();
+      const at = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      if (side !== "bottom") return at;
+      for (let n: Element | null = el; n; n = n.parentElement) {
+        const m = new DOMMatrix(getComputedStyle(n).transform);
+        if (m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1) throw new Error("the hand zone sits under a transform that is not a translation");
+        at.x -= m.e;
+        at.y -= m.f;
       }
-      let at = { x: el.offsetWidth / 2, y: el.offsetHeight / 2 };
-      for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) at = { x: at.x + n.offsetLeft, y: at.y + n.offsetTop };
       return at;
     },
     { selector, side }

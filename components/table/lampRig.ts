@@ -16,8 +16,8 @@ export type Pool = readonly [x: number, y: number, reach: number];
 
 type Point = { readonly x: number; readonly y: number };
 
-/** The mockup's rail-ring centre, where the start announcement swings the light. */
-export const TABLE_CENTRE: Pool = [465, 201, 1];
+/** Where the start announcement swings the light: onto its words, centred in the box the felt stretches over. */
+export const TABLE_CENTRE: Pool = [DESIGN.width / 2, DESIGN.height / 2, 1];
 
 /** The hand-to-top distance on the page he tuned, in design points: reach 1. */
 const REACH_ONE = 269;
