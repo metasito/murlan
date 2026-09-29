@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
-import { skiaOnSoftware } from "./tableTrace";
+import { seatAnchor, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
   diffFlight,
@@ -275,12 +275,13 @@ async function strip(
   m: Moment,
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
-  stepTo: (t: number, ms: number) => Promise<TraceFrame | null>
+  stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
+  pile: { x: number; y: number }
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
-  const all = regionsFor(m.seatOnMove);
+  const all = regionsFor(m.seatOnMove, pile);
   const shape = m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
   const cdp = await page.context().newCDPSession(page);
   const due = [...(m.actions ?? [])];
@@ -337,10 +338,11 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
+  const [px, py] = (await page.evaluate("PILE")) as [number, number];
   const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
     await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
-  });
+  }, { x: px, y: py });
   await page.context().close();
   return capture;
 }
@@ -429,7 +431,7 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
   const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t, ms) => {
     if (t > preRollMs) await step(page, ms);
     return tracedAt(page, onset + t - preRollMs);
-  });
+  }, await seatAnchor(page, "pile"));
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
   await page.context().close();

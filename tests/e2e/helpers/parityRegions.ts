@@ -1,5 +1,5 @@
 // The named regions tests/e2e/helpers/mockupParity.ts reads brightness from, in table points of the
-// 874 × 402 table, placed on the Lantern Table mockup's own geometry (its POOL, PILE and #score).
+// 874 × 402 table, placed on the Lantern Table mockup's own geometry (its POOL and #score), the pile on each side's own.
 import type { Page } from "@playwright/test";
 
 export const TABLE = { width: 874, height: 402 };
@@ -20,14 +20,15 @@ const POOL: Record<Seat, [number, number]> = {
   gent: [202, 196],
 };
 
-export function regionsFor(seatOnMove: Seat): Record<string, Region> {
+/** `pile` is that side's own pile centre, in table points: the two lay it out 9 pt apart. */
+export function regionsFor(seatOnMove: Seat, pile: { x: number; y: number }): Record<string, Region> {
   const [px, py] = POOL[seatOnMove];
   return {
     // Between the mockup's pile chip and the hand's shadow, which cross the pool at `you`.
     pool: { x: px - 20, y: py - 2, w: 40, h: 8 },
     rim: { x: 64, y: 180, w: 8, h: 40 },
     rightBand: { x: 640, y: 150, w: 60, h: 100 },
-    pile: { x: 427, y: 202, w: 60, h: 40 },
+    pile: { x: pile.x - 30, y: pile.y - 20, w: 60, h: 40 },
     scorePill: { x: 740, y: 16, w: 90, h: 18 },
   };
 }
