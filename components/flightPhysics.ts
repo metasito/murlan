@@ -17,21 +17,6 @@ import { restPoint, type LegPoints, type LegStage } from "../lib/game/exchangeTi
 /** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */
 export const FAN_CARD_SCALE = 0.4;
 
-// ─── Pile state ───────────────────────────────────────────────────────────────
-//
-// The pile shows at most two layers: the combination currently on the table and
-// the faded one it beat. Getting this wrong made cards appear twice or not at
-// all, which is why the transition is a pure function with its own tests.
-
-export interface PileState {
-  prev: Combination | null;
-  current: Combination | null;
-  /** Seat `current` came from — carried alongside it so a name and its combination can never name different plays. */
-  playedBy: number | null;
-}
-
-export const EMPTY_PILE: PileState = { prev: null, current: null, playedBy: null };
-
 // ─── Flight and impact timing ─────────────────────────────────────────────────
 //
 // A played combination flies from its seat to the pile before it arrives. Sound,
@@ -139,7 +124,7 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boo
 }
 
 /**
- * How far the beaten combination (`pileState.prev`) is knocked as the new
+ * How far the beaten combination (`components/table/trick.ts`, `beatenPlay`) is knocked as the new
  * one lands on it, scaled by the table like `shakeOffset` — colocated with
  * `TRAUMA_BY_TIER` so #764 and #765 read the same five tiers. `straightFlush`
  * is not silent, unlike trauma: #101's own table keeps it the smallest
@@ -395,25 +380,6 @@ export function flightOrigin(input: TableGeometry & { dir: FlyDirection }): { dx
  */
 export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
-}
-
-/** The old current becomes the faded layer; the new combination takes the top. The same play again changes nothing. */
-export function advancePile(state: PileState, combo: Combination, playedBy: number): PileState {
-  const same = state.current && comboKey(state.current, state.playedBy ?? -1) === comboKey(combo, playedBy);
-  if (same) return state;
-  return { prev: state.current, current: combo, playedBy };
-}
-
-export interface PileLayers {
-  onPile: PileState;
-  swept: PileState | null;
-}
-
-export const NO_PILE: PileLayers = { onPile: EMPTY_PILE, swept: null };
-
-/** While the collect sweep runs it is the only drawer of the round's cards. */
-export function collectPile(layers: PileLayers): PileLayers {
-  return { onPile: EMPTY_PILE, swept: layers.onPile };
 }
 
 /**

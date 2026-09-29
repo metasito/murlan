@@ -10,8 +10,8 @@ Verify against source before changing any.
 
 **The table**
 
-- **A card appears exactly once** in flight/`pileState` — never twice, never zero times
-  (`tests/ui-rules/flightPhysics.test.ts`, `advancePile`).
+- **A card is held exactly once**, in flight or `components/table/trick.ts`, and drawn at most
+  once (`tests/ui-rules/trick.test.ts`).
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts` takes
   a width parameter instead of importing it. A source scan pins this
   (`tests/ui-rules/layoutConstantsPinned.test.ts`), since pinning the value cannot find a copy

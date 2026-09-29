@@ -37,12 +37,8 @@ import {
   type TableGeometry,
   flightOrigin,
   comboKey,
-  advancePile,
-  collectPile,
-  type PileLayers,
   seatPoint,
   roundClosedWithWinner,
-  EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
   landWobble,
@@ -167,90 +163,6 @@ describe("comboKey", () => {
 
   test("the same play produces a stable key", () => {
     assert.equal(comboKey(combo(["a", "b"]), 2), comboKey(combo(["a", "b"]), 2));
-  });
-});
-
-describe("advancePile", () => {
-  test("the first play sits alone on the table", () => {
-    const first = combo(["a"]);
-    const next = advancePile(EMPTY_PILE, first, 0);
-    assert.equal(next.current, first);
-    assert.equal(next.prev, null);
-  });
-
-  test("the beaten combination fades to the previous layer exactly once", () => {
-    const a = combo(["a"]);
-    const b = combo(["b"]);
-    const c = combo(["c"]);
-    const s1 = advancePile(EMPTY_PILE, a, 0);
-    const s2 = advancePile(s1, b, 1);
-    assert.equal(s2.prev, a);
-    assert.equal(s2.current, b);
-    const s3 = advancePile(s2, c, 2);
-    // `a` is gone entirely — never rendered twice, never stuck behind.
-    assert.equal(s3.prev, b);
-    assert.equal(s3.current, c);
-    assert.notEqual(s3.prev, a);
-  });
-
-  test("a card is never in both layers at once", () => {
-    const a = combo(["a"]);
-    const first = advancePile(EMPTY_PILE, a, 0);
-    const states = {
-      beaten: advancePile(first, combo(["b"]), 1),
-      "first play": first,
-      "same play again": advancePile(first, a, 0),
-    };
-    for (const [name, s] of Object.entries(states)) {
-      const prevIds = (s.prev?.cards ?? []).map((c: any) => c.id);
-      const curIds = (s.current?.cards ?? []).map((c: any) => c.id);
-      assert.deepEqual(prevIds.filter((id: string) => curIds.includes(id)), [], name);
-    }
-    assert.deepEqual(states["same play again"], first);
-  });
-
-  test("the input state is not mutated", () => {
-    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 0);
-    const snapshot = { ...s1 };
-    advancePile(s1, combo(["b"]), 1);
-    assert.deepEqual(s1, snapshot);
-    assert.deepEqual(EMPTY_PILE, { prev: null, current: null, playedBy: null });
-  });
-
-  test("current's seat is carried alongside it, so the name and the shape can never name different plays", () => {
-    const s1 = advancePile(EMPTY_PILE, combo(["a"]), 2);
-    assert.equal(s1.playedBy, 2);
-    const s2 = advancePile(s1, combo(["b"]), 0);
-    // The new play's seat replaces the old one — `prev`'s owner is never
-    // asked for, since only `current` is ever named.
-    assert.equal(s2.playedBy, 0);
-  });
-});
-
-describe("collectPile", () => {
-  const drawn = (l: PileLayers) =>
-    [l.onPile.prev, l.onPile.current, l.swept?.prev, l.swept?.current].flatMap(
-      (c) => c?.cards.map((card: any) => card.id) ?? []
-    );
-  const pile = advancePile(advancePile(EMPTY_PILE, combo(["a"]), 0), combo(["b", "c"]), 1);
-  const held: PileLayers = { onPile: pile, swept: null };
-
-  test("every card on the felt is drawn exactly once, before and during the sweep", () => {
-    assert.deepEqual(drawn(held).sort(), ["a", "b", "c"]);
-    assert.deepEqual(drawn(collectPile(held)).sort(), ["a", "b", "c"]);
-  });
-
-  test("while the sweep runs it is the only drawer; the felt draws nothing", () => {
-    const l = collectPile(held);
-    assert.deepEqual(l.onPile, EMPTY_PILE);
-    assert.equal(l.swept, pile);
-  });
-
-  test("a lead during the sweep lands on the felt without touching the swept cards", () => {
-    const swept = collectPile(held);
-    const next = { ...swept, onPile: advancePile(swept.onPile, combo(["d"]), 1) };
-    assert.deepEqual(drawn(next).sort(), ["a", "b", "c", "d"]);
-    assert.equal(next.swept, pile);
   });
 });
 

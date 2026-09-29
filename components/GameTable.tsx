@@ -111,6 +111,7 @@ import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { beatenPlay, topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
@@ -764,8 +765,7 @@ export function GameTable({
     drawn.forEach((from, id) => handOrigins.current.set(id, from));
   }, []);
   const {
-    pileState,
-    sweep,
+    trick,
     endSweep,
     flights,
     roundWinnerTag,
@@ -953,22 +953,24 @@ export function GameTable({
       ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
       : "-");
 
-  const comboLabel = getComboLabel(pileState.current, t);
+  const top = topPlay(trick.plays);
+  const onTop = top?.combo ?? null;
+  const comboLabel = getComboLabel(onTop, t);
 
-  // Named off `pileState`, not `gameState.lastPlayedBy` — the pile lags the
+  // Named off the trick, not `gameState.lastPlayedBy` — the pile lags the
   // game state by the flight animation, and reading the seat straight off the
   // game state would name the *new* player over the *old* combination for the
   // length of one throw. Spectating, the bottom seat is someone else's, so no
   // play on the felt is the watcher's own.
-  const playedByViewer = viewerOwnsSeat(pileState.playedBy, viewerSeat, spectating);
+  const playedByViewer = viewerOwnsSeat(top?.playedBy ?? null, viewerSeat, spectating);
   const lastPlayName =
-    pileState.playedBy === null
+    top === null
       ? ""
       : playedByViewer
         ? t("gameShared.you")
-        : (players[pileState.playedBy]?.name ?? "");
+        : (players[top.playedBy]?.name ?? "");
 
-  const topBarA11yLabel = topBarLabel(pileState.current, playedByViewer, lastPlayName, t);
+  const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
   const viewerOnMove = isMyTurn && !isFinished;
   const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
@@ -1006,8 +1008,7 @@ export function GameTable({
   // the pile mounts fresh cards for every play, so each one would read a
   // standing counter as its own cue. A seat holding nothing can only have
   // thrown its last cards, so the top layer being theirs is the whole test.
-  const pileThrower =
-    pileState.playedBy === null ? undefined : players[pileState.playedBy];
+  const pileThrower = top === null ? undefined : players[top.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
   const tradeName = (seat: number) => players[seat]?.name ?? "";
@@ -1295,9 +1296,9 @@ export function GameTable({
                   />
                 ) : (
                   <PlayedPile
-                    prev={landed(pileState.prev)}
-                    current={landed(pileState.current)}
-                    comboLabel={timeline.inFlight ? null : pileState.current}
+                    prev={landed(beatenPlay(trick.plays)?.combo ?? null)}
+                    current={landed(onTop)}
+                    comboLabel={timeline.inFlight ? null : onTop}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
                     landing={landingSignal}
@@ -1363,10 +1364,11 @@ export function GameTable({
                   />
                 ))}
 
-                {sweep && (
+                {trick.swept && (
                   <SweepCards
-                    pile={sweep.pile}
-                    origin={sweep.origin}
+                    key={trick.swept.plays[0]?.key}
+                    plays={trick.swept.plays}
+                    origin={trick.swept.to}
                     roomW={frame.fieldRoomW}
                     scale={scale}
                     onDone={endSweep}
