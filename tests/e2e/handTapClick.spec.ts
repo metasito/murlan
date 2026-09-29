@@ -5,16 +5,18 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { holdPast, tap } from "./helpers/press";
-import { HAND_CARDS, TABLE } from "./helpers/selectors";
+import { HAND_CARDS, HAND_ZONE, TABLE } from "./helpers/selectors";
+import { atRest } from "./helpers/settle";
 
 const VIEWPORT = { width: 844, height: 390 };
+const HAND = `${TABLE} ${HAND_ZONE}`;
 
 const top = async (card: Locator) => (await card.boundingBox())!.y;
 
 async function expectPressed(page: Page, card: Locator, on: boolean) {
   await expect(card).toHaveAttribute("aria-pressed", String(on));
   await expect(page.locator(`${HAND_CARDS}[aria-pressed="true"]`)).toHaveCount(on ? 1 : 0);
-  await page.waitForTimeout(600);
+  await atRest(page, HAND);
 }
 
 test("a hand card answers a click, a long press and the keyboard through one tap", async ({ page, baseURL }) => {
@@ -22,7 +24,7 @@ test("a hand card answers a click, a long press and the keyboard through one tap
   await page.setViewportSize(VIEWPORT);
   await openSeededGame(page, baseURL!, 2, 9, 0, true);
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
-  await page.waitForTimeout(1_500);
+  await atRest(page, HAND);
 
   const card = page.locator(HAND_CARDS).last();
   await expect(card).not.toHaveAttribute("aria-disabled", "true");

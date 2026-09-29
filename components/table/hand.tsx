@@ -146,7 +146,7 @@ const HOLD_MS = 500;
  * the wobble a thumb has while it decides.
  */
 const DRAG_SLOP = 10;
-/** A press however long is still a press. The web tap times itself out with `setTimeout`, which fires at once past this. */
+/** A one-off off the scale: no duration at all, since a press however long is still a press. `setTimeout` fires at once past it. */
 const ANY_PRESS_MS = 2 ** 31 - 1;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
