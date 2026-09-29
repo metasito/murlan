@@ -23,6 +23,11 @@ export async function installVirtualClock(page: Page, seed: number): Promise<voi
       t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    // `page.clock` fakes performance.now() but not this stamp's performanceTime, which stays on the
+    // real clock; the engine maps a moment's `at` through it, so every sound would read seconds late.
+    AudioContext.prototype.getOutputTimestamp = function () {
+      return { contextTime: this.currentTime, performanceTime: performance.now() };
+    };
   }, seed);
   await page.clock.install({ time: EPOCH });
   await page.clock.pauseAt(EPOCH);

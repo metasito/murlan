@@ -29,13 +29,14 @@ test("each landing sound is scheduled for the frame the cards touch the pile", a
   const frames = await recorded(page);
   const contacts: number[] = [];
   let flying = false;
-  for (const f of frames) {
+  // The recorder's rAF callback runs before Reanimated's in every tick, so a frame's `flight` is the previous frame's paint.
+  frames.forEach((f, i) => {
     if (!flying && f.flight > 1) flying = true;
     else if (flying && f.flight <= 1) {
-      contacts.push(f.t);
+      contacts.push(frames[i - 1].t);
       flying = false;
     }
-  }
+  });
   expect(contacts.length, "three flights traced").toBe(3);
   const sounds = (await page.evaluate(() => (window as unknown as { __scheduled: { at: number; state: string }[] }).__scheduled));
   expect(sounds.every((s) => s.state === "running"), "the audio context is running").toBe(true);
