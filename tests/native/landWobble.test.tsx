@@ -41,7 +41,7 @@ describe('a landed combination under reduced motion does not wobble', () => {
       />
     );
 
-    const transform = flattenTransform(r.getByTestId('flying-cards').props.style);
+    const transform = flattenTransform(r.getByTestId('flying-cards', { includeHiddenElements: true }).props.style);
     const scales = transform.filter((t) => 'scale' in t);
     expect(scales).toEqual([{ scale: 1 }]);
     expect(transform.filter((t) => 'scaleX' in t || 'scaleY' in t)).toEqual([]);

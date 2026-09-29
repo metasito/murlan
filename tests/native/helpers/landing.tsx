@@ -89,7 +89,7 @@ export function useFeedbackOnTimeline({ currentTurnIndex = 0, ...state }: Omit<P
   return { ...feedback, shownTurnIndex };
 }
 
-/** How far the farthest flying card is drawn from its slot. */
+/** How far the farthest flying card is drawn from its slot, to a micro-point: at rest the pose's float math leaves ~1e-15. */
 export const farthest = (view: RenderResult) =>
   Math.max(
     0,
@@ -97,7 +97,7 @@ export const farthest = (view: RenderResult) =>
       const t = ((getAnimatedStyle(el) as { transform?: Record<string, number>[] }).transform ?? []);
       const x = t.find((s) => 'translateX' in s)?.translateX ?? 0;
       const y = t.find((s) => 'translateY' in s)?.translateY ?? 0;
-      return Math.hypot(x, y);
+      return Math.round(Math.hypot(x, y) * 1e6) / 1e6;
     })
   );
 

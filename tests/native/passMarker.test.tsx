@@ -16,8 +16,9 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { bootFeedback, sounds } from './helpers/feedback';
+import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
+import { PILE_UP_WINDOW_MS } from '@/lib/device/moments';
 import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 import { en as locale } from '@/locales/en';
@@ -217,6 +218,12 @@ describe('the per-seat pass marker', () => {
 
 describe('the pass sound', () => {
   const count = (id: string) => sounds().filter((s) => s === id).length;
+  // The play already on the pile flies in on mount; a pass inside its landing's pile-up window is masked.
+  const seated = async (el: React.ReactElement) => {
+    const r = await render(el);
+    await settle(PILE_UP_WINDOW_MS + 16);
+    return r;
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -235,7 +242,7 @@ describe('the pass sound', () => {
   });
 
   it('fires for a seat that is not the viewer', async () => {
-    const r = await render(table(LED));
+    const r = await seated(table(LED));
     expect(count('pass')).toBe(0);
 
     await act(async () => {
@@ -264,7 +271,7 @@ describe('the pass sound', () => {
       currentTurnIndex: 0,
       passCount: 0,
     });
-    const r = await render(table(mine, onPass));
+    const r = await seated(table(mine, onPass));
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-passa'));
@@ -292,7 +299,7 @@ describe('the pass sound', () => {
   it('sounds the pass that closes the round as the round won, which raises no count edge', async () => {
     // `processPass` resets passCount to zero on the pass that closes a round,
     // so the close itself is the edge. One state change sounds one thing.
-    const r = await render(
+    const r = await seated(
       table(
         state(4, {
           lastPlayedCombination: single(KING),
@@ -326,7 +333,7 @@ describe('the pass sound', () => {
     // Two seats means `passesNeeded` is 1, so every legal pass closes the
     // round — this is the only pass a two-player game ever has.
     const onPass = jest.fn();
-    const r = await render(
+    const r = await seated(
       table(
         state(2, {
           lastPlayedCombination: single(KING),

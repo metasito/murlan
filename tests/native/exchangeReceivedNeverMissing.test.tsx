@@ -28,7 +28,7 @@ describe('the received card, seen by the winner', () => {
         onDismiss={() => {}}
       />
     );
-    const opacity = () => (getAnimatedStyle(view.getByTestId('exchange-flier-to-winner')) as { opacity: number }).opacity;
+    const opacity = () => (getAnimatedStyle(view.getByTestId('exchange-flier-to-winner', { includeHiddenElements: true })) as { opacity: number }).opacity;
     for (let t = 16; onLanded.mock.calls.length === 0 && t < GIVE_MS + 160; t += 16) {
       await act(async () => jest.advanceTimersByTime(16));
       if (t > RECEIVE_LEAD + 32 && onLanded.mock.calls.length === 0) expect([t, opacity()]).toEqual([t, 1]);

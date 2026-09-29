@@ -712,8 +712,8 @@ export function usePileFlight({
       pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
     };
     const flight = { key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing, comboType: combo.type, handOver: gameOver };
-    const superseded = new Set(touched.current);
-    touched.current.clear();
+    const superseded = touched.current;
+    touched.current = new Set();
     superseded.forEach((k) => clocks.current.delete(k));
     setFlights((f) => [...f.filter((x) => !superseded.has(x.key)), flight]);
   }, [

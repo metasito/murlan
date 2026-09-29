@@ -119,9 +119,11 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
   it("the bomb still names itself on the pile — the label, not just the flare, survives reduced motion", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
+    for (let f = 0; f < 6; f++) {
+      await act(async () => {
+        jest.advanceTimersByTime(16);
+      });
+    }
 
     const pile = within(screen.getByTestId("pile-area"));
     getVisibleText(pile, /bomb/i);

@@ -64,11 +64,12 @@ function trace(kind: "sound" | "haptic", name: string, at: number, now: number):
 }
 
 // A given `at` goes through untouched, past or not: the engine drops what is more than one IO buffer late. Only an absent `at` means now.
+// A cue whose haptic leads it moves back until that lead is still ahead, or the lead is dropped as late.
 function fire(moments: Moment[], at: number | undefined, now: number): void {
   const out = mix(moments, at ?? now, played);
   played = out.played;
   const lead = Math.max(0, ...out.haptics.map((h) => -h.atMs));
-  const t0 = at ?? (lead > 0 ? now + lead : undefined);
+  const t0 = lead > 0 ? Math.max(at ?? now, now + lead) : at;
   if (out.sound && soundVolume > 0) {
     play(out.sound.id, { at: t0, bus: out.sound.bus });
     trace("sound", out.sound.id, t0 ?? now, now);

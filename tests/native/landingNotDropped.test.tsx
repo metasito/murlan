@@ -10,14 +10,11 @@ jest.mock('@/components/table/particles', () => {
 
 import { landDust } from '@/components/table/particles';
 import type { Combination } from '@/lib/game/gameEngine';
-import { bootFeedback, sounds } from './helpers/feedback';
+import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { card, PAIR, tableAfter } from './helpers/landing';
 
 const SINGLE: Combination = { type: 'single', cards: [card('c', '4', 'hearts')], strength: 4 };
-const frames = (n: number) =>
-  act(async () => {
-    for (let i = 0; i < n; i++) jest.advanceTimersByTime(16);
-  });
+const frames = (n: number) => settle(16 * n);
 
 describe('two plays in the air at once', () => {
   beforeEach(async () => {

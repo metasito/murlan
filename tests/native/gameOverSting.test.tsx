@@ -184,7 +184,7 @@ describe('the end-of-hand sting', () => {
 
   it('a finished partita sounds its own sting, with the haptic leading by 300 ms', async () => {
     const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
-    await advance(STING_MS);
+    await advance(300);
     expect(sounds()).toContain('partitaWon');
     expect(sounds()).not.toContain('mancheWon');
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);

@@ -16,7 +16,7 @@ import type { Card } from "@/lib/game/gameEngine";
 const CARDS: Card[] = [{ id: "A_clubs", rank: "A", suit: "clubs", isJoker: false } as Card];
 
 function flyingRotate(): unknown {
-  const style = getAnimatedStyle(screen.getByTestId("flying-cards")) as { transform?: Record<string, unknown>[] };
+  const style = getAnimatedStyle(screen.getByTestId("flying-cards", { includeHiddenElements: true })) as { transform?: Record<string, unknown>[] };
   return (style.transform ?? []).find((t) => "rotate" in t)?.rotate;
 }
 

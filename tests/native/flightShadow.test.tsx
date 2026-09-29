@@ -28,7 +28,7 @@ describe('a flying card', () => {
     );
 
     expect(screen.queryByTestId('flying-shadow-lifted')).toBeNull();
-    for (const node of screen.getAllByTestId('flying-card')) {
+    for (const node of screen.getAllByTestId('flying-card', { includeHiddenElements: true })) {
       const style = Object.assign({}, ...[node.props.style].flat(3).filter(Boolean));
       expect(style).not.toHaveProperty('shadowOpacity');
       expect(style).not.toHaveProperty('elevation');

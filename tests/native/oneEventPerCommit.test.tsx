@@ -13,7 +13,7 @@ jest.mock('@/lib/diagnostics', () => ({
 import { useTableTimeline } from '@/components/table/tableTimeline';
 import { Hold } from '@/lib/tokens';
 import type { Combination } from '@/lib/game/gameEngine';
-import { bootFeedback, ctxAt, startsOf } from './helpers/feedback';
+import { bootFeedback, ctxAt, ctxTime, settle, startsOf } from './helpers/feedback';
 import { card, farthest, frameOfFirst, PAIR, tableAfter, throwPair } from './helpers/landing';
 
 const FRAME_S = 0.017;
@@ -48,20 +48,16 @@ describe('one event per anchor, at the flight’s own times', () => {
 
   it('sounds a later commit’s pass now', async () => {
     const view = await throwPair();
-    await act(async () => {
-      jest.advanceTimersByTime(1500);
-    });
+    await settle(1500);
     const at = performance.now();
     await act(async () => view.rerender(tableAfter({ by: 3, combo: PAIR, passCount: 1 })));
-    expect(startsOf('pass')).toEqual([expect.closeTo(ctxAt(at), 2)]);
+    expect(startsOf('pass')).toEqual([expect.closeTo(ctxTime(at), 2)]);
     await view.unmount();
   });
 
   it('lets a bomb’s landing choose the bomb’s sound', async () => {
     const view = await render(tableAfter({ by: 3, combo: BOMB }));
-    await act(async () => {
-      jest.advanceTimersByTime(1500);
-    });
+    await settle(1500);
     expect(startsOf('bomb')).toHaveLength(1);
     await view.unmount();
   });
@@ -92,7 +88,7 @@ describe('a landing the JS side reports late', () => {
 
   it('20 ms late still sounds, now', async () => {
     const now = await reportedLate(20);
-    expect(startsOf('combo')).toEqual([expect.closeTo(ctxAt(now), 2)]);
+    expect(startsOf('combo')).toEqual([expect.closeTo(ctxTime(now), 2)]);
   });
 
   it('100 ms late is dropped, and recorded', async () => {

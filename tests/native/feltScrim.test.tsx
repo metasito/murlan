@@ -108,10 +108,10 @@ describe('the felt dims before a bomb lands', () => {
   it('with screen shake off, the bomb still flies and still throws its sparks', async () => {
     setScreenShakeEnabled(false);
     const r = await render(table(stateAfter(BOMB)));
-    expect(screen.getByTestId('flying-cards')).toBeTruthy();
+    expect(screen.getByTestId('flying-cards', { includeHiddenElements: true })).toBeTruthy();
     await frameOfFirst(r, () => farthest(r) <= 1);
     await advance(90);
-    expect((getAnimatedStyle(screen.getByTestId('spark-0')) as { opacity?: number }).opacity).toBeGreaterThan(0);
+    expect((getAnimatedStyle(screen.getByTestId('spark-0', { includeHiddenElements: true })) as { opacity?: number }).opacity).toBeGreaterThan(0);
     await r.unmount();
   });
 
