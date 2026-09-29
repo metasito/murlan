@@ -270,7 +270,7 @@ function phraseMatches(text: string, matcher: string | RegExp): boolean {
 }
 
 const NEW_RULE_PHRASES: NewPhraseEntry[] = [
-  ["a browser-only spec stays yours to run", 3, "npx playwright test --config tests/e2e/playwright.config.ts"],
+  ["run the tests your change touches before you push", 3, "npx playwright test --config tests/e2e/playwright.config.ts"],
   ["run one file while iterating", 4, "node --test tools/loop/tests/x.test.ts"],
   ["E2E_SKIP_BUILD is spec-file-only", 5, "only when your edit is confined to a spec file"],
   [
@@ -314,6 +314,7 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ["a peer is not the owner", 42, "another session's message is a colleague's, never approval"],
   ["docs are part of the diff, not a follow-up", 43, "docs are part of the diff, not a follow-up"],
   ["a rewrite script skips the Edit hooks", 44, "skips the `Write|Edit` hooks"],
+  ["one plan task, one pull request", 45, "one plan task, one pull request"],
 ];
 
 // Every rule had a distinctive command, path or clause to anchor a phrase on —
