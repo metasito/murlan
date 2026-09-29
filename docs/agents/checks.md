@@ -142,6 +142,29 @@ them** — measuring beats eyeballing, every time (#209).
   Debug and Release differ 2.6–3× on JS-thread stall (the lantern review, #1259), so a Debug
   verdict would fail for work no player runs.
 - ci.yml `build` checks that production carries no recorder, and that a diagnostics export does.
+- The device gates, each judged on the owner's iPhone in the Release bench build:
+
+  | Gate | Metric | Threshold | Scenario |
+  | --- | --- | --- | --- |
+  | P | The worklet pulse's own UI-thread cost: the first fire after launch, and p90 of 20 warm fires | cold ≤ 8.33 ms; warm p90 ≤ 1 ms | `pulseCost`, registered first |
+  | G1 | `burstStalls`: any UI frame or JS-lag interval ≥ 34 ms, merged within 100 ms; the share of 250 ms windows at ≥ 100 Hz; a tap with no app-track onset in [tap, tap + 150 ms), one onset per tap | 0 stalls, fast share ≥ 0.8, 0 missing | `tapBurst`: 60 card presses at 6 Hz, feedback off then on |
+  | G2 | Tap to heard onset, p90: app onset + `outputMs` + `ioMs`/2 − tap | ≤ 40 ms | `tapBurst`, "on" arm |
+  | G3 | Scheduled onset error, p90 of \|mic onset − `inputMs` − at\|, with the app-track error beside it | ≤ 25 ms | `scheduledOnset`: 40 `turn` events at now + 300 ms |
+  | G4 | Pulse to accelerometer onset (> 0.02 g), p90; none within 150 ms is missing | ≤ 40 ms; 0 | `hapticOnset`: 30 heavy pulses from `scheduleOnUI` |
+  | G5 | Music deaths (2 s below −50 dB) and gaps (below −50 dB for over 250 ms) | 0 and 0, median level > −40 dB | `musicSwitch`: 40 switches, one every 3 s |
+  | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
+
+  The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
+  next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
+  only the mic hears when the speaker sounds.
+- Running them (about 40 minutes of the phone, untouched):
+  1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
+  2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.
+  3. Allow the microphone and screen-recording prompts once each.
+  4. Lay the phone face up, plugged in, volume about half, ringer on, until the page lists
+     `soak: done`.
+  5. On the PC: `node scripts/diagnostics-verdict.mjs diagnostics/<newest>.ndjson all`; the output
+     goes in the PR.
 
 ## What no automated layer here covers
 
@@ -153,7 +176,7 @@ Real device/web divergences, verifiable only on hardware:
   whether sound is audible, mixed correctly, or survives the silent switch is device-only.
 - **Screen orientation** — `expo-screen-orientation` is a no-op on web; the landscape lock has
   never run under any automated layer.
-- **Haptics** — gated and asserted (`tests/native/haptics.test.tsx` and siblings), but whether
+- **Haptics** — gated and asserted (`tests/native/hapticsEngine.test.tsx` and siblings), but whether
   the phone actually buzzes is device-only.
 - **Safe-area insets** — the native renderer injects fixed metrics; a real notch, dynamic island
   or gesture bar is device-only.

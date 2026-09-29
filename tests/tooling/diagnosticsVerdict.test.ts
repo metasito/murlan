@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { createCollector } from "../../scripts/diagnostics-collector.mjs";
-import { flingerUnderruns, flingerVerdict, verdict } from "../../scripts/diagnostics-verdict.mjs";
+import { burstStalls, flingerUnderruns, flingerVerdict, verdict } from "../../scripts/diagnostics-verdict.mjs";
 
 const RELEASE = { k: "build", t: 0, dev: false, scriptURL: "file:///var/containers/Bundle/Application/X/murlan.app/main.jsbundle" };
 
@@ -112,4 +112,105 @@ test("a soak fails on a 2 MB/min leak, growing lag jumps, a stopped context, too
   assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, state: "suspended" }), "soak")?.pass, false);
   assert.equal(verdict(soakRows({ minutes: 30, mbPerMin: 0.2, playsPerMin: 20 }), "soak")?.pass, false);
   assert.equal(verdict(soakRows({ minutes: 10, mbPerMin: 0.2 }), "soak")?.pass, false);
+});
+
+const LATENCY = { k: "latency", t: 0, outputMs: 8, ioMs: 5, inputMs: 10 };
+const run = (name: string, inner: object[]) => bracket("d", name, [LATENCY, ...inner]);
+const onset = (t: number, source: "app" | "mic" = "app") => ({ k: "onset", t, db: -20, source });
+
+type Arm = { onsetMs?: number; drop?: number; ui?: number; js?: number; hz?: number; ticks?: number };
+
+function arm(name: string, on: boolean, o: Arm = {}): object[] {
+  const end = 1000 + 60 * 167 + 600;
+  const rows: object[] = [{ k: "arm", t: 0, name, phase: "start" }];
+  const dt = 1000 / (o.hz ?? 120);
+  for (let t = 1000; t < end; t += dt) rows.push({ k: "frame", t, dt });
+  for (let i = 0; i < 60; i++) {
+    const t = 1000 + i * 167;
+    rows.push({ k: "trigger", t, name: "tap" });
+    if (!on) continue;
+    rows.push({ k: "play", t, id: "select", at: t, bus: "sfx", dropped: false, lead: 10.5 });
+    if (i !== o.drop) rows.push(onset(t + (o.onsetMs ?? 20)));
+  }
+  if (o.ui) rows.push({ k: "frame", t: o.ui, dt: 40 });
+  if (o.js) rows.push({ k: "jsLag", t: o.js, dt: 40 });
+  rows.push({ k: "jsTicks", t: end, n: o.ticks ?? 1200 }, { k: "arm", t: end + 1, name, phase: "end" });
+  return rows;
+}
+
+const burst = (o: Arm) => verdict(run("tapBurst", [...arm("off", false), ...arm("on", true, o)]), "tapBurst");
+
+test("tapBurst passes 60 taps heard in 30.5 ms at 120 Hz with no stall on either thread", () => {
+  const v = burst({});
+  assert.equal(v?.pass, true);
+  assert.equal(v?.metrics.tapToHeardP90, 30.5);
+});
+
+test("tapBurst fails one silent tap, a UI stall, a JS stall, a 60 Hz burst, no JS ticks, a slow onset, or an onset before its tap", () => {
+  assert.equal(burst({ drop: 17 })?.metrics.missing, 1);
+  assert.equal(burst({ drop: 17 })?.pass, false);
+  assert.equal(burst({ ui: 5000 })?.metrics.stalls, 1);
+  assert.equal(burst({ ui: 5000 })?.pass, false);
+  assert.equal(burst({ js: 5000 })?.pass, false);
+  assert.equal(burst({ hz: 60 })?.pass, false);
+  assert.equal(burst({ ticks: 0 })?.pass, false);
+  assert.equal(burst({ onsetMs: 40 })?.pass, false);
+  assert.equal(burst({ onsetMs: -30 })?.pass, false);
+});
+
+test("burstStalls merges a UI and a JS stall 60 ms apart into one, and keeps two 200 ms apart", () => {
+  const rows = (gap: number) => [{ k: "frame", t: 1000, dt: 40 }, { k: "jsLag", t: 1000 + gap, dt: 40 }];
+  assert.equal(burstStalls(rows(60)).stalls, 1);
+  assert.equal(burstStalls(rows(200)).stalls, 2);
+});
+
+test("scheduledOnset judges the mic: passes a 10 ms bias, fails a 30 ms one, fails a missing onset, and reports the app track", () => {
+  const rows = (err: number, n = 40) =>
+    run("scheduledOnset", Array.from({ length: 40 }, (_, i) => {
+      const at = 1000 + i * 1000;
+      return [
+        { k: "trigger", t: at, name: "scheduled" },
+        { k: "play", t: at - 300, id: "turn", at, bus: "sfx", dropped: false, lead: 10.5 },
+        onset(at - 10.5 + 2, "app"),
+        ...(i < n ? [onset(at + err + 10, "mic")] : []),
+      ];
+    }).flat());
+  const good = verdict(rows(10), "scheduledOnset");
+  assert.equal(good?.pass, true);
+  assert.equal(good?.metrics.appMedianErr, 2);
+  assert.equal(verdict(rows(30), "scheduledOnset")?.pass, false);
+  assert.equal(verdict(rows(10, 39), "scheduledOnset")?.pass, false);
+});
+
+test("pulseCost passes a 5 ms cold fire and 0.3 ms warm ones, and fails a slow cold, a slow warm p90 or a short run", () => {
+  const rows = (cold: number, warm: number, n = 20) =>
+    run("pulseCost", [{ k: "pulseCost", t: 1, ms: cold, cold: true }, ...Array.from({ length: n }, (_, i) => ({ k: "pulseCost", t: 2 + i, ms: warm, cold: false }))]);
+  assert.equal(verdict(rows(5, 0.3), "pulseCost")?.pass, true);
+  assert.equal(verdict(rows(12, 0.3), "pulseCost")?.pass, false);
+  assert.equal(verdict(rows(5, 2), "pulseCost")?.pass, false);
+  assert.equal(verdict(rows(5, 0.3, 19), "pulseCost")?.pass, false);
+});
+
+test("hapticOnset passes 30 shakes 20 ms after their pulses, and fails a missing one or a slow p90", () => {
+  const rows = (lag: (i: number) => number | null) =>
+    run("hapticOnset", Array.from({ length: 30 }, (_, i) => {
+      const t = 1000 + i * 1000;
+      const l = lag(i);
+      return [{ k: "trigger", t, name: "pulse" }, ...(l === null ? [] : [{ k: "shake", t: t + l, g: 0.05 }])];
+    }).flat());
+  assert.equal(verdict(rows(() => 20), "hapticOnset")?.pass, true);
+  assert.equal(verdict(rows((i) => (i === 3 ? null : 20)), "hapticOnset")?.pass, false);
+  assert.equal(verdict(rows((i) => (i < 5 ? 80 : 20)), "hapticOnset")?.pass, false);
+});
+
+test("musicSwitch passes steady music, and fails a 300 ms gap, a 2 s death, or music too quiet to judge", () => {
+  const rows = (db: (t: number) => number) =>
+    run("musicSwitch", [
+      ...Array.from({ length: 40 }, (_, i) => ({ k: "trigger", t: 1000 + i * 3000, name: "switch" })),
+      ...Array.from({ length: 2400 }, (_, i) => ({ k: "level", t: 1000 + i * 50, db: db(1000 + i * 50) })),
+    ]);
+  assert.equal(verdict(rows(() => -25), "musicSwitch")?.pass, true);
+  assert.equal(verdict(rows((t) => (t >= 30000 && t < 30300 ? -60 : -25)), "musicSwitch")?.pass, false);
+  assert.equal(verdict(rows((t) => (t >= 30000 && t < 32100 ? -60 : -25)), "musicSwitch")?.metrics.deaths, 1);
+  assert.equal(verdict(rows(() => -45), "musicSwitch")?.pass, false);
 });
