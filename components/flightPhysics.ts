@@ -24,7 +24,7 @@ export const FAN_CARD_SCALE = 0.4;
 // moment the card lands — firing them at launch puts the bang a third of a
 // second before the thing that caused it.
 //
-// FlyingCards (components/table/pile.tsx) owns the animation; these are the numbers both it
+// PileLayer (components/table/pile.tsx) owns the animation; these are the numbers both it
 // and the table's feedback read, so the two cannot drift apart.
 
 /**
@@ -364,9 +364,9 @@ export function anchorPoints(g: TableGeometry): Record<FlyDirection | "pile", { 
 
 /**
  * The delta a throw starts at: from the throwing seat's own point to the
- * pile's. `FlyingCards` (components/table/pile.tsx) animates this toward
- * zero, so the throw lands exactly where `PlayedPile` then redraws the same
- * cards.
+ * pile's. `PileLayer` (components/table/pile.tsx) animates this toward
+ * zero, on the views the pile then keeps, so the throw lands where the
+ * cards rest.
  */
 export function flightOrigin(input: TableGeometry & { dir: FlyDirection }): { dx: number; dy: number } {
   const anchors = anchorPoints(input);

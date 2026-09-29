@@ -1,9 +1,10 @@
 import { describe, it, expect, jest, afterEach } from "@jest/globals";
-import React from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+import type { TestInstance } from "test-renderer";
 import { getAnimatedStyle } from "react-native-reanimated";
-import { PlayedPile } from "@/components/table/pile";
 import { setMotionPreference } from "@/lib/accessibility";
+import { pileOf } from "./helpers/landing";
 import { Motion, Spacing } from "@/lib/theme";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 
@@ -20,9 +21,18 @@ function chipStyle() {
 
 const riseOf = (s: ReturnType<typeof chipStyle>) => s.transform?.find((t) => "translateY" in t)?.translateY;
 
-const pile = (combo: Combination) => (
-  <PlayedPile prev={null} current={null} comboLabel={combo} roundWinner={null} roomW={400} scale={1} />
-);
+const pile = (combo: Combination) => pileOf({ comboLabel: combo });
+
+const flat = (n: TestInstance) => (StyleSheet.flatten(n.props.style) ?? {}) as { transform?: Record<string, number>[]; fontSize?: number; paddingHorizontal?: number; paddingVertical?: number };
+const scaledBy = (n: TestInstance | null): number => (n ? (flat(n).transform?.find((t) => "scale" in t)?.scale ?? 1) * scaledBy(n.parent) : 1);
+async function drawnAt(scale: number) {
+  const r = await render(pileOf({ comboLabel: SINGLE, roundWinner: "Ana", scale }));
+  const chip = screen.getByTestId("combo-chip");
+  const tag = screen.getByText("Ana");
+  const drawn = { chip: flat(chip), chipScale: scaledBy(chip), font: flat(within(chip).getByText(/./)).fontSize, tag: flat(tag).fontSize, tagScale: scaledBy(tag) };
+  await r.unmount();
+  return drawn;
+}
 
 describe("the combo chip enters, and a power play's chip catches a sheen", () => {
   afterEach(async () => {
@@ -57,6 +67,13 @@ describe("the combo chip enters, and a power play's chip catches a sheen", () =>
     await act(async () => { jest.advanceTimersByTime(Motion.duration.reveal / 2 + 16); });
     expect(band().opacity).toBe(0);
     await r.unmount();
+  });
+
+  it("keeps the chip's and the winner tag's fixed size whatever the table's scale", async () => {
+    const big = await drawnAt(1.6);
+    expect(big.chip).toMatchObject({ paddingHorizontal: Spacing.snug, paddingVertical: Spacing.xxs });
+    expect(big).toEqual(await drawnAt(1));
+    expect([big.chipScale, big.tagScale]).toEqual([1, 1]);
   });
 
   it("under reduced motion the chip is simply there, with no sheen", async () => {

@@ -32,7 +32,6 @@ import {
   openingIsPending,
   sortHand,
   type Card,
-  type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
 import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
@@ -117,8 +116,8 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
-import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
-import { beatenPlay, topPlay } from "@/components/table/trick";
+import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
@@ -809,8 +808,6 @@ export function GameTable({
     landing: landingSignal,
   });
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
-  const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
-  const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -984,13 +981,6 @@ export function GameTable({
       : undefined;
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
-
-  // The catch belongs to the combination that emptied a hand, and to no other:
-  // the pile mounts fresh cards for every play, so each one would read a
-  // standing counter as its own cue. A seat holding nothing can only have
-  // thrown its last cards, so the top layer being theirs is the whole test.
-  const pileThrower = top === null ? undefined : players[top.playedBy];
-  const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
   const tradeName = (seat: number) => players[seat]?.name ?? "";
   const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
@@ -1269,32 +1259,37 @@ export function GameTable({
               </View>
 
               <View style={sharedTableStyles.centerSection}>
-                {showStartCardBanner ? (
+                {showStartCardBanner && (
                   <StartCardBanner
                     card={gameState.startCard!}
                     starterIsViewer={isMyTurn}
                     starterName={players[gameState.currentTurnIndex]?.name ?? ""}
                   />
-                ) : (
-                  <PlayedPile
-                    prev={landed(beatenPlay(trick.plays)?.combo ?? null)}
-                    current={landed(onTop)}
-                    comboLabel={timeline.inFlight ? null : onTop}
-                    roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    catchTrigger={pileFlushed ? flushTrigger : undefined}
-                    landing={landingSignal}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                    note={pileNote}
-                  />
                 )}
+                <PileLayer
+                  trick={trick}
+                  flights={flights}
+                  signal={landingSignal}
+                  bombClock={bombClock}
+                  onFlightStart={onFlightStart}
+                  onFlightContact={onFlightContact}
+                  onFlightEnd={onFlightDone}
+                  onFlightClock={onFlightClock}
+                  onSweepEnd={endSweep}
+                  comboLabel={timeline.inFlight ? null : onTop}
+                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
+                  roomW={frame.fieldRoomW}
+                  scale={scale}
+                  note={pileNote}
+                  hidden={showStartCardBanner}
+                />
 
                 {/* Centred on the same point the pile draws at, so the burst
                     rings the impact rather than the middle of the table box. */}
                 <BombBurst landing={landingSignal} scale={scale} />
 
                 {/* Beside the pile, not beside the table: the flight has to
-                    settle exactly where PlayedPile then redraws the same cards,
+                    settle exactly where the pile then draws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
                 {trade && (
@@ -1326,33 +1321,6 @@ export function GameTable({
                     endMs={deal.endMs}
                     onStarted={dealCue}
                     onLanded={deal.onLanded}
-                  />
-                )}
-
-                {flights.map((f) => (
-                  <FlyingCards
-                    key={f.key}
-                    cards={f.cards}
-                    flight={f.spec}
-                    landing={f.landing}
-                    signal={landingSignal}
-                    onStart={onFlightStart}
-                    onContact={onFlightContact}
-                    onEnd={onFlightDone}
-                    onClock={onFlightClock}
-                    bombClock={bombClock}
-                    scale={scale}
-                  />
-                ))}
-
-                {trick.swept && (
-                  <SweepCards
-                    key={trick.swept.plays[0]?.key}
-                    plays={trick.swept.plays}
-                    origin={trick.swept.to}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                    onDone={endSweep}
                   />
                 )}
               </View>

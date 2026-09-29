@@ -120,7 +120,7 @@ interface TableFeedback {
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
   rejectPlay: () => void;
-  /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
+  /** Increments when a play empties a hand; the table's Sweep reads it. */
   flushTrigger: number;
   /** Call once, at the flight's contact, when that play emptied a hand. */
   celebrateFlush: () => void;
