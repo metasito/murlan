@@ -103,6 +103,19 @@ describe("an opponent's hand arrives with the deal", () => {
     await r.unmount();
   });
 
+  it('keeps the landed count through a re-render of the table mid-deal', async () => {
+    const r = await render(table());
+    let frames = 0;
+    while (seated() < 10 && frames++ < 2000) await frame();
+    const before = seated();
+    expect(before).toBeGreaterThan(0);
+
+    await r.rerender(table());
+    expect(seated()).toBeGreaterThanOrEqual(before);
+
+    await r.unmount();
+  });
+
   it('seats every hand at once under reduced motion', async () => {
     mockReduce = true;
     const r = await render(table());

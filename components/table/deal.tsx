@@ -74,9 +74,12 @@ export function useDeal({
   const arrivals = useMemo(
     () =>
       deal && !reduceMotion
-        ? deal.counts.map((count, seat) => dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]))
+        ? deal.counts.map((count, seat) => ({
+            at: dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]),
+            clock: clockOf.clock,
+          }))
         : null,
-    [deal, reduceMotion]
+    [deal, reduceMotion, clockOf]
   );
   const onLanded = useCallback(() => setDeal(null), []);
   const cards: DealtCard[] =
@@ -94,7 +97,7 @@ export function useDeal({
       : [];
   return {
     cards,
-    arrivalsFor: (seat) => (arrivals ? { at: arrivals[seat], clock: clockOf.clock } : undefined),
+    arrivalsFor: (seat) => arrivals?.[seat],
     handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0,
     dealing: deal !== null,
     clock: clockOf.clock,
