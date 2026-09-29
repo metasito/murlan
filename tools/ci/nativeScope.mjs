@@ -16,10 +16,29 @@ const deps = (text) => {
   }
 };
 
-const NATIVE_SOURCE = /(^|\/)(ios|android|apple|cpp)\/|\.(mm|m|h|cpp|java|kt|podspec)$/;
+const NATIVE_SOURCE = /(^|\/)(ios|android|apple|cpp)\/|\.(mm|m|h|hpp|c|cpp|swift|java|kt|gradle|podspec)$/;
 
-const patchIsNative = (text) =>
-  text === null || [...text.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)].some((m) => NATIVE_SOURCE.test(m[1]) || NATIVE_SOURCE.test(m[2]));
+const unquote = (p) => (p.startsWith('"') ? p.slice(1, -1).replace(/\\([0-7]{3}|.)/g, (_, e) => (e.length === 3 ? "_" : e)) : p);
+
+// git quotes a path with special characters, and leaves one with spaces bare.
+const headerPaths = (rest) => rest.split(/ (?="?b\/)/).map((p) => unquote(p).replace(/^[ab]\//, ""));
+
+const patchIsNative = (text) => {
+  if (text === null) return true;
+  const headers = [...text.matchAll(/^diff --git (.+?)\r?$/gm)];
+  return headers.length === 0 || headers.some((m) => headerPaths(m[1]).some((p) => NATIVE_SOURCE.test(p)));
+};
+
+export const patchReader = (show, base) => (f) => {
+  for (const rev of ["HEAD", base]) {
+    try {
+      return show(rev, f);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
 
 /** @param {(file: string) => string | null} [readPatch] */
 export function needsNative(changed, before, after, readPatch = () => null) {
@@ -38,16 +57,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const base = process.argv[2];
     const changed = git("diff", "--name-only", base, "HEAD").split("\n").filter(Boolean);
     const before = changed.includes("package.json") ? git("show", `${base}:package.json`) : "";
-    const readPatch = (f) => {
-      for (const rev of ["HEAD", base]) {
-        try {
-          return git("show", `${rev}:${f}`);
-        } catch {
-          continue;
-        }
-      }
-      return null;
-    };
+    const readPatch = patchReader((rev, f) => git("show", `${rev}:${f}`), base);
     answer = needsNative(changed, before, readFileSync("package.json", "utf8"), readPatch);
   } catch {
     answer = true;
