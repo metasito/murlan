@@ -105,6 +105,13 @@ function listen(): void {
   });
 }
 
+function evict(keep: TrackId, room: number): void {
+  for (const victim of tracks.keys()) {
+    if (tracks.size <= room) break;
+    if (victim !== keep && victim !== deck?.track && victim !== wanted) tracks.delete(victim);
+  }
+}
+
 function load(track: TrackId): Promise<void> {
   if (tracks.has(track)) {
     const buffer = tracks.get(track)!;
@@ -114,12 +121,12 @@ function load(track: TrackId): Promise<void> {
   }
   let pending = decoding.get(track);
   if (!pending) {
-    for (const victim of tracks.keys()) {
-      if (tracks.size < RESIDENT_TRACKS) break;
-      if (victim !== deck?.track) tracks.delete(victim);
-    }
+    evict(track, RESIDENT_TRACKS - 1);
     pending = decodeAudioData(trackUris.get(track)!, SAMPLE_RATE)
-      .then((buffer) => void tracks.set(track, buffer))
+      .then((buffer) => {
+        tracks.set(track, buffer);
+        evict(track, RESIDENT_TRACKS);
+      })
       .finally(() => decoding.delete(track));
     decoding.set(track, pending);
   }
@@ -128,8 +135,8 @@ function load(track: TrackId): Promise<void> {
 
 async function start(): Promise<void> {
   listen();
-  AudioManager.setAudioSessionOptions({ iosCategory: "playback", iosMode: "default", iosOptions: ["mixWithOthers"] });
   try {
+    AudioManager.setAudioSessionOptions({ iosCategory: "playback", iosMode: "default", iosOptions: ["mixWithOthers"] });
     const old = graph;
     graph = null;
     await old?.ctx.close().catch(() => {});
@@ -173,6 +180,7 @@ function rebuild(): Promise<void> {
     }
     graph = g;
     stats.rebuilds++;
+    if (AppState.currentState === "background") return sleep();
     music(wanted);
   })().finally(() => {
     rebuilding = null;
@@ -191,7 +199,7 @@ async function wake(): Promise<void> {
   await resumeInto(g);
   const before = g.ctx.currentTime;
   setTimeout(() => {
-    if (graph !== g) return;
+    if (graph !== g || AppState.currentState === "background") return;
     if (running(g) && g.ctx.currentTime - before >= WATCHDOG_MIN_ADVANCE_S) {
       for (const bus of BUSES) g.buses[bus].trim.gain.setValueAtTime(trims[bus], g.ctx.currentTime);
       music(wanted);

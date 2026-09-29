@@ -125,6 +125,28 @@ describe('the audio engine', () => {
     expect(engine.audioState()).toBe('running');
   }));
 
+  it('a session that refuses its options is a failed start, retried when the app next becomes active', isolated(async (engine) => {
+    api().failSession = true;
+    await expect(engine.startAudio()).resolves.toBeUndefined();
+    expect(engine.audioState()).toBe('failed');
+    api().failSession = false;
+    appStateHandler()('active');
+    await engine.startAudio();
+    expect(engine.audioState()).toBe('running');
+  }));
+
+  it('a switch made while another track decodes still leaves two decoded', isolated(async (engine) => {
+    await engine.startAudio();
+    engine.music('hand');
+    await settle(1000);
+    engine.music('cue');
+    engine.music('menu');
+    await settle();
+    await settle();
+    expect(fileOf(loops().at(-1)!)).toBe('menu');
+    expect(engine.engineStats().resident).toBe(2);
+  }));
+
   it('keeps two tracks decoded, and decodes a third on demand, evicting the least recent', isolated(async (engine) => {
     await engine.startAudio();
     engine.music('menu');
@@ -239,6 +261,42 @@ describe('the audio engine', () => {
     await settle(500);
     expect(first.state).toBe('closed');
     expect(lastContext()).not.toBe(first);
+  }));
+
+  it('a watchdog that fires after the app went back to the background rebuilds nothing', isolated(async (engine) => {
+    await engine.startAudio();
+    const first = lastContext();
+    first.state = 'suspended';
+    api().failResumes = 1;
+    appStateHandler()('active');
+    await settle(0);
+    const was = AppState.currentState;
+    AppState.currentState = 'background';
+    appStateHandler()('background');
+    await settle(500);
+    AppState.currentState = was;
+    expect(lastContext()).toBe(first);
+    expect(engine.engineStats().rebuilds).toBe(0);
+  }));
+
+  it('a rebuild the app backgrounds under leaves its new context suspended, with no music', isolated(async (engine) => {
+    await engine.startAudio();
+    engine.music('menu');
+    const first = lastContext();
+    first.state = 'suspended';
+    api().failResumes = 1;
+    appStateHandler()('active');
+    await settle(0);
+    jest.advanceTimersByTime(500);
+    const was = AppState.currentState;
+    AppState.currentState = 'background';
+    appStateHandler()('background');
+    await settle(0);
+    AppState.currentState = was;
+    const rebuilt = lastContext();
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.state).toBe('suspended');
+    expect(loops().filter((n) => rebuilt.nodes.includes(n))).toEqual([]);
   }));
 
   it('a failed start leaves play harmless', isolated(async (engine) => {

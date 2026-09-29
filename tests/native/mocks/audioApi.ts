@@ -30,6 +30,7 @@ export interface MockNode {
   buffer: MockBuffer | null;
   loop: boolean;
   startedAt?: number;
+  startedWith?: MockBuffer | null;
   stoppedAt?: number;
   onEnded?: unknown;
   connect(to: MockNode): MockNode;
@@ -47,12 +48,13 @@ export interface AudioApiState {
   epoch: number;
   failResumes: number;
   failDecode: boolean;
+  failSession: boolean;
   durationS: number;
 }
 
 export function audioApiState(): AudioApiState {
   const g = globalThis as { __audioApi?: AudioApiState };
-  g.__audioApi ??= { log: [], session: [], contexts: [], decoded: [], nextId: 0, epoch: 0, failResumes: 0, failDecode: false, durationS: 1 };
+  g.__audioApi ??= { log: [], session: [], contexts: [], decoded: [], nextId: 0, epoch: 0, failResumes: 0, failDecode: false, failSession: false, durationS: 1 };
   return g.__audioApi;
 }
 
@@ -81,7 +83,7 @@ function node(kind: MockNode["kind"], ctx: MockContext | null): MockNode {
     loop: false,
     connect(to) { n.outputs.push(to); return to; },
     disconnect() { n.disconnected = true; n.outputs = []; },
-    start(when = 0) { n.startedAt = when; },
+    start(when = 0) { n.startedAt = when; n.startedWith = n.buffer; },
     stop(when = 0) { n.stoppedAt = when; },
   };
   ctx?.nodes.push(n);
@@ -134,6 +136,7 @@ export function newEpoch(): void {
   s.epoch = s.nextId;
   s.failResumes = 0;
   s.failDecode = false;
+  s.failSession = false;
   s.durationS = 1;
   s.log.length = 0;
   s.session.length = 0;
@@ -146,7 +149,11 @@ export function audioApiModule() {
     __esModule: true,
     AudioContext: MockContext,
     AudioManager: {
-      setAudioSessionOptions: (o: unknown) => { s.log.push("session"); s.session.push(o); },
+      setAudioSessionOptions: (o: unknown) => {
+        if (s.failSession) throw new Error("session busy");
+        s.log.push("session");
+        s.session.push(o);
+      },
       disableSessionManagement: () => s.log.push("disableSessionManagement"),
       observeAudioInterruptions: () => s.log.push("observeAudioInterruptions"),
     },

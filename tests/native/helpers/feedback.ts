@@ -17,7 +17,10 @@ const sources = () =>
 
 export const effects = () => sources().filter((n) => !n.loop);
 export const loops = () => sources().filter((n) => n.loop);
-export const fileOf = (n: MockNode) => (n.buffer ? KEYS[Number(n.buffer.path.slice('file:///asset-'.length))] : undefined);
+export const fileOf = (n: MockNode) => {
+  const buffer = n.startedWith ?? n.buffer;
+  return buffer ? KEYS[Number(buffer.path.slice('file:///asset-'.length))] : undefined;
+};
 
 export function soundOf(n: MockNode): SoundId | undefined {
   const file = fileOf(n);
