@@ -28,7 +28,7 @@ async function feltSample(): Promise<Record<LampSide, number>> {
   return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
 }
 
-const collectorHost =(param: string | undefined) =>
+const collectorHost = (param: string | undefined) =>
   param ?? (process.env.EXPO_PUBLIC_DOMAIN ? new URL(process.env.EXPO_PUBLIC_DOMAIN).hostname : "127.0.0.1");
 
 export function BenchScreen() {
