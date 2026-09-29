@@ -753,10 +753,10 @@ export function GameTable({
       ScreenOrientation.unlockAsync().catch(() => {});
     };
   }, []);
-  const dealCue = useCallback(() => event([{ kind: "deal" }]), []);
+  const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
   // Under reduced motion no deal flies to start the cue, and sound is not motion.
   useEffect(() => {
-    if (dealFresh && reduceMotion) dealCue();
+    if (dealFresh && reduceMotion) dealCue(performance.now());
   }, [dealFresh, reduceMotion, dealCue]);
 
   // UIKit pins the scene to its current orientation for an animated screen

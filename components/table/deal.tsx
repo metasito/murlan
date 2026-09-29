@@ -137,21 +137,23 @@ function DealtBack({ card, scale, clock }: { card: DealtCard; scale: number; clo
   );
 }
 
-function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: () => void, landed: () => void) {
+function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, startMs: number, endMs: number, started: (at: number) => void, landed: () => void) {
   return (frame: FrameInfo) => {
     "worklet";
     if (clock.value >= endMs) return;
-    if (origin.value < 0) origin.value = frame.timestamp;
-    const before = clock.value;
+    if (origin.value < 0) {
+      origin.value = frame.timestamp;
+      scheduleOnRN(started, frame.timestamp + startMs);
+    }
     clock.value = frame.timestamp - origin.value;
-    if (before < startMs && clock.value >= startMs) scheduleOnRN(started);
     if (clock.value >= endMs) scheduleOnRN(landed);
   };
 }
 
 /**
  * The opponents' hands leaving the pile, one back per card, round-robin, all on the deal's one
- * clock: `onStarted` when the first card leaves, `onLanded` when the last lands.
+ * clock. On its first frame it reports `onStarted(at)`, when the first card will leave in
+ * `performance.now()` ms, so the cue is sent ahead; `onLanded` when the last lands.
  */
 export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, onLanded }: {
   cards: readonly DealtCard[];
@@ -159,7 +161,7 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
   clock: SharedValue<number>;
   startMs: number;
   endMs: number;
-  onStarted: () => void;
+  onStarted: (at: number) => void;
   onLanded: () => void;
 }) {
   const origin = useSharedValue(-1);

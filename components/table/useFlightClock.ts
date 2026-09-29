@@ -24,7 +24,7 @@ export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchU
   };
 }
 
-interface Run { spec: FlightSpec | null; startedAt: number; touched: boolean }
+interface Run { spec: FlightSpec | null; thrownAt: number; startedAt: number; touched: boolean }
 
 export interface FlightClock {
   elapsed: SharedValue<number>;
@@ -44,8 +44,9 @@ function stepper(
     const r = run.value;
     if (!r.spec) return;
     if (r.startedAt < 0) {
-      r.startedAt = frame.timestamp;
-      scheduleOnRN(report.start, r.spec.key, frame.timestamp + r.spec.contact, frame.timestamp + r.spec.end);
+      // On the throw's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
+      r.startedAt = Math.min(frame.timestamp, r.thrownAt);
+      scheduleOnRN(report.start, r.spec.key, r.startedAt + r.spec.contact, r.startedAt + r.spec.end);
     }
     const t = frame.timestamp - r.startedAt;
     elapsed.value = t;
@@ -69,7 +70,7 @@ export function useFlightClock(
   onContact: (key: string, at: number) => void,
   onEnd: (key: string) => void
 ): FlightClock {
-  const run = useSharedValue<Run>({ spec: null, startedAt: -1, touched: false });
+  const run = useSharedValue<Run>({ spec: null, thrownAt: 0, startedAt: -1, touched: false });
   const elapsed = useSharedValue(0);
   const landing = useSharedValue<LandingPayload | null>(null);
   // The callbacks are the first render's: `FlyingCards` hands in stable ones. The frame callback
@@ -81,7 +82,7 @@ export function useFlightClock(
       elapsed,
       arm: (l: LandingPayload) => landing.set(l),
       begin: (spec: FlightSpec) => {
-        run.set({ spec, startedAt: -1, touched: false });
+        run.set({ spec, thrownAt: performance.now(), startedAt: -1, touched: false });
         frames.setActive(true);
       },
     }),

@@ -68,7 +68,6 @@ type Pose = { opacity?: number; transform?: Record<string, number>[] };
 const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b) as Pose);
 const moved = (p: Pose) => (p.transform ?? []).some((t) => (t.translateX ?? 0) !== 0 || (t.translateY ?? 0) !== 0);
 const arrived = () => backs().filter((p) => p.opacity === 0 && moved(p)).length;
-const flying = () => backs().filter((p) => p.opacity === 1).length;
 
 const handPoses = () =>
   screen.getAllByTestId('card-box').map((box) => {
@@ -101,7 +100,7 @@ describe("an opponent's hand arrives with the deal", () => {
     while (screen.queryAllByTestId('dealt-back').length > 0 && frames++ < 2000) {
       await frame();
       if (screen.queryAllByTestId('dealt-back').length === 0) break;
-      if (flying() + arrived() > 0) expect(startsOf('deal')).toHaveLength(1);
+      expect(startsOf('deal')).toHaveLength(1);
       expect(seated()).toBe(arrived());
       sawCount ||= seated() > 0 && seated() < 39;
     }

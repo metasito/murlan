@@ -11,6 +11,7 @@ import Animated, {
   withDelay,
   cancelAnimation,
   Easing,
+  type SharedValue,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
@@ -226,7 +227,11 @@ interface CardItemProps {
   a11yActions?: { name: string; label?: string }[];
   /** Bound to this card's own id, the way `onPress` is. */
   onMove?: (id: string, action: string) => void;
+  /** Hands the hand this card's drawn lift, tilt and shift, for a throw that leaves mid-lift. */
+  onDrawn?: (id: string, drawn: DrawnCard) => void;
 }
+
+interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
 
 function CardItemBase({
   card,
@@ -252,6 +257,7 @@ function CardItemBase({
   hint,
   a11yActions,
   onMove,
+  onDrawn,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
   const selectLift = -handRowHeadroom(cardH);
@@ -313,6 +319,9 @@ function CardItemBase({
     },
     [liftY, tilt, glow, dealing, exchangeState, shift]
   );
+  useEffect(() => {
+    onDrawn?.(card.id, { liftY, tilt, shift });
+  }, [onDrawn, card.id, liftY, tilt, shift]);
 
   const aStyle = useAnimatedStyle(() => {
     const d = dealing.value;
@@ -429,7 +438,8 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.cardH === b.cardH &&
     a.shiftX === b.shiftX &&
     a.a11yActions === b.a11yActions &&
-    a.onMove === b.onMove
+    a.onMove === b.onMove &&
+    a.onDrawn === b.onDrawn
   );
 }
 
@@ -571,6 +581,8 @@ export function StraightHand({
   // Computed before the early return below — Rules of Hooks requires every
   // hook to run unconditionally on every render of this component.
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const drawnRef = useRef(new Map<string, DrawnCard>());
+  const onDrawn = useCallback((id: string, d: DrawnCard) => void drawnRef.current.set(id, d), []);
   const giveableSet = useMemo(
     () => (giveableIds === undefined ? null : new Set(giveableIds)),
     [giveableIds]
@@ -787,16 +799,26 @@ export function StraightHand({
   const fieldW = CARD_W(scale * FIELD_SCALE);
   useEffect(() => {
     if (!onOrigins) return;
-    const panShown = Math.min(Math.max(pan.get(), -panLimit), panLimit);
+    const panShown = () => Math.min(Math.max(pan.get(), -panLimit), panLimit);
     const origins = new Map<string, CardFrom>();
     rest.forEach((card, i) => {
       const at = arc[slotOf(i)] ?? arc[arc.length - 1];
       const home = place.get(card.id) ?? at;
       const selected = selectedSet.has(card.id);
+      const d = drawnRef.current.get(card.id);
+      const shiftTo = at.x - home.x + gapShift(i);
+      const y0 = rowCentreY + visibleH / 2 + crop + home.y - cardH / 2;
+      // Getters, read by the throw: a card thrown mid-lift leaves from where it is drawn, not from where its lift is going.
       origins.set(card.id, {
-        x: at.x + gapShift(i) + cardW / 2 - panShown,
-        y: rowCentreY + visibleH / 2 + crop + home.y - cardH / 2 + (selected ? -handRowHeadroom(cardH) : 0),
-        rot: home.rot + (selected ? SELECT_TILT : 0),
+        get x() {
+          return home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panShown();
+        },
+        get y() {
+          return y0 + (d ? d.liftY.get() : selected ? -handRowHeadroom(cardH) : 0);
+        },
+        get rot() {
+          return home.rot + (d ? d.tilt.get() : selected ? SELECT_TILT : 0);
+        },
         scale: cardW / fieldW,
       });
     });
@@ -1015,6 +1037,7 @@ export function StraightHand({
           onPress={onPress}
           a11yActions={arrangeable ? moveActions : undefined}
           onMove={arrangeable ? moveByAction : undefined}
+          onDrawn={onDrawn}
           // An ungiveable card during an exchange is a button that reports
           // itself unavailable, rather than one that silently does nothing.
           disabled={disabled || giveable === false}
