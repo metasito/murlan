@@ -55,6 +55,14 @@ const PLANTED = `import type { Card } from "../../lib/game/gameEngine.ts";
   export function plantedKeyed(scale: number, side: Record<"left" | "right", number>) { return scale * side.left; }
   export const plantedObject = { place(scale: number, n: number) { return scale * n; } };
   export class PlantedClass { place(scale: number, n: number) { return scale * n; } }
+  export function plantedEmptyT<T extends {}>(scale: number, n: T) { return scale; }
+  export function plantedEmptyObj(scale: number, n: {}) { return scale; }
+  export function plantedGrant(players: readonly number[], viewerSeat: number) { return viewerSeat; }
+  export function plantedGrantOpaque<T>(players: readonly T[], viewerSeat: number) { return viewerSeat; }
+  export const plantedDeep = { a: { b: { c: { d: { e(scale: number, n: number) { return n; } } } } } };
+  export function plantedDeepParam(scale: number, p: { a: { b: { c: { d: { e: { n: number } } } } } }) { return scale; }
+  export function plantedCallback(scale: number, getN: () => number) { return scale; }
+  export function plantedCallbackParam(scale: number, cb: (n: number) => void) { return scale; }
 `;
 const PLANTED_TWIN = `export function plantedScale(scale: number, n: number) { return scale * n; }`;
 const PROBES = new Map([[PROBE, PLANTED], [TWIN, PLANTED_TWIN]]);
@@ -75,28 +83,35 @@ const isInsets = (type: ts.Type) =>
   !!type.symbol.declarations?.length &&
   type.symbol.declarations.every((d) => path.resolve(d.getSourceFile().fileName) === FRAME);
 
-function leaf(where: string, granted: readonly string[], edge: boolean): string[] {
+function leaf(where: string, granted: readonly string[], edge: boolean, type?: ts.Type): string[] {
   const segments = where.split(".");
-  const name = segments.at(-1)!;
-  const named = GEOMETRY.has(name) || (edge && EDGES.has(name)) || granted.includes(where);
+  const name = segments.at(-1)!.replace(/\(\)$/, "");
+  const grant = granted.includes(where) && !(where.endsWith("[]") && type && type.flags & ts.TypeFlags.NumberLike);
+  const named = GEOMETRY.has(name) || (edge && EDGES.has(name)) || grant;
   return named && !segments.slice(0, -1).some((s) => /count/i.test(s)) ? [] : [where];
 }
 
 function counted(type: ts.Type, where: string, depth: number, granted: readonly string[], edge = false): string[] {
-  if (depth > 4) return [];
   if (type.isUnionOrIntersection()) return type.types.flatMap((t) => counted(t, where, depth, granted, edge));
   if (type.flags & ts.TypeFlags.Instantiable) {
     const bound = checker.getBaseConstraintOfType(type);
     const fallback = type.isTypeParameter() ? checker.getDefaultFromTypeParameter(type) : undefined;
-    const bounded = bound ? counted(bound, where, depth, granted, edge) : leaf(where, granted, edge);
+    const bounded = bound ? counted(bound, where, depth, granted, edge) : leaf(where, granted, edge, type);
     return [...new Set([...bounded, ...(fallback ? counted(fallback, where, depth, granted, edge) : [])])];
   }
-  if (type.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return leaf(where, granted, edge);
-  if (!(type.flags & ts.TypeFlags.Object) || type.getCallSignatures().length > 0) return [];
+  if (type.flags & (ts.TypeFlags.NumberLike | ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return leaf(where, granted, edge, type);
+  if (!(type.flags & ts.TypeFlags.Object)) return [];
+  if (depth > 4) return [where];
   const container = (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Reference && inLib(type.symbol);
   if (checker.isArrayType(type) || checker.isTupleType(type) || container) {
     return checker.getTypeArguments(type as ts.TypeReference).flatMap((t) => counted(t, `${where}[]`, depth + 1, granted));
   }
+  const own = [...type.getCallSignatures(), ...type.getConstructSignatures()];
+  if (own.length + type.getProperties().length + checker.getIndexInfosOfType(type).length === 0) return leaf(where, granted, edge, type);
+  const signatures = own.flatMap((s) => [
+    ...s.getParameters().flatMap((p) => counted(checker.getTypeOfSymbol(p), `${where}.${p.name}`, depth + 1, granted)),
+    ...counted(s.getReturnType(), `${where}()`, depth + 1, granted),
+  ]);
   const members = type.getProperties().flatMap((p) => {
     const inner = `${where}.${p.name}`;
     if (HAND.has(p.name)) return [inner];
@@ -104,15 +119,15 @@ function counted(type: ts.Type, where: string, depth: number, granted: readonly 
     return counted(checker.getTypeOfSymbol(p), inner, depth + 1, granted, isInsets(type));
   });
   const indexed = checker.getIndexInfosOfType(type).flatMap((i) => counted(i.type, `${where}[]`, depth + 1, granted));
-  return [...members, ...indexed];
+  return [...signatures, ...members, ...indexed];
 }
 
 const resolve = (s: ts.Symbol) => (s.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(s) : s);
 
-function places(type: ts.Type, member: string, depth: number): [string, readonly ts.Symbol[]][] {
-  if (depth > 3) return [];
+function places(type: ts.Type, member: string, depth: number): [string, readonly ts.Symbol[] | undefined][] {
   const own = [...type.getCallSignatures(), ...type.getConstructSignatures()];
   const members = type.flags & ts.TypeFlags.Object ? type.getProperties().filter((p) => !inLib(p)) : [];
+  if (depth > 3 && own.length + members.length > 0) return [[member, undefined]];
   return [
     ...own.map((s): [string, readonly ts.Symbol[]] => [member, s.getParameters()]),
     ...members.flatMap((p) => places(checker.getTypeOfSymbol(p), member ? `${member}.${p.name}` : p.name, depth + 1)),
@@ -121,7 +136,9 @@ function places(type: ts.Type, member: string, depth: number): [string, readonly
 
 function takesCount(s: ts.Symbol, granted: readonly string[]): string[] {
   return places(checker.getTypeOfSymbol(s), "", 0).flatMap(([member, params]) =>
-    params.flatMap((p) => counted(checker.getTypeOfSymbol(p), p.name, 0, granted).map((w) => (member ? `${member}(${w})` : w))),
+    (params ?? [undefined]).flatMap((p) =>
+      (p ? counted(checker.getTypeOfSymbol(p), p.name, 0, granted) : ["..."]).map((w) => (member ? `${member}(${w})` : w)),
+    ),
   );
 }
 
@@ -188,7 +205,8 @@ test("the fan's shape sits above the seats, and the bands reach it only through 
 });
 
 test("a planted count is flagged wherever it hides, and a count-free place is not", () => {
-  const found = Object.fromEntries([...scan([TWIN, PROBE], () => true)].map(([k, f]) => [k.slice(k.lastIndexOf("/") + 1), f]));
+  const grants = { ...SEATED, [key(PROBE, "plantedGrant")]: ["players[]", "viewerSeat"], [key(PROBE, "plantedGrantOpaque")]: ["players[]", "viewerSeat"] };
+  const found = Object.fromEntries([...scan([TWIN, PROBE], () => true, grants)].map(([k, f]) => [k.slice(k.lastIndexOf("/") + 1), f]));
   assert.deepEqual(found, {
     "seatLayoutTwin.ts:plantedScale": { where: ["n"], fans: [] },
     "seatLayoutProbe.ts:plantedN": { where: ["n"], fans: [] },
@@ -209,6 +227,14 @@ test("a planted count is flagged wherever it hides, and a count-free place is no
     "seatLayoutProbe.ts:plantedKeyed": { where: ["side.left", "side.right"], fans: [] },
     "seatLayoutProbe.ts:plantedObject": { where: ["place(n)"], fans: [] },
     "seatLayoutProbe.ts:PlantedClass": { where: ["prototype.place(n)"], fans: [] },
+    "seatLayoutProbe.ts:plantedEmptyT": { where: ["n"], fans: [] },
+    "seatLayoutProbe.ts:plantedEmptyObj": { where: ["n"], fans: [] },
+    "seatLayoutProbe.ts:plantedGrant": { where: ["players[]"], fans: [] },
+    "seatLayoutProbe.ts:plantedGrantOpaque": { where: [], fans: [] },
+    "seatLayoutProbe.ts:plantedDeep": { where: ["a.b.c.d(...)"], fans: [] },
+    "seatLayoutProbe.ts:plantedDeepParam": { where: ["p.a.b.c.d.e"], fans: [] },
+    "seatLayoutProbe.ts:plantedCallback": { where: ["getN()"], fans: [] },
+    "seatLayoutProbe.ts:plantedCallbackParam": { where: ["cb.n"], fans: [] },
   });
 });
 
