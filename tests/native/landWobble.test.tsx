@@ -9,7 +9,10 @@ jest.mock('react-native-worklets', () => {
   return { ...actual, scheduleOnRN: () => {} };
 });
 
+import { makeMutable } from 'react-native-reanimated';
 import { FlyingCards } from '@/components/table/pile';
+import { pileSlots } from '@/components/flightPose';
+import { flightSpec, NO_LANDING } from '@/components/table/useFlightClock';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { Card } from '@/lib/game/gameEngine';
 
@@ -31,15 +34,14 @@ describe('a landed combination under reduced motion does not wobble', () => {
     const r = await render(
       <FlyingCards
         cards={CARDS}
-        direction="top"
-        origin={{ dx: 0, dy: -100 }}
-        onDone={() => {}}
-        roomW={400}
-        scale={1}
+        flight={flightSpec('k', [{ x: 0, y: -100, rot: 0, scale: 0.4 }], pileSlots(1, 60, 400), false, true)}
+        landing={NO_LANDING}
+        signal={makeMutable(NO_LANDING)}
+        onEnd={() => {}}
       />
     );
 
-    const transform = flattenTransform(r.getByTestId('flying-cards').props.style);
+    const transform = flattenTransform(r.getByTestId('flying-cards', { includeHiddenElements: true }).props.style);
     const scales = transform.filter((t) => 'scale' in t);
     expect(scales).toEqual([{ scale: 1 }]);
     expect(transform.filter((t) => 'scaleX' in t || 'scaleY' in t)).toEqual([]);

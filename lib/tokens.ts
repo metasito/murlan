@@ -376,21 +376,11 @@ export const Motion = {
     dwell: 1200,
   },
   /**
-   * The load before a deliberate launch — a small move against the direction of
-   * travel. This is what makes `travel` read as weight rather than as a
-   * duration. Crisp had none; that is most of what made it Crisp.
-   */
-  anticipate: 40,
-  /**
    * What each step becomes when the player asked for less motion.
    *
    * Not "off": travel is what goes, and the state change stays legible. A card
    * that flew cross-fades in place instead. `null` means the step is already
    * short enough to leave alone.
-   *
-   * `impactDelayMs()` stays the single source of the card-landing delay and
-   * already returns 0 here, so the feedback fires immediately rather than
-   * waiting out a flight that never happens.
    */
   reduced: {
     flash: null,
@@ -432,9 +422,10 @@ export const Motion = {
   stagger: {
     deal: 42,
   },
-  // Gap between moves when a replay plays itself: slow enough to read one
-  // combination, fast enough that a whole hand is not a sitting.
-  replayStep: 1200,
+  /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
+  throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
+  /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
+  exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900 },
 } as const;
 
 /**
@@ -479,9 +470,14 @@ export const Reading = {
  * the unit the effect is described and felt in.
  */
 export const Hold = {
-  /** The table at a card's contact — Nijman's *sleep* (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. */
-  land: 50,
+  /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
+  land: 175,
+  /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
+  reveal: 1500,
 } as const;
+
+/** How late a sound may still start and be heard as on time; later, it is dropped. */
+export const LATE_SOUND_MS = 45;
 
 /**
  * How hard the table shakes at each rung of the landing escalation #101

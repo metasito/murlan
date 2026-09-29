@@ -5,7 +5,7 @@
 // side of the exchange phase, a local response timer that auto-passes,
 // and navigation to the results screen.
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import {
   useLocalExchange,
@@ -30,8 +30,6 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
 /** How long an AI "thinks" before playing. */
 const AI_DELAY = E2E_FAST ? 0 : 1100;
-/** How long an AI takes to pick its giveback card in the exchange phase. */
-const AI_EXCHANGE_DELAY = E2E_FAST ? 0 : 600;
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
 /** Beat before the results screen takes over, so the last play is seen. */
@@ -142,20 +140,18 @@ export default function GameScreen() {
       ? givebackCardId
       : undefined;
 
-  useEffect(() => {
-    if (!aiGivebackCardId) return;
-    const t = setTimeout(() => chooseExchangeRef.current(aiGivebackCardId), AI_EXCHANGE_DELAY);
-    return () => clearTimeout(t);
-  }, [aiGivebackCardId]);
-
   // The winner holds no card the rules let them give back, so no seat — human
   // or bot — can satisfy the phase and the overlay would stay up forever.
   const exchangeIsStuck = gameState?.exchangePhase?.active === true && givebackCardId === undefined;
+  // The table calls this once the received card has landed and been read, so the choice follows what was seen.
+  const readyRef = useRef(() => {});
   useEffect(() => {
-    if (!exchangeIsStuck) return;
-    const t = setTimeout(() => releaseStuckRef.current(), AI_EXCHANGE_DELAY);
-    return () => clearTimeout(t);
-  }, [exchangeIsStuck]);
+    readyRef.current = () => {
+      if (aiGivebackCardId) chooseExchangeRef.current(aiGivebackCardId);
+      else if (exchangeIsStuck) releaseStuckRef.current();
+    };
+  });
+  const onExchangeReady = useCallback(() => readyRef.current(), []);
 
   useEffect(() => {
     if (!gameState) router.replace("/");
@@ -181,6 +177,7 @@ export default function GameScreen() {
       onPlay={playSelected}
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
+      onExchangeReady={onExchangeReady}
       onQuit={() =>
         setConfirming({
           title: t("offlineGame.quitConfirmTitle"),

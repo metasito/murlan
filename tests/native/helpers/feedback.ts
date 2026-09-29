@@ -13,7 +13,9 @@ export const ctxTime = (jsMs: number) => jsMs / 1000 + 10;
 export const ctxAt = (jsMs: number) => ctxTime(jsMs - 8 - 5 / 2);
 
 const sources = () =>
-  api().contexts.flatMap((c) => c.nodes).filter((n) => n.kind === 'source' && n.id >= api().epoch && n.startedAt !== undefined);
+  api()
+    .contexts.flatMap((c) => c.nodes)
+    .filter((n) => n.kind === 'source' && n.id >= api().epoch && n.startedAt !== undefined && !(n.stoppedAt !== undefined && n.stoppedAt < n.startedAt));
 
 export const effects = () => sources().filter((n) => !n.loop);
 export const loops = () => sources().filter((n) => n.loop);

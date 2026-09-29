@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { View, StyleSheet, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
 import {
@@ -8,12 +8,11 @@ import {
   SEAT_LABEL_GAP,
   SEAT_LABEL_PAD,
   seatGap,
-  displayedHandCount,
   fanCounts,
-  seatFanArc,
   seatLabelH,
 } from "@/components/seatLayout";
-import { impactDelayMs, passedSeats } from "@/components/flightPhysics";
+import { FAN_TURN, seatFanArc } from "@/components/fanGeometry";
+import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
   useAnimatedStyle,
@@ -26,8 +25,12 @@ import Animated, {
   ReduceMotion,
   Easing,
   cancelAnimation,
+  useAnimatedReaction,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import type { DealArrivals } from "./deal";
+import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -40,6 +43,9 @@ import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Combination, Player } from "@/lib/game/gameEngine";
+
+/** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
+export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
 
 /**
  * Which seats have already answered the round on the table. Derived rather
@@ -80,71 +86,21 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-/** A quarter turn per side, so one construction serves all three seats. */
-const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
-
-/**
- * How far a departing back lifts (deg 1, points at scale 1) while it fades,
- * so the exit reads as a card leaving rather than a count ticking down.
- */
-const FAN_EXIT_LIFT = 14;
-
-/** A remaining back eases toward `to`; a departing one lifts and fades in place. */
-type FanDest = { departing: true } | { departing: false; to: ArcCard };
-
-/**
- * One back, positioned as a `transform` throughout — including the static
- * case — so an exit or a re-solve is never anything but a change to a shared
- * value already being read every frame. `from` is where every back in this
- * fan sits until a departure begins.
- */
-function FanBack({
-  from,
-  dest,
-  progress,
-  boxW,
-  backScale,
-  liftPx,
-  isActive,
-  zIndex,
-}: {
-  from: ArcCard;
-  dest: FanDest;
-  /** 0 at the throw's first frame, 1 once it has landed. */
-  progress: SharedValue<number>;
+function FanBack({ at, boxW, backScale, isActive, zIndex }: {
+  at: ArcCard;
   boxW: number;
   backScale: number;
-  liftPx: number;
   isActive: boolean;
   zIndex: number;
 }) {
-  const aStyle = useAnimatedStyle(() => {
-    const t = progress.value;
-    if (dest.departing) {
-      return {
-        opacity: 1 - t,
-        transform: [
-          { translateX: boxW / 2 + from.x },
-          { translateY: from.y - liftPx * t },
-          { rotate: `${from.rot}deg` },
-        ],
-      };
-    }
-    const { to } = dest;
-    return {
-      opacity: 1,
-      transform: [
-        { translateX: boxW / 2 + from.x + (to.x - from.x) * t },
-        { translateY: from.y + (to.y - from.y) * t },
-        { rotate: `${from.rot + (to.rot - from.rot) * t}deg` },
-      ],
-    };
-  });
-
   return (
-    <Animated.View
-      testID={dest.departing ? "seat-back-departing" : "seat-back"}
-      style={[{ position: "absolute", zIndex }, aStyle]}
+    <View
+      testID="seat-back"
+      style={{
+        position: "absolute",
+        zIndex,
+        transform: [{ translateX: boxW / 2 + at.x }, { translateY: at.y }, { rotate: `${at.rot}deg` }],
+      }}
     >
       <CardView
         card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
@@ -152,63 +108,29 @@ function FanBack({
         scale={backScale}
         light={isActive ? "standingLit" : "standing"}
       />
-    </Animated.View>
+    </View>
   );
 }
 
 function CardFan({
   count,
-  departing = 0,
   side,
   isActive,
   scale = 1,
 }: {
-  /** The seat's displayed count — `handCountOf` plus whatever is in flight. */
+  /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
-  /**
-   * How many of `count` are mid-flight and should lift and fade out of the
-   * fan rather than sit in it. `displayedHandCount`'s own two-term sum is
-   * what this and `count` come from, so the fan can never draw more backs
-   * than the badge claims or fewer than the flight is actually carrying.
-   */
-  departing?: number;
   side: OpponentSide;
   /** This seat is on move, so the lamp is over it and its backs are lit. */
   isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
-  // Every hook above and below runs unconditionally, before the early return
-  // past them: count can go from a real hand to 0 (a player going out) on any
-  // render, and a hook called only on some of those renders is exactly the
-  // "changed order" React refuses to tolerate.
-  const reduceMotion = usePrefersReducedMotion();
-  const { remaining, departing: cappedDeparting } = fanCounts(count, departing, FAN_DRAWN_CARDS[side]);
-  const cappedTotal = remaining + cappedDeparting;
-  const hasDeparture = cappedDeparting !== 0;
-
-  const progress = useSharedValue(hasDeparture ? 0 : 1);
-  useEffect(() => {
-    if (!hasDeparture) {
-      progress.value = 1;
-      return;
-    }
-    progress.value = 0;
-    progress.value = withTiming(1, { duration: impactDelayMs(reduceMotion) });
-    return () => cancelAnimation(progress);
-  }, [hasDeparture, reduceMotion, progress]);
-
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
-  // A fan is never width-budgeted: the seat's own column bounds it, and it is
-  // the rise that actually binds. `full` is where every back — remaining and
-  // departing alike — sits until a departure resolves; `settled` is only
-  // where the *remaining* ones are headed, one solve for a smaller count
-  // rather than a hand-picked subset of the larger one, which is what keeps
-  // the step between them from reading as a jump.
-  const full = seatFanArc(cappedTotal, backScale);
-  const settled = cappedDeparting === 0 ? full : seatFanArc(remaining, backScale);
+  // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
+  const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
   const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
@@ -217,7 +139,6 @@ function CardFan({
   const turn = FAN_TURN[side];
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
-  const liftPx = FAN_EXIT_LIFT * backScale;
 
   return (
     <View style={{ width: wrapW, height: wrapH }}>
@@ -237,17 +158,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack
-            key={i}
-            from={card}
-            dest={i < remaining ? { departing: false, to: settled.cards[i] } : { departing: true }}
-            progress={progress}
-            boxW={full.box.w}
-            backScale={backScale}
-            liftPx={liftPx}
-            isActive={isActive}
-            zIndex={i}
-          />
+          <FanBack key={i} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
         ))}
       </View>
     </View>
@@ -255,20 +166,28 @@ function CardFan({
 }
 
 /**
- * How many of a deal's cards have landed at this seat, from `arrivals` — each
- * card's landing in ms after the deal started. Unbounded with no deal running
- * or once the last has landed, so a card the seat is handed later still counts.
+ * How many of a deal's cards have landed at this seat, read off the deal's own
+ * clock. Unbounded with no deal running or once the last has landed, so a card
+ * the seat is handed later still counts.
  */
-function useArrivedCount(arrivals: readonly number[] | undefined): number {
-  const [landed, setLanded] = useState<{ of?: readonly number[]; n: number }>({ n: 0 });
-  useEffect(() => {
-    if (!arrivals) return;
-    const ids = arrivals.map((ms, i) => setTimeout(() => setLanded({ of: arrivals, n: i + 1 }), ms));
-    return () => ids.forEach(clearTimeout);
-  }, [arrivals]);
+function useArrivedCount(arrivals: DealArrivals | undefined): number {
+  const [n, setN] = useState(0);
+  const [of, setOf] = useState(arrivals);
+  if (of !== arrivals) {
+    setOf(arrivals);
+    setN(0);
+  }
+  const at = arrivals?.at;
+  const clock = arrivals?.clock;
+  useAnimatedReaction(
+    () => (at && clock ? at.filter((ms) => ms <= clock.value).length : 0),
+    (now, prev) => {
+      if (now !== prev) scheduleOnRN(setN, now);
+    },
+    [at, clock]
+  );
   if (!arrivals) return Infinity;
-  const n = landed.of === arrivals ? landed.n : 0;
-  return n >= arrivals.length ? Infinity : n;
+  return n >= arrivals.at.length ? Infinity : n;
 }
 
 // ─── SeatRing ─────────────────────────────────────────────────────────────────
@@ -418,6 +337,7 @@ function SeatRing({
   scale,
   countdown,
   focusMode = false,
+  mark,
 }: {
   name: string;
   isActive: boolean;
@@ -428,25 +348,34 @@ function SeatRing({
   countdown?: { seconds: number; resetKey: string };
   /** The felt and this ring are what carry the turn — everything else on the seat is quiet. */
   focusMode?: boolean;
+  mark?: SeatMark;
 }) {
   // One shot when the seat takes the turn: the ring itself says who is on move
   // for as long as it lasts, so this only has to catch the eye at the handover.
   const pingScale = useSharedValue(1);
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
+  const ping = useCallback(() => {
+    "worklet";
+    pingScale.set(1);
+    pingOpacity.set(0.9);
+    pingScale.set(withTiming(RING_PING_SCALE, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) }));
+    pingOpacity.set(withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.quad) }));
+  }, [pingScale, pingOpacity]);
   useEffect(() => {
     if (!isActive || reduceMotion) return;
-    pingScale.value = 1;
-    pingOpacity.value = 0.9;
-    pingScale.value = withTiming(RING_PING_SCALE, {
-      duration: Motion.duration.reveal,
-      easing: Easing.out(Easing.cubic),
-    });
-    pingOpacity.value = withTiming(0, {
-      duration: Motion.duration.reveal,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [isActive, reduceMotion, pingScale, pingOpacity]);
+    ping();
+  }, [isActive, reduceMotion, ping]);
+  const flash = mark?.flash;
+  const own = mark?.seat ?? -1;
+  // On the frame the exchange stepper writes it, not a render later.
+  useAnimatedReaction(
+    () => (flash && flash.value.seat === own ? flash.value.seq : -1),
+    (seq, prev) => {
+      if (seq >= 0 && prev !== null && seq !== prev && !reduceMotion) ping();
+    }
+  );
+  const lit = isActive || mark?.lit === true;
 
   useEffect(
     () => () => {
@@ -495,8 +424,9 @@ function SeatRing({
   const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
-    <View testID="seat-ring" style={{ width: size, height: size }}>
+    <View testID="seat-ring" {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} style={{ width: size, height: size }}>
       <Animated.View
+        testID="seat-ring-ping"
         pointerEvents="none"
         style={[
           seatStyles.ringPing,
@@ -520,9 +450,9 @@ function SeatRing({
         colors={SEAT_DISC_FILL}
         style={[
           seatStyles.disc,
-          isActive && seatStyles.discActive,
+          lit && seatStyles.discActive,
           { width: size, height: size, borderRadius: size / 2 },
-          isActive
+          lit
             ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
@@ -682,7 +612,6 @@ export function TopOppSlot({
   player,
   isActive,
   cardCount,
-  departing = 0,
   passed = false,
   vacated = false,
   reconnecting,
@@ -690,12 +619,11 @@ export function TopOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
+  mark,
 }: {
   player: Player;
   isActive: boolean;
   cardCount?: number;
-  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
-  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The seat is a human's that left, played on by the engine. */
@@ -709,19 +637,19 @@ export function TopOppSlot({
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
-  dealArrivals?: readonly number[];
+  dealArrivals?: DealArrivals;
+  mark?: SeatMark;
 }) {
-  // The fan and the badge read one number, held at its pre-play value for as
-  // long as the flight is up — see displayedHandCount.
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
+  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
+  const lit = isActive || mark?.lit === true;
   return (
     <View
       testID="top-seat"
       style={[
         seatStyles.topOppSlot,
         { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
-        !isActive && seatStyles.seatDim,
+        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -736,9 +664,10 @@ export function TopOppSlot({
         scale={scale}
         countdown={countdown}
         focusMode={focusMode}
+        mark={mark}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} departing={departing} side="top" isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side="top" isActive={lit} scale={scale} />
       )}
     </View>
   );
@@ -765,9 +694,11 @@ function SeatWho({
   countdown,
   anchor = "centre",
   focusMode = false,
+  mark,
 }: {
   name: string;
   isActive: boolean;
+  mark?: SeatMark;
   count: number;
   finishPos?: number;
   passed: boolean;
@@ -814,7 +745,7 @@ function SeatWho({
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
               { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
-              isActive && seatStyles.oppNameActive,
+              (isActive || mark?.lit) && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
           >
@@ -838,6 +769,7 @@ function SeatWho({
         scale={scale}
         countdown={countdown}
         focusMode={focusMode}
+        mark={mark}
       />
     </View>
   );
@@ -850,7 +782,6 @@ export function SideOppSlot({
   isActive,
   side,
   cardCount,
-  departing = 0,
   passed = false,
   vacated = false,
   reconnecting,
@@ -858,13 +789,13 @@ export function SideOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
+  mark,
 }: {
   player: Player;
   isActive: boolean;
+  mark?: SeatMark;
   side: "left" | "right";
   cardCount?: number;
-  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
-  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The seat is a human's that left, played on by the engine. */
@@ -878,11 +809,12 @@ export function SideOppSlot({
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
-  dealArrivals?: readonly number[];
+  dealArrivals?: DealArrivals;
 }) {
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
+  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
   const isLeft = side === "left";
+  const lit = isActive || mark?.lit === true;
   return (
     <View
       testID={`side-seat-${side}`}
@@ -890,7 +822,7 @@ export function SideOppSlot({
         seatStyles.sideOppSlot,
         { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
-        !isActive && seatStyles.seatDim,
+        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -906,9 +838,10 @@ export function SideOppSlot({
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}
         focusMode={focusMode}
+        mark={mark}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} departing={departing} side={side} isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side={side} isActive={lit} scale={scale} />
       )}
     </View>
   );

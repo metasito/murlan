@@ -17,6 +17,8 @@ jest.mock('expo-router', () => ({
 }));
 
 const mockRunAITurn = jest.fn();
+const mockChoose = jest.fn();
+const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 
 /** The bot is on move and the exchange has just resolved. */
 const STATE: GameState = {
@@ -35,19 +37,30 @@ const STATE: GameState = {
   firstPlayMade: true,
 };
 
+/** A bot won the last hand and owes the human a card back. */
+const CHOOSING: GameState = {
+  ...STATE,
+  players: [
+    { id: 'player_0', name: 'Ana', hand: [{ id: '4_clubs', suit: 'clubs', rank: '4', isJoker: false }], type: 'human' },
+    { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'ai' },
+  ],
+  exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, bothJokersException: false },
+};
+
 /** Flipped between renders: prefixed so jest.mock may close over it. */
-const mockCeremony = { announcing: false };
+const mockCeremony = { announcing: false, state: STATE };
 
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
-    gameState: STATE,
+    gameState: mockCeremony.state,
+    chooseExchangeCard: mockChoose,
+    releaseStuckExchange: () => {},
     selectedCards: [],
     selectCard: () => {},
     playSelected: () => {},
     passTurn: () => {},
     resetGame: () => {},
     runAITurn: mockRunAITurn,
-    chooseExchangeCard: () => {},
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
@@ -68,7 +81,12 @@ jest.mock('@/context/NotificationContext', () => ({
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
-  return { GameTable: () => react.createElement(rn.View, { testID: 'table' }) };
+  return {
+    GameTable: (props: { onExchangeReady?: () => void }) => {
+      mockTable.props = props;
+      return react.createElement(rn.View, { testID: 'table' });
+    },
+  };
 });
 
 import GameScreen from '@/app/game';
@@ -83,6 +101,19 @@ describe('a bot on move while the exchange is being announced', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it('a bot winner gives when the table opens the choice, not on a clock of its own', async () => {
+    mockCeremony.state = CHOOSING;
+    const view = await render(<GameScreen />);
+    await act(async () => {
+      jest.advanceTimersByTime(PAST_THE_THINK * 4);
+    });
+    expect(mockChoose).not.toHaveBeenCalled();
+    await act(async () => mockTable.props.onExchangeReady?.());
+    expect(mockChoose).toHaveBeenCalledWith('6_clubs');
+    await view.unmount();
+    mockCeremony.state = STATE;
   });
 
   it('does not play until the ceremony is over', async () => {

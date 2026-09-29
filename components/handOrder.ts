@@ -1,7 +1,7 @@
 // The order a player has put their own hand in (#531).
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import type { Card } from "../lib/game/gameEngine.ts";
+import { sortHand, type Card } from "../lib/game/gameEngine.ts";
 
 /**
  * The engine's cards in the player's own order.
@@ -42,6 +42,11 @@ export function applyHandOrder(sorted: readonly Card[], order: readonly string[]
   }
 
   return out.map((id) => byId.get(id)!);
+}
+
+/** The hand with `card`, which it has lent to a flier, back in the slot the player's order keeps for it. */
+export function lendBack(sorted: readonly Card[], card: Card, order: readonly string[]): Card[] {
+  return applyHandOrder(sortHand([...sorted, card]), order);
 }
 
 /** The order after `id` is dropped at slot `to`. */

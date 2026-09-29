@@ -1,6 +1,6 @@
 // tests/native/bombBurstAnimatesVisibly.test.tsx — a blind critique on #765's
 // own review deleted every animated assignment inside `Flare`'s effect body
-// (keeping the reduced-motion guard, so `boomTrigger` still bumps and the
+// (keeping the reduced-motion guard, so the landing still arrives and the
 // wiring tests in tests/native/lampFlareWiring.test.tsx still pass) and every
 // test in this repo stayed green, native and node both. Those tests assert
 // the trigger produces a *call*; none of them assert it produces a *visible
@@ -11,12 +11,24 @@ import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
-import { getAnimatedStyle, makeMutable } from "react-native-reanimated";
-import { SPARK_COUNT } from "@/components/flightPhysics";
+import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
+import { SPARK_COUNT, type ImpactTier } from "@/components/flightPhysics";
 import { BombBurst, LampLift } from "@/components/table/moments";
 import { restingLamp } from "@/components/table/lampRig";
+import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
+import { fireLanding } from "./helpers/landing";
 
 const RIG = { lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 };
+
+async function landed(ui: (landing: SharedValue<LandingSignal>) => React.ReactElement, tier: ImpactTier) {
+  const landing = makeMutable(NO_LANDING);
+  const r = await render(ui(landing));
+  await act(async () => {
+    jest.advanceTimersByTime(16);
+    fireLanding(landing, { cards: 4, tier });
+  });
+  return r;
+}
 
 function transformOf(testID: string): Record<string, unknown>[] {
   const node = screen.getByTestId(testID);
@@ -37,7 +49,7 @@ function entry(transform: Record<string, unknown>[], key: string) {
 describe("the bomb burst and the lamp lift actually move once fired (#765)", () => {
   it("the flare's opacity and scale leave their rest values partway through a bomb's own window", async () => {
     jest.useFakeTimers();
-    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+    const r = await landed((landing) => <BombBurst landing={landing} scale={1} />, "bomb");
 
     // Solidly inside the flare's first leg (6% of its 1500ms window) — well
     // before the sequence would settle back at either rest value.
@@ -57,7 +69,7 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
 
   it("a spark's own opacity and translate leave their rest values once it flies", async () => {
     jest.useFakeTimers();
-    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+    const r = await landed((landing) => <BombBurst landing={landing} scale={1} />, "bomb");
 
     // Spark 0's own delay is 60ms (SPARK_LEAD_MS, i % 5 === 0) before its ramp
     // starts — past that, partway into the 10%-of-1150ms opacity ramp.
@@ -78,7 +90,7 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
 
   it("the lamp's own lift leaves its rest scale and opacity once it fires", async () => {
     jest.useFakeTimers();
-    const r = await render(<LampLift trigger={1} scale={1} rig={RIG} />);
+    const r = await landed((landing) => <LampLift landing={landing} scale={1} rig={RIG} />, "mancheWon");
 
     // Partway through the lift's own 900ms window — the opacity ramp's first
     // leg is 30% of it (270ms); the scale tween runs the whole window.
@@ -97,7 +109,7 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
   });
 
   it("the sparks come in three radii, cycling small, medium, large", async () => {
-    const r = await render(<BombBurst trigger={1} scale={2} flareKind="brief" />);
+    const r = await render(<BombBurst landing={makeMutable(NO_LANDING)} scale={2} />);
     const widths = Array.from({ length: SPARK_COUNT }, (_, i) =>
       (StyleSheet.flatten(screen.getByTestId(`spark-${i}`).props.style) as { width: number }).width
     );

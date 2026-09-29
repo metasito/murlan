@@ -8,6 +8,7 @@ import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { MOMENTS, type MomentKind } from '@/lib/device/moments';
+import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { botManche, STEP_MS } from './helpers/botManche';
@@ -89,7 +90,7 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   select: { sounds: ['select'], run: () => heard(table(human(0)), () => press(seven())) },
   deselect: { sounds: ['deselect'], run: () => heard(table(human(0), { selectedIds: [SEVEN_H.id] }), () => press(seven())) },
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
-  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
+  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
   mancheOver: { sounds: ['mancheWon', 'mancheLost', 'mancheNeutral'], run: () => mancheEnd(() => ({})) },
   partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },

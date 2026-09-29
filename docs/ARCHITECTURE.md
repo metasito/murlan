@@ -278,10 +278,9 @@ collapsed:
   screen-level consumer, and three `tests/native/` cases mount `seats.tsx` and `hand.tsx`
   directly.
 - **`components/useTableFeedback.ts`** — the shared values, the effects that answer a state
-  change with a sound, a haptic or a wobble, and the animated styles they drive. `GameTable`
-  still schedules the impact itself, against `impactDelayMs()`,
-  and calls `playImpact` when it lands: the timer has to be cancellable alongside the flight
-  it belongs to.
+  change with a sound, a haptic or a wobble, and the animated styles they drive. A landing's
+  pixels react to the flight's `LandingSignal` on its contact frame, and its sounds and state
+  read `landsAt` from `components/table/tableTimeline.ts`.
 - **`app/game.tsx`** and **`app/(online)/game.tsx`** are now thin adapters: each maps its
   own state source onto `GameTableProps`.
 

@@ -34,6 +34,7 @@ const INSTANT_ON_PURPOSE: [string, string][] = [
     "the page's clock is paused (helpers/virtualClock.ts), so no app time passes between down and up however long the real wait: a held press would read exactly as this one does",
   ],
   ["tests/e2e/helpers/mockupParity.ts", "the same paused clock, for the moments every mockupParity spec registers"],
+  ["tests/e2e/flightOrigin.spec.ts", "the same paused clock, selecting the cards whose slots the throw must start from"],
 ];
 
 /**

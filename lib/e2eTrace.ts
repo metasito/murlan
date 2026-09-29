@@ -13,6 +13,7 @@ export interface TraceFrame {
   felt?: "skia" | "fallback" | null;
   /** The score pill's box and its open progress, which may overshoot 1. */
   scorePill: { x: number; y: number; w: number; h: number; open: number } | null;
+  flight: number;
 }
 
 interface Sources {
@@ -22,6 +23,7 @@ interface Sources {
   shake: () => NonNullable<TraceFrame["shake"]>;
   felt: () => "skia" | "fallback";
   scorePill: () => NonNullable<TraceFrame["scorePill"]>;
+  flight: () => number;
 }
 
 export interface TraceRecorder {
@@ -37,6 +39,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   shake: new Set(),
   felt: new Set(),
   scorePill: new Set(),
+  flight: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -66,6 +69,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       shake: last(sources.shake),
       felt: last(sources.felt),
       scorePill: last(sources.scorePill),
+      flight: Math.max(0, ...[...sources.flight].map((read) => read())),
     });
     requestAnimationFrame(tick);
   };

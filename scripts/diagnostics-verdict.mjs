@@ -200,7 +200,20 @@ function idle(rows) {
   return { pass: frames > 0, metrics: { frames } };
 }
 
-export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak };
+function landingSync(rows) {
+  const lead = median(rows.filter((r) => r.k === "play" && !r.dropped).map((r) => r.lead));
+  const contacts = times(rows, "trigger", "flightContact");
+  const heard = matchOnsets(contacts.map((c) => c - lead - 150), onsetsOf(rows, "app"), 300);
+  const offsets = contacts.flatMap((c, i) => (heard[i] === null ? [] : [heard[i] + lead - c]));
+  const misses = contacts.length - offsets.length;
+  const absP90 = p90(offsets.map(Math.abs));
+  return {
+    pass: contacts.length >= 40 && misses === 0 && absP90 <= 20,
+    metrics: { contacts: contacts.length, misses, absP90, medianErr: median(offsets), leadMs: lead },
+  };
+}
+
+export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync };
 
 function bracket(rows, scenario) {
   const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");

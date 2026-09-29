@@ -91,6 +91,21 @@ describe("one event sounds one thing", () => {
     assert.equal(sound([{ kind: "turn" }], 1500, first.played), "turn");
   });
 
+  test("a deal withdraws a turn still waiting 35 ms ahead of it, and yields to one already sounding", () => {
+    const waiting = mix([{ kind: "turn" }], 634.5, [], 412);
+    const dealt = mix([{ kind: "deal" }], 600, waiting.played, 600);
+    assert.equal(dealt.sound?.id, "deal");
+    assert.deepEqual(dealt.withdrawn, ["turn"]);
+    assert.deepEqual(dealt.played.map((p) => p.id), ["deal"]);
+    const sounding = mix([{ kind: "turn" }], 590.5, [], 368);
+    assert.equal(mix([{ kind: "deal" }], 600, sounding.played, 600).sound, null);
+  });
+
+  test("a landing 50 ms after a select still sounds", () => {
+    const tapped = mix([{ kind: "select" }], 1000, []);
+    assert.equal(sound([land(1, false, false)], 1050, tapped.played), "play");
+  });
+
   test("a select 30 ms after a landing still sounds", () => {
     const first = mix([land(2, false, false)], 1000, []);
     assert.equal(sound([{ kind: "select" }], 1030, first.played), "select");

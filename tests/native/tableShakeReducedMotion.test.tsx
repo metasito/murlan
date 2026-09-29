@@ -1,5 +1,5 @@
 // tests/native/tableShakeReducedMotion.test.tsx — #794: the escalation's own
-// shake (#763) must read reduced motion at the point `shake()` sets
+// shake (#763) must read reduced motion at the point the landing sets
 // `shakeTrauma`, not merely end up at rest by the time anything reads it.
 //
 // `tests/native/tableShake.test.tsx` only samples an idle mount — zero either
@@ -14,13 +14,8 @@
 // full-strength trauma still drove a zero style).
 //
 // `shakeTrauma` itself is not exposed by the hook, so this wraps
-// `useSharedValue` to capture every shared value `shake()`'s component tree
-// creates, and mocks `traumaFor` to answer a value nothing else in the app
-// produces. The capture happens inside a *synchronous* `act()` callback, in
-// the same tick as the call to `shake()` — a write that is briefly wrong and
-// only corrected in a later microtask would still read wrong at that point,
-// so this only passes if the write `shake()` makes is already right the
-// instant it returns, not merely by the time something later reads it.
+// `useSharedValue` to capture every shared value the tree creates, and mocks
+// `traumaFor` to answer a value nothing else in the app produces.
 import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
@@ -58,9 +53,10 @@ jest.mock('react-native-reanimated', () => {
 // Imported after the mock above (jest hoists `jest.mock` calls to the top of
 // the file, ahead of every import) so both this file's `Animated.View` and
 // `useTableFeedback.ts`'s own `useSharedValue` calls go through the wrapper.
-import Animated, { getAnimatedStyle } from 'react-native-reanimated';
+import Animated, { getAnimatedStyle, makeMutable, type SharedValue } from 'react-native-reanimated';
 import { Motion } from '@/lib/theme';
-import { useTableFeedback } from '@/components/useTableFeedback';
+import { NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
+import { fireLanding, useFeedbackOnTimeline } from './helpers/landing';
 
 // A value no real trauma, amplitude, decay-ms or flash/glow shared value in
 // this tree would ever hold on its own — every other one either starts and
@@ -93,21 +89,22 @@ const idleState = () => ({
   scale: 1,
 });
 
-function ShakeProbe({
-  shakeRef,
-  kickRef,
-}: {
-  shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null>;
-  kickRef?: React.MutableRefObject<(() => void) | null>;
-}) {
-  const { shakeStyle, shake, playImpact } = useTableFeedback(idleState());
-  // After commit, never during render: the only caller is the test body, which
-  // runs once the mount has settled.
-  React.useEffect(() => {
-    shakeRef.current = shake;
-    if (kickRef) kickRef.current = () => playImpact(true, 'bottom', 4);
-  });
+function ShakeProbe({ landing }: { landing: SharedValue<LandingSignal> }) {
+  const { shakeStyle } = useFeedbackOnTimeline({ ...idleState(), landing });
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
+}
+
+async function mount() {
+  jest.useFakeTimers();
+  const landing = makeMutable(NO_LANDING);
+  const r = await render(<ShakeProbe landing={landing} />);
+  await act(async () => { jest.advanceTimersByTime(16); });
+  const land = (tier: ImpactTier) =>
+    act(async () => {
+      fireLanding(landing, { cards: 4, tier, heavy: tier === 'bomb' });
+      jest.advanceTimersByTime(16);
+    });
+  return { r, land };
 }
 
 describe('the shake reads reduced motion at the point trauma is set (#794)', () => {
@@ -125,62 +122,43 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     // reduced-motion branch is pinned directly in tests/ui-rules/flightPhysics.test.ts
     // — this only swaps its *answer* for one that is identifiable later.
     const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor').mockReturnValue(SENTINEL);
-    const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
-    const r = await render(<ShakeProbe shakeRef={shakeRef} />);
+    const { r, land } = await mount();
 
-    // Nothing on mount holds the sentinel — only `shake()`'s own write can
+    // Nothing on mount holds the sentinel — only the landing's own write can
     // introduce it.
     expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(false);
 
-    // Captured by a synchronous statement inside `act()`'s callback, right
-    // after calling `shake()` and before that statement — or the callback
-    // itself — ever yields to the microtask queue: a mutation that writes a
-    // wrong value first and corrects it a tick later would still be caught
-    // wrong here, not merely right by the time the test looks again.
-    let sentinelLandedSynchronously = false;
-    await act(async () => {
-      shakeRef.current!('bomb');
-      sentinelLandedSynchronously = mockCapturedSharedValues.some((sv) => sv.value === SENTINEL);
-    });
+    await land('bomb');
 
-    // The point trauma is set: `shake()` must hand `traumaFor` the *live*
-    // reduced-motion flag.
+    // The point trauma is set: the landing must hand `traumaFor` the *live*
+    // reduced-motion flag, and what lands in a shared value is its answer.
     expect(traumaSpy).toHaveBeenCalledWith('bomb', true, false);
-    // And what actually lands in a shared value, in the same tick as the
-    // call — not merely what `shake()` read and could have discarded, and not
-    // merely what a later microtask could still correct to — is `traumaFor`'s
-    // own answer.
-    expect(sentinelLandedSynchronously).toBe(true);
+    expect(mockCapturedSharedValues.some((sv) => sv.value === SENTINEL)).toBe(true);
 
+    jest.useRealTimers();
     await r.unmount();
   });
 
-  it.each([true, false])('screen shake %s: shake() and kick() both follow the toggle', async (enabled) => {
+  it.each([true, false])('screen shake %s: the shake and the kick both follow the toggle', async (enabled) => {
     setMotionPreference('off');
     setScreenShakeEnabled(enabled);
     const traumaSpy = jest.spyOn(flightPhysics, 'traumaFor');
-    const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
-    const kickRef: React.MutableRefObject<(() => void) | null> = { current: null };
-    const r = await render(<ShakeProbe shakeRef={shakeRef} kickRef={kickRef} />);
+    const { r, land } = await mount();
     mockSequences.count = 0;
 
-    await act(async () => {
-      shakeRef.current!('bomb');
-      kickRef.current!();
-    });
+    await land('bomb');
 
     expect(traumaSpy).toHaveBeenCalledWith('bomb', false, !enabled);
     expect(mockSequences.count > 0).toBe(enabled);
 
+    jest.useRealTimers();
     await r.unmount();
   });
 
   it.each<[ImpactTier, boolean]>([['bomb', true], ['mancheWon', false]])('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
     setMotionPreference('off');
-    jest.useFakeTimers();
-    const shakeRef: React.MutableRefObject<((tier: ImpactTier) => void) | null> = { current: null };
-    const r = await render(<ShakeProbe shakeRef={shakeRef} />);
-    await act(async () => shakeRef.current!(tier));
+    const { r, land } = await mount();
+    await land(tier);
     await act(async () => { jest.advanceTimersByTime(Motion.duration.shake / 12); });
 
     const { transform } = getAnimatedStyle(screen.getByTestId('shake-probe')) as unknown as { transform: Record<string, string>[] };

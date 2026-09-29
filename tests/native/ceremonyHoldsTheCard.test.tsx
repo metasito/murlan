@@ -4,14 +4,16 @@
 // `arrivingCard` (tests/ui-rules/flightPhysics.test.ts) says which card each seat is
 // owed. Only a rendered table says whether the fan actually leaves the place
 // for it, which is what #650 lands into.
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
+import { LEG } from '@/lib/game/exchangeTimeline';
+import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -88,8 +90,7 @@ const noop = () => {};
 
 /**
  * The table while the winner is still choosing: the phase is open, the engine
- * has already handed them `FROM_LOSER`, and `ExchangePrompt` is drawing that
- * same card on the felt.
+ * has already handed them `FROM_LOSER`, and its flier is drawing that same card.
  */
 const prompting = (): GameState => {
   const state = settled();
@@ -163,17 +164,12 @@ describe('the hand leaves a place for the card still in the air', () => {
     await r.unmount();
   });
 
-  // The owner's report, and the older half of the defect: the engine hands the
-  // winner the loser's card as the phase opens, so it sat in the fan for the
-  // whole prompt while the prompt drew it on the felt.
-  it('does not hold the card the prompt is drawing on the felt', async () => {
+  // The engine hands the winner the loser's card as the phase opens, before its leg has flown.
+  it('does not hold the card its flier is drawing', async () => {
     const r = await render(table({ viewerSeat: WINNER_SEAT, visible: false, choosing: true }));
 
-    // The felt's copy is there, and it is the only one. Hidden from the
-    // accessibility tree — the prompt speaks it through one live region — so it
-    // is only reachable by asking for hidden elements.
     expect(
-      screen.getByTestId('exchange-received-card', { includeHiddenElements: true })
+      screen.getByTestId('exchange-flier-to-winner', { includeHiddenElements: true })
     ).toBeTruthy();
     for (const c of KEPT_BY_WINNER) {
       expect(named(c)).toBeGreaterThan(0);
@@ -181,6 +177,16 @@ describe('the hand leaves a place for the card still in the air', () => {
     expect(named(FROM_LOSER)).toBe(0);
 
     await r.unmount();
+  });
+
+  // The engine has already moved each card out; the hand keeps drawing it until its leg lifts it.
+  it('keeps the card each seat gives in its hand until its leg leaves', async () => {
+    const winner = await render(table({ viewerSeat: WINNER_SEAT, visible: true }));
+    expect(named(TO_LOSER)).toBeGreaterThan(0);
+    await winner.unmount();
+    const loser = await render(table({ viewerSeat: LOSER_SEAT, visible: true }));
+    expect(named(FROM_LOSER)).toBeGreaterThan(0);
+    await loser.unmount();
   });
 
   it('gives the card to the hand once the ceremony is over', async () => {
@@ -222,10 +228,13 @@ describe('the hand leaves a place for the card still in the air', () => {
   // Option A's whole thesis: the eye is told *where* before it is told *what*.
   // A row still stepped for the cards it draws would close over the slot and
   // the card would arrive on top of a fan that never moved.
-  it('steps the row for the card in the air, not for the cards it draws', async () => {
-    const during = await render(table({ viewerSeat: WINNER_SEAT, visible: true }));
+  it('steps the row for the card tucking in, not for the cards it draws', async () => {
+    jest.useFakeTimers();
+    const during = await render(table({ viewerSeat: WINNER_SEAT, visible: false, choosing: true }));
+    for (let at = 0; at < Motion.exchange.beat + LEG.tuck + 160; at += 16) await act(async () => jest.advanceTimersByTime(16));
     const holdingASlot = rowWidth();
     await during.unmount();
+    jest.useRealTimers();
 
     const after = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
     const withTheCard = rowWidth();

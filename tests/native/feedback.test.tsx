@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
-  backgroundMusic, event, setHapticsEnabled, setSoundVolume, silence, startLandingPulses, uiFeedback,
+  backgroundMusic, event, setHapticsEnabled, setSoundVolume, silence, startLandingPulses, uiFeedback, withdraw,
 } from '@/lib/device/feedback';
 import { bootFeedback, ctxAt, ctxTime, effects, fileOf, hapticCalls, haptics, loops, musicBus, settle, sounds, startsOf } from './helpers/feedback';
 
@@ -102,6 +102,20 @@ describe('feedback', () => {
     await settle();
     silence('clockRunningOut');
     expect(effects()[0].stoppedAt).toBeCloseTo(ctxTime(performance.now()), 3);
+  });
+
+  it('a cue sent ahead is taken back, whether still queued or already in the engine; one sounding plays out', async () => {
+    event([{ kind: 'exchange' }], performance.now() + 1000);
+    await settle();
+    withdraw('exchange');
+    event([{ kind: 'deal' }], performance.now() + 1000);
+    withdraw('deal');
+    event([{ kind: 'exchange' }]);
+    await settle();
+    withdraw('exchange');
+    await settle(1500);
+    expect(sounds()).toEqual(['exchange']);
+    expect(effects()[0].stoppedAt).toBeUndefined();
   });
 
   it('music plays the track the route asks for, once', async () => {

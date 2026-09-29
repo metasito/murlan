@@ -12,24 +12,22 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/game/gameEngine";
-import type { FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
+import { scheduleOnRN } from "react-native-worklets";
 import {
   roundClosedWithWinner,
   traumaFor,
   shakeOffset,
   shakeAmplitudeFor,
-  flareKindFor,
-  handOffDelayMs,
-  lampLiftFor,
-  type ImpactTier,
-  type FlareKind,
 } from "@/components/flightPhysics";
-import { cancelLandingPulses, event, startLandingPulses } from "@/lib/device/feedback";
+import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import { celebratesViewer, handOutcomeFor } from "@/lib/game/matchState";
 import { Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { useLandingReaction } from "@/components/table/useLandingReaction";
+import type { LandingSignal } from "@/components/table/useFlightClock";
+import type { TableTimeline } from "@/components/table/tableTimeline";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -65,9 +63,7 @@ const NO_WINNERS: readonly string[] = [];
 
 interface TableFeedbackState {
   isMyTurn: boolean;
-  currentTurnIndex: number;
   isFinished: boolean;
-  exchangeActive: boolean;
   canPass: boolean;
   playBtnValid: boolean;
   selectedCount: number;
@@ -88,42 +84,48 @@ interface TableFeedbackState {
   matchOver?: boolean;
   /** Engine player ids, as `MatchVerdict.winners`. */
   matchWinners?: readonly string[];
+  /** Written by the flight clock on the contact frame; the shake, the kick and the landing pulses react to it. */
+  landing: SharedValue<LandingSignal>;
+  /** Every cue goes out through it, at its flight's reported times. */
+  timeline: Pick<TableTimeline, "moment">;
+}
+
+/**
+ * `currentTurnIndex`, held back until `handsOffAt` of the card that handed the turn over — the
+ * lamp and the seat rings follow this. Call it after `usePileFlight`, whose effect awaits the throw.
+ */
+export function useShownTurn(currentTurnIndex: number, timeline: Pick<TableTimeline, "handsOffAt" | "pending">): number {
+  const { handsOffAt, pending } = timeline;
+  const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
+  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
+  useEffect(() => {
+    if (turn.shown === turn.seat || pending()) return;
+    const reveal = () => {
+      traceOnset("moment", "handoff");
+      setTurn((t) => ({ ...t, shown: t.seat }));
+    };
+    const wait = (handsOffAt ?? 0) - performance.now();
+    if (wait <= 0) return reveal();
+    const id = setTimeout(reveal, wait);
+    return () => clearTimeout(id);
+  }, [turn, handsOffAt, pending]);
+  return turn.shown;
 }
 
 interface TableFeedback {
-  /** `currentTurnIndex`, held back until the card that handed the turn over has landed — the lamp and the seat rings follow this. */
-  shownTurnIndex: number;
   giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
   kickStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
-  /** The thrown card has landed. Timing it against the flight is the caller's. */
-  playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
   rejectPlay: () => void;
-  /**
-   * Increments whenever a landing's tier flares (#765: bomb, partita) —
-   * BombBurst (components/table/moments.tsx) re-fires its flare/wave/spark
-   * off the change, the same trigger-counter pattern PlayedPile's own
-   * `bounceTrigger` already uses. Never on a straight/flush or a manche
-   * closing: `flareKindFor` (flightPhysics.ts) is what decides.
-   */
-  boomTrigger: number;
-  /** Which shape the flare that `boomTrigger` is about to re-fire takes — read by BombBurst's own `Flare`. */
-  flareKind: FlareKind;
-  /** Increments when a landing's tier is the manche rung — the lamp lifts rather than flares. */
-  lampLiftTrigger: number;
   /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
   flushTrigger: number;
-  /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
+  /** Call once, at the flight's contact, when that play emptied a hand. */
   celebrateFlush: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
-  /** Fire the shake for the tier a landing resolved to — `landingTier` (flightPhysics.ts) names it. */
-  shake: (tier: ImpactTier) => void;
-  /** Fire the lamp's own reaction (#765) for the same tier, at the same landing `shake` fires for. */
-  burst: (tier: ImpactTier) => void;
 }
 
 /**
@@ -139,14 +141,11 @@ interface TableFeedback {
  * with the writers as plain closures. `components/table/hand.tsx` arrives at
  * the same place from the other side, with its gesture.
  */
-function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: number) {
+function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: boolean, screenShake: boolean, scale: number) {
   const kickX = useSharedValue(0);
   const kickY = useSharedValue(0);
   const kickScale = useSharedValue(1);
   const giocaRejectX = useSharedValue(0);
-  const [boomTrigger, setBoomTrigger] = useState(0);
-  const [flareKind, setFlareKind] = useState<FlareKind>("none");
-  const [lampLiftTrigger, setLampLiftTrigger] = useState(0);
   // The escalation's own shake (#763): a trauma peak, an elapsed clock and the
   // decay window that landed with it — `shakeOffset` reads all four back
   // every frame, riding the table #101 settled — never a second amplitude
@@ -160,47 +159,45 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
   const shakeAmpY = useSharedValue(0);
   const shakeAmpRotate = useSharedValue(0);
 
-  // Both inputs are read through refs so the two writers below depend on
-  // nothing, which is what lets the callbacks that expose them hold `[]`.
-  const scaleRef = useRef(scale);
   const reduceMotionRef = useRef(reduceMotion);
-  const screenShakeRef = useRef(screenShake);
   useEffect(() => {
-    scaleRef.current = scale;
     reduceMotionRef.current = reduceMotion;
-    screenShakeRef.current = screenShake;
-  }, [scale, reduceMotion, screenShake]);
+  }, [reduceMotion]);
 
-  const kick = () => {
-    if (reduceMotionRef.current || !screenShakeRef.current) return;
-    const s = scaleRef.current;
-    const e = KICK_EASING;
-    const jolt = (axis: "x" | "y") =>
-      withSequence(...KICK_JOLTS.map((j) => withTiming(j[axis] * s, { duration: j.ms, easing: e })));
-    kickScale.value = withSequence(
-      withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
-      withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
-      withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
-    );
-    kickX.value = jolt("x");
-    kickY.value = jolt("y");
-  };
-
-  // The lamp's own reaction (#765): reads `flareKindFor`/`lampLiftFor`
-  // (flightPhysics.ts) off the same tier `shake` below reads its trauma
-  // from, so a straight/flush or a manche closing can never trip the burst
-  // meant for a bomb or a partita — `kick`'s old, coarser "heavy" gate did.
-  const burst = (tier: ImpactTier) => {
-    if (reduceMotionRef.current) return;
-    const kind = flareKindFor(tier);
-    if (kind !== "none") {
-      setFlareKind(kind);
-      setBoomTrigger((t) => t + 1);
+  // The pulses are not motion, so reduced motion keeps them (ADR-0009 §2). `traumaFor` answers 0
+  // under reduced motion or with the shake off, and `motionMs` collapses the decay the same way.
+  const decayMs = motionMs("shake", reduceMotion);
+  const kicks = !reduceMotion && screenShake;
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    runLandingPulses(l.pulses);
+    if (l.heavy && kicks) {
+      const e = KICK_EASING;
+      const jolt = (axis: "x" | "y") =>
+        withSequence(...KICK_JOLTS.map((j) => withTiming(j[axis] * scale, { duration: j.ms, easing: e })));
+      kickScale.set(
+        withSequence(
+          withTiming(KICK_SCALE_PEAK, { duration: KICK_PUNCH_MS, easing: e }),
+          withTiming(KICK_SCALE_SETTLE, { duration: KICK_SETTLE_MS, easing: e }),
+          withTiming(1, { duration: KICK_MS - KICK_PUNCH_MS - KICK_SETTLE_MS, easing: e })
+        )
+      );
+      kickX.set(jolt("x"));
+      kickY.set(jolt("y"));
     }
-    if (lampLiftFor(tier)) {
-      setLampLiftTrigger((t) => t + 1);
-    }
-  };
+    const trauma = traumaFor(l.tier, reduceMotion, !screenShake);
+    const amplitude = shakeAmplitudeFor(l.tier);
+    shakeTrauma.set(trauma);
+    shakeDecayMs.set(decayMs);
+    shakeAmpX.set(amplitude.x);
+    shakeAmpY.set(amplitude.y);
+    shakeAmpRotate.set(amplitude.rotate);
+    cancelAnimation(shakeElapsed);
+    shakeElapsed.set(0);
+    if (trauma === 0) return;
+    scheduleOnRN(traceOnset, "moment", l.tier);
+    shakeElapsed.set(withTiming(decayMs, { duration: decayMs, easing: Easing.linear }));
+  });
 
   const reject = () => {
     if (reduceMotionRef.current) return;
@@ -210,31 +207,6 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
       withTiming(BTN_REJECT_TRAVEL, { duration: BTN_REJECT_LEG_MS }),
       withTiming(0, { duration: BTN_REJECT_LEG_MS })
     );
-  };
-
-  // No `if (reduceMotion)`: `traumaFor` already reads it and answers 0, and
-  // `motionMs("shake", reduceMotion)` collapses the decay window the same way
-  // every other step on the table does.
-  const shake = (tier: ImpactTier) => {
-    const trauma = traumaFor(tier, reduceMotionRef.current, !screenShakeRef.current);
-    const decayMs = motionMs("shake", reduceMotionRef.current);
-    const amplitude = shakeAmplitudeFor(tier);
-    shakeTrauma.value = trauma;
-    shakeDecayMs.value = decayMs;
-    shakeAmpX.value = amplitude.x;
-    shakeAmpY.value = amplitude.y;
-    shakeAmpRotate.value = amplitude.rotate;
-    if (trauma === 0) {
-      shakeElapsed.value = 0;
-      return;
-    }
-    traceOnset("moment", tier);
-    cancelAnimation(shakeElapsed);
-    shakeElapsed.value = 0;
-    shakeElapsed.value = withTiming(decayMs, {
-      duration: decayMs,
-      easing: Easing.linear,
-    });
   };
 
   const kickStyle = useAnimatedStyle(() => ({
@@ -273,46 +245,17 @@ function useImpactFeedback(reduceMotion: boolean, screenShake: boolean, scale: n
     [kickX, kickY, kickScale, giocaRejectX, shakeElapsed]
   );
 
-  // The writers have to be plain closures — the compiler refuses a function
-  // that writes a shared value if that function was passed to a hook, and a
-  // dependency array is passing it — so they are new on every render. What
-  // leaves the hook is not: `GameTable` lists `playImpact` among its play
-  // effect's dependencies, and a new identity every render would re-run that
-  // effect every render. It is not what stops the play being replayed — the
-  // `prevComboKeyRef` guard in that effect is — so this is cost, not
-  // correctness.
-  //
-  // The ref is what lets these hold `[]`: naming `kick` as a dependency would
-  // be passing to a hook the very closure that writes a shared value. It is
-  // never refreshed because it never needs to be — both closures read their
-  // only two inputs through `scaleRef` and `reduceMotionRef`, so the pair
-  // captured on the first render behaves the same as any later one.
-  const writers = useRef({ kick, reject, shake, burst });
-
-  const impact = useCallback(() => writers.current.kick(), []);
+  // A plain closure: the compiler refuses a function that writes a shared value if that function
+  // was passed to a hook. The ref holds the first render's, which reads its input through a ref.
+  const writers = useRef({ reject });
   const rejectPlay = useCallback(() => writers.current.reject(), []);
-  const triggerShake = useCallback((tier: ImpactTier) => writers.current.shake(tier), []);
-  const triggerBurst = useCallback((tier: ImpactTier) => writers.current.burst(tier), []);
 
-  return {
-    kickStyle,
-    giocaRejectX,
-    impact,
-    rejectPlay,
-    boomTrigger,
-    flareKind,
-    lampLiftTrigger,
-    shakeStyle,
-    shake: triggerShake,
-    burst: triggerBurst,
-  };
+  return { kickStyle, giocaRejectX, rejectPlay, shakeStyle };
 }
 
 export function useTableFeedback({
   isMyTurn,
-  currentTurnIndex,
   isFinished,
-  exchangeActive,
   canPass,
   playBtnValid,
   selectedCount,
@@ -328,11 +271,12 @@ export function useTableFeedback({
   scale,
   matchOver = false,
   matchWinners = NO_WINNERS,
+  landing,
+  timeline,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
   const screenShake = useScreenShakeEnabled();
   const prevMyTurnRef = useRef(false);
-  const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
@@ -351,64 +295,17 @@ export function useTableFeedback({
   const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
   const giocaGlowVal = useSharedValue(0);
-  const {
-    kickStyle,
-    giocaRejectX,
-    impact,
-    rejectPlay,
-    boomTrigger,
-    flareKind,
-    lampLiftTrigger,
-    shakeStyle,
-    shake,
-    burst,
-  } = useImpactFeedback(reduceMotion, screenShake, scale);
-  // BombBurst and Sweep own their animations; these just say "again" —
-  // PlayedPile's `bounceTrigger` is the same pattern.
+  const { kickStyle, giocaRejectX, rejectPlay, shakeStyle } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
+  // Sweep and the pile's catch own their animations; this just says "again".
   const [flushTrigger, setFlushTrigger] = useState(0);
 
-  const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Keyed by card ids, not the object: every broadcast rebuilds it, and a
-  // round-closing pass nulls it while the card that preceded it is still flying.
-  const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
-  const landsAtRef = useRef(0);
-  useEffect(() => {
-    if (playedKey !== null) landsAtRef.current = performance.now() + handOffDelayMs(reduceMotion);
-  }, [playedKey, reduceMotion]);
-  useEffect(
-    () => () => {
-      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      cancelLandingPulses();
-    },
-    []
-  );
-
-  const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
-  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
-  useEffect(() => {
-    if (turn.shown === turn.seat) return;
-    const reveal = () => setTurn((t) => ({ ...t, shown: t.seat }));
-    const wait = landsAtRef.current - performance.now();
-    if (wait <= 0) return reveal();
-    const id = setTimeout(reveal, wait);
-    return () => clearTimeout(id);
-  }, [turn]);
+  const { moment } = timeline;
+  useEffect(() => () => cancelLandingPulses(), []);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) {
-      const cue = () => event([{ kind: "turn" }]);
-      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      const wait = landsAtRef.current - performance.now();
-      if (wait <= 0) cue();
-      else handOffTimerRef.current = setTimeout(cue, wait);
-    }
+    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished, gameOver]);
-
-  useEffect(() => {
-    if (exchangeActive && !prevExchangeActiveRef.current) event([{ kind: "exchange" }]);
-    prevExchangeActiveRef.current = exchangeActive;
-  }, [exchangeActive]);
+  }, [isMyTurn, isFinished, gameOver, moment]);
 
   // A pass moves nothing on the felt, so the sound is the whole event. Keyed
   // on the state the pass produced, not the tap, so a bot, an opponent and the
@@ -424,8 +321,9 @@ export function useTableFeedback({
     const wasClosed = prevRoundClosedRef.current;
     prevRoundClosedRef.current = closed;
     const closedNow = closed && !wasClosed;
-    if (passCount > prevCount || closedNow) event(closedNow ? [{ kind: "pass" }, { kind: "roundWon" }] : [{ kind: "pass" }]);
-  }, [passCount, lastPlayedCombination, roundWinner]);
+    if (passCount > prevCount || closedNow) moment({ kind: "pass" });
+    if (closedNow) moment({ kind: "roundWon" });
+  }, [passCount, lastPlayedCombination, roundWinner, moment]);
 
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the
@@ -434,13 +332,9 @@ export function useTableFeedback({
       prevGameOverRef.current = false;
       return;
     }
-    if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
     if (prevGameOverRef.current) return;
-    // The manche/partita shake itself is NOT fired here — this effect answers
-    // `gameOver` the instant the state arrives, well ahead of the winning
-    // card's own landing. `usePileFlight` (components/table/pile.tsx) fires
-    // `shake(landingTier(...))` from the `impactDelayMs` timeout everything else
-    // waits for, so the shake lands with the card rather than ahead of it.
+    // The manche/partita shake itself is NOT fired here: it reacts to the
+    // winning card's own landing signal, on its contact frame.
     // `rankings` holds engine player ids (`player_0`), never display names.
     // Routed through the one function the results board's own haptic reads
     // for the same question (`lib/game/matchState.ts`), fed the same `handScores`
@@ -454,19 +348,18 @@ export function useTableFeedback({
     // the decision on data that was never real; returning without touching
     // the ref lets the next render, carrying the real `handScores`, run this
     // same effect again instead.
-    // The sting is placed in the engine at the landing's hold, so leaving the
+    // The sting is placed in the engine a beat after the hand-off, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    const delay = handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion);
-    const at = delay > 0 ? performance.now() + delay : undefined;
+    const after = motionMs("shift", reduceMotion);
     if (matchOver && matchWinners.length > 0) {
-      event([{ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }], at);
+      moment({ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }, "handoff", after);
     } else {
-      event([{ kind: "mancheOver", outcome }], at);
+      moment({ kind: "mancheOver", outcome }, "handoff", after);
     }
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners]);
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners, moment]);
 
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
@@ -528,16 +421,6 @@ export function useTableFeedback({
   // per frame is main-thread paint the browser cannot composite.
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
 
-  const playImpact = useCallback(
-    (heavy: boolean, dir: FlyDirection, cards: number) => {
-      const landing = { cards, bomb: heavy, mine: dir === "bottom" };
-      event([{ kind: "landing", ...landing }]);
-      startLandingPulses(landing);
-      if (heavy) impact();
-    },
-    [impact]
-  );
-
   const celebrateFlush = useCallback(() => {
     if (reduceMotion) return;
     traceOnset("moment", "flush");
@@ -545,21 +428,14 @@ export function useTableFeedback({
   }, [reduceMotion]);
 
   return {
-    shownTurnIndex: turn.shown,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
     kickStyle,
     giocaRejectX,
-    playImpact,
     rejectPlay,
-    boomTrigger,
-    flareKind,
-    lampLiftTrigger,
     flushTrigger,
     celebrateFlush,
     shakeStyle,
-    shake,
-    burst,
   };
 }

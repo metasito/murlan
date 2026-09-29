@@ -10,7 +10,6 @@ import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
-import { handOffDelayMs } from '@/components/flightPhysics';
 import { motionMs } from '@/lib/theme';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxAt, haptics, settle as advance, sounds, startsOf } from './helpers/feedback';
@@ -155,7 +154,7 @@ const wonTeamsTable = (viewerSeat: number) => (
   </SafeAreaProvider>
 );
 
-const STING_MS = handOffDelayMs(false) + motionMs('shift', false);
+const STING_MS = motionMs('shift', false);
 const settle = (ms = STING_MS) => advance(ms);
 
 describe('the end-of-hand sting', () => {
@@ -168,7 +167,7 @@ describe('the end-of-hand sting', () => {
     jest.useRealTimers();
   });
 
-  it('schedules the win sting in the engine at the landing and its hold', async () => {
+  it('schedules the win sting in the engine a shift after the hand-off, which with no flight is now', async () => {
     const t0 = performance.now();
     const r = await render(table(ID_RANKINGS, 0));
     await advance();
@@ -185,7 +184,7 @@ describe('the end-of-hand sting', () => {
 
   it('a finished partita sounds its own sting, with the haptic leading by 300 ms', async () => {
     const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
-    await advance(STING_MS);
+    await advance(300);
     expect(sounds()).toContain('partitaWon');
     expect(sounds()).not.toContain('mancheWon');
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);

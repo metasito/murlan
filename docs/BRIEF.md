@@ -46,8 +46,8 @@ deuteranopia/protanopia/tritanopia separation, pinned by `tests/ui-rules/suitCol
 and **"your turn" push notifications**, respecified: the 30s auto-pass / 60s bot-takeover clocks
 mean such a push could never arrive in time to matter, so it shipped instead as a notification for
 a friend's invite that arrived while the player was away (`server/socket/push.ts`); sound and
-haptic choreography, every cue timed to the card's landing (`impactDelayMs()`, fired from
-`components/table/pile.tsx`; bomb jolts, music ducking and the win/lose sting in
+haptic choreography, every cue timed to the card's landing (the flight's contact, `landsAt` in
+`components/table/tableTimeline.ts`; bomb jolts, music ducking and the win/lose sting in
 `components/useTableFeedback.ts`).
 
 ---

@@ -12,8 +12,10 @@
 import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle } from "react-native-reanimated";
+import { getAnimatedStyle, makeMutable } from "react-native-reanimated";
 import { PlayedPile } from "@/components/table/pile";
+import { NO_LANDING } from "@/components/table/useFlightClock";
+import { fireLanding } from "./helpers/landing";
 import { Motion } from "@/lib/theme";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 
@@ -48,17 +50,14 @@ describe("the beaten pile's own reaction to being displaced (#764)", () => {
 
   it("actually moves once the flinch fires — not merely wired to a shared value nobody reads", async () => {
     jest.useFakeTimers();
+    const landing = makeMutable(NO_LANDING);
     const r = await render(
-      <PlayedPile
-        prev={PREV}
-        current={null}
-        roundWinner={null}
-        flinchTrigger={1}
-        flinchTier="bomb"
-        roomW={400}
-        scale={1}
-      />
+      <PlayedPile prev={PREV} current={null} roundWinner={null} landing={landing} roomW={400} scale={1} />
     );
+    await act(async () => {
+      jest.advanceTimersByTime(16);
+      fireLanding(landing, { cards: 4, heavy: true });
+    });
 
     // Partway through the flinch's own withTiming leg (Motion.duration.flash)
     // — solidly inside the up-swing, well before the following spring gets a

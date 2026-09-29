@@ -10,7 +10,9 @@ jest.mock('@/lib/e2eTrace', () => ({
   useTraceSource: (field: string, read: () => number) => mockSources.set(field, read),
 }));
 
+import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
+import { NO_LANDING } from '@/components/table/useFlightClock';
 
 const DUST: ParticleSpawn = {
   x: 0, y: 0, vx: 0, vy: 0, g: 0, drag: 1, life: 1, size: 1, col: '#ffffff', shape: 'dot', glow: 0,
@@ -19,7 +21,7 @@ const DUST: ParticleSpawn = {
 describe('ParticleLayer', () => {
   it('traces its live and dropped counts', async () => {
     const ref = React.createRef<ParticleEmitter>();
-    const view = await render(<ParticleLayer ref={ref} sx={1} sy={1} />);
+    const view = await render(<ParticleLayer ref={ref} sx={1} sy={1} landing={makeMutable(NO_LANDING)} />);
     expect(mockSources.get('live')?.()).toBe(0);
 
     await act(async () => ref.current!.emit(Array.from({ length: 203 }, () => DUST)));

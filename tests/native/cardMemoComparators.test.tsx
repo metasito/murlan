@@ -54,6 +54,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   onA11yAction: [noop, () => {}],
   a11yActionKeys: [{ ArrowLeft: "left" }, { ArrowRight: "right" }],
   onMove: [noop, () => {}],
+  onDrawn: [noop, () => {}],
   left: [0, 10],
   bottom: [0, 10],
   arcRot: [0, 10],
@@ -66,6 +67,8 @@ const VALUES: Record<string, [unknown, unknown]> = {
   cardW: [64, 92],
   cardH: [90, 128],
   shiftX: [0, 24],
+  received: [false, true],
+  hidden: [{ value: [] }, { value: [] }],
 };
 
 /**

@@ -75,10 +75,10 @@ test("the card's flight is the weight that was chosen", () => {
     260,
     "travel is the card in flight, and 260ms is the Balanced model the owner chose (#126)"
   );
-  assert.equal(
-    Motion.anticipate,
-    40,
-    "the load before the launch is what makes travel read as weight rather than as a duration"
+  assert.deepEqual(
+    Motion.throw,
+    { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
+    "the throw is the lantern mockup's play(), ADR-0008"
   );
 });
 

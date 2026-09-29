@@ -32,7 +32,7 @@ jest.mock("@/lib/accessibility", () => ({
 }));
 
 import { GameTable } from "@/components/GameTable";
-import { impactDelayMs } from "@/components/flightPhysics";
+import { farthest, frameOfFirst } from "./helpers/landing";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 
 const METRICS = {
@@ -132,16 +132,14 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
   it("a bomb landing visibly flares and sparks through GameTable's own wiring, not a mock of it", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(false) + 1);
-    });
-    // Solidly inside the flare's first leg and past spark 0's own lead delay
-    // (60ms) — see tests/native/bombBurstAnimatesVisibly.test.tsx.
+    const { frame, drawn } = await frameOfFirst(r, () => opacityOf(r, "bomb-flare") > 0);
+    expect(drawn[frame]).toBeLessThanOrEqual(1);
+    expect(drawn[frame - 1]).toBeGreaterThan(1);
+    // Past spark 0's own lead delay (60ms) — see tests/native/bombBurstAnimatesVisibly.test.tsx.
     await act(async () => {
       jest.advanceTimersByTime(90);
     });
 
-    expect(opacityOf(r, "bomb-flare")).toBeGreaterThan(0);
     expect(opacityOf(r, "spark-0")).toBeGreaterThan(0);
 
     await r.unmount();
@@ -150,18 +148,9 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
   it("the manche rung visibly lifts the lamp through GameTable's own wiring, not a mock of it", async () => {
     const r = await render(table(HAND_CLOSED, false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(false) + 1);
-    });
-    // Partway through the lift's own 900ms window — see
-    // tests/native/bombBurstAnimatesVisibly.test.tsx. No `runOnlyPendingTimers`
-    // here: it would flush the whole `withSequence` to its own end, landing
-    // back at rest (opacity 0) rather than mid-pulse.
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(opacityOf(r, "lamp-lift")).toBeGreaterThan(0);
+    const { frame, drawn } = await frameOfFirst(r, () => opacityOf(r, "lamp-lift") > 0);
+    expect(drawn[frame]).toBeLessThanOrEqual(1);
+    expect(drawn[frame - 1]).toBeGreaterThan(1);
 
     await r.unmount();
   });
@@ -176,9 +165,7 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
     // would use to light the flare, mounted through the real, unmocked hook.
     const r = await render(table(inPlay(ROYAL_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(false) + 1);
-    });
+    await frameOfFirst(r, () => farthest(r) <= 1);
     await act(async () => {
       jest.advanceTimersByTime(90);
     });

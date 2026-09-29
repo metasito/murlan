@@ -31,6 +31,9 @@ import {
 import { openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
+import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { handCountOf } from "../../shared/protocol.ts";
 
 /** The seat that must act right now: the exchange winner, or the turn holder. */
 function actingSeat(state: GameState): number {
@@ -99,12 +102,15 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
 
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
+    const delayMs = game.gameState.exchangePhase?.active
+      ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
+      : botDelayMs;
     botTimers.set(
       roomId,
       setTimeout(() => {
         botTimers.delete(roomId);
         safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId));
-      }, botDelayMs)
+      }, delayMs)
     );
     emitTurnDeadline(io, roomId, game);
     return;
@@ -122,6 +128,12 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   game.turnDeadlineMs = Date.now() + timeoutMs;
   startAfkTimer(io, roomId, userId, username, timeoutMs);
   emitTurnDeadline(io, roomId, game);
+}
+
+/** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
+export function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
+  const phase = prev.exchangePhase;
+  armTurn(io, roomId, phase?.active ? exchangeAnnounceMs(phase.bothJokersException === true) : botMoveDelayMs());
 }
 
 /**
@@ -181,6 +193,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
     return;
   }
 
+  const prevState = game.gameState;
   game.gameState = next;
   broadcastGameState(io, game);
   persistGameState(roomId, game);
@@ -188,7 +201,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
   if (next.gameOver) {
     void handleGameOver(io, roomId, game, gameOverWriters);
   } else {
-    armTurn(io, roomId);
+    armAfterMove(io, roomId, prevState);
   }
 }
 
@@ -208,6 +221,7 @@ function handleAutoPass(
   const next = autoMoveForSeat(game, seat, false);
   if (!next) return null;
 
+  const prevState = game.gameState;
   game.gameState = next;
   broadcastGameState(io, game);
   persistGameState(roomId, game);
@@ -215,7 +229,7 @@ function handleAutoPass(
   if (next.gameOver) {
     void handleGameOver(io, roomId, game, gameOverWriters);
   } else {
-    armTurn(io, roomId);
+    armAfterMove(io, roomId, prevState);
   }
   return wasExchange ? "exchange" : "move";
 }

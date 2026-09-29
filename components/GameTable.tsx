@@ -19,20 +19,24 @@ import {
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, useSharedValue } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
+  getCardDisplayRank,
+  getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
   openingIsPending,
   sortHand,
   type Card,
+  type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
-import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import type { LegStage } from "@/lib/game/exchangeTimeline";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -41,11 +45,12 @@ import {
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
-  type OpponentSide,
 } from "@/components/seatLayout";
 import { handCountOf, vacatedOf } from "@/shared/protocol";
-import { comboKey, readExchange } from "@/components/flightPhysics";
-import { useExchangeTrips } from "@/components/table/ExchangeFlight";
+import type { CardFrom } from "@/components/flightPose";
+import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
+import { comboKey, JOKERS, NO_STAGES, readExchange, readTradeSeats, tradeKey, type TradeStages } from "@/components/flightPhysics";
+import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
@@ -53,7 +58,6 @@ import {
   BASE_SHORT_EDGE,
   CARD_H,
   cardScale,
-  FIELD_SCALE,
   HAND_SCALE,
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
@@ -87,12 +91,12 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
-import { landDust, landingDustCount, type ParticleEmitter } from "@/components/table/particles";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
@@ -100,8 +104,6 @@ import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { DealFlights, useDeal } from "@/components/table/deal";
-import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
-import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
@@ -171,6 +173,7 @@ const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
  * `tests/e2e/helpers/selectors.ts` holds the other end.
  */
 const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
+const NO_DISMISS = () => {};
 const roundStart = () => event([{ kind: "roundStart" }]);
 
 const lockLandscape = () => {
@@ -269,6 +272,8 @@ export interface GameTableProps {
   onPass: () => void;
   onQuit: () => void;
   onExchangeGive: (cardId: string) => void;
+  /** The exchange's choice opens: the received card has landed and been read. The offline bot winner gives on it. */
+  onExchangeReady?: () => void;
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
@@ -284,6 +289,8 @@ export interface GameTableProps {
   railExtra?: React.ReactNode;
   /** Transient strips under the top bar (online: reconnect notice). */
   banners?: React.ReactNode;
+  /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
+  catchUp?: boolean;
   /**
    * Full-screen layers above the table (game over, error toasts, waiting states).
    *
@@ -317,12 +324,14 @@ export function GameTable({
   onPass,
   onQuit,
   onExchangeGive,
+  onExchangeReady,
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
   disconnectedSeats = {},
   railExtra,
   banners,
+  catchUp = false,
   overlays,
   tableCovered = false,
 }: GameTableProps) {
@@ -429,21 +438,40 @@ export function GameTable({
   // The engine's order is the fallback; what the player sees is whatever they
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
-  const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  // Only until the card lands, not for the whole notice — the tags beside each
-  // seat stay up another `Reading.notice` to be read, and a hand short of a card
-  // for four seconds after it arrived is a different defect.
-  const tradedCardsLanded = useTradedCardsLanded(
-    exchangeAnnouncement?.visible === true,
-    exchangeAnnouncement?.data?.bothJokersException
+  const { arranged: shownHand, moveTo, order: handOrder } = useHandOrder(viewerSeat, sortedHand);
+  // The trade runs from the phase opening, before any announcement: the receive flies ahead of the choice.
+  const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
+  const phase = gameState.exchangePhase;
+  const trade: ExchangeAnnounceData | null =
+    announced ??
+    (phase?.active && !phase.bothJokersException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
+  // A pairing and its card repeat across manches, so each trade is also counted.
+  const [tradeSeq, setTradeSeq] = useState({ open: false, seq: 0 });
+  if (!!trade !== tradeSeq.open) setTradeSeq({ open: !!trade, seq: tradeSeq.seq + (trade ? 1 : 0) });
+  const tradeId = trade ? `${tradeSeq.seq}:${tradeKey(trade)}` : "";
+  const [reported, setReported] = useState<TradeStages>({ key: "", ...NO_STAGES });
+  const stages: TradeStages = trade && reported.key === tradeId ? reported : { key: tradeId, ...NO_STAGES };
+  const choiceReady = reported.key === tradeId && reported.ready;
+  const onTradeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
+    setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), [leg]: stage }));
+  }, []);
+  const onTradeReady = useCallback(
+    (key: string) => {
+      setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), ready: true }));
+      onExchangeReady?.();
+    },
+    [onExchangeReady]
   );
-  const { handOnTable, withheldId, arrivingIndex, descendingId } = useHandArrival({
+  const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
+  const lifted = useSharedValue<string[]>([]);
+  const tradeSeats = readTradeSeats(trade, stages);
+  const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
     hand: shownHand,
-    exchange,
-    announcement: exchangeAnnouncement,
-    landed: tradedCardsLanded,
+    sorted: sortedHand,
+    order: handOrder,
+    trade,
+    stages,
     viewerSeat: spectating ? null : viewerSeat,
-    reduceMotion,
   });
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
@@ -494,7 +522,8 @@ export function GameTable({
   // dialog, so the legality the engine enforces has to be readable in the fan:
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
-  const exchangeIsMine = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsMine = exchangeIsWinners && choiceReady;
   const giveable = React.useMemo(
     () =>
       exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined,
@@ -574,9 +603,10 @@ export function GameTable({
   };
 
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
+  const dealFresh = !gameState.firstPlayMade && !gameState.gameOver;
   const deal = useDeal({
     geometry: seatGeometry,
-    fresh: !gameState.firstPlayMade && !gameState.gameOver,
+    fresh: dealFresh,
     entryMs,
     reduceMotion,
   });
@@ -656,28 +686,21 @@ export function GameTable({
     [tn, handOnTable.length, selectedIds.length]
   );
 
+  const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
+  const timeline = useTableTimeline();
   const {
-    shownTurnIndex,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
     kickStyle,
     giocaRejectX,
-    playImpact,
     rejectPlay,
-    boomTrigger,
-    flareKind,
-    lampLiftTrigger,
     flushTrigger,
     celebrateFlush,
     shakeStyle,
-    shake,
-    burst,
   } = useTableFeedback({
     isMyTurn,
-    currentTurnIndex: gameState.currentTurnIndex,
     isFinished,
-    exchangeActive: exchange.active,
     canPass,
     playBtnValid: staged.playable,
     selectedCount: selectedIds.length,
@@ -693,46 +716,31 @@ export function GameTable({
     scale,
     matchOver,
     matchWinners,
+    landing: landingSignal,
+    timeline,
   });
-
-  // The owner's own remedy for an announcement nobody noticed: swing the lamp
-  // off the seat and onto the middle, where the words are. The table's existing
-  // attention mechanism, pointed somewhere else — not a second device.
-  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
-  const rig = useLampRig({
-    target: lampTarget,
-    fresh: !gameState.firstPlayMade && !gameState.gameOver,
-    width: W,
-    height: H,
-  });
-  const { flare, kick } = rig;
-  const particles = useRef<ParticleEmitter>(null);
-  const land = useCallback(
-    (cards: number, at: { x: number; y: number }) =>
-      particles.current?.emit(landDust(cards, landingDustCount(cards), at.x / rig.sx, at.y / rig.sy, Math.random)),
-    [rig.sx, rig.sy]
-  );
-  useEffect(() => {
-    if (!boomTrigger) return;
-    flare();
-    if (flareKind === "brief") kick();
-  }, [boomTrigger, flareKind, flare, kick]);
 
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
     scale
   );
 
+  // Merged, never replaced: by the throw's commit the hand has already redrawn without the thrown cards.
+  const handOrigins = useRef(new Map<string, CardFrom>());
+  const onHandOrigins = useCallback((drawn: ReadonlyMap<string, CardFrom>) => {
+    drawn.forEach((from, id) => handOrigins.current.set(id, from));
+  }, []);
   const {
     pileState,
     sweep,
-    flyInfo,
-    flightLanded,
-    flinchTrigger,
-    flinchTier,
-    bounceTrigger,
+    endSweep,
+    flights,
     roundWinnerTag,
+    onFlightStart,
+    onFlightContact,
     onFlightDone,
+    onFlightClock,
+    bombClock,
     feltDim,
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
@@ -741,13 +749,28 @@ export function GameTable({
     gameOver: gameState.gameOver,
     matchOver,
     ...seatGeometry,
-    playImpact,
-    land,
-    shake,
-    burst,
+    timeline,
     celebrateFlush,
     playRoundStart: roundStart,
+    handOrigins,
+    roomW: frame.fieldRoomW,
+    catchUp,
   });
+  const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
+
+  // The owner's own remedy for an announcement nobody noticed: swing the lamp
+  // off the seat and onto the middle, where the words are. The table's existing
+  // attention mechanism, pointed somewhere else — not a second device.
+  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
+  const rig = useLampRig({
+    target: lampTarget,
+    fresh: dealFresh,
+    width: W,
+    height: H,
+    landing: landingSignal,
+  });
+  const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
+  const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -755,13 +778,16 @@ export function GameTable({
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     lockLandscape();
-    const deal = setTimeout(() => event([{ kind: "deal" }]), entryMs);
     warmCourtArt();
     return () => {
-      clearTimeout(deal);
       ScreenOrientation.unlockAsync().catch(() => {});
     };
-  }, [entryMs]);
+  }, []);
+  const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
+  // Under reduced motion no deal flies to start the cue, and sound is not motion.
+  useEffect(() => {
+    if (dealFresh && reduceMotion) dealCue(performance.now());
+  }, [dealFresh, reduceMotion, dealCue]);
 
   // UIKit pins the scene to its current orientation for an animated screen
   // transition, overriding a lock that lands inside it (#1211).
@@ -808,7 +834,7 @@ export function GameTable({
   });
   const handleCardPress = useCallback(
     (id: string) => {
-      if (isFinished || spectating) return;
+      if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
       event([{ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" }]);
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
@@ -818,7 +844,7 @@ export function GameTable({
       }
       onSelectCard(id);
     },
-    [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
+    [isFinished, spectating, onSelectCard, exchangeIsMine, exchangeIsWinners, setExchangePick]
   );
   useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
@@ -868,15 +894,6 @@ export function GameTable({
   }, [isMyTurn, isFinished, isNewRound, onPass]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
-
-  // Cards the throwing seat's own fan holds back until the flight lands —
-  // displayedHandCount's other term, cleared at `flightLanded` rather than at
-  // `flyInfo`'s own lifetime, which runs past the landing for the settle
-  // spring. `impactDelayMs(reduceMotion)` is 0 under reduced motion, so
-  // `flightLanded` is already true by the next render and nothing holds.
-  const departingSide: OpponentSide | null =
-    flyInfo && !flightLanded && flyInfo.dir !== "bottom" ? flyInfo.dir : null;
-  const departingCount = departingSide ? flyInfo!.cards.length : 0;
 
   const timerActive =
     !!turnTimer &&
@@ -953,7 +970,45 @@ export function GameTable({
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
-  const exchangeTrips = useExchangeTrips(exchangeAnnouncement?.data, seatGeometry);
+  const tradeName = (seat: number) => players[seat]?.name ?? "";
+  const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
+  const giveNote = (card: Card | undefined, from: number, to: number) => {
+    if (!card) return "";
+    const c = shortName(card);
+    if (viewerOwnsSeat(from, viewerSeat, spectating)) return t("exchange.pileYouGive", { card: c, to: tradeName(to) });
+    if (viewerOwnsSeat(to, viewerSeat, spectating)) return t("exchange.pileGivesYou", { from: tradeName(from), card: c });
+    return t("exchange.pileGives", { from: tradeName(from), card: c, to: tradeName(to) });
+  };
+  const pileNote = !trade
+    ? null
+    : trade.bothJokersException
+      ? stages.receive === "rest"
+        ? { text: t("exchangeAnnouncement.noSwapText"), testID: "exchange-no-swap", cards: JOKERS }
+        : null
+      : stages.receive === "rest" && trade.cardReceived
+        ? { text: giveNote(trade.cardReceived, trade.loserIdx, trade.winnerIdx), testID: "exchange-pile-label", cards: [trade.cardReceived] }
+        : stages.give === "rest" && trade.cardGiven
+          ? { text: giveNote(trade.cardGiven, trade.winnerIdx, trade.loserIdx), testID: "exchange-pile-label", cards: [trade.cardGiven] }
+          : null;
+
+  // The choice opens once the received card has landed and been read; until then the chip names the exchange.
+  const choiceOpen = exchange.active && stages.ready;
+  const exchangeChip = !trade
+    ? null
+    : !choiceOpen
+      ? t("exchange.chipTitle")
+      : exchange.viewerIsWinner
+        ? giveable && givebackIsFallback(giveable)
+          ? t("exchange.noValidCards")
+          : t("exchange.chipGive", { name: exchangeLoserName })
+        : exchange.viewerIsLoser
+          ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
+          : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
+  const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
+
+  // The last hook: effects run in declaration order, so every producer above has queued its moments.
+  useEffect(() => timeline.flush());
 
   return (
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
@@ -966,8 +1021,8 @@ export function GameTable({
         {...a11yHidden()}
       >
         <Felt rig={rig} stops={felt} target={lampTarget} />
-        <LampLift trigger={lampLiftTrigger} scale={scale} rig={rig} />
-        <ParticleLayer ref={particles} sx={rig.sx} sy={rig.sy} />
+        <LampLift landing={landingSignal} scale={scale} rig={rig} />
+        <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
       </View>
 
@@ -1018,22 +1073,23 @@ export function GameTable({
           ]}
         >
           <A11yVeil veil={clockVeil}>
-            <TurnChip
-              scale={scale}
-              lit={viewerOnMove}
-              chipText={
-                viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName })
-              }
-              spokenSeat={
-                viewerOnMove
-                  ? t("gameTable.a11yYourTurn")
-                  : t("gameTable.a11yTurnOf", { name: onMoveName })
-              }
-              seconds={turnTimer?.seconds ?? 0}
-              active={timerActive}
-              resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-              onExpire={turnTimer?.onExpire}
-            />
+            <View testID={choiceOpen ? "exchange-prompt" : undefined}>
+              <TurnChip
+                scale={scale}
+                lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
+                chipText={
+                  exchangeChip ?? (viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName }))
+                }
+                spokenSeat={
+                  exchangeChip ??
+                  (viewerOnMove ? t("gameTable.a11yYourTurn") : t("gameTable.a11yTurnOf", { name: onMoveName }))
+                }
+                seconds={turnTimer?.seconds ?? 0}
+                active={timerActive}
+                resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
+                onExpire={turnTimer?.onExpire}
+              />
+            </View>
           </A11yVeil>
         </Animated.View>
 
@@ -1150,9 +1206,8 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={opponents.top.seat === shownTurnIndex}
-                  cardCount={handCountOf(opponents.top.player)}
-                  departing={departingSide === "top" ? departingCount : 0}
+                  isActive={!trade && opponents.top.seat === shownTurnIndex}
+                  cardCount={seatCount(opponents.top.seat, opponents.top.player)}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
                   vacated={vacatedOf(opponents.top.player)}
@@ -1160,6 +1215,7 @@ export function GameTable({
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
+                  mark={seatMark(opponents.top.seat)}
                 />
               ) : (
                 <View />
@@ -1170,15 +1226,15 @@ export function GameTable({
                 and the field centre in what is actually there rather than at a
                 guessed percentage, so a taller top seat takes it from the field
                 instead of overlapping it. */}
-            <View style={sharedTableStyles.midSection}>
+            {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
+            <View style={[sharedTableStyles.midSection, (flights.length > 0 || trade !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={opponents.left.seat === shownTurnIndex}
+                    isActive={!trade && opponents.left.seat === shownTurnIndex}
                     side="left"
-                    cardCount={handCountOf(opponents.left.player)}
-                    departing={departingSide === "left" ? departingCount : 0}
+                    cardCount={seatCount(opponents.left.seat, opponents.left.player)}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
                     passed={passed.includes(opponents.left.seat)}
                     vacated={vacatedOf(opponents.left.player)}
@@ -1186,25 +1242,13 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
+                    mark={seatMark(opponents.left.seat)}
                   />
                 )}
               </View>
 
               <View style={sharedTableStyles.centerSection}>
-                {exchange.active && !exchangeAnnouncement?.visible ? (
-                  // The round that opened this phase is already resolved, so the
-                  // centre is free — and it is the one place every seat is
-                  // already looking. It vacates the moment the cards fly.
-                  <ExchangePrompt
-                    receivedCard={gameState.exchangePhase?.cardFromLoser}
-                    winnerName={exchange.winner?.name ?? ""}
-                    loserName={exchangeLoserName}
-                    viewerIsWinner={exchange.viewerIsWinner}
-                    viewerIsLoser={exchange.viewerIsLoser}
-                    noValidCards={!!giveable && givebackIsFallback(giveable)}
-                    scale={scale}
-                  />
-                ) : showStartCardBanner ? (
+                {showStartCardBanner ? (
                   <StartCardBanner
                     card={gameState.startCard!}
                     starterIsViewer={isMyTurn}
@@ -1212,57 +1256,73 @@ export function GameTable({
                   />
                 ) : (
                   <PlayedPile
-                    prev={pileState.prev}
-                    current={flyInfo ? null : pileState.current}
-                    comboLabel={flightLanded ? pileState.current : null}
+                    prev={landed(pileState.prev)}
+                    current={landed(pileState.current)}
+                    comboLabel={timeline.inFlight ? null : pileState.current}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    bounceTrigger={bounceTrigger}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
-                    flinchTrigger={flinchTrigger}
-                    flinchTier={flinchTier}
+                    landing={landingSignal}
                     roomW={frame.fieldRoomW}
                     scale={scale}
+                    note={pileNote}
                   />
                 )}
 
                 {/* Centred on the same point the pile draws at, so the burst
                     rings the impact rather than the middle of the table box. */}
-                <BombBurst trigger={boomTrigger} scale={scale} flareKind={flareKind} />
+                <BombBurst landing={landingSignal} scale={scale} />
 
                 {/* Beside the pile, not beside the table: the flight has to
                     settle exactly where PlayedPile then redraws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
-                {exchangeAnnouncement?.data && exchangeTrips && (
-                  <ExchangeAnnouncement
-                    visible={exchangeAnnouncement.visible}
-                    winnerName={exchangeAnnouncement.data.winnerName}
-                    loserName={exchangeAnnouncement.data.loserName}
-                    bothJokersException={exchangeAnnouncement.data.bothJokersException}
-                    cardGiven={exchangeAnnouncement.data.cardGiven}
-                    cardReceived={exchangeAnnouncement.data.cardReceived}
-                    toWinner={exchangeTrips.toWinner}
-                    toLoser={exchangeTrips.toLoser}
-                    landed={tradedCardsLanded}
-                    scale={scale * FIELD_SCALE}
-                    onDismiss={exchangeAnnouncement.onDismiss}
-                    holdMsOverride={exchangeAnnouncement.holdMsOverride}
+                {trade && (
+                  <ExchangeLegs
+                    key={stages.key}
+                    trade={trade}
+                    stages={stages}
+                    geometry={seatGeometry}
+                    handOrigins={handOrigins}
+                    go={!deal.dealing}
+                    viewerSeat={spectating ? null : viewerSeat}
+                    scale={scale}
+                    flash={ringFlash}
+                    lifted={lifted}
+                    onStage={onTradeStage}
+                    onReady={onTradeReady}
+                    onDismiss={exchangeAnnouncement?.onDismiss ?? NO_DISMISS}
+                    holdMsOverride={exchangeAnnouncement?.holdMsOverride}
                   />
                 )}
 
-                {deal.cards.length > 0 && <DealFlights cards={deal.cards} scale={scale} />}
+                {deal.cards.length > 0 && (
+                  <DealFlights
+                    key={deal.cards[0].key}
+                    cards={deal.cards}
+                    scale={scale}
+                    clock={deal.clock}
+                    startMs={deal.startMs}
+                    endMs={deal.endMs}
+                    onStarted={dealCue}
+                    onLanded={deal.onLanded}
+                  />
+                )}
 
-                {flyInfo && (
+                {flights.map((f) => (
                   <FlyingCards
-                    key={flyInfo.key}
-                    cards={flyInfo.cards}
-                    direction={flyInfo.dir}
-                    origin={flyInfo.origin}
-                    onDone={onFlightDone}
-                    roomW={frame.fieldRoomW}
+                    key={f.key}
+                    cards={f.cards}
+                    flight={f.spec}
+                    landing={f.landing}
+                    signal={landingSignal}
+                    onStart={onFlightStart}
+                    onContact={onFlightContact}
+                    onEnd={onFlightDone}
+                    onClock={onFlightClock}
+                    bombClock={bombClock}
                     scale={scale}
                   />
-                )}
+                ))}
 
                 {sweep && (
                   <SweepCards
@@ -1270,6 +1330,7 @@ export function GameTable({
                     origin={sweep.origin}
                     roomW={frame.fieldRoomW}
                     scale={scale}
+                    onDone={endSweep}
                   />
                 )}
               </View>
@@ -1278,10 +1339,9 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={opponents.right.seat === shownTurnIndex}
+                    isActive={!trade && opponents.right.seat === shownTurnIndex}
                     side="right"
-                    cardCount={handCountOf(opponents.right.player)}
-                    departing={departingSide === "right" ? departingCount : 0}
+                    cardCount={seatCount(opponents.right.seat, opponents.right.player)}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}
                     passed={passed.includes(opponents.right.seat)}
                     vacated={vacatedOf(opponents.right.player)}
@@ -1289,6 +1349,7 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
+                    mark={seatMark(opponents.right.seat)}
                   />
                 )}
               </View>
@@ -1350,13 +1411,16 @@ export function GameTable({
                     roomW={frame.handRoomW}
                     isMyTurn={isMyTurn && !isFinished}
                     scale={scale}
-                    // Off whenever a card is held back: the fan is drawn without
-                    // it, but `arrange` moves within the whole hand, so a drop
-                    // would land a slot from where the finger let go.
-                    onReorder={spectating || withheldId !== undefined ? undefined : arrange}
+                    // Off whenever a card is held back or lent: the fan is drawn
+                    // without the state's hand, but `arrange` moves within it, so
+                    // a drop would land a slot from where the finger let go.
+                    onReorder={spectating || holding ? undefined : arrange}
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
+                    receivedId={receivedId}
+                    lifted={lifted}
                     handBottomPad={frame.bottomPad}
+                    onOrigins={onHandOrigins}
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).
@@ -1370,7 +1434,7 @@ export function GameTable({
 
               {!spectating && (
                 <GiocaButton
-                  lit={exchangeIsMine || (isMyTurn && !isFinished)}
+                  lit={exchangeIsMine || (isMyTurn && !isFinished && !exchange.active)}
                   label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
                   rejectX={giocaRejectX}
                   flashStyle={giocaFlashStyle}

@@ -6,14 +6,15 @@
 // that a filtered row got for free: an ungiveable card has to *say* it is
 // ungiveable rather than simply be absent, and the confirm has to be the table's
 // own key rather than a second one floating over it.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
+import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { getValidGivebackCards } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
@@ -29,6 +30,7 @@ const card = (rank: Rank, suit: Suit): Card => ({
   isJoker: false,
 });
 
+const OPENS = choiceOpensAt(false);
 const WINNER = 'Ana';
 const LOSER = 'Bea';
 const BYSTANDER = 'Cesk';
@@ -49,7 +51,7 @@ const seat = (id: string, name: string, hand: Card[]): Player => ({
   type: 'human',
 });
 
-const state = (): GameState => ({
+const state = (exchange = true): GameState => ({
   players: [
     seat('player_0', WINNER, WINNER_HAND),
     seat('player_1', LOSER, [card('4', 'clubs')]),
@@ -64,21 +66,18 @@ const state = (): GameState => ({
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
-  exchangePhase: {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser: FROM_LOSER,
-    bothJokersException: false,
-  },
+  exchangePhase: exchange
+    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, bothJokersException: false }
+    : undefined,
 });
 
 const noop = () => {};
 
-const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void }) => (
+const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void; onExchangeReady?: () => void; exchange?: boolean }) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={state()}
+      gameState={state(opts.exchange)}
+      onExchangeReady={opts.onExchangeReady}
       viewerSeat={opts.viewerSeat}
       selectedIds={[]}
       onSelectCard={noop}
@@ -97,10 +96,50 @@ const press = async (node: Parameters<typeof fireEvent.press>[0]) => {
     fireEvent.press(node);
   });
 };
+const step = async (ms: number) => {
+  for (let at = 0; at < ms; at += 16) await act(async () => jest.advanceTimersByTime(16));
+};
+const open = () => step(OPENS + 32);
 
 describe('the winner picks from their own hand', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('takes no pick and gives nothing before the choice opens', async () => {
+    const onExchangeGive = jest.fn<(id: string) => void>();
+    const r = await render(table({ viewerSeat: 0, onExchangeGive }));
+    await step(OPENS - 64);
+    await press(handCard(FIVE));
+    await press(screen.getByTestId('btn-gioca'));
+    expect(onExchangeGive).not.toHaveBeenCalled();
+
+    await step(128);
+    await press(handCard(FIVE));
+    await press(screen.getByTestId('btn-gioca'));
+    expect(onExchangeGive).toHaveBeenCalledWith(FIVE.id);
+    await r.unmount();
+  });
+
+  it("opens a later manche's choice on its own receive, though the pairing and the card repeat", async () => {
+    const onExchangeReady = jest.fn();
+    const r = await render(table({ viewerSeat: 0, onExchangeReady }));
+    await open();
+    expect(screen.getByTestId('exchange-prompt')).toBeTruthy();
+    await act(async () => r.rerender(table({ viewerSeat: 0, onExchangeReady, exchange: false })));
+    await act(async () => r.rerender(table({ viewerSeat: 0, onExchangeReady })));
+    expect(screen.queryByTestId('exchange-prompt')).toBeNull();
+
+    await step(OPENS - 64);
+    expect(screen.queryByTestId('exchange-prompt')).toBeNull();
+    expect(onExchangeReady).toHaveBeenCalledTimes(1);
+    await step(128);
+    expect(onExchangeReady).toHaveBeenCalledTimes(2);
+    await r.unmount();
   });
 
   it('shows every card the winner holds, not only the ones they may give', async () => {
@@ -117,6 +156,7 @@ describe('the winner picks from their own hand', () => {
 
   it('lets the giveable cards be pressed and refuses the rest by name', async () => {
     const r = await render(table({ viewerSeat: 0 }));
+    await open();
     const giveable = new Set(getValidGivebackCards(WINNER_HAND, FROM_LOSER.id).map((c) => c.id));
 
     // The engine's own answer, not a rank range restated here: the fan's
@@ -140,6 +180,7 @@ describe('the winner picks from their own hand', () => {
   it('holds the pick until GIOCA is pressed, and gives the last card chosen', async () => {
     const onExchangeGive = jest.fn<(id: string) => void>();
     const r = await render(table({ viewerSeat: 0, onExchangeGive }));
+    await open();
 
     // The floor: a confirm that fired unconditionally would satisfy everything
     // below, so with nothing picked it has to do nothing.
@@ -160,6 +201,7 @@ describe('the winner picks from their own hand', () => {
 
   it('renames GIOCA for the exchange, so the key does not say PLAY', async () => {
     const r = await render(table({ viewerSeat: 0 }));
+    await open();
     const name = () => screen.getByTestId('btn-gioca').props.accessibilityLabel;
 
     expect(name()).toBe(t('exchange.confirmA11yWaiting', { name: LOSER }));
@@ -176,14 +218,31 @@ describe('the winner picks from their own hand', () => {
   it('puts the card the loser gave on the felt exactly once', async () => {
     const r = await render(table({ viewerSeat: 0 }));
 
-    // Twice would mean the prompt and the hand are both drawing it — the card
-    // is the loser's, and it is not in the winner's hand yet.
+    // Twice would mean the flier and the hand are both drawing it.
     expect(screen.queryAllByLabelText(spoken(FROM_LOSER))).toHaveLength(0);
     expect(
-      screen.getAllByTestId('exchange-received-card', { includeHiddenElements: true })
+      screen.getAllByTestId('exchange-flier-to-winner', { includeHiddenElements: true })
     ).toHaveLength(1);
 
     await r.unmount();
+  });
+});
+
+describe('the choice opens once the received card has landed and been read', () => {
+  it.each([
+    ['the winner', 0, t('exchange.chipGive', { name: LOSER })],
+    ['the loser', 1, t('exchange.waitingForYou', { winner: WINNER })],
+    ['a seat outside the exchange', 2, t('exchange.watching', { winner: WINNER, loser: LOSER })],
+  ])('names the choice to %s only then', async (_who, viewerSeat, line) => {
+    jest.useFakeTimers();
+    const r = await render(table({ viewerSeat }));
+    await step(OPENS - 64);
+    expect(screen.queryByTestId('exchange-prompt')).toBeNull();
+    expect(screen.queryAllByText(line, { includeHiddenElements: true })).toHaveLength(0);
+    await step(128);
+    expect(within(screen.getByTestId('exchange-prompt')).queryAllByText(line, { includeHiddenElements: true }).length).toBeGreaterThan(0);
+    await r.unmount();
+    jest.useRealTimers();
   });
 });
 
@@ -192,37 +251,9 @@ describe('the other seats can read the exchange from the table', () => {
   // requirement in the owner's words: "as clear as possible for all the players
   // involved not only the 2 involved in the exchange". A prompt only the winner
   // can see fails that before any card moves.
-  // The announcement is one sentence: what the card is, then who is choosing.
-  // Only `A11yStatus` reaches a text query — the line on the felt is
-  // `a11yHidden`, so it is the same sentence read once, not twice.
-  const announcement = (ending: string) =>
-    screen.queryAllByText(new RegExp(`${ending.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
-
-  it('tells the loser who is choosing for them', async () => {
-    const r = await render(table({ viewerSeat: 1 }));
-
-    expect(screen.getByTestId('exchange-prompt')).toBeTruthy();
-    expect(announcement(t('exchange.waitingForYou', { winner: WINNER }))).toHaveLength(1);
-    // The loser gave the card, so the sentence is theirs, not the winner's.
-    expect(
-      announcement(t('exchange.waitingForYou', { winner: WINNER }))[0].props.children
-    ).toContain(
-      t('exchange.receivedCardA11yLabelGiven', {
-        name: WINNER,
-        card: spoken(FROM_LOSER),
-      })
-    );
-
-    await r.unmount();
-  });
-
-  it('tells a seat outside the exchange who is choosing for whom', async () => {
+  it('does not offer a seat outside the exchange a confirm for somebody else\'s decision', async () => {
     const r = await render(table({ viewerSeat: 2 }));
 
-    expect(
-      announcement(t('exchange.watching', { winner: WINNER, loser: LOSER }))
-    ).toHaveLength(1);
-    // …and does not offer them a confirm for somebody else's decision.
     expect(screen.getByTestId('btn-gioca').props.accessibilityLabel).not.toBe(
       t('exchange.confirmA11yWaiting', { name: LOSER })
     );
@@ -241,7 +272,7 @@ describe('the other seats can read the exchange from the table', () => {
     const r = await render(table({ viewerSeat }));
 
     expect(
-      screen.getAllByTestId('exchange-received-card', { includeHiddenElements: true })
+      screen.getAllByTestId('exchange-flier-to-winner', { includeHiddenElements: true })
     ).toHaveLength(1);
 
     await r.unmount();

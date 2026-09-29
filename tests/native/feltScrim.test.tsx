@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
 import { GameTable } from '@/components/GameTable';
-import { impactDelayMs } from '@/components/flightPhysics';
+import { farthest, frameOfFirst } from './helpers/landing';
 import { setMotionPreference } from '@/lib/accessibility';
 import { setScreenShakeEnabled } from '@/lib/screenShake';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
@@ -79,43 +79,46 @@ describe('the felt dims before a bomb lands', () => {
     await act(async () => setScreenShakeEnabled(true));
   });
 
-  it('rises toward 0.25 across the flight and is gone at the impact', async () => {
+  it('rises toward 0.25 across the flight and is gone on the contact frame', async () => {
     const r = await render(table(stateAfter(BOMB)));
-    await advance(impactDelayMs(false) * 0.8);
-    const mid = scrimOpacity();
-    expect(mid).toBeGreaterThan(0);
-    expect(mid).toBeLessThan(0.25);
-
-    await advance(impactDelayMs(false) * 0.2 - 2);
-    expect(scrimDarkness()).toBeGreaterThan(0.24);
-    expect(scrimDarkness()).toBeLessThanOrEqual(0.25);
-
-    await advance(3);
-    expect(scrimOpacity()).toBe(0);
+    const dark: number[] = [];
+    const { frame, drawn } = await frameOfFirst(r, () => {
+      dark.push(scrimDarkness());
+      return dark.length > 1 && dark.at(-1) === 0 && dark.at(-2)! > 0;
+    });
+    expect(drawn[frame]).toBeLessThanOrEqual(1);
+    expect(drawn[frame - 1]).toBeGreaterThan(1);
+    expect(dark.some((d) => d > 0 && d < 0.2)).toBe(true);
+    expect(dark[frame - 1]).toBeGreaterThan(0.2);
+    expect(Math.max(...dark)).toBeLessThanOrEqual(0.25);
     await r.unmount();
   });
 
   it('stays dark for a play that is not a bomb', async () => {
     const r = await render(table(stateAfter(SINGLE)));
-    await advance(impactDelayMs(false) * 0.8);
-    expect(scrimOpacity()).toBe(0);
+    const seen: number[] = [];
+    await frameOfFirst(r, () => {
+      seen.push(scrimOpacity());
+      return farthest(r) <= 1;
+    });
+    expect(Math.max(...seen)).toBe(0);
     await r.unmount();
   });
 
   it('with screen shake off, the bomb still flies and still throws its sparks', async () => {
     setScreenShakeEnabled(false);
     const r = await render(table(stateAfter(BOMB)));
-    expect(screen.getByTestId('flying-cards')).toBeTruthy();
-    await advance(impactDelayMs(false) + 1);
+    expect(screen.getByTestId('flying-cards', { includeHiddenElements: true })).toBeTruthy();
+    await frameOfFirst(r, () => farthest(r) <= 1);
     await advance(90);
-    expect((getAnimatedStyle(screen.getByTestId('spark-0')) as { opacity?: number }).opacity).toBeGreaterThan(0);
+    expect((getAnimatedStyle(screen.getByTestId('spark-0', { includeHiddenElements: true })) as { opacity?: number }).opacity).toBeGreaterThan(0);
     await r.unmount();
   });
 
   it('stays out under reduced motion', async () => {
     setMotionPreference('on');
     const r = await render(table(stateAfter(BOMB)));
-    await advance(impactDelayMs(true) * 0.8);
+    await advance(48);
     expect(scrimOpacity()).toBe(0);
     await r.unmount();
   });

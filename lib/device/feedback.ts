@@ -5,7 +5,7 @@ import { SETTINGS_KEY } from "@/lib/storageKeys";
 import { traceOnset } from "@/lib/e2eTrace";
 import { audioState, cut, durationMs, engineStats, music, play, ramp, setBusTrim, startAudio } from "./audioEngine";
 import { pulse, setHapticsGate, tap, type TapHaptic } from "./hapticsEngine";
-import { LANDING_PULSES, landingPulsesFor, mix, type Moment, type Played, type PulseStep } from "./moments";
+import { LANDING_PULSES, cueFor, landingPulsesFor, mix, type Moment, type Played, type PulseStep } from "./moments";
 import type { SoundId } from "./soundAssets";
 import type { TrackId } from "./musicTracks";
 
@@ -64,11 +64,13 @@ function trace(kind: "sound" | "haptic", name: string, at: number, now: number):
 }
 
 // A given `at` goes through untouched, past or not: the engine drops what is more than one IO buffer late. Only an absent `at` means now.
+// A cue whose haptic leads it moves back until that lead is still ahead, or the lead is dropped as late.
 function fire(moments: Moment[], at: number | undefined, now: number): void {
-  const out = mix(moments, at ?? now, played);
+  const out = mix(moments, at ?? now, played, now);
   played = out.played;
+  for (const id of out.withdrawn) cut(id);
   const lead = Math.max(0, ...out.haptics.map((h) => -h.atMs));
-  const t0 = at ?? (lead > 0 ? now + lead : undefined);
+  const t0 = lead > 0 ? Math.max(at ?? now, now + lead) : at;
   if (out.sound && soundVolume > 0) {
     play(out.sound.id, { at: t0, bus: out.sound.bus });
     trace("sound", out.sound.id, t0 ?? now, now);
@@ -127,6 +129,17 @@ export function uiFeedback(kind: UiFeedbackKind): void {
 }
 
 export function silence(id: "clockRunningOut"): void {
+  cut(id);
+}
+
+/** Takes back a cue sent ahead for `kind` that has yet to start; one already sounding plays out. Its haptics cannot be taken back. */
+export function withdraw(kind: "exchange" | "deal"): void {
+  const now = performance.now();
+  const ahead = (at: number | undefined) => at !== undefined && at > now;
+  pending = pending.filter((p) => !(ahead(p.at) && p.moments.every((m) => m.kind === kind)));
+  const id = cueFor({ kind }).sound;
+  if (!id || !played.some((p) => p.id === id && ahead(p.at))) return;
+  played = played.filter((p) => !(p.id === id && ahead(p.at)));
   cut(id);
 }
 

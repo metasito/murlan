@@ -16,6 +16,9 @@ import { makeMutable } from "react-native-reanimated";
 import { BombBurst, LampLift } from "@/components/table/moments";
 import { SPARK_COUNT } from "@/components/flightPhysics";
 import { restingLamp } from "@/components/table/lampRig";
+import { NO_LANDING } from "@/components/table/useFlightClock";
+
+const IDLE = makeMutable(NO_LANDING);
 
 /** The prototype's own figure (#765's issue body). */
 const NODE_BUDGET = 24;
@@ -72,7 +75,7 @@ function alphaOf(color: unknown): number {
 
 describe("the bomb burst's own node budget (#765)", () => {
   it("stays within the prototype's ~24-node figure", async () => {
-    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+    const r = await render(<BombBurst landing={IDLE} scale={1} />);
 
     const count = countNodes(r.toJSON());
     expect(count).toBeLessThanOrEqual(NODE_BUDGET);
@@ -82,20 +85,8 @@ describe("the bomb burst's own node budget (#765)", () => {
     await r.unmount();
   });
 
-  it("the spark count does not scale with which flare fired — the tier decides whether, not how many", async () => {
-    const brief = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
-    const briefCount = countNodes(brief.toJSON());
-    await brief.unmount();
-
-    const settle = await render(<BombBurst trigger={1} scale={1} flareKind="settle" />);
-    const settleCount = countNodes(settle.toJSON());
-    await settle.unmount();
-
-    expect(briefCount).toBe(settleCount);
-  });
-
   it("the flare is layered, not a single flat-filled disc — a second critique's own finding", async () => {
-    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+    const r = await render(<BombBurst landing={IDLE} scale={1} />);
 
     const flare = findByTestID(r.toJSON(), "bomb-flare");
     const layers = countNodes(flare?.children);
@@ -107,7 +98,7 @@ describe("the bomb burst's own node budget (#765)", () => {
   });
 
   it("the flare's own layers actually paint something, not a transparent fill", async () => {
-    const r = await render(<BombBurst trigger={1} scale={1} flareKind="brief" />);
+    const r = await render(<BombBurst landing={IDLE} scale={1} />);
 
     const flare = findByTestID(r.toJSON(), "bomb-flare");
     const layers = directChildren(flare);
@@ -121,7 +112,7 @@ describe("the bomb burst's own node budget (#765)", () => {
   });
 
   it("the lamp lift's own layers actually paint something, not a transparent fill", async () => {
-    const r = await render(<LampLift trigger={1} scale={1} rig={{ lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 }} />);
+    const r = await render(<LampLift landing={IDLE} scale={1} rig={{ lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 }} />);
 
     const lift = findByTestID(r.toJSON(), "lamp-lift");
     const layers = directChildren(lift);

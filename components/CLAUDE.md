@@ -16,8 +16,9 @@ Verify against source before changing any.
   a width parameter instead of importing it. A source scan pins this
   (`tests/ui-rules/layoutConstantsPinned.test.ts`), since pinning the value cannot find a copy
   holding the same number.
-- **Impact feedback is timed to the card landing**, not the throw: derive the delay only from
-  `impactDelayMs()`, so animation and feedback cannot drift apart.
+- **Derive every landing consequence from the flight's contact**: pixels react to the
+  `LandingSignal` on the contact frame, sounds and state read `landsAt` (`tableTimeline.ts`).
+  `tests/ui-rules/oneClock.test.ts` refuses a timer that waits out a motion token.
 - **The table's scale comes from the window's own short edge**, never that minus the safe-area
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
   the home indicator.

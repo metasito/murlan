@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, jest } from '@jest/globals';
+import { afterEach, beforeAll, beforeEach, jest } from '@jest/globals';
 
 import { assertWholeNumbers } from './fabricIntProps';
 
@@ -10,7 +10,13 @@ require('react-native-reanimated').setUpTests?.();
 
 // Each UI job here is its own setTimeout, so a test that swaps back to real timers drops a
 // frame callback's queued registration and then runs its unregistration against nothing.
-type FrameRegistry = { frameCallbackRegistry: Map<number, unknown>; manageStateFrameCallback(id: number, on: boolean): void };
+type FrameRegistry = {
+  frameCallbackRegistry: Map<number, unknown>;
+  activeFrameCallbacks: Set<number>;
+  nextCallId: number;
+  previousFrameTimestamp: number | null;
+  manageStateFrameCallback(id: number, on: boolean): void;
+};
 let frameRegistry: FrameRegistry | undefined;
 Object.defineProperty(globalThis, '_frameCallbackRegistry', {
   configurable: true,
@@ -22,6 +28,18 @@ Object.defineProperty(globalThis, '_frameCallbackRegistry', {
     };
     frameRegistry = registry;
   },
+});
+// Reanimated builds that registry at load, as a job on the real clock: one turn of it here, or a
+// suite that fakes timers first queues its registrations ahead of the registry on the fake one.
+const realSetTimeout = setTimeout;
+beforeAll(() => new Promise<void>((resolve) => realSetTimeout(resolve, 0)));
+// A test's last unregistration and frame loop die with its fake clock; a callback left active keeps
+// the registry from starting the next test's loop, which it does only on going from none to one.
+beforeEach(() => {
+  if (!frameRegistry) return;
+  frameRegistry.activeFrameCallbacks.clear();
+  frameRegistry.nextCallId += 1;
+  frameRegistry.previousFrameTimestamp = null;
 });
 
 // AsyncStorage is a native module with no JS fallback; its own in-memory mock

@@ -12,6 +12,7 @@ import { offlineGameSave } from "./offlineSeed";
 import { skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
+  diffFlight,
   diffPillAtProgress,
   diffTraces,
   movingFields,
@@ -24,7 +25,6 @@ import {
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
-import { handOffDelayMs, impactDelayMs } from "../../../components/flightPhysics";
 
 const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -84,8 +84,13 @@ const TRICK_HANDS = [
   ["3_clubs", "3_diamonds", "4_diamonds", "4_spades", "5_hearts", "5_spades", "7_spades", "8_spades", "9_diamonds", "10_clubs", "J_spades", "K_hearts", "2_spades"],
   ["9_hearts", "9_spades", "3_spades", "4_hearts", "6_clubs", "7_diamonds", "8_clubs", "10_diamonds", "J_clubs", "Q_clubs", "K_diamonds", "A_hearts", "2_diamonds"],
 ];
-const pairsTable = (page: Page, baseURL: string) =>
+export const pairsTable = (page: Page, baseURL: string) =>
   seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, TRICK_HANDS));
+
+/** Every opponent below its fan cap (top 7, sides 5), so a fan's centre moves with its count; a bot leads. */
+const BELOW_CAPS = [TRICK_HANDS[0], TRICK_HANDS[1].slice(0, 4), TRICK_HANDS[2].slice(0, 5), TRICK_HANDS[3].slice(0, 2)];
+export const belowCapsTable = (page: Page, baseURL: string) =>
+  seatTable(page, baseURL, offlineGameSave(4, 13, 1, MOCKUP_SCORES, BELOW_CAPS));
 
 const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
   await skiaOnSoftware(page);
@@ -107,18 +112,18 @@ const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
   await resume.click({ force: true });
 };
 
-const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
+export const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
 
-const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
+export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
 
-const playLowest = (cards: number) => async (page: Page) => {
+export const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
   for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
   await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
 };
 
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
-const TRICK_LANDINGS = [1584, 3040, 5792];
+const MOCKUP_LANDINGS = [1584, 3040, 5792];
 
 const MOMENTS: Moment[] = [
   {
@@ -139,47 +144,45 @@ const MOMENTS: Moment[] = [
     // Each 750 ms after a hand-off, where the lamp's glide covers under 2 pt a frame.
     checkpoints: [1040, 2496, 4000, 5296, 6704],
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
-    mockupScript: "Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });",
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      const hand = handoff;
+      handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
     seatOnMove: "you",
-    appTrigger: heldTurnTable,
+    appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["lamp", "level"],
+    fields: ["onset", "lamp", "level"],
     regions: [],
+    onsets: ["moment:handoff"],
     actions: [
-      { atMs: 1750 - handOffDelayMs(false), app: playLowest(1) },
+      { atMs: 1150, app: playLowest(2) },
       { atMs: 3250, app: pass },
       { atMs: 4550, app: pass },
       { atMs: 5950, app: pass },
     ],
   },
   {
-    // The app holds 50 ms after contact where the mockup holds 175–225, so its landings cannot align
-    // in the run whose hand-offs do; this one aligns on the landings and holds no lamp.
+    // The same throws as `trick`, held on the flight and the pile rather than the lamp.
     key: "trick-landings",
     chapter: "trick",
     windowMs: 6992,
-    checkpoints: [1040, ...TRICK_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
+    checkpoints: [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       lamp.m.length = 0;
-      ember = () => {};
-      const wobble = landWobble;
-      landWobble = (g) => { window.__parityOnsets.push("moment:landing"); wobble(g); };`,
+      ember = () => {};`,
     seatOnMove: "you",
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "brightness"],
+    fields: ["flight", "live", "dropped", "brightness"],
     regions: ["pile"],
-    // At rest only: after the onset the app's cards are still on their arc and its lamp leaves ~125 ms
-    // early (#1259 rules on both), and the mockup's nines are down before the first landing's rest.
-    regionsAt: [1040, ...TRICK_LANDINGS.slice(1).map((t) => t + 1200)],
-    onsets: ["moment:landing", "sound:combo"],
+    // At rest only: the mockup's nines are down before the first landing's rest.
+    regionsAt: [1040, ...MOCKUP_LANDINGS.slice(1).map((t) => t + 1200)],
     actions: [
-      { atMs: TRICK_LANDINGS[0] - impactDelayMs(false), app: playLowest(2) },
-      { atMs: TRICK_LANDINGS[1] - impactDelayMs(false), app: botMove },
+      { atMs: 1150, app: playLowest(2) },
+      { atMs: 2600, app: botMove },
       { atMs: 4150, app: pass },
-      { atMs: TRICK_LANDINGS[2] - impactDelayMs(false), app: botMove },
+      { atMs: 5350, app: botMove },
     ],
     // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
     variants: ["skia"],
@@ -230,6 +233,12 @@ const MOCKUP_SAMPLE = `(() => {
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },
+    flight: Math.max(0, ...[...document.querySelectorAll("#pile .grp.cur .card")].map((c) => {
+      const t = getComputedStyle(c).transform;
+      if (!t || t === "none") return 0;
+      const v = t.slice(t.indexOf("(") + 1, -1).split(",").map(Number);
+      return Math.hypot(v[4], v[5]);
+    })),
   };
 })()`;
 
@@ -265,7 +274,7 @@ async function strip(
   m: Moment,
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
-  stepTo: (t: number) => Promise<TraceFrame | null>
+  stepTo: (t: number, ms: number) => Promise<TraceFrame | null>
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
@@ -276,8 +285,16 @@ async function strip(
   const due = [...(m.actions ?? [])];
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
     const t = startMs + k * STEP_MS;
-    while (due.length && due[0].atMs <= t) await act(due.shift()!);
-    const frame = await stepTo(t);
+    // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
+    let ran = 0;
+    while (due.length && due[0].atMs <= t) {
+      const action = due.shift()!;
+      const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
+      if (lead > 0) await step(page, lead);
+      ran += Math.max(0, lead);
+      await act(action);
+    }
+    const frame = await stepTo(t, STEP_MS - ran);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
     const stripped = k % STRIP_STEPS === 0;
@@ -318,8 +335,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
-  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async () => {
-    await step(page);
+  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
+    await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   });
   await page.context().close();
@@ -407,8 +424,8 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
   const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t) => {
-    if (t > preRollMs) await step(page);
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t, ms) => {
+    if (t > preRollMs) await step(page, ms);
     return tracedAt(page, onset + t - preRollMs);
   });
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
@@ -441,7 +458,8 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
   const traced = diffTraces(heldOnsets(runs.mockup.trace), heldOnsets(runs.app.trace), m.checkpoints).filter(
     (f) => m.mode === "determinism" || held.has(f.field)
   );
-  const failures = [...traced, ...pillFailures];
+  const flown = held.has("flight") ? diffFlight(runs.mockup.trace, runs.app.trace) : [];
+  const failures = [...traced, ...flown, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));

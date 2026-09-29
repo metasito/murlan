@@ -2,6 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  diffFlight,
   diffPillAtProgress,
   diffTraces,
   movingFields,
@@ -24,6 +25,7 @@ function reference(): Trace {
       lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000 },
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
       scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
+      flight: 0,
     });
   }
   const regions = CHECKPOINTS.map((t) => ({
@@ -129,6 +131,7 @@ describe("diffTraces", () => {
       shakeEndMs: STEP_MS,
       brightness: 6,
       pillPt: 1,
+      contactPt: 1,
     });
   });
 });
@@ -174,5 +177,30 @@ describe("movingFields", () => {
       for (const r of tr.regions) r.regions = { ...tr.regions[0].regions };
     });
     assert.deepEqual(movingFields(still), new Set());
+  });
+});
+
+describe("the flight field", () => {
+  const withFlight = (start: number, contact: number, from = 120): Trace => {
+    const t = reference();
+    for (const f of t.frames) {
+      f.flight = f.t < start ? 0 : f.t >= contact ? 0.5 : from * (1 - (f.t - start) / (contact - start)) + 0.6;
+    }
+    return t;
+  };
+
+  test("the same flight on both sides passes", () => {
+    assert.deepEqual(diffFlight(withFlight(32, 336), withFlight(32, 336)), []);
+  });
+
+  test("an app flight that touches down 32 ms late fails", () => {
+    const failures = diffFlight(withFlight(32, 336), withFlight(32, 368));
+    assert.ok(failures.some((f) => f.field === "flight" && /contact/.test(f.message)), JSON.stringify(failures));
+  });
+
+  test("a flight on one side only fails", () => {
+    const none = reference();
+    for (const f of none.frames) f.flight = 0;
+    assert.ok(diffFlight(withFlight(32, 336), none).some((f) => /one side/.test(f.message)));
   });
 });

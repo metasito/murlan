@@ -50,7 +50,7 @@ const CODE_ICON = 15;
 const MODE_ICON = 13;
 
 /** Long enough to read as a confirmation rather than as a flicker. */
-const COPIED_FOR_MS = Motion.duration.dwell;
+const COPIED_FOR_MS = 1200;
 
 /**
  * How long the host waits before bots are offered at all. Not a `Motion` step

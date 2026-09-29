@@ -37,6 +37,7 @@ export interface MomentSpec<K extends MomentKind> {
 export interface Played {
   at: number;
   priority: number;
+  id: SoundId;
 }
 
 export const PILE_UP_WINDOW_MS = 120;
@@ -110,13 +111,27 @@ export function cueFor(m: Moment): Cue {
   return specOf(m).cue(m);
 }
 
-export function mix(batch: Moment[], at: number, played: Played[]): { sound: { id: SoundId; bus: Bus } | null; haptics: Haptic[]; played: Played[] } {
+export function mix(
+  batch: Moment[],
+  at: number,
+  played: Played[],
+  now = at
+): { sound: { id: SoundId; bus: Bus } | null; haptics: Haptic[]; withdrawn: SoundId[]; played: Played[] } {
   const ranked = batch.map((m) => ({ spec: specOf(m), cue: cueFor(m) })).sort((a, b) => b.spec.priority - a.spec.priority);
   const recent = played.filter((p) => p.at >= at - PILE_UP_WINDOW_MS);
+  const near = recent.filter((p) => Math.abs(p.at - at) < PILE_UP_WINDOW_MS);
   const top = ranked.find((r) => r.cue.sound !== null);
-  const masked = !!top && !top.spec.input && recent.some((p) => p.priority > top.spec.priority && Math.abs(p.at - at) < PILE_UP_WINDOW_MS);
+  // A started sound cannot be taken back, so it holds its window; one still waiting yields to a higher one.
+  const masked = !!top && !top.spec.input && near.some((p) => p.priority > top.spec.priority || p.at <= now);
   const sound = top?.cue.sound && !masked ? { id: top.cue.sound, bus: top.cue.bus } : null;
+  const withdrawn = sound && top ? near.filter((p) => p.priority < top.spec.priority && p.at > now) : [];
   const pulsed = batch.some((m) => m.kind === "landing" && landingPulsesFor(m).length > 0);
   const haptics = pulsed ? [] : (ranked.find((r) => r.cue.haptics.length > 0)?.cue.haptics ?? []);
-  return { sound, haptics, played: sound && top ? [...recent, { at, priority: top.spec.priority }] : recent };
+  const kept = recent.filter((p) => !withdrawn.includes(p));
+  return {
+    sound,
+    haptics,
+    withdrawn: withdrawn.map((p) => p.id),
+    played: sound && top && !top.spec.input ? [...kept, { at, priority: top.spec.priority, id: sound.id }] : kept,
+  };
 }

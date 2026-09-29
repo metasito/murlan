@@ -2,14 +2,14 @@
 //
 // The tier→trauma mapping and the decay math are asserted directly against
 // the pure functions in `tests/ui-rules/flightPhysics.test.ts` — a `useAnimatedStyle`
-// read off a rendered node freezes at mount (`settleForMotion`, same file,
-// documents the trap) and cannot pin a later reactive change. This only pins
+// read off a rendered node freezes at mount and cannot pin a later reactive change. This only pins
 // the shape `shakeStyle` starts at rest.
 import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
-import Animated from "react-native-reanimated";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import Animated, { makeMutable } from "react-native-reanimated";
+import { useFeedbackOnTimeline } from "./helpers/landing";
+import { NO_LANDING } from "@/components/table/useFlightClock";
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   return Object.assign({}, ...(Array.isArray(style) ? style.filter(Boolean) : [style]));
@@ -33,10 +33,11 @@ const idleState = () => ({
   handScores: {},
   viewerId: undefined,
   scale: 1,
+  landing: makeMutable(NO_LANDING),
 });
 
 function ShakeProbe() {
-  const { shakeStyle } = useTableFeedback(idleState());
+  const { shakeStyle } = useFeedbackOnTimeline(idleState());
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
 }
 

@@ -294,7 +294,8 @@ export const sq: Record<keyof typeof en, string> = {
   "reactionLayer.emoji.crown": "kurorë",
 
   // ----------------------------------------------------------------- exchange.*
-  "exchange.prompt": "{{name}} të dha këtë — jepi një",
+  "exchange.chipTitle": "Shkëmbim",
+  "exchange.chipGive": "Zgjidh një letër nga 3 në 10 për {{name}}",
   "exchange.noValidCards": "Asnjë letër nga 3 në 10 — jep më të ulëtën",
   "exchange.watching": "{{winner}} po zgjedh një letër për {{loser}}",
   "exchange.waitingForYou": "{{winner}} po zgjedh një letër për ty",
@@ -303,10 +304,9 @@ export const sq: Record<keyof typeof en, string> = {
   "exchange.confirmA11yWaiting": "Jepi një letër {{name}}. Zgjidh më parë një nga letrat e theksuara.",
   "exchange.cardA11yHint": "Zgjedh këtë letër për ta dhënë",
   "exchange.cardA11yNotGiveable": "Nuk mund të jepet — mund të jepet vetëm nga 3 në 10",
-  "exchange.receivedCardA11yLabel": "{{name}} të dha {{card}}",
-  "exchange.receivedCardA11yLabelGiven": "Ke dhënë {{card}} te {{name}}",
-  "exchange.receivedCardA11yLabelWatching": "{{loser}} i dha {{card}} {{winner}}",
-  "exchange.seatGot": "mori {{card}}",
+  "exchange.pileGives": "{{from}} i jep {{card}} {{to}}",
+  "exchange.pileYouGive": "Ti i jep {{card}} {{to}}",
+  "exchange.pileGivesYou": "{{from}} të jep {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",

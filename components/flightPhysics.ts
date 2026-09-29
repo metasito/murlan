@@ -4,12 +4,10 @@
 
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
+import { Spacing, Trauma } from "../lib/tokens.ts";
 import {
   HAND_ZONE_H,
   SEAT_DISC,
-  SIDE_SECTION_W,
-  displayedHandCount,
   seatDirection,
   seatGap,
   seatLabelH,
@@ -19,7 +17,13 @@ import {
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
 import { handCountOf } from "../shared/protocol.ts";
-import { CARD_W, CARD_H, FIELD_SCALE } from "./cardFaceModel.ts";
+import { FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { fanPoint } from "./fanGeometry.ts";
+import type { CardFrom } from "./flightPose.ts";
+import { restPoint, type LegPoints, type LegStage } from "../lib/game/exchangeTimeline.ts";
+
+/** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */
+export const FAN_CARD_SCALE = 0.4;
 
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
@@ -66,52 +70,12 @@ export function arrivingCard(
   return undefined;
 }
 
-// The card in flight is `travel` (#126) — 380 was Weighted, the alternative
-// the owner rejected in favour of this one. Derived rather than restated, so
-// the throw cannot drift back to a number the decision already turned down.
-export const FLIGHT_MS: number = Motion.duration.travel;
-/** Fraction of the flight after which the card is on the felt and settling. */
-export const LANDING_FRACTION = 0.82;
-
-/** Delay from a play being registered to the card touching the pile. */
-export function impactDelayMs(reduceMotion: boolean): number {
-  // Under reduced motion FlyingCards skips the flight, so there is nothing to
-  // wait for and the feedback fires immediately.
-  return reduceMotion ? 0 : Math.round(Motion.anticipate + FLIGHT_MS * LANDING_FRACTION);
-}
-
-/** How far a card loads against its direction of travel before the throw — #126's Balanced keyframe. */
-export const ANTICIPATE_PX = 3;
-
-/** Where the anticipation leg pulls a card that starts `(dx, dy)` from the pile: straight back, away from it. */
-export function anticipationOffset(dx: number, dy: number): { x: number; y: number } {
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return { x: 0, y: 0 };
-  return { x: (dx / len) * ANTICIPATE_PX, y: (dy / len) * ANTICIPATE_PX };
-}
-
-/** Delay from a play being registered to the turn it hands over being shown — the landing, then its hold. */
-export function handOffDelayMs(reduceMotion: boolean): number {
-  return impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion);
-}
-
-/**
- * The beat the table sits still on at contact, before the turn is handed on.
- *
- * A hold marks a landing, so it is asked of the landing rather than of
- * `reduceMotion`: reading the flag here as well is the second derivation the
- * two could drift apart on. One value; the ladder of beats is #101's.
- */
-export function landingHoldMs(reduceMotion: boolean): number {
-  return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
-}
-
 /** The mockup's `landWobble` (#1242), off the Motion scale: its sine rates are set against this span. */
 export const LAND_WOBBLE_MS = 400;
 
 /**
  * Its scale and rotation in degrees, `k` of the way through. Both are at rest at 0 and at 1, so
- * reduced motion needs only `k` held at 0 — `settleForMotion` is what keeps that true.
+ * reduced motion needs only `k` held at 0.
  */
 export function landWobble(k: number): { scale: number; rotate: number } {
   "worklet";
@@ -120,21 +84,6 @@ export function landWobble(k: number): { scale: number; rotate: number } {
     scale: 1 + 0.035 * Math.sin(50.8 * t) * Math.pow(1 - k, 3),
     rotate: 0.6 * Math.sin(40.8 * t) * Math.pow(1 - k, 2),
   };
-}
-
-/**
- * What the wobble's `k` should read the moment a flight's motion preference is
- * decided — at mount, and again if the player toggles reduced motion while a
- * flight is up. Reanimated's `cancelAnimation` (run by the effect's own
- * cleanup on that toggle) freezes a shared value at its current number
- * rather than resetting it, so the branch that skips the flight cannot rely
- * on `current` already being 0 by the time it runs: under reduced motion
- * this ignores `current` and always answers 0. Off reduced motion `current`
- * passes through unchanged — the flight's own animation is what actually
- * drives it from there.
- */
-export function settleForMotion(reduceMotion: boolean, current: number): number {
-  return reduceMotion ? 0 : current;
 }
 
 // ─── Screen shake ──────────────────────────────────────────────────────────────
@@ -193,6 +142,7 @@ export function landingTier(input: {
 
 /** The tier's peak trauma, or 0 outright when the player asked for less motion or no shake. */
 export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boolean): number {
+  "worklet";
   return reduceMotion || shakeOff ? 0 : TRAUMA_BY_TIER[tier];
 }
 
@@ -215,6 +165,7 @@ const FLINCH_BY_TIER: Record<ImpactTier, number> = {
 
 /** The tier's own flinch, or 0 outright when the player asked for less motion — the caller scales the answer by the table the way `shakeOffset` scales trauma. */
 export function flinchFor(tier: ImpactTier, reduceMotion: boolean): number {
+  "worklet";
   return reduceMotion ? 0 : FLINCH_BY_TIER[tier];
 }
 
@@ -268,6 +219,7 @@ interface ShakeAmplitude {
 
 /** Which peak a tier's shake reads — every tier but the bomb shares the default above. */
 export function shakeAmplitudeFor(tier: ImpactTier): ShakeAmplitude {
+  "worklet";
   if (tier === "bomb") {
     return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y, rotate: BOMB_SHAKE_ROTATE_DEG };
   }
@@ -317,6 +269,7 @@ export function shakeOffset(
 export type FlareKind = "none" | "brief" | "settle";
 
 export function flareKindFor(tier: ImpactTier): FlareKind {
+  "worklet";
   if (tier === "bomb") return "brief";
   if (tier === "partitaWon") return "settle";
   return "none";
@@ -334,6 +287,7 @@ export function sparksFor(tier: ImpactTier): boolean {
 
 /** Whether a tier's landing lifts the lamp rather than flaring it. */
 export function lampLiftFor(tier: ImpactTier): boolean {
+  "worklet";
   return tier === "mancheWon";
 }
 
@@ -378,42 +332,6 @@ export function sparkOffset(i: number, scale: number): SparkOffset {
   };
 }
 
-// ─── Deal ──────────────────────────────────────────────────────────────────────
-
-/** How long a dealt card takes from the pile to the farthest seat. */
-export const DEAL_FLIGHT_MS = Motion.duration.travel;
-
-/**
- * Each seat's flight time from the pile, given where each seat sits from it:
- * every card flies at one speed, the one that carries it to the farthest seat
- * in `DEAL_FLIGHT_MS`, so a nearer seat is dealt to sooner.
- */
-export function dealFlightsMs(seats: readonly { dx: number; dy: number }[]): number[] {
-  const distances = seats.map(({ dx, dy }) => Math.hypot(dx, dy));
-  const reach = Math.max(0, ...distances);
-  return distances.map((d) => (reach > 0 ? (DEAL_FLIGHT_MS * d) / reach : DEAL_FLIGHT_MS));
-}
-
-/**
- * When the `round`-th card leaves the pile for `seat`, from the deal's start:
- * round-robin in seat order, as `dealCards` deals, with each seat's own cards
- * `Motion.stagger.deal` apart — the spacing the viewer's hand deals at.
- */
-export function dealLeaveMs(round: number, seat: number, seats: number): number {
-  return round * Motion.stagger.deal + (seat * Motion.stagger.deal) / seats;
-}
-
-/** When each of a seat's `count` cards lands at it, `offsetMs` after the deal starts. */
-export function dealArrivalsMs(
-  count: number,
-  seat: number,
-  seats: number,
-  offsetMs: number,
-  flightMs: number
-): number[] {
-  return Array.from({ length: count }, (_, round) => offsetMs + dealLeaveMs(round, seat, seats) + flightMs);
-}
-
 // ─── Flight origin ─────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
@@ -430,7 +348,7 @@ interface FlightOriginInput {
   /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
   handZoneH: number;
   /**
-   * The top seat's displayed hand count (`displayedHandCount`) — needed
+   * The top seat's hand count — needed
    * because the pile sits in the space *below* the top seat, whichever seat
    * is actually throwing. Ignored when `dir` is not "top".
    */
@@ -509,181 +427,6 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
       : input.windowWidth - input.tableRight - Spacing.sm - ringSize / 2;
   const slotH = sideSlotHeight(scale, input.sideDisplayedCount);
   return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
-}
-
-interface ExchangeFlightInput
-  extends Omit<FlightOriginInput, "dir" | "sideDisplayedCount"> {
-  /** The seat the card leaves. */
-  from: FlyDirection;
-  /** The seat it arrives at. */
-  to: FlyDirection;
-  /**
-   * Both side seats' displayed counts. A throw asks about one seat; an
-   * exchange has two ends, and they can both be side seats holding different
-   * numbers of cards — which is two different slot heights.
-   */
-  sideDisplayedCounts: { left: number; right: number };
-  /**
-   * The flying card's own box. Both dimensions, because the gap the two cards
-   * keep runs across their trip in whatever direction that happens to be: a
-   * pair passing side by side needs a card's width between them, and a pair
-   * passing one above the other needs its height.
-   */
-  cardW: number;
-  cardH: number;
-}
-
-export interface ExchangeFlight {
-  from: { dx: number; dy: number };
-  /** Where the card waits out the beat that makes the pair read as a trade. */
-  meet: { dx: number; dy: number };
-  to: { dx: number; dy: number };
-  /**
-   * The shift that took this trip out of the shared line and into its own
-   * lane, across the direction of travel and as long as the card's own reach
-   * that way. Anything that has to sit clear of this card — a label at the
-   * seat — goes further along it; the three points cannot supply that
-   * direction between them, since all three carry the same shift.
-   */
-  lane: { dx: number; dy: number };
-  /**
-   * Where this trip's "got this card" label sits — beside the seat it names,
-   * clear of the card it describes, and inside the table. Carried on the trip
-   * rather than derived at the label itself, which knows the geometry of
-   * nothing.
-   */
-  tag: { dx: number; dy: number };
-}
-
-/**
- * One card's trip across an exchange, in the same pile-relative deltas
- * `flightOrigin` speaks — so a card starts and ends exactly where that seat's
- * own cards do, rather than at a point measured a second time.
- *
- * The two cards of an exchange travel at once, in opposite directions along
- * the same line, and would collide on it. Each takes a lane instead: the whole
- * trip is shifted one clearance along the perpendicular of its own direction,
- * and because the two directions are opposite the two lanes are that whole gap
- * apart from departure to arrival. A pair that only parted at the middle would
- * still cross on the way there, which is the thing to keep in mind before
- * moving any of this: the separation has to hold at every moment, not at one.
- *
- * The clearance is how far a card of this size reaches along that
- * perpendicular. Half a card width would be the answer only for a pair
- * separated horizontally; separated vertically it leaves them a third of a card
- * deep in each other, and on a diagonal neither dimension alone is enough.
- *
- * The meeting point is the midpoint of the lane, where the two cards sit level
- * with each other for a beat. That beat is what makes the pair read as a trade
- * rather than as two deliveries that happen to coincide.
- */
-export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
-  const at = (dir: FlyDirection) =>
-    flightOrigin({
-      ...input,
-      dir,
-      sideDisplayedCount:
-        dir === "left" || dir === "right" ? input.sideDisplayedCounts[dir] : 0,
-    });
-  const from = at(input.from);
-  const to = at(input.to);
-
-  const vx = to.dx - from.dx;
-  const vy = to.dy - from.dy;
-  const len = Math.hypot(vx, vy);
-  // Two seats resolving to one point cannot happen on a laid-out table, but a
-  // zero-length trip would divide by zero rather than simply going nowhere.
-  const px = len === 0 ? 0 : -vy / len;
-  const py = len === 0 ? 0 : vx / len;
-  // How far a card of this size reaches along the perpendicular — its own
-  // support in that direction. Two lanes that far apart cannot overlap wherever
-  // either card happens to be along them, which is a stronger claim than two
-  // *points* that far apart and is the one this needs.
-  const clearance = (Math.abs(px) * input.cardW + Math.abs(py) * input.cardH) / 2;
-  const offX = len === 0 ? 0 : px * clearance;
-  const offY = len === 0 ? 0 : py * clearance;
-  const intoLane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
-
-  const trip = {
-    from: intoLane(from),
-    meet: intoLane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
-    to: intoLane(to),
-    lane: { dx: offX, dy: offY },
-  };
-  const pile = pileGeometry(input);
-  return {
-    ...trip,
-    // The band the pile sits in, less the columns the side seats sit in: the
-    // one region of the table that holds no cards, whoever is playing and
-    // however many they hold. The label is placed by its centre and drawn no
-    // wider than `TAG_MAX_W`, so half of that keeps its box inside as well.
-    tag: exchangeTagOffset(trip, {
-      minDx: input.tableLeft + SIDE_SECTION_W + TAG_MAX_W / 2 - pile.centerX,
-      maxDx: input.windowWidth - input.tableRight - SIDE_SECTION_W - TAG_MAX_W / 2 - pile.centerX,
-      minDy: TAG_CLEARANCE - pile.midH / 2,
-      maxDy: pile.midH / 2 - TAG_CLEARANCE,
-    }),
-  };
-}
-
-/**
- * How wide the label is allowed to get. Both a bound the clamp above can use —
- * a centre is only inside the table if half a label is too — and the width
- * `ExchangeSeatTag` draws it at, so the two cannot disagree about a box only
- * one of them can see.
- */
-export const TAG_MAX_W = 160;
-
-/**
- * The label's own reach: how far it stands off anything it must not touch —
- * its lane, beyond the card's own reach, and every edge it is clamped inside.
- * A single line of type in a padded box is smaller than this in both
- * directions, so the clearance holds for the box and not merely its centre.
- */
-const TAG_CLEARANCE = 30;
-/**
- * How far along its own trip the label sits — on its seat's side of the table,
- * and stopping well short of the seat itself.
- *
- * A label at the landing point lands *in* that seat's cards: for the viewer's
- * own seat the arrival is the hand zone's centre (`flightOrigin`, "bottom"), so
- * the words came out over the player's own hand and read as dark text on a card
- * face (#817). Short of it, the label is over felt in both directions, and the
- * perpendicular lane keeps it off the card it names and off the other tag.
- */
-const TAG_ALONG_TRIP = 0.72;
-
-/**
- * Where one seat's "got this card" label sits, in the same pile-relative deltas
- * the flight itself speaks.
- *
- * The lane runs across the direction of travel, so on a diagonal it carries the
- * label sideways as far as it carries it along — and the seat it names is
- * already at the table's edge. The bounds are what it may not leave; the table
- * clips what does, which costs the label its whole message and no error.
- */
-function exchangeTagOffset(
-  trip: Omit<ExchangeFlight, "tag">,
-  bounds: { minDx: number; maxDx: number; minDy: number; maxDy: number }
-): { dx: number; dy: number } {
-  const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
-  const reach = laneLen + TAG_CLEARANCE;
-  // A window too small to hold the clearance on both sides has no room to
-  // clamp into; the middle of what there is beats an inverted box.
-  const clamp = (v: number, min: number, max: number) =>
-    min > max ? (min + max) / 2 : Math.min(Math.max(v, min), max);
-  return {
-    dx: clamp(
-      trip.from.dx + (trip.to.dx - trip.from.dx) * TAG_ALONG_TRIP + (trip.lane.dx / laneLen) * reach,
-      bounds.minDx,
-      bounds.maxDx
-    ),
-    dy: clamp(
-      trip.from.dy + (trip.to.dy - trip.from.dy) * TAG_ALONG_TRIP + (trip.lane.dy / laneLen) * reach,
-      bounds.minDy,
-      bounds.maxDy
-    ),
-  };
 }
 
 /**
@@ -768,7 +511,7 @@ export function passedSeats(state: {
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────
 
-export interface ExchangeView {
+interface ExchangeView {
   active: boolean;
   /** The viewer owes the loser a card and must pick one. */
   viewerIsWinner: boolean;
@@ -776,11 +519,7 @@ export interface ExchangeView {
   viewerIsLoser: boolean;
   winner: Player | null;
   loser: Player | null;
-  /**
-   * The card taken off the loser. The engine puts it in the winner's hand as
-   * the phase opens while the prompt draws it on the felt, so the winner's fan
-   * has to know which card it is not drawing (#650).
-   */
+  /** The card taken off the loser, which the engine has already put in the winner's hand. */
   cardFromLoser: Card | null;
 }
 
@@ -810,74 +549,98 @@ export function readExchange(
   };
 }
 
+/** Each leg's stage, as `ExchangeLegs` reports it, for the trade `key` names. */
+export interface TradeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
+
+export const tradeKey = (trade: ExchangeAnnounceData): string =>
+  trade.bothJokersException ? `jokers:${trade.loserIdx}` : `${trade.loserIdx}>${trade.winnerIdx}:${trade.cardReceived?.id ?? ""}`;
+
+export const NO_STAGES: Omit<TradeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
+
+const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
+
+/**
+ * The seats a trade marks, and how far each opponent's drawn count is from its state's. The engine
+ * moves a card when the phase opens or the choice lands, so the giver shows one more until its card
+ * leaves and the receiver one fewer until it lands (the fixture's `S.counts`).
+ */
+export function readTradeSeats(trade: ExchangeAnnounceData | null, stages: TradeStages): { lit: number[]; shift: Map<number, number> } {
+  const lit = new Set<number>();
+  const shift = new Map<number, number>();
+  const add = (seat: number, n: number) => shift.set(seat, (shift.get(seat) ?? 0) + n);
+  if (!trade) return { lit: [], shift };
+  if (trade.bothJokersException) {
+    if (airborne(stages.receive)) {
+      lit.add(trade.loserIdx);
+      add(trade.loserIdx, -JOKERS.length);
+    }
+    return { lit: [...lit], shift };
+  }
+  const legs = [
+    { giver: trade.loserIdx, receiver: trade.winnerIdx, card: trade.cardReceived, stage: stages.receive },
+    { giver: trade.winnerIdx, receiver: trade.loserIdx, card: trade.cardGiven, stage: stages.give },
+  ];
+  for (const { giver, receiver, card, stage } of legs) {
+    if (!card) continue;
+    if (airborne(stage)) lit.add(giver);
+    if (stage === "rest" || stage === "tuck") lit.add(receiver);
+    if (stage === "waiting") add(giver, 1);
+    if (stage !== "landed") add(receiver, -1);
+  }
+  return { lit: [...lit], shift };
+}
+
 interface HandArrival {
-  /** Kept out of the fan, because something else is already drawing it. */
-  withheldId?: string;
-  /** The slot the row parts at — set only while the card is actually flying. */
+  /** Drawn although the state has already moved it: the viewer's traded card, until its leg leaves the hand. */
+  lent?: Card;
+  /** Kept out of the fan, because a flier is drawing them. */
+  withheldIds: string[];
+  /** The slot the row parts at: set only while the card flies in. */
   arrivingIndex?: number;
   /** What the parted slot is waiting for, so the row can travel it in. */
   descendingId?: string;
+  /** The card just received, which glows once it is in the hand. */
+  receivedId?: string;
 }
 
 /**
- * One window in which the receiving hand does not draw its traded card,
- * running from the exchange opening to the flight landing (#650).
- *
- * The engine gives the winner the loser's card as the phase opens while
- * `ExchangePrompt` draws that same card on the felt, and the ceremony then
- * commits and raises the flight in one tick — so without this the card is in
- * two places for the whole prompt and again for the whole flight.
- *
- * The row only *parts* for the second half: a gap held open beside the giveback
- * picker is a hole to choose next to rather than the first beat of an arrival.
+ * The viewer's traded cards, each drawn in exactly one place: in the hand until its leg's first
+ * visible frame, as its flier until it lands, and in the hand again from then on (#650).
  */
 export function readHandArrival(input: {
   /** The hand as arranged, which is where the card takes its place. */
   hand: Card[];
-  exchange: ExchangeView;
-  /** The live ceremony, or null when none is running. */
-  announce: ExchangeAnnounceData | null;
+  trade: ExchangeAnnounceData | null;
+  stages: TradeStages;
   /** Null for a spectator: a synthetic hand has nothing to hold back. */
   viewerSeat: number | null;
-  landed: boolean;
-  reduceMotion: boolean;
 }): HandArrival {
-  // Nothing flies under reduced motion, so there is nothing to wait for and the
-  // row would hold a slot open for a card already in it.
-  const incoming = input.reduceMotion
-    ? undefined
-    : arrivingCard(input.announce, input.viewerSeat);
-  const flying = input.landed ? undefined : incoming;
-  const onTheFelt = input.exchange.viewerIsWinner ? input.exchange.cardFromLoser : null;
-  const slot = flying === undefined ? -1 : input.hand.findIndex((c) => c.id === flying.id);
+  const { hand, trade, stages, viewerSeat } = input;
+  if (!trade || viewerSeat === null) return { withheldIds: [] };
+  const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
+  if (trade.bothJokersException) {
+    const shown = viewerSeat === trade.loserIdx && airborne(stages.receive);
+    return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
+  }
+  const winner = viewerSeat === trade.winnerIdx;
+  if (!winner && viewerSeat !== trade.loserIdx) return { withheldIds: [] };
+  const incoming = arrivingCard(trade, viewerSeat);
+  const outgoing = winner ? trade.cardGiven : trade.cardReceived;
+  const inStage = winner ? stages.receive : stages.give;
+  const outStage = winner ? stages.give : stages.receive;
+  const withheldIds: string[] = [];
+  if (incoming && inStage !== "landed" && holds(incoming)) withheldIds.push(incoming.id);
+  if (outgoing && outStage !== "waiting" && holds(outgoing)) withheldIds.push(outgoing.id);
+  const slot = incoming && inStage === "tuck" ? hand.findIndex((c) => c.id === incoming.id) : -1;
   return {
-    withheldId: flying?.id ?? onTheFelt?.id,
+    lent: outgoing && outStage === "waiting" && !holds(outgoing) ? outgoing : undefined,
+    withheldIds,
     // A card the ceremony names but the hand does not hold parts nothing: a gap
     // with nothing ever descending into it would stay open all game.
     arrivingIndex: slot < 0 ? undefined : slot,
-    // `incoming` rather than `flying`, so the id still names the card on the
-    // render it lands — which is the render the row mounts it on.
     descendingId: incoming?.id,
+    receivedId: incoming && inStage === "landed" ? incoming.id : undefined,
   };
-}
-
-// ─── Card jitter ──────────────────────────────────────────────────────────────
-
-/**
- * Cards thrown onto a table do not land square, so a combination keeps a small
- * jitter on top of the arc it lands on. The bound stays small: past a few
- * degrees the overlap stops reading as one combination.
- */
-export const COMBO_MAX_TILT = 4.5;
-
-/**
- * A card's own jitter (deg), derived from its id so the same combination looks
- * the same on every client and in every frame of its throw.
- */
-export function cardTilt(id: string, maxTilt: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
 }
 
 // ─── Thrown plays ─────────────────────────────────────────────────────────────
@@ -885,8 +648,8 @@ export function cardTilt(id: string, maxTilt: number): number {
 interface ThrownPlay {
   dir: FlyDirection;
   cards: Card[];
-  /** Where the throw starts, relative to where it lands. */
-  origin: { dx: number; dy: number };
+  /** Where each card starts, from the pile's centre: its own hand slot, or its seat's fan. */
+  from: CardFrom[];
   /** Where it lands: the pile's centre, in window points. */
   pile: { x: number; y: number };
   /** Impact reads heavier for these. */
@@ -923,47 +686,49 @@ export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
 
 /**
  * Everything a throw decides, from the state it was thrown out of.
- *
- * The counts are the seats' *displayed* ones, held at their pre-play values
- * for the length of the flight: the pile sits in whatever room the top seat's
- * column leaves whichever seat is throwing, so a fan that shrinks the moment
- * the cards leave would move the pile out from under them mid-flight.
  */
-export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
+export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap<string, CardFrom>): ThrownPlay {
   const { combo, playedBy, players } = input;
-  const { dir, origin, pile } = seatOrigin(input, playedBy, combo.cards.length);
+  const { dir, origin, pile } = seatOrigin(input, playedBy);
   const thrower = players[playedBy];
+  let from: CardFrom[];
+  if (dir === "bottom") {
+    from = combo.cards.map((card) => {
+      const own = handOrigins?.get(card.id);
+      return own
+        ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy }
+        : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
+    });
+  } else {
+    const fan = fanPoint(seatPoint(input, playedBy), dir, input.scale, thrower ? handCountOf(thrower) : 0);
+    from = combo.cards.map(() => ({ ...fan, scale: FAN_CARD_SCALE }));
+  }
   return {
     dir,
     cards: combo.cards,
     heavy: combo.type === "bomb" || combo.type === "royal_straight",
     emptiedHand: !!thrower && handCountOf(thrower) === 0,
-    origin,
+    from,
     pile,
   };
 }
 
 /** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
 export function seatPoint(input: SeatGeometry, seat: number): { dx: number; dy: number } {
-  return seatOrigin(input, seat, 0).origin;
+  return seatOrigin(input, seat).origin;
 }
 
 function seatOrigin(
   input: SeatGeometry,
-  seat: number,
-  leaving: number
-): { dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
+  seat: number
+):{ dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
   const { players, opponents } = input;
   const dir = seatDirection(seat, input.viewerSeat, players.length);
 
   const topPlayer = opponents.top?.player;
-  const topDisplayedCount = topPlayer
-    ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? leaving : 0)
-    : 0;
+  const topDisplayedCount = topPlayer ? handCountOf(topPlayer) : 0;
   const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
-  const sideDisplayedCount = sidePlayer
-    ? displayedHandCount(handCountOf(sidePlayer), leaving)
-    : 0;
+  const sideDisplayedCount = sidePlayer ? handCountOf(sidePlayer) : 0;
 
   const geometry: FlightOriginInput = {
     dir,
@@ -982,45 +747,39 @@ function seatOrigin(
   return { dir, origin: flightOrigin(geometry), pile: { x: centerX, y: centerY } };
 }
 
-interface ExchangeTripsInput extends SeatGeometry {
-  announce: ExchangeAnnounceData;
-}
+/** Both Jokers, red first: the fixture's `jokers()` lays them 18 pt either side of the pile's centre. */
+export const JOKERS: Card[] = [
+  { id: "joker_colored", suit: null, rank: "joker_colored", isJoker: true },
+  { id: "joker_bw", suit: null, rank: "joker_bw", isJoker: true },
+];
+const JOKER_SPREAD = 18;
 
-/**
- * Both trips an exchange's cards make, from the seats that traded them.
- *
- * Measured here rather than at the announcement, for the same reason a throw's
- * origin is: this is where the table's geometry lives, and a second
- * measurement is how a card comes to land somewhere its seat is not. Nothing
- * is in flight when an exchange resolves, so each seat's displayed count is
- * simply the hand it holds.
- */
-export function readExchangeTrips(input: ExchangeTripsInput): {
-  toWinner: ExchangeFlight;
-  toLoser: ExchangeFlight;
-} {
-  const { announce, players, opponents } = input;
-  const geometry = {
-    scale: input.scale,
-    windowWidth: input.windowWidth,
-    windowHeight: input.windowHeight,
-    tableLeft: input.tableLeft,
-    tableRight: input.tableRight,
-    tableTop: input.tableTop,
-    surplus: input.surplus,
-    handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
-    topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
-    sideDisplayedCounts: {
-      left: opponents.left ? handCountOf(opponents.left.player) : 0,
-      right: opponents.right ? handCountOf(opponents.right.player) : 0,
-    },
-    cardW: CARD_W(input.scale * FIELD_SCALE),
-    cardH: CARD_H(input.scale * FIELD_SCALE),
+/** The trade's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
+export function readExchangeLegs(
+  input: SeatGeometry & { trade: ExchangeAnnounceData },
+  handOrigins?: ReadonlyMap<string, CardFrom>
+): { receive: LegPoints; give: LegPoints; jokers: LegPoints[] } {
+  const { trade } = input;
+  const end = (seat: number, card?: Card) => {
+    const { dir, origin } = seatOrigin(input, seat);
+    if (dir === "bottom") {
+      const own = card && handOrigins?.get(card.id);
+      const at = own ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy } : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
+      return { at, face: true };
+    }
+    const player = input.players[seat];
+    return { at: { ...fanPoint(origin, dir, input.scale, player ? handCountOf(player) : 0), scale: FAN_CARD_SCALE }, face: false };
   };
-  const winnerDir = seatDirection(announce.winnerIdx, input.viewerSeat, players.length);
-  const loserDir = seatDirection(announce.loserIdx, input.viewerSeat, players.length);
+  // The receiving hand draws no slot for the card until it lands, so it arrives at the row's centre and descends from there.
+  const leg = (giver: number, receiver: number, card: Card | undefined, rest = restPoint()): LegPoints => {
+    const from = end(giver, card);
+    const to = end(receiver, receiver === giver ? card : undefined);
+    return { from: from.at, fromFace: from.face, rest, to: to.at, toFace: to.face };
+  };
+  const loser = trade.loserIdx;
   return {
-    toWinner: exchangeFlight({ ...geometry, from: loserDir, to: winnerDir }),
-    toLoser: exchangeFlight({ ...geometry, from: winnerDir, to: loserDir }),
+    receive: leg(loser, trade.winnerIdx, trade.cardReceived),
+    give: leg(trade.winnerIdx, loser, trade.cardGiven),
+    jokers: JOKERS.map((card, i) => leg(loser, loser, card, restPoint(i === 0 ? -JOKER_SPREAD : JOKER_SPREAD))),
   };
 }

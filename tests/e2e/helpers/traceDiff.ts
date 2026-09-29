@@ -26,7 +26,8 @@ export type Field =
   | "flare"
   | "shake"
   | "brightness"
-  | "scorePill";
+  | "scorePill"
+  | "flight";
 
 export interface Failure {
   field: Field;
@@ -49,6 +50,7 @@ export const TOLERANCES = {
   shakeEndMs: STEP_MS,
   brightness: 6,
   pillPt: 1,
+  contactPt: 1,
 };
 
 const PILL_OPEN = 0.999;
@@ -194,6 +196,39 @@ export function diffPillAtProgress(
   return out;
 }
 
+export function flightSegments(trace: Trace, tol: typeof TOLERANCES = TOLERANCES): { start: number; half: number; contact: number }[] {
+  const out: { start: number; half: number; contact: number }[] = [];
+  let open: { start: number; from: number; half?: number } | null = null;
+  for (const f of trace.frames) {
+    if (!open && f.flight > tol.contactPt) open = { start: f.t, from: f.flight };
+    else if (open) {
+      if (open.half === undefined && f.flight <= open.from / 2) open.half = f.t;
+      if (f.flight <= tol.contactPt) {
+        out.push({ start: open.start, half: open.half ?? f.t, contact: f.t });
+        open = null;
+      }
+    }
+  }
+  return out;
+}
+
+export function diffFlight(mockup: Trace, app: Trace, tol: typeof TOLERANCES = TOLERANCES): Failure[] {
+  const m = flightSegments(mockup, tol);
+  const a = flightSegments(app, tol);
+  const out: Failure[] = [];
+  if (m.length !== a.length) {
+    out.push({ field: "flight", t: 0, mockup: m.length, app: a.length, message: `${a.length} flights against ${m.length}: a flight on one side only` });
+  }
+  for (let i = 0; i < Math.min(m.length, a.length); i++) {
+    for (const k of ["start", "half", "contact"] as const) {
+      if (Math.abs(a[i][k] - m[i][k]) > tol.onsetMs) {
+        out.push({ field: "flight", t: a[i][k], mockup: m[i][k], app: a[i][k], message: `flight ${i} ${k} at ${a[i][k]} ms, the mockup's at ${m[i][k]} ms` });
+      }
+    }
+  }
+  return out;
+}
+
 /** The fields whose value changes somewhere in the window — a determinism entry's proof it recorded something. */
 export function movingFields(trace: Trace): Set<Field> {
   const moved = new Set<Field>();
@@ -209,6 +244,7 @@ export function movingFields(trace: Trace): Set<Field> {
     if (differs((f) => f.lamp?.flare)) moved.add("flare");
     if (differs((f) => f.shake)) moved.add("shake");
     if (differs((f) => f.scorePill && [f.scorePill.x, f.scorePill.y, f.scorePill.w, f.scorePill.h])) moved.add("scorePill");
+    if (differs((f) => f.flight)) moved.add("flight");
   }
   const [r0] = trace.regions;
   if (r0 && trace.regions.some((r) => JSON.stringify(r.regions) !== JSON.stringify(r0.regions))) moved.add("brightness");

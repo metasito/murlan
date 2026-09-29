@@ -1,16 +1,21 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
-import { act, renderHook } from "@testing-library/react-native";
-import { handOffDelayMs } from "@/components/flightPhysics";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import { act, render, renderHook } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
+import { makeMutable } from "react-native-reanimated";
+import { NO_LANDING } from "@/components/table/useFlightClock";
+import { Hold } from "@/lib/tokens";
+import type { Combination } from "@/lib/game/gameEngine";
+import { bootFeedback, ctxAt, haptics, sounds, startsOf } from "./helpers/feedback";
+import { card, farthest, frameOfFirst, PAIR, tableAfter, throwPair, useFeedbackOnTimeline } from "./helpers/landing";
 
-import { bootFeedback, haptics, sounds } from "./helpers/feedback";
+const SINGLE: Combination = { type: "single", cards: [card("c", "4", "hearts")], strength: 4 };
 
 const turns = () => sounds().filter((s) => s === "turn").length;
 const lights = () => haptics().filter((h) => h === "impactLight").length;
 
-const PLAYED = { type: "single", cards: [], value: 3 } as any;
+const landing = makeMutable(NO_LANDING);
 
-const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: any = null) => ({
+const state = (isMyTurn: boolean, currentTurnIndex = 0) => ({
   isMyTurn,
   currentTurnIndex,
   isFinished: false,
@@ -19,7 +24,7 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: a
   playBtnValid: false,
   selectedCount: 0,
   passCount: 0,
-  lastPlayedCombination,
+  lastPlayedCombination: null,
   roundWinner: null,
   gameOver: false,
   rankings: [],
@@ -28,6 +33,7 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: a
   handScores: {},
   viewerId: "viewer",
   scale: 1,
+  landing,
 });
 
 describe("the turn-arrival cue", () => {
@@ -42,7 +48,7 @@ describe("the turn-arrival cue", () => {
 
   it("fires the haptic alongside the sound, once, on the edge into the viewer's turn", async () => {
     const { rerender } = await renderHook(
-      (props: { isMyTurn: boolean }) => useTableFeedback(state(props.isMyTurn)),
+      (props: { isMyTurn: boolean }) => useFeedbackOnTimeline(state(props.isMyTurn)),
       { initialProps: { isMyTurn: false } }
     );
     expect(turns()).toBe(0);
@@ -58,28 +64,10 @@ describe("the turn-arrival cue", () => {
     expect(lights()).toBe(1);
   });
 
-  it("waits for the card that handed the turn over to land, and moves the lamp's seat with it", async () => {
-    type P = { isMyTurn: boolean; turn: number; played: unknown };
-    const { result, rerender } = await renderHook(
-      (props: P) => useTableFeedback(state(props.isMyTurn, props.turn, props.played)),
-      { initialProps: { isMyTurn: false, turn: 1, played: null } as P }
-    );
-    await rerender({ isMyTurn: true, turn: 0, played: PLAYED });
-    expect(result.current.shownTurnIndex).toBe(1);
-    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 1));
-    expect(turns()).toBe(0);
-    expect(result.current.shownTurnIndex).toBe(1);
-
-    await act(async () => jest.advanceTimersByTime(1));
-    expect(turns()).toBe(1);
-    expect(lights()).toBe(1);
-    expect(result.current.shownTurnIndex).toBe(0);
-  });
-
   it("hands over at once on a pass, which has no landing to wait for", async () => {
     type P = { isMyTurn: boolean; turn: number };
     const { result, rerender } = await renderHook(
-      (props: P) => useTableFeedback(state(props.isMyTurn, props.turn)),
+      (props: P) => useFeedbackOnTimeline(state(props.isMyTurn, props.turn)),
       { initialProps: { isMyTurn: false, turn: 1 } }
     );
     await rerender({ isMyTurn: true, turn: 0 });
@@ -87,60 +75,27 @@ describe("the turn-arrival cue", () => {
     expect(result.current.shownTurnIndex).toBe(0);
   });
 
-  it("drops a pending hand-off cue when the table unmounts", async () => {
-    type P = { isMyTurn: boolean; played: unknown };
-    const { rerender, unmount } = await renderHook(
-      (props: P) => useTableFeedback(state(props.isMyTurn, 0, props.played)),
-      { initialProps: { isMyTurn: false, played: null } as P }
-    );
-    await rerender({ isMyTurn: true, played: PLAYED });
-    await unmount();
-    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false)));
-    expect(turns()).toBe(0);
+  it("sounds the turn a hold after the card that handed it over comes to rest, and nothing before its first frame", async () => {
+    const view = await throwPair();
+    expect(startsOf("turn")).toEqual([]);
+    const { frame, now } = await frameOfFirst(view, () => farthest(view) === 0);
+    expect(startsOf("turn")).toHaveLength(1);
+    expect(Math.abs(startsOf("turn")[0] - ctxAt(now[frame] + Hold.land))).toBeLessThanOrEqual(0.017);
+    await view.unmount();
   });
 
-  it("waits out a card still in flight when a pass closes the round straight after it", async () => {
-    type P = { isMyTurn: boolean; turn: number; played: unknown };
-    const { rerender } = await renderHook(
-      (props: P) => useTableFeedback(state(props.isMyTurn, props.turn, props.played)),
-      { initialProps: { isMyTurn: false, turn: 0, played: null } as P }
-    );
-    await rerender({ isMyTurn: false, turn: 1, played: PLAYED });
-    await act(async () => jest.advanceTimersByTime(100));
-    await rerender({ isMyTurn: true, turn: 0, played: null });
-    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 101));
-    expect(turns()).toBe(0);
-
-    await act(async () => jest.advanceTimersByTime(1));
-    expect(turns()).toBe(1);
-  });
-
-  it("moves the lamp when the card lands, however many passes follow it in flight", async () => {
-    type P = { turn: number; played: unknown };
-    const { result, rerender } = await renderHook(
-      (props: P) => useTableFeedback(state(false, props.turn, props.played)),
-      { initialProps: { turn: 0, played: null } as P }
-    );
-    await rerender({ turn: 1, played: PLAYED });
-    await act(async () => jest.advanceTimersByTime(100));
-    await rerender({ turn: 2, played: PLAYED });
-    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 101));
-    expect(result.current.shownTurnIndex).toBe(0);
-
-    await act(async () => jest.advanceTimersByTime(1));
-    expect(result.current.shownTurnIndex).toBe(2);
-  });
-
-  it("drops a pending hand-off cue when the manche ends before it lands", async () => {
-    type P = { isMyTurn: boolean; played: unknown; gameOver: boolean };
-    const { rerender } = await renderHook(
-      (props: P) =>
-        useTableFeedback({ ...state(props.isMyTurn, 0, props.played), gameOver: props.gameOver }),
-      { initialProps: { isMyTurn: false, played: null, gameOver: false } as P }
-    );
-    await rerender({ isMyTurn: true, played: PLAYED, gameOver: false });
-    await rerender({ isMyTurn: true, played: PLAYED, gameOver: true });
-    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false)));
-    expect(turns()).toBe(0);
+  it("keeps the seats on the thrower until the card that handed the turn over has come to rest", async () => {
+    const view = await render(tableAfter({ by: 3, combo: PAIR, turn: 1 }));
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+    const topLit = () => StyleSheet.flatten(view.getByTestId("top-seat").props.style).opacity === undefined;
+    expect(topLit()).toBe(false);
+    await act(async () => view.rerender(tableAfter({ by: 1, combo: SINGLE, turn: 2 })));
+    expect(topLit()).toBe(false);
+    const { frame, drawn } = await frameOfFirst(view, topLit);
+    expect(drawn[0]).toBeGreaterThan(1);
+    expect(drawn[frame]).toBe(0);
+    await view.unmount();
   });
 });

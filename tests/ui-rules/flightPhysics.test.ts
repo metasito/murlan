@@ -4,39 +4,33 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { BACK_SCALE } from "../../components/cardFaceModel.ts";
 import {
-  CARD_H,
-  BACK_SCALE,
-  HAND_SCALE,
-  cardScale,
-} from "../../components/cardFaceModel.ts";
-import {
-  Hold,
   Trauma,
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
 import type { Card, Combination } from "../../lib/game/gameEngine.ts";
-import type { ExchangeAnnounceData } from "../../lib/game/sharedGameFlow.ts";
+import { LEG, legPose, type LegStage } from "../../lib/game/exchangeTimeline.ts";
+import type { CardFrom } from "../../components/flightPose.ts";
 import {
-  HAND_ZONE_H,
   arrangeOpponents,
-  type FlyDirection,
   sideSlotHeight,
-  seatFanArc,
   SEAT_DISC,
   seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
 } from "../../components/seatLayout.ts";
+import { seatFanArc } from "../../components/fanGeometry.ts";
 import {
-  cardTilt,
   arrivingCard,
   readHandArrival,
+  readTradeSeats,
+  NO_STAGES,
+  JOKERS,
   readThrownPlay,
-  readExchangeTrips,
+  readExchangeLegs,
   flightOrigin,
-  exchangeFlight,
   comboKey,
   advancePile,
   collectPile,
@@ -46,14 +40,8 @@ import {
   EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
-  ANTICIPATE_PX,
-  anticipationOffset,
-  handOffDelayMs,
-  impactDelayMs,
-  landingHoldMs,
   landWobble,
   LAND_WOBBLE_MS,
-  settleForMotion,
   comboImpactTier,
   landingTier,
   traumaFor,
@@ -61,8 +49,6 @@ import {
   shakeMagnitude,
   shakeOffset,
   shakeAmplitudeFor,
-  FLIGHT_MS,
-  LANDING_FRACTION,
   passedSeats,
   sparkOffset,
   SPARK_COUNT,
@@ -72,7 +58,6 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../../components/flightPhysics.ts";
-import { computeTableFrame } from "../../components/tableFrame.ts";
 import {
   buildCombination,
   processPass,
@@ -169,20 +154,6 @@ const combo = (ids: string[]): any => ({
 /** Four seats, all still holding cards. */
 const ALL_IN = [false, false, false, false];
 
-
-describe("cardTilt", () => {
-  test("the same card always tilts the same way, on every client and every frame", () => {
-    assert.equal(cardTilt("7H", 4.5), cardTilt("7H", 4.5));
-    assert.notEqual(cardTilt("7H", 4.5), cardTilt("8H", 4.5));
-  });
-
-  test("no card tilts past the bound it was given", () => {
-    for (const id of ["3S", "QD", "joker-1", "10C", "AH"]) {
-      assert.ok(Math.abs(cardTilt(id, 4.5)) <= 4.5);
-      assert.ok(Math.abs(cardTilt(id, 0)) === 0);
-    }
-  });
-});
 
 describe("comboKey", () => {
   test("the same cards played by different seats are different plays", () => {
@@ -612,82 +583,7 @@ describe("readExchange", () => {
 });
 
 
-describe("impact feedback is timed to the card landing, not to the throw", () => {
-  test("a played card takes 253ms to reach the pile — the anticipation leg, then the flight", () => {
-    // Sound, haptics and the bomb shake are scheduled against this. When they
-    // fired at throw time instead, the bang arrived a third of a second before
-    // the card that caused it.
-    //
-    // FLIGHT_MS derives from Motion.duration.travel (#829): the throw and the
-    // scale's own travel step had drifted to three different numbers (260 in
-    // Motion, 300 in the Scale mockup, 380 here) for what #126 settled once.
-    assert.equal(FLIGHT_MS, 260);
-    assert.equal(LANDING_FRACTION, 0.82);
-    assert.equal(Motion.anticipate, 40);
-    assert.equal(impactDelayMs(false), 253);
-  });
-
-  test("under reduced motion there is no flight to wait for", () => {
-    // FlyingCards skips the animation entirely, so a delay here would be a
-    // gap of silence rather than anticipation.
-    assert.equal(impactDelayMs(true), 0);
-  });
-
-  test("the delay is a whole number of milliseconds", () => {
-    // setTimeout truncates, and a fractional delay would drift against the
-    // animation it is supposed to match.
-    assert.equal(impactDelayMs(false) % 1, 0);
-  });
-});
-
-//
-describe("the anticipation leg and the hand-off", () => {
-  test("the load pulls the card straight back, away from the pile", () => {
-    assert.deepEqual(anticipationOffset(0, 100), { x: 0, y: ANTICIPATE_PX });
-    assert.deepEqual(anticipationOffset(-100, 0), { x: -ANTICIPATE_PX, y: 0 });
-    assert.deepEqual(anticipationOffset(0, 0), { x: 0, y: 0 });
-  });
-
-  test("the flight spends the anticipation step on every axis before it travels", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.match(src, /anticipationOffset\(dx, dy\)/);
-    assert.equal(src.match(/withTiming\([^()]*, anticipate\)/g)?.length, 3);
-    assert.match(src, /arcY\.value = withDelay\(\s*Motion\.anticipate,/);
-  });
-
-  test("the turn is handed over once the card has landed and held", () => {
-    assert.equal(handOffDelayMs(false), impactDelayMs(false) + landingHoldMs(false));
-    assert.equal(handOffDelayMs(true), 0);
-  });
-});
-
-describe("the table holds still at the landing frame", () => {
-  test("a landed card gets a beat before its aftermath runs", () => {
-    assert.equal(landingHoldMs(false), Hold.land);
-  });
-
-  test("no landing, no hold", () => {
-    // The contract, not the shipped path: `FlyingCards` returns before it ever
-    // reaches the hold under reduced motion. What this pins is that a caller
-    // reaching it anyway is answered from the landing rather than from a second
-    // reading of the flag, which is the pair that could drift.
-    assert.equal(impactDelayMs(true), 0);
-    assert.equal(landingHoldMs(true), 0);
-  });
-
-  test("the wobble starts on the landing onset, the tick the dust and the cue fire on", () => {
-    const src = readPile();
-    assert.ok(
-      !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
-      "pile.tsx must call impactDelayMs(), not recompute the landing"
-    );
-    const wobble = calls(src, "withDelay").filter((c) =>
-      /wobble\.value\s*=\s*$/.test(src.slice(0, c.start))
-    );
-    assert.deepEqual(wobble.map((c) => c.args[0]), ["impactDelayMs(reduceMotion)"], "the wobble must start on contact");
-    assert.match(wobble[0].args[1], /^withTiming\(1, \{ duration: LAND_WOBBLE_MS, easing: Easing\.linear \}/);
-  });
-
+describe("the timer scans", () => {
   test("the call reader takes a timer's delay from the call, never from a comment beside it", () => {
     const planted = blankCommentsAndStrings(
       [
@@ -702,11 +598,6 @@ describe("the table holds still at the landing frame", () => {
       calls(planted, "withDelay").map((c) => c.args),
       [["impactDelayMs(reduceMotion)", "withSequence(withTiming(1, { duration: 2 }), withSpring(0, cfg, (f) => {}))"]]
     );
-  });
-
-  test("the flight's safety floor clears the wobble", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.match(src, /const FLIGHT_LIMIT_MS = impactDelayMs\(false\) \+ LAND_WOBBLE_MS \+ FLIGHT_MS;/);
   });
 });
 
@@ -728,54 +619,14 @@ describe("a landed combination wobbles for 400 ms, the mockup's landWobble", () 
     assert.ok(peak > 1.02 && peak < 1.035, `peak scale ${peak}`);
   });
 
-  test("pile.tsx draws the flying cards at the wobble's scale and rotation", () => {
+  test("pile.tsx draws the flying group at the wobble's scale and rotation, past the tween's end", () => {
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.ok(src.includes("const w = landWobble(wobble.value);"));
-    assert.match(src, /\{ rotate: `\$\{rot\.value \+ w\.rotate\}deg` \},\s*\{ scale: w\.scale \}/);
+    assert.ok(src.includes("(clock.elapsed.value - spec.end) / LAND_WOBBLE_MS"));
+    assert.ok(src.includes("const { scale: s, rotate } = landWobble(k);"));
+    assert.match(src, /transform: \[\{ scale: s \}, \{ rotate: `\$\{rotate\}deg` \}\]/);
   });
 });
 
-describe("settleForMotion", () => {
-  // Reanimated's cancelAnimation (the flight effect's own cleanup, re-run
-  // when `reduceMotion` flips) freezes a shared value at its current number
-  // rather than resetting it, so a live toggle mid-flight cannot rely on
-  // `settle` already being 0 by the time reduced motion takes over. These
-  // assert the behaviour directly — not a source pin — because the fix lives
-  // in a pure function pile.tsx also calls: unpinnable by rendering, though
-  // — a probe component mutating a shared value after mount, under this
-  // repo's jest-expo reanimated mock, left useAnimatedStyle's output at the
-  // value the component mounted with, the same frozen-at-mount trap checks.md
-  // documents for reading a value back out. So live reactivity on this exact
-  // path still needs an e2e toggle mid-flight or a device check; neither is
-  // what these prove.
-  test("reduced motion always resets to 0, whatever the incoming value was", () => {
-    assert.equal(settleForMotion(true, 0), 0);
-    assert.equal(settleForMotion(true, 1), 0);
-    assert.equal(settleForMotion(true, -0.07), 0);
-  });
-
-  test("off reduced motion the value passes through unchanged", () => {
-    assert.equal(settleForMotion(false, 0.42), 0.42);
-    assert.equal(settleForMotion(false, 0), 0);
-  });
-
-  test("FlyingCards runs it as the first thing its effect does, so a toggle cannot skip past it", () => {
-    // Anchored at the effect's own opening brace rather than searched for
-    // anywhere in the file: a call present but placed after a branch that
-    // returns early would never run under reduced motion — the defect this
-    // exists to catch — and an unanchored search cannot tell "runs first"
-    // from "is written down somewhere". Comments are blanked first, the way
-    // tests/tooling/e2eSentinels.test.ts does, so a copy of this exact text left
-    // behind in one does not read as the call.
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    assert.match(
-      src,
-      /useEffect\(\(\) => \{\s*wobble\.value = settleForMotion\(reduceMotion, wobble\.value\);/
-    );
-  });
-});
 
 describe("the table's own trauma escalation (#763)", () => {
   const DECAY_MS = Motion.duration.shake;
@@ -842,7 +693,7 @@ describe("the table's own trauma escalation (#763)", () => {
   // escaping), and answering a small non-zero number instead of true rest.
   // `tests/native/tableShake.test.tsx` cannot red on these — a
   // `useAnimatedStyle` read off a mounted node is frozen at whatever it was
-  // at mount (`settleForMotion`, above, documents the same trap) — so they
+  // at mount — so they
   // are pinned here, directly against the pure functions, the way #783 did.
   test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
     const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
@@ -990,28 +841,15 @@ describe("the beaten pile's flinch (#764)", () => {
   // #764's own ticket: this exact shape shipped inert twice — a flinch that
   // fires but moves nothing a player can see. Pinning the wiring rather than
   // just the pure function is what would have caught that.
-  test("the flinch fires from the same impactDelayMs() landing the shake and the impact sound wait for — never a second derivation", () => {
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    const block = src.match(
-      /impactTimerRef\.current = setTimeout\(\(\) => \{[\s\S]*?\}, impactDelayMs\(reduceMotion\)\);/
-    );
-    assert.ok(block, "expected the impact timeout in usePileFlight");
-    assert.match(block![0], /shake\(tier\)/, "the shake must read the same tier the flinch does");
-    assert.match(
-      block![0],
-      /setFlinchTrigger/,
-      "the flinch must be triggered from this same landing, not a later one"
-    );
+  test("the flinch and the shake read the tier off the one landing signal — never a second derivation", () => {
+    const read = (...at: string[]) => blankComments(readFileSync(path.join(repoRoot, "components", ...at), "utf8"));
+    assert.match(read("table", "pile.tsx"), /useLandingReaction\(landing \?\? idle, \(l\) => \{[^}]*flinchFor\(l\.tier/);
+    assert.match(read("useTableFeedback.ts"), /useLandingReaction\(landing, \(l\) => \{[\s\S]*?traumaFor\(l\.tier/);
   });
 
-  test("every impact the table feels waits for the landing, and nothing waits for the throw's end instead", () => {
+  test("no impact the table feels waits on a timer: each starts at the flight's contact", () => {
     const src = readPile();
-    assert.deepEqual(
-      impactFeedbackTimers(src),
-      IMPACT_FEEDBACK.map((name) => `${name}: impactDelayMs(reduceMotion)`)
-    );
+    assert.deepEqual(impactFeedbackTimers(src), ["celebrateFlush: no timeout"]);
     assert.deepEqual(bareFlightTimers(src), []);
   });
 
@@ -1089,22 +927,8 @@ describe("the beaten pile's flinch (#764)", () => {
     );
     assert.match(
       src,
-      /flinchFor\(flinchTier \?\? "ordinary", reduceMotion\) \* scale/,
+      /flinchFor\(l\.tier, reduceMotion\) \* scale/,
       "the flinch's own trigger must multiply flinchFor's answer by the table's own scale"
-    );
-  });
-
-  // The critique found this exact defect again in the same file: the pile's
-  // own land-spring overshoot (the ordinary tier's whole effect) was a fixed
-  // pixel count too.
-  test("the pile's own bounce scales with the table too — the same defect class, fixed alongside the flinch", () => {
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    assert.match(
-      src,
-      /-PILE_BOUNCE_DIP \* scale/,
-      "PlayedPile's own bounce (the ordinary tier's whole effect) must scale with the table"
     );
   });
 });
@@ -1443,309 +1267,6 @@ describe("sparkOffset", () => {
   });
 });
 
-//
-// The exchange flies two cards at once, each from a seat to the other seat, and
-// the pair must never overlap on screen. That is the one claim a unit test can
-// make about it — where each card is at every moment is arithmetic — while
-// whether the rendered boxes actually stay apart is `tests/e2e/`'s job, because
-// react-test-renderer never runs layout.
-
-describe("exchangeFlight", () => {
-  const frame = {
-    scale: 1,
-    windowWidth: 800,
-    windowHeight: 600,
-    tableLeft: 40,
-    tableRight: 20,
-    tableTop: 10,
-    surplus: 0,
-    handZoneH: 100,
-    topDisplayedCount: 0,
-  };
-  // Different counts on the two sides, so a left⇄right trip that used one seat's
-  // slot height for both ends cannot pass here.
-  const sideDisplayedCounts = { left: 2, right: 9 };
-  // A real card is far taller than it is wide, which is the whole reason the
-  // clearance cannot be a single number: a pair passing one above the other
-  // needs the taller dimension between them.
-  const cardW = 60;
-  const cardH = 84;
-  /** Every ordered pair of distinct seats — the diagonals included. */
-  const SEATS = ["top", "bottom", "left", "right"] as const;
-  const PAIRS = SEATS.flatMap((from) =>
-    SEATS.filter((to) => to !== from).map((to) => [from, to] as const)
-  );
-
-  const sideCount = (d: "top" | "bottom" | "left" | "right") =>
-    d === "left" || d === "right" ? sideDisplayedCounts[d] : 0;
-
-  const dist = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) =>
-    Math.hypot(a.dx - b.dx, a.dy - b.dy);
-
-  /** Points along one trip: out to the meeting, held there, then on. */
-  const walk = (f: ReturnType<typeof exchangeFlight>) => {
-    const lerp = (a: { dx: number; dy: number }, b: { dx: number; dy: number }, t: number) => ({
-      dx: a.dx + (b.dx - a.dx) * t,
-      dy: a.dy + (b.dy - a.dy) * t,
-    });
-    const STEPS = 20;
-    const out = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.from, f.meet, i / STEPS));
-    const back = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.meet, f.to, i / STEPS));
-    return [...out, ...back];
-  };
-
-  /** Overlapping area of two cards centred at `a` and `b`, in px². */
-  const boxOverlap = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) => {
-    const w = cardW - Math.abs(a.dx - b.dx);
-    const h = cardH - Math.abs(a.dy - b.dy);
-    return w > 0 && h > 0 ? w * h : 0;
-  };
-
-  test("a card leaves its owner's seat and arrives at the other one", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const origin = flightOrigin({ ...frame, dir: from, sideDisplayedCount: sideCount(from) });
-      const destination = flightOrigin({ ...frame, dir: to, sideDisplayedCount: sideCount(to) });
-      // The trip is derived from the same source the throw animation uses, so
-      // a card starts and ends at that seat's own point — offset into its lane,
-      // and no further than the lane itself is wide.
-      const lane = Math.max(cardW, cardH);
-      assert.ok(
-        dist(flight.from, origin) <= lane,
-        `${from} → ${to} starts ${dist(flight.from, origin).toFixed(0)}px from the ${from} seat`
-      );
-      assert.ok(
-        dist(flight.to, destination) <= lane,
-        `${from} → ${to} ends ${dist(flight.to, destination).toFixed(0)}px from the ${to} seat`
-      );
-      // …and both ends are displaced identically, which is what makes it a
-      // lane rather than a drift.
-      assert.deepEqual(
-        { dx: +(flight.from.dx - origin.dx).toFixed(9), dy: +(flight.from.dy - origin.dy).toFixed(9) },
-        { dx: +(flight.to.dx - destination.dx).toFixed(9), dy: +(flight.to.dy - destination.dy).toFixed(9) },
-        `${from} → ${to}: the two ends are offset differently`
-      );
-    }
-  });
-
-  test("the two cards of one exchange never overlap, at any point of the trip", () => {
-    for (const [from, to] of PAIRS) {
-      const out = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const back = exchangeFlight({ ...frame, sideDisplayedCounts, from: to, to: from, cardW, cardH });
-      // Every moment of the trip, not only the beat at the middle. Two lanes
-      // that only part where they meet still cross on the way there, and a
-      // browser saw exactly that (tests/e2e/exchangeNoOverlap.spec.ts) while an
-      // assertion about the meeting point alone reported everything fine.
-      //
-      // Boxes, not centres, for the same reason: two centres a card *width*
-      // apart are clear of each other only when the gap runs across the card.
-      const collisions = walk(out)
-        .map((a, i) => ({ i, area: boxOverlap(a, walk(back)[i]) }))
-        .filter((c) => c.area > 0);
-      assert.deepEqual(
-        collisions.map((c) => `step ${c.i}: ${c.area.toFixed(0)}px²`),
-        [],
-        `${from} ⇄ ${to}: the two cards overlap while they travel.`
-      );
-    }
-  });
-
-  test("the meeting point sits between the two seats, not past either of them", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const whole = dist(flight.from, flight.to);
-      // A meet outside the trip is a card that overshoots and doubles back —
-      // it reads as a miss rather than as a handover.
-      assert.ok(
-        dist(flight.from, flight.meet) < whole && dist(flight.meet, flight.to) < whole,
-        `${from} → ${to}: the meeting point is not between the seats`
-      );
-    }
-  });
-
-  test("the lane runs across the trip, so neither card is sent short or long", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const travel = { x: flight.to.dx - flight.from.dx, y: flight.to.dy - flight.from.dy };
-      // The lane is reported rather than recovered from the three points: all
-      // three carry it, so any difference between them has it cancelled out.
-      const along =
-        (travel.x * flight.lane.dx + travel.y * flight.lane.dy) / Math.hypot(travel.x, travel.y);
-      assert.ok(
-        Math.abs(along) < 1e-9,
-        `${from} → ${to}: the lane is displaced ${along.toFixed(2)}px along the ` +
-          `trip rather than across it, which changes when the card arrives`
-      );
-      assert.ok(
-        Math.hypot(flight.lane.dx, flight.lane.dy) > 0,
-        `${from} → ${to}: the trip has no lane, so anything placed off it lands on it`
-      );
-    }
-  });
-
-  test("a bigger card is given proportionally more room, not a fixed gap", () => {
-    const trip = (cardW: number, cardH: number) =>
-      exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW, cardH });
-    const width = (f: ReturnType<typeof exchangeFlight>) => Math.hypot(f.lane.dx, f.lane.dy);
-    assert.ok(
-      width(trip(120, 168)) > width(trip(40, 56)),
-      "the clearance is a fixed distance rather than the card's own reach"
-    );
-  });
-
-  // #817: the owner read "got 2 of Diamonds" over his own hand, dark on a card
-  // face. The label used to sit at the landing point, and for the viewer's own
-  // seat that point is the hand zone's own centre (`flightOrigin`, "bottom").
-  describe("the seat labels", () => {
-    const tripFor = (from: FlyDirection, to: FlyDirection) =>
-      exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-
-    // The owner's own window as well as the reference one, measured the way the
-    // table measures it: a notched phone in landscape is tighter than the frame
-    // above in every direction, and its seats hold a full deal rather than a
-    // couple of cards — which is what puts a fan where a label wants to be.
-    const PHONE = { width: 844, height: 390 };
-    const phoneScale = cardScale(Math.min(PHONE.width, PHONE.height));
-    const phoneFrame = computeTableFrame({
-      ...PHONE,
-      insets: { top: 0, bottom: 21, left: 59, right: 0 },
-      scale: phoneScale,
-    });
-    const GEOMETRIES = [
-      { name: "the reference window", g: frame, sides: sideDisplayedCounts },
-      {
-        name: "a notched phone",
-        g: {
-          scale: phoneScale,
-          windowWidth: PHONE.width,
-          windowHeight: PHONE.height,
-          tableLeft: phoneFrame.tableLeft,
-          tableRight: phoneFrame.tableRight,
-          tableTop: phoneFrame.tableTop,
-          surplus: phoneFrame.surplus,
-          handZoneH: HAND_ZONE_H(CARD_H(phoneScale * HAND_SCALE), phoneFrame.bottomPad),
-          // Four seats, a fresh deal, thirteen cards each.
-          topDisplayedCount: 13,
-        },
-        sides: { left: 13, right: 13 },
-      },
-    ];
-
-    test("the label stops short of the seat it names, on every trip", () => {
-      for (const [from, to] of PAIRS) {
-        const flight = tripFor(from, to);
-        const tag = flight.tag;
-        const trip = dist(flight.from, flight.to);
-        // Measured along the trip alone: the lane offset is across it and
-        // would otherwise flatter the distance without moving the label off
-        // the seat's cards at all.
-        const ux = (flight.to.dx - flight.from.dx) / trip;
-        const uy = (flight.to.dy - flight.from.dy) / trip;
-        const short =
-          (flight.to.dx - tag.dx) * ux + (flight.to.dy - tag.dy) * uy;
-        assert.ok(
-          short >= cardH,
-          `${from} → ${to}: the label sits ${short.toFixed(0)}px short of the landing, ` +
-            `inside a ${cardH}px card`
-        );
-        // …and still on that seat's own half, or it is naming the wrong end.
-        assert.ok(
-          short < trip / 2,
-          `${from} → ${to}: the label fell back past the middle of the table`
-        );
-      }
-    });
-
-    test("the two labels stay a whole lane apart, as the two cards do", () => {
-      for (const [from, to] of PAIRS) {
-        const there = tripFor(from, to).tag;
-        const back = tripFor(to, from).tag;
-        assert.ok(
-          dist(there, back) > Math.max(cardW, cardH),
-          `${from} ⇄ ${to}: the two labels are ${dist(there, back).toFixed(0)}px apart`
-        );
-      }
-    });
-
-    test("the label is off the lane its own card landed on", () => {
-      for (const [from, to] of PAIRS) {
-        const flight = tripFor(from, to);
-        const tag = flight.tag;
-        assert.ok(
-          boxOverlap(tag, flight.to) === 0,
-          `${from} → ${to}: the label overlaps the card it describes`
-        );
-      }
-    });
-
-    // Every seat's, not only its own: the label is placed off one trip, and a
-    // trip knows nothing about the two seats it does not touch. Their cards are
-    // where their own would land, which is what `flightOrigin` answers.
-    test("the label is clear of every seat's cards, not only the pair trading", () => {
-      for (const geom of GEOMETRIES) {
-        const seatCard = (dir: FlyDirection) =>
-          flightOrigin({
-            ...geom.g,
-            dir,
-            sideDisplayedCount: dir === "left" || dir === "right" ? geom.sides[dir] : 0,
-          });
-        for (const [from, to] of PAIRS) {
-          const tag = exchangeFlight({
-            ...geom.g,
-            sideDisplayedCounts: geom.sides,
-            from,
-            to,
-            cardW,
-            cardH,
-          }).tag;
-          for (const seat of SEATS) {
-            assert.ok(
-              boxOverlap(tag, seatCard(seat)) === 0,
-              `${geom.name}, ${from} → ${to}: the label sits on the ${seat} seat's own cards`
-            );
-          }
-        }
-      }
-    });
-
-    // A trip standing off its lane can reach past the table it is drawn on: the
-    // lane's own offset is perpendicular to the travel, so on a diagonal it
-    // carries the label sideways as well as along, and the seat it names is
-    // already at the edge.
-    test("the label stays on the felt the seats are drawn on, and off the hand", () => {
-      for (const geom of GEOMETRIES) {
-        const pileX = geom.g.tableLeft + (geom.g.windowWidth - geom.g.tableLeft - geom.g.tableRight) / 2;
-        // The hand zone's own centre, from the same helper the flight uses —
-        // so the band the label must stay above is half a hand zone above it.
-        const handTop =
-          flightOrigin({ ...geom.g, dir: "bottom", sideDisplayedCount: 0 }).dy - geom.g.handZoneH / 2;
-        for (const [from, to] of PAIRS) {
-          const tag = exchangeFlight({
-            ...geom.g,
-            sideDisplayedCounts: geom.sides,
-            from,
-            to,
-            cardW,
-            cardH,
-          }).tag;
-          const x = pileX + tag.dx;
-          assert.ok(
-            x > geom.g.tableLeft && x < geom.g.windowWidth - geom.g.tableRight,
-            `${geom.name}, ${from} → ${to}: the label's centre is at x ${x.toFixed(0)}, ` +
-              `outside the table (${geom.g.tableLeft.toFixed(0)}…` +
-              `${(geom.g.windowWidth - geom.g.tableRight).toFixed(0)})`
-          );
-          assert.ok(
-            tag.dy < handTop,
-            `${geom.name}, ${from} → ${to}: the label's centre is ` +
-              `${(tag.dy - handTop).toFixed(0)}px into the player's own hand`
-          );
-        }
-      }
-    });
-  });
-});
-
 // What the table leaves a place for while the flight carrying it is still on
 // screen (#672).
 describe("arrivingCard", () => {
@@ -1797,116 +1318,108 @@ describe("arrivingCard", () => {
     assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);
   });
 
-  // The one window in which the hand does not draw its traded card, from the
-  // exchange opening to the flight landing (#650).
+  // Each traded card drawn in exactly one place: the hand, its flier, or the hand again (#650).
   describe("readHandArrival", () => {
     const KEPT = { id: "9_clubs", suit: "clubs", rank: "9", isJoker: false } as const;
-    const hand = [KEPT, RECEIVED] as Card[];
-    const winnersPrompt = {
-      ...INACTIVE_EXCHANGE,
-      active: true,
-      viewerIsWinner: true,
-      cardFromLoser: RECEIVED as Card,
-    };
+    const choosing = { ...announce, cardGiven: undefined };
+    const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
     const read = (over: Partial<Parameters<typeof readHandArrival>[0]>) =>
-      readHandArrival({
-        hand,
-        exchange: INACTIVE_EXCHANGE,
-        announce: null,
-        viewerSeat: 1,
-        landed: false,
-        reduceMotion: false,
-        ...over,
-      });
+      readHandArrival({ hand: [KEPT, RECEIVED] as Card[], trade: announce, stages: at("waiting"), viewerSeat: 1, ...over });
 
     test("nothing is held back outside an exchange", () => {
-      assert.deepEqual(read({}), {
-        withheldId: undefined,
-        arrivingIndex: undefined,
-        descendingId: undefined,
-      });
+      assert.deepEqual(read({ trade: null }), { withheldIds: [] });
     });
 
-    // The engine gives the winner the card as the phase opens and the prompt
-    // draws it on the felt, so the fan must not draw it too.
-    test("the winner's prompt holds the card back without parting the row", () => {
-      const at = read({ exchange: winnersPrompt });
-      assert.equal(at.withheldId, RECEIVED.id);
-      assert.equal(at.arrivingIndex, undefined, "the row parts for a flight, not for a prompt");
+    test("the winner's hand keeps the card the engine already gave it out of the row until it lands", () => {
+      for (const s of ["waiting", "flying", "rest", "tuck"] as const) {
+        assert.deepEqual(read({ trade: choosing, stages: at(s) }).withheldIds, [RECEIVED.id], s);
+      }
+      assert.equal(read({ trade: choosing, stages: at("rest") }).arrivingIndex, undefined, "the row parts only for the tuck");
     });
 
-    test("the loser is holding nothing back while the winner chooses", () => {
-      const watching = { ...winnersPrompt, viewerIsWinner: false, viewerIsLoser: true };
-      assert.equal(read({ exchange: watching }).withheldId, undefined);
+    test("the tuck parts the row at the card's own place, and the landing gives it back to glow", () => {
+      const tuck = read({ trade: choosing, stages: at("tuck") });
+      assert.equal(tuck.arrivingIndex, 1);
+      assert.equal(tuck.descendingId, RECEIVED.id);
+      const landed = read({ trade: choosing, stages: at("landed") });
+      assert.deepEqual(landed.withheldIds, []);
+      assert.equal(landed.receivedId, RECEIVED.id);
+      assert.equal(tuck.receivedId, undefined, "no glow before it is in the hand");
     });
 
-    test("the flight parts the row at the card's own place in the hand", () => {
-      const at = read({ announce });
-      assert.equal(at.withheldId, RECEIVED.id);
-      assert.equal(at.arrivingIndex, 1);
-      assert.equal(at.descendingId, RECEIVED.id);
-    });
-
-    // A ceremony naming a card the hand does not hold would otherwise open a
-    // gap nothing ever descends into.
     test("a card the hand does not hold parts nothing", () => {
-      const at = read({ announce, hand: [KEPT] as Card[] });
-      assert.equal(at.arrivingIndex, undefined);
+      assert.equal(read({ trade: choosing, hand: [KEPT] as Card[], stages: at("tuck") }).arrivingIndex, undefined);
     });
 
-    test("the landing gives the card back, and still names it for its mount", () => {
-      const at = read({ announce, landed: true });
-      assert.equal(at.withheldId, undefined, "the hand draws it the moment it lands");
-      assert.equal(at.descendingId, RECEIVED.id, "…and it travels in on that same render");
+    test("the card the winner gives stays in its hand until its leg lifts out of it", () => {
+      const moved = [KEPT, RECEIVED] as Card[];
+      assert.deepEqual(read({ hand: moved, stages: at("landed", "waiting") }).lent, GIVEN);
+      assert.equal(read({ hand: moved, stages: at("landed", "flying") }).lent, undefined);
+      const held = [KEPT, RECEIVED, GIVEN] as Card[];
+      assert.deepEqual(read({ hand: held, stages: at("landed", "flying") }).withheldIds, [GIVEN.id]);
     });
 
-    // Nothing flies, so nothing is ever missing from the row.
-    test("reduced motion holds nothing back for a flight", () => {
-      const at = read({ announce, reduceMotion: true });
-      assert.equal(at.withheldId, undefined);
-      assert.equal(at.arrivingIndex, undefined);
-      assert.equal(at.descendingId, undefined);
+    test("the loser lends the taken card until it lifts, then waits for the give", () => {
+      const loser = (hand: Card[], receive: LegStage, give: LegStage) =>
+        read({ hand, viewerSeat: 3, stages: at(receive, give) });
+      assert.deepEqual(loser([KEPT] as Card[], "waiting", "waiting").lent, RECEIVED);
+      assert.equal(loser([KEPT] as Card[], "flying", "waiting").lent, undefined);
+      const after = [KEPT, GIVEN] as Card[];
+      assert.deepEqual(loser(after, "landed", "rest").withheldIds, [GIVEN.id]);
+      assert.equal(loser(after, "landed", "tuck").arrivingIndex, 1);
+      assert.equal(loser(after, "landed", "landed").receivedId, GIVEN.id);
     });
 
-    // …but the prompt's duplicate is a correctness defect rather than motion.
-    test("reduced motion still holds back the card the prompt is drawing", () => {
-      assert.equal(
-        read({ exchange: winnersPrompt, reduceMotion: true }).withheldId,
-        RECEIVED.id
-      );
+    test("a bystander and a spectator are left alone", () => {
+      assert.deepEqual(read({ viewerSeat: 0, stages: at("tuck") }), { withheldIds: [] });
+      assert.deepEqual(read({ viewerSeat: null, stages: at("tuck") }), { withheldIds: [] });
     });
 
-    test("a spectator's synthetic hand is left alone", () => {
-      const at = read({ announce, viewerSeat: null });
-      assert.equal(at.withheldId, undefined);
-      assert.equal(at.descendingId, undefined);
+    test("both Jokers leave the loser's hand only while they are in the air", () => {
+      const jokers = { ...announce, bothJokersException: true };
+      const hand = [KEPT, ...JOKERS] as Card[];
+      const ids = (s: LegStage) => read({ trade: jokers, hand, viewerSeat: 3, stages: at(s) }).withheldIds;
+      assert.deepEqual(ids("waiting"), []);
+      assert.deepEqual(ids("rest"), JOKERS.map((c) => c.id));
+      assert.deepEqual(ids("landed"), []);
     });
   });
-});
 
-// The flier retiring and the hand taking its card back are two views reading
-// one instant; a second `useTradedCardsLanded` call is a second clock for it,
-// and a clock that can drift from the one everything else reads is exactly
-// how the exchange's own flying card and the hand's arrival came to disagree
-// about when the trip is over (#533, reopened 2026-09-02: a residue outliving
-// the exchange). GameTable.tsx is the one call; every other view reads its
-// answer through a prop.
-describe("the exchange landing has one clock", () => {
-  const CALL = /(?<!function\s)\buseTradedCardsLanded\s*\(/g;
-  const HOME = "lib/game/sharedGameFlow.ts";
+  describe("readTradeSeats", () => {
+    const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
+    const seats = (trade: Parameters<typeof readTradeSeats>[0], receive: LegStage, give?: LegStage) => {
+      const { lit, shift } = readTradeSeats(trade, at(receive, give));
+      return { lit: [...lit].sort(), shift: Object.fromEntries(shift) };
+    };
 
-  test("GameTable is the only caller of useTradedCardsLanded", () => {
-    assert.deepEqual(scan(CALL), ["components/GameTable.tsx: useTradedCardsLanded("]);
-  });
+    test("the giver lights from its card's first frame, the receiver from the rest, both out at the landing", () => {
+      const choosing = { ...announce, cardGiven: undefined };
+      assert.deepEqual(seats(choosing, "waiting").lit, []);
+      assert.deepEqual(seats(choosing, "flying").lit, [3]);
+      assert.deepEqual(seats(choosing, "rest").lit, [1, 3]);
+      assert.deepEqual(seats(choosing, "tuck").lit, [1, 3]);
+      assert.deepEqual(seats(choosing, "landed").lit, []);
+      assert.deepEqual(seats(announce, "landed", "flying").lit, [1]);
+    });
 
-  test("the scan fires on a second caller", () => {
-    const planted: [string, string][] = [
-      [HOME, "export function useTradedCardsLanded(a, b) { return true; }"],
-      ["components/ExchangeAnnouncement.tsx", "const landed = useTradedCardsLanded(visible, x);"],
-    ];
-    assert.deepEqual(scanSources(CALL, planted), [
-      "components/ExchangeAnnouncement.tsx: useTradedCardsLanded(",
-    ]);
+    test("each count shows the card where it is drawn, not where the engine moved it", () => {
+      const choosing = { ...announce, cardGiven: undefined };
+      assert.deepEqual(seats(choosing, "waiting").shift, { 1: -1, 3: 1 });
+      assert.deepEqual(seats(choosing, "flying").shift, { 1: -1 });
+      assert.deepEqual(seats(announce, "landed", "waiting").shift, { 1: 1, 3: -1 });
+      assert.deepEqual(seats(announce, "landed", "rest").shift, { 3: -1 });
+      assert.deepEqual(seats(announce, "landed", "landed").shift, {});
+    });
+
+    test("both Jokers light the loser and leave its fan while they fly", () => {
+      const jokers = { ...announce, bothJokersException: true };
+      assert.deepEqual(seats(jokers, "rest"), { lit: [3], shift: { 3: -2 } });
+      assert.deepEqual(seats(jokers, "landed"), { lit: [], shift: {} });
+    });
+
+    test("no trade marks nothing", () => {
+      assert.deepEqual(seats(null, "rest"), { lit: [], shift: {} });
+    });
   });
 });
 
@@ -1960,8 +1473,6 @@ describe("readThrownPlay", () => {
   test("the sweep heads for the round winner's seat, its fan at rest", () => {
     const players = table(3);
     const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
-    const nothingLeaving = { type: "single", cards: [], strength: 0 } as unknown as Combination;
-    assert.deepEqual(seatPoint(geometry, 3), read(players, 3, nothingLeaving).origin);
     assert.notDeepEqual(seatPoint(geometry, 3), seatPoint(geometry, 2));
   });
 
@@ -1987,10 +1498,14 @@ describe("readThrownPlay", () => {
     assert.equal(read(table(2, 1), 2).emptiedHand, false, "one card is not none");
   });
 
-  test("a throw from the top seat starts where that seat's pre-play fan put it", () => {
+  test("the top seat's ring moves with that seat's own count", () => {
+    const ring = (count: number) => {
+      const { playedBy: _p, combo: _c, ...geometry } = readInput(table(2, count), 2);
+      return seatPoint(geometry, 2);
+    };
     assert.notDeepEqual(
-      read(table(2, 1), 2).origin,
-      read(table(2, 5), 2).origin,
+      ring(1),
+      ring(5),
       "the top seat's own count has to reach the origin, or the pile cannot be placed under it"
     );
   });
@@ -2001,14 +1516,14 @@ describe("readThrownPlay", () => {
    * pass for the wrong reason at any two counts on this side of the cap.
    */
   test("past the drawn cap the column stops growing, so the pile stops moving", () => {
-    assert.deepEqual(read(table(2, 7), 2).origin, read(table(2, 11), 2).origin);
+    assert.deepEqual(read(table(2, 7), 2).from[0], read(table(2, 11), 2).from[0]);
   });
 
   test("each seat throws from its own side", () => {
     const players = table(1);
     const origins = [1, 2, 3].map((s) => ({
       dir: read(players, s).dir,
-      dx: read(players, s).origin.dx,
+      dx: read(players, s).from[0]!.x,
     }));
     assert.deepEqual(
       origins.map((o) => o.dir),
@@ -2020,7 +1535,7 @@ describe("readThrownPlay", () => {
   });
 });
 
-describe("readExchangeTrips", () => {
+describe("readExchangeLegs", () => {
   const card = (id: string) =>
     ({ id, suit: "clubs", rank: "5", isJoker: false }) as Card;
   const seat = (id: string, cards: number) =>
@@ -2034,76 +1549,69 @@ describe("readExchangeTrips", () => {
   /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
   const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
 
-  const trips = (winnerIdx: number, loserIdx: number) =>
-    readExchangeTrips({
-      announce: { winnerIdx, loserIdx } as ExchangeAnnounceData,
-      viewerSeat: 0,
-      players,
-      opponents: arrangeOpponents(players, 0),
-      scale: 1,
-      windowWidth: 844,
-      windowHeight: 390,
-      tableLeft: 20,
-      tableRight: 20,
-      tableTop: 12,
-      surplus: 0,
-      bottomPad: 8,
-      handCardH: 90,
-    });
+  const trade = (winnerIdx: number, loserIdx: number, bothJokersException = false) => ({
+    winnerName: "",
+    loserName: "",
+    winnerIdx,
+    loserIdx,
+    bothJokersException,
+    cardReceived: card("taken"),
+    cardGiven: card("given"),
+  });
+  const GEOMETRY = {
+    viewerSeat: 0,
+    scale: 1,
+    windowWidth: 844,
+    windowHeight: 390,
+    tableLeft: 20,
+    tableRight: 20,
+    tableTop: 12,
+    surplus: 0,
+    bottomPad: 8,
+    handCardH: 90,
+  };
+  const legs = (winnerIdx: number, loserIdx: number, table = players, origins?: Map<string, CardFrom>, jokers = false) =>
+    readExchangeLegs(
+      { ...GEOMETRY, trade: trade(winnerIdx, loserIdx, jokers), players: table, opponents: arrangeOpponents(table, 0) },
+      origins
+    );
 
-  /**
-   * The two cards of a trade travel the same line in opposite directions, so
-   * either one's departure point is the other's arrival point once each is
-   * taken out of its own lane. A trip built from the wrong pair of seats
-   * cannot satisfy this, which is the defect the table's own geometry risks.
-   */
-  test("each card leaves from where the other one arrives", () => {
-    const { toWinner, toLoser } = trips(1, 2);
-    const unlaned = (p: { dx: number; dy: number }, lane: { dx: number; dy: number }) => ({
-      dx: p.dx - lane.dx,
-      dy: p.dy - lane.dy,
-    });
-    assert.deepEqual(
-      unlaned(toWinner.from, toWinner.lane),
-      unlaned(toLoser.to, toLoser.lane),
-      "the winner's card departs the loser's seat, which is where the loser's card lands"
-    );
-    assert.deepEqual(
-      unlaned(toWinner.to, toWinner.lane),
-      unlaned(toLoser.from, toLoser.lane)
-    );
+  test("every leg rests face up on the pile's own centre, at a played card's size", () => {
+    for (const [winner, loser] of [[0, 2], [1, 3], [2, 1], [3, 0]]) {
+      const { receive, give } = legs(winner, loser);
+      for (const leg of [receive, give]) {
+        const p = legPose(LEG.rest, leg);
+        assert.deepEqual({ x: p.x, y: p.y, scale: p.scale, face: p.face }, { x: 0, y: 0, scale: 1, face: true }, `${winner}>${loser}`);
+      }
+    }
   });
 
-  test("swapping who won swaps the two trips", () => {
-    const asIs = trips(1, 3);
-    const swapped = trips(3, 1);
-    assert.deepEqual(asIs.toWinner.to, swapped.toLoser.to);
-    assert.deepEqual(asIs.toLoser.to, swapped.toWinner.to);
+  test("both Jokers rest side by side on the pile and go back to the loser", () => {
+    const { jokers } = legs(1, 3, players, undefined, true);
+    assert.deepEqual(jokers.map((j) => j.rest.x), [-18, 18]);
+    for (const j of jokers) assert.deepEqual(j.from, j.to, "they leave and return to the same fan");
   });
 
-  /**
-   * A seat's fan sets where its own cards sit, so the trip has to start from
-   * the seat's real count rather than from a table-wide guess.
-   */
-  test("the top seat's own hand places the card it trades", () => {
-    const short = [seat("me", 5), seat("right", 6), seat("top", 1), seat("left", 8)];
-    const long = [seat("me", 5), seat("right", 6), seat("top", 5), seat("left", 8)];
-    const at = (table: Player[]) =>
-      readExchangeTrips({
-        announce: { winnerIdx: 2, loserIdx: 0 } as ExchangeAnnounceData,
-        viewerSeat: 0,
-        players: table,
-        opponents: arrangeOpponents(table, 0),
-        scale: 1,
-        windowWidth: 844,
-        windowHeight: 390,
-        tableLeft: 20,
-        tableRight: 20,
-        tableTop: 12,
-        surplus: 0,
-        bottomPad: 8,
-        handCardH: 90,
-      }).toWinner.to;
-    assert.notDeepEqual(at(short), at(long));
+  test("the viewer's card leaves from, and never jumps off, its own place in the hand", () => {
+    const own = new Map<string, CardFrom>([["taken", { x: -40, y: -6, rot: 4, scale: 1.1 }]]);
+    const from = legs(2, 0, players, own).receive.from;
+    const hand = seatPoint({ ...GEOMETRY, players, opponents: arrangeOpponents(players, 0) }, 0);
+    assert.deepEqual(from, { x: -40 + hand.dx, y: -6 + hand.dy, rot: 4, scale: 1.1 });
+  });
+
+  test("swapping who won swaps the two legs", () => {
+    assert.deepEqual(legs(1, 3).receive, legs(3, 1).give);
+  });
+
+  test("the viewer's end is the hand, face up; an opponent's is its fan, a back", () => {
+    const { receive } = legs(0, 2);
+    assert.equal(receive.toFace, true);
+    assert.equal(receive.fromFace, false);
+  });
+
+  test("a side seat's own hand places the card it trades", () => {
+    const at = (leftCards: number) =>
+      legs(3, 0, [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", leftCards)]).receive.to;
+    assert.notDeepEqual(at(1), at(13));
   });
 });

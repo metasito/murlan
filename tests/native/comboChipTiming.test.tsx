@@ -1,7 +1,7 @@
 // tests/native/comboChipTiming.test.tsx — the combination chip names the play
 // from the moment it lands, not from the end of the settle spring, while the
-// cards themselves stay off the felt until the flight's own `flyInfo` gate
-// clears (#828). `current` and `comboLabel` are deliberately two separate
+// cards themselves stay off the felt while a flight still carries them
+// (#828). `current` and `comboLabel` are deliberately two separate
 // props: `current` protects the once-only card render, `comboLabel` may run
 // ahead of it.
 import { describe, it, expect } from "@jest/globals";

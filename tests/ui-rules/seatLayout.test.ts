@@ -11,7 +11,6 @@ import {
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
-  displayedHandCount,
   fanCounts,
   viewerOwnsSeat,
 } from "../../components/seatLayout.ts";
@@ -139,45 +138,9 @@ describe("vacatedOf (#850 clause 2)", () => {
   });
 });
 
-describe("displayedHandCount", () => {
-  test("no flight: the display is exactly the authoritative count", () => {
-    assert.equal(displayedHandCount(14, 0), 14);
-  });
-
-  test("mid-flight: the cards in the air are added back, reproducing the pre-play count", () => {
-    // The engine already dropped the seat to 11 for a 3-card play; the fan
-    // and the badge should still read the 14 the player saw before throwing.
-    assert.equal(displayedHandCount(11, 3), 14);
-  });
-
-  test("once the flight lands, cardsInFlight is 0 and the sum already is handCount", () => {
-    // No step-down to schedule: the same seat that read 14 during the flight
-    // reads 11 the instant cardsInFlight returns to 0, with nothing else changing.
-    assert.equal(displayedHandCount(11, 0), 11);
-  });
-});
-
 describe("fanCounts", () => {
-  test("under cap: identical to subtracting departing from the capped total", () => {
-    assert.deepEqual(fanCounts(4, 2, 5), { remaining: 2, departing: 2 });
-  });
-
-  test("no flight: everything held is drawn, nothing departs", () => {
-    assert.deepEqual(fanCounts(4, 0, 5), { remaining: 4, departing: 0 });
-  });
-
-  test("at cap: the fan stays at cap through the flight instead of dipping and popping back", () => {
-    // A left seat holding 10 that plays 3: the post-play hand is 7, still past
-    // the cap of 5, so the fan never had fewer than 5 to show and nothing
-    // should visibly depart.
-    assert.deepEqual(fanCounts(10, 3, 5), { remaining: 5, departing: 0 });
-  });
-
-  test("crossing the cap: only the room the play actually freed up departs", () => {
-    // Pre-play 6 (1 over cap of 5) playing 3 drops the hand to 3, under cap —
-    // the fan does shrink, but the seat only ever drew 5 backs to begin with,
-    // so only 2 of the 3 played cards were ever drawn as one.
-    assert.deepEqual(fanCounts(6, 3, 5), { remaining: 3, departing: 2 });
+  test("a fan never draws more backs than its cap", () => {
+    assert.equal(fanCounts(10, 5), 5);
   });
 });
 

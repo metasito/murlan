@@ -6,7 +6,7 @@
 // itself the next time the server hands the array back in its own order.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyHandOrder, cardAt, dropIndex, moveCard } from "../../components/handOrder.ts";
+import { applyHandOrder, cardAt, dropIndex, lendBack, moveCard } from "../../components/handOrder.ts";
 import type { Card } from "../../lib/game/gameEngine.ts";
 
 /** Cards by rank alone — the suit plays no part in any of this. */
@@ -68,6 +68,12 @@ test("a card that has left the hand takes its place in the order with it", () =>
     ids(applyHandOrder(cards, ["5_spades", "4_spades", "3_spades"])),
     ["5_spades", "3_spades"]
   );
+});
+
+test("a card lent to an exchange flier comes back to the slot the player gave it, not the engine's", () => {
+  const order = ["9_spades", "3_spades", "5_spades"];
+  assert.deepEqual(ids(lendBack(hand("3", "5"), hand("9")[0], order)), order);
+  assert.deepEqual(ids(lendBack(hand("3", "5"), hand("9")[0], [])), ["3_spades", "5_spades", "9_spades"]);
 });
 
 test("every card appears exactly once, whatever the order says", () => {

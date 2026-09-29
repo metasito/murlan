@@ -2,8 +2,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
-import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
+import { BACK_SCALE } from "./cardFaceModel.ts";
+import { seatFanArc } from "./fanGeometry.ts";
 import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -211,34 +211,9 @@ export function arrangeOpponents<T>(
   return out;
 }
 
-/**
- * The number a seat's fan and count badge both show — derived, never stored.
- * docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §2.
- */
-export function displayedHandCount(handCount: number, cardsInFlight: number): number {
-  return handCount + cardsInFlight;
-}
-
-/** How many of a `CardFan`'s backs stay put versus lift and fade, at `cap`. */
-export interface FanCounts {
-  /** Backs re-solving into the smaller arc — `i < remaining` in the map. */
-  remaining: number;
-  /** Backs lifting and fading in place — drawn, never re-solved. */
-  departing: number;
-}
-
-/**
- * `count` is the pre-play total (`displayedHandCount`); `departing` of it are
- * mid-flight. A fan never draws more than `cap` backs, so `remaining` re-caps
- * the *post-play* total rather than subtracting `departing` from an already
- * capped one — the difference only shows once a hand sits at `cap`, where
- * subtracting first left the fan visibly short for the length of the flight
- * and then popping back to `cap` the instant it landed.
- */
-export function fanCounts(count: number, departing: number, cap: number): FanCounts {
-  const cappedTotal = Math.min(count, cap);
-  const remaining = Math.min(count - departing, cap);
-  return { remaining, departing: cappedTotal - remaining };
+/** How many backs a `CardFan` draws: the count leaves at the throw (ADR-0008), and never more than `cap`. */
+export function fanCounts(count: number, cap: number): number {
+  return Math.min(count, cap);
 }
 
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
@@ -264,26 +239,6 @@ export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
-}
-
-/**
- * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
- * (components/table/seats.tsx) performs for its wrapper box, and that
- * `sideSlotHeight` and `topFanHeight` below perform for theirs, so none of the
- * three can disagree with what the fan actually draws.
- */
-export function seatFanArc(count: number, backScale: number) {
-  const backW = CARD_BACK_W(backScale);
-  const backH = CARD_BACK_H(backScale);
-  const { cards, box } = solveArc(count, {
-    budget: SEAT_ARC,
-    cardW: backW,
-    cardH: backH,
-    scale: backScale,
-    room: Infinity,
-    flip: true,
-  });
-  return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
 }
 
 /**

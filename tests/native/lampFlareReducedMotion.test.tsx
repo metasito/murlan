@@ -3,7 +3,7 @@
 // generic ungated-animation-block scan (tests/ui-rules/reducedMotion.test.ts) alone:
 // that scan can only see that `Flare`/`Spark`/`LampLift` each carry a
 // reduceMotion guard in their own source, not that a bomb landing under the
-// setting a player actually chose never bumps the trigger those guards read.
+// setting a player actually chose leaves what they draw at rest.
 // A separate file, not a second describe in lampFlareWiring.test.tsx: the
 // preference is mocked at module scope, so the two cannot share one file.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
@@ -17,23 +17,8 @@ jest.mock("@/lib/accessibility", () => ({
   getMotionPreference: () => "on",
 }));
 
-const boomTriggerReadings: number[] = [];
-const lampLiftReadings: number[] = [];
-jest.mock("@/components/useTableFeedback", () => {
-  const actual: any = jest.requireActual("@/components/useTableFeedback");
-  return {
-    ...actual,
-    useTableFeedback: (input: any) => {
-      const real = actual.useTableFeedback(input);
-      boomTriggerReadings.push(real.boomTrigger);
-      lampLiftReadings.push(real.lampLiftTrigger);
-      return real;
-    },
-  };
-});
-
+import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
-import { impactDelayMs } from "@/components/flightPhysics";
 import { getVisibleText } from "./visibilityHelpers";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 
@@ -58,6 +43,8 @@ const SINGLE_CARD: Card = { id: "K_hearts", rank: "K", suit: "hearts", isJoker: 
 const WINNING_PLAY: Combination = { type: "single", cards: [SINGLE_CARD], strength: 13 };
 
 const noop = () => {};
+const opacityOf = (testID: string) =>
+  (getAnimatedStyle(screen.getByTestId(testID, { includeHiddenElements: true })) as { opacity?: number }).opacity ?? 0;
 const table = (gameState: GameState, matchOver: boolean) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
@@ -105,40 +92,38 @@ const HAND_CLOSED: GameState = {
 
 describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)", () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    boomTriggerReadings.length = 0;
-    lampLiftReadings.length = 0;
     jest.useFakeTimers();
   });
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it("a bomb landing never bumps boomTrigger off zero — impactDelayMs(true) is 0, so the impact fires on the same tick", async () => {
+  it("a bomb landing leaves the flare and the sparks dark", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
     await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(true) + 10);
-      jest.runOnlyPendingTimers();
+      jest.advanceTimersByTime(100);
     });
 
-    expect(boomTriggerReadings.every((v) => v === 0)).toBe(true);
+    expect(opacityOf("bomb-flare")).toBe(0);
+    expect(opacityOf("spark-0")).toBe(0);
 
     await r.unmount();
   });
 
   // The flare/wave/spark are the whole of what a bomb "says" once — with the
-  // trigger held at zero (above), that channel is silent for the rest of the
+  // burst held dark (above), that channel is silent for the rest of the
   // round. The combo chip on the pile is what has to carry the news instead,
   // and it is not itself gated on the preference: it is `current`'s own label,
   // drawn every time there is a combination to draw.
   it("the bomb still names itself on the pile — the label, not just the flare, survives reduced motion", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(true) + 10);
-      jest.runOnlyPendingTimers();
-    });
+    for (let f = 0; f < 6; f++) {
+      await act(async () => {
+        jest.advanceTimersByTime(16);
+      });
+    }
 
     const pile = within(screen.getByTestId("pile-area"));
     getVisibleText(pile, /bomb/i);
@@ -146,15 +131,14 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
     await r.unmount();
   });
 
-  it("the manche rung never bumps lampLiftTrigger off zero", async () => {
+  it("the manche rung leaves the lamp lift dark", async () => {
     const r = await render(table(HAND_CLOSED, false));
 
     await act(async () => {
-      jest.advanceTimersByTime(impactDelayMs(true) + 10);
-      jest.runOnlyPendingTimers();
+      jest.advanceTimersByTime(100);
     });
 
-    expect(lampLiftReadings.every((v) => v === 0)).toBe(true);
+    expect(opacityOf("lamp-lift")).toBe(0);
 
     await r.unmount();
   });

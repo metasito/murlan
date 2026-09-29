@@ -279,7 +279,8 @@ export const it: Record<keyof typeof en, string> = {
   "reactionLayer.emoji.crown": "corona",
 
   // ----------------------------------------------------------------- exchange.*
-  "exchange.prompt": "{{name}} ti ha dato questa — dagliene una",
+  "exchange.chipTitle": "Scambio",
+  "exchange.chipGive": "Scegli una carta da 3 a 10 per {{name}}",
   "exchange.noValidCards": "Nessuna carta da 3 a 10 — dai la più bassa",
   "exchange.watching": "{{winner}} sta scegliendo una carta per {{loser}}",
   "exchange.waitingForYou": "{{winner}} sta scegliendo una carta per te",
@@ -288,10 +289,9 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.confirmA11yWaiting": "Dai una carta a {{name}}. Scegli prima una delle carte evidenziate.",
   "exchange.cardA11yHint": "Sceglie questa carta da dare",
   "exchange.cardA11yNotGiveable": "Non si può dare — si può dare solo da un 3 a un 10",
-  "exchange.receivedCardA11yLabel": "{{name}} ti ha dato {{card}}",
-  "exchange.receivedCardA11yLabelGiven": "Hai dato {{card}} a {{name}}",
-  "exchange.receivedCardA11yLabelWatching": "{{loser}} ha dato {{card}} a {{winner}}",
-  "exchange.seatGot": "ha ricevuto {{card}}",
+  "exchange.pileGives": "{{from}} dà {{card}} a {{to}}",
+  "exchange.pileYouGive": "Dai {{card}} a {{to}}",
+  "exchange.pileGivesYou": "{{from}} ti dà {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks

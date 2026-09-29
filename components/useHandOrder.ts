@@ -15,12 +15,15 @@ import type { Card } from "@/lib/game/gameEngine";
  * fourteen strangers at once.
  */
 const KEEPS_ORDER_UP_TO = 1;
+const NONE: readonly string[] = [];
 
 export interface HandOrder {
   /** `sorted` in this seat's own arrangement. */
   arranged: Card[];
   /** Puts `id` at slot `to` of the hand without it. */
   moveTo: (id: string, to: number) => void;
+  /** The arrangement as ids, cards that have left included. */
+  order: readonly string[];
 }
 
 /**
@@ -49,7 +52,8 @@ export function useHandOrder(seat: number, sorted: Card[]): HandOrder {
     return stored;
   }, [stored, sorted]);
 
-  const arranged = useMemo(() => applyHandOrder(sorted, order ?? []), [sorted, order]);
+  const kept = order ?? NONE;
+  const arranged = useMemo(() => applyHandOrder(sorted, kept), [sorted, kept]);
 
   const moveTo = useCallback(
     (id: string, to: number) => {
@@ -58,5 +62,5 @@ export function useHandOrder(seat: number, sorted: Card[]): HandOrder {
     [seat, arranged]
   );
 
-  return { arranged, moveTo };
+  return { arranged, moveTo, order: kept };
 }

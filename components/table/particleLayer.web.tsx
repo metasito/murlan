@@ -1,9 +1,13 @@
 // The web's particle layer: one 2D canvas and one requestAnimationFrame loop, whether or not
 // CanvasKit has loaded — the felt swaps renderers, this never does (#1252).
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import type { SharedValue } from "react-native-reanimated";
 import { useTraceSource } from "@/lib/e2eTrace";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { DESIGN } from "./lampRig";
-import { createParticles, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { createParticles, landDust, landingDustCount, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { useLandingReaction } from "./useLandingReaction";
+import type { LandingSignal } from "./useFlightClock";
 import { CELLS, D, DRAW_STRIDE, layout, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
 function bakeSheet(): HTMLCanvasElement {
@@ -87,9 +91,20 @@ function animate(cv: HTMLCanvasElement, sim: Particles, sx: number, sy: number):
   return () => cancelAnimationFrame(id);
 }
 
-export function ParticleLayer({ ref, sx, sy }: { ref: Ref<ParticleEmitter>; sx: number; sy: number }) {
+export function ParticleLayer({ ref, sx, sy, landing }: {
+  ref?: Ref<ParticleEmitter>;
+  sx: number;
+  sy: number;
+  landing: SharedValue<LandingSignal>;
+}) {
   const [sim] = useState(() => createParticles());
   const canvas = useRef<HTMLCanvasElement>(null);
+  const reduced = usePrefersReducedMotion();
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    if (reduced) return;
+    for (const p of landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, Math.random)) spawn(sim, p);
+  });
 
   useImperativeHandle(ref, () => ({
     emit(spawns) {

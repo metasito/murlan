@@ -19,7 +19,7 @@ const BUDGET: Record<string, number> = {
 // A term belongs to the file whose directory its reader is already in: the root file is
 // loaded on every turn, the nested ones only when that directory is being read.
 const OWNED: Record<string, string[]> = {
-  "components/CLAUDE.md": ["CARD_W", "zIndex", "Layer.felt", "impactDelayMs", "a11yHidden", "supportedOrientations"],
+  "components/CLAUDE.md": ["CARD_W", "zIndex", "Layer.felt", "landsAt", "a11yHidden", "supportedOrientations"],
   "server/CLAUDE.md": ["schemaDdl", "DEDUPE_ON_BOOT", "tablesFilter", "bootEnv", "deploy/runtime.json"],
 };
 

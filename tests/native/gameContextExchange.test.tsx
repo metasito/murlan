@@ -155,7 +155,7 @@ test("choosing an exchange card moves the card and announces it through the real
 });
 
 // #533, reopened 2026-09-02: a residue outliving the exchange. The ceremony's
-// own reading clock is deliberately long (`Reading.notice` past the flight),
+// own clock is deliberately long (`Motion.exchange.read` past the give landing),
 // so a table that starts over while it is still counting down — a fresh
 // match dealt here, a room rejoin online — must not carry the old trade's
 // announcement onto a felt with no record of it left. Turning `phasePresent`

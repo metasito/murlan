@@ -27,12 +27,14 @@ import {
   replayQueryKey,
   type ReplayDto,
 } from "@/lib/game/replay";
-import { Motion } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 
 /** A replay has no actions; the table's handlers are wired to nothing. */
 const NOOP = () => {};
+
+/** Gap between moves when a replay plays itself: one combination read, and a whole hand not a sitting. */
+const STEP_MS = 1200;
 
 export default function ReplayScreen() {
   const { t } = useTranslation();
@@ -59,7 +61,7 @@ export default function ReplayScreen() {
 
   useEffect(() => {
     if (!playing) return;
-    const timer = setTimeout(() => setIndex((i) => i + 1), Motion.replayStep / speed);
+    const timer = setTimeout(() => setIndex((i) => i + 1), STEP_MS / speed);
     return () => clearTimeout(timer);
   }, [playing, index, speed]);
 
