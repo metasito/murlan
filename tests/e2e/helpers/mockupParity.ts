@@ -12,6 +12,7 @@ import { offlineGameSave } from "./offlineSeed";
 import { skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
+  diffFlight,
   diffPillAtProgress,
   diffTraces,
   movingFields,
@@ -24,7 +25,6 @@ import {
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Seat } from "./parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
-import { handOffDelayMs, impactDelayMs } from "../../../components/flightPhysics";
 
 const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -123,7 +123,7 @@ export const playLowest = (cards: number) => async (page: Page) => {
 };
 
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
-const TRICK_LANDINGS = [1584, 3040, 5792];
+const MOCKUP_LANDINGS = [1584, 3040, 5792];
 
 const MOMENTS: Moment[] = [
   {
@@ -144,47 +144,45 @@ const MOMENTS: Moment[] = [
     // Each 750 ms after a hand-off, where the lamp's glide covers under 2 pt a frame.
     checkpoints: [1040, 2496, 4000, 5296, 6704],
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
-    mockupScript: "Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });",
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      const hand = handoff;
+      handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
     seatOnMove: "you",
-    appTrigger: heldTurnTable,
+    appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["lamp", "level"],
+    fields: ["onset", "lamp", "level"],
     regions: [],
+    onsets: ["moment:handoff"],
     actions: [
-      { atMs: 1750 - handOffDelayMs(false), app: playLowest(1) },
+      { atMs: 1150, app: playLowest(2) },
       { atMs: 3250, app: pass },
       { atMs: 4550, app: pass },
       { atMs: 5950, app: pass },
     ],
   },
   {
-    // The app holds 50 ms after contact where the mockup holds 175–225, so its landings cannot align
-    // in the run whose hand-offs do; this one aligns on the landings and holds no lamp.
+    // The same throws as `trick`, held on the flight and the pile rather than the lamp.
     key: "trick-landings",
     chapter: "trick",
     windowMs: 6992,
-    checkpoints: [1040, ...TRICK_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
+    checkpoints: [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       lamp.m.length = 0;
-      ember = () => {};
-      const wobble = landWobble;
-      landWobble = (g) => { window.__parityOnsets.push("moment:landing"); wobble(g); };`,
+      ember = () => {};`,
     seatOnMove: "you",
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "brightness"],
+    fields: ["flight", "live", "dropped", "brightness"],
     regions: ["pile"],
-    // At rest only: after the onset the app's cards are still on their arc and its lamp leaves ~125 ms
-    // early (#1259 rules on both), and the mockup's nines are down before the first landing's rest.
-    regionsAt: [1040, ...TRICK_LANDINGS.slice(1).map((t) => t + 1200)],
-    onsets: ["moment:landing", "sound:combo"],
+    // At rest only: the mockup's nines are down before the first landing's rest.
+    regionsAt: [1040, ...MOCKUP_LANDINGS.slice(1).map((t) => t + 1200)],
     actions: [
-      { atMs: TRICK_LANDINGS[0] - impactDelayMs(false), app: playLowest(2) },
-      { atMs: TRICK_LANDINGS[1] - impactDelayMs(false), app: botMove },
+      { atMs: 1150, app: playLowest(2) },
+      { atMs: 2600, app: botMove },
       { atMs: 4150, app: pass },
-      { atMs: TRICK_LANDINGS[2] - impactDelayMs(false), app: botMove },
+      { atMs: 5350, app: botMove },
     ],
     // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
     variants: ["skia"],
@@ -452,7 +450,8 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
   const traced = diffTraces(heldOnsets(runs.mockup.trace), heldOnsets(runs.app.trace), m.checkpoints).filter(
     (f) => m.mode === "determinism" || held.has(f.field)
   );
-  const failures = [...traced, ...pillFailures];
+  const flown = held.has("flight") ? diffFlight(runs.mockup.trace, runs.app.trace) : [];
+  const failures = [...traced, ...flown, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
