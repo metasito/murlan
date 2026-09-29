@@ -5,7 +5,7 @@ import { armTurn } from "../../server/game/gameTurn.ts";
 import { persistence } from "../../server/game/gamePersistence.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
-import { initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
+import { createDeck, initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { LEG, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/game/exchangeTimeline.ts";
 import { DEAL_FLIGHT_MS, dealEndMs } from "../../lib/game/dealTimeline.ts";
@@ -16,7 +16,9 @@ const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 
 function exchangeTable(): OnlineGameState {
   const seats = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "ai" as const, id: `player_${i}` }));
-  const gameState: GameState = initializeRematch(seats, "free_for_all", ["player_0", "player_1", "player_2", "player_3"]);
+  const deck = createDeck();
+  const hands = seats.map((_, s) => deck.filter((_, i) => i % seats.length === s));
+  const gameState: GameState = initializeRematch(seats, "free_for_all", ["player_0", "player_1", "player_2", "player_3"], 0, hands);
   assert.ok(gameState.exchangePhase?.active, "the rematch opens an exchange");
   const game: OnlineGameState = {
     roomId: ROOM,

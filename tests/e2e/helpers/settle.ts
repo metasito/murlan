@@ -92,15 +92,8 @@ function read(page: Page, within?: string, seenBoxes = false): Promise<string> {
       }
       if (seenBoxes && isUnseen(el)) continue;
       const r = el.getBoundingClientRect();
-      parts.push(
-        [
-          Math.round(r.x),
-          Math.round(r.y),
-          Math.round(r.width),
-          Math.round(r.height),
-          seenBoxes ? "" : getComputedStyle(el).opacity,
-        ].join(",")
-      );
+      // Unrounded: a spring's tail moves less than a pixel per reading, and rounded it reads as rest.
+      parts.push([r.x, r.y, r.width, r.height, seenBoxes ? "" : getComputedStyle(el).opacity].join(","));
     }
     return parts.join("|");
   }, { selector: within, seenBoxes });

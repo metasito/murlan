@@ -340,7 +340,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     };
 
     // A loser holding both jokers skips the exchange entirely (docs/GAME-RULES.md
-    // §10), and in a two-handed deal that is one manche in four — play those
+    // §10), and in a two-handed deal that is one manche in sixteen — play those
     // out and deal again rather than asserting on whichever one turns up.
     let next = await dealNextManche();
     for (let attempt = 0; attempt < 6 && !next.exchangePhase?.active; attempt++) {

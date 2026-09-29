@@ -17,7 +17,8 @@
 import { test, expect } from "./fixtures";
 import { resumeSaved, offlineGameSave, DEAL_SIZE } from "./helpers/offlineSeed";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
-import { HAND_CARDS, TABLE } from "./helpers/selectors.ts";
+import { HAND_CARDS, TABLE, TABLE_SCREEN } from "./helpers/selectors.ts";
+import { atRest } from "./helpers/settle";
 
 // tests/e2e/tableFit.spec.ts's own phone fixtures, which are the windows this
 // is actually seen in.
@@ -54,6 +55,8 @@ for (const vp of VIEWPORTS) {
 
     const prompt = page.getByTestId("exchange-prompt");
     await expect(prompt, "the exchange has to ask on the felt").toBeVisible({ timeout: 15_000 });
+    // The prompt and `useHandLift`'s 500ms rise start on one render.
+    await atRest(page, TABLE_SCREEN);
 
     // Soft, so one run reports every way it does not fit rather than stopping
     // at the first — the prompt and the confirm go off different edges.
@@ -76,20 +79,6 @@ for (const vp of VIEWPORTS) {
     expect.soft(await giveable.count(), "no card in the fan can be given").toBeGreaterThan(0);
 
     const confirm = page.getByTestId("btn-gioca");
-    // The prompt and `useHandLift`'s 500ms rise start on one render. Unrounded, so the lift's
-    // ease-out tail cannot pass for rest the way three equal rounded readings (`atRest`) can.
-    let previous = "";
-    await expect
-      .poll(
-        async () => {
-          const reading = JSON.stringify(await confirm.boundingBox());
-          const still = reading !== "null" && reading === previous;
-          previous = reading;
-          return still;
-        },
-        { message: "the confirm never came to rest", intervals: [100], timeout: 15_000 }
-      )
-      .toBe(true);
     const box = await confirm.boundingBox();
     if (!box) throw new Error("the confirm button never rendered");
 

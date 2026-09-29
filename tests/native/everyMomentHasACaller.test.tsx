@@ -72,8 +72,8 @@ async function mancheEnd(x: (last: GameState) => Extra): Promise<string[]> {
   });
 }
 
-let manche: Promise<string[]> | undefined;
-const botSounds = () => (manche ??= wholeManche());
+let manche: string[] | undefined;
+const botSounds = async () => (manche ??= await wholeManche());
 
 const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]> }> = {
   landing: { sounds: ['play', 'combo', 'bomb'], run: botSounds },
