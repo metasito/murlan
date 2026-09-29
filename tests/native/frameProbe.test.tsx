@@ -25,8 +25,10 @@ describe('a throw window closes on the first frame past it', () => {
     jsNow = 0;
     jest.spyOn(performance, 'now').mockImplementation(() => jsNow);
     jest.spyOn(Date, 'now').mockImplementation(() => WALL + jsNow);
+    probe.armFrames(true);
   });
   afterEach(() => {
+    probe.armFrames(false);
     jest.restoreAllMocks();
   });
 
@@ -61,20 +63,17 @@ describe('the frame loop runs only while armed or recording', () => {
   const active = () => (globalThis as { _frameCallbackRegistry?: { activeFrameCallbacks: Set<number> } })._frameCallbackRegistry!.activeFrameCallbacks.size;
   const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 20))));
 
-  it('is inactive on mount, and follows arming and recording', async () => {
+  it('is inactive on mount, follows arming, and refuses a window while unarmed', async () => {
     const view = await render(<probe.FrameProbe />);
     await settle();
     expect(active()).toBe(0);
+    expect(() => probe.recordFrames(true)).toThrow('registerFramedScenario');
     probe.armFrames(true);
     await settle();
     expect(active()).toBe(1);
-    probe.armFrames(false);
-    await settle();
-    expect(active()).toBe(0);
     probe.recordFrames(true);
-    await settle();
-    expect(active()).toBe(1);
     probe.recordFrames(false);
+    probe.armFrames(false);
     await settle();
     expect(active()).toBe(0);
     await view.unmount();

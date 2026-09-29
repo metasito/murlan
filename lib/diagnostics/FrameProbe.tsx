@@ -9,7 +9,7 @@ const samples = makeMutable<number[]>([]);
 let probe: { setActive(on: boolean): void } | null = null;
 let armed = false;
 let open: { at: number; until: number } | null = null;
-const sync = () => probe?.setActive(armed || open !== null);
+const sync = () => probe?.setActive(armed);
 
 export function sampleFrame(frame: FrameInfo): void {
   "worklet";
@@ -36,6 +36,7 @@ export function armFrames(on: boolean): void {
  */
 export function recordFrames(on: boolean, until = Infinity): void {
   if (on) {
+    if (!armed) throw new Error("frames recorded with the frame loop unarmed: register the scenario with registerFramedScenario");
     open = { at: performance.now(), until };
     closeAtWall.value = until - (performance.now() - Date.now());
     recording.value = true;
