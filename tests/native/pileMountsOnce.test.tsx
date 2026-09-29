@@ -70,7 +70,7 @@ const outOfSight = (n: TestInstance | null): boolean => !!n && (StyleSheet.flatt
 const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { includeHiddenElements: true });
 const table = (s: GameState) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
   </SafeAreaProvider>
 );
 
@@ -99,7 +99,7 @@ describe.each<[string, 'on' | 'off']>([['reduced', 'on'], ['full', 'off']])('fou
     let closed = 0;
     let unseen = 0;
     let inAir = 0;
-    while (closed < 4 || closedAt !== null) {
+    while (closed < 4 || closedAt !== null || (preference === 'off' && inAir < 3)) {
       const next = offlineBotMove(state);
       if (!next) break;
       const lead = state.lastPlayedCombination === null && next.lastPlayedCombination !== null;
