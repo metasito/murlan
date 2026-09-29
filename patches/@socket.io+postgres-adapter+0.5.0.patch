@@ -1,0 +1,74 @@
+diff --git a/node_modules/@socket.io/postgres-adapter/dist/util.js b/node_modules/@socket.io/postgres-adapter/dist/util.js
+index 498be25..2ee5339 100644
+--- a/node_modules/@socket.io/postgres-adapter/dist/util.js
++++ b/node_modules/@socket.io/postgres-adapter/dist/util.js
+@@ -55,14 +55,28 @@ class PubSubClient {
+         }, opts.cleanupInterval);
+     }
+     scheduleReconnection() {
++        if (this.closed || this.reconnectTimer) {
++            return;
++        }
+         const reconnectionDelay = Math.floor(2000 * (0.5 + Math.random()));
+         debug("reconnection in %d ms", reconnectionDelay);
+-        this.reconnectTimer = setTimeout(() => this.initClient(), reconnectionDelay);
++        this.reconnectTimer = setTimeout(() => {
++            this.reconnectTimer = undefined;
++            this.initClient();
++        }, reconnectionDelay);
+     }
+     async initClient() {
++        let client;
++        let released = false;
++        const release = (err) => {
++            if (client && !released) {
++                released = true;
++                client.release(err);
++            }
++        };
+         try {
+             debug("acquiring client from the pool");
+-            const client = await this.pool.connect();
++            client = await this.pool.connect();
+             debug("client acquired");
+             client.on("notification", async (msg) => {
+                 try {
+@@ -84,18 +98,29 @@ class PubSubClient {
+                 }
+             });
+             client.on("end", () => {
++                if (released) {
++                    return;
++                }
+                 debug("client was closed, scheduling reconnection...");
+-                this.client = undefined;
++                if (this.client === client) {
++                    this.client = undefined;
++                }
++                release(new Error("client was closed"));
+                 this.scheduleReconnection();
+             });
+             for (const channel of this.channels) {
+                 debug("client listening to %s", channel);
+                 await client.query(`LISTEN "${channel}"`);
+             }
++            if (this.closed) {
++                release(new Error("adapter was closed"));
++                return;
++            }
+             this.client = client;
+         }
+         catch (e) {
+             debug("error while initializing client, scheduling reconnection...");
++            release(e);
+             this.scheduleReconnection();
+         }
+     }
+@@ -147,6 +172,7 @@ class PubSubClient {
+         await this.pool.query("SELECT pg_notify($1, $2)", [channel, headerPayload]);
+     }
+     close() {
++        this.closed = true;
+         if (this.client) {
+             this.client.removeAllListeners("end");
+             this.client.release();
