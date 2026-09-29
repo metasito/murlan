@@ -19,7 +19,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { traceOnset } from "@/lib/e2eTrace";
+import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { readFlightFromDom } from "./flightTrace";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
@@ -187,6 +188,17 @@ export function FlyingCards({
 
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
+      <View style={[StyleSheet.absoluteFill, pileStyles.flyingInner]}>
+        <View style={{ width: box.w, height: box.h }}>
+          {arc.map((place, i) => (
+            <View
+              key={cards[i].id}
+              testID="flight-slot"
+              style={{ position: "absolute", left: box.w / 2 + place.x, top: place.y + (box.h - cardH), width: CARD_W(cardScale), height: cardH }}
+            />
+          ))}
+        </View>
+      </View>
       <Animated.View
         testID="flying-cards"
         style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}
@@ -194,6 +206,7 @@ export function FlyingCards({
         {arc.map((place, i) => (
           <View
             key={cards[i].id}
+            testID="flying-card"
             style={{
               position: "absolute",
               left: box.w / 2 + place.x,
@@ -682,6 +695,7 @@ export function usePileFlight({
   playRoundStart,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
+  useTraceSource("flight", readFlightFromDom);
 
   // The seat that took the last round and a counter of how many rounds have
   // closed. The counter is what makes an identical repeat a new announcement:

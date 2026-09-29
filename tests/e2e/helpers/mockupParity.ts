@@ -84,8 +84,13 @@ const TRICK_HANDS = [
   ["3_clubs", "3_diamonds", "4_diamonds", "4_spades", "5_hearts", "5_spades", "7_spades", "8_spades", "9_diamonds", "10_clubs", "J_spades", "K_hearts", "2_spades"],
   ["9_hearts", "9_spades", "3_spades", "4_hearts", "6_clubs", "7_diamonds", "8_clubs", "10_diamonds", "J_clubs", "Q_clubs", "K_diamonds", "A_hearts", "2_diamonds"],
 ];
-const pairsTable = (page: Page, baseURL: string) =>
+export const pairsTable = (page: Page, baseURL: string) =>
   seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, TRICK_HANDS));
+
+/** Every opponent below its fan cap (top 7, sides 5), so a fan's centre moves with its count; a bot leads. */
+const BELOW_CAPS = [TRICK_HANDS[0], TRICK_HANDS[1].slice(0, 4), TRICK_HANDS[2].slice(0, 5), TRICK_HANDS[3].slice(0, 2)];
+export const belowCapsTable = (page: Page, baseURL: string) =>
+  seatTable(page, baseURL, offlineGameSave(4, 13, 1, MOCKUP_SCORES, BELOW_CAPS));
 
 const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
   await skiaOnSoftware(page);
@@ -107,11 +112,11 @@ const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
   await resume.click({ force: true });
 };
 
-const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
+export const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
 
-const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
+export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
 
-const playLowest = (cards: number) => async (page: Page) => {
+export const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator('[data-hand-state] [data-testid="card-box"]');
   for (let i = 0; i < cards; i++) await hand.nth(i).click({ force: true, position: { x: 8, y: 30 } });
   await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
@@ -230,6 +235,12 @@ const MOCKUP_SAMPLE = `(() => {
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },
+    flight: Math.max(0, ...[...document.querySelectorAll("#pile .grp.cur .card")].map((c) => {
+      const t = getComputedStyle(c).transform;
+      if (!t || t === "none") return 0;
+      const v = t.slice(t.indexOf("(") + 1, -1).split(",").map(Number);
+      return Math.hypot(v[4], v[5]);
+    })),
   };
 })()`;
 
