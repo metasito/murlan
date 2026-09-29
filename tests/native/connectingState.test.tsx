@@ -19,13 +19,6 @@ jest.mock('expo-router', () => ({
   router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
 }));
 
-// Pulled in by <GameTable> through lib/device/sounds; the native module has no JS
-// implementation to load here, and nothing in this test makes a sound.
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(),
-}));
-
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));

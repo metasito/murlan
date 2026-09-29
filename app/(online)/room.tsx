@@ -12,8 +12,7 @@ import {
 import { useIsLandscape } from "@/lib/device/orientation";
 import { router } from "expo-router";
 import Animated, { FadeIn } from "react-native-reanimated";
-import { hapticMedium, hapticSelection, hapticSuccess } from "@/lib/device/haptics";
-import { holdSounds, preloadSounds } from "@/lib/device/sounds";
+import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { Avatar } from "@/components/Avatar";
 import { ChoiceChips } from "@/components/ChoiceChips";
@@ -87,7 +86,7 @@ function BotFillControls({
           value={fillWithBots}
           onValueChange={(value) => {
             onToggleFillWithBots(value);
-            hapticSelection();
+            uiFeedback("selection");
           }}
           a11yLabel={t("room.fillWithBotsA11yLabel")}
           a11yHint={t("room.fillWithBotsA11yHint")}
@@ -128,7 +127,7 @@ function MatchmakingToggle({
           value={open}
           onValueChange={(value) => {
             onChange(value);
-            hapticSelection();
+            uiFeedback("selection");
           }}
           a11yLabel={t("room.fillWithMatchmakingA11yLabel")}
           a11yHint={t("room.fillWithMatchmakingA11yHint")}
@@ -326,11 +325,6 @@ export default function RoomScreen() {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
-  useEffect(() => {
-    const releaseSounds = holdSounds();
-    preloadSounds().catch(() => {});
-    return releaseSounds;
-  }, []);
 
   const isLandscape = useIsLandscape();
 
@@ -414,7 +408,7 @@ export default function RoomScreen() {
       showShareError("room.copyFailed");
       return;
     }
-    hapticSuccess();
+    uiFeedback("success");
     setCopied(true);
     clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FOR_MS);
@@ -451,7 +445,7 @@ export default function RoomScreen() {
 
   function handleStart() {
     if (!canStart) return;
-    hapticMedium();
+    uiFeedback("medium");
     startGame({ fillWithBots, botPersonality, matchLength });
   }
 

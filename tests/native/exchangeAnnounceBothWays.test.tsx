@@ -4,15 +4,7 @@
 // It reads its two cards from separate props, so being handed only one renders
 // a half-announcement rather than failing: the table watches the loser give a
 // card and never learns what came back.
-import { describe, it, expect, jest } from '@jest/globals';
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
+import { describe, it, expect } from '@jest/globals';
 
 import React from 'react';
 import { act, render, within } from '@testing-library/react-native';

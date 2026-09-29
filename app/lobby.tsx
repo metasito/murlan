@@ -10,7 +10,7 @@ import { useIsLandscape } from "@/lib/device/orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { hapticSuccess } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { PlayerSetupConfig } from "@/context/GameContext";
@@ -191,7 +191,7 @@ export default function LobbyScreen() {
   };
 
   const handleStart = () => {
-    hapticSuccess();
+    uiFeedback("success");
     setupGame(players, gameMode, matchLength);
     router.replace("/game");
   };

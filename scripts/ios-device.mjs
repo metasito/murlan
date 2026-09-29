@@ -6,7 +6,7 @@
  * none), signs and installs it with plumesign when the native fingerprint changed or the 7-day
  * certificate is near expiry, then serves the game on :5000 and Metro on the LAN address.
  * Flags: `--ref <branch>` builds from another branch, `--reinstall` forces a fresh install,
- * `--login` signs in to the Apple ID again.
+ * `--login` signs in to the Apple ID again, `--diagnostics` serves the diagnostics build and its collector (verdicts unrun), `--bench` installs the Release bench build that gates read.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -24,8 +24,6 @@ const PLUMESIGN = {
   asset: "plumesign-windows-x86_64.exe",
   sha256: "2311ed3090253bcc63ebb96a92ebca5f373f5344e8462ed089cf3bec6a75186b",
 };
-const WORKFLOW = "ios-device.yml";
-const ARTIFACT = "murlan-ios-dev";
 const RESIGN_AFTER_MS = 6 * 24 * 60 * 60 * 1000;
 const SERVER_PORT = 5000;
 const USBMUXD_PORT = 27015;
@@ -167,9 +165,9 @@ async function ensurePlumesign(home) {
   return exe;
 }
 
-function runsOf(ref) {
+function runsOf(ref, workflow) {
   return JSON.parse(
-    gh(["run", "list", "--workflow", WORKFLOW, "--branch", ref, "-L", "10", "--json", "databaseId,status,conclusion"]),
+    gh(["run", "list", "--workflow", workflow, "--branch", ref, "-L", "10", "--json", "databaseId,status,conclusion"]),
   );
 }
 
@@ -183,8 +181,19 @@ function watch(id) {
   );
 }
 
-async function latestBuild(home, ref) {
-  const runs = runsOf(ref);
+export function artifactFor(bench) {
+  return bench
+    ? { workflow: "ios-bench.yml", name: "murlan-ios-bench", ipa: "murlan-bench.ipa" }
+    : { workflow: "ios-device.yml", name: "murlan-ios-dev", ipa: "murlan-dev.ipa" };
+}
+
+export function benchUrl(ip) {
+  return `murlan://bench?host=${ip}&scenario=all`;
+}
+
+async function latestBuild(home, ref, bench) {
+  const { workflow, name, ipa } = artifactFor(bench);
+  const runs = runsOf(ref, workflow);
   let pick = pickRun(runs);
   if (pick?.newerFailed) {
     console.log(
@@ -195,10 +204,10 @@ async function latestBuild(home, ref) {
   if (!pick) {
     const before = new Set(runs.map((r) => r.databaseId));
     console.log(`• No build of ${ref} yet: starting one.`);
-    gh(["workflow", "run", WORKFLOW, "--ref", ref]);
+    gh(["workflow", "run", workflow, "--ref", ref]);
     for (let i = 0; i < 30 && !pick?.wait; i++) {
       await new Promise((r) => setTimeout(r, 3000));
-      const fresh = runsOf(ref).find((r) => !before.has(r.databaseId));
+      const fresh = runsOf(ref, workflow).find((r) => !before.has(r.databaseId));
       if (fresh) pick = { wait: fresh.databaseId };
     }
     if (!pick) fail("The dispatched build never showed up in gh run list.");
@@ -206,12 +215,12 @@ async function latestBuild(home, ref) {
   const id = pick.use ?? (await watch(pick.wait));
   const buildsDir = path.join(home, "builds");
   const dir = path.join(buildsDir, String(id));
-  if (!existsSync(path.join(dir, "murlan-dev.ipa"))) {
+  if (!existsSync(path.join(dir, ipa))) {
     console.log(`• Downloading build ${id}…`);
-    gh(["run", "download", String(id), "-n", ARTIFACT, "-D", dir]);
+    gh(["run", "download", String(id), "-n", name, "-D", dir]);
   }
   for (const old of readdirSync(buildsDir)) if (old !== String(id)) rmSync(path.join(buildsDir, old), { recursive: true, force: true });
-  return { ipa: path.join(dir, "murlan-dev.ipa"), fingerprint: readFileSync(path.join(dir, "fingerprint.txt"), "utf8").trim() };
+  return { ipa: path.join(dir, ipa), fingerprint: readFileSync(path.join(dir, "fingerprint.txt"), "utf8").trim() };
 }
 
 function ask(question) {
@@ -300,7 +309,24 @@ function killTree(child) {
   if (child.pid && child.exitCode === null) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
 }
 
-async function serve(home) {
+export function metroEnv(env, ip, diagnostics) {
+  return {
+    ...env,
+    EXPO_PUBLIC_DOMAIN: `http://${ip}:${SERVER_PORT}`,
+    REACT_NATIVE_PACKAGER_HOSTNAME: ip,
+    ...(diagnostics ? { EXPO_PUBLIC_DIAGNOSTICS: "1" } : {}),
+  };
+}
+
+function benchServe() {
+  const ip = lanAddress(os.networkInterfaces());
+  if (!ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
+  const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs")], { cwd: ROOT, stdio: "inherit" });
+  process.on("exit", () => killTree(collector));
+  console.log(`• Bench build installed. On the iPhone open ${benchUrl(ip)} and leave it face up; results land in diagnostics/.`);
+}
+
+async function serve(home, diagnostics) {
   const ip = lanAddress(os.networkInterfaces());
   if (!ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
   let server;
@@ -327,11 +353,16 @@ async function serve(home) {
   }
   console.log(`• Metro for the dev build at http://${ip}:8081. First time: scan the QR code with the iPhone camera.\n`);
   // Production JS, as a player runs it: dev-mode JS drops the table well under 60 fps.
+  if (diagnostics) {
+    const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs")], { cwd: ROOT, stdio: "inherit" });
+    process.on("exit", () => killTree(collector));
+    console.log(`• Diagnostics build: once the app loads, open murlan://bench?host=${ip}&scenario=all on the phone.`);
+  }
   const metro = spawn("npx expo start --dev-client --lan --no-dev --minify", {
     cwd: ROOT,
     stdio: "inherit",
     shell: true,
-    env: { ...process.env, EXPO_PUBLIC_DOMAIN: `http://${ip}:${SERVER_PORT}`, REACT_NATIVE_PACKAGER_HOSTNAME: ip },
+    env: metroEnv(process.env, ip, diagnostics),
   });
   metro.on("exit", (code) => process.exit(code ?? 0));
 }
@@ -350,7 +381,8 @@ async function main() {
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
-  const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref)]);
+  const bench = args.includes("--bench");
+  const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref, bench)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
   if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { fingerprint: build.fingerprint, now: Date.now() })) {
@@ -358,7 +390,8 @@ async function main() {
   } else {
     console.log(`• The installed build is current (signed ${((Date.now() - state.installedAt) / 86400000).toFixed(1)} days ago).`);
   }
-  await serve(home);
+  if (bench) benchServe();
+  else await serve(home, args.includes("--diagnostics"));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

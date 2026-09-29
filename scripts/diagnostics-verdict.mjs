@@ -1,0 +1,245 @@
+#!/usr/bin/env node
+// node scripts/diagnostics-verdict.mjs <run.ndjson> <scenario|all> — exits 1 unless every named gate passed.
+// node scripts/diagnostics-verdict.mjs --flinger <start.txt> <end.txt> — the audio_flinger underrun gate (#1231).
+import { readFileSync } from "node:fs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+
+function slopePerMinute(points) {
+  const n = points.length;
+  const mx = points.reduce((a, [x]) => a + x, 0) / n;
+  const my = points.reduce((a, [, y]) => a + y, 0) / n;
+  const sxy = points.reduce((a, [x, y]) => a + (x - mx) * (y - my), 0);
+  const sxx = points.reduce((a, [x]) => a + (x - mx) ** 2, 0);
+  return sxx === 0 ? NaN : sxy / sxx;
+}
+
+function fit(points) {
+  const slope = slopePerMinute(points);
+  const mx = points.reduce((a, [x]) => a + x, 0) / points.length;
+  const my = points.reduce((a, [, y]) => a + y, 0) / points.length;
+  return (x) => my + slope * (x - mx);
+}
+
+function soak(rows) {
+  const t0 = rows[0].t;
+  const t1 = rows.at(-1).t;
+  const minutes = (t1 - t0) / 60000;
+  const memory = rows.filter((r) => r.k === "footprint" && r.t - t0 >= 5 * 60000).map((r) => [(r.t - t0) / 60000, r.mb]);
+  const engine = rows.filter((r) => r.k === "engine");
+  const lag = engine.map((r) => [(r.t - t0) / 60000, r.audioMs - r.t]);
+  const line = lag.length >= 2 ? fit(lag) : () => NaN;
+  const residual = lag.map(([x, y]) => y - line(x));
+  const jumps = engine.slice(1).filter((_, i) => !(Math.abs(residual[i + 1] - residual[i]) <= 20)).map((r) => r.t);
+  const mid = (t0 + t1) / 2;
+  const firstHalf = jumps.filter((t) => t < mid).length;
+  const secondHalf = jumps.length - firstHalf;
+  const notRunning = engine.filter((r) => r.state !== "running").length;
+  const plays = rows.filter((r) => r.k === "play" && !r.dropped).length;
+  const mbPerMin = memory.length >= 10 ? slopePerMinute(memory) : NaN;
+  const pass =
+    minutes >= 29 && mbPerMin < 1 && secondHalf <= firstHalf && notRunning === 0 && engine.length >= minutes * 5 && plays >= minutes * 45;
+  return { pass, metrics: { minutes, mbPerMin, driftMsPerMin: slopePerMinute(lag), firstHalf, secondHalf, notRunning, plays, samples: engine.length } };
+}
+
+function smoke(rows) {
+  const engine = rows.filter((r) => r.k === "engine");
+  const first = engine[0];
+  const last = engine.at(-1);
+  const advance = engine.length >= 2 ? (last.audioMs - first.audioMs) / (last.t - first.t) : 0;
+  const running = engine.length > 0 && engine.every((r) => r.state === "running");
+  const pass = engine.length >= 5 && running && advance >= 0.9;
+  return { pass, metrics: { samples: engine.length, running, advance, ...(pass ? {} : { error: "no audio device" }) } };
+}
+
+const UNDERRUNS = /underrun counters: partial=(\d+) empty=(\d+)/g;
+
+export function flingerUnderruns(text) {
+  const counts = [...text.matchAll(UNDERRUNS)].map((m) => Number(m[1]) + Number(m[2]));
+  return counts.length === 0 ? null : counts.reduce((a, b) => a + b, 0);
+}
+
+export function flingerVerdict(startText, endText) {
+  const start = flingerUnderruns(startText);
+  const end = flingerUnderruns(endText);
+  const growth = start === null || end === null ? null : end - start;
+  return { pass: growth !== null && growth <= 60, metrics: { start, end, growth } };
+}
+
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : NaN;
+};
+const p90 = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.ceil(s.length * 0.9) - 1] : NaN;
+};
+
+const times = (rows, k, name) => rows.filter((r) => r.k === k && (name === undefined || r.name === name)).map((r) => r.t);
+const firstIn = (times, from, to) => times.filter((t) => t >= from && t <= to).sort((a, b) => a - b)[0];
+const onsetsOf = (rows, source) => rows.filter((r) => r.k === "onset" && r.source === source).map((r) => r.t);
+
+function armRows(rows, name) {
+  const start = rows.findIndex((r) => r.k === "arm" && r.name === name && r.phase === "start");
+  const end = rows.findIndex((r, i) => i > start && r.k === "arm" && r.name === name && r.phase === "end");
+  return start === -1 || end === -1 ? [] : rows.slice(start, end + 1);
+}
+
+// Each onset answers one window, so a silent trigger cannot borrow its neighbour's.
+function matchOnsets(starts, onsets, windowMs) {
+  const sorted = [...onsets].sort((a, b) => a - b);
+  const used = new Set();
+  return starts.map((s) => {
+    const i = sorted.findIndex((o, j) => !used.has(j) && o >= s && o < s + windowMs);
+    if (i === -1) return null;
+    used.add(i);
+    return sorted[i];
+  });
+}
+
+export function burstStalls(rows) {
+  const frames = rows.filter((r) => r.k === "frame");
+  const spans = [...frames, ...rows.filter((r) => r.k === "jsLag")]
+    .filter((r) => r.dt >= 34)
+    .map((r) => [r.t - r.dt, r.t])
+    .sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const s of spans) {
+    const last = merged.at(-1);
+    if (last && s[0] - last[1] <= 100) last[1] = Math.max(last[1], s[1]);
+    else merged.push([...s]);
+  }
+  const perWindow = new Map();
+  for (const f of frames) perWindow.set(Math.floor(f.t / 250), (perWindow.get(Math.floor(f.t / 250)) ?? 0) + 1);
+  const counts = [...perWindow.values()];
+  const jsTicks = rows.filter((r) => r.k === "jsTicks").reduce((n, r) => n + r.n, 0);
+  return {
+    stalls: merged.length,
+    fastShare: counts.length ? counts.filter((n) => n * 4 >= 100).length / counts.length : 0,
+    frames: frames.length,
+    jsTicks,
+  };
+}
+
+function tapBurst(rows) {
+  const on = armRows(rows, "on");
+  const latency = rows.find((r) => r.k === "latency");
+  const lead = (latency?.outputMs ?? NaN) + (latency?.ioMs ?? NaN) / 2;
+  const taps = times(on, "trigger", "tap");
+  const matched = matchOnsets(taps, onsetsOf(on, "app"), 150);
+  const heard = taps.flatMap((t, i) => (matched[i] === null ? [] : [matched[i] - t + lead]));
+  const plays = on.filter((r) => r.k === "play" && !r.dropped).length;
+  const missing = matched.filter((m) => m === null).length;
+  const b = burstStalls(on);
+  const off = burstStalls(armRows(rows, "off"));
+  const metrics = { taps: taps.length, plays, missing, ...b, stallsOff: off.stalls, fastShareOff: off.fastShare, tapToHeardP90: p90(heard), leadMs: lead };
+  const pass =
+    taps.length === 60 && plays >= 60 && missing === 0 && b.frames > 0 && b.jsTicks > 0 &&
+    b.stalls === 0 && b.fastShare >= 0.8 && p90(heard) <= 40;
+  return { pass, metrics };
+}
+
+function scheduledOnset(rows) {
+  const latency = rows.find((r) => r.k === "latency");
+  const inputMs = latency?.inputMs ?? NaN;
+  const lead = median(rows.filter((r) => r.k === "play" && !r.dropped).map((r) => r.lead));
+  const triggers = times(rows, "trigger", "scheduled");
+  const mic = matchOnsets(triggers.map((at) => at - 100), onsetsOf(rows, "mic").map((t) => t - inputMs), 300);
+  const app = matchOnsets(triggers.map((at) => at - lead - 100), onsetsOf(rows, "app"), 300);
+  const errors = triggers.flatMap((at, i) => (mic[i] === null ? [] : [mic[i] - at]));
+  const appErrors = triggers.flatMap((at, i) => (app[i] === null ? [] : [app[i] - (at - lead)]));
+  const metrics = {
+    scheduled: triggers.length, matched: errors.length, absP90: p90(errors.map(Math.abs)), medianErr: median(errors),
+    appAbsP90: p90(appErrors.map(Math.abs)), appMedianErr: median(appErrors),
+    outputMs: latency?.outputMs ?? null, ioMs: latency?.ioMs ?? null, inputMs: latency?.inputMs ?? null, leadMs: lead,
+  };
+  return { pass: triggers.length === 40 && errors.length === 40 && p90(errors.map(Math.abs)) <= 25, metrics };
+}
+
+function pulseCost(rows) {
+  const costs = rows.filter((r) => r.k === "pulseCost");
+  const cold = costs.find((r) => r.cold)?.ms ?? NaN;
+  const warm = costs.filter((r) => !r.cold).map((r) => r.ms);
+  return { pass: warm.length === 20 && cold <= 8.33 && p90(warm) <= 1, metrics: { coldMs: cold, warmP90Ms: p90(warm), warm: warm.length } };
+}
+
+function hapticOnset(rows) {
+  const pulses = times(rows, "trigger", "pulse");
+  const shakes = times(rows, "shake");
+  const lags = pulses.flatMap((p) => {
+    const s = firstIn(shakes, p, p + 150);
+    return s === undefined ? [] : [s - p];
+  });
+  const metrics = { pulses: pulses.length, matched: lags.length, p90: p90(lags), missing: pulses.length - lags.length };
+  return { pass: pulses.length === 30 && lags.length === 30 && p90(lags) <= 40, metrics };
+}
+
+function musicSwitch(rows) {
+  const switches = rows.filter((r) => r.k === "trigger" && r.name === "switch");
+  const from = switches[0]?.t ?? Infinity;
+  const levels = rows.filter((r) => r.k === "level" && r.t >= from).sort((a, b) => a.t - b.t);
+  let quiet = 0;
+  let gaps = 0;
+  let deaths = 0;
+  const close = () => {
+    if (quiet > 250) gaps++;
+    if (quiet >= 2000) deaths++;
+    quiet = 0;
+  };
+  for (const l of levels) {
+    if (l.db < -50) quiet += 50;
+    else close();
+  }
+  close();
+  const level = median(levels.map((l) => l.db));
+  const metrics = { switches: switches.length, levels: levels.length, medianDb: level, gaps, deaths };
+  return { pass: switches.length === 40 && levels.length >= 1900 && level > -40 && gaps === 0 && deaths === 0, metrics };
+}
+
+function idle(rows) {
+  const frames = rows.filter((r) => r.k === "frame").length;
+  return { pass: frames > 0, metrics: { frames } };
+}
+
+export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak };
+
+function bracket(rows, scenario) {
+  const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");
+  if (start === -1) return null;
+  const session = rows[start].session;
+  const end = rows.findIndex((r, i) => i > start && r.k === "scenario" && r.name === scenario && r.phase === "end");
+  if (end === -1) return null;
+  return { rows: rows.slice(start, end + 1).filter((r) => r.session === session), session, error: rows[end].error ?? null };
+}
+
+function unrun(build) {
+  if (!build) return "no build row";
+  if (build.dev) return "dev JS";
+  return !build.scriptURL || /^https?:/i.test(build.scriptURL) ? "not an embedded Release bundle" : null;
+}
+
+export function verdict(rows, scenario) {
+  const gate = GATES[scenario];
+  const part = gate && bracket(rows, scenario);
+  if (!part) return null;
+  const v = gate(part.rows);
+  const dropped = rows.filter((r) => r.k === "batch" && r.session === part.session).reduce((n, r) => n + (r.dropped ?? 0), 0);
+  const judged = part.error
+    ? { pass: false, metrics: { ...v.metrics, error: part.error } }
+    : dropped > 0 ? { pass: false, metrics: { ...v.metrics, dropped } } : v;
+  const reason = unrun(rows.findLast((r) => r.k === "build" && r.session === part.session));
+  return reason ? { pass: null, metrics: { ...judged.metrics, unrun: reason } } : judged;
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  if (process.argv[2] === "--flinger") {
+    const v = flingerVerdict(readFileSync(process.argv[3], "utf8"), readFileSync(process.argv[4], "utf8"));
+    console.log(JSON.stringify(v, null, 2));
+    process.exit(v.pass ? 0 : 1);
+  }
+  const [file, scenario] = process.argv.slice(2);
+  const rows = readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  const names = scenario === "all" ? Object.keys(GATES).filter((n) => rows.some((r) => r.k === "scenario" && r.name === n)) : [scenario];
+  const out = Object.fromEntries(names.map((n) => [n, verdict(rows, n)]));
+  console.log(JSON.stringify(out, null, 2));
+  process.exit(names.length > 0 && names.every((n) => out[n]?.pass === true) ? 0 : 1);
+}

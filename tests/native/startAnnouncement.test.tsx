@@ -19,11 +19,6 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WINDOW,
 }));
 
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
-
 // Reduced motion on throughout: a cue whose only channel is an animation goes
 // silent under this preference, and the announcement must still say its piece.
 jest.mock('@/lib/accessibility', () => ({

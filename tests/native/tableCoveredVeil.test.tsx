@@ -22,11 +22,6 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   default: () => WINDOW,
 }));
 
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
-
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
   setMotionPreference: () => {},

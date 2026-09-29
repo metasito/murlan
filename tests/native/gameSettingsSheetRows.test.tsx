@@ -2,16 +2,11 @@
 // settings menu, and neither the row set nor the mute wiring is reachable from
 // the Playwright spec: vibration is native-only, and a browser cannot read the
 // glyph a Feather name resolves to.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import glyphMap from '@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Feather.json';
-
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
 
 import { GameSettingsSheet } from '@/components/table/settingsSheet';
 import { SettingsProvider, useSettings } from '@/context/SettingsContext';

@@ -5,28 +5,6 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  ensureAudioMode: jest.fn(async () => {}),
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-}));
-
 let mockReduce = false;
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => mockReduce,
@@ -37,7 +15,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { GameTable } from '@/components/GameTable';
 import { DEAL_FLIGHT_MS, dealArrivalsMs, dealLeaveMs } from '@/components/flightPhysics';
 import { motionMs } from '@/lib/theme';
-import { playDeal } from '@/lib/device/sounds';
+import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -92,10 +70,11 @@ async function advance(ms: number) {
 }
 
 describe("an opponent's hand arrives with the deal", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockReduce = false;
     jest.clearAllMocks();
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -108,10 +87,10 @@ describe("an opponent's hand arrives with the deal", () => {
 
     expect(topSeat().queryByText('13')).toBeNull();
     expect(screen.getAllByTestId('dealt-back').length).toBe(39);
-    expect(playDeal).not.toHaveBeenCalled();
+    expect(startsOf('deal')).toEqual([]);
 
     await advance(entry);
-    expect(playDeal).toHaveBeenCalledTimes(1);
+    expect(startsOf('deal')).toHaveLength(1);
 
     await advance(arrivals[4] - entry);
     expect(topSeat().getByText('5')).toBeTruthy();

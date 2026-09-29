@@ -61,7 +61,7 @@ export function tableFeltNameKey(id: TableFeltId): TranslationKey {
 // Module-level rather than a React context, for the same reason
 // setMotionPreference is: SettingsProvider pushes the value in, and CardView —
 // which renders up to fifty-four times on a table — reads it without importing
-// the context, which would drag expo-audio into every consumer of a card.
+// the context, which would drag the audio engine into every consumer of a card.
 
 let currentCardBack: CardBackId = DEFAULT_CARD_BACK;
 let currentTableFelt: TableFeltId = DEFAULT_TABLE_FELT;

@@ -13,8 +13,8 @@
 // Output is 44.1 kHz mono MP3, encoded with lamejs (pure JS — no native
 // binary, no WASM build step, so this needs nothing beyond `npm install` to
 // run). MP3, not OGG: the casino pack ships OGG and iOS will not play it.
-// MP3 decodes natively on iOS, Android and every browser, so lib/device/sounds.ts
-// needs no per-platform format branch. The names must match lib/device/sounds.ts
+// MP3 decodes natively on iOS, Android and every browser, so lib/device/soundAssets.ts
+// needs no per-platform format branch. The names must match lib/device/soundAssets.ts
 // exactly.
 //
 // That reasoning is about *effects*, and does not carry to music. MP3 cannot
@@ -65,6 +65,10 @@ const RECIPES = {
   round_start: [{ file: "cardFan1.ogg", gain: 0.9 }],
   reject: [{ file: "error_004.wav", gain: 0.8 }],
   round_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
+  manche_neutral: [
+    { file: "glass_002.wav", gain: 0.5, rate: 1.0, at: 0.0 },
+    { file: "glass_002.wav", gain: 0.45, rate: 1.122, at: 0.14 },
+  ],
 
   // ── Lobby ──────────────────────────────────────────────────────────────────
   seat_fill: [{ file: "chipLay1.ogg", gain: 0.8 }],
@@ -77,7 +81,7 @@ const RECIPES = {
 // The sample peak each output is normalised to; 0.89 unless named. round_start
 // at 0.89 true-peaks above -1 dBTP once encoded, and round_win at 0.89 is louder
 // than the manche win it must sit under (tests/tooling/soundAssets.test.ts).
-const PEAK = { round_start: 0.79, round_win: 0.3 };
+const PEAK = { round_start: 0.79, round_win: 0.3, manche_neutral: 0.25 };
 
 // Trim silence, never sound. The cut point is the last moment the signal is
 // still above an absolute floor — 55 dB below the file's own peak, which is
@@ -92,7 +96,11 @@ const SILENCE_FLOOR_DB = -55;
 const WINDOW_SECONDS = 0.01;
 const FADE = 0.06;
 
-const files = [...new Set(Object.values(RECIPES).flat().map((s) => s.file))];
+const only = process.argv.slice(2);
+const unknown = only.filter((name) => !(name in RECIPES));
+if (unknown.length > 0) throw new Error(`No recipe named ${unknown.join(", ")}`);
+const chosen = Object.fromEntries(Object.entries(RECIPES).filter(([name]) => only.length === 0 || only.includes(name)));
+const files = [...new Set(Object.values(chosen).flat().map((s) => s.file))];
 
 console.log(`Fetching ${files.length} source clips…`);
 const encoded = {};
@@ -180,7 +188,7 @@ const results = await page.evaluate(
     }
     return out;
   },
-  { encoded, RECIPES, PEAK, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }
+  { encoded, RECIPES: chosen, PEAK, SILENCE_FLOOR_DB, WINDOW_SECONDS, FADE }
 );
 
 await browser.close();

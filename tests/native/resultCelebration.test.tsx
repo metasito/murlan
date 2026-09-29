@@ -8,16 +8,7 @@
 // they won twice.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
-jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 
 // The factory is hoisted above every import, so it cannot close over a const
 // declared below — it reads these back at render time instead, which is what
@@ -38,7 +29,7 @@ import React from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { haptics } from './helpers/feedback';
 
 import ResultScreen from '@/app/result';
 import { setMotionPreference } from '@/lib/accessibility';
@@ -76,12 +67,11 @@ const mockMatch: MatchState = {
   isDraw: false,
 };
 
-const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
+const selections = () => haptics().filter((h) => h === 'selection');
 
 describe('the result screen celebrates once', () => {
   beforeEach(() => {
     setMotionPreference('system');
-    selectionAsync.mockClear();
     jest.spyOn(AccessibilityInfo, 'addEventListener').mockReturnValue({
       remove: () => {},
     } as ReturnType<typeof AccessibilityInfo.addEventListener>);
@@ -99,7 +89,7 @@ describe('the result screen celebrates once', () => {
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
 
-    expect(selectionAsync).toHaveBeenCalledTimes(1);
+    expect(selections()).toHaveLength(1);
     await view.unmount();
   });
 
@@ -108,7 +98,7 @@ describe('the result screen celebrates once', () => {
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
 
-    expect(selectionAsync).toHaveBeenCalledTimes(1);
+    expect(selections()).toHaveLength(1);
     await view.unmount();
   });
 
@@ -118,11 +108,11 @@ describe('the result screen celebrates once', () => {
     jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
     const view = await render(<SafeAreaProvider initialMetrics={METRICS}><ResultScreen /></SafeAreaProvider>);
     await act(async () => {});
-    expect(selectionAsync).toHaveBeenCalledTimes(1);
+    expect(selections()).toHaveLength(1);
 
     await act(async () => setMotionPreference('on'));
 
-    expect(selectionAsync).toHaveBeenCalledTimes(1);
+    expect(selections()).toHaveLength(1);
     await view.unmount();
   });
 });

@@ -8,39 +8,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  playReject: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy', Rigid: 'rigid' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
-import * as Haptics from 'expo-haptics';
-import { playReject } from '@/lib/device/sounds';
+import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -218,8 +186,9 @@ describe('the start-card banner names the real fallback card', () => {
 });
 
 describe('tapping an unavailable GIOCA', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await bootFeedback();
   });
 
   const refusedTable = () =>
@@ -237,9 +206,9 @@ describe('tapping an unavailable GIOCA', () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    expect(jest.mocked(Haptics.impactAsync)).toHaveBeenCalledWith('rigid');
-    expect(playReject).toHaveBeenCalledTimes(1);
-    expect(jest.mocked(Haptics.notificationAsync)).not.toHaveBeenCalledWith('error');
+    expect(haptics()).toContain('rigid');
+    expect(sounds().filter((s) => s === 'reject')).toHaveLength(1);
+    expect(haptics()).not.toContain('notificationError');
     expect(screen.getByText(t('gameTable.playA11ySpokenWrongType'))).toBeTruthy();
 
     await r.unmount();
@@ -290,8 +259,9 @@ describe('tapping an unavailable GIOCA', () => {
 });
 
 describe('tapping an available GIOCA', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await bootFeedback();
   });
 
   it('answers with a selection tick, leaving the weight to the landing', async () => {
@@ -301,8 +271,8 @@ describe('tapping an available GIOCA', () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    expect(jest.mocked(Haptics.selectionAsync)).toHaveBeenCalledTimes(1);
-    expect(jest.mocked(Haptics.impactAsync)).not.toHaveBeenCalledWith('medium');
+    expect(haptics().filter((h) => h === 'selection')).toHaveLength(1);
+    expect(haptics()).not.toContain('impactMedium');
 
     await r.unmount();
   });

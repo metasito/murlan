@@ -11,39 +11,7 @@ import { Text, Pressable } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  playCardDeselect: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
-import * as Haptics from 'expo-haptics';
-import { playCardDeselect, playCardSelect } from '@/lib/device/sounds';
+import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider, useGame } from '@/context/GameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -124,8 +92,11 @@ const unavailable = (reason: TranslationKey) =>
   t('gameTable.playA11yUnavailable', { reason: t(reason) });
 
 describe('selecting a card out of turn', () => {
-  beforeEach(() => {
+  const count = (id: string) => sounds().filter((s) => s === id).length;
+
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await bootFeedback();
   });
 
   it('is accepted, with the usual haptic and select sound', async () => {
@@ -136,9 +107,9 @@ describe('selecting a card out of turn', () => {
     await pressCard(SEVEN_H);
 
     expect(onSelectCard).toHaveBeenCalledWith(SEVEN_H.id);
-    expect(playCardSelect).toHaveBeenCalledTimes(1);
-    expect(playCardDeselect).not.toHaveBeenCalled();
-    expect(jest.mocked(Haptics.selectionAsync)).toHaveBeenCalledTimes(1);
+    expect(count('select')).toBe(1);
+    expect(count('deselect')).toBe(0);
+    expect(haptics().filter((h) => h === 'selection')).toHaveLength(1);
 
     await r.unmount();
   });
@@ -150,8 +121,8 @@ describe('selecting a card out of turn', () => {
     await pressCard(SEVEN_H);
 
     expect(onSelectCard).toHaveBeenCalledWith(SEVEN_H.id);
-    expect(playCardDeselect).toHaveBeenCalledTimes(1);
-    expect(playCardSelect).not.toHaveBeenCalled();
+    expect(count('deselect')).toBe(1);
+    expect(count('select')).toBe(0);
 
     await r.unmount();
   });

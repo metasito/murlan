@@ -10,28 +10,6 @@ import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
 // Reduced motion collapses the card's flight to a single timer, so the pile
 // reaches its settled state on a tick rather than on a spring callback.
 let mockReduceMotion = true;
@@ -41,7 +19,8 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { playRoundStart, playRoundWin } from '@/lib/device/sounds';
+import { bootFeedback, startsOf } from './helpers/feedback';
+import { newEpoch } from './mocks/audioApi';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
@@ -109,9 +88,10 @@ const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, curren
 const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, roundWinner: 1 });
 
 describe('the pass that closes a round', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -146,19 +126,17 @@ describe('the pass that closes a round', () => {
     await act(async () => {
       jest.advanceTimersByTime(500);
     });
-    jest.clearAllMocks();
+    newEpoch();
 
     await act(async () => r.rerender(table(CLOSED)));
-    expect(playRoundWin).toHaveBeenCalledTimes(1);
-    expect(playRoundStart).not.toHaveBeenCalled();
+    expect(startsOf('round_win')).toHaveLength(1);
+    expect(startsOf('round_start')).toEqual([]);
 
     await act(async () => {
       jest.advanceTimersByTime(HOLD_MS + 1);
     });
-    expect(playRoundStart).toHaveBeenCalledTimes(1);
-    expect(
-      jest.mocked(playRoundWin).mock.invocationCallOrder[0]
-    ).toBeLessThan(jest.mocked(playRoundStart).mock.invocationCallOrder[0]);
+    expect(startsOf('round_start')).toHaveLength(1);
+    expect(startsOf('round_win')[0]).toBeLessThan(startsOf('round_start')[0]);
 
     await r.unmount();
   });

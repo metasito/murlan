@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useIsLandscape } from "@/lib/device/orientation";
 import { router } from "expo-router";
-import { hapticMedium } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -113,7 +113,7 @@ export default function OnlineLobbyScreen() {
   }, [pendingInvite, clearInvite]);
 
   function handleCreate() {
-    hapticMedium();
+    uiFeedback("medium");
     createRoom(createMode, createPlayers);
   }
 
@@ -124,14 +124,14 @@ export default function OnlineLobbyScreen() {
 
   function handleJoin() {
     if (joinCode.length < 4) return;
-    hapticMedium();
+    uiFeedback("medium");
     joinRoom(joinCode.trim().toUpperCase());
     closeJoin();
   }
 
   function handleSpectate() {
     if (joinCode.length < 4) return;
-    hapticMedium();
+    uiFeedback("medium");
     spectateRoom(joinCode.trim().toUpperCase());
     closeJoin();
   }

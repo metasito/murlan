@@ -32,7 +32,7 @@ import {
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
-import { hapticLight, hapticMedium } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 import { A11yStatus, a11yHidden, useA11yHint } from "@/lib/a11y";
 
@@ -297,6 +297,7 @@ export default function OnlineGameScreen() {
     <GameTable
       gameState={gameState}
       matchOver={matchState.over}
+      matchWinners={matchState.winners}
       handScores={handScores}
       matchScore={
         matchState.length === "single" ? undefined : { scores: cumulativeScores, target: matchState.target }
@@ -371,7 +372,7 @@ export default function OnlineGameScreen() {
               }
               {...endMatchVoteHint.props}
               onPress={() => {
-                hapticMedium();
+                uiFeedback("medium");
                 if (hasVotedToEndMatch) {
                   voteToEndMatch(false);
                   return;
@@ -445,7 +446,7 @@ export default function OnlineGameScreen() {
                 left={rail + Spacing.sm}
                 bottom={pads.bottomPad + Spacing.sm}
                 onSelect={(emoji) => {
-                  hapticLight();
+                  uiFeedback("light");
                   sendReaction(emoji);
                 }}
                 onClose={() => setShowReactions(false)}
@@ -468,7 +469,7 @@ export default function OnlineGameScreen() {
                 rightPad={pads.rightPad}
                 onLeave={requestLeave}
                 onVoteRematch={() => {
-                  hapticMedium();
+                  uiFeedback("medium");
                   voteRematch();
                 }}
                 voteState={rematchVoteState}

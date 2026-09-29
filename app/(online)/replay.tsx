@@ -28,7 +28,7 @@ import {
   type ReplayDto,
 } from "@/lib/game/replay";
 import { Motion } from "@/lib/theme";
-import { hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 
 /** A replay has no actions; the table's handlers are wired to nothing. */
@@ -80,7 +80,7 @@ export default function ReplayScreen() {
   const goTo = useCallback(
     (next: number) => {
       scrubTo(next);
-      hapticSelection();
+      uiFeedback("selection");
     },
     [scrubTo]
   );
@@ -89,7 +89,7 @@ export default function ReplayScreen() {
     (delta: number) => {
       setPlayRequested(false);
       setIndex((i) => clamp(i + delta));
-      hapticSelection();
+      uiFeedback("selection");
     },
     [clamp]
   );
@@ -192,15 +192,15 @@ export default function ReplayScreen() {
           onRestart={restart}
           onTogglePlay={() => {
             setPlayRequested((p) => !p);
-            hapticSelection();
+            uiFeedback("selection");
           }}
           onExit={() => {
-            hapticSelection();
+            uiFeedback("selection");
             router.back();
           }}
           onCycleSpeed={() => {
             setSpeedIndex((i) => (i + 1) % REPLAY_SPEEDS.length);
-            hapticSelection();
+            uiFeedback("selection");
           }}
           onJump={() => {
             const moment = nextMoment(moments, index);
@@ -208,7 +208,7 @@ export default function ReplayScreen() {
           }}
           onToggleMoves={() => {
             setMovesOpen((open) => !open);
-            hapticSelection();
+            uiFeedback("selection");
           }}
           t={t}
         />

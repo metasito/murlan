@@ -29,12 +29,6 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-// Reached through lib/device/sounds; the native module has no JS implementation here.
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(),
-}));
-
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' } }),
 }));

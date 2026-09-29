@@ -1,17 +1,10 @@
 // tests/native/roomSeatFill.test.tsx — a seat filling in the room is heard and
-// seen: one clack per seat that fills, a sting when the last one does, and each
+// seen: one clack per update that fills a seat, a sting when the last one does, and each
 // row entering rather than appearing.
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 import React from "react";
 import { render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
-
-const mockPlaySeatFill = jest.fn(async () => {});
-const mockPlayRoomFull = jest.fn(async () => {});
-jest.mock("@/lib/device/sounds", () => ({
-  playSeatFill: () => mockPlaySeatFill(),
-  playRoomFull: () => mockPlayRoomFull(),
-}));
 
 let mockReduceMotion = false;
 jest.mock("@/lib/accessibility", () => ({
@@ -21,6 +14,10 @@ jest.mock("@/lib/accessibility", () => ({
 }));
 
 import { RoomSeatList } from "@/components/RoomSeatList";
+import { bootFeedback, sounds } from "./helpers/feedback";
+
+const fills = () => sounds().filter((s) => s === "seat_fill").length;
+const fulls = () => sounds().filter((s) => s === "room_full").length;
 
 const SEATS = 4;
 const ANA = { seatIndex: 0, userId: "u_ana", username: "Ana" };
@@ -51,33 +48,32 @@ function translateY(testID: string): number | undefined {
 }
 
 describe("a seat filling in the room", () => {
-  beforeEach(() => {
-    mockPlaySeatFill.mockClear();
-    mockPlayRoomFull.mockClear();
+  beforeEach(async () => {
     mockReduceMotion = false;
+    await bootFeedback();
   });
 
   it("is silent for the seats already taken when the room opens", async () => {
     const view = await render(seatList([ANA, BEN]));
-    expect(mockPlaySeatFill).not.toHaveBeenCalled();
-    expect(mockPlayRoomFull).not.toHaveBeenCalled();
+    expect(fills()).toBe(0);
+    expect(fulls()).toBe(0);
     await view.unmount();
   });
 
-  it("clacks once per seat that fills, and stings once when the last one does", async () => {
+  it("clacks once per update that fills a seat, however many it fills, and stings once when the last one does", async () => {
     const view = await render(seatList([ANA]));
 
     await view.rerender(seatList([ANA, BEN]));
-    expect(mockPlaySeatFill).toHaveBeenCalledTimes(1);
-    expect(mockPlayRoomFull).not.toHaveBeenCalled();
+    expect(fills()).toBe(1);
+    expect(fulls()).toBe(0);
 
     await view.rerender(seatList([ANA, BEN, CEM, DRI]));
-    expect(mockPlaySeatFill).toHaveBeenCalledTimes(3);
-    expect(mockPlayRoomFull).toHaveBeenCalledTimes(1);
+    expect(fills()).toBe(2);
+    expect(fulls()).toBe(1);
 
     await view.rerender(seatList([ANA, BEN, CEM, DRI]));
-    expect(mockPlaySeatFill).toHaveBeenCalledTimes(3);
-    expect(mockPlayRoomFull).toHaveBeenCalledTimes(1);
+    expect(fills()).toBe(2);
+    expect(fulls()).toBe(1);
     await view.unmount();
   });
 
@@ -85,10 +81,10 @@ describe("a seat filling in the room", () => {
     const view = await render(seatList([ANA, BEN]));
 
     await view.rerender(seatList([ANA]));
-    expect(mockPlaySeatFill).not.toHaveBeenCalled();
+    expect(fills()).toBe(0);
 
     await view.rerender(seatList([ANA, { ...BEN, userId: "u_eda", username: "Eda" }]));
-    expect(mockPlaySeatFill).toHaveBeenCalledTimes(1);
+    expect(fills()).toBe(1);
     await view.unmount();
   });
 

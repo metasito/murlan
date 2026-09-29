@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-const CONFIG = /^(app\.json|app\.config\.(js|ts)|eas\.json)$/;
+const CONFIG = /^(app\.json|app\.config\.(js|ts)|eas\.json|modules\/.+)$/;
 
 const deps = (text) => {
   try {

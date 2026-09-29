@@ -1,0 +1,54 @@
+name: iOS Release bench build (sideload)
+
+# A Release .ipa with the diagnostics bench compiled in: every device gate reads this build (docs/agents/checks.md).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ios-bench-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the unsigned Release bench .ipa
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build the app
+        env:
+          EXPO_PUBLIC_DIAGNOSTICS: "1"
+        run: |
+          npx expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
+          scheme=$(basename "$workspace" .xcworkspace)
+          plutil -replace NSAppTransportSecurity.NSAllowsLocalNetworking -bool YES "ios/$scheme/Info.plist"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphoneos \
+            -destination generic/platform=iOS -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            COMPILER_INDEX_STORE_ENABLE=NO CODE_SIGNING_ALLOWED=NO build
+      - name: The bench build is Release, with an embedded bundle that carries the recorder
+        run: |
+          app=$(ls -d "$RUNNER_TEMP"/DerivedData/Build/Products/Release-iphoneos/*.app 2>/dev/null | head -1)
+          [ -n "$app" ] && [ -f "$app/main.jsbundle" ] || { echo "::error::no Release .app with an embedded main.jsbundle."; exit 1; }
+          node scripts/e2eBuildMark.mjs --present "$app" --mark diagnostics
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry murlan-bench.ipa Payload && rm -rf Payload)
+          echo "bench-${{ github.sha }}" > "$RUNNER_TEMP/ipa/fingerprint.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: murlan-ios-bench
+          path: ${{ runner.temp }}/ipa/
+          if-no-files-found: error
+          retention-days: 30

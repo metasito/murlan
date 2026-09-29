@@ -42,6 +42,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 | `5000` | The Express server (`PORT`) | `server/index.ts` |
 | `8081` | Metro (`npx expo start` / `npm start`) | Metro's own default |
 | `5561`, `5562`, `5571`, `5581` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
+| `5099` | The diagnostics collector the bench posts to | `scripts/diagnostics-collector.mjs` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `45432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 45432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
 
@@ -129,17 +130,53 @@ them** — measuring beats eyeballing, every time (#209).
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
   per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios` artefact.
 
+### Device bench (diagnostics builds)
+
+- The bench (`app/bench.tsx`, `components/BenchScreen.tsx`, `lib/diagnostics/`) and
+  `modules/murlan-diagnostics` are reachable only when `EXPO_PUBLIC_DIAGNOSTICS=1`.
+- `npm run ios:device -- --ref <branch> --bench` installs the Release bench build
+  (`ios-bench.yml`) and starts the collector on :5099, whose NDJSON lands in `diagnostics/`.
+  `--diagnostics` serves Metro JS on the dev client instead, for iterating on a scenario.
+- `node scripts/diagnostics-verdict.mjs <file> all` computes every gate from the raw rows, and
+  reports `pass: null` with `unrun` for any run not on a Release build with an embedded bundle:
+  Debug and Release differ 2.6–3× on JS-thread stall (the lantern review, #1259), so a Debug
+  verdict would fail for work no player runs.
+- ci.yml `build` checks that production carries no recorder, and that a diagnostics export does.
+- The device gates, each judged on the owner's iPhone in the Release bench build:
+
+  | Gate | Metric | Threshold | Scenario |
+  | --- | --- | --- | --- |
+  | P | The worklet pulse's own UI-thread cost: the first fire after launch, and p90 of 20 warm fires | cold ≤ 8.33 ms; warm p90 ≤ 1 ms | `pulseCost`, registered first |
+  | G1 | `burstStalls`: any UI frame or JS-lag interval ≥ 34 ms, merged within 100 ms; the share of 250 ms windows at ≥ 100 Hz; a tap with no app-track onset in [tap, tap + 150 ms), one onset per tap | 0 stalls, fast share ≥ 0.8, 0 missing | `tapBurst`: 60 card presses at 6 Hz, feedback off then on |
+  | G2 | Tap to heard onset, p90: app onset + `outputMs` + `ioMs`/2 − tap | ≤ 40 ms | `tapBurst`, "on" arm |
+  | G3 | Scheduled onset error, p90 of \|mic onset − `inputMs` − at\|, with the app-track error beside it | ≤ 25 ms | `scheduledOnset`: 40 `turn` events at now + 300 ms |
+  | G4 | Pulse to accelerometer onset (> 0.02 g), p90; none within 150 ms is missing | ≤ 40 ms; 0 | `hapticOnset`: 30 heavy pulses from `scheduleOnUI` |
+  | G5 | Music deaths (2 s below −50 dB) and gaps (below −50 dB for over 250 ms) | 0 and 0, median level > −40 dB | `musicSwitch`: 40 switches, one every 3 s |
+  | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
+
+  The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
+  next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
+  only the mic hears when the speaker sounds.
+- Running them (about 40 minutes of the phone, untouched):
+  1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
+  2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.
+  3. Allow the microphone and screen-recording prompts once each.
+  4. Lay the phone face up, plugged in, volume about half, ringer on, until the page lists
+     `soak: done`.
+  5. On the PC: `node scripts/diagnostics-verdict.mjs diagnostics/<newest>.ndjson all`; the output
+     goes in the PR.
+
 ## What no automated layer here covers
 
 Real device/web divergences, verifiable only on hardware:
 
 - **Reanimated v4 worklets** — the native-renderer suite's shim runs no UI thread and no frame
   loop; jank and a UI-thread crash are device-only.
-- **Audio** — `expo-audio` calls are asserted; whether sound is audible, mixed correctly, or
-  survives the silent switch is device-only.
+- **Audio** — the engine's calls into the mocked `react-native-audio-api` graph are asserted;
+  whether sound is audible, mixed correctly, or survives the silent switch is device-only.
 - **Screen orientation** — `expo-screen-orientation` is a no-op on web; the landscape lock has
   never run under any automated layer.
-- **Haptics** — gated and asserted (`tests/native/haptics.test.tsx` and siblings), but whether
+- **Haptics** — gated and asserted (`tests/native/hapticsEngine.test.tsx` and siblings), but whether
   the phone actually buzzes is device-only.
 - **Safe-area insets** — the native renderer injects fixed metrics; a real notch, dynamic island
   or gesture bar is device-only.

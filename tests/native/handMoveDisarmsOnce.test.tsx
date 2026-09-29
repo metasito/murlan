@@ -28,11 +28,6 @@ jest.mock('react-native-gesture-handler', () => {
   };
 });
 
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(),
-}));
-
 const { StraightHand } = require('@/components/table/hand') as typeof import('@/components/table/hand');
 
 const RANKS: Rank[] = ['3', '4', '5'];

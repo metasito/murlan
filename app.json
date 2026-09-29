@@ -45,9 +45,19 @@
           "backgroundColor": "#031008"
         }
       ],
-      "expo-audio",
       "expo-localization",
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "react-native-audio-api",
+        {
+          "iosBackgroundMode": false,
+          "androidForegroundService": false,
+          "androidPermissions": [],
+          "disableFFmpeg": true,
+          "disableStaticExternalLibs": true
+        }
+      ],
+      "./modules/murlan-diagnostics/app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true,

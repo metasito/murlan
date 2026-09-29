@@ -18,10 +18,11 @@ import { OrientationProvider } from "@/lib/device/orientation";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/device/fonts";
-import { bindWebAudioUnlock } from "@/lib/device/sounds";
 import { installGlobalErrorHandlers, setCurrentScreen } from "@/lib/errorReporting";
-import { playMusic, type MusicTrack } from "@/lib/device/music";
+import { backgroundMusic, startFeedback } from "@/lib/device/feedback";
+import type { TrackId } from "@/lib/device/musicTracks";
 import { UpdateRequired } from "@/components/UpdateRequired";
+import { DIAGNOSTICS } from "@/lib/diagnostics";
 import "@/lib/e2eBuildMark";
 
 SplashScreen.preventAutoHideAsync();
@@ -34,7 +35,7 @@ SplashScreen.preventAutoHideAsync();
  * The two game screens both resolve to /game: the `(online)` group is not part
  * of the path, and an online hand should sound like an offline one anyway.
  */
-function trackForRoute(pathname: string): MusicTrack {
+function trackForRoute(pathname: string): TrackId {
   if (pathname.startsWith("/result")) return "cue";
   if (pathname.startsWith("/game")) return "hand";
   return "menu";
@@ -49,14 +50,14 @@ export function RootLayoutNav() {
   useEffect(() => setCurrentScreen(pathname), [pathname]);
 
   // Keyed on the route's track rather than the route itself: several screens
-  // share one track (trackForRoute), and playMusic is a no-op when the track
-  // requested is already playing (lib/device/music.ts). Resuming after the app was
-  // backgrounded is lib/device/music.ts's own concern (its AppState listener), not
-  // this route effect's.
+  // share one track (trackForRoute), and backgroundMusic is a no-op for the
+  // track already playing. Restarting it after the app returns is the engine's
+  // own concern (lib/device/audioEngine.ts), not this route effect's.
   const track = trackForRoute(pathname);
+  const benchOwnsAudio = DIAGNOSTICS && pathname === "/bench";
   useEffect(() => {
-    void playMusic(track);
-  }, [track]);
+    if (!benchOwnsAudio) backgroundMusic(track);
+  }, [track, benchOwnsAudio]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -82,6 +83,9 @@ export function RootLayoutNav() {
         <Stack.Protected guard={__DEV__}>
           <Stack.Screen name="capture" />
         </Stack.Protected>
+        <Stack.Protected guard={DIAGNOSTICS}>
+          <Stack.Screen name="bench" />
+        </Stack.Protected>
       </Stack>
       <NotificationBanner
         notification={notification}
@@ -102,10 +106,12 @@ export default function RootLayout() {
     initLocale().finally(() => setLocaleReady(true));
   }, []);
 
-  // Binds listeners only — the AudioContext is built inside the gesture they
-  // catch. Here rather than on the game screen so the tap that opens a menu
-  // already counts.
-  useEffect(bindWebAudioUnlock, []);
+  // On web this binds listeners only — the AudioContext is built inside the
+  // gesture they catch. Here rather than on the game screen so the tap that
+  // opens a menu already counts.
+  useEffect(() => {
+    void startFeedback();
+  }, []);
 
   // A React error boundary sees render, lifecycle and commit errors and nothing
   // else. Rejected promises, socket callbacks and timers throw past it.

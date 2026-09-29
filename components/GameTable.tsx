@@ -102,9 +102,7 @@ import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seat
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
-import { playRoundStart, playRoundWin, holdSounds, preloadSounds } from "@/lib/device/sounds";
-import { hapticLight, hapticSelection } from "@/lib/device/haptics";
-import { playCue } from "@/lib/device/playCue";
+import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
@@ -120,6 +118,7 @@ import {
 } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
+import { useBenchHandle } from "@/lib/diagnostics";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -172,6 +171,7 @@ const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
  * `tests/e2e/helpers/selectors.ts` holds the other end.
  */
 const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
+const roundStart = () => event([{ kind: "roundStart" }]);
 
 const lockLandscape = () => {
   ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
@@ -238,6 +238,7 @@ export interface GameTableProps {
    * Defaults false: replay, capture and reaction-preview callers hold no match.
    */
   matchOver?: boolean;
+  matchWinners?: readonly string[];
   /**
    * What the manche just played awarded, by engine player id — the same
    * value the results board reads (`GameOverOverlay`/`app/result.tsx`), fed
@@ -305,6 +306,7 @@ export interface GameTableProps {
 export function GameTable({
   gameState,
   matchOver = false,
+  matchWinners,
   handScores = {},
   matchScore,
   viewerSeat,
@@ -689,6 +691,8 @@ export function GameTable({
     handScores,
     viewerId: viewer?.id,
     scale,
+    matchOver,
+    matchWinners,
   });
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
@@ -742,31 +746,20 @@ export function GameTable({
     shake,
     burst,
     celebrateFlush,
-    playRoundStart,
-    playRoundWin,
+    playRoundStart: roundStart,
   });
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    let mounted = true;
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     lockLandscape();
-    // Guarded: the cleanup may remove every native player, so resolving after
-    // unmount would play through a released one.
-    const releaseSounds = holdSounds();
-    const entryBeat = new Promise((resolve) => setTimeout(resolve, entryMs));
-    Promise.all([preloadSounds(), entryBeat])
-      .then(() => {
-        if (mounted) playCue({ kind: "deal" });
-      })
-      .catch(() => {});
+    const deal = setTimeout(() => event([{ kind: "deal" }]), entryMs);
     warmCourtArt();
     return () => {
-      mounted = false;
+      clearTimeout(deal);
       ScreenOrientation.unlockAsync().catch(() => {});
-      releaseSounds();
     };
   }, [entryMs]);
 
@@ -816,7 +809,7 @@ export function GameTable({
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating) return;
-      playCue({ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" });
+      event([{ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" }]);
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
       if (exchangeIsMine) {
@@ -827,19 +820,20 @@ export function GameTable({
     },
     [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
   );
+  useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
   const handlePlay = useCallback(() => {
     if (!staged.playable) {
-      playCue({ kind: "reject" });
+      event([{ kind: "reject" }]);
       setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
       rejectPlay();
       return;
     }
     // Haptic only: the throw is acknowledged in the hand, and the landing sounds
     // when the card actually reaches the pile.
-    hapticSelection();
+    uiFeedback("selection");
     // The validated set, not the raw selection: the server rejects — silently —
     // any request naming a card the hand does not hold.
     onPlay(staged.cards.map((c) => c.id));
@@ -851,7 +845,7 @@ export function GameTable({
   // memo over a translated string (scripts/react-compiler-probe.mjs).
   const handleExchangeGive = () => {
     if (!exchangePick) {
-      playCue({ kind: "reject" });
+      event([{ kind: "reject" }]);
       setRejectHint((prev) => ({
         key: (prev?.key ?? 0) + 1,
         text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
@@ -859,7 +853,7 @@ export function GameTable({
       rejectPlay();
       return;
     }
-    playCue({ kind: "give" });
+    event([{ kind: "give" }]);
     onExchangeGive(exchangePick);
   };
   // Asked again rather than closing over `canPass`: with `canPass` as the
@@ -869,7 +863,7 @@ export function GameTable({
     if (!canPassNowOf({ isMyTurn, isFinished, isNewRound })) return;
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
-    hapticLight();
+    uiFeedback("light");
     onPass();
   }, [isMyTurn, isFinished, isNewRound, onPass]);
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { assertMark, E2E_BUILD_MARK } from "../../scripts/e2eBuildMark.mjs";
+import { assertMark, DIAGNOSTICS_MARK, E2E_BUILD_MARK } from "../../scripts/e2eBuildMark.mjs";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const markSource = readFileSync(path.join(root, "lib", "e2eBuildMark.ts"), "utf8");
@@ -44,4 +44,12 @@ test("a build directory is judged by whether any file carries the mark", () => {
   assert.throws(() => assertMark("--absent", [dir]), /flagged\.js/);
   assert.doesNotThrow(() => assertMark("--present", [dir]));
   assert.throws(() => assertMark("--absent", [path.join(dir, "missing")]), /does not exist/);
+});
+
+test("the diagnostics mark is judged like the e2e one", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "murlan-diag-"));
+  writeFileSync(path.join(dir, "a.js"), `x="${DIAGNOSTICS_MARK}"`);
+  assert.throws(() => assertMark("--absent", [dir], DIAGNOSTICS_MARK), /a\.js/);
+  assert.doesNotThrow(() => assertMark("--present", [dir], DIAGNOSTICS_MARK));
+  assert.doesNotThrow(() => assertMark("--absent", [dir]));
 });

@@ -26,9 +26,8 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "@/components/flightPhysics";
-import { playCue } from "@/lib/device/playCue";
-import { handOutcomeFor } from "@/lib/game/matchState";
-import { cancelMusicDuck, duckMusicFor } from "@/lib/device/music";
+import { cancelLandingPulses, event, startLandingPulses } from "@/lib/device/feedback";
+import { celebratesViewer, handOutcomeFor } from "@/lib/game/matchState";
 import { Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 
@@ -62,6 +61,8 @@ export const KICK_JOLTS = [
   { x: 0, y: 0, ms: 416 },
 ] as const;
 
+const NO_WINNERS: readonly string[] = [];
+
 interface TableFeedbackState {
   isMyTurn: boolean;
   currentTurnIndex: number;
@@ -83,6 +84,10 @@ interface TableFeedbackState {
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
+  /** The partita is decided; its sting replaces the manche's. */
+  matchOver?: boolean;
+  /** Engine player ids, as `MatchVerdict.winners`. */
+  matchWinners?: readonly string[];
 }
 
 interface TableFeedback {
@@ -321,6 +326,8 @@ export function useTableFeedback({
   handScores,
   viewerId,
   scale,
+  matchOver = false,
+  matchWinners = NO_WINNERS,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
   const screenShake = useScreenShakeEnabled();
@@ -361,20 +368,17 @@ export function useTableFeedback({
   const [flushTrigger, setFlushTrigger] = useState(0);
 
   const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelPulsesRef = useRef<() => void>(() => {});
   // Keyed by card ids, not the object: every broadcast rebuilds it, and a
   // round-closing pass nulls it while the card that preceded it is still flying.
   const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
   const landsAtRef = useRef(0);
   useEffect(() => {
-    if (playedKey !== null) landsAtRef.current = Date.now() + handOffDelayMs(reduceMotion);
+    if (playedKey !== null) landsAtRef.current = performance.now() + handOffDelayMs(reduceMotion);
   }, [playedKey, reduceMotion]);
   useEffect(
     () => () => {
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
-      cancelPulsesRef.current();
+      cancelLandingPulses();
     },
     []
   );
@@ -384,25 +388,25 @@ export function useTableFeedback({
   useEffect(() => {
     if (turn.shown === turn.seat) return;
     const reveal = () => setTurn((t) => ({ ...t, shown: t.seat }));
-    const wait = landsAtRef.current - Date.now();
+    const wait = landsAtRef.current - performance.now();
     if (wait <= 0) return reveal();
     const id = setTimeout(reveal, wait);
     return () => clearTimeout(id);
   }, [turn]);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !prevMyTurnRef.current) {
-      const cue = () => playCue({ kind: "turn" });
+    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) {
+      const cue = () => event([{ kind: "turn" }]);
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      const wait = landsAtRef.current - Date.now();
+      const wait = landsAtRef.current - performance.now();
       if (wait <= 0) cue();
       else handOffTimerRef.current = setTimeout(cue, wait);
     }
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished]);
+  }, [isMyTurn, isFinished, gameOver]);
 
   useEffect(() => {
-    if (exchangeActive && !prevExchangeActiveRef.current) playCue({ kind: "exchange" });
+    if (exchangeActive && !prevExchangeActiveRef.current) event([{ kind: "exchange" }]);
     prevExchangeActiveRef.current = exchangeActive;
   }, [exchangeActive]);
 
@@ -419,7 +423,8 @@ export function useTableFeedback({
     const closed = roundClosedWithWinner({ lastPlayedCombination, roundWinner });
     const wasClosed = prevRoundClosedRef.current;
     prevRoundClosedRef.current = closed;
-    if (passCount > prevCount || (closed && !wasClosed)) playCue({ kind: "pass" });
+    const closedNow = closed && !wasClosed;
+    if (passCount > prevCount || closedNow) event(closedNow ? [{ kind: "pass" }, { kind: "roundWon" }] : [{ kind: "pass" }]);
   }, [passCount, lastPlayedCombination, roundWinner]);
 
   useEffect(() => {
@@ -427,7 +432,6 @@ export function useTableFeedback({
     // table — gets its own win/lose sting instead of staying silent.
     if (!gameOver) {
       prevGameOverRef.current = false;
-      if (stingTimerRef.current) clearTimeout(stingTimerRef.current);
       return;
     }
     if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
@@ -450,21 +454,19 @@ export function useTableFeedback({
     // the decision on data that was never real; returning without touching
     // the ref lets the next render, carrying the real `handScores`, run this
     // same effect again instead.
-    if (outcome === "pending") return;
+    // The sting is placed in the engine at the landing's hold, so leaving the
+    // table cannot cancel it (#5); every ranked id must carry a score, which is
+    // also when an online partita's winners have arrived.
+    if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    // The verdict waits for the card that decided it to land and hold, then
-    // one beat more, so it is heard after the landing rather than over it.
-    stingTimerRef.current = setTimeout(() => {
-      if (outcome !== "won" && outcome !== "lost") return;
-      playCue({ kind: "mancheOver", won: outcome === "won" });
-      duckMusicFor(2200);
-    }, handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion));
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion]);
-
-  // A duck outlives the play that started it by a second or two, so leaving
-  // the table mid-bomb would otherwise leave the music down until something
-  // else moved it.
-  useEffect(() => cancelMusicDuck, []);
+    const delay = handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion);
+    const at = delay > 0 ? performance.now() + delay : undefined;
+    if (matchOver && matchWinners.length > 0) {
+      event([{ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }], at);
+    } else {
+      event([{ kind: "mancheOver", outcome }], at);
+    }
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners]);
 
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
@@ -528,12 +530,10 @@ export function useTableFeedback({
 
   const playImpact = useCallback(
     (heavy: boolean, dir: FlyDirection, cards: number) => {
-      cancelPulsesRef.current();
-      cancelPulsesRef.current = playCue({ kind: "landing", cards, bomb: heavy, mine: dir === "bottom" });
-      if (!heavy) return;
-      // The biggest play in the game should not have to share the mix.
-      duckMusicFor(1100);
-      impact();
+      const landing = { cards, bomb: heavy, mine: dir === "bottom" };
+      event([{ kind: "landing", ...landing }]);
+      startLandingPulses(landing);
+      if (heavy) impact();
     },
     [impact]
   );

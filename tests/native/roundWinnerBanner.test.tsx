@@ -5,34 +5,12 @@
 // rounds in a row is ordinary play rather than an edge case. `roundWinner`
 // survives the round the winner then leads — `processPlay` never touches it —
 // so with two players it goes seat → seat with nothing in between, and with
-// three it goes seat → null → seat. The tag and its sting have to arrive both
-// times either way.
+// three it goes seat → null → seat. The tag has to arrive both times either
+// way, and the sting with the close that raises it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
 
 // Reduced motion collapses a played card's flight to a single timer, so the
 // pile reaches its settled state on a tick rather than on a spring callback.
@@ -42,7 +20,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { playRoundWin } from '@/lib/device/sounds';
+import { bootFeedback, startsOf } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { getVisibleText } from './visibilityHelpers';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
@@ -105,9 +83,10 @@ const pileArea = () => within(screen.getByTestId('pile-area'));
 const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
 
 describe('the round-winner tag', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -116,7 +95,6 @@ describe('the round-winner tag', () => {
   it('shows the winner, dismisses itself, and shows the same winner again next round', async () => {
     const r = await render(table(closed()));
     getVisibleText(pileArea(), WINNER);
-    expect(playRoundWin).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -129,7 +107,7 @@ describe('the round-winner tag', () => {
 
     await act(async () => r.rerender(table(closed())));
     getVisibleText(pileArea(), WINNER);
-    expect(playRoundWin).toHaveBeenCalledTimes(2);
+    expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
   });
@@ -139,7 +117,6 @@ describe('the round-winner tag', () => {
     // `roundWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
     getVisibleText(pileArea(), WINNER);
-    expect(playRoundWin).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -154,7 +131,7 @@ describe('the round-winner tag', () => {
 
     await act(async () => r.rerender(table(closed())));
     getVisibleText(pileArea(), WINNER);
-    expect(playRoundWin).toHaveBeenCalledTimes(2);
+    expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
   });

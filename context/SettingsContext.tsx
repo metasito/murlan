@@ -1,8 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { setSoundsMasterVolume } from "@/lib/device/sounds";
-import { setMusicMasterEnabled, setMusicMasterVolume } from "@/lib/device/music";
-import { setHapticsMasterEnabled } from "@/lib/device/haptics";
+import * as feedback from "@/lib/device/feedback";
 import { SETTINGS_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { setMotionPreference, type MotionPreference } from "@/lib/accessibility";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
@@ -132,23 +130,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings, readFinished]);
 
   useEffect(() => {
-    setSoundsMasterVolume(settings.soundVolume);
+    feedback.setSoundVolume(settings.soundVolume);
   }, [settings.soundVolume]);
 
-  // Both, from one value in one pass: `setMusicMasterEnabled(false)` stops the
-  // track, where a volume of 0 only silences it — driven apart they would leave
-  // the bed playing inaudibly.
+  // A volume of 0 stops the track in feedback.ts, so enabled and volume are one value and one setter.
   useEffect(() => {
-    setMusicMasterEnabled(settings.musicVolume > 0);
-    setMusicMasterVolume(settings.musicVolume);
+    feedback.setMusicVolume(settings.musicVolume);
   }, [settings.musicVolume]);
 
-  // lib/device/haptics.ts preloads this same key at module init, before this provider
+  // lib/device/feedback.ts preloads this same key at module init, before this provider
   // mounts — pushing the unread default here would stomp a correctly-preloaded
   // `false` until the read above resolves.
   useEffect(() => {
     if (!readFinished) return;
-    setHapticsMasterEnabled(settings.hapticsEnabled);
+    feedback.setHapticsEnabled(settings.hapticsEnabled);
   }, [settings.hapticsEnabled, readFinished]);
 
   useEffect(() => {

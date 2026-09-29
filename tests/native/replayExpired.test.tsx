@@ -4,21 +4,6 @@
 // its whole table from a replay it does not have.
 import { describe, it, expect, jest } from '@jest/globals';
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
-// Pulled in by <GameTable> through lib/device/sounds; the native module has no JS
-// implementation to load here, and nothing in this test makes a sound.
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(),
-}));
-
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
   router: { back: mockBack, push: jest.fn(), replace: jest.fn() },

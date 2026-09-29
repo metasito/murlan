@@ -1,18 +1,18 @@
 # Bundle size report
 
-Generated: 2026-09-24
+Generated: 2026-09-28
 
 Regenerate with `node scripts/bundle-report.mjs > docs/BUNDLE.md` after adding/removing assets or dependencies.
 
 ## Assets (`assets/`)
 
-Total: **9.24 MB** across 48 files.
+Total: **8.85 MB** across 48 files.
 
 | File | Size |
 |---|---|
-| assets/music/hand.m4a | 1.90 MB |
-| assets/music/menu.m4a | 1.72 MB |
-| assets/music/cue.m4a | 1.52 MB |
+| assets/music/native/hand.flac | 1.79 MB |
+| assets/music/native/menu.flac | 1.59 MB |
+| assets/music/native/cue.flac | 1.38 MB |
 | assets/images/splash-icon.png | 1.19 MB |
 | assets/images/icon.png | 1.03 MB |
 | assets/music/cue.webm | 431.6 KB |
@@ -41,16 +41,16 @@ Total: **9.24 MB** across 48 files.
 | assets/images/cards/queen_of_diamonds.png | 16.4 KB |
 | assets/sounds/turn.mp3 | 14.8 KB |
 | assets/sounds/exchange.mp3 | 14.3 KB |
-| assets/sounds/reconnected.mp3 | 14.3 KB |
 | assets/sounds/combo.mp3 | 13.8 KB |
 | assets/sounds/round_start.mp3 | 9.5 KB |
-| assets/music/README.md | 7.8 KB |
+| assets/music/README.md | 6.7 KB |
 | assets/sounds/select.mp3 | 6.2 KB |
 | assets/images/android-icon-background.png | 6.1 KB |
-| assets/sounds/README.md | 5.8 KB |
+| assets/sounds/README.md | 5.9 KB |
 | assets/sounds/pass.mp3 | 5.7 KB |
 | assets/sounds/play.mp3 | 5.7 KB |
 | assets/sounds/round_win.mp3 | 4.6 KB |
+| assets/sounds/manche_neutral.mp3 | 4.0 KB |
 | assets/fonts/Feather.subset.ttf | 3.7 KB |
 | assets/sounds/room_full.mp3 | 3.4 KB |
 | assets/sounds/seat_fill.mp3 | 3.1 KB |
@@ -61,13 +61,14 @@ Total: **9.24 MB** across 48 files.
 
 ## Production dependencies (installed size in `node_modules/`)
 
-Total: **113.42 MB** across 49 declared dependencies.
+Total: **121.31 MB** across 50 declared dependencies.
 
 | Package | Installed size |
 |---|---|
 | react-native | 21.86 MB |
 | @shopify/react-native-skia | 11.26 MB |
 | drizzle-orm | 9.94 MB |
+| react-native-audio-api | 9.12 MB |
 | @expo-google-fonts/inter | 7.67 MB |
 | react-dom | 6.98 MB |
 | expo | 6.62 MB |
@@ -84,7 +85,6 @@ Total: **113.42 MB** across 49 declared dependencies.
 | socket.io | 1.61 MB |
 | expo-notifications | 1.56 MB |
 | socket.io-client | 1.35 MB |
-| expo-audio | 1.27 MB |
 | react-native-worklets | 1.08 MB |
 | @tanstack/react-query | 727.4 KB |
 | pino | 648.0 KB |
@@ -107,12 +107,13 @@ Total: **113.42 MB** across 49 declared dependencies.
 | bcryptjs | 109.7 KB |
 | helmet | 103.1 KB |
 | pg | 97.7 KB |
-| expo-haptics | 86.0 KB |
 | pino-http | 83.7 KB |
 | compression | 83.2 KB |
 | expo-system-ui | 82.0 KB |
 | express | 73.7 KB |
 | @socket.io/postgres-adapter | 61.8 KB |
+| react-native-turbo-haptics | 59.4 KB |
+| expo-dev-client | 55.6 KB |
 | connect-pg-simple | 23.8 KB |
 
 ## Notes

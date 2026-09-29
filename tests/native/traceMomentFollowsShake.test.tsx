@@ -9,25 +9,6 @@ jest.mock("@/lib/e2eTrace", () => ({
   ...(jest.requireActual("@/lib/e2eTrace") as object),
   traceOnset: (...args: unknown[]) => mockTraceOnset(...args),
 }));
-jest.mock("@/lib/device/sounds", () => ({
-  playBomb: jest.fn(),
-  playCardPass: jest.fn(),
-  playCardPlay: jest.fn(),
-  playCombo: jest.fn(),
-  playExchange: jest.fn(),
-  playMancheLost: jest.fn(),
-  playMancheWon: jest.fn(),
-  playTurn: jest.fn(),
-}));
-jest.mock("@/lib/device/haptics", () => ({
-  hapticHeavy: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
 const idleState = () => ({
   isMyTurn: false,

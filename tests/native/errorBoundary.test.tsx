@@ -18,13 +18,6 @@ import { SettingsProvider } from '@/context/SettingsContext';
 import { t } from '@/lib/i18n';
 import { resetErrorReportingForTests } from '@/lib/errorReporting';
 
-// SettingsProvider reaches expo-audio through lib/device/sounds; the native module has
-// no JS fallback under Jest.
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(() => ({ volume: 0, seekTo: jest.fn(), play: jest.fn(), remove: jest.fn() })),
-  setAudioModeAsync: jest.fn(async () => {}),
-}));
-
 jest.mock('@/lib/query-client', () => ({
   apiRequest: jest.fn(() => Promise.resolve({ ok: true })),
   getApiUrl: () => 'http://localhost',

@@ -22,7 +22,7 @@ import { Toggle } from "@/components/Toggle";
 import { ChoiceChips } from "@/components/ChoiceChips";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { apiRequest } from "@/lib/query-client";
-import { hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { Colors, Spacing, Radius, FontSize, Type, Shadow, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { keyboardBehavior } from "@/lib/device/keyboard";
 import { useTranslation, type Locale, type TranslationKey } from "@/lib/i18n";
@@ -189,7 +189,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   }
 
   function handleSelectLocale(next: Locale) {
-    hapticSelection();
+    uiFeedback("selection");
     void setLocale(next);
     // The server renders a push with no client in the loop, so this device's
     // language has to be re-registered here or the next invite arrives in the
@@ -200,7 +200,7 @@ export function SettingsModal({ visible, onClose }: Props) {
   function toggleHaptics(v: boolean) {
     // Fire on the current setting (before the flip) so the user feels the
     // effect they're about to turn off, or confirms the one they're enabling.
-    hapticSelection();
+    uiFeedback("selection");
     setHapticsEnabled(v);
   }
 
@@ -342,7 +342,7 @@ export function SettingsModal({ visible, onClose }: Props) {
                 iOS. One tap either way. */}
             <Pressable
               onPress={() => {
-                hapticSelection();
+                uiFeedback("selection");
                 setBugOpen((open) => !open);
               }}
               accessibilityLabel={t("settings.reportBug")}

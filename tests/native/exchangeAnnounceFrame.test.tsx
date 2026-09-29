@@ -1,14 +1,6 @@
 // A view a Maestro flow waits for needs a frame of its own: iOS leaves a 0×0
 // view out of the accessibility snapshot XCUITest hands Maestro, painted or not.
-import { describe, it, expect, jest } from '@jest/globals';
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
+import { describe, it, expect } from '@jest/globals';
 
 import React from 'react';
 import { StyleSheet, type ViewStyle } from 'react-native';

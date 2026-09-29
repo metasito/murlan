@@ -27,6 +27,8 @@ const project = (platform) => ({
   // plain (mockable) implementation instead — without it, requiring
   // react-native-reanimated throws before any test runs.
   resolver: require.resolve('react-native-worklets/jest/resolver'),
+  // jest-expo transforms Metro's default asset extensions; FLAC is one metro.config.js adds.
+  transform: { '^.+\\.flac$': require.resolve('jest-expo/src/preset/assetFileTransformer.js') },
 });
 
 module.exports = {

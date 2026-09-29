@@ -12,6 +12,7 @@ const ICON_SUBSETS = {
   Ionicons: path.resolve(__dirname, "assets/fonts/Ionicons.subset.ttf"),
   Feather: path.resolve(__dirname, "assets/fonts/Feather.subset.ttf"),
 };
+config.resolver.assetExts.push("flac");
 
 const defaultResolve = config.resolver.resolveRequest;
 

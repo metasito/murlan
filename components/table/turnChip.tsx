@@ -3,8 +3,7 @@ import { View } from "react-native";
 import { ChipDot, ChipText, TableChip } from "./chrome";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
-import { playCue } from "@/lib/device/playCue";
-import { stopClockRunningOut } from "@/lib/device/sounds";
+import { event, silence } from "@/lib/device/feedback";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
 
 // ─── Turn chip ────────────────────────────────────────────────────────────────
@@ -60,7 +59,7 @@ export function TurnChip({
     let remaining = seconds;
     let sounding = false;
     const stop = () => {
-      if (sounding) stopClockRunningOut();
+      if (sounding) silence("clockRunningOut");
       sounding = false;
     };
     const id = setInterval(() => {
@@ -68,7 +67,7 @@ export function TurnChip({
       setTimeLeft(remaining);
       if (!sounding && remaining > 0 && remaining <= CLOCK_RUNNING_OUT_SECONDS) {
         sounding = true;
-        playCue({ kind: "clockRunningOut" });
+        event([{ kind: "clockRunningOut" }]);
       }
       if (remaining <= 0) {
         clearInterval(id);

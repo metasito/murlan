@@ -1,24 +1,29 @@
 // tests/tooling/soundAssets.test.ts — the sound files themselves.
 //
-// lib/device/sounds.ts require()s nineteen names. If one is missing, silent, empty, or
+// lib/device/soundAssets.ts require()s these names. If one is missing, silent, empty, or
 // not actually the format its extension claims, nothing throws: the effect just
 // never plays, on one platform or on all of them. That is the failure this
 // guards, and it is why every file is decoded and measured rather than merely
 // checked for existence.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { MPEGDecoder } from "mpg123-decoder";
+import { moduleEdges } from "../helpers/moduleEdges.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const soundsDir = path.join(repoRoot, "assets", "sounds");
 
-/** Every asset path lib/device/sounds.ts actually require()s. */
+/** Every asset path the sound owners require(), read through the compiler. */
 function requiredFiles(): string[] {
-  const src = readFileSync(path.join(repoRoot, "lib", "device", "sounds.ts"), "utf8");
-  return [...src.matchAll(/require\("\.\.\/\.\.\/assets\/sounds\/([^"]+)"\)/g)].map((m) => m[1]);
+  const owners = ["lib/device/soundAssets.ts"].filter((f) => existsSync(path.join(repoRoot, f)));
+  const files = owners
+    .flatMap((f) => moduleEdges(f, readFileSync(path.join(repoRoot, f), "utf8")))
+    .filter((e) => e.via === "require" && e.to.startsWith("assets/sounds/"))
+    .map((e) => e.to.slice("assets/sounds/".length));
+  return [...new Set(files)];
 }
 
 interface Decoded {
@@ -133,7 +138,7 @@ function integratedLoudness(pcm: Float32Array, fs: number): number {
  * Decoded length and integrated loudness of each shipped effect. Decoding alone
  * does not catch a truncated file — mpg123 reports no error on a short stream —
  * so the length is pinned per file. The loudness is pinned because each file
- * carries its own level: sounds.ts plays the picks at unity.
+ * carries its own level: the engine plays the picks at unity.
  */
 const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "bomb.mp3": { seconds: 1.475, lufs: -23.3 },
@@ -142,12 +147,12 @@ const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "deal.mp3": { seconds: 2.958, lufs: -30.3 },
   "exchange.mp3": { seconds: 0.675, lufs: -29.6 },
   "manche_lost.mp3": { seconds: 0.863, lufs: -23.8 },
+  "manche_neutral.mp3": { seconds: 0.34, lufs: -30.3 },
   "manche_won.mp3": { seconds: 1.229, lufs: -21.5 },
   "partita_lost.mp3": { seconds: 1.255, lufs: -21.5 },
   "partita_won.mp3": { seconds: 2.415, lufs: -18.6 },
   "pass.mp3": { seconds: 0.232, lufs: -27.7 },
   "play.mp3": { seconds: 0.235, lufs: -26.9 },
-  "reconnected.mp3": { seconds: 0.68, lufs: -24.9 },
   "reject.mp3": { seconds: 0.209, lufs: -19.3 },
   "room_full.mp3": { seconds: 0.287, lufs: -18.6 },
   "round_start.mp3": { seconds: 0.81, lufs: -22.7 },
@@ -180,12 +185,12 @@ const WINDOW_SECONDS = 0.01;
 const MAX_TRAILING_SILENCE = 0.11;
 
 describe("sound assets", () => {
-  test("lib/device/sounds.ts requires exactly the files that exist on disk", () => {
+  test("lib/device/soundAssets.ts requires exactly the files that exist on disk", () => {
     const required = requiredFiles().sort();
     const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
-    assert.deepEqual(onDisk, required, "assets/sounds and lib/device/sounds.ts disagree");
-    assert.equal(required.length, 19, "sounds.ts should require nineteen files");
+    assert.deepEqual(onDisk, required, "assets/sounds and lib/device/soundAssets.ts disagree");
+    assert.equal(required.length, 19, "soundAssets.ts requires nineteen files");
     assert.deepEqual(Object.keys(EXPECTED).sort(), required, "EXPECTED does not cover exactly the shipped effects");
   });
 
@@ -231,5 +236,10 @@ describe("sound assets", () => {
       trick.lufs < manche.lufs,
       `round_win at ${trick.lufs.toFixed(1)} LUFS is not under manche_won at ${manche.lufs.toFixed(1)}`
     );
+  });
+
+  test("a drawn manche's sting sits well under both verdicts (D6)", async () => {
+    const [neutral, won, lost] = await Promise.all(["manche_neutral.mp3", "manche_won.mp3", "manche_lost.mp3"].map(readMp3));
+    assert.ok(neutral.lufs < won.lufs - 3 && neutral.lufs < lost.lufs - 3, `manche_neutral at ${neutral.lufs.toFixed(1)} LUFS is not under both verdicts`);
   });
 });

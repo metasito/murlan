@@ -1,6 +1,6 @@
 # Music
 
-The four loops `lib/device/music.ts` plays. Unlike the effects in `assets/sounds/`,
+The loops `lib/device/musicTracks.ts` names and `lib/device/audioEngine.ts` plays. Unlike the effects in `assets/sounds/`,
 these are **not built by a script** — they arrive pre-encoded, which is the
 decision #121 settled and `scripts/build-sounds.mjs`'s header records.
 
@@ -55,21 +55,25 @@ ffmpeg is not a repo dependency and is not needed to build the app; it was used
 once, to author these four files. Re-encoding is a manual step, which is why the
 test guards the result rather than the process.
 
-## The iOS encode
+## The native encode
 
-AVFoundation cannot demux WebM at all — Opus reaches `AVPlayer` only inside an
-MP4 container, and only from iOS 17. Android has decoded Opus in WebM since
-5.0, and Safari is unaffected either way, which is why the format itself never
-changed (#121): switching container for everyone would cost web Safari to fix
-one platform.
+iOS and Android decode the music with react-native-audio-api, whose bundled
+miniaudio reads FLAC and MP3 but not WebM, Ogg or ALAC once FFmpeg is off
+(ADR 0009, `docs/adr/`). Web keeps WebM (`lib/device/musicTracks.web.ts`).
 
-Each `*.m4a` alongside the matching `*.webm` is the same audio, **losslessly
-re-encoded to ALAC**: `ffmpeg -i menu.webm -c:a alac -sample_fmt s16p -f mp4
-menu.m4a`. `lib/device/music.ts` picks the container by platform — WebM for web and
-Android, M4A for iOS — and `tests/tooling/musicAssets.test.ts` pins that every track
-exists in both.
+Each `native/*.flac` is the same audio as the matching `*.webm`, made
+losslessly from the earlier ALAC encode:
+`ffmpeg -v error -i menu.m4a -map_metadata -1 -c:a flac -sample_fmt s16 -ar 48000 native/menu.flac`.
+`tests/tooling/musicAssets.test.ts` pins every track in both containers, and
+each FLAC's STREAMINFO to 48 kHz, 16-bit stereo and the WebM's 1,315,611
+samples; `tests/e2e/musicLoops.spec.ts` decodes the FLAC in Chromium and
+measures its loop join as it does the WebM's.
 
-**Why ALAC and not the two candidates that looked cheaper first**, in the
+The subfolder keeps a FLAC from sharing an Android raw-resource name with its
+WebM (a probe build failed on `menu.flac` beside `menu.webm`).
+
+**Why a lossless encode and not the two candidates that looked cheaper first**
+(measured for the earlier ALAC encode, #178), in the
 order #178 laid out — both were tried and measured, not assumed:
 
 - **Opus, remuxed into the same MP4 with `-c:a copy`.** The audio bitstream is
@@ -112,30 +116,9 @@ it remains unverified here — ALAC was picked because it needs no such trim to
 go right by construction, not because either rejected candidate was confirmed
 to fail on-device.
 
-**Cost.** Lossless does not compress like Opus does — the four ALAC files run
-roughly 5× the WebM set's size (about 7.5 MB against 1.5 MB). Paid once in the
-iOS bundle, not over the wire to web players.
+**Cost.** Lossless does not compress like Opus does — the three FLAC files
+are about 5 MB against the WebM set's 1.5 MB. Paid once in each native bundle,
+not over the wire to web players.
 
-**What "verified" means here, and what it does not.** Chromium cannot decode
-ALAC at all (`decodeAudioData` and `<audio>` both refuse it), so
-`tests/e2e/musicLoops.spec.ts` cannot run the same waveform-seam arithmetic
-against the `.m4a` files that it runs against the `.webm` files. What it does
-instead is parse the MP4 container's own boxes (`mdhd`, `stsd` — no decoder,
-just the header) and assert the sample count, sample rate and channel count
-match the WebM file exactly; the losslessness argument above is what carries
-the seam guarantee across, verified once by hand with `ffmpeg`, not re-derived
-by CI on every run. **Genuine on-device confirmation is still outstanding** —
-AVFoundation decoding ALAC is long-documented Apple behaviour on every iOS
-version, which is why it was picked over the other two, but nothing here has
-run on a physical device or simulator. See #178.
-
-The branch this replaced, `NATIVE_MUSIC_SUPPORTED`, existed precisely to avoid
-a silent failure on a decoder path nobody had confirmed — it refused to create
-a native player on iOS at all rather than hand AVPlayer a container it
-couldn't demux. Nothing takes its place for ALAC: if AVFoundation rejects one
-of these files on a real device after all, `nativePlayer`'s `catch` swallows
-the error and the result is silent music with nothing telling anyone why,
-which is the exact failure mode that branch was written to prevent.
-
-Why music and the sound effects share one `AVAudioSession` category rather
-than each setting their own: `lib/device/sounds.ts`'s `ensureAudioMode()` docblock.
+Music and the sound effects share one `AVAudioSession` category, set once
+before the engine's one context is built (`lib/device/audioEngine.ts`).

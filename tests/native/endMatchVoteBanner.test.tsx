@@ -14,11 +14,6 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/device/haptics', () => ({
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-}));
-
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'alice', username: 'Alice' } }),
 }));

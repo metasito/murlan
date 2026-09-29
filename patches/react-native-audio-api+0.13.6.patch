@@ -1,0 +1,32 @@
+diff --git a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
+index d0e77d8..751ea08 100644
+--- a/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
++++ b/node_modules/react-native-audio-api/ios/audioapi/ios/system/AudioEngine.mm
+@@ -395,7 +395,12 @@ static AudioEngine *_sharedInstance = nil;
+   }
+ 
+   [self.audioEngine prepare];
+-  [self.audioEngine startAndReturnError:&error];
++  @try {
++    [self.audioEngine startAndReturnError:&error];
++  } @catch (NSException *exception) {
++    NSLog(@"AVAudioEngine threw starting: %@", exception.reason);
++    error = [NSError errorWithDomain:@"RNAudioAPI" code:1238 userInfo:nil];
++  }
+ 
+   if (error != nil) {
+     NSLog(
+@@ -492,7 +497,12 @@ static AudioEngine *_sharedInstance = nil;
+   }
+ 
+   [self.audioEngine prepare];
+-  [self.audioEngine startAndReturnError:&error];
++  @try {
++    [self.audioEngine startAndReturnError:&error];
++  } @catch (NSException *exception) {
++    NSLog(@"AVAudioEngine threw starting: %@", exception.reason);
++    error = [NSError errorWithDomain:@"RNAudioAPI" code:1238 userInfo:nil];
++  }
+ 
+   if (error != nil) {
+     NSLog(@"Error while starting the audio engine: %@", [error debugDescription]);

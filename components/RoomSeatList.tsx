@@ -5,7 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { teamForSeat } from "@/lib/game/gameEngine";
 import { Colors, Spacing, Radius, FontSize } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import { playRoomFull, playSeatFill } from "@/lib/device/sounds";
+import { uiFeedback } from "@/lib/device/feedback";
 import { useEntrance } from "@/lib/useEntrance";
 
 const TEAM_STRIPE = 3;
@@ -101,8 +101,8 @@ export function RoomSeatList({
     seatedRef.current = seated;
     if (!before) return;
     const filled = [...seated].filter((seat) => !before.has(seat)).length;
-    for (let i = 0; i < filled; i++) playSeatFill().catch(() => {});
-    if (filled > 0 && seated.size >= maxSeats) playRoomFull().catch(() => {});
+    if (filled > 0) uiFeedback("seatFill");
+    if (filled > 0 && seated.size >= maxSeats) uiFeedback("roomFull");
   }, [players, maxSeats]);
 
   const rowHeight = isLandscape ? SEAT_ROW_H_COMPACT : SEAT_ROW_H;

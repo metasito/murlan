@@ -27,19 +27,6 @@ jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ login: mockLogin, register: jest.fn(), user: null }),
 }));
 
-jest.mock('@/lib/device/haptics', () => ({
-  setHapticsMasterEnabled: jest.fn(),
-  hapticsEnabled: () => false,
-  hapticSelection: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticHeavy: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticError: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-
 jest.mock('@/lib/query-client', () => ({
   getApiUrl: () => 'http://localhost',
   apiRequest: jest.fn(),

@@ -6,20 +6,12 @@
 // manche fell through to naming a team that may not have won at all.
 import { describe, it, expect, jest } from '@jest/globals';
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
 
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { haptics } from './helpers/feedback';
 
 import { GameOverOverlay } from '@/components/GameOverOverlay';
 import { t } from '@/lib/i18n';
@@ -50,8 +42,6 @@ const players = [
 // actually finished first with real points behind it.
 const rankings = ['player_0', 'player_1', 'player_2', 'player_3'];
 
-const notificationAsync = Haptics.notificationAsync as unknown as ReturnType<typeof jest.fn>;
-
 describe('a teams manche this client has no game:over for yet celebrates nobody', () => {
   const gameState: GameState = {
     players,
@@ -67,7 +57,6 @@ describe('a teams manche this client has no game:over for yet celebrates nobody'
   };
 
   it('names no team when handScores is empty', async () => {
-    notificationAsync.mockClear();
     const view = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
         <GameOverOverlay
@@ -104,12 +93,11 @@ describe('a teams manche this client has no game:over for yet celebrates nobody'
     expect(view.getByTestId('winner-celebration-name').props.children).toBe('');
     // No draw claim either — the hand's real outcome is simply not known yet.
     expect(view.queryByText(t('result.handDrawTitle'))).toBeNull();
-    expect(notificationAsync.mock.calls).toEqual([]);
+    expect(haptics()).toEqual([]);
     await view.unmount();
   });
 
   it('names the real winner once handScores actually arrives', async () => {
-    notificationAsync.mockClear();
     // Ana's team (A) genuinely won this manche: 3 + 0 against 1 + 1.
     const handScores = { player_0: 3, player_1: 1, player_2: 1, player_3: 0 };
     const view = await render(

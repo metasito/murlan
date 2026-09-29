@@ -15,11 +15,6 @@ jest.mock('@/lib/cosmetics', () => {
   };
 });
 
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(),
-}));
-
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
 

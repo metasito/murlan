@@ -5,31 +5,11 @@
 // read off a rendered node freezes at mount (`settleForMotion`, same file,
 // documents the trap) and cannot pin a later reactive change. This only pins
 // the shape `shakeStyle` starts at rest.
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
 import Animated from "react-native-reanimated";
 import { useTableFeedback } from "@/components/useTableFeedback";
-
-jest.mock("@/lib/device/sounds", () => ({
-  playBomb: jest.fn(),
-  playCardPass: jest.fn(),
-  playCardPlay: jest.fn(),
-  playCombo: jest.fn(),
-  playExchange: jest.fn(),
-  playMancheLost: jest.fn(),
-  playMancheWon: jest.fn(),
-  playTurn: jest.fn(),
-}));
-jest.mock("@/lib/device/haptics", () => ({
-  hapticHeavy: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   return Object.assign({}, ...(Array.isArray(style) ? style.filter(Boolean) : [style]));

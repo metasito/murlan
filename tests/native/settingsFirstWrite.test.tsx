@@ -13,13 +13,6 @@ import { Text, Pressable } from "react-native";
 import { render, act, fireEvent, waitFor } from "@testing-library/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// SettingsProvider reaches expo-audio through lib/device/sounds; the native module has
-// no JS side in a test renderer.
-jest.mock("expo-audio", () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
-
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 
 /** A stored install with the sound off — #414's case, and the one that hurts. */

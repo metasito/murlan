@@ -649,7 +649,6 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
   playRoundStart: () => void;
-  playRoundWin: () => void;
 }
 
 /**
@@ -681,7 +680,6 @@ export function usePileFlight({
   burst,
   celebrateFlush,
   playRoundStart,
-  playRoundWin,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
 
@@ -922,15 +920,14 @@ export function usePileFlight({
     setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
   }, [lastPlayedCombination, roundWinner]);
 
-  // A round closes on a pass, never on a play, so nothing is in flight here and
-  // the sting is the first sound of the beat — ahead of the round-start sting,
-  // which the pile effect has deferred for as long as this tag is up.
+  // A round closes on a pass, never on a play, so the round-win sting is that
+  // closing pass's own event (useTableFeedback) and this tag is only the banner —
+  // the round-start sting is deferred for as long as it is up.
   useEffect(() => {
     if (roundWinnerTag === null) return;
-    playRoundWin();
     const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
     return () => clearTimeout(dismiss);
-  }, [roundWinnerTag, playRoundWin]);
+  }, [roundWinnerTag]);
 
   // The settle is what ends a flight, so the bounce the pile answers with is
   // bumped from the same callback that takes the flying cards away.
