@@ -82,7 +82,7 @@ jest.mock('@shopify/react-native-skia', () => {
     apply: () => call,
   });
   const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
-  return new Proxy({ Skia: call, PaintStyle: {} } as Record<string | symbol, unknown>, {
+  return new Proxy({ Skia: call, PaintStyle: {}, useCanvasRef: () => React.useRef(null) } as Record<string | symbol, unknown>, {
     get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
   });
 });

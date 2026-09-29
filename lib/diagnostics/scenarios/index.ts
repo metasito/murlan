@@ -7,3 +7,4 @@ import "./musicSwitch";
 import "./soak";
 import "./landingSync";
 import "./seatAnchors";
+import "./lampVariants";

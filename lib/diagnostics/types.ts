@@ -1,3 +1,5 @@
+import type { LampSide } from "./lampLegibility";
+
 export interface DiagRows {
   scenario: { name: string; phase: "start" | "end"; error?: string | null };
   build: { dev: boolean; scriptURL: string | null };
@@ -19,6 +21,7 @@ export interface DiagRows {
   shake: { g: number };
   ring: { name: string; x: number; y: number };
   seatState: { id: string; of: number; hold: number };
+  lampLegibility: { side: LampSide; ratio: number };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];

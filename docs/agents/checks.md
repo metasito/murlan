@@ -156,6 +156,7 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   | G5 | Music deaths (2 s below −50 dB) and gaps (below −50 dB for over 250 ms) | 0 and 0, median level > −40 dB | `musicSwitch`: 40 switches, one every 3 s |
   | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
   | Seats | Each opponent's `seat-ring` in window points (`measureInWindow` every 250 ms, during this scenario only), against its first sample in the deal's hold; every `seatState` recorded with one `of`, and every ring sampled in each state's own hold | all three rings in the deal's hold, finite and at distinct positions; drift ≤ 0.5 pt per axis | `seatAnchors`: each of `SEAT_COUNT_STATES`, settled 1.5 s, held 1 s |
+  | Lamp | Each seat's worst `lampLegibility` ratio (on-move ring ÷ brightest other, `feltOnly` pixels of the felt canvas's snapshot) over one sway period | every seat ≥ `LAMP_FLOOR`, worst ÷ best ≥ `LAMP_SYMMETRY`, `LAMP_SWAY.samples` per seat | `lampVariants`: the four `lamp-*` capture states, settled 4 s, `LAMP_SWAY` 20 snapshots over 8 s |
 
   The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
   next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
