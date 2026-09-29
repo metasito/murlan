@@ -547,12 +547,13 @@ jobs:
             echo "::error::The merged manifest carries a foreground service or cleartext traffic."; exit 1
           fi
           lib=node_modules/react-native-audio-api
-          test -d "$lib/android/src/main" && test -d "$lib/common/cpp/audioapi/external/include_ffmpeg"
+          test -d "$lib/android/src/main"
+          test -d "$lib/common/cpp/audioapi/external/include_ffmpeg"
           if find "$lib/android/src/main" "$lib/common/cpp/audioapi/external" \( -name "*.xcframework" -o -name "*.so" -o -name "*.a" \) | grep -q .; then
             echo "::error::A prebuilt binary was downloaded."; exit 1
           fi
-          list=$(find android node_modules/expo/android -name ExpoModulesPackageList.java 2>/dev/null | head -1)
-          [ -n "$list" ] || { echo "::error::No ExpoModulesPackageList.java was generated."; exit 1; }
+          list=$(find android node_modules/expo/android -name ExpoModulesPackageList.kt 2>/dev/null | head -1)
+          [ -n "$list" ] || { echo "::error::No ExpoModulesPackageList.kt was generated."; exit 1; }
           grep -q "MurlanDiagnosticsModule" "$list"
           if grep -qE "expo\.modules\.(audio|haptics)\." "$list"; then echo "::error::expo-audio or expo-haptics is still registered."; exit 1; fi
 
@@ -626,7 +627,8 @@ jobs:
             echo "::error::A production build asks for the microphone."; exit 1
           fi
           lib=node_modules/react-native-audio-api
-          test -d "$lib/android/src/main" && test -d "$lib/common/cpp/audioapi/external/include_ffmpeg"
+          test -d "$lib/android/src/main"
+          test -d "$lib/common/cpp/audioapi/external/include_ffmpeg"
           if find "$lib/android/src/main" "$lib/common/cpp/audioapi/external" \( -name "*.xcframework" -o -name "*.so" -o -name "*.a" \) | grep -q .; then
             echo "::error::A prebuilt binary was downloaded."; exit 1
           fi
