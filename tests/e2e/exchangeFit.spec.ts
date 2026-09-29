@@ -76,6 +76,20 @@ for (const vp of VIEWPORTS) {
     expect.soft(await giveable.count(), "no card in the fan can be given").toBeGreaterThan(0);
 
     const confirm = page.getByTestId("btn-gioca");
+    // The prompt and `useHandLift`'s 500ms rise start on one render. Unrounded, so the lift's
+    // ease-out tail cannot pass for rest the way three equal rounded readings (`atRest`) can.
+    let previous = "";
+    await expect
+      .poll(
+        async () => {
+          const reading = JSON.stringify(await confirm.boundingBox());
+          const still = reading !== "null" && reading === previous;
+          previous = reading;
+          return still;
+        },
+        { message: "the confirm never came to rest", intervals: [100], timeout: 15_000 }
+      )
+      .toBe(true);
     const box = await confirm.boundingBox();
     if (!box) throw new Error("the confirm button never rendered");
 
