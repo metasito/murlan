@@ -77,16 +77,15 @@ export const DEPART_SCRIPT = `(() => {
 
 /** The departures took: each line swapped exactly once, and the cloth drawn with them. */
 export async function expectDeparted(page: Page): Promise<void> {
-  const seen = await page.evaluate(() => {
-    const w = window as unknown as { __departed?: number[]; __departedDraws?: number; V: { G: { gl: WebGLRenderingContext } | null } };
-    const gl = w.V.G?.gl;
-    const p = gl?.getParameter(gl.CURRENT_PROGRAM);
+  const seen = (await page.evaluate(`(() => {
+    const gl = V.G && V.G.gl;
+    const p = gl && gl.getParameter(gl.CURRENT_PROGRAM);
     return {
-      swapped: w.__departed ?? null,
-      draws: w.__departedDraws ?? 0,
-      uniforms: gl && p ? ["uPoolR", "uVigR"].filter((u) => gl.getUniformLocation(p, u) !== null) : [],
+      swapped: window.__departed || null,
+      draws: window.__departedDraws || 0,
+      uniforms: p ? ["uPoolR", "uVigR"].filter((u) => gl.getUniformLocation(p, u) !== null) : [],
     };
-  });
+  })()`)) as { swapped: number[] | null; draws: number; uniforms: string[] };
   expect(seen.swapped, "each of the mockup's two light lines swapped exactly once").toEqual(CLOTH_DEPARTURES.map(() => 1));
   expect(seen.uniforms, "the mockup's cloth takes the app's light uniforms").toEqual(["uPoolR", "uVigR"]);
   expect(seen.draws, "the mockup drew its cloth with the app's light").toBeGreaterThan(0);
