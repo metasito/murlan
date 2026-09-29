@@ -3,6 +3,7 @@
 // node scripts/diagnostics-verdict.mjs --flinger <start.txt> <end.txt> — the audio_flinger underrun gate (#1231).
 import { readFileSync } from "node:fs";
 import { isInvokedDirectly } from "./lib/entry.mjs";
+import { LAMP_FLOOR, LAMP_SIDES, LAMP_SWAY, LAMP_SYMMETRY, evenness } from "../lib/diagnostics/lampLegibility.ts";
 
 function slopePerMinute(points) {
   const n = points.length;
@@ -243,7 +244,21 @@ function seatAnchors(rows) {
   };
 }
 
-export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors };
+function lampVariants(rows) {
+  const ratios = rows.filter((r) => r.k === "lampLegibility");
+  const invalid = ratios.filter((r) => !(Number.isFinite(r.ratio) && r.ratio > 0)).length;
+  const bySide = LAMP_SIDES.map((side) => ratios.filter((r) => r.side === side).map((r) => r.ratio));
+  const worst = bySide.map((own) => (own.length ? Math.min(...own) : NaN));
+  const measured = invalid === 0 && worst.every(Number.isFinite);
+  const even = measured ? evenness(worst) : NaN;
+  const samples = Math.min(...bySide.map((own) => own.length));
+  return {
+    pass: measured && samples >= LAMP_SWAY.samples && even >= LAMP_SYMMETRY && Math.min(...worst) >= LAMP_FLOOR,
+    metrics: Object.fromEntries([...LAMP_SIDES.map((side, i) => [side, worst[i]]), ["evenness", even], ["samples", samples], ["invalid", invalid]]),
+  };
+}
+
+export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants };
 
 function bracket(rows, scenario) {
   const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");

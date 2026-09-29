@@ -18,6 +18,12 @@ export const LAMP_SYMMETRY = 0.8;
 /** Q3's interim CI floor; Task 10 replaces it with the device's (plan 2026-09-28-1259-3 §5). */
 export const LAMP_FLOOR = 3.8;
 
+export const LAMP_SIDES = ["bottom", "right", "top", "left"] as const;
+export type LampSide = (typeof LAMP_SIDES)[number];
+
+/** One sway period, whose worst frame a player sees: the bench's snapshots per seat, and over how long. */
+export const LAMP_SWAY = { samples: 20, ms: 8000 } as const;
+
 const RGBA = 4;
 const CHANNEL_MAX = 255;
 const LUMA = [0.2126, 0.7152, 0.0722] as const;
