@@ -1,6 +1,6 @@
-import { registerBenchScenario } from "../bench";
+import { registerFramedScenario } from "../bench";
 
-registerBenchScenario("idle", async (ctx) => {
+registerFramedScenario("idle", async (ctx) => {
   ctx.frames(true);
   await ctx.sleep(5000);
   ctx.frames(false);

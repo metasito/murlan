@@ -108,6 +108,25 @@ describe('the thread-load scenarios drive and record', () => {
     expect(mockRows.filter((r) => r.k === 'half')).toHaveLength(0);
   });
 
+  it('a throwStalls that fails mid-window leaves no pending close to shut the next scenario\'s window', async () => {
+    const pending: (() => void)[] = [];
+    let steps = 0;
+    const failing: BenchContext = {
+      ...table,
+      sleep: (ms) => (ms === 700 ? new Promise<void>((r) => pending.push(r)) : Promise.resolve()),
+      showTable: async (state) => {
+        if (state && ++steps === 3) throw new Error('boom');
+        log.push(state ? 'table' : 'no table');
+      },
+    };
+    await expect(scenarios.get('throwStalls')!(failing)).rejects.toThrow('boom');
+    expect(pending.length).toBeGreaterThan(0);
+    log = [];
+    pending.forEach((r) => r());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(log).toEqual([]);
+  });
+
   it('throwStalls closes the recording and clears the table when the drive fails', async () => {
     let steps = 0;
     const failing: BenchContext = {

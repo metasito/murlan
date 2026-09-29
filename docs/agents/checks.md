@@ -175,8 +175,9 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   interval, unlike `medianHz`, does not snap to the display rate. Recording is a shared value the
   frame probe reads, so opening or closing a window renders nothing
   (`tests/native/benchRecording.test.tsx`). The probe's frame loop runs only while a window is open
-  or a thread-load scenario has armed it, so the other scenarios see the governor as a player
-  does (`tests/native/frameProbe.test.tsx`). The iOS build keeps the worklets frame-rate governor
+  or a scenario that records frames has armed it for its whole run (`registerFramedScenario`), so
+  each window's first frame has an interval and the other scenarios see the governor as a player
+  does (`tests/native/frameProbe.test.tsx`, `tests/native/framedScenarios.test.tsx`). The iOS build keeps the worklets frame-rate governor
   on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
   turns it off.
 - Running them (about 50 minutes of the phone, untouched):

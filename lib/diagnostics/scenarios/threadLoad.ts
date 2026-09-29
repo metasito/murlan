@@ -1,4 +1,4 @@
-import { registerBenchScenario, type BenchContext } from "../bench";
+import { registerFramedScenario, type BenchContext } from "../bench";
 import { benchTable, botTable, driveBots } from "../benchTable";
 import { benchHandles, diag, type BenchHandles, type DiagRows } from "../index";
 
@@ -30,36 +30,29 @@ async function halves(ctx: BenchContext, names: readonly DiagRows["half"]["name"
   }
 }
 
-function registerArmed(name: string, run: (ctx: BenchContext) => Promise<void>): void {
-  registerBenchScenario(name, async (ctx) => {
-    ctx.armFrames(true);
-    try {
-      await run(ctx);
-    } finally {
-      ctx.armFrames(false);
-    }
-  });
-}
-
-registerArmed("throwStalls", async (ctx) => {
+registerFramedScenario("throwStalls", async (ctx) => {
   let closed = Promise.resolve();
+  let live = true;
   try {
     await driveBots(ctx, botTable(), STEP_MS, (s) => {
       if (!s.lastPlayedCombination || s.passCount !== 0) return;
       const t = performance.now();
       ctx.frames(true, t + THROW_WINDOW_MS);
       diag({ k: "throw", t });
-      closed = ctx.sleep(THROW_FRAMES_MS).then(() => ctx.frames(false));
+      closed = ctx.sleep(THROW_FRAMES_MS).then(() => {
+        if (live) ctx.frames(false);
+      });
     });
     await closed;
     await ctx.sleep(FLUSH_MS);
   } finally {
+    live = false;
     ctx.frames(false);
     await ctx.showTable(null);
   }
 });
 
-registerArmed("restCost", async (ctx) => {
+registerFramedScenario("restCost", async (ctx) => {
   await ctx.showTable(benchTable());
   await ctx.sleep(SETTLE_MS);
   try {
@@ -70,7 +63,7 @@ registerArmed("restCost", async (ctx) => {
   await ctx.showTable(null);
 });
 
-registerArmed("feltOpaque", async (ctx) => {
+registerFramedScenario("feltOpaque", async (ctx) => {
   await ctx.showTable(benchTable());
   await ctx.sleep(SETTLE_MS);
   try {

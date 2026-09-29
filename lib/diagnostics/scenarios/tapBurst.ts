@@ -1,9 +1,9 @@
 import { setHapticsEnabled, setSoundVolume } from "@/lib/device/feedback";
-import { registerBenchScenario } from "../bench";
+import { registerFramedScenario } from "../bench";
 import { benchTable } from "../benchTable";
 import { benchHandles, diag } from "../index";
 
-registerBenchScenario("tapBurst", async (ctx) => {
+registerFramedScenario("tapBurst", async (ctx) => {
   const state = benchTable();
   await ctx.showTable(state);
   await ctx.sleep(3000);

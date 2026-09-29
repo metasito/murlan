@@ -19,6 +19,18 @@ export function registerBenchScenario(name: string, run: Scenario): void {
   scenarios.set(name, run);
 }
 
+/** The frame loop runs for the whole scenario, so each window's first frame has an interval. */
+export function registerFramedScenario(name: string, run: Scenario): void {
+  registerBenchScenario(name, async (ctx) => {
+    ctx.armFrames(true);
+    try {
+      await run(ctx);
+    } finally {
+      ctx.armFrames(false);
+    }
+  });
+}
+
 export function benchScenarios(): [string, Scenario][] {
   return [...scenarios.entries()];
 }
