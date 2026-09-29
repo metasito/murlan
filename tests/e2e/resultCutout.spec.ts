@@ -17,12 +17,14 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
-import { settled } from "./helpers/settle";
+import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
 const RESULT_URL = /\/result/;
 const VIEWPORT = { width: 844, height: 390 };
 const DEAL_SEED = 1;
+/** resultActions.spec.ts's: the winner's swell is ~9s of spring time, stretched on a starved runner. */
+const REST_TIMEOUT_MS = 45_000;
 
 /**
  * The vertical span a landscape cutout occupies — a centred bar on the short
@@ -127,14 +129,14 @@ test("the result screen keeps its own headline out of the cutout, on either edge
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
   await expect(page).toHaveURL(RESULT_URL);
-  // The rank rows enter from translateX(30), so a read taken through the
-  // entrance measures the animation rather than the layout.
-  await settled(page, 3000, '[data-testid="result-rankings"]');
+  // The rank rows and the winner's swell enter moving, and the sweep reads the
+  // whole document, so a read taken through them measures the animation.
+  await atRest(page, "body", REST_TIMEOUT_MS);
 
   // ── A notchless phone. The rail's floor is what makes the notched layout
   //    below identical to this one, so it is the baseline both are read from.
   await setSafeArea(page, 0);
-  await settled(page, 3000, '[data-testid="result-rankings"]');
+  await atRest(page, "body", REST_TIMEOUT_MS);
   const bareRail = await railWidth(page);
   const bare = await contentBoxes(page);
   expect(bare.length, "nothing was measured at all, so this proves nothing").toBeGreaterThan(5);
@@ -149,12 +151,12 @@ test("the result screen keeps its own headline out of the cutout, on either edge
   // ── An iPhone X..14 notch. 44 + 12 clearance fits under the rail's floor,
   //    so the cutout appearing must move nothing.
   await setSafeArea(page, 44);
-  await settled(page, 3000, '[data-testid="result-rankings"]');
+  await atRest(page, "body", REST_TIMEOUT_MS);
   expect(await railWidth(page), "the rail's floor did not absorb a 44pt notch").toBe(bareRail);
 
   // ── A Dynamic Island, past the floor, so the column really does widen.
   await setSafeArea(page, 59);
-  await settled(page, 3000, '[data-testid="result-rankings"]');
+  await atRest(page, "body", REST_TIMEOUT_MS);
   const islandRail = await railWidth(page);
   expect(
     islandRail,
@@ -164,7 +166,7 @@ test("the result screen keeps its own headline out of the cutout, on either edge
 
   for (const cutout of [44, 59]) {
     await setSafeArea(page, cutout);
-    await settled(page, 3000, '[data-testid="result-rankings"]');
+    await atRest(page, "body", REST_TIMEOUT_MS);
     const band = cutoutBand(VIEWPORT.height);
     const boxes = await contentBoxes(page);
 
