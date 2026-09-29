@@ -3,7 +3,7 @@
 import { expect, type Page } from "@playwright/test";
 import { anchorPoints } from "../../../components/flightPhysics";
 import { DESIGN, GLIDE, LAMP_VARIANT, LAMP_VARIANTS, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
-import { CLOTH_DEPARTURES } from "../../helpers/lanternFixture";
+import { CLOTH_DEPARTURES } from "../../helpers/clothDepartures";
 import { phoneTable } from "../../helpers/phoneTable";
 
 /** The mockup's names for the seats, by the direction each sits in. */

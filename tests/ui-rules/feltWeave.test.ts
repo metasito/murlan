@@ -7,7 +7,8 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import { CLOTH_BODY, CLOTH_SKSL, TWILL } from "../../components/table/feltShader.ts";
 import { paintRail, RAIL, type RingPainter } from "../../components/table/rail.ts";
-import { CLOTH_DEPARTURES, fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
+import { CLOTH_DEPARTURES } from "../helpers/clothDepartures.ts";
+import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { CANVASKIT_VERSION } from "../../lib/canvaskit.ts";
 
 const require = createRequire(import.meta.url);

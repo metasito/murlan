@@ -8,12 +8,6 @@ import vm from "node:vm";
 const FIXTURE = path.resolve(import.meta.dirname, "..", "e2e", "fixtures", "lantern-table", "index.html");
 const source = fs.readFileSync(FIXTURE, "utf8");
 
-/** The mockup's `FS` lines the app departs from, and the app's (plan 3 Task 8, the owner's G1 answers). */
-export const CLOTH_DEPARTURES: readonly (readonly [mockup: string, app: string])[] = [
-  ["t=clamp(d/(420.+uFlare*120.),0.,1.);", "t=clamp(d/(uPoolR+uFlare*120.),0.,1.);"],
-  ["col*=1.-.72*smoothstep(160.,540.,length(p-vec2(457.,210.)));", "col*=1.-.72*smoothstep(uVigR*16./54.,uVigR,length(p-uLamp));"],
-];
-
 /** The one line of the mockup's script that starts with `prefix`. */
 export function fixtureLine(prefix: string): string {
   const lines = source.split("\n").filter((l) => l.startsWith(prefix));
