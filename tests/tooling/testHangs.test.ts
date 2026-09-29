@@ -67,9 +67,32 @@ describe("a run that stops hearing from its files fails by name", () => {
   };
 
   test("a runner whose own loop stops is killed, naming the files it had in flight", async () => {
-    const run = await drive(`yield ${dequeued};\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`, "", "2000");
-    assert.equal(run.signal, "SIGKILL", run.out);
+    const child = `spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: "ignore" }).pid`;
+    const run = await drive(
+      `yield ${dequeued};\nconst { spawn } = await import("node:child_process");\n` +
+        `process.stderr.write("child " + ${child} + "\\n");\nAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);`,
+      "",
+      "2000"
+    );
+    // win32 raises no signal: TerminateProcess just exits 1.
+    assert.equal(run.signal, process.platform === "win32" ? 1 : "SIGKILL", run.out);
     assert.match(run.out, /nothing reported for 2s; still running: \S*fake\.test\.ts/);
+    const pid = Number(/child (\d+)/.exec(run.out)?.[1]);
+    assert.ok(pid > 0, run.out);
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+      } catch {
+        return false;
+      }
+      try {
+        return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, "utf8"));
+      } catch {
+        return true;
+      }
+    };
+    for (let i = 0; i < 100 && alive(); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(alive(), false, "the runner's child outlived it");
   });
 
   test("a run that keeps reporting, and then ends, is never killed", async () => {
