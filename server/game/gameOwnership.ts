@@ -10,7 +10,8 @@
 // way to end up with two owners while believing there is one. Postgres drops a
 // session lock when the connection dies, so a crashed owner releases its rooms
 // with nothing to tune and no timer to get wrong.
-import { Client } from "pg";
+import type { Client } from "pg";
+import { createClient } from "../store/pool.ts";
 import { createHash } from "node:crypto";
 import { logger } from "../http/logger.ts";
 import { activeGames } from "./gameRoom.ts";
@@ -77,17 +78,16 @@ function connect(): Promise<Client | null> {
   if (client) return Promise.resolve(client);
   if (connecting) return connecting;
   connecting = (async () => {
-    const next = new Client({
-      connectionString: process.env.DATABASE_URL,
-      query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-      statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-    });
-    // Registered before the connect so a failure during it lands here rather
-    // than as an unhandled 'error' event on a client nobody is listening to.
-    next.on("error", (err) => {
-      logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
-      drop(next);
-    });
+    const next = createClient(
+      {
+        query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
+        statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
+      },
+      (err) => {
+        logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
+        drop(next);
+      }
+    );
     try {
       await next.connect();
       // How fast a table can be taken over from an instance that vanished
