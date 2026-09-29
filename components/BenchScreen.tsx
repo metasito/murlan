@@ -11,7 +11,7 @@ import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/l
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
-import { FrameProbe } from "@/lib/diagnostics/FrameProbe";
+import { FrameProbe, recordFrames } from "@/lib/diagnostics/FrameProbe";
 import { startJsLag } from "@/lib/diagnostics/jsLag";
 import { probe } from "@/lib/diagnostics/probe";
 import "@/lib/diagnostics/scenarios";
@@ -35,7 +35,6 @@ export function BenchScreen() {
   useKeepAwake();
   const params = useLocalSearchParams<Record<string, string>>();
   const [table, setTable] = useState<{ state: GameState | null }>({ state: null });
-  const [frames, setFrames] = useState(false);
   const [results, setResults] = useState<Record<string, string>>({});
   const shown = useRef<() => void>(() => {});
   const running = useRef(false);
@@ -59,7 +58,7 @@ export function BenchScreen() {
           }),
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
         frames: (on) => {
-          setFrames(on);
+          recordFrames(on);
           stopJs.current?.();
           stopJs.current = on ? startJsLag() : null;
         },
@@ -92,7 +91,7 @@ export function BenchScreen() {
 
   return (
     <>
-      <FrameProbe on={frames} />
+      <FrameProbe />
       {table.state ? (
         <GameTable
           gameState={table.state}

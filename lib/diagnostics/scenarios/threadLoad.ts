@@ -17,7 +17,7 @@ function handle<K extends keyof BenchHandles>(name: K): NonNullable<BenchHandles
 
 async function halves(ctx: BenchContext, names: readonly DiagRows["half"]["name"][], ms: number, set: (name: DiagRows["half"]["name"]) => void) {
   for (let pair = 0; pair < PAIRS; pair++) {
-    for (const name of names) {
+    for (const name of pair % 2 ? [...names].reverse() : names) {
       set(name);
       await ctx.sleep(SWITCH_MS);
       diag({ k: "half", t: performance.now(), name, pair });
@@ -31,15 +31,19 @@ async function halves(ctx: BenchContext, names: readonly DiagRows["half"]["name"
 
 registerBenchScenario("throwStalls", async (ctx) => {
   let closed = Promise.resolve();
-  await driveBots(ctx, botTable(), STEP_MS, (s) => {
-    if (!s.lastPlayedCombination || s.passCount !== 0) return;
-    diag({ k: "throw", t: performance.now() });
-    ctx.frames(true);
-    closed = ctx.sleep(THROW_FRAMES_MS).then(() => ctx.frames(false));
-  });
-  await closed;
-  await ctx.sleep(FLUSH_MS);
-  await ctx.showTable(null);
+  try {
+    await driveBots(ctx, botTable(), STEP_MS, (s) => {
+      if (!s.lastPlayedCombination || s.passCount !== 0) return;
+      ctx.frames(true);
+      diag({ k: "throw", t: performance.now() });
+      closed = ctx.sleep(THROW_FRAMES_MS).then(() => ctx.frames(false));
+    });
+    await closed;
+    await ctx.sleep(FLUSH_MS);
+  } finally {
+    ctx.frames(false);
+    await ctx.showTable(null);
+  }
 });
 
 registerBenchScenario("restCost", async (ctx) => {
