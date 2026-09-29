@@ -47,7 +47,7 @@ export function useDeal({
 }): {
   cards: DealtCard[];
   arrivalsFor: (seat: number) => DealArrivals | undefined;
-  handOffsetMs: number;
+  handOffsetMs: number | undefined;
   dealing: boolean;
   /** The deal's own clock, ms since its first frame; -1 before it. `DealFlights` steps it. */
   clock: SharedValue<number>;
@@ -98,7 +98,7 @@ export function useDeal({
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
-    handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : 0,
+    handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : undefined,
     dealing: deal !== null,
     clock: clockOf.clock,
     startMs: deal?.offsetMs ?? 0,

@@ -469,7 +469,7 @@ export function StraightHand({
   descendingId,
   startCardId,
   handBottomPad = 0,
-  dealOffsetMs = 0,
+  dealOffsetMs,
   onOrigins,
 }: {
   cards: Card[];
@@ -529,7 +529,7 @@ export function StraightHand({
    * Unused, so omittable, on any hand that never receives one.
    */
   handBottomPad?: number;
-  /** How long after mounting a dealt hand its first card drops. */
+  /** How long after mounting a dealt hand its first card drops; absent while the table deals nothing, and the hand appears in place. */
   dealOffsetMs?: number;
   /** Each drawn card's resting pose, from the hand zone's centre, in field-card units — where a throw leaves from. */
   onOrigins?: (origins: ReadonlyMap<string, CardFrom>) => void;
@@ -1029,7 +1029,7 @@ export function StraightHand({
           // hand this row could ever be handed is what makes the ceiling hold,
           // not an assumption about how big one gets.
           zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
-          dealDelay={dealArmed ? dealOffsetMs + i * Motion.stagger.deal : descending ? 0 : -1}
+          dealDelay={dealArmed && dealOffsetMs !== undefined ? dealOffsetMs + i * Motion.stagger.deal : descending ? 0 : -1}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
           // descent are then one continuous move into the waiting slot, rather

@@ -3,6 +3,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
@@ -41,10 +42,10 @@ const freshDeal: GameState = {
 };
 
 const noop = () => {};
-const table = () => (
+const table = (gameState: GameState = freshDeal) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={freshDeal}
+      gameState={gameState}
       viewerSeat={0}
       selectedIds={[]}
       onSelectCard={noop}
@@ -68,6 +69,13 @@ const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimated
 const moved = (p: Pose) => (p.transform ?? []).some((t) => (t.translateX ?? 0) !== 0 || (t.translateY ?? 0) !== 0);
 const arrived = () => backs().filter((p) => p.opacity === 0 && moved(p)).length;
 const flying = () => backs().filter((p) => p.opacity === 1).length;
+
+const handPoses = () =>
+  screen.getAllByTestId('card-box').map((box) => {
+    let n = box.parent;
+    while (n && !(n.props.jestAnimatedStyle && typeof StyleSheet.flatten(n.props.style)?.left === 'number')) n = n.parent;
+    return getAnimatedStyle(n!) as Pose;
+  });
 
 const frame = () => act(async () => void jest.advanceTimersByTime(16));
 
@@ -114,6 +122,20 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(seated()).toBeGreaterThanOrEqual(before);
 
     await r.unmount();
+  });
+
+  it("deals the viewer's hand only with the table's deal", async () => {
+    const dealt = await render(table());
+    await frame();
+    expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
+    await dealt.unmount();
+
+    const resumed = await render(table({ ...freshDeal, firstPlayMade: true }));
+    await frame();
+    expect(backs()).toHaveLength(0);
+    expect(handPoses()).toHaveLength(13);
+    expect(handPoses().every((p) => p.opacity === 1)).toBe(true);
+    await resumed.unmount();
   });
 
   it('seats every hand at once under reduced motion, and still sounds the deal', async () => {
