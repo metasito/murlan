@@ -39,25 +39,25 @@ test("only server/store/pool.ts opens a Postgres connection or reads the URL to 
 
 test("the scan sees every way a connection is written, and not a type import or a comment", () => {
   const planted: [string, string][] = [
-    ["server/a.ts", "const p = new Pool({});"],
-    ["server/b.ts", "const p = new pg.Pool({});"],
-    ["server/c.ts", "const c = new Client({});"],
-    ["server/d.ts", 'import { Pool as P } from "pg";'],
-    ["server/e.ts", 'import pg from "pg";'],
-    ["server/f.ts", 'export { Pool } from "pg";'],
-    ["server/g.ts", 'const { Pool } = await import("pg");'],
-    ["server/h.ts", 'const pg = require("pg");'],
-    ["server/i.ts", 'import Pool from "pg-pool";'],
-    ["server/j.ts", "export const db = drizzle(process.env.DATABASE_URL);"],
-    ["server/k.ts", "export const db = drizzle({ connection: url });"],
-    ["server/l.ts", "const store = new PgStore({ conString: url });"],
+    ["a.ts", "const p = new Pool({});"],
+    ["b.ts", "const p = new pg.Pool({});"],
+    ["c.ts", "const c = new Client({});"],
+    ["d.ts", 'import { Pool as P } from "pg";'],
+    ["e.ts", 'import pg from "pg";'],
+    ["f.ts", 'export { Pool } from "pg";'],
+    ["g.ts", 'const { Pool } = await import("pg");'],
+    ["h.ts", 'const pg = require("pg");'],
+    ["i.ts", 'import Pool from "pg-pool";'],
+    ["j.ts", "export const db = drizzle(process.env.DATABASE_URL);"],
+    ["k.ts", "export const db = drizzle({ connection: url });"],
+    ["l.ts", "const store = new PgStore({ conString: url });"],
     [
-      "server/m.ts",
+      "m.ts",
       'import type { Pool } from "pg";\n// new Pool({})\nimport x from "connect-pg-simple";\nconst db = drizzle(pool, { schema });',
     ],
   ];
   assert.deepEqual(
     [...new Set(connectionSites(planted).map((s) => s.split(":")[0]))],
-    ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"].map((f) => `server/${f}.ts`)
+    ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"].map((f) => `${f}.ts`)
   );
 });
