@@ -66,8 +66,7 @@ import {
   handleGameOver,
   tableWantsRematch,
 } from "./gameOver.ts";
-import { armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
-import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
+import { armAfterMove, armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
   clearRoomTimers,
@@ -355,7 +354,7 @@ function exchangeAction(
     return { ok: false, code: "NOT_YOUR_EXCHANGE" };
   }
 
-  const bothJokersException = game.gameState.exchangePhase.bothJokersException === true;
+  const prevState = game.gameState;
   const next = processExchangeChoice(game.gameState, cardId);
   if (next === game.gameState) {
     gameError(io, userId, payload("INVALID_CARD"));
@@ -365,9 +364,7 @@ function exchangeAction(
 
   broadcastGameState(io, game);
   persistGameState(roomId, game);
-  // Every seat is watching the two cards cross the middle. The next move waits
-  // for that to finish, on the same clock the ceremony itself runs on.
-  armTurn(io, roomId, exchangeAnnounceMs(bothJokersException));
+  armAfterMove(io, roomId, prevState);
   return OK;
 }
 

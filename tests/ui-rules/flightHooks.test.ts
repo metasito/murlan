@@ -9,9 +9,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const MODULE = "components/flightPhysics.ts";
 
 const OWNERS: Record<string, string> = {
-  dealFlightsMs: "components/table/deal.tsx",
-  dealLeaveMs: "components/table/deal.tsx",
-  dealArrivalsMs: "components/table/deal.tsx",
   readHandArrival: "components/table/hand.tsx",
   readExchangeTrips: "components/table/ExchangeFlight.tsx",
   passedSeats: "components/table/seats.tsx",
@@ -34,14 +31,14 @@ function namesImportedFromModule(rel: string): string[] {
 const appFiles = ["app", "components", "lib"].flatMap(walk).filter((f) => f !== MODULE);
 const importers = [...appFiles, ...walk("tests")].map((rel) => ({ rel, names: namesImportedFromModule(rel) }));
 
-test("each deal, hand-arrival, exchange-trip and passed-seat helper has one component owner", () => {
+test("each hand-arrival, exchange-trip and passed-seat helper has one component owner", () => {
   const strays = importers
     .filter(({ rel }) => rel.startsWith("app/") || rel.startsWith("components/"))
     .flatMap(({ rel, names }) =>
       names.filter((n) => OWNERS[n] !== undefined && OWNERS[n] !== rel).map((n) => `${rel} → ${n}`)
     );
 
-  assert.ok(importers.some(({ names }) => names.includes("dealLeaveMs")), "the import scan found nothing");
+  assert.ok(importers.some(({ names }) => names.includes("readHandArrival")), "the import scan found nothing");
   assert.deepEqual(strays, []);
 });
 

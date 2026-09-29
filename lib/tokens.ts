@@ -424,6 +424,8 @@ export const Motion = {
   },
   /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
+  /** The exchange's two legs, seat to seat, face up (#1259, D5 revised); `beat`, `giveWait`, `tuck` and `highlight` are the mockup's (index.html:543-551). */
+  exchange: { beat: 344, lift: 240, fly: 900, tuck: 320, highlight: 1000, giveWait: 420 },
   // Gap between moves when a replay plays itself: slow enough to read one
   // combination, fast enough that a whole hand is not a sitting.
   replayStep: 1200,
@@ -473,6 +475,8 @@ export const Reading = {
 export const Hold = {
   /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
   land: 175,
+  /** A face shown to be read before it moves on — the floor the #1259 research asks for. */
+  reveal: 600,
 } as const;
 
 /** How late a sound may still start and be heard as on time; later, it is dropped. */

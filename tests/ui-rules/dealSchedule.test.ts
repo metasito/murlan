@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { Motion } from "../../lib/tokens.ts";
-import { DEAL_FLIGHT_MS, dealArrivalsMs, dealFlightsMs, dealLeaveMs } from "../../components/flightPhysics.ts";
+import { DEAL_FLIGHT_MS, dealArrivalsMs, dealFlightsMs, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
 
 describe("the round-robin deal", () => {
   test("hands out one card per seat per round, in seat order, never two at once", () => {

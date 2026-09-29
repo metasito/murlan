@@ -13,7 +13,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { DEAL_FLIGHT_MS, dealArrivalsMs, dealLeaveMs } from '@/components/flightPhysics';
+import { DEAL_FLIGHT_MS, dealArrivalsMs, dealLeaveMs } from '@/lib/game/dealTimeline';
 import { motionMs } from '@/lib/theme';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';

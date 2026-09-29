@@ -13,13 +13,8 @@ import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Layer, motionMs } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { handCountOf } from "@/shared/protocol";
-import {
-  dealArrivalsMs,
-  dealFlightsMs,
-  dealLeaveMs,
-  seatPoint,
-  type SeatGeometry,
-} from "@/components/flightPhysics";
+import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
+import { dealArrivalsMs, dealEndMs, dealFlightsMs, dealLeaveMs } from "@/lib/game/dealTimeline";
 
 /** A deal in progress: `counts` is each seat's hand as dealt, `flightsMs` each seat's flight time, by seat index. */
 interface Deal {
@@ -72,7 +67,7 @@ export function useDeal({
   );
   useEffect(() => {
     if (!deal) return;
-    const lastLanding = Math.max(0, ...(arrivals ?? []).map((a) => a[a.length - 1] ?? 0));
+    const lastLanding = arrivals ? dealEndMs(deal.counts, deal.offsetMs, deal.flightsMs) : 0;
     const id = setTimeout(() => setDeal(null), lastLanding);
     return () => clearTimeout(id);
   }, [deal, arrivals]);
