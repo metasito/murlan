@@ -49,7 +49,17 @@ import {
 import { handCountOf, vacatedOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { comboKey, JOKERS, NO_STAGES, readExchange, readTradeSeats, tradeKey, type TradeStages } from "@/components/flightPhysics";
+import {
+  anchorPoints,
+  comboKey,
+  JOKERS,
+  NO_STAGES,
+  readExchange,
+  readTradeSeats,
+  tableGeometry,
+  tradeKey,
+  type TradeStages,
+} from "@/components/flightPhysics";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
@@ -91,7 +101,7 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
-import { lampPool } from "@/components/table/lampRig";
+import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
@@ -762,7 +772,9 @@ export function GameTable({
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
-  const lampAim = lampPool(holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length));
+  const lampAim = lampPools(anchorPoints(tableGeometry(seatGeometry)), W, H)[
+    holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
+  ];
   const rig = useLampRig({
     pool: lampAim,
     fresh: dealFresh,
@@ -1363,6 +1375,7 @@ export function GameTable({
                 hairline the full width of the table, which reads as chrome over
                 the felt instead of as the hand coming up. */}
             <Animated.View
+              testID="hand-zone"
               style={[
                 sharedTableStyles.handSection,
                 {

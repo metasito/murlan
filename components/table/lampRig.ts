@@ -1,6 +1,7 @@
 // The lamp (#1252 § The lamp): the one rig every lit thing reads, stepped once per frame on the
-// UI thread. Its numbers are `lampStep`, `POOL` and `resetLamp` in
-// tests/e2e/fixtures/lantern-table/index.html, in that table's 874 × 402 points.
+// UI thread. Its numbers are `lampStep` and `resetLamp` in
+// tests/e2e/fixtures/lantern-table/index.html, in that table's 874 × 402 points; where it aims is
+// the owner's G1 answers (docs/plans/2026-09-28-1259-3-layout-and-lamp.md § Decided).
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
@@ -13,16 +14,38 @@ export type LampTarget = FlyDirection | "centre";
 /** Design points; reach 1 is the size of the light on the page the owner tuned. */
 export type Pool = readonly [x: number, y: number, reach: number];
 
-const POOL: Record<LampTarget, readonly [number, number]> = {
-  bottom: [457, 292],
-  right: [712, 196],
-  top: [457, 116],
-  left: [202, 196],
-  centre: [465, 201],
+type Point = { readonly x: number; readonly y: number };
+
+/** The mockup's rail-ring centre, where the start announcement swings the light. */
+export const TABLE_CENTRE: Pool = [465, 201, 1];
+
+/** The hand-to-top distance on the page he tuned, in design points: reach 1. */
+const REACH_ONE = 269;
+const INWARD = 7;
+const INTO_TABLE: Record<FlyDirection, readonly [number, number]> = {
+  bottom: [0, -1],
+  top: [0, 1],
+  left: [1, 0],
+  right: [-1, 0],
 };
 
 /** The light hangs this far above the pool it throws. */
 export const LIGHT_ABOVE = 40;
+
+/** `seat`, `top` and `bottom` are window points of a `width` × `height` window. */
+export function poolOver(side: FlyDirection, seat: Point, top: Point, bottom: Point, width: number, height: number): Pool {
+  const { sx, sy } = designScale(width, height);
+  const apart = (a: Point, b: Point) => Math.hypot((a.x - b.x) / sx, (a.y - b.y) / sy);
+  const near = side === "top" || side === "bottom" ? apart(top, bottom) : Math.min(apart(seat, top), apart(seat, bottom));
+  const reach = near / REACH_ONE;
+  const [ix, iy] = INTO_TABLE[side];
+  return [seat.x / sx + ix * INWARD * reach, seat.y / sy + iy * INWARD * reach + LIGHT_ABOVE, reach];
+}
+
+export function lampPools(anchors: Record<FlyDirection, Point>, width: number, height: number): Record<LampTarget, Pool> {
+  const over = (side: FlyDirection) => poolOver(side, anchors[side], anchors.top, anchors.bottom, width, height);
+  return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre: TABLE_CENTRE };
+}
 const GLIDE = 2.2;
 const SWAY = 20;
 const SWAY_KICKED = 80;
@@ -56,16 +79,6 @@ export interface Lamp {
   f: number;
   /** What the last frame `lampMoved` passed drew. */
   drawn: { lx: number; ly: number; level: number; f: number; r: number };
-}
-
-export function lampTarget(target: LampTarget): readonly [number, number] {
-  "worklet";
-  return POOL[target];
-}
-
-export function lampPool(target: LampTarget): Pool {
-  const [x, y] = POOL[target];
-  return [x, y, 1];
 }
 
 export function restingLamp([x, y, r]: Pool, level = 1): Lamp {

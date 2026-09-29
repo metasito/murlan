@@ -1,7 +1,51 @@
 import type { Page } from "@playwright/test";
 import type { TraceFrame } from "../../../lib/e2eTrace";
+import type { FlyDirection } from "../../../components/seatLayout";
+import { DESIGN } from "../../../components/table/lampRig";
 
 type Recorder = { start(): void; frames: TraceFrame[] };
+type Point = { x: number; y: number };
+
+const RING_SEAT: Record<Exclude<FlyDirection, "bottom">, string> = { top: "top-seat", left: "side-seat-left", right: "side-seat-right" };
+
+/**
+ * Where the table laid a seat out, in window points: its ring's centre, the hand zone's before its
+ * lift (`offsetTop` carries no transform), or the pile's.
+ */
+export async function seatAnchor(page: Page, side: FlyDirection | "pile"): Promise<Point> {
+  const selector =
+    side === "bottom" ? '[data-testid="hand-zone"]' : side === "pile" ? '[data-testid="pile-area"]' : `[data-testid="${RING_SEAT[side]}"] [data-testid="seat-ring"]`;
+  return page.evaluate(
+    ({ selector, side }) => {
+      const el = document.querySelector<HTMLElement>(selector);
+      if (!el) throw new Error(`the table has no ${side}: ${selector}`);
+      if (side !== "bottom") {
+        const r = el.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      }
+      let at = { x: el.offsetWidth / 2, y: el.offsetHeight / 2 };
+      for (let n: HTMLElement | null = el; n; n = n.offsetParent as HTMLElement | null) at = { x: at.x + n.offsetLeft, y: at.y + n.offsetTop };
+      return at;
+    },
+    { selector, side }
+  );
+}
+
+/**
+ * Where the owner's G1 answers (docs/plans/2026-09-28-1259-3-layout-and-lamp.md § Decided) hang the
+ * light over `side`, from the seats as laid out: 7 design points straight in per unit of reach,
+ * reach 1 being 269 design points to the nearest other seat. In window points.
+ */
+export async function settledLight(page: Page, side: FlyDirection): Promise<Point> {
+  const { width, height } = page.viewportSize()!;
+  const [sx, sy] = [width / DESIGN.width, height / DESIGN.height];
+  const [seat, top, bottom] = await Promise.all([seatAnchor(page, side), seatAnchor(page, "top"), seatAnchor(page, "bottom")]);
+  const apart = (a: Point, b: Point) => Math.hypot((a.x - b.x) / sx, (a.y - b.y) / sy);
+  const near = side === "top" || side === "bottom" ? apart(top, bottom) : Math.min(apart(seat, top), apart(seat, bottom));
+  const inward = (7 * near) / 269;
+  const [ix, iy] = { top: [0, 1], bottom: [0, -1], left: [1, 0], right: [-1, 0] }[side];
+  return { x: seat.x + ix * inward * sx, y: seat.y + iy * inward * sy };
+}
 
 /** This browser draws WebGL on SwiftShader, where the table keeps its fallback felt: a spec of Skia's pixels asks for them. */
 export async function skiaOnSoftware(page: Page): Promise<void> {

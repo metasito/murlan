@@ -6,13 +6,10 @@
 // test: nothing the player has to see or touch may render inside the cutout's
 // own rect, and a cutout that fits under the rail's floor must move nothing.
 //
-// The insets are driven the way the app really reads them. On web
-// react-native-safe-area-context appends a hidden probe div to <body> with
-// `padding-*: env(safe-area-inset-*)` and reports the computed padding back on
-// a `transitionend` — so overriding that padding is a real end-to-end drive of
-// the same path a notched iPhone takes, not a mock.
+// The insets are driven the way the app really reads them (`helpers/safeArea.ts`).
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
+import { setSafeArea } from "./helpers/safeArea";
 
 const VIEWPORT = { width: 844, height: 390 };
 
@@ -60,32 +57,6 @@ async function tableBoxes(page: Page): Promise<Box[]> {
     }
     return out.sort((a, b) => a.label.localeCompare(b.label) || a.x - b.x);
   });
-}
-
-/**
- * Overrides the safe-area probe's padding, so the app reads the insets a
- * landscape iPhone reports. The probe is the only element in the document
- * whose inline style names `safe-area-inset-left`, and its own 0.05s padding
- * transition is what fires the library's `onInsetsChange`.
- */
-async function setSafeArea(page: Page, left: number, bottom: number, right = 21): Promise<void> {
-  await page.evaluate(
-    ({ left, bottom, right }) => {
-      const id = "e2e-safe-area";
-      document.getElementById(id)?.remove();
-      const style = document.createElement("style");
-      style.id = id;
-      style.textContent =
-        `div[style*="safe-area-inset-left"] {` +
-        ` padding-left: ${left}px !important;` +
-        ` padding-right: ${right}px !important;` +
-        ` padding-bottom: ${bottom}px !important; }`;
-      document.head.appendChild(style);
-    },
-    { left, bottom, right }
-  );
-  // The probe transitions its padding over 0.05s and reports on transitionend.
-  await page.waitForTimeout(600);
 }
 
 /**
@@ -138,14 +109,14 @@ test.describe("the control rail", () => {
 
     // ── A notchless phone, on the same home-indicator inset as the notched
     //    one below: only the cutout may vary between the two samples.
-    await setSafeArea(page, 0, 21);
+    await setSafeArea(page, 0, 21, 21);
     const bare = await settledBoxes(page);
     const bareRail = await railWidth(page);
     expect(bare.length, "no cards or controls were measured at all").toBeGreaterThan(5);
 
     // ── An iPhone X..14 notch. 44 + 12 clearance still fits under the floor,
     //    so the cutout appearing must move nothing.
-    await setSafeArea(page, 44, 21);
+    await setSafeArea(page, 44, 21, 21);
     const exact = (boxes: Box[]) => boxes.map(({ left: _left, ...rest }) => rest);
     const notched = await settledBoxes(page);
     expect(await railWidth(page), "the rail's floor did not absorb a 44pt notch").toBe(bareRail);
@@ -156,7 +127,7 @@ test.describe("the control rail", () => {
 
     // ── A Dynamic Island. Wider than the floor, so the rail widens with it —
     //    and nothing may be drawn inside the column it now reserves.
-    await setSafeArea(page, 59, 21);
+    await setSafeArea(page, 59, 21, 21);
     const islandRail = await railWidth(page);
     expect(
       islandRail,
@@ -165,7 +136,7 @@ test.describe("the control rail", () => {
     expect(islandRail).toBeGreaterThanOrEqual(59);
 
     for (const cutout of [44, 59]) {
-      await setSafeArea(page, cutout, 21);
+      await setSafeArea(page, cutout, 21, 21);
       const rail = await railWidth(page);
       const band = cutoutBand(VIEWPORT.height);
       const boxes = await settledBoxes(page);

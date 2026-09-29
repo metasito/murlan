@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
+import { DEPART_SCRIPT } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
 import { skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
@@ -330,6 +331,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     const sound = sfx;
     window.sfx = (k) => { window.__parityOnsets.push("sound:" + k); sound(k); };
     paused = true;
+    ${DEPART_SCRIPT}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
