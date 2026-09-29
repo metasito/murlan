@@ -3,7 +3,7 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
-import { TurnChip } from '@/components/table/turnChip';
+import { TurnChip } from '@/components/table/notices/hud';
 import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';

@@ -188,9 +188,25 @@ export const Dust = {
 // its one reader). Edges map the mockup's onto the gold scale (#1259 Q4).
 export const NoticePalette = {
   pill: {
-    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold },
-    lit: { fill: Colors.chipFill, edge: Colors.goldStrong, ink: Colors.goldLit, strong: Colors.goldLit, glow: { color: Colors.goldLit, opacity: 0.32 } },
-    urgent: { fill: Colors.chipFill, edge: Colors.ember, ink: Colors.emberLabel, strong: Colors.emberCount, glow: { color: Colors.emberGlow, opacity: 0.5 } },
+    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold, warn: Colors.dangerDim, dot: { color: Colors.textMuted } },
+    lit: {
+      fill: Colors.chipFill,
+      edge: Colors.goldStrong,
+      ink: Colors.goldLit,
+      strong: Colors.gold,
+      warn: Colors.dangerDim,
+      glow: { color: Colors.goldLit, opacity: 0.32 },
+      dot: { color: Colors.goldLit, glow: 0.7 },
+    },
+    urgent: {
+      fill: Colors.chipFill,
+      edge: Colors.ember,
+      ink: Colors.emberLabel,
+      strong: Colors.emberCount,
+      warn: Colors.emberCount,
+      glow: { color: Colors.emberGlow, opacity: 0.5 },
+      dot: { color: Colors.emberDot, glow: 1 },
+    },
   },
   chip: {
     neutral: { fill: 'rgba(3,14,9,0.85)', edge: Colors.goldBorder, ink: Colors.textSecondary, strong: Colors.textSecondary },

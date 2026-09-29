@@ -31,7 +31,7 @@ import {
 import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { a11yHidden } from "@/lib/a11y";
-import { TurnChip } from "@/components/table/turnChip";
+import { TurnChip } from "@/components/table/notices/hud";
 import { readStagedPlay } from "@/components/table/stagedPlay";
 import { playRefusalLabel } from "@/components/table/spokenLabels";
 

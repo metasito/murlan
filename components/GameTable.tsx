@@ -74,7 +74,7 @@ import { ScorePill } from "@/components/table/scorePill";
 import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill } from "@/components/table/notices/hud";
+import { HudComboPill, TurnChip } from "@/components/table/notices/hud";
 import {
   ControlRail,
   useFocusFade,
@@ -100,7 +100,6 @@ import {
   settle,
   type SelectionMode,
 } from "@/components/table/selection";
-import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
