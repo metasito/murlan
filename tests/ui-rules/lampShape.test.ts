@@ -7,6 +7,7 @@ import { anchorPoints } from "../../components/flightPhysics.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { CLOTH_SKSL, clothUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
 import { LAMP_VARIANTS, LIGHT_ABOVE, designScale, lampPools, lightUniforms, type LampLight } from "../../components/table/lampRig.ts";
+import { ROOM } from "../../components/table/rail.ts";
 import { ANNULUS, LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
@@ -18,10 +19,8 @@ const require = createRequire(import.meta.url);
 const PER_PT = 1;
 const SEATS: readonly FlyDirection[] = ["bottom", "right", "top", "left"];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CanvasKit = any;
 let ck: CanvasKit;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cloth: any;
 
 before(async () => {
@@ -48,9 +47,10 @@ function packed(values: ClothUniforms): Float32Array {
 
 type Point = { x: number; y: number };
 
-/** The felt's pixels round each seat, with the lamp at rest over `onMove`; nothing else is drawn. */
+/** The cloth round each seat over the room, with the lamp at rest over `onMove`; the rail is not drawn. */
 function seatMeans(width: number, height: number, anchors: Record<FlyDirection, Point>, light: LampLight, stops: readonly string[], onMove: FlyDirection) {
-  const { sx, sy } = designScale(width, height);
+  const scale = designScale(width, height);
+  const { sx, sy } = scale;
   const [x, y, reach] = lampPools(anchors, width, height)[onMove];
   const floats = packed({
     ...clothUniforms(stops as never, PER_PT * Math.min(sx, sy)),
@@ -60,12 +60,12 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
   });
   const surface = ck.MakeSurface(width * PER_PT, height * PER_PT);
   const canvas = surface.getCanvas();
-  canvas.clear(ck.TRANSPARENT);
+  canvas.clear(ck.parseColorString(ROOM));
   canvas.scale(PER_PT * sx, PER_PT * sy);
   const shader = cloth.makeShader(floats);
   const paint = new ck.Paint();
   paint.setShader(shader);
-  const ring = (a: Point, r: number) => ck.RRectXY(ck.XYWHRect((a.x - r) / sx, (a.y - r) / sy, (2 * r) / sx, (2 * r) / sy), r / sx, r / sy);
+  const ring = (a: Point, r: number) => ck.RRectXY(ck.XYWHRect(a.x / sx - r, a.y / sy - r, 2 * r, 2 * r), r, r);
   for (const a of Object.values(anchors)) canvas.drawDRRect(ring(a, ANNULUS.outer + 1), ring(a, ANNULUS.inner - 1), paint);
   const info = { width: width * PER_PT, height: height * PER_PT, colorType: ck.ColorType.RGBA_8888, alphaType: ck.AlphaType.Unpremul, colorSpace: ck.ColorSpace.SRGB };
   const data = canvas.readPixels(0, 0, info) as Uint8Array;
@@ -73,7 +73,7 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
   shader.delete();
   surface.delete();
   const pixels = { width: info.width, height: info.height, data };
-  return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], PER_PT)])) as Record<FlyDirection, number>;
+  return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], PER_PT, scale)])) as Record<FlyDirection, number>;
 }
 
 describe("the light round the seats, in the shipped SkSL", () => {

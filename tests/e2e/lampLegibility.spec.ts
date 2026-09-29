@@ -6,13 +6,15 @@ import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import type { FlyDirection } from "../../components/seatLayout";
+import type { TraceFrame } from "../../lib/e2eTrace";
+import { designScale } from "../../components/table/lampRig";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility";
 
 const SEATS: readonly FlyDirection[] = ["bottom", "right", "top", "left"];
 
-/** Past the deal stagger: every card is at opacity 0 until its own leg of it runs. */
-const DEALT_MS = 2_000;
+/** Within a step of 8-bit light of full: the deal breathes the lamp up from 75 %. */
+const LAMP_UP = 1 - 1 / 512;
 
 const stateFor = (side: FlyDirection) => {
   const found = CAPTURE_STATES.find((s) => s.id === `lamp-${side}`);
@@ -25,22 +27,29 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
   await page.setViewportSize({ width: phone.width, height: phone.height });
   await skiaOnSoftware(page);
   await openCaptureState(page, baseURL, stateFor(onMove));
-  await page.waitForTimeout(DEALT_MS);
   await untilSkiaFelt(page);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)?.lamp?.level ?? 0), {
+      message: "the lamp has come up from the deal",
+    })
+    .toBeGreaterThan(LAMP_UP);
   const anchors = Object.fromEntries(await Promise.all(SEATS.map(async (s) => [s, await seatAnchor(page, s)] as const)));
   const { pixels, perPt, origin } = await feltPixels(page);
+  const scale = designScale(pixels.width / perPt, pixels.height / perPt);
   return Object.fromEntries(
-    SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt)])
+    SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, scale)])
   ) as Record<FlyDirection, number>;
 }
 
 for (const phone of PHONES) {
   test(`${phone.name}: the seat on move out-lights the rest, the same at every seat`, async ({ page, baseURL }) => {
     test.setTimeout(240_000);
-    const ratios: number[] = [];
-    for (const side of SEATS) ratios.push(legibility(await seatMeans(page, baseURL!, phone, side), side));
+    const means: Record<FlyDirection, number>[] = [];
+    for (const side of SEATS) means.push(await seatMeans(page, baseURL!, phone, side));
+    const ratios = SEATS.map((side, i) => legibility(means[i], side));
     const even = evenness(ratios);
-    console.log(`${phone.name}: ${SEATS.map((s, i) => `${s} ${ratios[i].toFixed(2)}`).join(", ")}; evenness ${even.toFixed(2)}`);
+    const read = (m: Record<FlyDirection, number>) => SEATS.map((s) => m[s].toFixed(4)).join("/");
+    console.log(`${phone.name}: ${SEATS.map((s, i) => `${s} ${ratios[i].toFixed(2)} (${read(means[i])})`).join(", ")}; evenness ${even.toFixed(2)}`);
     SEATS.forEach((s, i) => expect(ratios[i], `${s} on move over the brightest other seat`).toBeGreaterThanOrEqual(LAMP_FLOOR));
     expect(even, "the worst seat ÷ the best").toBeGreaterThanOrEqual(LAMP_SYMMETRY);
   });

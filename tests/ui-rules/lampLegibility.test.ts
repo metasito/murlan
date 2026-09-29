@@ -12,8 +12,10 @@ import {
   type Pixels,
 } from "../../lib/diagnostics/lampLegibility.ts";
 import { SEAT_DISC } from "../../components/seatLayout.ts";
-import { designScale, lampTarget } from "../../components/table/lampRig.ts";
+import { anchorPoints } from "../../components/flightPhysics.ts";
+import { designScale } from "../../components/table/lampRig.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
+import { phoneTable } from "../helpers/phoneTable.ts";
 
 type Rgba = readonly [number, number, number, number];
 type Point = { x: number; y: number };
@@ -27,10 +29,8 @@ const DARK_LINEAR = 0.00699;
 const PHONE = PHONES.find((p) => p.name === "iPhone 12")!;
 const SCALE = designScale(PHONE.width, PHONE.height);
 const PER_PT = 2;
-const SEATS = (["bottom", "right", "top", "left"] as const).map((dir) => {
-  const [x, y] = lampTarget(dir);
-  return { dir, at: { x: x * SCALE.sx, y: y * SCALE.sy } };
-});
+const ANCHORS = anchorPoints(phoneTable(PHONE.width, PHONE.height));
+const SEATS = (["bottom", "right", "top", "left"] as const).map((dir) => ({ dir, at: ANCHORS[dir] }));
 const RIGHT = SEATS.find((s) => s.dir === "right")!.at;
 const MID = (ANNULUS.inner + ANNULUS.outer) / 2;
 
@@ -67,7 +67,7 @@ describe("annulusLuminance", () => {
     const outerShare = (ANNULUS.outer ** 2 - MID ** 2) / (ANNULUS.outer ** 2 - ANNULUS.inner ** 2);
     for (const scale of [SCALE, { sx: 1.4, sy: 0.7 }]) {
       for (const perPt of [1, 2, 3]) {
-        near(annulusLuminance(paint(RIGHT, halves, perPt, scale), RIGHT, perPt, scale), outerShare, 0.02);
+        near(annulusLuminance(paint(ANCHORS.pile, halves, perPt, scale), ANCHORS.pile, perPt, scale), outerShare, 0.02);
       }
     }
   });
