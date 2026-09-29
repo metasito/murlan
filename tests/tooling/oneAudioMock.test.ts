@@ -17,13 +17,14 @@ const mocks = (sources: [string, string][]) =>
   sources.flatMap(([file, text]) => moduleEdges(file, text).filter((e) => e.via === "mock" && AUDIO.includes(e.to)).map((e) => `${e.from} -> ${e.to}`));
 
 test("the scan sees jest.mock and jest.doMock of an audio module by any spelling", () => {
+  const planted = (name: string) => `tests/native/${name}.test.tsx`;
   assert.deepEqual(
     mocks([
-      ["tests/native/a.test.tsx", 'jest.mock("expo-audio", () => ({}));'],
-      ["tests/native/b.test.tsx", 'jest.doMock("@/lib/device/feedback", () => ({}));'],
-      ["tests/native/c.test.tsx", 'jest.mock("@/lib/device/other", () => ({}));'],
+      [planted("a"), 'jest.mock("expo-audio", () => ({}));'],
+      [planted("b"), 'jest.doMock("@/lib/device/feedback", () => ({}));'],
+      [planted("c"), 'jest.mock("@/lib/device/other", () => ({}));'],
     ]),
-    ["tests/native/a.test.tsx -> expo-audio", "tests/native/b.test.tsx -> lib/device/feedback"]
+    [`${planted("a")} -> expo-audio`, `${planted("b")} -> lib/device/feedback`]
   );
 });
 

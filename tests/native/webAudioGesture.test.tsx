@@ -56,6 +56,7 @@ beforeEach(() => {
   ctxState = 'suspended';
   handlers = new Map();
   (globalThis as Record<string, unknown>).window = { AudioContext: FakeAudioContext };
+  (globalThis as Record<string, unknown>).navigator = {};
   (globalThis as Record<string, unknown>).document = {
     addEventListener: (event: string, fn: Handler) => handlers.set(event, fn),
   };

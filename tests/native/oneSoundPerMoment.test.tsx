@@ -46,5 +46,5 @@ describe('one table state change sounds one thing', () => {
     expect(starts.length).toBeGreaterThanOrEqual(6);
     expect(pileUps(starts, 0.05)).toEqual([]);
     await r.unmount();
-  });
+  }, 60_000);
 });

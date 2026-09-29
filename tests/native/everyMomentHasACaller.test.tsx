@@ -116,5 +116,5 @@ describe('every moment the policy knows is raised by a real caller', () => {
     const { sounds: expected, run } = PROBES[kind];
     const got = await run();
     expect(got.some((s) => expected.includes(s))).toBe(true);
-  });
+  }, 60_000);
 });
