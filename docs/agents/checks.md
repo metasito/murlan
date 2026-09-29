@@ -100,7 +100,8 @@ holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSI
 it must be exported above the pipe.
 
 CI compiles the Android and iOS projects on a pull request that changes `package.json`'s
-`dependencies` or the app config (`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
+`dependencies`, the app config, or a patch whose own diff touches native sources
+(`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
 a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
 native=true`, then wait on it with `await-run.mjs`.
 
