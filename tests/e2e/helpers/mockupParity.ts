@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
-import { seatAnchor, skiaOnSoftware } from "./tableTrace";
+import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
   diffFlight,
@@ -24,7 +24,7 @@ import {
   type Trace,
   type TraceFrame,
 } from "./traceDiff";
-import { regionBrightness, regionsFor, TABLE, type Seat } from "./parityRegions";
+import { regionBrightness, regionsFor, TABLE, type Region, type SideLayout } from "./parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
 
 const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
@@ -48,7 +48,6 @@ interface Moment {
   fromMs?: number;
   /** In the chapter's time, which both sides label their frames with. */
   checkpoints: number[];
-  seatOnMove: Seat;
   /** Brings the app to the instant before its onset; the onset is the first traced frame `appOnset` accepts. */
   appTrigger: (page: Page, baseURL: string) => Promise<void>;
   appOnset: (frame: TraceFrame) => boolean;
@@ -132,7 +131,6 @@ const MOMENTS: Moment[] = [
     windowMs: 2400,
     fromMs: MAX_PRE_ROLL_MS,
     checkpoints: [MAX_PRE_ROLL_MS, 1440, 1920, 2400],
-    seatOnMove: "you",
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -148,7 +146,6 @@ const MOMENTS: Moment[] = [
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       const hand = handoff;
       handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
-    seatOnMove: "you",
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -171,7 +168,6 @@ const MOMENTS: Moment[] = [
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       lamp.m.length = 0;
       ember = () => {};`,
-    seatOnMove: "you",
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -193,7 +189,6 @@ const MOMENTS: Moment[] = [
     chapter: "rest",
     windowMs: 960,
     checkpoints: [0, 480, 960],
-    seatOnMove: "you",
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
     mode: "determinism",
@@ -243,6 +238,12 @@ const MOCKUP_SAMPLE = `(() => {
   };
 })()`;
 
+const MOCKUP_LAYOUT = `(() => {
+  const frame = document.getElementById("frame").getBoundingClientRect();
+  const tops = [...document.querySelectorAll("#hand .card")].map((c) => c.getBoundingClientRect().top - frame.top);
+  return { pile: { x: PILE[0], y: PILE[1] }, light: { x: lamp.x, y: lamp.ly }, handTop: Math.min(...tops) };
+})()`;
+
 async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<number, PillBox>> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
@@ -276,13 +277,16 @@ async function strip(
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
   stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
-  pile: { x: number; y: number }
+  layout: () => Promise<SideLayout>
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
-  const all = regionsFor(m.seatOnMove, pile);
-  const shape = m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
+  let shape: Record<string, Region> | undefined;
+  const regionsNow = async () => {
+    const all = regionsFor(await layout());
+    return m.regions ? Object.fromEntries(m.regions.map((r) => [r, all[r]])) : all;
+  };
   const cdp = await page.context().newCDPSession(page);
   const due = [...(m.actions ?? [])];
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
@@ -304,7 +308,10 @@ async function strip(
     if (!stripped && !sampled) continue;
     const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
     if (stripped) frames.push({ t, jpeg });
-    if (sampled) regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
+    if (!sampled) continue;
+    // Once the hand has settled: before `fromMs` it is still being dealt.
+    shape ??= await regionsNow();
+    regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
   }
   if (m.regionsAt) {
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
@@ -338,11 +345,10 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
-  const [px, py] = (await page.evaluate("PILE")) as [number, number];
   const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
     await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
-  }, { x: px, y: py });
+  }, () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>);
   await page.context().close();
   return capture;
 }
@@ -431,7 +437,13 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
   const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t, ms) => {
     if (t > preRollMs) await step(page, ms);
     return tracedAt(page, onset + t - preRollMs);
-  }, await seatAnchor(page, "pile"));
+  }, async () => ({
+    pile: await seatAnchor(page, "pile"),
+    light: await settledLight(page, "bottom"),
+    handTop: await page.evaluate(() =>
+      Math.min(...[...document.querySelectorAll('[data-hand-state] [data-testid="card-box"]')].map((c) => c.getBoundingClientRect().top))
+    ),
+  }));
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
   await page.context().close();

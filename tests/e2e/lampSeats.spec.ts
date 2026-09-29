@@ -102,13 +102,23 @@ test("the lamp re-aims when the window changes under it", async ({ page, baseURL
   expect((await tracedLamp(page)).x - before.x, "the floor: the right seat moved, and the lamp with it").toBeGreaterThan(100);
 });
 
-test("under the device's insets the light aims by the table's own box, not the window's", async ({ page, baseURL }) => {
-  test.setTimeout(120_000);
-  await openStill(page, baseURL!, PHONES.find((p) => p.name === "iPhone 16 Pro")!, stateById("lamp-bottom"));
-  const bare = await seatAnchor(page, "pile");
-  await setSafeArea(page, 62, 21, 62);
-  await expect.poll(async () => (await seatAnchor(page, "pile")).x, { message: "the floor: the insets moved the table" }).not.toBeCloseTo(bare.x, 0);
-  await expectLampOver(page, "bottom", "under 62/21/62 insets");
-  const [lamp, pile] = await Promise.all([tracedLamp(page), seatAnchor(page, "pile")]);
-  expect(Math.abs(lamp.x - pile.x), `the light at ${lamp.x.toFixed(1)}, the pile at ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(NEAREST_PT);
+/** Plan 3 L9 as left/bottom/right: the Dynamic Island alone, then with the home bar. */
+const ISLAND_INSETS = [[62, 0, 0], [62, 21, 62]] as const;
+
+test("under the device's insets the light aims by the table's own box, not the window's, at every seat", async ({ page, baseURL }) => {
+  test.setTimeout(180_000);
+  const phone = PHONES.find((p) => p.name === "iPhone 16 Pro")!;
+  for (const side of ["bottom", "right", "top", "left"] as const) {
+    await openStill(page, baseURL!, phone, stateById(`lamp-${side}`));
+    for (const [left, bottom, right] of ISLAND_INSETS) {
+      const where = `${side} under ${left}/${bottom}/${right} insets`;
+      const before = await seatAnchor(page, "pile");
+      await setSafeArea(page, left, bottom, right);
+      await expect.poll(async () => (await seatAnchor(page, "pile")).x, { message: `the floor: the insets moved the table, ${where}` }).not.toBeCloseTo(before.x, 0);
+      await expectLampOver(page, side, where);
+      if (side !== "bottom") continue;
+      const [lamp, pile] = await Promise.all([tracedLamp(page), seatAnchor(page, "pile")]);
+      expect(Math.abs(lamp.x - pile.x), `${where}: the light at ${lamp.x.toFixed(1)}, the pile at ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(NEAREST_PT);
+    }
+  }
 });

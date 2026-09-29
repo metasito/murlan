@@ -1,10 +1,8 @@
 // The named regions tests/e2e/helpers/mockupParity.ts reads brightness from, in table points of the
-// 874 × 402 table, placed on the Lantern Table mockup's own geometry (its POOL and #score), the pile on each side's own.
+// 874 × 402 table: the pool and the pile on each side's own layout, the rest on the mockup's #score and rail.
 import type { Page } from "@playwright/test";
 
 export const TABLE = { width: 874, height: 402 };
-
-export type Seat = "you" | "luan" | "besnik" | "gent";
 
 export interface Region {
   x: number;
@@ -13,19 +11,23 @@ export interface Region {
   h: number;
 }
 
-const POOL: Record<Seat, [number, number]> = {
-  you: [457, 292],
-  luan: [712, 196],
-  besnik: [457, 116],
-  gent: [202, 196],
-};
+type Point = { x: number; y: number };
 
-/** `pile` is that side's own pile centre, in table points: the two lay it out 9 pt apart. */
-export function regionsFor(seatOnMove: Seat, pile: { x: number; y: number }): Record<string, Region> {
-  const [px, py] = POOL[seatOnMove];
+/** Where one side laid out what its regions sit on, in table points; the viewer is the seat on move. */
+export interface SideLayout {
+  pile: Point;
+  light: Point;
+  /** The highest edge of any card in the viewer's hand. */
+  handTop: number;
+}
+
+/** The mockup's `.card` box-shadow blurs 10 pt above the hand. */
+const HAND_SHADOW = 10;
+
+export function regionsFor({ pile, light, handTop }: SideLayout): Record<string, Region> {
   return {
-    // Between the mockup's pile chip and the hand's shadow, which cross the pool at `you`.
-    pool: { x: px - 20, y: py - 2, w: 40, h: 8 },
+    // The light hangs over the hand, so its pool's nearest open felt is straight up from it, past the hand's shadow.
+    pool: { x: light.x - 20, y: handTop - HAND_SHADOW - 8, w: 40, h: 8 },
     rim: { x: 64, y: 180, w: 8, h: 40 },
     rightBand: { x: 640, y: 150, w: 60, h: 100 },
     pile: { x: pile.x - 30, y: pile.y - 20, w: 60, h: 40 },
