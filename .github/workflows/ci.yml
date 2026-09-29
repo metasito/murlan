@@ -570,6 +570,15 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      - name: Each Skia Metal layer follows its own opaque
+        run: |
+          lib=node_modules/@shopify/react-native-skia/apple
+          if grep -qF "_layer.opaque = false;" "$lib/MetalWindowContext.mm"; then
+            echo "::error::The Skia patch did not apply: MetalWindowContext still forces every layer transparent."; exit 1
+          fi
+          grep -qF "_impl->getLayer().opaque = _opaque;" "$lib/SkiaUIView.mm"
+          grep -qF "_impl->getLayer().opaque = opaque;" "$lib/SkiaUIView.mm"
+          node --test tests/tooling/skiaOpaquePatch.test.ts
       # --no-install skips CocoaPods as well as npm, so the pods are installed
       # explicitly rather than left out.
       - run: npx expo prebuild --platform ios --no-install

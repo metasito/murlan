@@ -1,0 +1,51 @@
+##
+# The felt's opaque Metal layer, photographed: the table's first frame, and the table again after a
+# portrait round trip resizes its drawable. `tools/ci/feltPixels.mjs` reads both (ios.yml).
+# The launch path is offline-game.yaml's; its comments say why each step is there.
+appId: "${MAESTRO_APP_ID}"
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- runFlow:
+    commands:
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+- takeScreenshot: felt-first
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: PORTRAIT
+      - setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: felt-round-trip
