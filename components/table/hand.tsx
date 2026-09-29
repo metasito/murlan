@@ -21,7 +21,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
-import { cardAt, dropIndex } from "@/components/handOrder";
+import { cardAt, dropIndex, lendBack } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
@@ -38,7 +38,6 @@ import {
 import type { CardFrom } from "@/components/flightPose";
 import { readHandArrival, type TradeStages } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
-import { sortHand } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 
 /**
@@ -52,21 +51,19 @@ import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
  */
 export function useHandArrival(input: {
   hand: Card[];
+  /** The engine's order and the player's, which place a lent card back in its arranged slot. */
+  sorted: Card[];
+  order: readonly string[];
   trade: ExchangeAnnounceData | null;
   stages: TradeStages;
   viewerSeat: number | null;
 }): { handOnTable: Card[]; holding: boolean; arrivingIndex?: number; descendingId?: string; receivedId?: string } {
   const first = readHandArrival(input);
   const lent = first.lent;
-  const hand = lent ? withCard(input.hand, lent) : input.hand;
+  const hand = lent ? lendBack(input.sorted, lent, input.order) : input.hand;
   const { withheldIds, arrivingIndex, descendingId, receivedId } = lent ? readHandArrival({ ...input, hand }) : first;
   const handOnTable = useSameCards(withheldIds.length === 0 ? hand : hand.filter((c) => !withheldIds.includes(c.id)));
   return { handOnTable, holding: withheldIds.length > 0 || lent !== undefined, arrivingIndex, descendingId, receivedId };
-}
-
-function withCard(hand: Card[], card: Card): Card[] {
-  const at = sortHand([...hand, card]).findIndex((c) => c.id === card.id);
-  return [...hand.slice(0, at), card, ...hand.slice(at)];
 }
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
@@ -225,6 +222,8 @@ interface CardItemProps {
   onDrawn?: (id: string, drawn: DrawnCard) => void;
   /** Just received in an exchange: it glows for `Motion.exchange.highlight`. */
   received?: boolean;
+  /** Ids drawn by an exchange flier instead, set on the UI thread on the frame it shows. */
+  hidden?: SharedValue<string[]>;
 }
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
@@ -255,6 +254,7 @@ function CardItemBase({
   onMove,
   onDrawn,
   received = false,
+  hidden,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
   const halo = useSharedValue(0);
@@ -338,7 +338,7 @@ function CardItemBase({
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value;
     return {
-      opacity: dealFade ? 1 - d : 1,
+      opacity: hidden?.value.includes(card.id) ? 0 : dealFade ? 1 - d : 1,
       transform: [
         { translateX: dealFromX * d + shift.value },
         { translateY: liftY.value + dealRise * d },
@@ -456,7 +456,8 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.a11yActions === b.a11yActions &&
     a.onMove === b.onMove &&
     a.onDrawn === b.onDrawn &&
-    a.received === b.received
+    a.received === b.received &&
+    a.hidden === b.hidden
   );
 }
 
@@ -515,6 +516,7 @@ export function StraightHand({
   arrivingIndex,
   descendingId,
   receivedId,
+  lifted,
   startCardId,
   handBottomPad = 0,
   dealOffsetMs,
@@ -563,6 +565,8 @@ export function StraightHand({
   descendingId?: string;
   /** The card just received in an exchange, which glows. */
   receivedId?: string;
+  /** Cards an exchange flier draws instead, from its first frame (`ExchangeLegs`). */
+  lifted?: SharedValue<string[]>;
   /**
    * The card the opening play must include, when this seat has to open. Only
    * that one card is named, and only while it is still owed: a device flow
@@ -1075,6 +1079,7 @@ export function StraightHand({
           onMove={arrangeable ? moveByAction : undefined}
           onDrawn={onDrawn}
           received={card.id === receivedId}
+          hidden={lifted}
           // An ungiveable card during an exchange is a button that reports
           // itself unavailable, rather than one that silently does nothing.
           disabled={disabled || giveable === false}

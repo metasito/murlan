@@ -6,7 +6,7 @@
 // that a filtered row got for free: an ungiveable card has to *say* it is
 // ungiveable rather than simply be absent, and the confirm has to be the table's
 // own key rather than a second one floating over it.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -14,8 +14,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
-import { LEG } from '@/lib/game/exchangeTimeline';
-import { Motion } from '@/lib/tokens';
+import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { getValidGivebackCards } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
@@ -31,7 +30,7 @@ const card = (rank: Rank, suit: Suit): Card => ({
   isJoker: false,
 });
 
-const X = Motion.exchange;
+const OPENS = choiceOpensAt(false);
 const WINNER = 'Ana';
 const LOSER = 'Bea';
 const BYSTANDER = 'Cesk';
@@ -52,7 +51,7 @@ const seat = (id: string, name: string, hand: Card[]): Player => ({
   type: 'human',
 });
 
-const state = (): GameState => ({
+const state = (exchange = true): GameState => ({
   players: [
     seat('player_0', WINNER, WINNER_HAND),
     seat('player_1', LOSER, [card('4', 'clubs')]),
@@ -67,21 +66,18 @@ const state = (): GameState => ({
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
-  exchangePhase: {
-    active: true,
-    winnerIdx: 0,
-    loserIdx: 1,
-    cardFromLoser: FROM_LOSER,
-    bothJokersException: false,
-  },
+  exchangePhase: exchange
+    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, bothJokersException: false }
+    : undefined,
 });
 
 const noop = () => {};
 
-const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void }) => (
+const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void; onExchangeReady?: () => void; exchange?: boolean }) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={state()}
+      gameState={state(opts.exchange)}
+      onExchangeReady={opts.onExchangeReady}
       viewerSeat={opts.viewerSeat}
       selectedIds={[]}
       onSelectCard={noop}
@@ -100,10 +96,50 @@ const press = async (node: Parameters<typeof fireEvent.press>[0]) => {
     fireEvent.press(node);
   });
 };
+const step = async (ms: number) => {
+  for (let at = 0; at < ms; at += 16) await act(async () => jest.advanceTimersByTime(16));
+};
+const open = () => step(OPENS + 32);
 
 describe('the winner picks from their own hand', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('takes no pick and gives nothing before the choice opens', async () => {
+    const onExchangeGive = jest.fn<(id: string) => void>();
+    const r = await render(table({ viewerSeat: 0, onExchangeGive }));
+    await step(OPENS - 64);
+    await press(handCard(FIVE));
+    await press(screen.getByTestId('btn-gioca'));
+    expect(onExchangeGive).not.toHaveBeenCalled();
+
+    await step(128);
+    await press(handCard(FIVE));
+    await press(screen.getByTestId('btn-gioca'));
+    expect(onExchangeGive).toHaveBeenCalledWith(FIVE.id);
+    await r.unmount();
+  });
+
+  it("opens a later manche's choice on its own receive, though the pairing and the card repeat", async () => {
+    const onExchangeReady = jest.fn();
+    const r = await render(table({ viewerSeat: 0, onExchangeReady }));
+    await open();
+    expect(screen.getByTestId('exchange-prompt')).toBeTruthy();
+    await act(async () => r.rerender(table({ viewerSeat: 0, onExchangeReady, exchange: false })));
+    await act(async () => r.rerender(table({ viewerSeat: 0, onExchangeReady })));
+    expect(screen.queryByTestId('exchange-prompt')).toBeNull();
+
+    await step(OPENS - 64);
+    expect(screen.queryByTestId('exchange-prompt')).toBeNull();
+    expect(onExchangeReady).toHaveBeenCalledTimes(1);
+    await step(128);
+    expect(onExchangeReady).toHaveBeenCalledTimes(2);
+    await r.unmount();
   });
 
   it('shows every card the winner holds, not only the ones they may give', async () => {
@@ -120,6 +156,7 @@ describe('the winner picks from their own hand', () => {
 
   it('lets the giveable cards be pressed and refuses the rest by name', async () => {
     const r = await render(table({ viewerSeat: 0 }));
+    await open();
     const giveable = new Set(getValidGivebackCards(WINNER_HAND, FROM_LOSER.id).map((c) => c.id));
 
     // The engine's own answer, not a rank range restated here: the fan's
@@ -143,6 +180,7 @@ describe('the winner picks from their own hand', () => {
   it('holds the pick until GIOCA is pressed, and gives the last card chosen', async () => {
     const onExchangeGive = jest.fn<(id: string) => void>();
     const r = await render(table({ viewerSeat: 0, onExchangeGive }));
+    await open();
 
     // The floor: a confirm that fired unconditionally would satisfy everything
     // below, so with nothing picked it has to do nothing.
@@ -163,6 +201,7 @@ describe('the winner picks from their own hand', () => {
 
   it('renames GIOCA for the exchange, so the key does not say PLAY', async () => {
     const r = await render(table({ viewerSeat: 0 }));
+    await open();
     const name = () => screen.getByTestId('btn-gioca').props.accessibilityLabel;
 
     expect(name()).toBe(t('exchange.confirmA11yWaiting', { name: LOSER }));
@@ -197,10 +236,7 @@ describe('the choice opens once the received card has landed and been read', () 
   ])('names the choice to %s only then', async (_who, viewerSeat, line) => {
     jest.useFakeTimers();
     const r = await render(table({ viewerSeat }));
-    const step = async (ms: number) => {
-      for (let at = 0; at < ms; at += 16) await act(async () => jest.advanceTimersByTime(16));
-    };
-    await step(X.beat + LEG.end + X.read - 64);
+    await step(OPENS - 64);
     expect(screen.queryByTestId('exchange-prompt')).toBeNull();
     expect(screen.queryAllByText(line)).toHaveLength(0);
     await step(128);

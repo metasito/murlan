@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
   Easing,
@@ -14,6 +14,7 @@ import { CardView } from "@/components/CardView";
 import { BACK_SCALE } from "@/components/cardFaceModel";
 import { Layer, motionMs } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
 import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
 import { dealArrivalsMs, dealEndMs, dealFlightsMs, dealLeaveMs } from "@/lib/game/dealTimeline";
@@ -167,6 +168,7 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
   const origin = useSharedValue(-1);
   const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, onLanded));
   useFrameCallback(step);
+  useEffect(() => () => withdraw("deal"), []);
   return (
     <View style={[dealStyles.container, { pointerEvents: "none" as const }]}>
       {cards.map((card) => (

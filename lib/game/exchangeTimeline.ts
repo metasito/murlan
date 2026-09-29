@@ -99,6 +99,24 @@ export function legPose(t: number, p: LegPoints, reduced = false): ExchangePose 
   };
 }
 
+/** When the choice opens, on the trade's clock: the receive landed and read. */
+export function choiceOpensAt(reduced: boolean): number {
+  "worklet";
+  return X.beat + legTimes(reduced).end + X.read;
+}
+
+/** When the receive and the give first show, on the trade's clock; `choice` is when the choice was seen, null before it. */
+export function legShows(choice: number | null, reduced: boolean): [number, number] {
+  "worklet";
+  return [X.beat, choice === null ? Infinity : Math.max(choice + X.giveWait, choiceOpensAt(reduced))];
+}
+
+/** When the ceremony closes: its last leg landed and read. */
+export function ceremonyEndsAt(shows: readonly number[], reduced: boolean, jokers: boolean): number {
+  "worklet";
+  return shows[jokers ? 0 : 1] + legTimes(reduced).end + X.read;
+}
+
 /** The server has no seat geometry, so it deals every seat at the farthest seat's flight: never earlier than the client. */
 export function exchangeGiveDelayMs(counts: readonly number[]): number {
   return dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS)) + RECEIVE_MS + X.read;

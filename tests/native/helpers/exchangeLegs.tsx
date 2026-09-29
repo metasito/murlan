@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import React, { useRef, useState } from 'react';
 import { act } from '@testing-library/react-native';
-import { useSharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { ExchangeLegs, type RingFlash } from '@/components/table/ExchangeLegs';
 import { NO_STAGES, tradeKey, type SeatGeometry, type TradeStages } from '@/components/flightPhysics';
 import { arrangeOpponents } from '@/components/seatLayout';
@@ -48,9 +48,13 @@ export function Legs(props: {
   onDismiss?: () => void;
   holdMsOverride?: number;
   geometry?: SeatGeometry;
+  lifted?: SharedValue<string[]>;
+  /** False: the hand never draws a landed card, so its stage is not fed back. */
+  handCommits?: boolean;
 }) {
   const [stages, setStages] = useState<TradeStages>({ key: tradeKey(props.trade), ...NO_STAGES });
   const flash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
+  const ownLifted = useSharedValue<string[]>([]);
   const handOrigins = useRef(new Map<string, CardFrom>());
   return (
     <ExchangeLegs
@@ -62,9 +66,10 @@ export function Legs(props: {
       viewerSeat={props.viewerSeat === undefined ? 0 : props.viewerSeat}
       scale={1}
       flash={flash}
+      lifted={props.lifted ?? ownLifted}
       onStage={(key, leg, stage) => {
         props.onStage?.(leg, stage);
-        setStages((s) => ({ ...s, [leg]: stage }));
+        if (stage !== 'landed' || props.handCommits !== false) setStages((s) => ({ ...s, [leg]: stage }));
       }}
       onReady={() => {
         setStages((s) => ({ ...s, ready: true }));

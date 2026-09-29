@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -11,23 +11,21 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
-import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, tradeKey, type SeatGeometry, type TradeStages } from "@/components/flightPhysics";
+import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, type SeatGeometry, type TradeStages } from "@/components/flightPhysics";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { cardSpokenName } from "@/lib/cardNames";
-import { event } from "@/lib/device/feedback";
+import { event, withdraw } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import { legPose, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
+import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
-import { Motion } from "@/lib/theme";
 import { inBackground } from "./useFlightClock";
 
 export interface RingFlash { seq: number; seat: number }
 export type LegName = "receive" | "give";
 
-const X = Motion.exchange;
 const STAGES: LegStage[] = ["waiting", "flying", "rest", "tuck", "landed"];
 const BACK_CARD: Card = { id: "exchange-back", suit: null, rank: "3", isJoker: false };
 /** The points of the receive, the give and the two Jokers, in that order. */
@@ -49,6 +47,8 @@ function stepper(
   reduced: SharedValue<boolean>,
   ends: SharedValue<number[]>,
   flash: SharedValue<RingFlash>,
+  lifted: SharedValue<string[]>,
+  outgoing: SharedValue<string[][]>,
   jokers: boolean,
   report: Report
 ) {
@@ -64,30 +64,31 @@ function stepper(
     if (r.origin < 0) {
       // On the go's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
       r.origin = Math.min(frame.timestamp, goAt.value);
-      shows.value = [X.beat, Infinity];
-      scheduleOnRN(report.cue, r.origin + X.beat);
+      shows.value = legShows(null, reduced.value);
+      scheduleOnRN(report.cue, r.origin + shows.value[0]);
     }
     const t = frame.timestamp - r.origin;
-    const readyAt = shows.value[0] + times.end + X.read;
     if (!jokers && shows.value[1] === Infinity && choiceAt.value >= 0) {
-      const give = Math.max(Math.min(frame.timestamp, choiceAt.value) - r.origin + X.giveWait, readyAt);
-      shows.value = [shows.value[0], give];
-      scheduleOnRN(report.cue, r.origin + give);
+      shows.value = legShows(Math.min(frame.timestamp, choiceAt.value) - r.origin, reduced.value);
+      scheduleOnRN(report.cue, r.origin + shows.value[1]);
     }
     clock.value = t;
     for (let leg = 0; leg < 2; leg++) {
       const s = STAGES.indexOf(legStage(t - shows.value[leg], times));
       if (s === r.stage[leg]) continue;
-      if (r.stage[leg] < 1 && s >= 1) ping(ends.value[leg * 2]);
+      if (r.stage[leg] < 1 && s >= 1) {
+        ping(ends.value[leg * 2]);
+        lifted.value = [...lifted.value, ...outgoing.value[leg]];
+      }
       if (r.stage[leg] < 2 && s >= 2) ping(ends.value[leg * 2 + 1]);
       r.stage[leg] = s;
       scheduleOnRN(report.stage, leg, s);
     }
-    if (!jokers && !r.ready && t >= readyAt) {
+    if (!jokers && !r.ready && t >= choiceOpensAt(reduced.value)) {
       r.ready = true;
       scheduleOnRN(report.ready);
     }
-    if (t >= shows.value[jokers ? 0 : 1] + times.end + X.read) {
+    if (t >= ceremonyEndsAt(shows.value, reduced.value, jokers)) {
       r.done = true;
       scheduleOnRN(report.done);
     }
@@ -99,13 +100,16 @@ function useLegClock(...args: Parameters<typeof stepper>) {
   return useFrameCallback(step, true);
 }
 
-function LegCard({ card, leg, show, points, clock, shows, reduced, scale, testID }: {
+function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale, testID }: {
   card: Card; leg: number; show: number; points: SharedValue<Points>; clock: SharedValue<number>;
-  shows: SharedValue<number[]>; reduced: SharedValue<boolean>; scale: number; testID: string;
+  shows: SharedValue<number[]>; reduced: SharedValue<boolean>; drawn: SharedValue<boolean[]>; scale: number; testID: string;
 }) {
   const w = CARD_W(scale * FIELD_SCALE);
   const h = CARD_H(scale * FIELD_SCALE);
-  const pose = useDerivedValue(() => legPose(clock.value - shows.value[show], points.value[leg], reduced.value));
+  const pose = useDerivedValue(() => {
+    const at = clock.value - shows.value[show];
+    return legPose(drawn.value[show] ? at : Math.min(at, legTimes(reduced.value).end - 1), points.value[leg], reduced.value);
+  });
   const style = useAnimatedStyle(() => {
     const p = pose.value;
     return {
@@ -141,6 +145,7 @@ export function ExchangeLegs({
   viewerSeat,
   scale,
   flash,
+  lifted,
   onStage,
   onReady,
   onDismiss,
@@ -154,6 +159,8 @@ export function ExchangeLegs({
   viewerSeat: number | null;
   scale: number;
   flash: SharedValue<RingFlash>;
+  /** The viewer's hand cards a leg has lifted out, from the frame its flier first shows until the leg lands. */
+  lifted: SharedValue<string[]>;
   onStage: (key: string, leg: LegName, stage: LegStage) => void;
   onReady: (key: string) => void;
   onDismiss: () => void;
@@ -163,7 +170,7 @@ export function ExchangeLegs({
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
   const jokers = trade.bothJokersException;
-  const key = tradeKey(trade);
+  const key = stages.key;
   const calls = useRef({ onStage, onReady, onDismiss, key });
   useEffect(() => {
     calls.current = { onStage, onReady, onDismiss, key };
@@ -194,7 +201,32 @@ export function ExchangeLegs({
   const done = useCallback(() => {
     if (holdRef.current === undefined) calls.current.onDismiss();
   }, []);
-  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, jokers, { cue, stage, ready, done });
+  const mine = (seat: number, card: Card | undefined) => (seat === viewerSeat && card ? [card.id] : []);
+  const out = jokers
+    ? [trade.loserIdx === viewerSeat ? JOKERS.map((j) => j.id) : [], []]
+    : [mine(trade.loserIdx, trade.cardReceived), mine(trade.winnerIdx, trade.cardGiven)];
+  const outgoing = useSharedValue(out);
+  const drawn = useSharedValue([false, false]);
+  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, { cue, stage, ready, done });
+
+  useEffect(() => {
+    outgoing.set(out);
+  });
+  // In the commit that draws a landed card in the hand, so the flier is gone on the frame it appears there.
+  useLayoutEffect(() => {
+    const landed = [stages.receive === "landed", stages.give === "landed"];
+    if (landed.every((l, i) => l === drawn.get()[i])) return;
+    drawn.set(landed);
+    const back = outgoing.get().flatMap((ids, i) => (landed[i] ? ids : []));
+    lifted.set(lifted.get().filter((id) => !back.includes(id)));
+  });
+  useEffect(
+    () => () => {
+      lifted.set([]);
+      withdraw("exchange");
+    },
+    [lifted]
+  );
 
   useEffect(() => {
     reduced.set(reduceMotion);
@@ -242,7 +274,7 @@ export function ExchangeLegs({
         .join(". ");
 
   const card = (c: Card, leg: number, show: number, testID: string) => (
-    <LegCard key={testID} card={c} leg={leg} show={show} points={pointsValue} clock={clock} shows={shows} reduced={reduced} scale={scale} testID={testID} />
+    <LegCard key={testID} card={c} leg={leg} show={show} points={pointsValue} clock={clock} shows={shows} reduced={reduced} drawn={drawn} scale={scale} testID={testID} />
   );
   return (
     <View testID="exchange-announce" pointerEvents="none" style={StyleSheet.absoluteFill}>

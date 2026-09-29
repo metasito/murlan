@@ -5,7 +5,7 @@ import { SETTINGS_KEY } from "@/lib/storageKeys";
 import { traceOnset } from "@/lib/e2eTrace";
 import { audioState, cut, durationMs, engineStats, music, play, ramp, setBusTrim, startAudio } from "./audioEngine";
 import { pulse, setHapticsGate, tap, type TapHaptic } from "./hapticsEngine";
-import { LANDING_PULSES, landingPulsesFor, mix, type Moment, type Played, type PulseStep } from "./moments";
+import { LANDING_PULSES, cueFor, landingPulsesFor, mix, type Moment, type Played, type PulseStep } from "./moments";
 import type { SoundId } from "./soundAssets";
 import type { TrackId } from "./musicTracks";
 
@@ -129,6 +129,17 @@ export function uiFeedback(kind: UiFeedbackKind): void {
 }
 
 export function silence(id: "clockRunningOut"): void {
+  cut(id);
+}
+
+/** Takes back a cue sent ahead for `kind` that has yet to start; one already sounding plays out. Its haptics cannot be taken back. */
+export function withdraw(kind: "exchange" | "deal"): void {
+  const now = performance.now();
+  const ahead = (at: number | undefined) => at !== undefined && at > now;
+  pending = pending.filter((p) => !(ahead(p.at) && p.moments.every((m) => m.kind === kind)));
+  const id = cueFor({ kind }).sound;
+  if (!id || !played.some((p) => p.id === id && ahead(p.at))) return;
+  played = played.filter((p) => !(p.id === id && ahead(p.at)));
   cut(id);
 }
 

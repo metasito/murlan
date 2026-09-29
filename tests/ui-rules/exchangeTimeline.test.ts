@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import {
   LEG,
   REDUCED_LEG,
+  ceremonyEndsAt,
+  choiceOpensAt,
   exchangeGiveDelayMs,
   legPose,
+  legShows,
   legStage,
   restPoint,
   type LegPoints,
@@ -76,13 +79,35 @@ test("the ceremony holds the table for the give's wait, the give and a read", ()
   assert.equal(exchangeAnnounceMs(true), X.beat + landed + X.read);
 });
 
-test("the server's give floor is the client's own deal, receive and read, whatever the seats' distances", () => {
+/** When a leg shown at `show` has landed, from its drawn pose. */
+const landedAt = (show: number, reduced = false) => show + sample(LEGS[0].leg, reduced).findLast((p) => p.visible)!.t + 1;
+
+test("the choice opens on the clock the legs are drawn on: the receive landed and read", () => {
+  for (const reduced of [false, true]) {
+    assert.equal(choiceOpensAt(reduced), landedAt(legShows(null, reduced)[0], reduced) + X.read);
+    assert.equal(legShows(null, reduced)[1], Infinity, "the give shows before the choice");
+  }
+});
+
+test("the server's give floor is no earlier than any client's choice opening, whatever the seats' distances", () => {
   const counts = [13, 13, 13, 13];
-  const received = X.beat + sample(LEGS[0].leg).findLast((p) => p.visible)!.t + 1;
   const farthest = dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS));
-  assert.equal(exchangeGiveDelayMs(counts), farthest + received + X.read);
+  assert.equal(exchangeGiveDelayMs(counts), farthest + choiceOpensAt(false));
   for (const seats of [[{ dx: 0, dy: 100 }, { dx: -300, dy: 0 }, { dx: 300, dy: 0 }, { dx: 0, dy: -120 }], [{ dx: 0, dy: 10 }, { dx: 5, dy: 0 }, { dx: 0, dy: -400 }, { dx: 20, dy: 0 }]]) {
-    const client = dealEndMs(counts, Motion.duration.reveal, dealFlightsMs(seats)) + received + X.read;
+    const client = dealEndMs(counts, Motion.duration.reveal, dealFlightsMs(seats)) + choiceOpensAt(false);
     assert.ok(client <= exchangeGiveDelayMs(counts), `the client's choice opens at ${client}, after the server's floor`);
   }
+});
+
+test("a choice made once it opens has its give landed and read by the server's re-arm; one made before would not", () => {
+  for (const reduced of [false, true]) {
+    for (const choice of [choiceOpensAt(reduced), choiceOpensAt(reduced) + 1, choiceOpensAt(reduced) + 5000]) {
+      const shows = legShows(choice, reduced);
+      const read = landedAt(shows[1], reduced) + X.read;
+      assert.ok(read <= choice + exchangeAnnounceMs(false), `a choice at ${choice} is read at ${read}`);
+      assert.equal(ceremonyEndsAt(shows, reduced, false), read);
+    }
+  }
+  assert.equal(landedAt(legShows(choiceOpensAt(false), false)[1]) + X.read, choiceOpensAt(false) + exchangeAnnounceMs(false));
+  assert.ok(landedAt(legShows(0, false)[1]) + X.read > exchangeAnnounceMs(false), "an early give is held back past the re-arm");
 });

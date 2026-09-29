@@ -438,16 +438,20 @@ export function GameTable({
   // The engine's order is the fallback; what the player sees is whatever they
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
-  const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
+  const { arranged: shownHand, moveTo, order: handOrder } = useHandOrder(viewerSeat, sortedHand);
   // The trade runs from the phase opening, before any announcement: the receive flies ahead of the choice.
   const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
   const phase = gameState.exchangePhase;
   const trade: ExchangeAnnounceData | null =
     announced ??
     (phase?.active && !phase.bothJokersException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
+  // A pairing and its card repeat across manches, so each trade is also counted.
+  const [tradeSeq, setTradeSeq] = useState({ open: false, seq: 0 });
+  if (!!trade !== tradeSeq.open) setTradeSeq({ open: !!trade, seq: tradeSeq.seq + (trade ? 1 : 0) });
+  const tradeId = trade ? `${tradeSeq.seq}:${tradeKey(trade)}` : "";
   const [reported, setReported] = useState<TradeStages>({ key: "", ...NO_STAGES });
-  const stages: TradeStages =
-    trade && reported.key === tradeKey(trade) ? reported : { key: trade ? tradeKey(trade) : "", ...NO_STAGES };
+  const stages: TradeStages = trade && reported.key === tradeId ? reported : { key: tradeId, ...NO_STAGES };
+  const choiceReady = reported.key === tradeId && reported.ready;
   const onTradeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
     setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), [leg]: stage }));
   }, []);
@@ -459,9 +463,12 @@ export function GameTable({
     [onExchangeReady]
   );
   const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
+  const lifted = useSharedValue<string[]>([]);
   const tradeSeats = readTradeSeats(trade, stages);
   const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
     hand: shownHand,
+    sorted: sortedHand,
+    order: handOrder,
     trade,
     stages,
     viewerSeat: spectating ? null : viewerSeat,
@@ -515,7 +522,8 @@ export function GameTable({
   // dialog, so the legality the engine enforces has to be readable in the fan:
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
-  const exchangeIsMine = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsMine = exchangeIsWinners && choiceReady;
   const giveable = React.useMemo(
     () =>
       exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined,
@@ -826,7 +834,7 @@ export function GameTable({
   });
   const handleCardPress = useCallback(
     (id: string) => {
-      if (isFinished || spectating) return;
+      if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
       event([{ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" }]);
       // An exchange gives exactly one card, so a second tap replaces the pick
       // rather than adding to it.
@@ -836,7 +844,7 @@ export function GameTable({
       }
       onSelectCard(id);
     },
-    [isFinished, spectating, onSelectCard, exchangeIsMine, setExchangePick]
+    [isFinished, spectating, onSelectCard, exchangeIsMine, exchangeIsWinners, setExchangePick]
   );
   useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
@@ -1279,6 +1287,7 @@ export function GameTable({
                     viewerSeat={spectating ? null : viewerSeat}
                     scale={scale}
                     flash={ringFlash}
+                    lifted={lifted}
                     onStage={onTradeStage}
                     onReady={onTradeReady}
                     onDismiss={exchangeAnnouncement?.onDismiss ?? NO_DISMISS}
@@ -1409,6 +1418,7 @@ export function GameTable({
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
                     receivedId={receivedId}
+                    lifted={lifted}
                     handBottomPad={frame.bottomPad}
                     onOrigins={onHandOrigins}
                     // Only while the opening is still owed. Named rather than
@@ -1424,7 +1434,7 @@ export function GameTable({
 
               {!spectating && (
                 <GiocaButton
-                  lit={exchangeIsMine || (isMyTurn && !isFinished)}
+                  lit={exchangeIsMine || (isMyTurn && !isFinished && !exchange.active)}
                   label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
                   rejectX={giocaRejectX}
                   flashStyle={giocaFlashStyle}

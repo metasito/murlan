@@ -7,7 +7,8 @@ import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { RECEIVE_MS, exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { LEG, exchangeGiveDelayMs, legPose, legShows, restPoint } from "../../lib/game/exchangeTimeline.ts";
+import { DEAL_FLIGHT_MS, dealEndMs } from "../../lib/game/dealTimeline.ts";
 import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
@@ -53,9 +54,13 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
   try {
     const phase = game.gameState.exchangePhase!;
     armTurn(io, ROOM);
-    const floor = exchangeGiveDelayMs(game.gameState.players.map((p) => p.hand.length));
+    const counts = game.gameState.players.map((p) => p.hand.length);
+    const floor = exchangeGiveDelayMs(counts);
+    const pile = restPoint();
+    const drawn = Array.from({ length: 2 * LEG.end }, (_, ms) => legPose(ms, { from: pile, fromFace: false, rest: pile, to: pile, toFace: true }).visible);
+    const received = dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS)) + legShows(null, false)[0] + drawn.lastIndexOf(true) + 1;
+    assert.ok(floor >= received + Motion.exchange.read, `the receive is drawn until ${received}, and read after`);
     t.mock.timers.tick(floor - 1);
-    assert.ok(floor >= RECEIVE_MS + Motion.exchange.read, "the floor leaves the receive its landing and read");
     assert.equal(game.gameState.exchangePhase?.active, true, "gave before the receive was read");
     t.mock.timers.tick(1);
     assert.equal(game.gameState.exchangePhase?.active ?? false, false, "the bot winner gave");
