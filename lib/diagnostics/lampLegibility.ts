@@ -1,20 +1,15 @@
-import { SEAT_DISC } from "../../components/seatLayout.ts";
-
 export interface Pixels {
   width: number;
   height: number;
   data: ArrayLike<number>;
 }
 
-export interface DesignScale {
-  sx: number;
-  sy: number;
+/** The ring in screen points round a seat: a circle of `inner` (the drawn disc), out to the ellipse `outerX` × `outerY`. */
+export interface Ring {
+  inner: number;
+  outerX: number;
+  outerY: number;
 }
-
-/** The research model's outer edge, `zoneMean(…, 17, 45)` in murlan-plans/2026-09-28-1259-lantern-review/scripts/lamp3.mjs. */
-export const ANNULUS_OUTER = 45;
-
-export const ANNULUS = { inner: Math.ceil(SEAT_DISC / 2), outer: ANNULUS_OUTER } as const;
 
 export const RING_COVERAGE = 0.95;
 
@@ -38,23 +33,23 @@ export function annulusLuminance(
   pixels: Pixels,
   at: { x: number; y: number },
   perPt: number,
-  scale: DesignScale,
+  ring: Ring,
 ): number {
   const { width, height, data } = pixels;
   const cx = at.x * perPt;
   const cy = at.y * perPt;
-  const rx = ANNULUS.outer * scale.sx * perPt;
-  const ry = ANNULUS.outer * scale.sy * perPt;
-  const toDesignX = 1 / (scale.sx * perPt);
-  const toDesignY = 1 / (scale.sy * perPt);
+  const rx = ring.outerX * perPt;
+  const ry = ring.outerY * perPt;
   let inRing = 0;
   let onImage = 0;
   let onFelt = 0;
   let sum = 0;
   for (let y = Math.floor(cy - ry); y < Math.ceil(cy + ry); y++) {
     for (let x = Math.floor(cx - rx); x < Math.ceil(cx + rx); x++) {
-      const d = Math.hypot((x + 0.5 - cx) * toDesignX, (y + 0.5 - cy) * toDesignY);
-      if (d < ANNULUS.inner || d > ANNULUS.outer) continue;
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      if (Math.hypot(dx, dy) < ring.inner * perPt) continue;
+      if (Math.hypot(dx / rx, dy / ry) > 1) continue;
       inRing++;
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
       onImage++;
