@@ -75,6 +75,16 @@ const p90 = (xs) => {
   return s.length ? s[Math.ceil(s.length * 0.9) - 1] : NaN;
 };
 
+export function medianHz(rows) {
+  const perSecond = new Map();
+  for (const r of rows) {
+    if (r.k !== "frame" || !(r.dt > 0)) continue;
+    const s = Math.floor(r.t / 1000);
+    perSecond.set(s, [...(perSecond.get(s) ?? []), 1000 / r.dt]);
+  }
+  return median([...perSecond.values()].map(median));
+}
+
 const times = (rows, k, name) => rows.filter((r) => r.k === k && (name === undefined || r.name === name)).map((r) => r.t);
 const firstIn = (times, from, to) => times.filter((t) => t >= from && t <= to).sort((a, b) => a - b)[0];
 const onsetsOf = (rows, source) => rows.filter((r) => r.k === "onset" && r.source === source).map((r) => r.t);
@@ -258,7 +268,51 @@ function lampVariants(rows) {
   };
 }
 
-export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants };
+function throwStalls(rows) {
+  const throws = times(rows, "throw");
+  const windows = throws.map((t) => rows.filter((r) => r.t >= t && r.t <= t + 600));
+  const stalls = windows.reduce((n, w) => n + burstStalls(w).stalls, 0);
+  const framed = throws.length ? windows.filter((w) => w.some((r) => r.k === "frame")).length / throws.length : 0;
+  const { jsTicks } = burstStalls(rows);
+  return {
+    pass: throws.length >= 10 && framed >= 0.8 && jsTicks > 0 && stalls === 0,
+    metrics: { throws: throws.length, stalls, framed, jsTicks, medianHz: medianHz(rows) },
+  };
+}
+
+function halves(rows) {
+  const marks = rows.filter((r) => r.k === "half").sort((a, b) => a.t - b.t);
+  return marks.map((h, i) => {
+    const own = rows.filter((r) => r.t >= h.t && r.t < (marks[i + 1]?.t ?? Infinity));
+    return { name: h.name, pair: h.pair, hz: medianHz(own), ...burstStalls(own) };
+  });
+}
+
+function restCost(rows) {
+  const all = halves(rows);
+  const frozen = all.filter((h) => h.name === "frozen");
+  const swaying = all.filter((h) => h.name === "swaying");
+  const brief = (hs) => hs.map(({ hz, stalls }) => ({ hz, stalls }));
+  return {
+    pass: frozen.length === 4 && swaying.length === 4 && swaying.every((h) => h.hz >= 115 && h.stalls === 0),
+    metrics: { medianHz: medianHz(rows), frozen: brief(frozen), swaying: brief(swaying) },
+  };
+}
+
+function feltOpaque(rows) {
+  const all = halves(rows);
+  const pairs = [0, 1, 2, 3].map((p) => ["on", "off"].map((name) => all.find((h) => h.name === name && h.pair === p && h.frames > 0)));
+  const recorded = pairs.filter(([on, off]) => on && off).length;
+  const wins = pairs.filter(([on, off]) => on && off && (on.stalls < off.stalls || (on.stalls === off.stalls && on.hz > off.hz))).length;
+  const outcome = recorded === 4 ? (wins === 4 ? "keep" : "drop") : null;
+  const brief = (i) => pairs.map((pair) => (pair[i] ? { hz: pair[i].hz, stalls: pair[i].stalls } : null));
+  return { pass: outcome !== null, metrics: { outcome, wins, recorded, medianHz: medianHz(rows), on: brief(0), off: brief(1) } };
+}
+
+export const GATES = {
+  pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
+  throwStalls, restCost, feltOpaque,
+};
 
 function bracket(rows, scenario) {
   const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");

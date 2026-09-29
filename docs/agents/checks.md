@@ -163,11 +163,17 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
   | Seats | Each opponent's `seat-ring` in window points (`measureInWindow` every 250 ms, during this scenario only), against its first sample in the deal's hold; every `seatState` recorded with one `of`, and every ring sampled in each state's own hold | all three rings in the deal's hold, finite and at distinct positions; drift ≤ 0.5 pt per axis | `seatAnchors`: each of `SEAT_COUNT_STATES`, settled 1.5 s, held 1 s |
   | Lamp | Each seat's worst `lampLegibility` ratio (on-move ring ÷ brightest other, `feltOnly` pixels of the felt canvas's snapshot) over one sway period | every seat ≥ `LAMP_FLOOR`, worst ÷ best ≥ `LAMP_SYMMETRY`, `LAMP_SWAY.samples` per seat | `lampVariants`: the four `lamp-*` capture states, settled 4 s, `LAMP_SWAY` 20 snapshots over 8 s |
+  | Throws | `burstStalls` in [throw, throw + 600 ms]; `medianHz`, the median of each second's median frame rate | 0 stalls; ≥ 10 throws, frames in ≥ 80 % of their windows, JS ticks > 0 | `throwStalls`: one bot manche through `driveBots`, a `throw` row and 700 ms of frames per throw |
+  | Rest | `medianHz` and `burstStalls` per `half`, frozen and swaying both reported | every swaying half ≥ 115 Hz, 0 stalls; four pairs | `restCost`: a quiet table, `lampFreeze` 1 then 0, four pairs of 30 s halves |
+  | Felt | Per pair, the opaque half wins on fewer stalls, or as many at a higher `medianHz` | four pairs recorded; `outcome` `keep` when it wins all four, else `drop` | `feltOpaque`: a quiet table, `feltOpaque` on then off, four pairs of 20 s halves |
 
   The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
   next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
-  only the mic hears when the speaker sounds.
-- Running them (about 40 minutes of the phone, untouched):
+  only the mic hears when the speaker sounds. A window's frames reach the recorder at once when
+  it closes, so none may exceed its 5000 rows: 30 s at 120 Hz is 3600. A dropped row fails the
+  gate. The iOS build keeps the worklets frame-rate governor on, as these gates measured it;
+  `tests/tooling/workletsGovernor.test.ts` fails a build that turns it off.
+- Running them (about 50 minutes of the phone, untouched):
   1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
   2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.
   3. Allow the microphone and screen-recording prompts once each.

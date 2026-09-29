@@ -806,6 +806,7 @@ export function GameTable({
     landing: landingSignal,
   });
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
+  useBenchHandle("lampFreeze", rig.freeze);
   const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
   const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
