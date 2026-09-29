@@ -30,8 +30,8 @@ test("the shutdown budget is sized to the manifest's SIGTERM grace", () => {
 
 test("one instance's connections fit the manifest's ceiling", () => {
   const ownership = read("server", "game", "gameOwnership.ts");
-  assert.equal(ownership.match(/new Client\(/g)?.length, 1, "game ownership holds one Client");
-  assert.doesNotMatch(ownership, /new Pool\(/);
+  assert.equal(ownership.match(/\bcreateClient\(/g)?.length, 1, "game ownership holds one Client");
+  assert.doesNotMatch(ownership, /\bcreatePool\(/);
 
   const total = resolvePoolMax(undefined) + SOCKET_ADAPTER_POOL_MAX + 1;
   assert.ok(

@@ -10,7 +10,8 @@
 // way to end up with two owners while believing there is one. Postgres drops a
 // session lock when the connection dies, so a crashed owner releases its rooms
 // with nothing to tune and no timer to get wrong.
-import { Client } from "pg";
+import type { Client } from "pg";
+import { createClient } from "../store/pool.ts";
 import { createHash } from "node:crypto";
 import { logger } from "../http/logger.ts";
 import { activeGames } from "./gameRoom.ts";
@@ -42,12 +43,16 @@ const OWNERSHIP_QUERY_TIMEOUT_MS = 5_000;
  */
 const OWNERSHIP_HEARTBEAT_MS = 15_000;
 
+/** How soon a reclaim that could not reach Postgres, as during its restart, tries again. */
+const OWNERSHIP_RECLAIM_RETRY_MS = 1_000;
+
 /** Rooms this process holds the lock for. */
 const held = new Set<string>();
 
 let client: Client | null = null;
 let connecting: Promise<Client | null> | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+let reclaimRetry: ReturnType<typeof setTimeout> | null = null;
 let closed = false;
 
 /**
@@ -77,17 +82,16 @@ function connect(): Promise<Client | null> {
   if (client) return Promise.resolve(client);
   if (connecting) return connecting;
   connecting = (async () => {
-    const next = new Client({
-      connectionString: process.env.DATABASE_URL,
-      query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-      statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
-    });
-    // Registered before the connect so a failure during it lands here rather
-    // than as an unhandled 'error' event on a client nobody is listening to.
-    next.on("error", (err) => {
-      logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
-      drop(next);
-    });
+    const next = createClient(
+      {
+        query_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
+        statement_timeout: OWNERSHIP_QUERY_TIMEOUT_MS,
+      },
+      (err) => {
+        logger.error({ err }, "Game ownership connection failed — every claimed room is now unowned");
+        drop(next);
+      }
+    );
     try {
       await next.connect();
       // How fast a table can be taken over from an instance that vanished
@@ -132,10 +136,10 @@ function connect(): Promise<Client | null> {
   return connecting;
 }
 
-/** Asks Postgres for the lock, whatever this process already believes. */
-async function takeLock(roomId: string): Promise<boolean> {
+/** Asks Postgres for the lock, whatever this process already believes; null when it cannot ask. */
+async function takeLock(roomId: string): Promise<boolean | null> {
   const c = await connect();
-  if (!c) return false;
+  if (!c) return null;
   try {
     const { rows } = await c.query<{ locked: boolean }>(
       "SELECT pg_try_advisory_lock($1::bigint) AS locked",
@@ -157,11 +161,24 @@ async function takeLock(roomId: string): Promise<boolean> {
  * claimed for the life of the process with no game behind it.
  */
 async function reclaim(): Promise<void> {
+  let unreachable = false;
   for (const roomId of [...held]) {
-    if (await takeLock(roomId)) continue;
+    const taken = await takeLock(roomId);
+    if (taken) continue;
+    if (taken === null) {
+      unreachable = true;
+      continue;
+    }
     held.delete(roomId);
     logger.warn({ roomId }, "Room claimed elsewhere while this instance was disconnected — dropping it");
     onRoomLost(roomId);
+  }
+  if (unreachable && !closed && !reclaimRetry) {
+    reclaimRetry = setTimeout(() => {
+      reclaimRetry = null;
+      void reclaim();
+    }, OWNERSHIP_RECLAIM_RETRY_MS);
+    (reclaimRetry as unknown as { unref?: () => void }).unref?.();
   }
 }
 
@@ -205,6 +222,10 @@ export async function closeOwnership(): Promise<void> {
   if (heartbeat) {
     clearInterval(heartbeat);
     heartbeat = null;
+  }
+  if (reclaimRetry) {
+    clearTimeout(reclaimRetry);
+    reclaimRetry = null;
   }
   // The in-flight connect first, then whatever it left behind: reading `client`
   // before waiting reads it a moment too early, and the connection that arrives

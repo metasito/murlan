@@ -1,4 +1,5 @@
-import { Pool } from "pg";
+import type { Pool } from "pg";
+import { createPool } from "../store/pool.ts";
 import { createAdapter } from "@socket.io/postgres-adapter";
 import { logger } from "../http/logger.ts";
 
@@ -148,8 +149,7 @@ export async function socketAdapterReady(timeoutMs = 5_000): Promise<void> {
  * are never told about each other.
  */
 export function createSocketAdapter() {
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+  const pool = createPool("socket-adapter", {
     max: poolMax(),
     connectionTimeoutMillis: 5_000,
     // Never reap an idle client. The `LISTEN` client is checked out rather than
@@ -159,7 +159,6 @@ export function createSocketAdapter() {
     // holding its clients open costs nothing.
     idleTimeoutMillis: 0,
   });
-  pool.on("error", (err) => logger.error({ err }, "Idle Postgres client error (socket adapter)"));
   adapterPool = pool;
   adapterPoolStats = meterPool(pool);
 

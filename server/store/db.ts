@@ -1,7 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { createPool } from "./pool.ts";
 import * as schema from "../../shared/schema.ts";
-import { logger } from "../http/logger.ts";
 
 /**
  * Upper bound on a single query, server-side and client-side.
@@ -45,8 +44,7 @@ export function resolvePoolMax(raw: string | undefined): number {
 
 const POOL_MAX = resolvePoolMax(process.env.MURLAN_PG_POOL_MAX);
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+export const pool = createPool("app", {
   max: POOL_MAX,
   // Every bound here is a failure mode with a deadline rather than a hang:
   // without them a caller waits forever for a free client, and a single stuck
@@ -56,10 +54,5 @@ export const pool = new Pool({
   statement_timeout: QUERY_TIMEOUT_MS,
   query_timeout: QUERY_TIMEOUT_MS,
 });
-
-// `pg` emits `error` on the Pool when a backend or network failure reaches an
-// *idle* client — no caller is awaiting it, so with no listener here Node
-// treats it as an unhandled 'error' event on an EventEmitter.
-pool.on("error", (err) => logger.error({ err }, "Idle Postgres client error"));
 
 export const db = drizzle(pool, { schema });

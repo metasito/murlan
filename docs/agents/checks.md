@@ -41,7 +41,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 | --- | --- | --- |
 | `5000` | The Express server (`PORT`) | `server/index.ts` |
 | `8081` | Metro (`npx expo start` / `npm start`) | Metro's own default |
-| `5561`, `5562`, `5571`, `5581` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
+| `5561`, `5562`, `5571`, `5581`, `5591`, `5592` | One `tests/integration/` file's own spawned server each | pinned by `tests/tooling/integrationPorts.test.ts` |
 | `5099` | The diagnostics collector the bench posts to | `scripts/diagnostics-collector.mjs` |
 | `5199`+ | Playwright's e2e webServer (`E2E_PORT`) — first free port at/above the base | `tools/ci/e2ePort.mjs`; a leftover is freed by `tools/loop/reap.mjs` |
 | `45432`+ | The dev-stack's disposable Postgres (`MURLAN_DEV_PG_PORT`) — ask `dev-stack env`, don't assume 45432 | `scripts/dev-stack.mjs`, `scripts/devStackPort.mjs` |
