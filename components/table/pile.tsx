@@ -22,6 +22,7 @@ import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
+import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
 import { readFlightFromDom } from "./flightTrace";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
@@ -77,8 +78,9 @@ export function FlyingCards({ cards, flight, landing, signal, bombClock, scale =
   });
   const started = useCallback((k: string, at: number, end: number) => on.current.onStart?.(k, at, end), []);
   const ended = useCallback((k: string) => on.current.onEnd(k), []);
-  const touched = useCallback((k: string) => {
+  const touched = useCallback((k: string, at: number) => {
     traceOnset("moment", "landing");
+    if (DIAGNOSTICS) diag({ k: "trigger", t: at, name: "flightContact" });
     on.current.onContact?.(k);
   }, []);
   const clock = useFlightClock(signal, started, touched, ended);
