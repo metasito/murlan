@@ -8,8 +8,8 @@
 // to reach it without playing to it — which is what this list and `app/capture.tsx`
 // are for.
 //
-// The list is the contract between the two: `tests/e2e/lampSeats.spec.ts` walks
-// it on web, `app/capture.tsx` walks it on the device, so a capture and a web
+// The lists are the contract between the two: `tests/e2e/lampSeats.spec.ts` and `seatsDoNotMove.spec.ts`
+// walk them on web, `app/capture.tsx` on the device, so a capture and a web
 // run are of the same states rather than of two similar ones.
 //
 // Pure on purpose: the state a capture is of is a value, testable without a
@@ -47,6 +47,8 @@ export interface CaptureState {
   side: "bottom" | "top" | "left" | "right";
   /** A combination already on the felt, so the pile draws under the lamp. */
   pile: boolean;
+  /** What each opponent holds; "out" has finished the manche. Absent, every seat holds the whole deal. */
+  counts?: Readonly<Record<"right" | "top" | "left", number | "out">>;
 }
 
 /**
@@ -99,8 +101,26 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
   },
 ];
 
+const countState = (id: string, label: string, counts: CaptureState["counts"]): CaptureState => ({
+  id,
+  label,
+  playerCount: 4,
+  turn: CAPTURE_VIEWER_SEAT,
+  side: "bottom",
+  pile: false,
+  counts,
+});
+
+/** Hands shrinking and a seat going out, the deal first: no seat ring and not the pile may move between them. */
+export const SEAT_COUNT_STATES: readonly CaptureState[] = [
+  countState("counts-13-13-13", "The deal — every opponent holds 13", { right: 13, top: 13, left: 13 }),
+  countState("counts-2-13-2", "Both side seats down to 2", { right: 2, top: 13, left: 2 }),
+  countState("counts-2-1-2", "The top seat down to 1, the sides to 2", { right: 2, top: 1, left: 2 }),
+  countState("counts-top-out", "The top seat out, its trophy on the ring", { right: 13, top: "out", left: 13 }),
+];
+
 export function captureStateById(id: string | undefined): CaptureState | null {
-  return CAPTURE_STATES.find((s) => s.id === id) ?? null;
+  return [...CAPTURE_STATES, ...SEAT_COUNT_STATES].find((s) => s.id === id) ?? null;
 }
 
 /**
@@ -116,6 +136,14 @@ function hands(deck: Card[], playerCount: number): Card[][] {
   return Array.from({ length: playerCount }, (_, seat) =>
     deck.filter((_c, i) => i % playerCount === seat)
   );
+}
+
+/** Where `seatDirection` seats a four-seat table from the viewer's chair; `lib/` may not import it. */
+const COUNT_SEAT = { right: 1, top: 2, left: 3 } as const;
+
+function heldAt(state: CaptureState, seat: number): number | "out" | undefined {
+  const side = (Object.keys(COUNT_SEAT) as (keyof typeof COUNT_SEAT)[]).find((s) => COUNT_SEAT[s] === seat);
+  return side && state.counts ? state.counts[side] : undefined;
 }
 
 /**
@@ -153,13 +181,20 @@ export function captureGameState(state: CaptureState): GameState {
   const pile = state.pile ? takePair(deck) : null;
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
+  const rankings: string[] = [];
 
-  const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => ({
-    id: `capture_${seat}`,
-    name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : BOTS[seat - 1],
-    hand: dealt[seat],
-    type: seat === CAPTURE_VIEWER_SEAT ? "human" : "ai",
-  }));
+  const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
+    const id = `capture_${seat}`;
+    const held = heldAt(state, seat);
+    if (held === "out") rankings.push(id);
+    return {
+      id,
+      name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : BOTS[seat - 1],
+      hand: held === "out" ? [] : dealt[seat].slice(0, held),
+      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "ai",
+      ...(held === "out" && { finishPosition: rankings.length }),
+    };
+  });
 
   return {
     players,
@@ -170,7 +205,7 @@ export function captureGameState(state: CaptureState): GameState {
     gameMode: "free_for_all",
     roundWinner: null,
     gameOver: false,
-    rankings: [],
+    rankings,
     // Past the opening, so nothing waits on the 3 of spades and the table draws
     // as a hand in progress rather than a first move.
     firstPlayMade: true,

@@ -16,8 +16,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { seatLabelH, seatGap, SEAT_DISC, HAND_ZONE_H } from "../../components/seatLayout.ts";
-import { computeTableFrame, surplusHeight } from "../../components/tableFrame.ts";
+import { HAND_ZONE_H } from "../../components/seatLayout.ts";
+import { computeTableFrame, surplusHeight, topBandHeight } from "../../components/tableFrame.ts";
 import { cardScale, CARD_H, HAND_SCALE } from "../../components/cardFaceModel.ts";
 
 /** The ticket's own list: two phones, a large phone, and two tablets. */
@@ -32,16 +32,14 @@ const VIEWPORTS = [
 const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
 
 /**
- * The band, from the same three pieces `flightOrigin` derives it from: what is
- * left of the content height once the top seat's column and the hand zone have
- * taken theirs. The top fan is left out deliberately — it is the one piece that
- * varies with how many cards an opponent holds, and a proportion that only
- * holds at one hand size is not a proportion.
+ * The band, from the same pieces `anchorPoints` derives it from: what is left of
+ * the content height once the top band (sized for the drawn cap, never a count)
+ * and the hand zone have taken theirs.
  */
 function band(width: number, height: number) {
   const scale = cardScale(Math.min(width, height));
   const frame = computeTableFrame({ width, height, insets: NO_INSETS, scale });
-  const topSectionH = seatLabelH(scale) + SEAT_DISC * scale + seatGap(scale);
+  const topSectionH = topBandHeight(scale);
   const handZoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), frame.bottomPad);
   // The same two edges GameTable draws the table between: `frame.tableTop`,
   // and `frame.surplus` up from the window's own bottom. Not `tableBottom` —

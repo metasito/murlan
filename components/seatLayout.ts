@@ -2,8 +2,6 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { BACK_SCALE } from "./cardFaceModel.ts";
-import { seatFanArc } from "./fanGeometry.ts";
 import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -239,30 +237,6 @@ export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
-}
-
-/**
- * A side seat's own slot height: its ring, or the fan beside it when that is
- * taller. The fan is turned a quarter there, so what it occupies vertically is
- * the arc's width — components/table/seats.tsx `CardFan`, `wrapH`.
- */
-export function sideSlotHeight(scale: number, displayedCount: number): number {
-  const ring = SEAT_DISC * scale;
-  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.left);
-  if (drawn <= 0) return ring;
-  return Math.max(ring, seatFanArc(drawn, scale * BACK_SCALE).bounds.w);
-}
-
-/**
- * The top seat's own fan height for `displayedCount` backs.
- *
- * Exported for `pileGeometry` (components/flightPhysics.ts), its only caller,
- * which serves both `flightOrigin` and `exchangeFlight`.
- */
-export function topFanHeight(scale: number, displayedCount: number): number {
-  const drawn = Math.min(displayedCount, FAN_DRAWN_CARDS.top);
-  if (drawn <= 0) return 0;
-  return seatFanArc(drawn, scale * BACK_SCALE).bounds.h;
 }
 
 /**

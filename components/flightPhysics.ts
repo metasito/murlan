@@ -5,17 +5,9 @@
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { Spacing, Trauma } from "../lib/tokens.ts";
-import {
-  HAND_ZONE_H,
-  SEAT_DISC,
-  seatDirection,
-  seatGap,
-  seatLabelH,
-  sideSlotHeight,
-  topFanHeight,
-  viewerOwnsSeat,
-} from "./seatLayout.ts";
+import { HAND_ZONE_H, SEAT_DISC, seatDirection, seatLabelH, viewerOwnsSeat } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
+import { sideSlotHeight, topBandHeight } from "./tableFrame.ts";
 import { handCountOf } from "../shared/protocol.ts";
 import { FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
 import { fanPoint } from "./fanGeometry.ts";
@@ -332,11 +324,11 @@ export function sparkOffset(i: number, scale: number): SparkOffset {
   };
 }
 
-// ─── Flight origin ─────────────────────────────────────────────────────────────
+// ─── Seat anchors ──────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
-interface FlightOriginInput {
-  dir: FlyDirection;
+
+export type TableGeometry = {
   scale: number;
   windowWidth: number;
   windowHeight: number;
@@ -347,18 +339,42 @@ interface FlightOriginInput {
   surplus: number;
   /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
   handZoneH: number;
-  /**
-   * The top seat's hand count — needed
-   * because the pile sits in the space *below* the top seat, whichever seat
-   * is actually throwing. Ignored when `dir` is not "top".
-   */
-  topDisplayedCount: number;
-  /**
-   * …and the throwing side seat's, for the same reason: a side seat's slot is
-   * as tall as its fan, and the slot's own centre is where its ring sits.
-   * Ignored when `dir` is not "left" or "right".
-   */
-  sideDisplayedCount: number;
+};
+
+export type SeatPlace = Omit<SeatGeometry, "players" | "opponents" | "viewerSeat">;
+
+export function tableGeometry(place: SeatPlace): TableGeometry {
+  return {
+    scale: place.scale,
+    windowWidth: place.windowWidth,
+    windowHeight: place.windowHeight,
+    tableLeft: place.tableLeft,
+    tableRight: place.tableRight,
+    tableTop: place.tableTop,
+    surplus: place.surplus,
+    handZoneH: HAND_ZONE_H(place.handCardH, place.bottomPad),
+  };
+}
+
+/**
+ * Each seat's point and the pile's centre, in window points: a ring's centre, or the hand zone's
+ * before its lift. The bands are the drawn cap's (`topBandHeight`, `sideSlotHeight`), laid out by
+ * GameTable.tsx's `table-top-section` and side sections, which is why no count reaches here.
+ */
+export function anchorPoints(g: TableGeometry): Record<FlyDirection | "pile", { x: number; y: number }> {
+  const ring = SEAT_DISC * g.scale;
+  const midTop = g.tableTop + topBandHeight(g.scale);
+  const tableFloor = g.windowHeight - g.surplus;
+  const midH = tableFloor - midTop - g.handZoneH;
+  const x = g.tableLeft + (g.windowWidth - g.tableLeft - g.tableRight) / 2;
+  const sideY = midTop + sideSlotHeight(g.scale) / 2;
+  return {
+    pile: { x, y: midTop + midH / 2 },
+    top: { x, y: g.tableTop + seatLabelH(g.scale) + ring / 2 },
+    bottom: { x, y: tableFloor - g.handZoneH / 2 },
+    left: { x: g.tableLeft + Spacing.sm + ring / 2, y: sideY },
+    right: { x: g.windowWidth - g.tableRight - Spacing.sm - ring / 2, y: sideY },
+  };
 }
 
 /**
@@ -367,66 +383,9 @@ interface FlightOriginInput {
  * zero, so the throw lands exactly where `PlayedPile` then redraws the same
  * cards.
  */
-/**
- * Where the pile's own centre lands, and the band the seats share it with.
- * Every delta on this table is measured from that point, so it is derived once
- * and read by both the throw's origin and the exchange's own geometry.
- */
-function pileGeometry(input: Omit<FlightOriginInput, "dir" | "sideDisplayedCount">): {
-  centerX: number;
-  centerY: number;
-  tableFloor: number;
-  midH: number;
-} {
-  const ringSize = SEAT_DISC * input.scale;
-  // The column the top seat's label, ring and fan stack in — see
-  // components/table/seats.tsx `topOppSlot`. The pile sits in whatever
-  // vertical space that column leaves, whichever seat is actually throwing.
-  const topSectionH =
-    seatLabelH(input.scale) +
-    ringSize +
-    (input.topDisplayedCount > 0
-      ? seatGap(input.scale) + topFanHeight(input.scale, input.topDisplayedCount)
-      : 0);
-  const tableFloor = input.windowHeight - input.surplus;
-  const midH = tableFloor - input.tableTop - topSectionH - input.handZoneH;
-  return {
-    centerX: input.tableLeft + (input.windowWidth - input.tableLeft - input.tableRight) / 2,
-    centerY: input.tableTop + topSectionH + midH / 2,
-    tableFloor,
-    midH,
-  };
-}
-
-export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number } {
-  const { dir, scale } = input;
-
-  const ringSize = SEAT_DISC * scale;
-  const { centerX: pileCenterX, centerY: pileCenterY, tableFloor, midH } = pileGeometry(input);
-
-  if (dir === "bottom") {
-    // The hand zone runs flush to the table's own bottom edge (GameTable.tsx
-    // `handSection`, a flex sibling of the pile's own midSection), so its
-    // vertical centre sits `handZoneH / 2` above that edge.
-    const handCenterY = tableFloor - input.handZoneH / 2;
-    return { dx: 0, dy: handCenterY - pileCenterY };
-  }
-
-  if (dir === "top") {
-    const ringCenterY = input.tableTop + seatLabelH(scale) + ringSize / 2;
-    return { dx: 0, dy: ringCenterY - pileCenterY };
-  }
-
-  // A side seat's ring sits flush against the rail (or the opposite edge), and
-  // its column is anchored to the top of the mid band (components/table/
-  // chrome.tsx `sideSection`, `alignSelf`), so the ring rides the slot's own
-  // centre while the pile rides the band's.
-  const ringCenterX =
-    dir === "left"
-      ? input.tableLeft + Spacing.sm + ringSize / 2
-      : input.windowWidth - input.tableRight - Spacing.sm - ringSize / 2;
-  const slotH = sideSlotHeight(scale, input.sideDisplayedCount);
-  return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
+export function flightOrigin(input: TableGeometry & { dir: FlyDirection }): { dx: number; dy: number } {
+  const anchors = anchorPoints(input);
+  return { dx: anchors[input.dir].x - anchors.pile.x, dy: anchors[input.dir].y - anchors.pile.y };
 }
 
 /**
@@ -689,7 +648,10 @@ export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
  */
 export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap<string, CardFrom>): ThrownPlay {
   const { combo, playedBy, players } = input;
-  const { dir, origin, pile } = seatOrigin(input, playedBy);
+  const dir = seatDirection(playedBy, input.viewerSeat, players.length);
+  const anchors = anchorPoints(tableGeometry(input));
+  const pile = anchors.pile;
+  const origin = { dx: anchors[dir].x - pile.x, dy: anchors[dir].y - pile.y };
   const thrower = players[playedBy];
   let from: CardFrom[];
   if (dir === "bottom") {
@@ -700,7 +662,7 @@ export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap
         : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
     });
   } else {
-    const fan = fanPoint(seatPoint(input, playedBy), dir, input.scale, thrower ? handCountOf(thrower) : 0);
+    const fan = fanPoint(origin, dir, input.scale, thrower ? handCountOf(thrower) : 0);
     from = combo.cards.map(() => ({ ...fan, scale: FAN_CARD_SCALE }));
   }
   return {
@@ -714,37 +676,8 @@ export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap
 }
 
 /** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
-export function seatPoint(input: SeatGeometry, seat: number): { dx: number; dy: number } {
-  return seatOrigin(input, seat).origin;
-}
-
-function seatOrigin(
-  input: SeatGeometry,
-  seat: number
-):{ dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
-  const { players, opponents } = input;
-  const dir = seatDirection(seat, input.viewerSeat, players.length);
-
-  const topPlayer = opponents.top?.player;
-  const topDisplayedCount = topPlayer ? handCountOf(topPlayer) : 0;
-  const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
-  const sideDisplayedCount = sidePlayer ? handCountOf(sidePlayer) : 0;
-
-  const geometry: FlightOriginInput = {
-    dir,
-    scale: input.scale,
-    windowWidth: input.windowWidth,
-    windowHeight: input.windowHeight,
-    tableLeft: input.tableLeft,
-    tableRight: input.tableRight,
-    tableTop: input.tableTop,
-    surplus: input.surplus,
-    handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
-    topDisplayedCount,
-    sideDisplayedCount,
-  };
-  const { centerX, centerY } = pileGeometry(geometry);
-  return { dir, origin: flightOrigin(geometry), pile: { x: centerX, y: centerY } };
+export function seatPoint(place: SeatPlace, dir: FlyDirection): { dx: number; dy: number } {
+  return flightOrigin({ ...tableGeometry(place), dir });
 }
 
 /** Both Jokers, red first: the fixture's `jokers()` lays them 18 pt either side of the pile's centre. */
@@ -761,7 +694,8 @@ export function readExchangeLegs(
 ): { receive: LegPoints; give: LegPoints; jokers: LegPoints[] } {
   const { trade } = input;
   const end = (seat: number, card?: Card) => {
-    const { dir, origin } = seatOrigin(input, seat);
+    const dir = seatDirection(seat, input.viewerSeat, input.players.length);
+    const origin = seatPoint(input, dir);
     if (dir === "bottom") {
       const own = card && handOrigins?.get(card.id);
       const at = own ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy } : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };

@@ -29,6 +29,7 @@ import {
   captureGameState,
   captureStateById,
   nextTurn,
+  SEAT_COUNT_STATES,
 } from "@/lib/captureStates";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import type { GameState } from "@/lib/game/gameEngine";
@@ -117,7 +118,7 @@ function CaptureList() {
       <Text style={styles.title}>{COPY.title}</Text>
       <Text style={styles.body}>{COPY.body}</Text>
       <ScrollView contentContainerStyle={styles.list}>
-        {CAPTURE_STATES.map((state) => (
+        {[...CAPTURE_STATES, ...SEAT_COUNT_STATES].map((state) => (
           <Pressable
             key={state.id}
             accessibilityRole="button"

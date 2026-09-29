@@ -489,9 +489,8 @@ export const sharedTableStyles = StyleSheet.create({
     overflow: "visible",
   },
   tableContent: { flex: 1, flexDirection: "column" },
-  // No fixed height: the top seat is the tallest thing on the table after the
-  // hand, and a band guessed for it either clips the fan or spends felt the
-  // field needed. What is left over is the mid band's, by construction.
+  // Its height is `topBandHeight` (components/tableFrame.ts), passed in: sized for the drawn cap,
+  // so the band below it, and the pile in it, stay put as the top seat's hand shrinks.
   topSection: {
     alignItems: "center",
     justifyContent: "flex-start",
@@ -503,10 +502,12 @@ export const sharedTableStyles = StyleSheet.create({
   // inward — centred, half of it lands off the side of the screen and takes
   // the avatar with it.
   // `alignSelf`, not `justifyContent`: the mid band is a row, so up-and-down is
-  // its cross axis and only `alignSelf` moves a seat along it.
+  // its cross axis and only `alignSelf` moves a seat along it. Inside, the seat
+  // centres in a slot `sideSlotHeight` tall (components/tableFrame.ts), passed in.
   sideSection: {
     width: SIDE_SECTION_W,
     alignSelf: "flex-start",
+    justifyContent: "center",
     paddingHorizontal: Spacing.sm,
   },
   sideSectionLeft: { alignItems: "flex-start" },

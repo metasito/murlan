@@ -12,8 +12,7 @@ export const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right
 /**
  * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
  * (components/table/seats.tsx) performs for its wrapper box, and that
- * `sideSlotHeight` and `topFanHeight` (seatLayout.ts) perform for theirs, so none of the
- * three can disagree with what the fan actually draws.
+ * `drawnFanBounds` performs for the bands, so none can disagree with what the fan actually draws.
  */
 export function seatFanArc(count: number, backScale: number) {
   const backW = CARD_BACK_W(backScale);
@@ -27,6 +26,15 @@ export function seatFanArc(count: number, backScale: number) {
     flip: true,
   });
   return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
+}
+
+/** The top fan's height and a side fan's vertical extent, each at its drawn cap. */
+export function drawnFanBounds(scale: number): { topH: number; sideH: number } {
+  const backScale = scale * BACK_SCALE;
+  return {
+    topH: seatFanArc(FAN_DRAWN_CARDS.top, backScale).bounds.h,
+    sideH: seatFanArc(Math.max(FAN_DRAWN_CARDS.left, FAN_DRAWN_CARDS.right), backScale).bounds.w,
+  };
 }
 
 /** The fan's centre, from the pile, given its ring's (`seatPoint`), and the angle it is drawn at. */

@@ -14,9 +14,58 @@ import {
   captureGameState,
   captureStateById,
   nextTurn,
+  SEAT_COUNT_STATES,
 } from "../../lib/captureStates.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
-import { createDeck } from "../../lib/game/gameEngine.ts";
+import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
+
+type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
+
+function named(id: string): Named {
+  const held = /^counts-(\d+)-(\d+)-(\d+)$/.exec(id);
+  if (held) return { right: Number(held[1]), top: Number(held[2]), left: Number(held[3]) };
+  const out = /^counts-(right|top|left)-out$/.exec(id);
+  assert.ok(out, `${id} names no counts`);
+  return { [out[1]]: "out" };
+}
+
+describe("seat count states", () => {
+  test("each deals what its id names, read right, top, left from the viewer's chair", () => {
+    for (const state of SEAT_COUNT_STATES) {
+      const game = captureGameState(state);
+      const want = named(state.id);
+      assert.ok(Object.keys(want).length > 0, state.id);
+      game.players.forEach((p, seat) => {
+        const dir = seatDirection(seat, CAPTURE_VIEWER_SEAT, game.players.length);
+        if (dir === "bottom") return;
+        const count = want[dir];
+        if (count === "out") {
+          assert.equal(p.hand.length, 0, `${state.id}: the ${dir} seat still holds cards`);
+          assert.notEqual(p.finishPosition, undefined, `${state.id}: the ${dir} seat has no place`);
+          assert.ok(game.rankings.includes(p.id), `${state.id}: the ${dir} seat is not ranked`);
+        } else if (count !== undefined) {
+          assert.equal(p.hand.length, count, `${state.id}: the ${dir} seat`);
+          assert.equal(p.finishPosition, undefined, `${state.id}: the ${dir} seat`);
+        } else {
+          assert.ok(p.hand.length > 0, `${state.id}: the ${dir} seat, not named, holds nothing`);
+        }
+      });
+      const ids = game.players.flatMap((p) => p.hand.map((c) => c.id));
+      assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
+    }
+  });
+
+  test("the deal comes first", () => {
+    const deal = Math.min(...dealCards(4).hands.map((h) => h.length));
+    assert.deepEqual(named(SEAT_COUNT_STATES[0].id), { right: deal, top: deal, left: deal });
+  });
+
+  test("no id is shared with a lamp state, and each is reachable by id", () => {
+    const ids = [...CAPTURE_STATES, ...SEAT_COUNT_STATES].map((s) => s.id);
+    assert.equal(new Set(ids).size, ids.length, "two capture states share an id");
+    for (const state of SEAT_COUNT_STATES) assert.deepEqual(captureStateById(state.id), state);
+  });
+});
 
 describe("capture states", () => {
   test("every lamp position is covered", () => {

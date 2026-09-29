@@ -17,6 +17,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
 import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
+import { seatDirection } from "@/components/seatLayout";
 import { dealArrivalsMs, dealEndMs, dealFlightsMs, dealLeaveMs } from "@/lib/game/dealTimeline";
 
 /** When each of a seat's cards lands, on the deal's own clock. */
@@ -61,7 +62,7 @@ export function useDeal({
     key,
     offsetMs,
     counts: players.map(handCountOf),
-    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(geometry, seat))),
+    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(geometry, seatDirection(seat, viewerSeat, players.length)))),
   });
   const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
   const [dealtFresh, setDealtFresh] = useState(fresh);
@@ -85,9 +86,10 @@ export function useDeal({
   const onLanded = useCallback(() => setDeal(null), []);
   const cards: DealtCard[] =
     deal && arrivals
-      ? [opponents.top, opponents.left, opponents.right].flatMap((o) => {
+      ? (["top", "left", "right"] as const).flatMap((side) => {
+          const o = opponents[side];
           if (!o) return [];
-          const to = seatPoint(geometry, o.seat);
+          const to = seatPoint(geometry, side);
           return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
             key: `${deal.key}-${o.seat}-${round}`,
             leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),

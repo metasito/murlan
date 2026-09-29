@@ -52,7 +52,7 @@ import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightCloc
 import { comboKey, JOKERS, NO_STAGES, readExchange, readTradeSeats, tradeKey, type TradeStages } from "@/components/flightPhysics";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
-import { computeTableFrame } from "@/components/tableFrame";
+import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
 import {
   BASE_SHORT_EDGE,
@@ -1202,7 +1202,7 @@ export function GameTable({
         >
           <A11yVeil veil={behindVeil}>
           <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
-            <View testID="table-top-section" style={sharedTableStyles.topSection}>
+            <View testID="table-top-section" style={[sharedTableStyles.topSection, { height: topBandHeight(scale) }]}>
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
@@ -1222,13 +1222,12 @@ export function GameTable({
               )}
             </View>
 
-            {/* The band left over between the top seat and the hand. The seats
+            {/* The band left over between the top band and the hand. The seats
                 and the field centre in what is actually there rather than at a
-                guessed percentage, so a taller top seat takes it from the field
-                instead of overlapping it. */}
+                guessed percentage. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
             <View style={[sharedTableStyles.midSection, (flights.length > 0 || trade !== null) && { zIndex: Layer.moment }]}>
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
+              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
@@ -1335,7 +1334,7 @@ export function GameTable({
                 )}
               </View>
 
-              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight]}>
+              <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight, { height: sideSlotHeight(scale) }]}>
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}

@@ -8,9 +8,13 @@ import {
   FIELD_WIDTH_SHARE,
   HAND_WIDTH_SHARE,
   HAND_ZONE_GAP,
+  SEAT_DISC,
   SIDE_SECTION_W,
   actionBtnSize,
+  seatGap,
+  seatLabelH,
 } from "./seatLayout.ts";
+import { drawnFanBounds } from "./fanGeometry.ts";
 
 // ─── The table's own pads ─────────────────────────────────────────────────────
 //
@@ -168,6 +172,21 @@ export function computeTableFrame(opts: {
     handRoomW: Math.min(handAvailW, opts.width * HAND_WIDTH_SHARE),
     fieldRoomW: Math.min(tableW - SIDE_SECTION_W * 2, opts.width * FIELD_WIDTH_SHARE),
   };
+}
+
+// ─── Seat bands ───────────────────────────────────────────────────────────────
+//
+// Sized for the drawn cap, never for a count: a seat's place, and the pile's between them, must
+// not move as a hand shrinks or a seat goes out.
+
+/** The top seat's column: its label, ring and fan (components/table/seats.tsx `TopOppSlot`). */
+export function topBandHeight(scale: number): number {
+  return seatLabelH(scale) + SEAT_DISC * scale + seatGap(scale) + drawnFanBounds(scale).topH;
+}
+
+/** A side seat's slot: its ring, or its turned fan when that is taller; the ring centres in it. */
+export function sideSlotHeight(scale: number): number {
+  return Math.max(SEAT_DISC * scale, drawnFanBounds(scale).sideH);
 }
 
 /**
