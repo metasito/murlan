@@ -1,10 +1,14 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
-import { renderHook } from "@testing-library/react-native";
+import { act, render, renderHook } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { makeMutable } from "react-native-reanimated";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import { Hold } from "@/lib/tokens";
+import type { Combination } from "@/lib/game/gameEngine";
 import { bootFeedback, ctxAt, haptics, sounds, startsOf } from "./helpers/feedback";
-import { farthest, frameOfFirst, throwPair, useFeedbackOnTimeline } from "./helpers/landing";
+import { card, farthest, frameOfFirst, PAIR, tableAfter, throwPair, useFeedbackOnTimeline } from "./helpers/landing";
+
+const SINGLE: Combination = { type: "single", cards: [card("c", "4", "hearts")], strength: 4 };
 
 const turns = () => sounds().filter((s) => s === "turn").length;
 const lights = () => haptics().filter((h) => h === "impactLight").length;
@@ -77,6 +81,21 @@ describe("the turn-arrival cue", () => {
     const { frame, now } = await frameOfFirst(view, () => farthest(view) === 0);
     expect(startsOf("turn")).toHaveLength(1);
     expect(Math.abs(startsOf("turn")[0] - ctxAt(now[frame] + Hold.land))).toBeLessThanOrEqual(0.017);
+    await view.unmount();
+  });
+
+  it("keeps the seats on the thrower until the card that handed the turn over has come to rest", async () => {
+    const view = await render(tableAfter({ by: 3, combo: PAIR, turn: 1 }));
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+    const topLit = () => StyleSheet.flatten(view.getByTestId("top-seat").props.style).opacity === undefined;
+    expect(topLit()).toBe(false);
+    await act(async () => view.rerender(tableAfter({ by: 1, combo: SINGLE, turn: 2 })));
+    expect(topLit()).toBe(false);
+    const { frame, drawn } = await frameOfFirst(view, topLit);
+    expect(drawn[0]).toBeGreaterThan(1);
+    expect(drawn[frame]).toBe(0);
     await view.unmount();
   });
 });

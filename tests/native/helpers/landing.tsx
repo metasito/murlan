@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { useEffect } from 'react';
-import { useTableFeedback } from '@/components/useTableFeedback';
+import { useShownTurn, useTableFeedback } from '@/components/useTableFeedback';
 import { useTableTimeline } from '@/components/table/tableTimeline';
 import { act, render, type RenderResult } from '@testing-library/react-native';
 import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
@@ -50,11 +50,11 @@ export function throwPair(by = 3) {
   return render(tableAfter({ by, combo: PAIR }));
 }
 
-/** That table as an element, for `rerender`: `by` threw `combo` and seat 0 is on move. */
-export function tableAfter({ by, combo, passCount = 0 }: { by: number; combo: Combination; passCount?: number }) {
+/** That table as an element, for `rerender`: `by` threw `combo` and seat `turn` is on move. */
+export function tableAfter({ by, combo, passCount = 0, turn = 0 }: { by: number; combo: Combination; passCount?: number; turn?: number }) {
   const state: GameState = {
     players: [0, 1, 2, 3].map(seat),
-    currentTurnIndex: 0,
+    currentTurnIndex: turn,
     lastPlayedCombination: combo,
     lastPlayedBy: by,
     passCount,
@@ -81,11 +81,12 @@ export function tableAfter({ by, combo, passCount = 0 }: { by: number; combo: Co
 }
 
 /** `useTableFeedback` on its own timeline, flushed after it as GameTable's last hook does. */
-export function useFeedbackOnTimeline(state: Omit<Parameters<typeof useTableFeedback>[0], 'timeline'>) {
+export function useFeedbackOnTimeline({ currentTurnIndex = 0, ...state }: Omit<Parameters<typeof useTableFeedback>[0], 'timeline'> & { currentTurnIndex?: number }) {
   const timeline = useTableTimeline();
   const feedback = useTableFeedback({ ...state, timeline });
+  const shownTurnIndex = useShownTurn(currentTurnIndex, timeline);
   useEffect(() => timeline.flush());
-  return feedback;
+  return { ...feedback, shownTurnIndex };
 }
 
 /** How far the farthest flying card is drawn from its slot. */

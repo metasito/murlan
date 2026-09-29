@@ -53,10 +53,10 @@ function stepper(started: SharedValue<number>, elapsed: SharedValue<number>, lan
   };
 }
 
-/** Reduced motion skips the travel: the card is shown at its rest for the leg, then gone. */
+/** Reduced motion skips the travel: the card is shown at its rest from its lead. */
 function timeAt(t: number, clock: LegClock, reduceMotion: boolean): number {
   "worklet";
-  return reduceMotion && t >= clock.lead && t < clock.end ? clock.lead + REST_AT_MS : t;
+  return reduceMotion && t >= clock.lead ? clock.lead + REST_AT_MS : t;
 }
 
 function LegCard({ card, leg, clock, elapsed, scale, reduceMotion, testID }: {
@@ -64,7 +64,8 @@ function LegCard({ card, leg, clock, elapsed, scale, reduceMotion, testID }: {
 }) {
   const w = CARD_W(scale * FIELD_SCALE);
   const h = CARD_H(scale * FIELD_SCALE);
-  const pose = useDerivedValue(() => clock.pose(timeAt(elapsed.value, clock, reduceMotion), leg));
+  // Held at its last pose past its own end: the hand draws it only once both legs have landed.
+  const pose = useDerivedValue(() => clock.pose(Math.min(timeAt(elapsed.value, clock, reduceMotion), clock.end - 1), leg));
   const style = useAnimatedStyle(() => {
     const p = pose.value;
     return {

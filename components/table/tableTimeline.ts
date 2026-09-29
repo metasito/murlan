@@ -14,6 +14,8 @@ export interface TableTimeline {
   inFlight: boolean;
   moment(m: Moment, anchor?: Anchor, afterMs?: number): void;
   awaitFlight(key: string): void;
+  /** Read at call time, so an effect later in the same commit sees the throw `awaitFlight` just took. */
+  pending(): boolean;
   flightStarted(key: string, landsAt: number, endsAt: number): void;
   flush(): void;
 }
@@ -59,6 +61,7 @@ export function useTableTimeline(): TableTimeline {
     awaiting.current = key;
     setClock({ times: null, awaiting: key });
   }, []);
+  const pending = useCallback(() => awaiting.current !== null, []);
   const flightStarted = useCallback(
     (key: string, landsAt: number, endsAt: number) => {
       const times = { landsAt, handsOffAt: endsAt + Hold.land };
@@ -88,7 +91,7 @@ export function useTableTimeline(): TableTimeline {
   }, [times]);
   const inFlight = clock.awaiting !== null || (times !== null && landedAt !== times.landsAt);
   return useMemo(
-    () => ({ landsAt: times?.landsAt ?? null, handsOffAt: times?.handsOffAt ?? null, inFlight, moment, awaitFlight, flightStarted, flush }),
-    [times, inFlight, moment, awaitFlight, flightStarted, flush]
+    () => ({ landsAt: times?.landsAt ?? null, handsOffAt: times?.handsOffAt ?? null, inFlight, moment, awaitFlight, pending, flightStarted, flush }),
+    [times, inFlight, moment, awaitFlight, pending, flightStarted, flush]
   );
 }

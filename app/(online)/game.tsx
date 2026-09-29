@@ -296,7 +296,6 @@ export default function OnlineGameScreen() {
   return (
     <GameTable
       gameState={gameState}
-      catchUp={reconnectNotice !== null}
       matchOver={matchState.over}
       matchWinners={matchState.winners}
       handScores={handScores}

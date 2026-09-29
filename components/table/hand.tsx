@@ -53,7 +53,6 @@ export function useHandArrival({
   announcement,
   landed,
   viewerSeat,
-  reduceMotion,
 }: {
   hand: Card[];
   exchange: ExchangeView;
@@ -61,7 +60,6 @@ export function useHandArrival({
   /** The exchange legs have landed: `ExchangeLegs` reports it from their own clock. */
   landed: boolean;
   viewerSeat: number | null;
-  reduceMotion: boolean;
 }): { handOnTable: Card[]; withheldId?: string; arrivingIndex?: number; descendingId?: string } {
   const { withheldId, arrivingIndex, descendingId } = readHandArrival({
     hand,
@@ -69,7 +67,6 @@ export function useHandArrival({
     announce: announcement?.visible === true ? (announcement.data ?? null) : null,
     viewerSeat,
     landed,
-    reduceMotion,
   });
   const handOnTable = useSameCards(
     withheldId === undefined ? hand : hand.filter((c) => c.id !== withheldId)

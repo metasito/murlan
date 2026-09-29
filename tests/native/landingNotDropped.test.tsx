@@ -38,4 +38,17 @@ describe('two plays in the air at once', () => {
     expect(jest.mocked(landDust).mock.calls.map(([cards]) => cards)).toEqual([1, 2]);
     await view.unmount();
   });
+
+  it('lands a play repeated after the last one was cut short in its wobble', async () => {
+    const view = await render(tableAfter({ by: 3, combo: PAIR }));
+    await frames(30);
+    await act(async () => view.rerender(tableAfter({ by: 0, combo: SINGLE })));
+    await frames(60);
+    await act(async () => view.rerender(tableAfter({ by: 3, combo: PAIR })));
+    await frames(5);
+    await act(async () => view.rerender(tableAfter({ by: 1, combo: SINGLE })));
+    await frames(60);
+    expect(jest.mocked(landDust).mock.calls.map(([cards]) => cards)).toEqual([2, 1, 2, 1]);
+    await view.unmount();
+  });
 });

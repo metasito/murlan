@@ -1332,7 +1332,6 @@ describe("arrivingCard", () => {
         announce: null,
         viewerSeat: 1,
         landed: false,
-        reduceMotion: false,
         ...over,
       });
 
@@ -1375,22 +1374,6 @@ describe("arrivingCard", () => {
       const at = read({ announce, landed: true });
       assert.equal(at.withheldId, undefined, "the hand draws it the moment it lands");
       assert.equal(at.descendingId, RECEIVED.id, "…and it travels in on that same render");
-    });
-
-    // Nothing flies, so nothing is ever missing from the row.
-    test("reduced motion holds nothing back for a flight", () => {
-      const at = read({ announce, reduceMotion: true });
-      assert.equal(at.withheldId, undefined);
-      assert.equal(at.arrivingIndex, undefined);
-      assert.equal(at.descendingId, undefined);
-    });
-
-    // …but the prompt's duplicate is a correctness defect rather than motion.
-    test("reduced motion still holds back the card the prompt is drawing", () => {
-      assert.equal(
-        read({ exchange: winnersPrompt, reduceMotion: true }).withheldId,
-        RECEIVED.id
-      );
     });
 
     test("a spectator's synthetic hand is left alone", () => {

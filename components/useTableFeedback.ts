@@ -63,7 +63,6 @@ const NO_WINNERS: readonly string[] = [];
 
 interface TableFeedbackState {
   isMyTurn: boolean;
-  currentTurnIndex: number;
   isFinished: boolean;
   exchangeActive: boolean;
   canPass: boolean;
@@ -88,13 +87,33 @@ interface TableFeedbackState {
   matchWinners?: readonly string[];
   /** Written by the flight clock on the contact frame; the shake, the kick and the landing pulses react to it. */
   landing: SharedValue<LandingSignal>;
-  /** Every cue goes out through it, at its flight's reported times; the turn is shown at `handsOffAt`. */
-  timeline: Pick<TableTimeline, "moment" | "handsOffAt" | "inFlight">;
+  /** Every cue goes out through it, at its flight's reported times. */
+  timeline: Pick<TableTimeline, "moment">;
+}
+
+/**
+ * `currentTurnIndex`, held back until `handsOffAt` of the card that handed the turn over — the
+ * lamp and the seat rings follow this. Call it after `usePileFlight`, whose effect awaits the throw.
+ */
+export function useShownTurn(currentTurnIndex: number, timeline: Pick<TableTimeline, "handsOffAt" | "pending">): number {
+  const { handsOffAt, pending } = timeline;
+  const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
+  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
+  useEffect(() => {
+    if (turn.shown === turn.seat || pending()) return;
+    const reveal = () => {
+      traceOnset("moment", "handoff");
+      setTurn((t) => ({ ...t, shown: t.seat }));
+    };
+    const wait = (handsOffAt ?? 0) - performance.now();
+    if (wait <= 0) return reveal();
+    const id = setTimeout(reveal, wait);
+    return () => clearTimeout(id);
+  }, [turn, handsOffAt, pending]);
+  return turn.shown;
 }
 
 interface TableFeedback {
-  /** `currentTurnIndex`, held back until the card that handed the turn over has landed — the lamp and the seat rings follow this. */
-  shownTurnIndex: number;
   giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
   giocaGlowStyle: AnimatedStyle<ViewStyle>;
@@ -237,7 +256,6 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
 
 export function useTableFeedback({
   isMyTurn,
-  currentTurnIndex,
   isFinished,
   exchangeActive,
   canPass,
@@ -284,23 +302,8 @@ export function useTableFeedback({
   // Sweep and the pile's catch own their animations; this just says "again".
   const [flushTrigger, setFlushTrigger] = useState(0);
 
-  const { moment, handsOffAt, inFlight } = timeline;
+  const { moment } = timeline;
   useEffect(() => () => cancelLandingPulses(), []);
-
-  const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
-  if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
-  useEffect(() => {
-    if (turn.shown === turn.seat) return;
-    const reveal = () => {
-      traceOnset("moment", "handoff");
-      setTurn((t) => ({ ...t, shown: t.seat }));
-    };
-    if (inFlight && handsOffAt === null) return;
-    const wait = (handsOffAt ?? 0) - performance.now();
-    if (wait <= 0) return reveal();
-    const id = setTimeout(reveal, wait);
-    return () => clearTimeout(id);
-  }, [turn, handsOffAt, inFlight]);
 
   useEffect(() => {
     if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
@@ -433,7 +436,6 @@ export function useTableFeedback({
   }, [reduceMotion]);
 
   return {
-    shownTurnIndex: turn.shown,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,

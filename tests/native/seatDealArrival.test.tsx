@@ -116,12 +116,14 @@ describe("an opponent's hand arrives with the deal", () => {
     await r.unmount();
   });
 
-  it('seats every hand at once under reduced motion', async () => {
+  it('seats every hand at once under reduced motion, and still sounds the deal', async () => {
     mockReduce = true;
     const r = await render(table());
+    await frame();
 
     expect(within(screen.getByTestId('side-seat-left')).getByText('13')).toBeTruthy();
     expect(screen.queryAllByTestId('dealt-back').length).toBe(0);
+    expect(startsOf('deal')).toHaveLength(1);
 
     await r.unmount();
   });

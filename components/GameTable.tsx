@@ -93,7 +93,7 @@ import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
@@ -443,7 +443,6 @@ export function GameTable({
     announcement: exchangeAnnouncement,
     landed: tradedCardsLanded,
     viewerSeat: spectating ? null : viewerSeat,
-    reduceMotion,
   });
   // Where the last move put a card. A drag shows its own answer; the discrete
   // actions behind it (WCAG 2.5.7) move a card with nothing on screen changing
@@ -574,9 +573,10 @@ export function GameTable({
   };
 
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
+  const dealFresh = !gameState.firstPlayMade && !gameState.gameOver;
   const deal = useDeal({
     geometry: seatGeometry,
-    fresh: !gameState.firstPlayMade && !gameState.gameOver,
+    fresh: dealFresh,
     entryMs,
     reduceMotion,
   });
@@ -659,7 +659,6 @@ export function GameTable({
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
   const {
-    shownTurnIndex,
     giocaFlashStyle,
     passaFlashStyle,
     giocaGlowStyle,
@@ -671,7 +670,6 @@ export function GameTable({
     shakeStyle,
   } = useTableFeedback({
     isMyTurn,
-    currentTurnIndex: gameState.currentTurnIndex,
     isFinished,
     exchangeActive: exchange.active,
     canPass,
@@ -691,18 +689,6 @@ export function GameTable({
     matchWinners,
     landing: landingSignal,
     timeline,
-  });
-
-  // The owner's own remedy for an announcement nobody noticed: swing the lamp
-  // off the seat and onto the middle, where the words are. The table's existing
-  // attention mechanism, pointed somewhere else — not a second device.
-  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
-  const rig = useLampRig({
-    target: lampTarget,
-    fresh: !gameState.firstPlayMade && !gameState.gameOver,
-    width: W,
-    height: H,
-    landing: landingSignal,
   });
 
   const handLiftStyle = useHandLift(
@@ -740,6 +726,19 @@ export function GameTable({
     roomW: frame.fieldRoomW,
     catchUp,
   });
+  const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
+
+  // The owner's own remedy for an announcement nobody noticed: swing the lamp
+  // off the seat and onto the middle, where the words are. The table's existing
+  // attention mechanism, pointed somewhere else — not a second device.
+  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
+  const rig = useLampRig({
+    target: lampTarget,
+    fresh: dealFresh,
+    width: W,
+    height: H,
+    landing: landingSignal,
+  });
   const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
   const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
@@ -755,6 +754,10 @@ export function GameTable({
     };
   }, []);
   const dealCue = useCallback(() => event([{ kind: "deal" }]), []);
+  // Under reduced motion no deal flies to start the cue, and sound is not motion.
+  useEffect(() => {
+    if (dealFresh && reduceMotion) dealCue();
+  }, [dealFresh, reduceMotion, dealCue]);
 
   // UIKit pins the scene to its current orientation for an animated screen
   // transition, overriding a lock that lands inside it (#1211).

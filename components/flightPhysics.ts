@@ -583,13 +583,8 @@ export function readHandArrival(input: {
   /** Null for a spectator: a synthetic hand has nothing to hold back. */
   viewerSeat: number | null;
   landed: boolean;
-  reduceMotion: boolean;
 }): HandArrival {
-  // Nothing flies under reduced motion, so there is nothing to wait for and the
-  // row would hold a slot open for a card already in it.
-  const incoming = input.reduceMotion
-    ? undefined
-    : arrivingCard(input.announce, input.viewerSeat);
+  const incoming = arrivingCard(input.announce, input.viewerSeat);
   const flying = input.landed ? undefined : incoming;
   const onTheFelt = input.exchange.viewerIsWinner ? input.exchange.cardFromLoser : null;
   const slot = flying === undefined ? -1 : input.hand.findIndex((c) => c.id === flying.id);
