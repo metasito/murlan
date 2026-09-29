@@ -274,7 +274,7 @@ async function strip(
   m: Moment,
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
-  stepTo: (t: number) => Promise<TraceFrame | null>
+  stepTo: (t: number, ms: number) => Promise<TraceFrame | null>
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
   const traced: TraceFrame[] = [];
@@ -285,8 +285,16 @@ async function strip(
   const due = [...(m.actions ?? [])];
   for (let k = 0; startMs + k * STEP_MS <= m.windowMs; k++) {
     const t = startMs + k * STEP_MS;
-    while (due.length && due[0].atMs <= t) await act(due.shift()!);
-    const frame = await stepTo(t);
+    // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
+    let ran = 0;
+    while (due.length && due[0].atMs <= t) {
+      const action = due.shift()!;
+      const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
+      if (lead > 0) await step(page, lead);
+      ran += Math.max(0, lead);
+      await act(action);
+    }
+    const frame = await stepTo(t, STEP_MS - ran);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
     const stripped = k % STRIP_STEPS === 0;
@@ -327,8 +335,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
-  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async () => {
-    await step(page);
+  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
+    await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   });
   await page.context().close();
@@ -416,8 +424,8 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
   const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t) => {
-    if (t > preRollMs) await step(page);
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t, ms) => {
+    if (t > preRollMs) await step(page, ms);
     return tracedAt(page, onset + t - preRollMs);
   });
   const felts = new Set(capture.trace.frames.map((f) => f.felt));

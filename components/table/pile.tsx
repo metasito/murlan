@@ -439,9 +439,12 @@ export function PlayedPile({
       {note ? (
         <View
           {...a11yHidden()}
-          style={[pileStyles.comboLabel, { marginTop: fieldSlots(note.cards, cardScale, roomW).h / 2 + Spacing.snug }]}
+          style={[
+            pileStyles.noteLabel,
+            { width: roomW, marginLeft: -roomW / 2, marginTop: fieldSlots(note.cards, cardScale, roomW).h / 2 + Spacing.snug },
+          ]}
         >
-          <ComboChip isPower={false}>
+          <ComboChip isPower={false} still>
             <TableText testID={note.testID} style={pileStyles.comboChipText}>
               {note.text}
             </TableText>
@@ -478,8 +481,9 @@ export interface BombClock {
 }
 const NO_BOMB: BombClock = { elapsed: -1, contact: 0 };
 
-function ComboChip({ isPower, children }: { isPower: boolean; children: ReactNode }) {
-  const reduceMotion = usePrefersReducedMotion();
+/** `still`: shown on the frame it mounts, for a note the leg's own clock times. */
+function ComboChip({ isPower, still = false, children }: { isPower: boolean; still?: boolean; children: ReactNode }) {
+  const reduceMotion = usePrefersReducedMotion() || still;
   const enter = useSharedValue(reduceMotion ? 1 : 0);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
 
@@ -907,6 +911,8 @@ const pileStyles = StyleSheet.create({
   // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
   // flight has just set down.
   comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
+  // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note wraps a word a line.
+  noteLabel: { position: "absolute", top: "50%", left: "50%", alignItems: "center" },
   comboChip: {
     backgroundColor: Scrim.heavy,
     borderRadius: Radius.sm,

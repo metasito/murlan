@@ -238,9 +238,9 @@ describe('the choice opens once the received card has landed and been read', () 
     const r = await render(table({ viewerSeat }));
     await step(OPENS - 64);
     expect(screen.queryByTestId('exchange-prompt')).toBeNull();
-    expect(screen.queryAllByText(line)).toHaveLength(0);
+    expect(screen.queryAllByText(line, { includeHiddenElements: true })).toHaveLength(0);
     await step(128);
-    expect(within(screen.getByTestId('exchange-prompt')).queryAllByText(line).length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId('exchange-prompt')).queryAllByText(line, { includeHiddenElements: true }).length).toBeGreaterThan(0);
     await r.unmount();
     jest.useRealTimers();
   });

@@ -67,6 +67,8 @@ const VALUES: Record<string, [unknown, unknown]> = {
   cardW: [64, 92],
   cardH: [90, 128],
   shiftX: [0, 24],
+  received: [false, true],
+  hidden: [{ value: [] }, { value: [] }],
 };
 
 /**
