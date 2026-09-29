@@ -234,9 +234,8 @@ test("blanking preserves every offset, so a scan can name the line it found", ()
  * of the non-whitespace is the weaker floor it looks like — a runaway passes
  * any share a legitimately comment-heavy file has to be allowed to pass.
  *
- * Commented-out code at column 0 fails it honestly; indent it. A fixture
- * holding a module in a template literal does not, because what the string
- * mode is held to is what the comment mode kept — not the raw source.
+ * Commented-out code, or a module held in a template literal, at column 0
+ * fails it honestly; indent it.
  */
 const TOP_LEVEL = /^(?:import|export|const|function|async function|class|type|interface)\b/gm;
 

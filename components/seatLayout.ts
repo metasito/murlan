@@ -209,11 +209,6 @@ export function arrangeOpponents<T>(
   return out;
 }
 
-/** How many backs a `CardFan` draws: the count leaves at the throw (ADR-0008), and never more than `cap`. */
-export function fanCounts(count: number, cap: number): number {
-  return Math.min(count, cap);
-}
-
 /** The seat disc's diameter at scale 1 (components/table/seats.tsx `SeatRing`). */
 export const SEAT_DISC = 33;
 /**
