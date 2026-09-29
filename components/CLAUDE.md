@@ -1,8 +1,7 @@
 # Components
 
-Loaded when you read anything under `components/`. When a rule number is cited and you cannot
-see the rule, it lives in `docs/agents/RULES.md`; invariants here are pinned by the test named on
-each line.
+Loaded when you read anything under `components/`. When a cited rule is out of view, see
+`docs/agents/RULES.md`; each invariant names the test pinning it.
 
 ## UI invariants — each is a bug that shipped
 
@@ -65,8 +64,10 @@ Verify against source before changing any.
   call site.
 - **Gold is a five-step alpha scale** (`goldGhost` … `goldStrong`): pick by role, add no sixth.
 - **Reach for the shared piece before writing one**: `ScreenHeader`, `StateBlock`, `IconButton`,
-  `Avatar`, `ResultBoard`, `AppModal`, `useIsLandscape()`. A local component must not share a
-  name with a shared one.
+  `Avatar`, `ResultBoard`, `AppModal`, `useIsLandscape()`. A local component never takes a shared
+  one's name.
+- **Every table notice is painted by `TableNotice`**; `components/table/notices/` lays out only
+  (`tests/ui-rules/noticePaintLint.test.ts`).
 - **Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`**, with `app/profile.tsx` as the
   reference. The game tables and `app/index.tsx` are exempt.
 - **Strings are keyed in `en`, `it` and `sq`, per rule 19.** English (`locales/en.ts`) is the

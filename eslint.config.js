@@ -16,6 +16,9 @@ const {
   TOUCH_TARGET_LITERAL_MESSAGE,
   HIT_SLOP_LITERAL,
   HIT_SLOP_LITERAL_MESSAGE,
+  NOTICE_PAINT,
+  NOTICE_PAINT_MESSAGE,
+  NOTICE_PAINT_IMPORTS,
 } = require('./eslint.selectors.cjs');
 
 const ONLY_OWNERS = "ADR-0009: one owner per audio layer (tests/tooling/audioOwners.test.ts).";
@@ -39,6 +42,57 @@ const audioLayers = (file) => [
     patterns: GROUP_OWNERS.filter((g) => g.owner !== file).map(({ group }) => ({ group, allowTypeImports: true, message: ONLY_OWNERS })),
   },
 ];
+
+const TOKEN_SYNTAX = [
+  {
+    // `color: "Colors.success"` type-checks (any string is a valid
+    // colour) and renders as nothing. The quotes are the whole bug.
+    selector: TOKEN_AS_STRING,
+    message: STRING_TOKEN_MESSAGE,
+  },
+  {
+    selector: TOKEN_AS_TEMPLATE,
+    message: STRING_TOKEN_MESSAGE,
+  },
+  {
+    // FontSize, Radius and Spacing are the numeric scales the app is
+    // swept onto. Neither the string-token rules above nor
+    // tests/ui-rules/tokenRoles can see a bare number, which is how one screen
+    // came to ship five corner radii for one role.
+    selector: SCALED_LITERAL,
+    message: SCALED_LITERAL_MESSAGE,
+  },
+  {
+    // Timing was convention until #126 decided what the game should feel
+    // like. The scale exists now, so a bare millisecond is the same
+    // silent drift a bare radius was.
+    selector: TIMING_LITERAL,
+    message: TIMING_LITERAL_MESSAGE,
+  },
+  {
+    selector: TOUCH_TARGET_LITERAL,
+    message: TOUCH_TARGET_LITERAL_MESSAGE,
+  },
+  {
+    selector: HIT_SLOP_LITERAL,
+    message: HIT_SLOP_LITERAL_MESSAGE,
+  },
+];
+
+// A later block replaces a rule's options rather than adding to them, so this one restates both.
+const NOTICES_DIR = "components/table/notices/**/*.{ts,tsx}";
+const noticeImports = () => {
+  const [level, { paths, patterns }] = audioLayers(null);
+  const importNames = NOTICE_PAINT_IMPORTS;
+  const message = NOTICE_PAINT_MESSAGE;
+  return [
+    level,
+    {
+      paths: [...paths, ...["@/lib/theme", "@/lib/tokens"].map((name) => ({ name, importNames, message }))],
+      patterns: [...patterns, { group: ["**/lib/theme", "**/lib/tokens", "**/lib/tokens.ts"], importNames, message }],
+    },
+  ];
+};
 
 module.exports = defineConfig([
   expoConfig,
@@ -79,47 +133,19 @@ module.exports = defineConfig([
       // this file decides (ADR-0005). Reset in render against the previous value,
       // derive it, or read the external thing through `useSyncExternalStore`.
       "react-hooks/set-state-in-effect": "error",
-      "no-restricted-syntax": [
-        "error",
-        {
-          // `color: "Colors.success"` type-checks (any string is a valid
-          // colour) and renders as nothing. The quotes are the whole bug.
-          selector: TOKEN_AS_STRING,
-          message: STRING_TOKEN_MESSAGE,
-        },
-        {
-          selector: TOKEN_AS_TEMPLATE,
-          message: STRING_TOKEN_MESSAGE,
-        },
-        {
-          // FontSize, Radius and Spacing are the numeric scales the app is
-          // swept onto. Neither the string-token rules above nor
-          // tests/ui-rules/tokenRoles can see a bare number, which is how one screen
-          // came to ship five corner radii for one role.
-          selector: SCALED_LITERAL,
-          message: SCALED_LITERAL_MESSAGE,
-        },
-        {
-          // Timing was convention until #126 decided what the game should feel
-          // like. The scale exists now, so a bare millisecond is the same
-          // silent drift a bare radius was.
-          selector: TIMING_LITERAL,
-          message: TIMING_LITERAL_MESSAGE,
-        },
-        {
-          selector: TOUCH_TARGET_LITERAL,
-          message: TOUCH_TARGET_LITERAL_MESSAGE,
-        },
-        {
-          selector: HIT_SLOP_LITERAL,
-          message: HIT_SLOP_LITERAL_MESSAGE,
-        },
-      ],
+      "no-restricted-syntax": ["error", ...TOKEN_SYNTAX],
     },
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
+  },
+  {
+    files: [NOTICES_DIR],
+    rules: {
+      "no-restricted-syntax": ["error", ...TOKEN_SYNTAX, { selector: NOTICE_PAINT, message: NOTICE_PAINT_MESSAGE }],
+      "@typescript-eslint/no-restricted-imports": noticeImports(),
+    },
   },
   ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/device/feedback.ts", "lib/diagnostics/probe.ts"].map((file) => ({
     files: [file],

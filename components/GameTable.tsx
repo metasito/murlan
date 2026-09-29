@@ -74,9 +74,8 @@ import { ScorePill } from "@/components/table/scorePill";
 import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
+import { HudComboPill } from "@/components/table/notices/hud";
 import {
-  CHIP_NAME_MAX_W,
-  ChipText,
   ControlRail,
   useFocusFade,
   useHandLift,
@@ -84,7 +83,6 @@ import {
   sharedTableStyles,
   StartCardBanner,
   StartReasonBanner,
-  TableChip,
 } from "@/components/table/chrome";
 import {
   arrangedLabel,
@@ -1056,20 +1054,7 @@ export function GameTable({
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
-            <TableChip scale={scale}>
-              {comboLabel === null ? (
-                <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
-              ) : (
-                <>
-                  <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
-                    {lastPlayName}
-                  </ChipText>
-                  <ChipText scale={scale} strong>
-                    {comboLabel}
-                  </ChipText>
-                </>
-              )}
-            </TableChip>
+            <HudComboPill scale={scale} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} />
           </View>
         </Animated.View>
 

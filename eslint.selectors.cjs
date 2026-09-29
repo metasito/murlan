@@ -74,7 +74,18 @@ const STRING_TOKEN_MESSAGE =
 const SCALED_LITERAL_MESSAGE =
   'Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.';
 
+const NOTICE_PAINT =
+  'Property[key.name=/^(backgroundColor|border\\w*(Color|Width|Radius)|shadow\\w*|elevation|boxShadow)$/], ' +
+  'JSXOpeningElement[name.name="LinearGradient"], ' +
+  'CallExpression[callee.name=/^make(Layered)?Shadow$/]';
+const NOTICE_PAINT_MESSAGE =
+  'components/table/notices/ lays out only: a fill, edge, radius or shadow is painted by TableNotice (components/table/TableNotice.tsx), from the notice palette.';
+const NOTICE_PAINT_IMPORTS = ['Scrim', 'Shadow', 'Radius', 'NoticePalette', 'makeShadow', 'makeLayeredShadow'];
+
 module.exports = {
+  NOTICE_PAINT,
+  NOTICE_PAINT_MESSAGE,
+  NOTICE_PAINT_IMPORTS,
   TOKEN_OBJECTS,
   SPACING_PROPS,
   SCALED_PROPS,

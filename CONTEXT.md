@@ -43,6 +43,16 @@ term's meaning, and useless anywhere the term is not.
   reason, the haptics one is gated on `readFinished` because `lib/device/feedback.ts` preloads its key at
   module init, and a single entry point would fire every setter whenever any one value changed.
 
+- **Notice** — anything the table tells a player in words on a plate of its own: the turn pill,
+  a seat's PASSO, the combination, the connection notes, who starts, a refusal. A notice has a
+  *kind* (which surface it is), a *shape* in the lantern mockup's vocabulary — `pill`, `chip` (the
+  mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`) its shape
+  must be able to paint. Every one is painted by `components/table/TableNotice.tsx` from
+  `NoticePalette` in `lib/tokens.ts`; its kinds, their geometry in mockup pixels and their timings
+  are `components/table/noticeModel.ts`, and each kind's gallery is
+  `components/table/notices/gallery.tsx`. Not a notice: the banners over the app
+  (`NotificationBanner`), which are news about the app rather than about the table.
+
 ## Working with this vocabulary
 
 - **Name a domain concept with the repo's own word** — in an issue title, a test name, a

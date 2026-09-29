@@ -10,7 +10,7 @@ blanket one. Where a source publishes no number for a quality we needed, that is
 rather than invented.
 
 Our own tokens, cited throughout for grounding: `Motion.duration` (`flash` 90ms, `tap`
-120ms, `shift` 200ms, `travel` 260ms, `reveal` 600ms, `dwell` 1200ms),
+120ms, `notice` 160ms, `shift` 200ms, `travel` 260ms, `reveal` 600ms, `dwell` 1200ms),
 `Motion.spring.land` (damping 21, stiffness 260, ~7% overshoot
 once), `Motion.spring.pickup` (damping 37, stiffness 340, critically damped),
 `Motion.stagger.deal` 42ms, `Hold.land` 175ms, `Reading.notice` 4000ms, `Reading.invite`
@@ -461,6 +461,16 @@ moments, each a checkable frame property rather than a claim of quality:
   amplitude strictly lower on every channel both moments share (scale, opacity,
   displacement) — pass is not merely shorter than the calmest win, it is smaller on every
   axis a critic can measure.
+
+## Notices
+
+Every notice on the table enters one way, through `TableNotice`
+(`components/table/TableNotice.tsx`): it rises 6 mockup px (`noticeRise` in
+`components/table/noticeModel.ts`) while it fades in, over `Motion.duration.notice` (160ms) for a
+pill or a panel and `Motion.mark.enter` (100ms) for a mark or a float (#1259 D2, Q1). It leaves by
+fading where it stands, never by travelling. Under reduced motion the rise is 0 and the fade is all
+that is left. The checkable frame: at the entrance's first frame the plate sits 6 mockup px below
+its rest and is transparent; at its last it is at rest and opaque, and no later frame moves it.
 
 ## What this file is not
 
