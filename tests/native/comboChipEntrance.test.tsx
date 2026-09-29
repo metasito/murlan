@@ -1,9 +1,8 @@
 import { describe, it, expect, jest, afterEach } from "@jest/globals";
-import React from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { getAnimatedStyle } from "react-native-reanimated";
-import { PlayedPile } from "@/components/table/pile";
 import { setMotionPreference } from "@/lib/accessibility";
+import { pileOf } from "./helpers/landing";
 import { Motion, Spacing } from "@/lib/theme";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 
@@ -20,9 +19,7 @@ function chipStyle() {
 
 const riseOf = (s: ReturnType<typeof chipStyle>) => s.transform?.find((t) => "translateY" in t)?.translateY;
 
-const pile = (combo: Combination) => (
-  <PlayedPile prev={null} current={null} comboLabel={combo} roundWinner={null} roomW={400} scale={1} />
-);
+const pile = (combo: Combination) => pileOf({ comboLabel: combo });
 
 describe("the combo chip enters, and a power play's chip catches a sheen", () => {
   afterEach(async () => {

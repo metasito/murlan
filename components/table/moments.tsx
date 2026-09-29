@@ -398,7 +398,7 @@ const BURST_Z = Layer.band;
 
 /**
  * The bomb's four layers, centred on the impact point — the same point
- * `PlayedPile` draws the pile at. Rendered as a sibling of it inside the
+ * `PileLayer` draws the pile at. Rendered as a sibling of it inside the
  * table's own centre section. Each fires on the contact frame of a landing
  * whose tier flares (#765) — "brief" for the bomb, "settle" for the partita.
  */

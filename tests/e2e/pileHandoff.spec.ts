@@ -1,7 +1,7 @@
 // tests/e2e/pileHandoff.spec.ts — a thrown combination lands where the pile then draws it.
 //
-// `FlyingCards` and `PlayedPile` are two layers drawing the same cards in turn, so a difference in
-// their layout is a jump the moment the flight hands over; only a browser runs the flexbox.
+// A play's views fly to the flight's slots and then rest in the pile's layout, so a difference
+// between the two is a jump the moment the flight ends; only a browser runs the flexbox.
 import { test, expect } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";

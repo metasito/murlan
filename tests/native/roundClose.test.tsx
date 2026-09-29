@@ -172,7 +172,7 @@ describe('the pass that closes a round', () => {
     });
 
     const swept = (card: Card) =>
-      within(screen.getByTestId('sweep-cards')).queryByLabelText(cardSpokenName(card, t));
+      within(screen.getByTestId('sweep-cards', { includeHiddenElements: true })).queryByLabelText(cardSpokenName(card, t), { includeHiddenElements: true });
 
     it('sweeps the winning cards off the felt once the hold ends', async () => {
       const r = await render(table(LED));

@@ -3,12 +3,15 @@ import { useEffect } from 'react';
 import { useShownTurn, useTableFeedback } from '@/components/useTableFeedback';
 import { useTableTimeline } from '@/components/table/tableTimeline';
 import { act, render, type RenderResult } from '@testing-library/react-native';
-import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle, makeMutable, type SharedValue } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import type { ImpactTier } from '@/components/flightPhysics';
+import { pileSlots, type CardFrom } from '@/components/flightPose';
+import { PileLayer, type Flight, type PileLayerProps } from '@/components/table/pile';
+import type { TrickPlay } from '@/components/table/trick';
 import { landingPulsesFor } from '@/lib/device/feedback';
-import { NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
+import { flightSpec, NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 
 /** Writes one landing onto the signal, as the flight clock does on its contact frame. */
@@ -75,6 +78,21 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0 }: { by: number;
         onExchangeGive={noop}
       />
     </SafeAreaProvider>
+  );
+}
+
+/** A play of `cards` thrown from `from`, still in the air. */
+export function flightOf(key: string, cards: Card[], from: CardFrom[], reduced = false): Flight {
+  const combo = { type: 'single', cards, strength: 0 } as Combination;
+  const spec = flightSpec(key, from, pileSlots(cards.length, 60, 400), false, reduced);
+  return { key, combo, playedBy: 0, spec, landing: { ...NO_LANDING, cards: cards.length }, handOver: false, hidden: false };
+}
+
+/** `PileLayer` alone, holding `plays` in order, the last on top. */
+export function pileOf({ plays = [], ...props }: Partial<PileLayerProps> & { plays?: TrickPlay[] }) {
+  return (
+    <PileLayer trick={{ plays, swept: null }} flights={[]} signal={makeMutable(NO_LANDING)} onFlightEnd={noop} onSweepEnd={noop}
+      comboLabel={null} roundWinner={null} roomW={400} scale={1} {...props} />
   );
 }
 

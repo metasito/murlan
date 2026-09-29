@@ -1,7 +1,7 @@
 // tests/e2e/reducedMotionWobbleReset.spec.ts — a live toggle mid-wobble.
 //
 // Only a real browser re-running Reanimated's driver reaches the live path — `matchMedia` firing
-// while a landed combination wobbles, `FlyingCards` re-rendering with the preference, and the style
+// while a landed combination wobbles, the play's group re-rendering with the preference, and the style
 // coming to rest on the next frame. tests/native/'s reanimated mock never re-runs a `useAnimatedStyle`.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";

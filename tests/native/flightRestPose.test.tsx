@@ -1,17 +1,11 @@
 // tests/native/flightRestPose.test.tsx — the played combination must not jump
-// into a different pose after it lands (#828).
-//
-// FlyingCards draws the cards while they travel; PlayedPile draws them again
-// once the flight ends. The group's resting rotation has to be the 0deg
-// PileComboCards draws at, wherever the throw started.
+// into a different pose after it lands (#828): the group rests at 0deg with
+// every card on its slot, wherever the throw started.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
-import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
-import { getAnimatedStyle, makeMutable } from "react-native-reanimated";
-import { FlyingCards } from "@/components/table/pile";
-import { pileSlots } from "@/components/flightPose";
-import { flightSpec, NO_LANDING } from "@/components/table/useFlightClock";
+import { getAnimatedStyle } from "react-native-reanimated";
 import type { Card } from "@/lib/game/gameEngine";
+import { farthest, flightOf, pileOf } from "./helpers/landing";
 
 const CARDS: Card[] = [{ id: "A_clubs", rank: "A", suit: "clubs", isJoker: false } as Card];
 
@@ -33,19 +27,13 @@ describe("a played combination lands in the pose it is drawn in (#828)", () => {
     ["a side fan", { x: -300, y: 0, rot: -90, scale: 0.4 }],
     ["the top fan", { x: 0, y: -140, rot: 0, scale: 0.4 }],
   ])("comes to rest at 0deg thrown from %s", async (_, from) => {
-    const r = await render(
-      <FlyingCards
-        cards={CARDS}
-        flight={flightSpec("k", [from], pileSlots(1, 60, 400), false, false)}
-        landing={NO_LANDING}
-        signal={makeMutable(NO_LANDING)}
-        onEnd={() => {}}
-      />
-    );
+    const flight = flightOf("k", CARDS, [from]);
+    const r = await render(pileOf({ plays: [flight], flights: [flight] }));
     await act(async () => {
       jest.advanceTimersByTime(3_000);
     });
     expect(flyingRotate()).toBe("0deg");
+    expect(farthest(r)).toBe(0);
     await r.unmount();
   });
 });
