@@ -38,7 +38,7 @@ export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed:
   }
 }
 
-export function Felt({ rig, stops, pool, light }: FeltProps) {
+export function Felt({ rig, stops, pool }: FeltProps) {
   const [skia, setSkia] = useState(false);
   const [ready, onReady] = useFeltReady();
   const shadeStyle = useAnimatedStyle(() => ({ opacity: levelShade(rig.lamp.value.level) }));
@@ -50,12 +50,12 @@ export function Felt({ rig, stops, pool, light }: FeltProps) {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {!ready && <FeltFallback stops={stops} pool={pool} light={light} sx={rig.sx} sy={rig.sy} />}
+      {!ready && <FeltFallback stops={stops} pool={pool} sx={rig.sx} sy={rig.sy} />}
       {!ready && <Animated.View testID="felt-level-shade" style={[StyleSheet.absoluteFill, styles.shade, shadeStyle]} />}
       {skia && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
-            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} light={light} onReady={onReady} />
+            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} />
           </Suspense>
         </SkiaLoadFailed>
       )}

@@ -18,7 +18,7 @@ import {
 } from "@shopify/react-native-skia";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
-import { DESIGN, lightUniforms, type Lamp, type LampLight } from "./lampRig";
+import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
@@ -27,7 +27,6 @@ export interface FeltCanvasProps {
   sx: number;
   sy: number;
   stops: FeltStops;
-  light: LampLight;
   /** Called once the canvas has drawn its first frame. */
   onReady?: () => void;
 }
@@ -71,7 +70,7 @@ function bakeRail(k: number): SkImage | null {
   return image;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, light: { poolR, vigR }, onReady }: FeltCanvasProps) {
+export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   const k = PixelRatio.get() * Math.min(sx, sy);
   const rail = useMemo(() => bakeRail(k), [k]);
   // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
@@ -82,7 +81,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, light: { poolR, vigR }, onRead
     ...base,
     uLamp: [lamp.value.lx, lamp.value.ly],
     uFlare: lamp.value.f,
-    ...lightUniforms({ poolR, vigR }, lamp.value.r),
+    ...lightUniforms(lamp.value.r),
   }));
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));

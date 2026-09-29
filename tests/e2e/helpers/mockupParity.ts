@@ -70,7 +70,12 @@ interface Moment {
   /** Gates the app's pill box against the mockup's `renderScore` at each progress the app traced. */
   pillAtProgress?: boolean;
   variants?: Variant[];
+  /** With the fallback felt, both sides' light rests unswayed: the fallback bakes a still light (plan 3 § Decisions). */
+  fallbackStill?: boolean;
 }
+
+const STILL_LIGHT = `const swaying = lampStep;
+  lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
 
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
@@ -136,6 +141,7 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill"],
+    fallbackStill: true,
   },
   {
     key: "trick",
@@ -320,7 +326,7 @@ async function strip(
   return { trace: { frames: traced, regions }, frames };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -340,6 +346,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     window.sfx = (k) => { window.__parityOnsets.push("sound:" + k); sound(k); };
     paused = true;
     ${DEPART_SCRIPT}
+    ${still ? STILL_LIGHT : ""}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
@@ -420,6 +427,8 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
   if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
+  // The app's only unswayed light is reduced motion's; at rest it snaps nothing the light was not already at.
+  if (variant === "fallback" && m.fallbackStill) await page.emulateMedia({ reducedMotion: "reduce" });
   // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
   else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
     path: path.join(CANVASKIT_DIR, path.basename(new URL(route.request().url()).pathname)),
@@ -494,7 +503,7 @@ export function parityTests(key: string, only?: Variant) {
       const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, opened.preRollMs)
+          ? captureMockup(browser, decoder, m, opened.preRollMs, variant === "fallback" && !!m.fallbackStill)
           : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
       // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
       const [[app, appMs], [mockup, mockupMs]] = await Promise.all([

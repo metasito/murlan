@@ -46,25 +46,12 @@ export function lampPools(anchors: Record<FlyDirection, Point>, width: number, h
   const over = (side: FlyDirection) => poolOver(side, anchors[side], anchors.top, anchors.bottom, width, height);
   return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre: TABLE_CENTRE };
 }
-/** The light's size at reach 1, in design points: the pool's bright radius and the vignette's. */
-export interface LampLight {
-  poolR: number;
-  vigR: number;
-}
+/** The light's size at reach 1, in design points: the owner's G1 sliders, the pool's bright radius and the vignette's. */
+export const LAMP_LIGHT = { poolR: 380, vigR: 380 } as const;
 
-/** A is the owner's 380/380; B, a step wider, read the same to him at G1, so G3 picks on the device. */
-export const LAMP_VARIANTS = {
-  A: { poolR: 380, vigR: 380 },
-  B: { poolR: 420, vigR: 420 },
-} as const satisfies Record<string, LampLight>;
-
-export type LampVariant = keyof typeof LAMP_VARIANTS;
-
-export const LAMP_VARIANT: LampVariant = "A";
-
-export function lightUniforms(light: LampLight, reach: number): { uPoolR: number; uVigR: number } {
+export function lightUniforms(reach: number): { uPoolR: number; uVigR: number } {
   "worklet";
-  return { uPoolR: light.poolR * reach, uVigR: light.vigR * reach };
+  return { uPoolR: LAMP_LIGHT.poolR * reach, uVigR: LAMP_LIGHT.vigR * reach };
 }
 
 export const GLIDE = 2.2;

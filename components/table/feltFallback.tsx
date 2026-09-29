@@ -2,7 +2,7 @@
 // and rail, lit once per lamp target into one DOM canvas, with no per-frame lighting.
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
-import { DESIGN, LIGHT_ABOVE, lightUniforms, type LampLight, type Pool } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, lightUniforms, type Pool } from "./lampRig";
 import { CLOTH_GLSL, clothUniforms } from "./feltShader";
 import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
@@ -101,7 +101,7 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
   return cv;
 }
 
-function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, light: LampLight, sx: number, sy: number) {
+function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, sx: number, sy: number) {
   const dpr = window.devicePixelRatio || 1;
   const ax = dpr * sx;
   const ay = dpr * sy;
@@ -150,7 +150,7 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, l
   c.restore();
 
   const k = dpr * Math.min(sx, sy);
-  const uniforms = { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0, ...lightUniforms(light, reach) };
+  const uniforms = { ...clothUniforms(stops, k), uLamp: [lx, ly], uFlare: 0, ...lightUniforms(reach) };
   const cloth = drawCloth(out.width, out.height, uniforms, [ax, ay]);
   if (cloth) {
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -161,22 +161,19 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, [tx, ty, reach]: Pool, l
 export function FeltFallback({
   stops,
   pool,
-  light,
   sx,
   sy,
 }: {
   stops: FeltStops;
   pool: Pool;
-  light: LampLight;
   sx: number;
   sy: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [px, py, reach] = pool;
-  const { poolR, vigR } = light;
   useEffect(() => {
-    if (ref.current) bake(ref.current, stops, [px, py, reach], { poolR, vigR }, sx, sy);
-  }, [stops, px, py, reach, poolR, vigR, sx, sy]);
+    if (ref.current) bake(ref.current, stops, [px, py, reach], sx, sy);
+  }, [stops, px, py, reach, sx, sy]);
   return (
     <canvas
       ref={ref}

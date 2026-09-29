@@ -6,8 +6,8 @@ import { createRequire } from "node:module";
 import { anchorPoints } from "../../components/flightPhysics.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { CLOTH_SKSL, clothUniforms, type ClothUniforms } from "../../components/table/feltShader.ts";
-import { LAMP_VARIANTS, LIGHT_ABOVE, designScale, lampPools, lightUniforms, type LampLight } from "../../components/table/lampRig.ts";
-import { ANNULUS_OUTER, legibilityRing } from "../../components/table/legibilityRing.ts";
+import { LIGHT_ABOVE, designScale, lampPools, lightUniforms } from "../../components/table/lampRig.ts";
+import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
 import { ROOM } from "../../components/table/rail.ts";
 import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility.ts";
 import { FeltGradients } from "../../lib/tokens.ts";
@@ -49,14 +49,14 @@ function packed(values: ClothUniforms): Float32Array {
 type Point = { x: number; y: number };
 
 /** The cloth round each seat over the room, with the lamp at rest over `onMove`; the rail is not drawn. */
-function seatMeans(width: number, height: number, anchors: Record<FlyDirection, Point>, light: LampLight, stops: readonly string[], onMove: FlyDirection) {
+function seatMeans(width: number, height: number, anchors: Record<FlyDirection, Point>, stops: readonly string[], onMove: FlyDirection) {
   const { sx, sy } = designScale(width, height);
   const [x, y, reach] = lampPools(anchors, width, height)[onMove];
   const floats = packed({
     ...clothUniforms(stops as never, PER_PT * Math.min(sx, sy)),
     uLamp: [x, y - LIGHT_ABOVE],
     uFlare: 0,
-    ...lightUniforms(light, reach),
+    ...lightUniforms(reach),
   });
   const surface = ck.MakeSurface(width * PER_PT, height * PER_PT);
   const canvas = surface.getCanvas();
@@ -72,29 +72,27 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
   paint.delete();
   shader.delete();
   surface.delete();
-  const pixels = { width: info.width, height: info.height, data };
+  const pixels = feltOnly({ width: info.width, height: info.height, data }, PER_PT);
   const ring = legibilityRing(width, height);
   return Object.fromEntries(SEATS.map((s) => [s, annulusLuminance(pixels, anchors[s], PER_PT, ring)])) as Record<FlyDirection, number>;
 }
 
 describe("the light round the seats, in the shipped SkSL", () => {
-  for (const [variant, light] of Object.entries(LAMP_VARIANTS)) {
-    for (const [felt, stops] of Object.entries(FeltGradients)) {
-      test(`variant ${variant} on ${felt}: the seat on move out-lights the rest, the same at every seat`, () => {
-        const rows = PHONES.flatMap(({ name, width, height }) =>
-          Object.entries(INSETS).map(([insets, edges]) => {
-            const anchors = anchorPoints(phoneTable(width, height, edges));
-            const ratios = SEATS.map((s) => legibility(seatMeans(width, height, anchors, light, stops, s), s));
-            return { at: `${name} at ${insets}`, ratios, even: evenness(ratios) };
-          })
-        );
-        const line = (r: (typeof rows)[number]) => `${r.at}: ${SEATS.map((s, i) => `${s} ${r.ratios[i].toFixed(2)}`).join(", ")}; evenness ${r.even.toFixed(2)}`;
-        console.log(`variant ${variant}, ${felt}\n  ${rows.map(line).join("\n  ")}`);
-        for (const { at, ratios, even } of rows) {
-          SEATS.forEach((s, i) => assert.ok(ratios[i] >= LAMP_FLOOR, `${at}: ${s} on move reads ${ratios[i].toFixed(2)}× the brightest other seat, under ${LAMP_FLOOR}`));
-          assert.ok(even >= LAMP_SYMMETRY, `${at}: the worst seat ÷ the best is ${even.toFixed(2)}, under ${LAMP_SYMMETRY}`);
-        }
-      });
-    }
+  for (const [felt, stops] of Object.entries(FeltGradients)) {
+    test(`on ${felt}: the seat on move out-lights the rest, the same at every seat`, () => {
+      const rows = PHONES.flatMap(({ name, width, height }) =>
+        Object.entries(INSETS).map(([insets, edges]) => {
+          const anchors = anchorPoints(phoneTable(width, height, edges));
+          const ratios = SEATS.map((s) => legibility(seatMeans(width, height, anchors, stops, s), s));
+          return { at: `${name} at ${insets}`, ratios, even: evenness(ratios) };
+        })
+      );
+      const line = (r: (typeof rows)[number]) => `${r.at}: ${SEATS.map((s, i) => `${s} ${r.ratios[i].toFixed(2)}`).join(", ")}; evenness ${r.even.toFixed(2)}`;
+      console.log(`${felt}\n  ${rows.map(line).join("\n  ")}`);
+      for (const { at, ratios, even } of rows) {
+        SEATS.forEach((s, i) => assert.ok(ratios[i] >= LAMP_FLOOR, `${at}: ${s} on move reads ${ratios[i].toFixed(2)}× the brightest other seat, under ${LAMP_FLOOR}`));
+        assert.ok(even >= LAMP_SYMMETRY, `${at}: the worst seat ÷ the best is ${even.toFixed(2)}, under ${LAMP_SYMMETRY}`);
+      }
+    });
   }
 });

@@ -2,7 +2,7 @@
 // does instead of what it drew, so a parity run compares like with like (plan 3 L5).
 import { expect, type Page } from "@playwright/test";
 import { anchorPoints } from "../../../components/flightPhysics";
-import { DESIGN, GLIDE, LAMP_VARIANT, LAMP_VARIANTS, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
+import { DESIGN, GLIDE, LAMP_LIGHT, LIGHT_ABOVE, lampPools, type LampTarget, type Pool } from "../../../components/table/lampRig";
 import { CLOTH_DEPARTURES } from "../../helpers/clothDepartures";
 import { phoneTable } from "../../helpers/phoneTable";
 
@@ -23,7 +23,7 @@ const seats = Object.entries(MOCKUP_SEAT).map(([dir, k]) => [k, MOCKUP_POOLS[dir
 
 /**
  * Run in the mockup before `start`: its lamp aims the app's way, rests where the app's does, its
- * reach glides with the pool, and its cloth draws the app's two light lines at the shipped variant.
+ * reach glides with the pool, and its cloth draws the app's two light lines at the app's light.
  */
 export const DEPART_SCRIPT = `(() => {
   const seats = ${JSON.stringify(seats)};
@@ -63,7 +63,7 @@ export const DEPART_SCRIPT = `(() => {
   window.__departedFS = fs;
   window.__departedDraws = 0;
   V.G = (0, eval)("(" + initGL.toString().replace("gl.FRAGMENT_SHADER,FS)", "gl.FRAGMENT_SHADER,window.__departedFS)") + ")")(V.gl);
-  const light = ${JSON.stringify(LAMP_VARIANTS[LAMP_VARIANT])};
+  const light = ${JSON.stringify(LAMP_LIGHT)};
   const draw = drawCloth;
   drawCloth = (lx, ly, f, stops) => {
     const { gl } = V.G;

@@ -101,7 +101,7 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
-import { LAMP_VARIANT, LAMP_VARIANTS, lampPools } from "@/components/table/lampRig";
+import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
@@ -1036,7 +1036,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} light={LAMP_VARIANTS[LAMP_VARIANT]} />
+        <Felt rig={rig} stops={felt} pool={lampAim} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />

@@ -7,7 +7,7 @@ import { PHONES } from "./helpers/phones";
 import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import type { FlyDirection } from "../../components/seatLayout";
 import type { TraceFrame } from "../../lib/e2eTrace";
-import { legibilityRing } from "../../components/table/legibilityRing";
+import { feltOnly, legibilityRing } from "../../components/table/legibilityRing";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 import { LAMP_FLOOR, LAMP_SYMMETRY, annulusLuminance, evenness, legibility } from "../../lib/diagnostics/lampLegibility";
 
@@ -34,10 +34,11 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     })
     .toBeGreaterThan(LAMP_UP);
   const anchors = Object.fromEntries(await Promise.all(SEATS.map(async (s) => [s, await seatAnchor(page, s)] as const)));
-  const { pixels, perPt, origin } = await feltPixels(page);
+  const { pixels: box, perPt, origin } = await feltPixels(page);
+  const pixels = feltOnly(box, perPt);
   const ring = legibilityRing(pixels.width / perPt, pixels.height / perPt);
   return Object.fromEntries(
-    SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
+    SEATS.map((s) => [s, annulusLuminance(pixels,{ x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
   ) as Record<FlyDirection, number>;
 }
 

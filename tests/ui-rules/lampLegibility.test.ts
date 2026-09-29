@@ -15,7 +15,8 @@ import { cardScale } from "../../components/cardFaceModel.ts";
 import { anchorPoints } from "../../components/flightPhysics.ts";
 import type { FlyDirection } from "../../components/seatLayout.ts";
 import { designScale } from "../../components/table/lampRig.ts";
-import { ANNULUS_OUTER, legibilityRing } from "../../components/table/legibilityRing.ts";
+import { ANNULUS_OUTER, feltOnly, legibilityRing } from "../../components/table/legibilityRing.ts";
+import { RAIL_BAND, ringRect } from "../../components/table/rail.ts";
 import { PHONES } from "../e2e/helpers/phones.ts";
 
 type Rgba = readonly [number, number, number, number];
@@ -174,6 +175,19 @@ describe("annulusLuminance", () => {
 
   test("a black ring refuses to read", () => {
     assert.throws(() => read(paint(RIGHT, ring(WHITE, BLACK, WHITE)), RIGHT), /black/);
+  });
+
+  test("feltOnly keeps the rail and the room out of every ring", () => {
+    const { x: feltLeft } = ringRect(RAIL_BAND);
+    const box = { width: 874, height: 402 };
+    const data = new Uint8ClampedArray(box.width * box.height * 4);
+    for (let i = 0; i < box.width * box.height; i++) data.set(i % box.width < feltLeft ? WHITE : GREY, i * 4);
+    const whole = { ...box, data };
+    const rim = { x: feltLeft + 7, y: box.height / 2 };
+    const r = legibilityRing(box.width, box.height);
+    assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
+    assert.throws(() => read(feltOnly(whole, 1), rim, 1, r), /drew nothing/);
+    near(read(feltOnly(whole, 1), { x: 437, y: 201 }, 1, r), GREY_LINEAR, 0.001);
   });
 });
 
