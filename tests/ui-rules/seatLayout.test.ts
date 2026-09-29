@@ -11,9 +11,9 @@ import {
   getOpponentPosition,
   seatDirection,
   arrangeOpponents,
-  fanCounts,
   viewerOwnsSeat,
 } from "../../components/seatLayout.ts";
+import { fanCounts } from "../../components/fanGeometry.ts";
 import { handCountOf, vacatedOf } from "../../shared/protocol.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

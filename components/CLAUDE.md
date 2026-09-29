@@ -22,6 +22,10 @@ Verify against source before changing any.
 - **The table's scale comes from the window's own short edge**, never that minus the safe-area
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
   the home indicator.
+- **A seat's place is never a function of a card count**: the bands are sized for the drawn cap,
+  every export of `seatLayout.ts` and `tableFrame.ts` and `flightPhysics.ts`'s position functions
+  take only geometry, and `fanGeometry.ts` imports `seatLayout.ts`, never the reverse
+  (`tests/ui-rules/seatLayoutTakesNoCount.test.ts`).
 - **State which view covers which with a `Layer` role** (or a value derived from one), never
   sibling order or a bare number: web and Android paint in tree order, iOS does not (#209).
   `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;

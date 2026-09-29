@@ -8,10 +8,9 @@ import {
   SEAT_LABEL_GAP,
   SEAT_LABEL_PAD,
   seatGap,
-  fanCounts,
   seatLabelH,
 } from "@/components/seatLayout";
-import { FAN_TURN, seatFanArc } from "@/components/fanGeometry";
+import { FAN_TURN, fanCounts, seatFanArc } from "@/components/fanGeometry";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
