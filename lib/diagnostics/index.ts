@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useRef, type RefObject } from "react";
+import type { View } from "react-native";
 import type { DiagRow } from "./types";
 
 export type { DiagRow, DiagRows } from "./types";
@@ -28,4 +29,19 @@ export function useBenchHandle(name: "cardPress", fn: (id: string) => void): voi
       if (benchHandles[name] === fn) delete benchHandles[name];
     };
   }, [name, fn]);
+}
+
+export const RING_PROBE_MS = 250;
+
+export function useRingProbe(name: string): RefObject<View | null> {
+  const ref = useRef<View>(null);
+  useEffect(() => {
+    if (!DIAGNOSTICS) return;
+    const id = setInterval(
+      () => ref.current?.measureInWindow((x, y) => diag({ k: "ring", t: performance.now(), name, x, y })),
+      RING_PROBE_MS
+    );
+    return () => clearInterval(id);
+  }, [name]);
+  return ref;
 }
