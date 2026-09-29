@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   LAMP_FLOOR,
   LAMP_SYMMETRY,
-  RING_COVERAGE,
+  FELT_SHARE,
+  RING_ON_IMAGE,
   annulusLuminance,
   evenness,
   legibility,
@@ -159,18 +160,26 @@ describe("annulusLuminance", () => {
 
   test("a ring the felt mostly left transparent refuses to read", () => {
     const blank = paint(RIGHT, () => [0, 0, 0, 0]);
-    assert.throws(() => read(blank, RIGHT), /drew nothing/);
+    assert.throws(() => read(blank, RIGHT), /is felt/);
     const speckled = paint(RIGHT, () => [0, 0, 0, 0]);
     const i = (Math.round(RIGHT.y * PER_PT) * speckled.width + Math.round((RIGHT.x + 30 * SCALE.sx) * PER_PT)) * 4;
     for (let k = 0; k < 3; k++) (speckled.data as Uint8ClampedArray).set(WHITE, i + k * 4);
-    assert.throws(() => read(speckled, RIGHT), /drew nothing/);
-    const half = paint(RIGHT, (w) => (w.d < 30 ? GREY : [0, 0, 0, 0]));
-    assert.throws(() => read(half, RIGHT), /drew nothing/);
+    assert.throws(() => read(speckled, RIGHT), /is felt/);
   });
 
   test("a ring the felt only half-covered refuses to read: alpha short of opaque is not felt", () => {
-    const rim = paint(RIGHT, (w) => (w.d > 43 && w.d <= OUTER ? [128, 128, 128, 128] : GREY));
-    assert.throws(() => read(rim, RIGHT), /drew nothing/);
+    const rim = paint(RIGHT, (w) => (w.pt < DISC ? GREY : [128, 128, 128, 128]));
+    assert.throws(() => read(rim, RIGHT), /is felt/);
+  });
+
+  test("a ring on 30 % felt refuses to read; on half felt it reads the felt", () => {
+    const share = (felt: number) => {
+      const px = paint(RIGHT, () => [0, 0, 0, 0]);
+      for (let i = 0; i < px.width * px.height; i++) if (i % 10 < felt * 10) (px.data as Uint8ClampedArray).set(GREY, i * 4);
+      return px;
+    };
+    assert.throws(() => read(share(0.3), RIGHT), /is felt/);
+    near(read(share(0.5), RIGHT), GREY_LINEAR, 0.001);
   });
 
   test("a black ring refuses to read", () => {
@@ -186,8 +195,8 @@ describe("annulusLuminance", () => {
     const rim = { x: feltLeft + 7, y: box.height / 2 };
     const r = legibilityRing(box.width, box.height);
     assert.ok(read(whole, rim, 1, r) > GREY_LINEAR + 0.1, "the fixture's rail does not reach the ring");
-    assert.throws(() => read(feltOnly(whole, 1), rim, 1, r), /drew nothing/);
-    near(read(feltOnly(whole, 1), { x: 437, y: 201 }, 1, r), GREY_LINEAR, 0.001);
+    near(read(feltOnly(whole, 1), rim, 1, r), GREY_LINEAR, 0.001);
+    assert.throws(() => read(feltOnly(whole, 1), { x: feltLeft - 20, y: box.height / 2 }, 1, r), /is felt/);
   });
 });
 
@@ -217,7 +226,8 @@ describe("the two ratios", () => {
 
   test("the bounds are Q3's", () => {
     assert.ok(OUTER > SEAT_DISC / 2);
-    assert.ok(RING_COVERAGE >= 0.9 && RING_COVERAGE < 1);
+    assert.ok(RING_ON_IMAGE >= 0.9 && RING_ON_IMAGE < 1);
+    assert.equal(FELT_SHARE, 0.4);
     assert.equal(LAMP_SYMMETRY, 0.8);
     assert.ok(LAMP_FLOOR > 1, `LAMP_FLOOR ${LAMP_FLOOR} lets the seat on move be darker than another`);
   });
