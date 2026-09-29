@@ -58,7 +58,7 @@ describe('the deal flies on a pool of backs', () => {
   ])('draws %i players’ deal with %i backs on the 844 × 390 table', async (seats, pool) => {
     const view = await render(
       <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
-        <GameTable gameState={freshDeal(seats)} viewerSeat={0} selectedIds={[]} onSelectCard={() => {}} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
+        <GameTable gameState={freshDeal(seats)} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
       </SafeAreaProvider>
     );
     expect(backs()).toHaveLength(pool);
