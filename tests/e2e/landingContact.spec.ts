@@ -12,7 +12,7 @@ const SOUND_SPY = `(() => {
   AudioContext.prototype.getOutputTimestamp = function () {
     const c0 = this.currentTime, p0 = performance.now();
     used = stamp.call(this);
-    // Mapping through the stamp alone reads back the engine's own \`at\` whatever it holds; only reads taken around it can catch a skewed one.
+    // The stamp here is the virtual clock's stub (helpers/virtualClock.ts), and mapping through it reads back whatever it holds: this keeps that stub paired with the clocks it fakes.
     const q = 128 / this.sampleRate;
     const ok = used.contextTime >= c0 - q && used.contextTime <= this.currentTime + q && used.performanceTime >= p0 && used.performanceTime <= performance.now();
     if (!ok) window.__badStamps.push({ contextTime: used.contextTime, performanceTime: used.performanceTime, c0, p0 });
