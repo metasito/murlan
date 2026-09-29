@@ -9,6 +9,11 @@ import { FAN_DRAWN_CARDS, SEAT_DISC, seatGap, type OpponentSide } from "./seatLa
 /** A quarter turn per side, so one construction serves all three seats. */
 export const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
 
+/** How many backs a `CardFan` draws: the count leaves at the throw (ADR-0008), and never more than `cap`. */
+export function fanCounts(count: number, cap: number): number {
+  return Math.min(count, cap);
+}
+
 /**
  * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
  * (components/table/seats.tsx) performs for its wrapper box, and that
@@ -44,7 +49,7 @@ export function fanPoint(
   scale: number,
   count: number
 ): { x: number; y: number; rot: number } {
-  const drawn = Math.min(count, FAN_DRAWN_CARDS[dir]);
+  const drawn = fanCounts(count, FAN_DRAWN_CARDS[dir]);
   const across = drawn > 0 ? seatFanArc(drawn, scale * BACK_SCALE).bounds.h : 0;
   const along = (SEAT_DISC * scale) / 2 + seatGap(scale) + across / 2;
   if (dir === "top") return { x: ring.dx, y: ring.dy + along, rot: FAN_TURN.top };

@@ -22,16 +22,15 @@ Verify against source before changing any.
 - **The table's scale comes from the window's own short edge**, never that minus the safe-area
   insets. The safe area is the layout's job — the rail absorbs the cutout, the hand zone carries
   the home indicator.
-- **The lamp aims at the seats the table laid out**, through `lampPools(anchorPoints(…))` and the
-  inset-aware anchors, never a design-point constant; the felt alone stretches to the window by
-  `designScale` (`tests/e2e/lampSeats.spec.ts`).
+- **The lamp aims at the laid-out seats**, never a design constant (`tests/e2e/lampSeats.spec.ts`).
+- **No seat place takes a card count**; `fanGeometry.ts` imports `seatLayout.ts`, never the
+  reverse (`tests/ui-rules/seatLayoutTakesNoCount.test.ts`).
 - **State which view covers which with a `Layer` role** (or a value derived from one), never
   sibling order or a bare number: web and Android paint in tree order, iOS does not (#209).
   `Layer.felt` (0) < `Layer.feltScrim` (the bomb's) < `Layer.table`;
   `tests/ui-rules/tokenRoles.test.ts` resolves every `zIndex` through its constant.
 - **Before proposing a fix for a native-only visual defect** — sample device pixels, not
-  reasoning, first (`docs/agents/checks.md`); an argument from code alone gets one thing right and
-  two wrong, on the owner's phone, each round.
+  reasoning, first (`docs/agents/checks.md`); code-only arguments keep failing on device.
 
 **UI components**
 
