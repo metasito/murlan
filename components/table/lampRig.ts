@@ -46,7 +46,15 @@ export function lampPools(anchors: Record<FlyDirection, Point>, width: number, h
   const over = (side: FlyDirection) => poolOver(side, anchors[side], anchors.top, anchors.bottom, width, height);
   return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre: TABLE_CENTRE };
 }
-const GLIDE = 2.2;
+/** The light's size at reach 1, in design points: the owner's G1 sliders, the pool's bright radius and the vignette's. */
+export const LAMP_LIGHT = { poolR: 380, vigR: 380 } as const;
+
+export function lightUniforms(reach: number): { uPoolR: number; uVigR: number } {
+  "worklet";
+  return { uPoolR: LAMP_LIGHT.poolR * reach, uVigR: LAMP_LIGHT.vigR * reach };
+}
+
+export const GLIDE = 2.2;
 const SWAY = 20;
 const SWAY_KICKED = 80;
 const KICK_DECAY = 1.1;

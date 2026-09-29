@@ -7,6 +7,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import { CLOTH_BODY, CLOTH_SKSL, TWILL } from "../../components/table/feltShader.ts";
 import { paintRail, RAIL, type RingPainter } from "../../components/table/rail.ts";
+import { CLOTH_DEPARTURES } from "../helpers/clothDepartures.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { CANVASKIT_VERSION } from "../../lib/canvaskit.ts";
 
@@ -22,15 +23,15 @@ const MOCKUP_ONLY: [string, string][] = [
 function mockupBody(): string {
   const fs = fixtureBlock("const FS=`", "}`;").slice("const FS=`".length, -"`;".length);
   let body = fs.slice(fs.indexOf("vec3 stops("));
-  for (const [from, to] of MOCKUP_ONLY) {
-    assert.ok(body.includes(from), `the mockup's FS no longer has ${from}`);
+  for (const [from, to] of [...MOCKUP_ONLY, ...CLOTH_DEPARTURES]) {
+    assert.equal(body.split(from).length - 1, 1, `the mockup's FS has ${from} other than once`);
     body = body.replace(from, to);
   }
   return body;
 }
 
 describe("the felt is the mockup's cloth", () => {
-  test("the shader body is FS, line for line, less the jacquard and the canvas mapping", () => {
+  test("the shader body is FS, line for line, less the jacquard, the canvas mapping, and the light's two lines", () => {
     const want = mockupBody().split("\n");
     const got = CLOTH_BODY.split("\n");
     want.forEach((line, i) => assert.equal(got[i], line, `line ${i + 1} of the cloth differs from FS`));
@@ -54,7 +55,7 @@ describe("the felt is the mockup's cloth", () => {
     const effect = ck.RuntimeEffect.Make(CLOTH_SKSL, (e: string) => errors.push(e));
     assert.ok(effect, `the cloth does not compile as SkSL: ${errors.join("\n")}`);
     const names = Array.from({ length: effect.getUniformCount() }, (_, i) => effect.getUniformName(i));
-    for (const u of ["uLamp", "uK", "uLampH", "uFlare", "uS0", "uS4", ...Object.keys(TWILL)]) {
+    for (const u of ["uLamp", "uK", "uLampH", "uFlare", "uPoolR", "uVigR", "uS0", "uS4", ...Object.keys(TWILL)]) {
       assert.ok(names.includes(u), `${u} is not a uniform of the cloth`);
     }
     effect.delete();

@@ -9,7 +9,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES, type Phone } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";
-import { seatAnchor, settledLight, tracedLamp } from "./helpers/tableTrace";
+import { feltPixels, seatAnchor, settledLight, skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./helpers/tableTrace";
 import { CAPTURE_STATES, CAPTURE_VIEWER_SEAT, captureGameState, type CaptureState } from "../../lib/captureStates";
 
 /** "To the nearest point." */
@@ -121,4 +121,28 @@ test("under the device's insets the light aims by the table's own box, not the w
       expect(Math.abs(lamp.x - pile.x), `${where}: the light at ${lamp.x.toFixed(1)}, the pile at ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(NEAREST_PT);
     }
   }
+});
+
+test("under the device's insets the felt's light sits over the pile (D4 #9)", async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  await skiaOnSoftware(page);
+  await openStill(page, baseURL!, PHONES.find((p) => p.name === "iPhone 16 Pro")!, stateById("lamp-bottom"));
+  const bare = await seatAnchor(page, "pile");
+  await setSafeArea(page, 62, 21, 62);
+  await expect.poll(async () => (await seatAnchor(page, "pile")).x, { message: "the floor: the insets moved the table" }).not.toBeCloseTo(bare.x, 0);
+  await expectLampOver(page, "bottom", "under 62/21/62 insets");
+  await untilSkiaFelt(page);
+
+  const pile = await seatAnchor(page, "pile");
+  const { pixels, perPt, origin } = await feltPixels(page);
+  let [sum, weight] = [0, 0];
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const lum = 0.2126 * pixels.data[i] + 0.7152 * pixels.data[i + 1] + 0.0722 * pixels.data[i + 2];
+    sum += ((i / 4) % pixels.width) * lum * lum;
+    weight += lum * lum;
+  }
+  const centroid = { x: origin.x + (sum / weight + 0.5) / perPt, weight };
+  console.log(`light centroid x ${centroid.x.toFixed(1)}, pile centre x ${pile.x.toFixed(1)}`);
+  expect(centroid.weight, "the felt drew no light").toBeGreaterThan(0);
+  expect(Math.abs(centroid.x - pile.x), `the light's centroid ${centroid.x.toFixed(1)} against the pile's ${pile.x.toFixed(1)}`).toBeLessThanOrEqual(2);
 });

@@ -18,7 +18,7 @@ import {
 } from "@shopify/react-native-skia";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
-import { DESIGN, type Lamp } from "./lampRig";
+import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
@@ -77,7 +77,12 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   useEffect(() => () => rail?.dispose(), [rail]);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
-  const uniforms = useDerivedValue(() => ({ ...base, uLamp: [lamp.value.lx, lamp.value.ly], uFlare: lamp.value.f }));
+  const uniforms = useDerivedValue(() => ({
+    ...base,
+    uLamp: [lamp.value.lx, lamp.value.ly],
+    uFlare: lamp.value.f,
+    ...lightUniforms(lamp.value.r),
+  }));
   const light = useDerivedValue(() => ({ x: lamp.value.lx, y: lamp.value.ly }));
   const soft = useDerivedValue(() => RAIL_LIGHT.soft(lamp.value.f));
   const coat = useDerivedValue(() => RAIL_LIGHT.coat(lamp.value.f));

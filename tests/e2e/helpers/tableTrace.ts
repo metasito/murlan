@@ -65,6 +65,36 @@ export async function untilSkiaFelt(page: Page, timeout = 60_000): Promise<void>
   );
 }
 
+/** The felt alone, every other element hidden, as RGBA; `perPt` image pixels a window point, from `origin`. */
+export async function feltPixels(page: Page): Promise<{ pixels: { width: number; height: number; data: Buffer }; perPt: number; origin: Point }> {
+  const felt = page.getByTestId("table-felt");
+  await felt.evaluate((f) => {
+    for (const el of document.body.querySelectorAll<HTMLElement>("*")) {
+      if (!f.contains(el) && !el.contains(f)) el.style.visibility = "hidden";
+    }
+  });
+  const box = (await felt.boundingBox())!;
+  const png = (await felt.screenshot({ type: "png" })).toString("base64");
+  const raw = await page.evaluate(async (png) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${png}`;
+    await img.decode();
+    const canvas = document.createElement("canvas");
+    [canvas.width, canvas.height] = [img.width, img.height];
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const bytes = ctx.getImageData(0, 0, img.width, img.height).data;
+    let bin = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { width: img.width, height: img.height, b64: btoa(bin) };
+  }, png);
+  return {
+    pixels: { width: raw.width, height: raw.height, data: Buffer.from(raw.b64, "base64") },
+    perPt: raw.width / box.width,
+    origin: { x: box.x, y: box.y },
+  };
+}
+
 /** The lamp as the trace's latest frame drew it, in the felt box's own points. */
 export async function tracedLamp(page: Page): Promise<{ x: number; y: number }> {
   return page.evaluate(async () => {

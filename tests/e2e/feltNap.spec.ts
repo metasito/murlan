@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
-import { DEPART_SCRIPT, MOCKUP_SEAT } from "./helpers/lanternDepartures";
+import { DEPART_SCRIPT, MOCKUP_SEAT, expectDeparted } from "./helpers/lanternDepartures";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 
 const VIEWPORT = { width: 874, height: 402 };
@@ -99,8 +99,8 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
     ${DEPART_SCRIPT}
     T.go("rest", ${MOCKUP_REST_MS});
     lamp.m.length = 0;
-    const [x, y] = POOL.${MOCKUP_SEAT[side]};
-    Object.assign(lamp, { tx: x, ty: y, x, y });
+    lampTo("${MOCKUP_SEAT[side]}");
+    Object.assign(lamp, { x: lamp.tx, y: lamp.ty, r: lamp.tr });
     step(0, true);
     const s = Math.round(${PATCH.size} * V.K);
     const { data } = fxc.getImageData(Math.round(${PATCH.x} * W * V.K), Math.round(${PATCH.y} * H * V.K), s, s);
@@ -110,6 +110,7 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
   const width = (await frame.boundingBox())!.width;
   expect(Math.round(width), "the mockup's table width").toBe(VIEWPORT.width);
   const cloth = await sample(page, await frame.screenshot({ type: "png" }), width);
+  await expectDeparted(page);
   await context.close();
   return cloth;
 }

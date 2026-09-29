@@ -22,7 +22,7 @@ export const TWILL = {
 export const LAMP_HEIGHT = 200;
 
 const UNIFORMS = `uniform vec2 uLamp;
-uniform float uK,uLampH,uFlare,uPitch,uType,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;
+uniform float uK,uLampH,uFlare,uPoolR,uVigR,uPitch,uType,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;
 uniform vec3 uS0,uS1,uS2,uS3,uS4;`;
 
 export const CLOTH_BODY = `vec3 stops(float t){t=clamp(t,0.,1.)*4.;if(t<1.)return mix(uS0,uS1,t);if(t<2.)return mix(uS1,uS2,t-1.);if(t<3.)return mix(uS2,uS3,t-2.);return mix(uS3,uS4,t-3.);}
@@ -40,7 +40,7 @@ vec4 cloth(vec2 p){
  float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-156.;
  float inside=clamp(.5-sd*uK,0.,1.);
  if(inside<=0.){return vec4(0.);}
- float d=length((p-uLamp)*vec2(1.,1.15)),t=clamp(d/(420.+uFlare*120.),0.,1.);
+ float d=length((p-uLamp)*vec2(1.,1.15)),t=clamp(d/(uPoolR+uFlare*120.),0.,1.);
  vec3 alb=stops(t);
  vec2 u=p/uPitch,c=floor(u),f=fract(u);
  float jac=0.;
@@ -67,7 +67,7 @@ vec4 cloth(vec2 p){
  col+=mix(uS0,vec3(1.,.88,.66),.4)*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;
  col*=1.+(h21(floor(p*uK))-.5)*uFuzz;
  col+=vec3(1.,.78,.45)*pow(1.-t,2.)*(.14+.35*uFlare);
- col*=1.-.72*smoothstep(160.,540.,length(p-vec2(457.,210.)));
+ col*=1.-.72*smoothstep(uVigR*16./54.,uVigR,length(p-uLamp));
  return vec4(col*inside,inside);}`;
 
 /** Skia's: `xy` arrives in the table's design points, the felt canvas scales it there. */

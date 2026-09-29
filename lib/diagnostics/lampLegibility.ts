@@ -11,7 +11,11 @@ export interface Ring {
   outerY: number;
 }
 
-export const RING_COVERAGE = 0.95;
+/** How much of a ring must be on the image: short of it, the sampler is reading the wrong place. */
+export const RING_ON_IMAGE = 0.95;
+
+/** Seats sit against the rail, so a ring is partly off felt by geometry; under this share it reads too little felt to judge. */
+export const FELT_SHARE = 0.4;
 
 export const LAMP_SYMMETRY = 0.8;
 
@@ -61,11 +65,11 @@ export function annulusLuminance(
   }
   const where = `the ring at (${at.x}, ${at.y}) pt`;
   if (onImage === 0) throw new Error(`${where} is off the screen (${width}×${height} px)`);
-  if (onImage < inRing * RING_COVERAGE) {
+  if (onImage < inRing * RING_ON_IMAGE) {
     throw new Error(`${where} is partly off the screen: ${percent(onImage / inRing)} of it is on the image`);
   }
-  if (onFelt < inRing * RING_COVERAGE) {
-    throw new Error(`the felt drew nothing over ${percent(1 - onFelt / inRing)} of ${where}`);
+  if (onFelt < inRing * FELT_SHARE) {
+    throw new Error(`only ${percent(onFelt / inRing)} of ${where} is felt, under ${percent(FELT_SHARE)}`);
   }
   if (sum === 0) throw new Error(`${where} read black: the felt was not lit`);
   return sum / onFelt;
