@@ -233,11 +233,13 @@ function seatAnchors(rows) {
   }).length;
   const recorded = new Set(states.map((s) => s.id)).size;
   const invalid = judged.length - rings.length;
+  const badHold = states.filter((s, i) => !(Number.isFinite(s.hold) && s.hold > 0 && s.hold <= (states[i + 1]?.t ?? Infinity) - s.t)).length;
+  const zeroed = rings.filter((r) => r.x === 0 && r.y === 0).length;
   return {
     pass:
-      home.size === 3 && distinct && invalid === 0 && of >= 2 && states.length === of && recorded === of &&
+      home.size === 3 && distinct && invalid === 0 && badHold === 0 && zeroed === 0 && of >= 2 && states.length === of && recorded === of &&
       unmeasured === 0 && drift <= 0.5,
-    metrics: { drift, rings: home.size, states: states.length, of, unmeasured, invalid, distinct },
+    metrics: { drift, rings: home.size, states: states.length, of, unmeasured, invalid, badHold, zeroed, distinct },
   };
 }
 

@@ -31,7 +31,7 @@ const heldBy = (name: string, state: number) => (row: { k: string; t: number; na
 test("rings that never move pass, and the metrics carry what was judged", () => {
   const r = GATES.seatAnchors(rows());
   assert.equal(r.pass, true);
-  assert.deepEqual(r.metrics, { drift: 0, rings: 3, states: 4, of: 4, unmeasured: 0, invalid: 0, distinct: true });
+  assert.deepEqual(r.metrics, { drift: 0, rings: 3, states: 4, of: 4, unmeasured: 0, invalid: 0, badHold: 0, zeroed: 0, distinct: true });
 });
 
 test("a ring 0.4 pt off its deal position passes", () => {
@@ -80,6 +80,28 @@ test("rings all measured at (0,0) fail: a probe that measures nothing drifts by 
   const r = GATES.seatAnchors(rows((name) => [-DEAL[name][0], -DEAL[name][1]]));
   assert.equal(r.pass, false);
   assert.equal(r.metrics.distinct, false);
+});
+
+test("one ring measured at (0,0) in every sample fails though the other two are real", () => {
+  const r = GATES.seatAnchors(rows((name) => (name === "Besnik" ? [-DEAL[name][0], -DEAL[name][1]] : [0, 0])));
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.distinct, true);
+  assert.equal(r.metrics.zeroed, 27);
+});
+
+test("a hold longer than the gap to the next state cannot stand in for a ring's missing samples", () => {
+  const long = rows().filter(heldBy("Luan", 1)).map((row) => (row.k === "seatState" ? { ...row, hold: 1e9 } : row));
+  const r = GATES.seatAnchors(long);
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.badHold, 3);
+});
+
+test("a seatState with no hold, a zero hold or a non-finite one fails", () => {
+  for (const hold of [undefined, 0, -1, NaN, Infinity]) {
+    const r = GATES.seatAnchors(rows().map((row) => (row.k === "seatState" ? { ...row, hold } : row)));
+    assert.equal(r.pass, false, String(hold));
+    assert.equal(r.metrics.badHold, 4, String(hold));
+  }
 });
 
 test("a NaN or missing coordinate fails", () => {
