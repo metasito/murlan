@@ -8,9 +8,23 @@ export interface Trick { plays: readonly TrickPlay[]; swept: { plays: readonly T
 
 export const NO_TRICK: Trick = { plays: [], swept: null };
 
+const ids = (plays: readonly TrickPlay[]) => new Set(plays.flatMap((p) => p.combo.cards.map((c) => c.id)));
+const shares = (plays: readonly TrickPlay[], play: TrickPlay) => {
+  const held = ids(plays);
+  return play.combo.cards.some((c) => held.has(c.id));
+};
+
+/**
+ * States can arrive out of order (a replay scrubbing back, a resync skipping the empty table), so a
+ * play already lower in the trick rewinds to it, and one reusing a card on the felt (card ids repeat
+ * every manche) starts a fresh felt.
+ */
 export function playOnto(trick: Trick, play: TrickPlay): Trick {
-  if (trick.plays.some((p) => p.key === play.key)) return trick;
-  return { ...trick, plays: [...trick.plays, play] };
+  const at = trick.plays.findIndex((p) => p.key === play.key);
+  if (at >= 0) return at === trick.plays.length - 1 ? trick : { ...trick, plays: trick.plays.slice(0, at + 1) };
+  const swept = trick.swept && shares(trick.swept.plays, play) ? null : trick.swept;
+  if (shares(trick.plays, play)) return { plays: [play], swept };
+  return { plays: [...trick.plays, play], swept };
 }
 
 export function sweepTrick(trick: Trick, to: { dx: number; dy: number }): Trick {
@@ -32,10 +46,7 @@ export function roleOf(plays: readonly TrickPlay[], i: number): PlayRole {
   return fromTop === 0 ? "top" : fromTop === 1 ? "beaten" : "buried";
 }
 
-export function topPlay(trick: Pick<Trick, "plays">): TrickPlay | null {
-  return trick.plays.at(-1) ?? null;
-}
+const withRole = (plays: readonly TrickPlay[], role: PlayRole) => plays.find((_, i) => roleOf(plays, i) === role) ?? null;
 
-export function beatenPlay(trick: Pick<Trick, "plays">): TrickPlay | null {
-  return trick.plays.at(-2) ?? null;
-}
+export const topPlay = (plays: readonly TrickPlay[]) => withRole(plays, "top");
+export const beatenPlay = (plays: readonly TrickPlay[]) => withRole(plays, "beaten");

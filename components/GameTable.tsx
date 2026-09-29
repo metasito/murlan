@@ -929,7 +929,7 @@ export function GameTable({
       ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
       : "-");
 
-  const top = topPlay(trick);
+  const top = topPlay(trick.plays);
   const onTop = top?.combo ?? null;
   const comboLabel = getComboLabel(onTop, t);
 
@@ -1272,7 +1272,7 @@ export function GameTable({
                   />
                 ) : (
                   <PlayedPile
-                    prev={landed(beatenPlay(trick)?.combo ?? null)}
+                    prev={landed(beatenPlay(trick.plays)?.combo ?? null)}
                     current={landed(onTop)}
                     comboLabel={timeline.inFlight ? null : onTop}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
@@ -1342,6 +1342,7 @@ export function GameTable({
 
                 {trick.swept && (
                   <SweepCards
+                    key={trick.swept.plays[0]?.key}
                     plays={trick.swept.plays}
                     origin={trick.swept.to}
                     roomW={frame.fieldRoomW}

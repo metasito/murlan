@@ -191,8 +191,8 @@ export function SweepCards({
   }));
 
   const cardScale = scale * FIELD_SCALE;
-  const prev = beatenPlay({ plays })?.combo;
-  const current = topPlay({ plays })?.combo;
+  const prev = beatenPlay(plays)?.combo;
+  const current = topPlay(plays)?.combo;
   return (
     <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
       <Animated.View testID="sweep-cards" style={[pileStyles.pileStack, aStyle]}>
