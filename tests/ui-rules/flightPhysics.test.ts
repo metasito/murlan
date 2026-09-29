@@ -15,13 +15,14 @@ import { LEG, legPose, type LegStage } from "../../lib/game/exchangeTimeline.ts"
 import type { CardFrom } from "../../components/flightPose.ts";
 import {
   arrangeOpponents,
-  sideSlotHeight,
+  HAND_ZONE_H,
   SEAT_DISC,
   seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
 } from "../../components/seatLayout.ts";
-import { seatFanArc } from "../../components/fanGeometry.ts";
+import { drawnFanBounds, fanPoint, seatFanArc } from "../../components/fanGeometry.ts";
+import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
 import {
   arrivingCard,
   readHandArrival,
@@ -30,6 +31,10 @@ import {
   JOKERS,
   readThrownPlay,
   readExchangeLegs,
+  anchorPoints,
+  tableGeometry,
+  type SeatPlace,
+  type TableGeometry,
   flightOrigin,
   comboKey,
   advancePile,
@@ -1110,7 +1115,7 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
 describe("flightOrigin", () => {
   // Deliberately asymmetric left/right pads, so a test that happens to pass
   // only because the table is centred cannot hide here.
-  const base = {
+  const base: TableGeometry = {
     scale: 1,
     windowWidth: 800,
     windowHeight: 600,
@@ -1119,22 +1124,18 @@ describe("flightOrigin", () => {
     tableTop: 10,
     surplus: 0,
     handZoneH: 100,
-    topDisplayedCount: 0,
-    sideDisplayedCount: 0,
   };
+  const midTop = (scale = 1) => base.tableTop + topBandHeight(scale);
+  const pileY = (scale = 1) => midTop(scale) + (base.windowHeight - midTop(scale) - base.handZoneH) / 2;
 
   test("bottom: the throw starts at the hand row's own vertical centre", () => {
-    // handRowCenterY = windowHeight - handZoneH/2 = 600-50 = 550;
-    // topSectionH (no fan) = 79, pileCenterY = 294.5 (worked in the `top`
-    // test below, which shares this same pile centre); dy = 550-294.5 = 255.5.
-    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 255.5 });
+    // handRowCenterY = windowHeight - handZoneH/2 = 600-50 = 550.
+    assert.deepEqual(flightOrigin({ ...base, dir: "bottom" }), { dx: 0, dy: 550 - pileY() });
   });
 
   test("bottom: the pile's own centre, not a fixed constant, is what scale moves through", () => {
-    // seatLabelH(2)=92, ringSize(2)=66, topSectionH=158; midH=590-158-100=332;
-    // pileCenterY=10+158+166=334; handRowCenterY is unchanged at 550 (handZoneH
-    // is a caller-measured input here, not itself a function of scale); dy=216.
-    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 216);
+    assert.ok(pileY(2) > pileY(1), "a larger scale takes a taller top band");
+    assert.equal(flightOrigin({ ...base, dir: "bottom", scale: 2 }).dy, 550 - pileY(2));
   });
 
   test("top: dx is 0 — the top seat and the pile share the same horizontal centre", () => {
@@ -1142,54 +1143,62 @@ describe("flightOrigin", () => {
   });
 
   test("top: the throw starts above the pile, at the ring's own line", () => {
-    // Worked by hand from seatLabelH/SEAT_DISC/CHIP_H/Spacing — see the ADR.
-    // seatLabelH(1) = 17 + gap 2 + pad 4 + CHIP_H(1)=23 = 46; ringSize = 33.
-    // topSectionH (no fan) = 46 + 33 = 79; contentH = 600-10 = 590;
-    // midH = 590-79-100 = 411; pileCenterY = 10+79+411/2 = 294.5;
-    // ringCenterY = 10+46+33/2 = 72.5; dy = 72.5-294.5 = -222.
-    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, -222);
+    // seatLabelH(1) = 17 + gap 2 + pad 4 + CHIP_H(1)=23 = 46; ringCenterY = 10+46+33/2 = 72.5.
+    assert.equal(flightOrigin({ ...base, dir: "top" }).dy, 72.5 - pileY());
   });
 
-  test("top: a bigger held fan pushes the pile down, lengthening the throw", () => {
-    const noFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 0 }).dy;
-    const withFan = flightOrigin({ ...base, dir: "top", topDisplayedCount: 5 }).dy;
-    // The ring never moves; only the pile does, so the gap between them grows.
-    assert.ok(withFan < noFan, `expected the throw to lengthen: ${withFan} was not < ${noFan}`);
+  test("the top band is the label, the ring, the gap and the fan at its drawn cap", () => {
+    const fanH = seatFanArc(FAN_DRAWN_CARDS.top, BACK_SCALE).bounds.h;
+    assert.equal(topBandHeight(1), seatLabelH(1) + SEAT_DISC + seatGap(1) + fanH);
   });
 
-  test("top: the fan's own cap means a held count past it changes nothing further", () => {
-    const atCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: FAN_DRAWN_CARDS.top });
-    const wayPastCap = flightOrigin({ ...base, dir: "top", topDisplayedCount: 21 });
-    assert.deepEqual(wayPastCap, atCap);
-  });
-
-  test("top: a held fan's own height is folded into the pile's offset, not just its sign", () => {
-    // Same solve `topFanHeight` performs internally (`seatFanArc`), so this
-    // pins the arithmetic that combines it with `seatLabelH`/`SEAT_DISC`/
-    // `seatGap`, not the geometry of the solve itself.
-    const topDisplayedCount = 3;
-    const fanH = seatFanArc(topDisplayedCount, BACK_SCALE).bounds.h;
-    const topSectionH = seatLabelH(1) + SEAT_DISC + seatGap(1) + fanH;
-    const contentH = base.windowHeight - base.tableTop;
-    const midH = contentH - topSectionH - base.handZoneH;
-    const pileCenterY = base.tableTop + topSectionH + midH / 2;
-    const ringCenterY = base.tableTop + seatLabelH(1) + SEAT_DISC / 2;
-    assert.equal(
-      flightOrigin({ ...base, dir: "top", topDisplayedCount }).dy,
-      ringCenterY - pileCenterY
-    );
-  });
-
-  test("left/right: the throw starts at the side seat's own ring, high in the band", () => {
-    // The seat's column is anchored to the top of the mid band, so its ring
-    // rides the slot's centre while the pile rides the band's: the throw starts
-    // above the pile by half the difference.
-    const topSectionH = seatLabelH(1) + SEAT_DISC;
-    const midH = base.windowHeight - base.tableTop - topSectionH - base.handZoneH;
-    const dy = (sideSlotHeight(1, 0) - midH) / 2;
+  test("left/right: the side ring centres in its fixed slot at the top of the band", () => {
+    const fanW = seatFanArc(FAN_DRAWN_CARDS.left, BACK_SCALE).bounds.w;
+    assert.equal(sideSlotHeight(1), Math.max(SEAT_DISC, fanW));
+    const dy = midTop() + sideSlotHeight(1) / 2 - pileY();
     assert.ok(dy < 0, `a raised seat throws downward into the pile: ${dy}`);
     assert.equal(flightOrigin({ ...base, dir: "left" }).dy, dy);
     assert.equal(flightOrigin({ ...base, dir: "right" }).dy, dy);
+  });
+
+  test("the bands hold every fan they draw", () => {
+    for (const scale of [0.6, 1, 1.4, 2.1]) {
+      const backScale = scale * BACK_SCALE;
+      const fixedTop = topBandHeight(scale) - seatLabelH(scale) - SEAT_DISC * scale - seatGap(scale);
+      assert.ok(Math.abs(fixedTop - drawnFanBounds(scale).topH) < 1e-9, `scale ${scale}: the top band is not the cap's`);
+      for (let n = 1; n <= FAN_DRAWN_CARDS.top; n++) {
+        const h = seatFanArc(n, backScale).bounds.h;
+        assert.ok(h <= fixedTop + 1e-9, `scale ${scale}: ${n} top backs stand ${h} in a band of ${fixedTop}`);
+      }
+      for (const side of ["left", "right"] as const) {
+        for (let n = 1; n <= FAN_DRAWN_CARDS[side]; n++) {
+          const w = seatFanArc(n, backScale).bounds.w;
+          assert.ok(w <= sideSlotHeight(scale) + 1e-9, `scale ${scale}: ${n} ${side} backs span ${w} in a slot of ${sideSlotHeight(scale)}`);
+        }
+      }
+    }
+  });
+
+  test("a seat's place is the table's geometry, its hand zone taken from the hand card", () => {
+    const place: SeatPlace = { ...base, bottomPad: 8, handCardH: 90 };
+    const g: TableGeometry = tableGeometry(place);
+    assert.equal(g.handZoneH, HAND_ZONE_H(90, 8));
+    for (const dir of ["top", "bottom", "left", "right"] as const) {
+      assert.deepEqual(seatPoint(place, dir), flightOrigin({ ...g, dir }), dir);
+    }
+  });
+
+  test("the anchors are window points", () => {
+    const a = anchorPoints(base);
+    // tableW = 800-40-20 = 740, so the pile and the top ring sit at x = 40+370 = 410.
+    assert.deepEqual(a.bottom, { x: 410, y: 550 });
+    assert.deepEqual(a.top, { x: 410, y: 72.5 });
+    assert.deepEqual(a.pile, { x: 410, y: pileY() });
+    assert.deepEqual(a.left, { x: 64.5, y: midTop() + sideSlotHeight(1) / 2 });
+    assert.deepEqual(a.right, { x: 755.5, y: a.left.y });
+    for (const dir of ["top", "bottom", "left", "right"] as const) {
+      assert.deepEqual(flightOrigin({ ...base, dir }), { dx: a[dir].x - a.pile.x, dy: a[dir].y - a.pile.y }, dir);
+    }
   });
 
   test("left: the throw starts at the ring flush against the rail", () => {
@@ -1473,7 +1482,7 @@ describe("readThrownPlay", () => {
   test("the sweep heads for the round winner's seat, its fan at rest", () => {
     const players = table(3);
     const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
-    assert.notDeepEqual(seatPoint(geometry, 3), seatPoint(geometry, 2));
+    assert.notDeepEqual(seatPoint(geometry, "left"), seatPoint(geometry, "top"));
   });
 
   test("every throw lands on the pile's one centre, midway between the table's edges", () => {
@@ -1498,25 +1507,32 @@ describe("readThrownPlay", () => {
     assert.equal(read(table(2, 1), 2).emptiedHand, false, "one card is not none");
   });
 
-  test("the top seat's ring moves with that seat's own count", () => {
-    const ring = (count: number) => {
-      const { playedBy: _p, combo: _c, ...geometry } = readInput(table(2, count), 2);
-      return seatPoint(geometry, 2);
-    };
-    assert.notDeepEqual(
-      ring(1),
-      ring(5),
-      "the top seat's own count has to reach the origin, or the pile cannot be placed under it"
-    );
+  const ringFromPile = (thrown: ReturnType<typeof read>, count: number) => {
+    const fan = fanPoint({ dx: 0, dy: 0 }, thrown.dir as "top" | "left" | "right", 1, count);
+    return { x: thrown.from[0]!.x - fan.x, y: thrown.from[0]!.y - fan.y };
+  };
+  const samePlace = (a: { x: number; y: number }, b: { x: number; y: number }, what: string) =>
+    assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-9, `${what}: ${JSON.stringify(a)} is not ${JSON.stringify(b)}`);
+
+  test("the top seat's ring does not move with that seat's own count", () => {
+    const at = (count: number) => ringFromPile(read(table(2, count), 2), count);
+    for (const count of [1, 2, 5, 13]) samePlace(at(count), at(0), `${count} cards`);
   });
 
-  /**
-   * The fan draws at most `FAN_DRAWN_CARDS.top`, so past that the column stops
-   * growing and the pile stops moving. Pinned because the test above would
-   * pass for the wrong reason at any two counts on this side of the cap.
-   */
-  test("past the drawn cap the column stops growing, so the pile stops moving", () => {
-    assert.deepEqual(read(table(2, 7), 2).from[0], read(table(2, 11), 2).from[0]);
+  test("a side seat's ring does not move with that seat's own count", () => {
+    for (const seat of [1, 3]) {
+      const at = (count: number) => ringFromPile(read(table(seat, count), seat), count);
+      for (const count of [1, 2, 4, 13]) samePlace(at(count), at(0), `seat ${seat}, ${count} cards`);
+    }
+  });
+
+  test("the pile does not move with the top seat's count", () => {
+    const pile = (topCards: number) => {
+      const players = table(1);
+      players[2] = seat("top", topCards);
+      return read(players, 1).pile;
+    };
+    for (const count of [0, 1, 3, 13]) assert.deepEqual(pile(count), pile(7), `the top seat holding ${count}`);
   });
 
   test("each seat throws from its own side", () => {
@@ -1595,7 +1611,7 @@ describe("readExchangeLegs", () => {
   test("the viewer's card leaves from, and never jumps off, its own place in the hand", () => {
     const own = new Map<string, CardFrom>([["taken", { x: -40, y: -6, rot: 4, scale: 1.1 }]]);
     const from = legs(2, 0, players, own).receive.from;
-    const hand = seatPoint({ ...GEOMETRY, players, opponents: arrangeOpponents(players, 0) }, 0);
+    const hand = seatPoint(GEOMETRY, "bottom");
     assert.deepEqual(from, { x: -40 + hand.dx, y: -6 + hand.dy, rot: 4, scale: 1.1 });
   });
 

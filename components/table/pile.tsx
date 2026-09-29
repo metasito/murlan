@@ -27,7 +27,7 @@ import { readFlightFromDom } from "./flightTrace";
 import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
-import { type FlyDirection } from "@/components/seatLayout";
+import { seatDirection, type FlyDirection } from "@/components/seatLayout";
 import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
@@ -692,7 +692,7 @@ export function usePileFlight({
       }
       prevComboKeyRef.current = "";
       if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
-        const origin = seatPoint(geometry, roundWinner!);
+        const origin = seatPoint(geometry, seatDirection(roundWinner!, viewerSeat, players.length));
         const collect = () => {
           roundHoldRef.current = null;
           setLayers(collectPile);

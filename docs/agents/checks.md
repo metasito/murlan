@@ -108,12 +108,14 @@ A device job proves the flows still run and the app renders *something* — it d
 looking at the device (rule 36); a green Chromium run closed #602 while the owner still saw the
 same broken screen.
 
-**Getting one:** states are `lib/captureStates.ts` — the contract both `app/capture.tsx` (device)
-and `tests/e2e/lampSeats.spec.ts` (Chromium) walk, so a photograph and a web run are of the same
-state; add a state there, not in a spec. Open `/capture`, pick a state, hold landscape, and ask
-for it verbatim: *"send one landscape screenshot of each state: `lamp-bottom`, `lamp-right`,
-`lamp-top`, `lamp-left`, `pile-right`, named after its state."* **Sample pixels, don't describe
-them** — measuring beats eyeballing, every time (#209).
+**Getting one:** states are `lib/captureStates.ts` — the contract `app/capture.tsx` (device) and
+the Chromium specs walk, so a photograph and a web run are of the same state; add a state there,
+not in a spec. `CAPTURE_STATES` puts the lamp on each seat (`tests/e2e/lampSeats.spec.ts`);
+`SEAT_COUNT_STATES` shrinks the hands and puts a seat out, the deal first
+(`tests/e2e/seatsDoNotMove.spec.ts`), and the capture screen lists both. Open `/capture`, pick a
+state, hold landscape, and ask for it verbatim: *"send one landscape screenshot of each state:
+`lamp-bottom`, `lamp-right`, `lamp-top`, `lamp-left`, `pile-right`, named after its state."*
+**Sample pixels, don't describe them** — measuring beats eyeballing, every time (#209).
 
 **Traps found by actually running these, not by writing the YAML:**
 - A center-tap on a fanned/overlapping hand card can select the neighbour — the reported bounds
