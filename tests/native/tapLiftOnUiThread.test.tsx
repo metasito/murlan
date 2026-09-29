@@ -11,7 +11,10 @@ import { t } from '@/lib/i18n';
 import { Motion } from '@/lib/theme';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { handRowHeadroom } from '@/components/seatLayout';
-import { gesturesOf, type Captured } from './tapHelpers';
+import { setMotionPreference } from '@/lib/accessibility';
+import { bootFeedback, sounds } from './helpers/feedback';
+import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { activate, gesturesOf, type Captured } from './tapHelpers';
 
 const mockHeld: { on: boolean; queue: (() => void)[] } = { on: false, queue: [] };
 jest.mock('react-native-worklets', () => {
@@ -38,10 +41,10 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 const mockReduce = { on: false };
-jest.mock('@/lib/accessibility', () => ({
-  ...(jest.requireActual('@/lib/accessibility') as object),
-  usePrefersReducedMotion: () => mockReduce.on,
-}));
+jest.mock('@/lib/accessibility', () => {
+  const actual = jest.requireActual('@/lib/accessibility') as typeof import('@/lib/accessibility');
+  return { ...actual, usePrefersReducedMotion: () => actual.usePrefersReducedMotion() || mockReduce.on };
+});
 
 const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
 const { StraightHand } = require('@/components/table/hand') as typeof import('@/components/table/hand');
@@ -74,12 +77,14 @@ const lift = (c: Card) => {
   return { y: transform[1].translateY as number, rot: parseFloat(transform[2].rotate as string) };
 };
 const selected = (c: Card) => screen.getByLabelText(cardSpokenName(c, t)).props.accessibilityState?.selected === true;
-const onStrip = (c: Card) => ({ x: (StyleSheet.flatten(wrapper(c).props.style) as { left: number }).left + 2, y: 10 });
+const box = (c: Card) => StyleSheet.flatten(wrapper(c).props.style) as { left: number; bottom: number; height: number };
+const rowH = () => StyleSheet.flatten(screen.getByTestId('hand-row').props.style).height as number;
+const onStrip = (c: Card) => ({ x: box(c).left + 2, y: rowH() - box(c).bottom - 1 });
+const aboveTop = (c: Card) => ({ x: box(c).left + 2, y: rowH() - box(c).bottom - box(c).height - 1 });
 const call = (g: Captured, name: string, e: unknown) => (g.config[name] as (e: unknown, ok?: boolean) => void)(e, true);
 
-async function tapOn(c: Card, between?: () => Promise<void>) {
+async function tapOn(c: Card, between?: () => Promise<void>, at = onStrip(c)) {
   const { tap } = gesturesOf(mockRow.gesture!);
-  const at = onStrip(c);
   await act(async () => call(tap, 'onBegin', at));
   await between?.();
   await act(async () => {
@@ -89,15 +94,24 @@ async function tapOn(c: Card, between?: () => Promise<void>) {
   await step(16);
 }
 
-async function mountTable() {
-  const view = await render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
-    </SafeAreaProvider>
-  );
-  await step(3000);
+const table = (s: GameState, spectating = false) => (
+  <SafeAreaProvider initialMetrics={METRICS}>
+    <GameTable gameState={s} viewerSeat={0} spectating={spectating} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+  </SafeAreaProvider>
+);
+
+async function mountTable(s = state, settleMs = 3000) {
+  const view = await render(table(s));
+  await step(settleMs);
   return view;
 }
+
+const releaseHops = async () => {
+  mockHeld.on = false;
+  await act(async () => mockHeld.queue.splice(0).forEach((run) => run()));
+  await step(1500);
+};
+const priorSync = (globalThis as { _setGestureStateSync?: unknown })._setGestureStateSync;
 
 describe('a tap on the hand', () => {
   beforeEach(() => {
@@ -108,6 +122,8 @@ describe('a tap on the hand', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+    (globalThis as { _setGestureStateSync?: unknown })._setGestureStateSync = priorSync;
+    setMotionPreference('system');
   });
 
   it('is the row tap, simultaneous with the reorder, which travel fails and no length of press does', async () => {
@@ -168,7 +184,7 @@ describe('a tap on the hand', () => {
     await view.unmount();
   });
 
-  it('is still a press held long past the hold, and not one once the hold travels into a drag', async () => {
+  it("is still a press held long past the hold, and not one once a drag picks the card (the tap's own maxDistance is pinned as config only)", async () => {
     const view = await mountTable();
     await tapOn(SEVEN, () => step(2000));
     expect(selected(SEVEN)).toBe(true);
@@ -188,6 +204,83 @@ describe('a tap on the hand', () => {
       call(tap, 'onFinalize', at);
     });
     expect(selected(HAND[0])).toBe(false);
+    await view.unmount();
+  });
+
+  it('keeps a selected card at the lift and tilt of the moment when its turn resizes it or motion is reduced', async () => {
+    const view = await mountTable();
+    const rest = lift(SEVEN);
+    await tapOn(SEVEN);
+    await step(1500);
+    const before = box(SEVEN).height;
+    await view.rerender(table({ ...state, currentTurnIndex: 0 }));
+    await step(1500);
+    expect(box(SEVEN).height).toBeGreaterThan(before);
+    expect(lift(SEVEN).y).toBeCloseTo(-handRowHeadroom(box(SEVEN).height), 1);
+
+    await act(async () => setMotionPreference('on'));
+    await step(Motion.duration.tap + 32);
+    expect(lift(SEVEN).rot).toBeCloseTo(rest.rot, 5);
+    await view.unmount();
+  });
+
+  it('re-bases a tap on the store when it reaches JS, so a write that landed in between is kept on both threads', async () => {
+    const view = await mountTable();
+    const rests = HAND.map((c) => lift(c).y);
+    mockHeld.on = true;
+    await tapOn(SEVEN);
+    await activate(screen.getByLabelText(cardSpokenName(HAND[0], t)));
+    await releaseHops();
+    HAND.forEach((c, i) => expect(lift(c).y < rests[i] - 1).toBe(selected(c)));
+    expect(selected(SEVEN)).toBe(true);
+    await view.unmount();
+  });
+
+  it('selects nothing from the felt above a card, nor from a card lifted out of the row', async () => {
+    const view = await mountTable();
+    await tapOn(SEVEN, undefined, aboveTop(SEVEN));
+    await step(500);
+    expect(selected(SEVEN)).toBe(false);
+    await view.unmount();
+
+    const lifted = makeMutable<string[]>([SEVEN.id]);
+    const tap = jest.fn();
+    const alone = await render(
+      <StraightHand cards={HAND} selectedIds={[]} selection={{ shown: makeMutable<string[]>([]), tap }} onActivate={noop}
+        disabled={false} availW={600} roomW={456} lifted={lifted} />
+    );
+    await tapOn(SEVEN);
+    expect(tap).not.toHaveBeenCalled();
+    await alone.unmount();
+  });
+
+  it.each([
+    ['the manche ends for this seat', (view: Awaited<ReturnType<typeof mountTable>>) =>
+      view.rerender(table({ ...state, players: [{ ...state.players[0], finishPosition: 1 }, state.players[1]] }))],
+    ['the seat turns spectator', (view: Awaited<ReturnType<typeof mountTable>>) => view.rerender(table(state, true))],
+  ])('drops a tap still on its way to JS when %s', async (_, close) => {
+    await bootFeedback();
+    const view = await mountTable();
+    mockHeld.on = true;
+    await tapOn(SEVEN);
+    await close(view);
+    await releaseHops();
+    expect(sounds()).not.toContain('select');
+    await view.unmount();
+  });
+
+  it('takes no tap in the exchange before the choice opens', async () => {
+    const exchange: GameState = {
+      ...state,
+      currentTurnIndex: 0,
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+    };
+    const view = await mountTable(exchange, choiceOpensAt(false) - 400);
+    const rest = lift(SEVEN).y;
+    await tapOn(SEVEN);
+    await step(300);
+    expect(selected(SEVEN)).toBe(false);
+    expect(lift(SEVEN).y).toBeCloseTo(rest, 1);
     await view.unmount();
   });
 });
@@ -219,5 +312,50 @@ describe('in the exchange', () => {
     }
     expect(tap.mock.calls).toEqual([[SEVEN.id]]);
     await view.unmount();
+  });
+});
+
+describe('the drag and the tap', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    (globalThis as { _setGestureStateSync?: unknown })._setGestureStateSync = priorSync;
+  });
+
+  it('pick the same card at every edge of every strip', async () => {
+    (globalThis as { _setGestureStateSync?: () => void })._setGestureStateSync = () => {};
+    const mount = (tap: (id: string) => void) =>
+      render(
+        <StraightHand cards={HAND} selectedIds={[]} selection={{ shown: makeMutable<string[]>([]), tap }}
+          onActivate={noop} onReorder={noop} disabled={false} availW={600} roomW={456} />
+      );
+    const probe = await mount(noop);
+    const lefts = HAND.map((c) => box(c).left);
+    const y = rowH() - 1;
+    await probe.unmount();
+    const xs = lefts.flatMap((l, i) => [l - 1, l + 1, (lefts[i + 1] ?? l + 40) - 1]);
+    const seen = new Set<string | undefined>();
+    for (const x of xs) {
+      const tap = jest.fn<(id: string) => void>();
+      const view = await mount(tap);
+      const g = gesturesOf(mockRow.gesture!);
+      await act(async () => {
+        call(g.tap, 'onBegin', { x, y });
+        call(g.tap, 'onActivate', { x, y });
+        call(g.tap, 'onFinalize', { x, y });
+      });
+      const touch = (at: number) => ({ handlerTag: 1, allTouches: [{ x: at, y }] });
+      await act(async () => call(g.pan, 'onTouchesDown', touch(x)));
+      await step(600);
+      await act(async () => call(g.pan, 'onTouchesMove', touch(x + 30)));
+      await step(16);
+      const picked = HAND.find((c) => screen.queryByTestId(`hand-card-${c.id}`) === null)?.id;
+      expect([x, picked]).toEqual([x, tap.mock.calls[0]?.[0]]);
+      seen.add(picked);
+      await view.unmount();
+    }
+    expect(seen).toEqual(new Set([undefined, ...HAND.map((c) => c.id)]));
   });
 });

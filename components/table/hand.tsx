@@ -30,7 +30,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
-import { cardAt, dropIndex, lendBack, stripAt } from "@/components/handOrder";
+import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
 import type { HandSelection } from "./useSelection";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
@@ -315,11 +315,19 @@ function CardItemBase({
   }, [dealing]);
 
   const press = useSharedValue(0);
+  const posed = useSharedValue("");
+  const pressPosed = useSharedValue("");
   const cardId = card.id;
+  // Keyed on every input, not on the selection's edge: a reaction keeps its previous value across a
+  // change of dependencies, so a turn that resizes the card would otherwise leave the lift behind.
   useAnimatedReaction(
     () => shown.value.includes(cardId),
-    (on, was) => {
-      if (on === was || (was === null && !on)) return;
+    (on) => {
+      const key = `${on}|${selectLift}|${reduceMotion}`;
+      if (key === posed.value) return;
+      const first = posed.value === "";
+      posed.value = key;
+      if (first && !on) return;
       glow.value = withTiming(on ? 1 : 0, { duration: Motion.duration.tap });
       if (reduceMotion) {
         liftY.value = withTiming(on ? selectLift : 0, { duration: Motion.duration.tap });
@@ -333,8 +341,12 @@ function CardItemBase({
   );
   useAnimatedReaction(
     () => pressed.value === cardId,
-    (on, was) => {
-      if (on === was || (was === null && !on)) return;
+    (on) => {
+      const key = `${on}|${reduceMotion}`;
+      if (key === pressPosed.value) return;
+      const first = pressPosed.value === "";
+      pressPosed.value = key;
+      if (first && !on) return;
       if (reduceMotion) press.value = on ? 1 : 0;
       else press.value = withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land);
     },
@@ -786,9 +798,11 @@ export function StraightHand({
   // Solved for the span the step produced, so the arc and the overlap floor
   // cannot disagree about how wide the hand is. Above the empty-hand return,
   // because the clearance it feeds is read by a hook.
-  const solve = (count: number) =>
-    solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
-  const full = solve(slotCount);
+  const solve = useCallback(
+    (count: number) => solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step }),
+    [cardW, cardH, cardScale, totalW, step]
+  );
+  const full = useMemo(() => solve(slotCount), [solve, slotCount]);
   const box = full.box;
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
@@ -850,22 +864,28 @@ export function StraightHand({
   // and the rest are arced as a hand of n−1 inside the row's own unchanged box
   // — which is the whole of "the fan closes behind the card that left".
   const heldCard = heldId === null ? null : (cards.find((c) => c.id === heldId) ?? null);
-  const rest = heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id);
+  const rest = useMemo(
+    () => (heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id)),
+    [cards, heldCard]
+  );
 
   // The second arc: where the rest of the hand closes to with one card lifted
   // out. Every card is *placed* by `full` and moved to this, so the closing is
   // one animated value rather than a new `left` landing in a single frame — the
   // fan has to close continuously, or the cards jump between two arrangements
   // while the finger is still between them.
-  const arc = heldCard === null ? full.cards : solve(rest.length).cards;
+  const arc = useMemo(
+    () => (heldCard === null ? full.cards : solve(rest.length).cards),
+    [heldCard, full, solve, rest.length]
+  );
   const rowMid = (scrollable ? totalW : rowW) / 2;
   // Every card is *placed* by the row as it stood and *moved* to the row with
   // the slot in it. `left` is a plain style entry and never animates, so a card
   // placed straight at its n+1 slot would jump there in a frame; anchoring it
   // where it already was and carrying the whole delta in `shiftX` is what makes
   // the row visibly part (#650).
-  const closed = parting === undefined ? full : solve(n);
-  const place = new Map(cards.map((card, j) => [card.id, closed.cards[j]]));
+  const closed = useMemo(() => (parting === undefined ? full : solve(n)), [parting, full, solve, n]);
+  const place = useMemo(() => new Map(cards.map((card, j) => [card.id, closed.cards[j]])), [cards, closed]);
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
@@ -873,8 +893,39 @@ export function StraightHand({
   // Where the drop index is measured from: the arc without the gap in it. The
   // gap is a consequence of the slot, so measuring the slot against a row the
   // gap has already moved makes the two chase each other.
-  const lefts = arc.map((at) => rowMid + at.x);
-  const ids = rest.map((card) => card.id);
+  // The one table a finger is resolved against, the drag's pickup and drop and the tap alike: each
+  // card's strip where it is drawn, and its top edge at rest, in the row's own coordinates.
+  const strips = useMemo(() => {
+    const table = {
+      ids: [] as string[],
+      lefts: [] as number[],
+      widths: [] as number[],
+      tops: [] as number[],
+      refused: [] as boolean[],
+    };
+    rest.forEach((card, i) => {
+      table.refused.push(giveableSet?.has(card.id) === false);
+      const slot = slotForCard(i, parting);
+      const at = arc[slot] ?? arc[arc.length - 1];
+      table.ids.push(card.id);
+      table.lefts.push(rowMid + at.x);
+      table.widths.push(hitWidth(slot, arc.length, step, cardW));
+      table.tops.push(visibleH + crop + (place.get(card.id) ?? at).y - cardH);
+    });
+    return table;
+  }, [rest, parting, arc, rowMid, step, cardW, visibleH, crop, place, cardH, giveableSet]);
+  const lefts = strips.lefts;
+  const ids = strips.ids;
+  const liftH = handRowHeadroom(cardH);
+  const shownIds = selection.shown;
+  const cardUnder = (x: number, y: number): number | null => {
+    'worklet';
+    const i = stripAt(strips.lefts, strips.widths, x);
+    if (i === null) return null;
+    const id = strips.ids[i];
+    if (lifted?.value.includes(id)) return null;
+    return y < strips.tops[i] - (shownIds.value.includes(id) ? liftH : 0) ? null : i;
+  };
   // Where each slot of the *whole* hand sits — where a released card is going.
   const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
 
@@ -921,9 +972,9 @@ export function StraightHand({
     setDealArmed(false);
   };
 
-  const grab = (x: number) => {
+  const grab = (x: number, y: number) => {
     if (held.value !== null) return;
-    const i = cardAt(lefts, cardW, x);
+    const i = cardUnder(x, y);
     if (i === null) return;
     // The card comes up under the part of it the finger is actually on. Every
     // card but the last shows only a `step`-wide strip, so a finger almost
@@ -1028,7 +1079,7 @@ export function StraightHand({
           picking.value = true;
           // From where the finger landed, not where it is now: that is the card
           // it chose, and the offset that brings it up under the same point.
-          scheduleOnRN(grab, grabX.value);
+          scheduleOnRN(grab, grabX.value, grabY.value);
         }
         return;
       }
@@ -1077,9 +1128,6 @@ export function StraightHand({
   });
 
   const pressed = useSharedValue<string | null>(null);
-  const stripLefts = rest.map((_, i) => rowMid + (arc[slotOf(i)] ?? arc[arc.length - 1]).x);
-  const stripWidths = rest.map((_, i) => hitWidth(slotOf(i), arc.length, step, cardW));
-  const refused = rest.filter((card) => giveableSet?.has(card.id) === false).map((card) => card.id);
   const tapSelection = selection.tap;
   const tap = useTapGesture({
     enabled: !disabled && !faceDown,
@@ -1089,9 +1137,8 @@ export function StraightHand({
       // The web handler turns Enter and Space into a touch at the centre of whatever holds focus, in
       // that element's own coordinates; the card's `onActivate` already answers both.
       if (e.pointerType === PointerType.KEY) return;
-      const i = stripAt(stripLefts, stripWidths, e.x);
-      const id = i === null ? null : ids[i];
-      pressed.value = id === null || refused.includes(id) ? null : id;
+      const i = cardUnder(e.x, e.y);
+      pressed.value = i === null || strips.refused[i] ? null : strips.ids[i];
     },
     onActivate: () => {
       const id = pressed.value;
