@@ -4,6 +4,7 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 let mockReduce = false;
 jest.mock('@/lib/accessibility', () => ({
@@ -13,8 +14,6 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { GameTable } from '@/components/GameTable';
-import { DEAL_FLIGHT_MS, dealArrivalsMs, dealLeaveMs } from '@/lib/game/dealTimeline';
-import { motionMs } from '@/lib/theme';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
@@ -57,17 +56,20 @@ const table = () => (
   </SafeAreaProvider>
 );
 
-// viewerSeat 0 of 4: seat 2 sits on top, the farthest from the pile; seat 3 on the left, nearer.
-const TOP_SEAT = 2;
-const LEFT_SEAT = 3;
-const topSeat = () => within(screen.getByTestId('top-seat'));
-const leftSeat = () => within(screen.getByTestId('side-seat-left'));
+const SEATS = ['top-seat', 'side-seat-left', 'side-seat-right'];
+const counted = (testID: string) => {
+  const badge = within(screen.getByTestId(testID)).queryByText(/^[0-9]+$/);
+  return badge ? Number(badge.props.children) : 0;
+};
+const seated = () => SEATS.reduce((sum, id) => sum + counted(id), 0);
 
-async function advance(ms: number) {
-  await act(async () => {
-    jest.advanceTimersByTime(ms);
-  });
-}
+type Pose = { opacity?: number; transform?: Record<string, number>[] };
+const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b) as Pose);
+const moved = (p: Pose) => (p.transform ?? []).some((t) => (t.translateX ?? 0) !== 0 || (t.translateY ?? 0) !== 0);
+const arrived = () => backs().filter((p) => p.opacity === 0 && moved(p)).length;
+const flying = () => backs().filter((p) => p.opacity === 1).length;
+
+const frame = () => act(async () => void jest.advanceTimersByTime(16));
 
 describe("an opponent's hand arrives with the deal", () => {
   beforeEach(async () => {
@@ -80,35 +82,24 @@ describe("an opponent's hand arrives with the deal", () => {
     jest.useRealTimers();
   });
 
-  it('counts up at the seat as each card lands, and the deal waits for the table to settle', async () => {
+  it('counts at each seat exactly the backs whose flight has reached it, frame by frame', async () => {
     const r = await render(table());
-    const entry = motionMs('reveal', false);
-    const arrivals = dealArrivalsMs(13, TOP_SEAT, 4, entry, DEAL_FLIGHT_MS);
-
-    expect(topSeat().queryByText('13')).toBeNull();
-    expect(screen.getAllByTestId('dealt-back').length).toBe(39);
+    expect(backs()).toHaveLength(39);
+    expect(seated()).toBe(0);
     expect(startsOf('deal')).toEqual([]);
 
-    await advance(entry);
-    expect(startsOf('deal')).toHaveLength(1);
+    let frames = 0;
+    let sawCount = false;
+    while (screen.queryAllByTestId('dealt-back').length > 0 && frames++ < 2000) {
+      await frame();
+      if (screen.queryAllByTestId('dealt-back').length === 0) break;
+      if (flying() + arrived() > 0) expect(startsOf('deal')).toHaveLength(1);
+      expect(seated()).toBe(arrived());
+      sawCount ||= seated() > 0 && seated() < 39;
+    }
 
-    await advance(arrivals[4] - entry);
-    expect(topSeat().getByText('5')).toBeTruthy();
-
-    await advance(arrivals[12] - arrivals[4]);
-    expect(topSeat().getByText('13')).toBeTruthy();
-    expect(screen.queryAllByTestId('dealt-back').length).toBe(0);
-
-    await r.unmount();
-  });
-
-  it('deals to a nearer seat in less than a whole flight', async () => {
-    const r = await render(table());
-    const fifthLeaves = motionMs('reveal', false) + dealLeaveMs(4, LEFT_SEAT, 4);
-
-    await advance(fifthLeaves + DEAL_FLIGHT_MS - 1);
-    expect(Number(leftSeat().getByText(/^[0-9]+$/).props.children)).toBeGreaterThanOrEqual(5);
-
+    expect(sawCount).toBe(true);
+    for (const id of SEATS) expect(counted(id)).toBe(13);
     await r.unmount();
   });
 
@@ -116,7 +107,7 @@ describe("an opponent's hand arrives with the deal", () => {
     mockReduce = true;
     const r = await render(table());
 
-    expect(leftSeat().getByText('13')).toBeTruthy();
+    expect(within(screen.getByTestId('side-seat-left')).getByText('13')).toBeTruthy();
     expect(screen.queryAllByTestId('dealt-back').length).toBe(0);
 
     await r.unmount();

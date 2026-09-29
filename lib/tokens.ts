@@ -426,9 +426,6 @@ export const Motion = {
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   /** The exchange's two legs, seat to seat, face up (#1259, D5 revised); `beat`, `giveWait`, `tuck` and `highlight` are the mockup's (index.html:543-551). */
   exchange: { beat: 344, lift: 240, fly: 900, tuck: 320, highlight: 1000, giveWait: 420 },
-  // Gap between moves when a replay plays itself: slow enough to read one
-  // combination, fast enough that a whole hand is not a sitting.
-  replayStep: 1200,
 } as const;
 
 /**

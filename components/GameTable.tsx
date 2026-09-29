@@ -718,6 +718,7 @@ export function GameTable({
   const {
     pileState,
     sweep,
+    endSweep,
     flights,
     roundWinnerTag,
     onFlightContact,
@@ -748,13 +749,12 @@ export function GameTable({
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     lockLandscape();
-    const deal = setTimeout(() => event([{ kind: "deal" }]), entryMs);
     warmCourtArt();
     return () => {
-      clearTimeout(deal);
       ScreenOrientation.unlockAsync().catch(() => {});
     };
-  }, [entryMs]);
+  }, []);
+  const dealCue = useCallback(() => event([{ kind: "deal" }]), []);
 
   // UIKit pins the scene to its current orientation for an animated screen
   // transition, overriding a lock that lands inside it (#1211).
@@ -1230,7 +1230,18 @@ export function GameTable({
                   />
                 )}
 
-                {deal.cards.length > 0 && <DealFlights cards={deal.cards} scale={scale} />}
+                {deal.cards.length > 0 && (
+                  <DealFlights
+                    key={deal.cards[0].key}
+                    cards={deal.cards}
+                    scale={scale}
+                    clock={deal.clock}
+                    startMs={deal.startMs}
+                    endMs={deal.endMs}
+                    onStarted={dealCue}
+                    onLanded={deal.onLanded}
+                  />
+                )}
 
                 {flights.map((f) => (
                   <FlyingCards
@@ -1254,6 +1265,7 @@ export function GameTable({
                     origin={sweep.origin}
                     roomW={frame.fieldRoomW}
                     scale={scale}
+                    onDone={endSweep}
                   />
                 )}
               </View>

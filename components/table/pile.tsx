@@ -10,13 +10,13 @@ import Animated, {
   withSpring,
   withTiming,
   withSequence,
-  withDelay,
   Easing,
   cancelAnimation,
   FadeIn,
   FadeOut,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
@@ -146,12 +146,15 @@ export function SweepCards({
   origin,
   roomW,
   scale = 1,
+  onDone,
 }: {
   pile: PileState;
   /** The winner's seat — components/flightPhysics.ts `seatPoint`. */
   origin: { dx: number; dy: number };
   roomW: number;
   scale?: number;
+  /** The fade's own end: the swept cards leave the felt on it. */
+  onDone: () => void;
 }) {
   const reduceMotion = usePrefersReducedMotion();
   const travel = useSharedValue(0);
@@ -163,12 +166,17 @@ export function SweepCards({
     travel.value = reduceMotion
       ? 0
       : withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
-    fade.value = withDelay(travelMs - shiftMs, withTiming(1, { duration: shiftMs }));
+    fade.value = withSequence(
+      withTiming(0, { duration: travelMs - shiftMs }),
+      withTiming(1, { duration: shiftMs }, (finished) => {
+        if (finished) scheduleOnRN(onDone);
+      })
+    );
     return () => {
       cancelAnimation(travel);
       cancelAnimation(fade);
     };
-  }, [reduceMotion, travel, fade]);
+  }, [reduceMotion, travel, fade, onDone]);
 
   const aStyle = useAnimatedStyle(() => ({
     opacity: 1 - fade.value,
@@ -598,7 +606,6 @@ export function usePileFlight({
   const roundHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
     null
   );
-  const sweepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
   const matchOverRef = useRef(matchOver);
@@ -622,7 +629,6 @@ export function usePileFlight({
   useEffect(
     () => () => {
       if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
-      if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
     },
     []
   );
@@ -669,12 +675,6 @@ export function usePileFlight({
           setLayers(collectPile);
           setSweepTo(origin);
           openNewRound();
-          if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
-          sweepTimerRef.current = setTimeout(() => {
-            sweepTimerRef.current = null;
-            setLayers((l) => ({ ...l, swept: null }));
-            setSweepTo(null);
-          }, motionMs("travel", reduceMotion));
         };
         roundHoldRef.current = { timer: setTimeout(collect, ROUND_WINNER_MS), collect };
         return;
@@ -787,9 +787,15 @@ export function usePileFlight({
     [onClock]
   );
 
+  const endSweep = useCallback(() => {
+    setLayers((l) => ({ ...l, swept: null }));
+    setSweepTo(null);
+  }, []);
+
   return {
     pileState: layers.onPile,
     sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
+    endSweep,
     flights,
     roundWinnerTag,
     onFlightContact,

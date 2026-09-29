@@ -884,8 +884,7 @@ export function StraightHand({
     settleRot.value = target.rot;
     // The same step the gap closes on, so the card arrives as the fan closes
     // around it rather than into a hand still moving.
-    settle.value = withTiming(1, { duration: ms });
-    setTimeout(commit, ms);
+    settle.value = withTiming(1, { duration: ms }, () => scheduleOnRN(commit));
   };
 
   const drag = usePanGesture({

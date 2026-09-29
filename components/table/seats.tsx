@@ -25,7 +25,10 @@ import Animated, {
   ReduceMotion,
   Easing,
   cancelAnimation,
+  useAnimatedReaction,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import type { DealArrivals } from "./deal";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -158,20 +161,28 @@ function CardFan({
 }
 
 /**
- * How many of a deal's cards have landed at this seat, from `arrivals` — each
- * card's landing in ms after the deal started. Unbounded with no deal running
- * or once the last has landed, so a card the seat is handed later still counts.
+ * How many of a deal's cards have landed at this seat, read off the deal's own
+ * clock. Unbounded with no deal running or once the last has landed, so a card
+ * the seat is handed later still counts.
  */
-function useArrivedCount(arrivals: readonly number[] | undefined): number {
-  const [landed, setLanded] = useState<{ of?: readonly number[]; n: number }>({ n: 0 });
-  useEffect(() => {
-    if (!arrivals) return;
-    const ids = arrivals.map((ms, i) => setTimeout(() => setLanded({ of: arrivals, n: i + 1 }), ms));
-    return () => ids.forEach(clearTimeout);
-  }, [arrivals]);
+function useArrivedCount(arrivals: DealArrivals | undefined): number {
+  const [n, setN] = useState(0);
+  const [of, setOf] = useState(arrivals);
+  if (of !== arrivals) {
+    setOf(arrivals);
+    setN(0);
+  }
+  const at = arrivals?.at;
+  const clock = arrivals?.clock;
+  useAnimatedReaction(
+    () => (at && clock ? at.filter((ms) => ms <= clock.value).length : 0),
+    (now, prev) => {
+      if (now !== prev) scheduleOnRN(setN, now);
+    },
+    [at, clock]
+  );
   if (!arrivals) return Infinity;
-  const n = landed.of === arrivals ? landed.n : 0;
-  return n >= arrivals.length ? Infinity : n;
+  return n >= arrivals.at.length ? Infinity : n;
 }
 
 // ─── SeatRing ─────────────────────────────────────────────────────────────────
@@ -609,7 +620,7 @@ export function TopOppSlot({
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
-  dealArrivals?: readonly number[];
+  dealArrivals?: DealArrivals;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const displayed = Math.min(cardCount ?? player.hand.length, arrived);
@@ -773,7 +784,7 @@ export function SideOppSlot({
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
-  dealArrivals?: readonly number[];
+  dealArrivals?: DealArrivals;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const displayed = Math.min(cardCount ?? player.hand.length, arrived);
