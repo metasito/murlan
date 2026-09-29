@@ -4,12 +4,11 @@
 
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import { Hold, Motion, Spacing, Trauma } from "../lib/tokens.ts";
+import { Motion, Spacing, Trauma } from "../lib/tokens.ts";
 import {
   HAND_ZONE_H,
   SEAT_DISC,
   SIDE_SECTION_W,
-  displayedHandCount,
   seatDirection,
   seatGap,
   seatLabelH,
@@ -69,32 +68,6 @@ export function arrivingCard(
   if (viewerSeat === announce.winnerIdx) return announce.cardReceived;
   if (viewerSeat === announce.loserIdx) return announce.cardGiven;
   return undefined;
-}
-
-/** Fraction of the flight after which the card is on the felt and settling. */
-export const LANDING_FRACTION = 0.82;
-
-/** Delay from a play being registered to the card touching the pile. */
-export function impactDelayMs(reduceMotion: boolean): number {
-  // Under reduced motion FlyingCards skips the flight, so there is nothing to
-  // wait for and the feedback fires immediately.
-  return reduceMotion ? 0 : Math.round(Motion.throw.card * LANDING_FRACTION);
-}
-
-/** Delay from a play being registered to the turn it hands over being shown — the landing, then its hold. */
-export function handOffDelayMs(reduceMotion: boolean): number {
-  return impactDelayMs(reduceMotion) + landingHoldMs(reduceMotion);
-}
-
-/**
- * The beat the table sits still on at contact, before the turn is handed on.
- *
- * A hold marks a landing, so it is asked of the landing rather than of
- * `reduceMotion`: reading the flag here as well is the second derivation the
- * two could drift apart on. One value; the ladder of beats is #101's.
- */
-export function landingHoldMs(reduceMotion: boolean): number {
-  return impactDelayMs(reduceMotion) === 0 ? 0 : Hold.land;
 }
 
 /** The mockup's `landWobble` (#1242), off the Motion scale: its sine rates are set against this span. */
@@ -411,7 +384,7 @@ interface FlightOriginInput {
   /** HAND_ZONE_H(handCardH, bottomPad) — the hand row's own height. */
   handZoneH: number;
   /**
-   * The top seat's displayed hand count (`displayedHandCount`) — needed
+   * The top seat's hand count — needed
    * because the pile sits in the space *below* the top seat, whichever seat
    * is actually throwing. Ignored when `dir` is not "top".
    */
@@ -885,15 +858,10 @@ export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
 
 /**
  * Everything a throw decides, from the state it was thrown out of.
- *
- * The counts are the seats' *displayed* ones, held at their pre-play values
- * for the length of the flight: the pile sits in whatever room the top seat's
- * column leaves whichever seat is throwing, so a fan that shrinks the moment
- * the cards leave would move the pile out from under them mid-flight.
  */
 export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap<string, CardFrom>): ThrownPlay {
   const { combo, playedBy, players } = input;
-  const { dir, origin, pile } = seatOrigin(input, playedBy, combo.cards.length);
+  const { dir, origin, pile } = seatOrigin(input, playedBy);
   const thrower = players[playedBy];
   let from: CardFrom[];
   if (dir === "bottom") {
@@ -919,25 +887,20 @@ export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap
 
 /** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
 export function seatPoint(input: SeatGeometry, seat: number): { dx: number; dy: number } {
-  return seatOrigin(input, seat, 0).origin;
+  return seatOrigin(input, seat).origin;
 }
 
 function seatOrigin(
   input: SeatGeometry,
-  seat: number,
-  leaving: number
-): { dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
+  seat: number
+):{ dir: FlyDirection; origin: { dx: number; dy: number }; pile: { x: number; y: number } } {
   const { players, opponents } = input;
   const dir = seatDirection(seat, input.viewerSeat, players.length);
 
   const topPlayer = opponents.top?.player;
-  const topDisplayedCount = topPlayer
-    ? displayedHandCount(handCountOf(topPlayer), dir === "top" ? leaving : 0)
-    : 0;
+  const topDisplayedCount = topPlayer ? handCountOf(topPlayer) : 0;
   const sidePlayer = dir === "left" || dir === "right" ? opponents[dir]?.player : undefined;
-  const sideDisplayedCount = sidePlayer
-    ? displayedHandCount(handCountOf(sidePlayer), leaving)
-    : 0;
+  const sideDisplayedCount = sidePlayer ? handCountOf(sidePlayer) : 0;
 
   const geometry: FlightOriginInput = {
     dir,

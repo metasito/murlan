@@ -55,9 +55,8 @@ jest.mock('react-native-reanimated', () => {
 // `useTableFeedback.ts`'s own `useSharedValue` calls go through the wrapper.
 import Animated, { getAnimatedStyle, makeMutable, type SharedValue } from 'react-native-reanimated';
 import { Motion } from '@/lib/theme';
-import { useTableFeedback } from '@/components/useTableFeedback';
 import { NO_LANDING, type LandingSignal } from '@/components/table/useFlightClock';
-import { fireLanding } from './helpers/landing';
+import { fireLanding, useFeedbackOnTimeline } from './helpers/landing';
 
 // A value no real trauma, amplitude, decay-ms or flash/glow shared value in
 // this tree would ever hold on its own — every other one either starts and
@@ -91,7 +90,7 @@ const idleState = () => ({
 });
 
 function ShakeProbe({ landing }: { landing: SharedValue<LandingSignal> }) {
-  const { shakeStyle } = useTableFeedback({ ...idleState(), landing });
+  const { shakeStyle } = useFeedbackOnTimeline({ ...idleState(), landing });
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
 }
 

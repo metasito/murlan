@@ -1,15 +1,15 @@
 // tests/native/landingHaptic.test.tsx — what a card landing feels like: the viewer's own play
 // lands with a tap, a bomb rumbles in layers with the kick. The pulses start from the landing
-// signal (landingOnContact.test.tsx pins its frame); the sound from `playImpact`.
+// signal (landingOnContact.test.tsx pins its frame); the sound is the timeline's (oneEventPerCommit).
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { act, renderHook } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
-import { KICK_JOLTS, useTableFeedback } from "@/components/useTableFeedback";
+import { KICK_JOLTS } from "@/components/useTableFeedback";
 import { LANDING_PULSES } from "@/lib/device/feedback";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import type { FlyDirection } from "@/components/seatLayout";
-import { bootFeedback, haptics, settle, sounds } from "./helpers/feedback";
-import { fireLanding } from "./helpers/landing";
+import { bootFeedback, haptics, settle } from "./helpers/feedback";
+import { fireLanding, useFeedbackOnTimeline } from "./helpers/landing";
 
 const state = {
   isMyTurn: false,
@@ -33,10 +33,9 @@ const state = {
 
 async function mount() {
   const landing = makeMutable(NO_LANDING);
-  const view = await renderHook(() => useTableFeedback({ ...state, landing }));
+  const view = await renderHook(() => useFeedbackOnTimeline({ ...state, landing }));
   const land = (cards: number, heavy: boolean, dir: FlyDirection) =>
     act(async () => {
-      view.result.current.playImpact(heavy, dir, cards);
       fireLanding(landing, { cards, heavy, mine: dir === "bottom" });
     });
   return { ...view, land };
@@ -55,16 +54,14 @@ describe("a card landing's haptic", () => {
     const { land, unmount } = await mount();
     await land(1, false, "bottom");
     await settle(16);
-    expect(sounds()).toEqual(["play"]);
     expect(haptics()).toEqual(["impactLight"]);
     await unmount();
   });
 
-  it("taps harder for any of the viewer's own combos, with the combo sound", async () => {
+  it("taps harder for any of the viewer's own combos", async () => {
     const { land, unmount } = await mount();
     await land(2, false, "bottom");
     await settle(16);
-    expect(sounds()).toEqual(["combo"]);
     expect(haptics()).toEqual(["impactMedium"]);
     await unmount();
   });
@@ -75,7 +72,6 @@ describe("a card landing's haptic", () => {
     await settle(500);
     await land(1, false, "left");
     await settle(16);
-    expect(sounds()).toEqual(["combo", "play"]);
     expect(haptics()).toEqual([]);
     await unmount();
   });
@@ -90,7 +86,6 @@ describe("a card landing's haptic", () => {
     const { land, unmount } = await mount();
     await land(4, true, "right");
     await settle(16);
-    expect(sounds()).toEqual(["bomb"]);
     expect(haptics()).toEqual(["rigid"]);
     await settle(LANDING_PULSES.bomb[2].offsetMs);
     expect(haptics()).toEqual(["rigid", "impactHeavy", "impactLight"]);

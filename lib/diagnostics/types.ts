@@ -4,6 +4,7 @@ export interface DiagRows {
   arm: { name: "on" | "off"; phase: "start" | "end" };
   latency: { outputMs: number | null; ioMs: number | null; inputMs: number | null };
   trigger: { name: string };
+  dropped: { name: string };
   play: { id: string; at: number; bus: string; dropped: boolean; lead: number };
   haptic: { kind: string; at: number };
   music: { track: string | null; at: number };

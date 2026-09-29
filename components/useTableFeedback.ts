@@ -12,7 +12,6 @@ import {
   type SharedValue,
 } from "react-native-reanimated";
 import type { Combination } from "@/lib/game/gameEngine";
-import type { FlyDirection } from "@/components/seatLayout";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
@@ -21,14 +20,14 @@ import {
   traumaFor,
   shakeOffset,
   shakeAmplitudeFor,
-  handOffDelayMs,
 } from "@/components/flightPhysics";
-import { cancelLandingPulses, event, runLandingPulses } from "@/lib/device/feedback";
+import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import { celebratesViewer, handOutcomeFor } from "@/lib/game/matchState";
 import { Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import type { LandingSignal } from "@/components/table/useFlightClock";
+import type { TableTimeline } from "@/components/table/tableTimeline";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -89,6 +88,8 @@ interface TableFeedbackState {
   matchWinners?: readonly string[];
   /** Written by the flight clock on the contact frame; the shake, the kick and the landing pulses react to it. */
   landing: SharedValue<LandingSignal>;
+  /** Every cue goes out through it, at its flight's reported times; the turn is shown at `handsOffAt`. */
+  timeline: Pick<TableTimeline, "moment" | "handsOffAt" | "inFlight">;
 }
 
 interface TableFeedback {
@@ -100,12 +101,10 @@ interface TableFeedback {
   kickStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
-  /** The thrown card has landed: its sound. Timing it against the flight is the caller's. */
-  playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
   rejectPlay: () => void;
   /** Increments when a play empties a hand — Sweep and PlayedPile's `catchTrigger` read it the same way. */
   flushTrigger: number;
-  /** Call once, at the same landing moment as `playImpact`, when that play emptied a hand. */
+  /** Call once, at the flight's contact, when that play emptied a hand. */
   celebrateFlush: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
@@ -257,6 +256,7 @@ export function useTableFeedback({
   matchOver = false,
   matchWinners = NO_WINNERS,
   landing,
+  timeline,
 }: TableFeedbackState): TableFeedback {
   const reduceMotion = usePrefersReducedMotion();
   const screenShake = useScreenShakeEnabled();
@@ -284,48 +284,33 @@ export function useTableFeedback({
   // Sweep and the pile's catch own their animations; this just says "again".
   const [flushTrigger, setFlushTrigger] = useState(0);
 
-  const handOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Keyed by card ids, not the object: every broadcast rebuilds it, and a
-  // round-closing pass nulls it while the card that preceded it is still flying.
-  const playedKey = lastPlayedCombination?.cards.map((c) => c.id).join(",") ?? null;
-  const landsAtRef = useRef(0);
-  useEffect(() => {
-    if (playedKey !== null) landsAtRef.current = performance.now() + handOffDelayMs(reduceMotion);
-  }, [playedKey, reduceMotion]);
-  useEffect(
-    () => () => {
-      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      cancelLandingPulses();
-    },
-    []
-  );
+  const { moment, handsOffAt, inFlight } = timeline;
+  useEffect(() => () => cancelLandingPulses(), []);
 
   const [turn, setTurn] = useState({ seat: currentTurnIndex, shown: currentTurnIndex });
   if (turn.seat !== currentTurnIndex) setTurn({ seat: currentTurnIndex, shown: turn.shown });
   useEffect(() => {
     if (turn.shown === turn.seat) return;
-    const reveal = () => setTurn((t) => ({ ...t, shown: t.seat }));
-    const wait = landsAtRef.current - performance.now();
+    const reveal = () => {
+      traceOnset("moment", "handoff");
+      setTurn((t) => ({ ...t, shown: t.seat }));
+    };
+    if (inFlight && handsOffAt === null) return;
+    const wait = (handsOffAt ?? 0) - performance.now();
     if (wait <= 0) return reveal();
     const id = setTimeout(reveal, wait);
     return () => clearTimeout(id);
-  }, [turn]);
+  }, [turn, handsOffAt, inFlight]);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) {
-      const cue = () => event([{ kind: "turn" }]);
-      if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
-      const wait = landsAtRef.current - performance.now();
-      if (wait <= 0) cue();
-      else handOffTimerRef.current = setTimeout(cue, wait);
-    }
+    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished, gameOver]);
+  }, [isMyTurn, isFinished, gameOver, moment]);
 
   useEffect(() => {
-    if (exchangeActive && !prevExchangeActiveRef.current) event([{ kind: "exchange" }]);
+    if (exchangeActive && !prevExchangeActiveRef.current) moment({ kind: "exchange" });
     prevExchangeActiveRef.current = exchangeActive;
-  }, [exchangeActive]);
+  }, [exchangeActive, moment]);
 
   // A pass moves nothing on the felt, so the sound is the whole event. Keyed
   // on the state the pass produced, not the tap, so a bot, an opponent and the
@@ -341,8 +326,9 @@ export function useTableFeedback({
     const wasClosed = prevRoundClosedRef.current;
     prevRoundClosedRef.current = closed;
     const closedNow = closed && !wasClosed;
-    if (passCount > prevCount || closedNow) event(closedNow ? [{ kind: "pass" }, { kind: "roundWon" }] : [{ kind: "pass" }]);
-  }, [passCount, lastPlayedCombination, roundWinner]);
+    if (passCount > prevCount || closedNow) moment({ kind: "pass" });
+    if (closedNow) moment({ kind: "roundWon" });
+  }, [passCount, lastPlayedCombination, roundWinner, moment]);
 
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the
@@ -351,13 +337,9 @@ export function useTableFeedback({
       prevGameOverRef.current = false;
       return;
     }
-    if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
     if (prevGameOverRef.current) return;
-    // The manche/partita shake itself is NOT fired here — this effect answers
-    // `gameOver` the instant the state arrives, well ahead of the winning
-    // card's own landing. `usePileFlight` (components/table/pile.tsx) fires
-    // `shake(landingTier(...))` from the `impactDelayMs` timeout everything else
-    // waits for, so the shake lands with the card rather than ahead of it.
+    // The manche/partita shake itself is NOT fired here: it reacts to the
+    // winning card's own landing signal, on its contact frame.
     // `rankings` holds engine player ids (`player_0`), never display names.
     // Routed through the one function the results board's own haptic reads
     // for the same question (`lib/game/matchState.ts`), fed the same `handScores`
@@ -371,19 +353,18 @@ export function useTableFeedback({
     // the decision on data that was never real; returning without touching
     // the ref lets the next render, carrying the real `handScores`, run this
     // same effect again instead.
-    // The sting is placed in the engine at the landing's hold, so leaving the
+    // The sting is placed in the engine a beat after the hand-off, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    const delay = handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion);
-    const at = delay > 0 ? performance.now() + delay : undefined;
+    const after = motionMs("shift", reduceMotion);
     if (matchOver && matchWinners.length > 0) {
-      event([{ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }], at);
+      moment({ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }, "handoff", after);
     } else {
-      event([{ kind: "mancheOver", outcome }], at);
+      moment({ kind: "mancheOver", outcome }, "handoff", after);
     }
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners]);
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners, moment]);
 
   // GIOCA bloom — a slow gold pulse while the button is armed.
   useEffect(() => {
@@ -445,10 +426,6 @@ export function useTableFeedback({
   // per frame is main-thread paint the browser cannot composite.
   const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
 
-  const playImpact = useCallback((heavy: boolean, dir: FlyDirection, cards: number) => {
-    event([{ kind: "landing", cards, bomb: heavy, mine: dir === "bottom" }]);
-  }, []);
-
   const celebrateFlush = useCallback(() => {
     if (reduceMotion) return;
     traceOnset("moment", "flush");
@@ -462,7 +439,6 @@ export function useTableFeedback({
     giocaGlowStyle,
     kickStyle,
     giocaRejectX,
-    playImpact,
     rejectPlay,
     flushTrigger,
     celebrateFlush,

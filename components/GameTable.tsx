@@ -42,7 +42,6 @@ import {
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
-  type OpponentSide,
 } from "@/components/seatLayout";
 import { handCountOf, vacatedOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
@@ -90,6 +89,7 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -662,6 +662,7 @@ export function GameTable({
   );
 
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
+  const timeline = useTableTimeline();
   const {
     shownTurnIndex,
     giocaFlashStyle,
@@ -669,7 +670,6 @@ export function GameTable({
     giocaGlowStyle,
     kickStyle,
     giocaRejectX,
-    playImpact,
     rejectPlay,
     flushTrigger,
     celebrateFlush,
@@ -695,6 +695,7 @@ export function GameTable({
     matchOver,
     matchWinners,
     landing: landingSignal,
+    timeline,
   });
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
@@ -723,7 +724,6 @@ export function GameTable({
     pileState,
     sweep,
     flights,
-    flightLanded,
     roundWinnerTag,
     onFlightContact,
     onFlightDone,
@@ -737,7 +737,7 @@ export function GameTable({
     gameOver: gameState.gameOver,
     matchOver,
     ...seatGeometry,
-    playImpact,
+    timeline,
     celebrateFlush,
     playRoundStart: roundStart,
     handOrigins,
@@ -867,16 +867,6 @@ export function GameTable({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  // Cards the throwing seat's own fan holds back until the flight lands —
-  // displayedHandCount's other term, cleared at `flightLanded` rather than at
-  // `flyInfo`'s own lifetime, which runs past the landing for the settle
-  // spring. `impactDelayMs(reduceMotion)` is 0 under reduced motion, so
-  // `flightLanded` is already true by the next render and nothing holds.
-  const lastFlight = flights.at(-1);
-  const departingSide: OpponentSide | null =
-    lastFlight && !flightLanded && lastFlight.dir !== "bottom" ? lastFlight.dir : null;
-  const departingCount = departingSide ? lastFlight!.cards.length : 0;
-
   const timerActive =
     !!turnTimer &&
     turnTimerActive({
@@ -953,6 +943,9 @@ export function GameTable({
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
   const exchangeTrips = useExchangeTrips(exchangeAnnouncement?.data, seatGeometry);
+
+  // The last hook: effects run in declaration order, so every producer above has queued its moments.
+  useEffect(() => timeline.flush());
 
   return (
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
@@ -1151,7 +1144,6 @@ export function GameTable({
                   player={opponents.top.player}
                   isActive={opponents.top.seat === shownTurnIndex}
                   cardCount={handCountOf(opponents.top.player)}
-                  departing={departingSide === "top" ? departingCount : 0}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
                   vacated={vacatedOf(opponents.top.player)}
@@ -1178,7 +1170,6 @@ export function GameTable({
                     isActive={opponents.left.seat === shownTurnIndex}
                     side="left"
                     cardCount={handCountOf(opponents.left.player)}
-                    departing={departingSide === "left" ? departingCount : 0}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
                     passed={passed.includes(opponents.left.seat)}
                     vacated={vacatedOf(opponents.left.player)}
@@ -1214,7 +1205,7 @@ export function GameTable({
                   <PlayedPile
                     prev={landed(pileState.prev)}
                     current={landed(pileState.current)}
-                    comboLabel={flightLanded ? pileState.current : null}
+                    comboLabel={timeline.inFlight ? null : pileState.current}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
                     landing={landingSignal}
@@ -1257,6 +1248,7 @@ export function GameTable({
                     flight={f.spec}
                     landing={f.landing}
                     signal={landingSignal}
+                    onStart={timeline.flightStarted}
                     onContact={onFlightContact}
                     onEnd={onFlightDone}
                     onClock={onFlightClock}
@@ -1282,7 +1274,6 @@ export function GameTable({
                     isActive={opponents.right.seat === shownTurnIndex}
                     side="right"
                     cardCount={handCountOf(opponents.right.player)}
-                    departing={departingSide === "right" ? departingCount : 0}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}
                     passed={passed.includes(opponents.right.seat)}
                     vacated={vacatedOf(opponents.right.player)}

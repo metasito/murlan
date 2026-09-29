@@ -8,7 +8,7 @@ import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
 import Animated, { makeMutable } from "react-native-reanimated";
-import { useTableFeedback } from "@/components/useTableFeedback";
+import { useFeedbackOnTimeline } from "./helpers/landing";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 
 function flattenStyle(style: unknown): Record<string, unknown> {
@@ -37,7 +37,7 @@ const idleState = () => ({
 });
 
 function ShakeProbe() {
-  const { shakeStyle } = useTableFeedback(idleState());
+  const { shakeStyle } = useFeedbackOnTimeline(idleState());
   return <Animated.View testID="shake-probe" style={shakeStyle} />;
 }
 

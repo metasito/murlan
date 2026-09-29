@@ -27,13 +27,14 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, impactDelayMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
 import { flightSpec, NO_LANDING, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
 import { useLandingReaction } from "./useLandingReaction";
+import type { TableTimeline } from "./tableTimeline";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -343,7 +344,7 @@ export function PlayedPile({
   /**
    * The combination the chip names. Defaults to `current`; pass it
    * separately only when the chip must show before `current` does — the
-   * landing, `flightLanded` — while `current` itself stays gated on
+   * landing — while `current` itself stays gated on
    * `flyInfo` to protect the once-only card render (#828).
    */
   comboLabel?: Combination | null;
@@ -517,12 +518,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * re-armed with the tier it now closes on.
    */
   matchOver: boolean;
-  /**
-   * Every beat a landing earns, passed in rather than reached for: the table
-   * owns `useTableFeedback`, and `tests/native` loads this module on its own,
-   * where the audio native module has no JS implementation to import.
-   */
-  playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
+  /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
+  timeline: Pick<TableTimeline, "awaitFlight" | "moment">;
   celebrateFlush: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
@@ -568,7 +565,7 @@ export function usePileFlight({
   surplus,
   bottomPad,
   handCardH,
-  playImpact,
+  timeline,
   celebrateFlush,
   onClock,
   playRoundStart,
@@ -577,6 +574,7 @@ export function usePileFlight({
   catchUp,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
+  const { awaitFlight, moment } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
   // The seat that took the last round and a counter of how many rounds have
@@ -594,12 +592,6 @@ export function usePileFlight({
     flightsRef.current = flights;
   });
   const touched = useRef(new Set<string>());
-  // False for exactly impactDelayMs() from the moment a flight begins — the
-  // throwing seat's own held count and departing backs read off this, not off
-  // flyInfo's own lifetime, which runs past the landing to cover `FlyingCards`'
-  // settle spring too.
-  const [flightLanded, setFlightLanded] = useState(true);
-  const landTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Non-null while the winning combination is being held on the felt under the
   // round-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
@@ -631,7 +623,6 @@ export function usePileFlight({
     () => () => {
       if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
       if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
-      if (landTimerRef.current) clearTimeout(landTimerRef.current);
     },
     []
   );
@@ -640,22 +631,11 @@ export function usePileFlight({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
-    // A flight ending early — a new lead before it landed, the table leaving —
-    // must not leave a stale hold on the throwing seat's own count.
-    const clearLanding = () => {
-      if (landTimerRef.current) {
-        clearTimeout(landTimerRef.current);
-        landTimerRef.current = null;
-      }
-      setFlightLanded(true);
-    };
-
     // Clearing the felt and announcing a new round are one beat, whether it
     // happens now or after the winning cards have been held.
     const openNewRound = () => {
       playRoundStart();
       setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
-      clearLanding();
     };
 
     const geometry = {
@@ -679,7 +659,6 @@ export function usePileFlight({
       if (roundHoldRef.current) return;
       if (prevComboKeyRef.current === "") {
         setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
-        clearLanding();
         return;
       }
       prevComboKeyRef.current = "";
@@ -716,15 +695,8 @@ export function usePileFlight({
 
     const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
 
-    // The throwing seat's held count and departing backs read off this same
-    // boundary — the fan and the badge drop the instant the impact fires,
-    // not whenever FlyingCards' settle spring happens to finish.
-    if (landTimerRef.current) clearTimeout(landTimerRef.current);
-    setFlightLanded(false);
-    landTimerRef.current = setTimeout(() => {
-      landTimerRef.current = null;
-      setFlightLanded(true);
-    }, impactDelayMs(reduceMotion));
+    awaitFlight(key);
+    moment({ kind: "landing", cards: combo.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" });
 
     const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
@@ -762,6 +734,8 @@ export function usePileFlight({
     handOrigins,
     roomW,
     catchUp,
+    awaitFlight,
+    moment,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -796,11 +770,9 @@ export function usePileFlight({
     (key: string) => {
       touched.current.add(key);
       const flight = flightsRef.current.find((f) => f.key === key);
-      if (!flight) return;
-      playImpact(flight.landing.heavy, flight.dir, flight.landing.cards);
-      if (flight.landing.flush) celebrateFlush();
+      if (flight?.landing.flush) celebrateFlush();
     },
-    [playImpact, celebrateFlush]
+    [celebrateFlush]
   );
   const onFlightDone = useCallback((key: string) => {
     touched.current.delete(key);
@@ -819,7 +791,6 @@ export function usePileFlight({
     pileState: layers.onPile,
     sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
     flights,
-    flightLanded,
     roundWinnerTag,
     onFlightContact,
     onFlightDone,

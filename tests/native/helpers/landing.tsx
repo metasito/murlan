@@ -1,4 +1,7 @@
 import { jest } from '@jest/globals';
+import { useEffect } from 'react';
+import { useTableFeedback } from '@/components/useTableFeedback';
+import { useTableTimeline } from '@/components/table/tableTimeline';
 import { act, render, type RenderResult } from '@testing-library/react-native';
 import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -28,35 +31,40 @@ export function fireLanding(
   };
 }
 
-const card = (id: string, rank: Card['rank'], suit: Card['suit']): Card => ({ id, rank, suit, isJoker: false });
+export const card = (id: string, rank: Card['rank'], suit: Card['suit']): Card =>({ id, rank, suit, isJoker: false });
 const seat = (i: number): Player => ({
   id: `player_${i}`,
   name: `P${i}`,
   hand: Array.from({ length: 5 }, (_, k) => card(`s${i}_${k}`, '3', 'spades')),
   type: 'human',
 });
-const PAIR: Combination = { type: 'pair', cards: [card('a', '5', 'clubs'), card('b', '5', 'diamonds')], strength: 5 };
+export const PAIR: Combination ={ type: 'pair', cards: [card('a', '5', 'clubs'), card('b', '5', 'diamonds')], strength: 5 };
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
 const noop = () => {};
 
-/** The viewer's four-seat table mounting on a pair just thrown by seat `by`, which flies on mount. */
+/** The viewer's four-seat table mounting on a pair just thrown by seat `by`, which flies on mount; seat 0 is on move. */
 export function throwPair(by = 3) {
+  return render(tableAfter({ by, combo: PAIR }));
+}
+
+/** That table as an element, for `rerender`: `by` threw `combo` and seat 0 is on move. */
+export function tableAfter({ by, combo, passCount = 0 }: { by: number; combo: Combination; passCount?: number }) {
   const state: GameState = {
     players: [0, 1, 2, 3].map(seat),
     currentTurnIndex: 0,
-    lastPlayedCombination: PAIR,
+    lastPlayedCombination: combo,
     lastPlayedBy: by,
-    passCount: 0,
+    passCount,
     gameMode: 'free_for_all',
     roundWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
   };
-  return render(
+  return (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
         gameState={state}
@@ -72,6 +80,14 @@ export function throwPair(by = 3) {
   );
 }
 
+/** `useTableFeedback` on its own timeline, flushed after it as GameTable's last hook does. */
+export function useFeedbackOnTimeline(state: Omit<Parameters<typeof useTableFeedback>[0], 'timeline'>) {
+  const timeline = useTableTimeline();
+  const feedback = useTableFeedback({ ...state, timeline });
+  useEffect(() => timeline.flush());
+  return feedback;
+}
+
 /** How far the farthest flying card is drawn from its slot. */
 export const farthest = (view: RenderResult) =>
   Math.max(
@@ -84,15 +100,17 @@ export const farthest = (view: RenderResult) =>
     })
   );
 
-/** Steps frames until `happened`, recording how far the cards were drawn on each. */
+/** Steps frames until `happened`, recording how far the cards were drawn on each, and when. */
 export async function frameOfFirst(view: RenderResult, happened: () => boolean) {
   const drawn: number[] = [];
+  const now: number[] = [];
   for (let f = 0; f < 60; f++) {
     await act(async () => {
       jest.advanceTimersByTime(16);
     });
     drawn.push(farthest(view));
-    if (happened()) return { frame: f, drawn };
+    now.push(performance.now());
+    if (happened()) return { frame: f, drawn, now };
   }
   throw new Error('never happened');
 }

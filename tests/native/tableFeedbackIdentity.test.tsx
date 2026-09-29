@@ -1,24 +1,14 @@
 // tests/native/tableFeedbackIdentity.test.tsx — what the table is handed keeps
-// its identity.
+// its identity, so an effect depending on it does not re-run every render.
 //
-// `GameTable` lists `playImpact` among its play effect's dependencies, so an
-// identity that changes every render re-runs that effect every render. (It is
-// not what stops the play being replayed — the effect's own `prevComboKeyRef`
-// guard is.)
-//
-// This pins the property, not the change that prompted it: it passes on the
-// arrangement this replaced too, and that is the point — the property has to
-// survive being re-derived a fifth time by whoever fights the compiler next.
-// What it will not survive is the two `useCallback`s in `useImpactFeedback`
-// being dropped in favour of the React Compiler's own memoisation, which does
-// not happen under jest at all: delete them and all four assertions fail.
-// Compiler output is not covered here, and a correctness-adjacent property is
-// not a thing to keep in an optimisation.
+// What it will not survive is the `useCallback` in `useImpactFeedback` being
+// dropped in favour of the React Compiler's own memoisation, which does not
+// happen under jest at all.
 import { describe, it, expect } from "@jest/globals";
 import { renderHook } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
-import { useTableFeedback } from "@/components/useTableFeedback";
 import { NO_LANDING } from "@/components/table/useFlightClock";
+import { useFeedbackOnTimeline } from "./helpers/landing";
 
 const landing = makeMutable(NO_LANDING);
 const state = (scale: number) => ({
@@ -43,21 +33,8 @@ const state = (scale: number) => ({
 });
 
 describe("useTableFeedback", () => {
-  it("keeps playImpact's identity across a resize", async () => {
-    const { result, rerender } = await renderHook((props: { scale: number }) => useTableFeedback(state(props.scale)), {
-      initialProps: { scale: 1 },
-    });
-    const first = result.current.playImpact;
-
-    await rerender({ scale: 1.4 });
-    expect(result.current.playImpact).toBe(first);
-
-    await rerender({ scale: 1.4 });
-    expect(result.current.playImpact).toBe(first);
-  });
-
-  it("keeps rejectPlay's identity too", async () => {
-    const { result, rerender } = await renderHook((props: { scale: number }) => useTableFeedback(state(props.scale)), {
+  it("keeps rejectPlay's identity across a resize", async () => {
+    const { result, rerender } = await renderHook((props: { scale: number }) => useFeedbackOnTimeline(state(props.scale)), {
       initialProps: { scale: 1 },
     });
     const first = result.current.rejectPlay;

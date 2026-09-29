@@ -11,7 +11,6 @@ import {
   cardScale,
 } from "../../components/cardFaceModel.ts";
 import {
-  Hold,
   Trauma,
   Motion,
   Spacing,
@@ -45,8 +44,6 @@ import {
   EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
-  impactDelayMs,
-  landingHoldMs,
   landWobble,
   LAND_WOBBLE_MS,
   comboImpactTier,
@@ -591,20 +588,7 @@ describe("readExchange", () => {
 });
 
 
-describe("the table holds still at the landing frame", () => {
-  test("a landed card gets a beat before its aftermath runs", () => {
-    assert.equal(landingHoldMs(false), Hold.land);
-  });
-
-  test("no landing, no hold", () => {
-    // The contract, not the shipped path: `FlyingCards` returns before it ever
-    // reaches the hold under reduced motion. What this pins is that a caller
-    // reaching it anyway is answered from the landing rather than from a second
-    // reading of the flag, which is the pair that could drift.
-    assert.equal(impactDelayMs(true), 0);
-    assert.equal(landingHoldMs(true), 0);
-  });
-
+describe("the timer scans", () => {
   test("the call reader takes a timer's delay from the call, never from a comment beside it", () => {
     const planted = blankCommentsAndStrings(
       [
@@ -870,11 +854,7 @@ describe("the beaten pile's flinch (#764)", () => {
 
   test("no impact the table feels waits on a timer: each starts at the flight's contact", () => {
     const src = readPile();
-    assert.deepEqual(impactFeedbackTimers(src), [
-      "playImpact: no timeout",
-      "celebrateFlush: no timeout",
-      "setFlightLanded(true): impactDelayMs(reduceMotion)",
-    ]);
+    assert.deepEqual(impactFeedbackTimers(src), ["celebrateFlush: no timeout"]);
     assert.deepEqual(bareFlightTimers(src), []);
   });
 

@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { renderHook, act } from "@testing-library/react-native";
-import { useTableFeedback } from "@/components/useTableFeedback";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
 import { makeMutable } from "react-native-reanimated";
 import type { ImpactTier } from "@/components/flightPhysics";
 import { NO_LANDING } from "@/components/table/useFlightClock";
-import { fireLanding } from "./helpers/landing";
+import { fireLanding, useFeedbackOnTimeline } from "./helpers/landing";
 
 const mockTraceOnset = jest.fn();
 
@@ -38,7 +37,7 @@ const momentOnsets = () => mockTraceOnset.mock.calls.filter(([kind]) => kind ===
 
 async function mount() {
   const landing = makeMutable(NO_LANDING);
-  const view = await renderHook(() => useTableFeedback({ ...idleState(), landing }));
+  const view = await renderHook(() => useFeedbackOnTimeline({ ...idleState(), landing }));
   await act(async () => { jest.advanceTimersByTime(16); });
   const land = (tier: ImpactTier) =>
     act(async () => {

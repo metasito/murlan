@@ -8,12 +8,11 @@ import {
   SEAT_LABEL_GAP,
   SEAT_LABEL_PAD,
   seatGap,
-  displayedHandCount,
   fanCounts,
   seatLabelH,
 } from "@/components/seatLayout";
 import { FAN_TURN, seatFanArc } from "@/components/fanGeometry";
-import { impactDelayMs, passedSeats } from "@/components/flightPhysics";
+import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
   useAnimatedStyle,
@@ -26,7 +25,6 @@ import Animated, {
   ReduceMotion,
   Easing,
   cancelAnimation,
-  type SharedValue,
 } from "react-native-reanimated";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -80,68 +78,21 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-/**
- * How far a departing back lifts (deg 1, points at scale 1) while it fades,
- * so the exit reads as a card leaving rather than a count ticking down.
- */
-const FAN_EXIT_LIFT = 14;
-
-/** A remaining back eases toward `to`; a departing one lifts and fades in place. */
-type FanDest = { departing: true } | { departing: false; to: ArcCard };
-
-/**
- * One back, positioned as a `transform` throughout — including the static
- * case — so an exit or a re-solve is never anything but a change to a shared
- * value already being read every frame. `from` is where every back in this
- * fan sits until a departure begins.
- */
-function FanBack({
-  from,
-  dest,
-  progress,
-  boxW,
-  backScale,
-  liftPx,
-  isActive,
-  zIndex,
-}: {
-  from: ArcCard;
-  dest: FanDest;
-  /** 0 at the throw's first frame, 1 once it has landed. */
-  progress: SharedValue<number>;
+function FanBack({ at, boxW, backScale, isActive, zIndex }: {
+  at: ArcCard;
   boxW: number;
   backScale: number;
-  liftPx: number;
   isActive: boolean;
   zIndex: number;
 }) {
-  const aStyle = useAnimatedStyle(() => {
-    const t = progress.value;
-    if (dest.departing) {
-      return {
-        opacity: 1 - t,
-        transform: [
-          { translateX: boxW / 2 + from.x },
-          { translateY: from.y - liftPx * t },
-          { rotate: `${from.rot}deg` },
-        ],
-      };
-    }
-    const { to } = dest;
-    return {
-      opacity: 1,
-      transform: [
-        { translateX: boxW / 2 + from.x + (to.x - from.x) * t },
-        { translateY: from.y + (to.y - from.y) * t },
-        { rotate: `${from.rot + (to.rot - from.rot) * t}deg` },
-      ],
-    };
-  });
-
   return (
-    <Animated.View
-      testID={dest.departing ? "seat-back-departing" : "seat-back"}
-      style={[{ position: "absolute", zIndex }, aStyle]}
+    <View
+      testID="seat-back"
+      style={{
+        position: "absolute",
+        zIndex,
+        transform: [{ translateX: boxW / 2 + at.x }, { translateY: at.y }, { rotate: `${at.rot}deg` }],
+      }}
     >
       <CardView
         card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
@@ -149,63 +100,29 @@ function FanBack({
         scale={backScale}
         light={isActive ? "standingLit" : "standing"}
       />
-    </Animated.View>
+    </View>
   );
 }
 
 function CardFan({
   count,
-  departing = 0,
   side,
   isActive,
   scale = 1,
 }: {
-  /** The seat's displayed count — `handCountOf` plus whatever is in flight. */
+  /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
-  /**
-   * How many of `count` are mid-flight and should lift and fade out of the
-   * fan rather than sit in it. `displayedHandCount`'s own two-term sum is
-   * what this and `count` come from, so the fan can never draw more backs
-   * than the badge claims or fewer than the flight is actually carrying.
-   */
-  departing?: number;
   side: OpponentSide;
   /** This seat is on move, so the lamp is over it and its backs are lit. */
   isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
-  // Every hook above and below runs unconditionally, before the early return
-  // past them: count can go from a real hand to 0 (a player going out) on any
-  // render, and a hook called only on some of those renders is exactly the
-  // "changed order" React refuses to tolerate.
-  const reduceMotion = usePrefersReducedMotion();
-  const { remaining, departing: cappedDeparting } = fanCounts(count, departing, FAN_DRAWN_CARDS[side]);
-  const cappedTotal = remaining + cappedDeparting;
-  const hasDeparture = cappedDeparting !== 0;
-
-  const progress = useSharedValue(hasDeparture ? 0 : 1);
-  useEffect(() => {
-    if (!hasDeparture) {
-      progress.value = 1;
-      return;
-    }
-    progress.value = 0;
-    progress.value = withTiming(1, { duration: impactDelayMs(reduceMotion) });
-    return () => cancelAnimation(progress);
-  }, [hasDeparture, reduceMotion, progress]);
-
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
-  // A fan is never width-budgeted: the seat's own column bounds it, and it is
-  // the rise that actually binds. `full` is where every back — remaining and
-  // departing alike — sits until a departure resolves; `settled` is only
-  // where the *remaining* ones are headed, one solve for a smaller count
-  // rather than a hand-picked subset of the larger one, which is what keeps
-  // the step between them from reading as a jump.
-  const full = seatFanArc(cappedTotal, backScale);
-  const settled = cappedDeparting === 0 ? full : seatFanArc(remaining, backScale);
+  // A fan is never width-budgeted: the seat's own column bounds it, and it is the rise that binds.
+  const full = seatFanArc(fanCounts(count, FAN_DRAWN_CARDS[side]), backScale);
   const bounds = full.bounds;
 
   // The wrapper is what the cards occupy once turned, so the seat's own row or
@@ -214,7 +131,6 @@ function CardFan({
   const turn = FAN_TURN[side];
   const wrapW = turn === 0 ? bounds.w : bounds.h;
   const wrapH = turn === 0 ? bounds.h : bounds.w;
-  const liftPx = FAN_EXIT_LIFT * backScale;
 
   return (
     <View style={{ width: wrapW, height: wrapH }}>
@@ -234,17 +150,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack
-            key={i}
-            from={card}
-            dest={i < remaining ? { departing: false, to: settled.cards[i] } : { departing: true }}
-            progress={progress}
-            boxW={full.box.w}
-            backScale={backScale}
-            liftPx={liftPx}
-            isActive={isActive}
-            zIndex={i}
-          />
+          <FanBack key={i} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
         ))}
       </View>
     </View>
@@ -679,7 +585,6 @@ export function TopOppSlot({
   player,
   isActive,
   cardCount,
-  departing = 0,
   passed = false,
   vacated = false,
   reconnecting,
@@ -691,8 +596,6 @@ export function TopOppSlot({
   player: Player;
   isActive: boolean;
   cardCount?: number;
-  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
-  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The seat is a human's that left, played on by the engine. */
@@ -708,10 +611,8 @@ export function TopOppSlot({
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
   dealArrivals?: readonly number[];
 }) {
-  // The fan and the badge read one number, held at its pre-play value for as
-  // long as the flight is up — see displayedHandCount.
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
+  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
   return (
     <View
       testID="top-seat"
@@ -735,7 +636,7 @@ export function TopOppSlot({
         focusMode={focusMode}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} departing={departing} side="top" isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side="top" isActive={isActive} scale={scale} />
       )}
     </View>
   );
@@ -847,7 +748,6 @@ export function SideOppSlot({
   isActive,
   side,
   cardCount,
-  departing = 0,
   passed = false,
   vacated = false,
   reconnecting,
@@ -860,8 +760,6 @@ export function SideOppSlot({
   isActive: boolean;
   side: "left" | "right";
   cardCount?: number;
-  /** Cards this seat just threw that are still mid-flight — see displayedHandCount. */
-  departing?: number;
   /** This seat has passed in the round on the table. */
   passed?: boolean;
   /** The seat is a human's that left, played on by the engine. */
@@ -878,7 +776,7 @@ export function SideOppSlot({
   dealArrivals?: readonly number[];
 }) {
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(displayedHandCount(cardCount ?? player.hand.length, departing), arrived);
+  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
   const isLeft = side === "left";
   return (
     <View
@@ -905,7 +803,7 @@ export function SideOppSlot({
         focusMode={focusMode}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} departing={departing} side={side} isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side={side} isActive={isActive} scale={scale} />
       )}
     </View>
   );

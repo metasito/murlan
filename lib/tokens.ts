@@ -381,10 +381,6 @@ export const Motion = {
    * Not "off": travel is what goes, and the state change stays legible. A card
    * that flew cross-fades in place instead. `null` means the step is already
    * short enough to leave alone.
-   *
-   * `impactDelayMs()` stays the single source of the card-landing delay and
-   * already returns 0 here, so the feedback fires immediately rather than
-   * waiting out a flight that never happens.
    */
   reduced: {
     flash: null,
@@ -475,9 +471,12 @@ export const Reading = {
  * the unit the effect is described and felt in.
  */
 export const Hold = {
-  /** The table at a card's contact — Nijman's *sleep* (*Art of Screenshake*, INDIGO 2013). Three frames at 60fps. */
-  land: 50,
+  /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
+  land: 175,
 } as const;
+
+/** How late a sound may still start and be heard as on time; later, it is dropped. */
+export const LATE_SOUND_MS = 45;
 
 /**
  * How hard the table shakes at each rung of the landing escalation #101
