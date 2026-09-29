@@ -426,9 +426,9 @@ async function skiaOnset(page: Page, mounted: number, loading: () => Promise<str
 async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant: Variant) {
   const page = await newSidePage(browser, baseURL);
   const loading = trackLoads(page);
-  if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
   // The app's only unswayed light is reduced motion's; at rest it snaps nothing the light was not already at.
   if (variant === "fallback" && m.fallbackStill) await page.emulateMedia({ reducedMotion: "reduce" });
+  if (variant === "fallback") await page.route(CANVASKIT_ROUTE, () => undefined);
   // The CDN's own bytes (feltWeave.test.ts pins the version), without a download inside the measured run.
   else await page.route(CANVASKIT_ROUTE, (route) => route.fulfill({
     path: path.join(CANVASKIT_DIR, path.basename(new URL(route.request().url()).pathname)),
