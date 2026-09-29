@@ -79,8 +79,6 @@ const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void
       gameState={state(opts.exchange)}
       onExchangeReady={opts.onExchangeReady}
       viewerSeat={opts.viewerSeat}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

@@ -84,8 +84,6 @@ const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: st
         banners={<A11yStatus label={BANNER} />}
         gameState={gameState}
         viewerSeat={0}
-        selectedIds={[]}
-        onSelectCard={noop}
         onPlay={noop}
         onPass={noop}
         onQuit={noop}

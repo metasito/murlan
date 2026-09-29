@@ -88,8 +88,6 @@ const table = (gameState: GameState, onPass: () => void = noop) => (
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={onPass}
       onQuit={noop}

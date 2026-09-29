@@ -47,8 +47,6 @@ const table = (gameState: GameState = freshDeal) => (
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

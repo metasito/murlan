@@ -58,8 +58,6 @@ const table = (
       matchOver={matchOver}
       matchWinners={matchWinners}
       viewerSeat={viewerSeat}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -107,8 +105,6 @@ const drawnTeamsTable = (viewerSeat: number) => (
       }}
       handScores={DRAWN_TEAMS_SCORES}
       viewerSeat={viewerSeat}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -144,8 +140,6 @@ const wonTeamsTable = (viewerSeat: number) => (
       }}
       handScores={WON_TEAMS_SCORES}
       viewerSeat={viewerSeat}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -298,8 +292,6 @@ describe('the end-of-hand sting', () => {
             firstPlayMade: true,
           }}
           viewerSeat={3}
-          selectedIds={[]}
-          onSelectCard={noop}
           onPlay={noop}
           onPass={noop}
           onQuit={noop}
@@ -329,8 +321,6 @@ describe('the end-of-hand sting', () => {
           }}
           handScores={handScores}
           viewerSeat={3}
-          selectedIds={[]}
-          onSelectCard={noop}
           onPlay={noop}
           onPass={noop}
           onQuit={noop}

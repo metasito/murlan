@@ -64,8 +64,6 @@ const table = (gameState: GameState, matchOver: boolean) => (
       gameState={gameState}
       matchOver={matchOver}
       viewerSeat={1}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

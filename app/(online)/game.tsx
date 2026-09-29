@@ -93,19 +93,11 @@ export default function OnlineGameScreen() {
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
     useOnlineExchange();
 
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showReactions, setShowReactions] = useState(false);
   const [showGameOver, setShowGameOver] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Card ids sent to the server and not yet acknowledged. The selection is only
-  // cleared once the server confirms the play, so a rejected move keeps it.
-  const pendingPlayRef = useRef<string[] | null>(null);
-  const prevGameOverRef = useRef(false);
-
-  const me = gameState?.players[mySeatIndex];
-  const myHand = me?.hand;
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -115,36 +107,6 @@ export default function OnlineGameScreen() {
     },
     []
   );
-
-  // The played cards leaving my hand is the server's acknowledgement.
-  useEffect(() => {
-    const pending = pendingPlayRef.current;
-    if (!pending || !myHand) return;
-    const handIds = new Set(myHand.map((c) => c.id));
-    if (pending.every((id) => !handIds.has(id))) {
-      pendingPlayRef.current = null;
-      setSelectedIds([]);
-    }
-  }, [myHand]);
-
-  // A new manche is a fresh deal, and card ids are deterministic
-  // (`${rank}_${suit}`), so an id staged in the hand that just ended can name a
-  // real card in the new one — which the table's prune cannot see, because the
-  // hand does hold it. The deal is the boundary, so the deal is where it goes.
-  useEffect(() => {
-    const over = !!gameState?.gameOver;
-    const wasOver = prevGameOverRef.current;
-    prevGameOverRef.current = over;
-    if (wasOver && !over) {
-      pendingPlayRef.current = null;
-      setSelectedIds([]);
-    }
-  }, [gameState?.gameOver]);
-
-  // A server error means the play was rejected — stop waiting for an ack.
-  useEffect(() => {
-    if (error) pendingPlayRef.current = null;
-  }, [error]);
 
   useEffect(() => {
     if (!error) return;
@@ -202,17 +164,6 @@ export default function OnlineGameScreen() {
     clearRejoinFailed();
   }, [rejoinFailed, clearRejoinFailed, goToLobby]);
 
-  // Reaches every card in the hand as `onPress`, through GameTable's own
-  // handleCardPress. A fresh arrow per render would change that reference on
-  // every `game:state` and rebuild all 13-18 cards.
-  const toggleCard = useCallback(
-    (id: string) =>
-      setSelectedIds((prev) =>
-        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-      ),
-    []
-  );
-
   // No state yet: the first `game:state` is either still in flight or was never
   // coming, because the request that would have produced it was refused. The
   // two are indistinguishable from here, so the screen offers what is right
@@ -252,13 +203,6 @@ export default function OnlineGameScreen() {
   // The tray opens beside the rail's own lower knob, which is where the
   // trigger it belongs to lives.
   const rail = railWidth(pads.leftPad, cardScale(Math.min(width, height)));
-
-  const handlePlay = (cardIds: string[]) => {
-    // Cleared on acknowledgement, not on send — a server rejection must not
-    // cost the player their selection.
-    pendingPlayRef.current = cardIds;
-    playCards(cardIds);
-  };
 
   const toggleReactionPanel = () => {
     setShowReactions((v) => !v);
@@ -309,13 +253,8 @@ export default function OnlineGameScreen() {
       viewerSeat={viewerSeat}
       spectating={isSpectator}
       disconnectedSeats={disconnectedSeats}
-      selectedIds={selectedIds}
-      onSelectCard={toggleCard}
-      onPlay={handlePlay}
-      onPass={() => {
-        pass();
-        setSelectedIds([]);
-      }}
+      onPlay={playCards}
+      onPass={pass}
       onExchangeGive={giveExchangeCard}
       onQuit={requestLeave}
       turnTimer={{

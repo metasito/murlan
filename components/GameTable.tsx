@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   View,
   StyleSheet,
@@ -96,6 +96,14 @@ import {
   topBarLabel,
 } from "@/components/table/spokenLabels";
 import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
+import {
+  createSelectionStore,
+  followHand,
+  inMode,
+  NO_SELECTION,
+  press,
+  type SelectionMode,
+} from "@/components/table/selection";
 import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
@@ -277,8 +285,6 @@ export interface GameTableProps {
    */
   spectating?: boolean;
 
-  selectedIds: string[];
-  onSelectCard: (cardId: string) => void;
   /** Only ever called with a selection that is a legal play. */
   onPlay: (cardIds: string[]) => void;
   onPass: () => void;
@@ -330,8 +336,6 @@ export function GameTable({
   matchScore,
   viewerSeat,
   spectating = false,
-  selectedIds,
-  onSelectCard,
   onPlay,
   onPass,
   onQuit,
@@ -496,6 +500,14 @@ export function GameTable({
     },
     [moveTo]
   );
+  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsMine = exchangeIsWinners && choiceReady;
+  const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
+  const [selection] = useState(() => createSelectionStore());
+  const picked = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
+  const handSelection = inMode(picked, selectionMode).ids;
+  const selectedIds = exchangeIsMine ? NO_SELECTION.ids : handSelection;
+  const exchangePick = exchangeIsMine ? (handSelection[0] ?? null) : null;
   const staged = React.useMemo(
     () =>
       readStagedPlay({
@@ -556,25 +568,12 @@ export function GameTable({
   // dialog, so the legality the engine enforces has to be readable in the fan:
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
-  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
-  const exchangeIsMine = exchangeIsWinners && choiceReady;
   const giveable = React.useMemo(
     () =>
       exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined,
     [exchangeIsMine, sortedHand, exchange.cardFromLoser?.id]
   );
   const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
-  // Kept apart from `selectedIds`, which stages a *play*: an exchange gives one
-  // card, and folding it into a multi-select the play button also reads would
-  // let a staged combination survive into the next manche.
-  const [exchangePick, setExchangePick] = useState<string | null>(null);
-  // Card ids repeat across deals, so a pick that outlived its exchange would
-  // come back pointing at a different card.
-  const [pickedWhileMine, setPickedWhileMine] = useState(exchangeIsMine);
-  if (exchangeIsMine !== pickedWhileMine) {
-    setPickedWhileMine(exchangeIsMine);
-    if (!exchangeIsMine) setExchangePick(null);
-  }
   const pickedGiveCard = exchangePick
     ? (sortedHand.find((c) => c.id === exchangePick) ?? null)
     : null;
@@ -842,19 +841,13 @@ export function GameTable({
     return () => clearTimeout(id);
   }, [rejectHint]);
 
-  // A card can leave the hand without the player having touched it — the server
-  // moves for a seat that ran out of clock — and a staged id the hand no longer
-  // holds is both a lit GIOCA the server refuses and a play the viewer did not
-  // choose. `onSelectCard` toggles, so naming such an id drops it. An id the
-  // *new* hand does hold is a different problem, and the manche boundary is
-  // where it is cleared (app/(online)/game.tsx, context/GameContext.tsx).
+  const heldIds = React.useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
+  const heldBefore = useRef(heldIds);
   useEffect(() => {
-    if (spectating) return;
-    const handIds = new Set(sortedHand.map((c) => c.id));
-    for (const id of selectedIds) {
-      if (!handIds.has(id)) onSelectCard(id);
-    }
-  }, [sortedHand, selectedIds, onSelectCard, spectating]);
+    const before = heldBefore.current;
+    heldBefore.current = heldIds;
+    selection.set(inMode(followHand(selection.get(), before, heldIds), selectionMode));
+  }, [selection, heldIds, selectionMode]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -864,24 +857,14 @@ export function GameTable({
   // works, and it is what stops the turn clock starting from a blank hand.
   // Only the *submission* is gated on the turn: `staged.playable` already
   // requires it, so GIOCA lights on its own the moment the turn arrives.
-  const handSelection = exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds;
-  const handSelectionRef = useRef(handSelection);
-  useEffect(() => {
-    handSelectionRef.current = handSelection;
-  });
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
-      event([{ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" }]);
-      // An exchange gives exactly one card, so a second tap replaces the pick
-      // rather than adding to it.
-      if (exchangeIsMine) {
-        setExchangePick((prev) => (prev === id ? null : id));
-        return;
-      }
-      onSelectCard(id);
+      const next = press(selection.get(), id, selectionMode);
+      event([{ kind: next.ids.includes(id) ? "select" : "deselect" }]);
+      selection.set(next);
     },
-    [isFinished, spectating, onSelectCard, exchangeIsMine, exchangeIsWinners, setExchangePick]
+    [isFinished, spectating, exchangeIsMine, exchangeIsWinners, selection, selectionMode]
   );
   useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
@@ -927,8 +910,9 @@ export function GameTable({
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
+    selection.set(NO_SELECTION);
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass]);
+  }, [isMyTurn, isFinished, isNewRound, onPass, selection]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 

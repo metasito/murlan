@@ -47,14 +47,12 @@ const state = (teams: boolean): GameState => ({
 const SCORES = { player_0: 7, player_1: 12, player_2: 9, player_3: 3 };
 
 const noop = () => {};
-const table = (opts: { teams?: boolean; onSelectCard?: (id: string) => void; partita?: boolean } = {}) => (
+const table = (opts: { teams?: boolean; partita?: boolean } = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={state(opts.teams ?? false)}
       matchScore={opts.partita === false ? undefined : { scores: SCORES, target: 21 }}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={opts.onSelectCard ?? noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -123,12 +121,11 @@ describe('the score pill', () => {
   });
 
   it('leaves the hand pressable while open, and a touch elsewhere closes it', async () => {
-    const onSelectCard = jest.fn<(id: string) => void>();
-    const r = await render(table({ onSelectCard }));
+    const r = await render(table());
     await press(pill());
     const card = () => screen.getByLabelText(cardSpokenName(SEVEN, t));
     await press(card());
-    expect(onSelectCard).toHaveBeenCalledWith(SEVEN.id);
+    expect(card().props.accessibilityState?.selected).toBe(true);
     let tableRoot = null;
     for (let n = card().parent; n; n = n.parent) if (n.props.onStartShouldSetResponderCapture) tableRoot = n;
     await act(async () => {

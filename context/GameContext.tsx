@@ -108,7 +108,6 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
 
 interface GameContextValue {
   gameState: GameState | null;
-  selectedCards: string[];
   match: MatchState;
   rematchAnswers: RematchAnswers;
   /** True while the table is being asked whether it wants another match. */
@@ -127,8 +126,7 @@ interface GameContextValue {
   answerRematch: (playerId: string, wants: boolean) => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
-  selectCard: (cardId: string) => void;
-  playSelected: () => boolean;
+  playCards: (cardIds: string[]) => boolean;
   passTurn: () => void;
   resetGame: () => void;
   runAITurn: () => void;
@@ -144,7 +142,6 @@ const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [selectedCards, setSelectedCards] = useState<string[]>([]);
 
   const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
   const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
@@ -186,7 +183,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
       const state = initializeGame(players, mode, firstSeat);
       setGameState(state);
-      setSelectedCards([]);
       setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));
       setRematchAnswers({});
@@ -213,7 +209,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
 
       setGameState(state);
-      setSelectedCards([]);
     },
     [savedPlayerConfigs, savedGameMode, dealFirstSeat, announce]
   );
@@ -263,28 +258,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (!prev) return prev;
         return processExchangeChoice(prev, cardId);
       });
-      setSelectedCards([]);
     },
     [gameState, announce]
   );
 
-  const selectCard = useCallback(
-    (cardId: string) => {
-      setSelectedCards((prev) => {
-        if (prev.includes(cardId)) {
-          return prev.filter((id) => id !== cardId);
-        }
-        return [...prev, cardId];
-      });
-    },
-    []
-  );
-
-  const playSelected = useCallback((): boolean => {
+  const playCards = useCallback((cardIds: string[]): boolean => {
     if (!gameState) return false;
     const player = gameState.players[gameState.currentTurnIndex];
     if (!player) return false;
-    const cards = player.hand.filter((c) => selectedCards.includes(c.id));
+    const cards = player.hand.filter((c) => cardIds.includes(c.id));
     if (cards.length === 0) return false;
 
     const combo = buildCombination(cards);
@@ -302,9 +284,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     commitState(processPlay(gameState, combo), gameState);
-    setSelectedCards([]);
     return true;
-  }, [gameState, selectedCards, commitState]);
+  }, [gameState, commitState]);
 
   const passTurn = useCallback(() => {
     if (!gameState) return;
@@ -312,7 +293,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
     const newState = processPass(gameState);
     commitState(newState, gameState);
-    setSelectedCards([]);
   }, [gameState, commitState]);
 
   const runAITurn = useCallback(() => {
@@ -339,7 +319,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const resetGame = useCallback(() => {
     setGameState(null);
-    setSelectedCards([]);
     setMatch(freshMatch("match", gameState?.players.length ?? 4));
     setRematchAnswers({});
     clearSavedGame();
@@ -355,7 +334,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
     setDealFirstSeat(save.dealFirstSeat);
-    setSelectedCards([]);
     return true;
   }, []);
 
@@ -431,7 +409,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       gameState,
-      selectedCards,
       match,
       rematchAnswers,
       rematchPromptOpen,
@@ -446,8 +423,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
-      selectCard,
-      playSelected,
+      playCards,
       passTurn,
       resetGame,
       runAITurn,
@@ -457,7 +433,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }),
     [
       gameState,
-      selectedCards,
       match,
       rematchAnswers,
       rematchPromptOpen,
@@ -472,8 +447,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
-      selectCard,
-      playSelected,
+      playCards,
       passTurn,
       resetGame,
       runAITurn,
