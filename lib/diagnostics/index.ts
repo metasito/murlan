@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type { View } from "react-native";
 import type { DiagRow } from "./types";
 
@@ -33,15 +33,30 @@ export function useBenchHandle(name: "cardPress", fn: (id: string) => void): voi
 
 export const RING_PROBE_MS = 250;
 
+let ringProbeOn = false;
+const ringProbeListeners = new Set<() => void>();
+const ringProbeState = () => ringProbeOn;
+
+function subscribeRingProbe(listener: () => void): () => void {
+  ringProbeListeners.add(listener);
+  return () => ringProbeListeners.delete(listener);
+}
+
+export function setRingProbe(on: boolean): void {
+  ringProbeOn = on;
+  for (const listener of ringProbeListeners) listener();
+}
+
 export function useRingProbe(name: string): RefObject<View | null> {
   const ref = useRef<View>(null);
+  const on = useSyncExternalStore(subscribeRingProbe, ringProbeState, ringProbeState);
   useEffect(() => {
-    if (!DIAGNOSTICS) return;
+    if (!DIAGNOSTICS || !on) return;
     const id = setInterval(
       () => ref.current?.measureInWindow((x, y) => diag({ k: "ring", t: performance.now(), name, x, y })),
       RING_PROBE_MS
     );
     return () => clearInterval(id);
-  }, [name]);
+  }, [name, on]);
   return ref;
 }

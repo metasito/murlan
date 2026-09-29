@@ -4,6 +4,7 @@ import { GATES } from "../../scripts/diagnostics-verdict.mjs";
 
 const STATES = ["counts-13-13-13", "counts-2-13-2", "counts-2-1-2", "counts-top-out"];
 const DEAL = { Luan: [780, 180], Drita: [420, 40], Besnik: [60, 180] } as Record<string, [number, number]>;
+const SETTLE = 1500;
 const HOLD = 1000;
 const PROBE = 250;
 
@@ -14,22 +15,23 @@ const rows = (shift: Shift = still, states = STATES, rings = Object.keys(DEAL)) 
   ...rings.map((name) => ({ k: "ring", t: 0, name, x: 0, y: 0 })),
   ...states.flatMap((id, i) => {
     const at = 2000 + i * 3000;
-    return [
-      { k: "seatState", t: at, id, of: STATES.length },
-      ...Array.from({ length: HOLD / PROBE }, (_, s) =>
+    const probes = (from: number, ms: number) =>
+      Array.from({ length: ms / PROBE - 1 }, (_, s) =>
         rings.map((name) => {
           const [dx, dy] = shift(name, i);
-          return { k: "ring", t: at + (s + 1) * PROBE, name, x: DEAL[name][0] + dx, y: DEAL[name][1] + dy };
+          return { k: "ring", t: from + (s + 1) * PROBE, name, x: DEAL[name][0] + dx, y: DEAL[name][1] + dy };
         })
-      ).flat(),
-    ];
+      ).flat();
+    return [...probes(at - SETTLE, SETTLE), { k: "seatState", t: at, id, of: STATES.length, hold: HOLD }, ...probes(at, HOLD)];
   }),
 ];
+const heldBy = (name: string, state: number) => (row: { k: string; t: number; name?: string }) =>
+  !(row.k === "ring" && row.name === name && row.t > 2000 + state * 3000 && row.t < 2000 + state * 3000 + HOLD);
 
 test("rings that never move pass, and the metrics carry what was judged", () => {
   const r = GATES.seatAnchors(rows());
   assert.equal(r.pass, true);
-  assert.deepEqual(r.metrics, { drift: 0, rings: 3, states: 4, of: 4, unmeasured: 0 });
+  assert.deepEqual(r.metrics, { drift: 0, rings: 3, states: 4, of: 4, unmeasured: 0, invalid: 0, distinct: true });
 });
 
 test("a ring 0.4 pt off its deal position passes", () => {
@@ -49,6 +51,13 @@ test("a ring missing at the deal fails", () => {
   assert.equal(r.metrics.rings, 2);
 });
 
+test("a ring first seen in the next state's settle has no deal position: its move there goes unseen otherwise", () => {
+  const moved = rows((name, i) => (name === "Besnik" && i > 0 ? [5, 0] : [0, 0])).filter(heldBy("Besnik", 0));
+  const r = GATES.seatAnchors(moved);
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.rings, 2);
+});
+
 test("three states of four fail", () => {
   const r = GATES.seatAnchors(rows(still, STATES.slice(0, 3)));
   assert.equal(r.pass, false);
@@ -59,4 +68,32 @@ test("a state recorded with no ring sampled after it fails: a stopped probe is n
   const r = GATES.seatAnchors(rows().filter((row) => !(row.k === "ring" && row.t > 8000)));
   assert.equal(r.pass, false);
   assert.equal(r.metrics.unmeasured, 2);
+});
+
+test("a ring unsampled through a state's hold fails, though the next state's settle sampled it", () => {
+  const r = GATES.seatAnchors(rows().filter(heldBy("Luan", 1)));
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.unmeasured, 1);
+});
+
+test("rings all measured at (0,0) fail: a probe that measures nothing drifts by nothing", () => {
+  const r = GATES.seatAnchors(rows((name) => [-DEAL[name][0], -DEAL[name][1]]));
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.distinct, false);
+});
+
+test("a NaN or missing coordinate fails", () => {
+  const nan = GATES.seatAnchors(rows((name, i) => (name === "Drita" && i === 2 ? [NaN, 0] : [0, 0])));
+  assert.equal(nan.pass, false);
+  assert.equal(nan.metrics.invalid, 8);
+  const missing = rows().map((row) => ("name" in row && row.t === 5500 && row.name === "Luan" ?{ ...row, y: undefined } : row));
+  const r = GATES.seatAnchors(missing);
+  assert.equal(r.pass, false);
+  assert.equal(r.metrics.invalid, 1);
+});
+
+test("seatState rows that disagree on how many states there are fail", () => {
+  const r = GATES.seatAnchors(rows().map((row) => (row.k === "seatState" && row.t > 2000 ? { ...row, of: 5 } : row)));
+  assert.equal(r.pass, false);
+  assert.ok(Number.isNaN(r.metrics.of));
 });

@@ -215,23 +215,29 @@ function landingSync(rows) {
 
 function seatAnchors(rows) {
   const states = rows.filter((r) => r.k === "seatState").sort((a, b) => a.t - b.t);
-  const of = states[0]?.of ?? NaN;
-  const deal = states[0]?.t ?? Infinity;
-  const rings = rows.filter((r) => r.k === "ring" && r.t >= deal).sort((a, b) => a.t - b.t);
+  const ofs = new Set(states.map((s) => s.of));
+  const of = ofs.size === 1 ? [...ofs][0] : NaN;
+  const judged = rows.filter((r) => r.k === "ring" && r.t >= (states[0]?.t ?? Infinity)).sort((a, b) => a.t - b.t);
+  const rings = judged.filter((r) => Number.isFinite(r.x) && Number.isFinite(r.y));
+  const held = (s) => rings.filter((r) => r.t >= s.t && r.t < s.t + s.hold);
   const home = new Map();
-  for (const r of rings) if (r.t < (states[1]?.t ?? Infinity) && !home.has(r.name)) home.set(r.name, r);
+  for (const r of states.length ? held(states[0]) : []) if (!home.has(r.name)) home.set(r.name, r);
+  const distinct = new Set([...home.values()].map((h) => `${h.x},${h.y}`)).size === home.size;
   const drift = rings.reduce((d, r) => {
     const h = home.get(r.name);
     return h ? Math.max(d, Math.abs(r.x - h.x), Math.abs(r.y - h.y)) : d;
   }, 0);
-  const unmeasured = states.filter((s, i) => {
-    const seen = new Set(rings.filter((r) => r.t >= s.t && r.t < (states[i + 1]?.t ?? Infinity)).map((r) => r.name));
+  const unmeasured = states.filter((s) => {
+    const seen = new Set(held(s).map((r) => r.name));
     return [...home.keys()].some((name) => !seen.has(name));
   }).length;
   const recorded = new Set(states.map((s) => s.id)).size;
+  const invalid = judged.length - rings.length;
   return {
-    pass: home.size === 3 && of >= 2 && states.length === of && recorded === of && unmeasured === 0 && drift <= 0.5,
-    metrics: { drift, rings: home.size, states: states.length, of, unmeasured },
+    pass:
+      home.size === 3 && distinct && invalid === 0 && of >= 2 && states.length === of && recorded === of &&
+      unmeasured === 0 && drift <= 0.5,
+    metrics: { drift, rings: home.size, states: states.length, of, unmeasured, invalid, distinct },
   };
 }
 
