@@ -160,8 +160,7 @@ const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
 /** Runs `fire` on the contact frame of a landing that flares, unless reduced motion withholds the burst. */
-function useBurst(landing: SharedValue<LandingSignal>, fire: (kind: FlareKind) => void): void {
-  const reduceMotion = usePrefersReducedMotion();
+function useBurst(landing: SharedValue<LandingSignal>, reduceMotion: boolean, fire: (kind: FlareKind) => void): void {
   useLandingReaction(landing, (l) => {
     "worklet";
     const kind = flareKindFor(l.tier);
@@ -173,7 +172,7 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(0.15);
 
-  useBurst(landing, (kind) => {
+  useBurst(landing, usePrefersReducedMotion(), (kind) => {
     "worklet";
     const flareMs = kind === "settle" ? FLARE_SETTLE_MS : FLARE_BRIEF_MS;
     const e = FLARE_EASING;
@@ -255,7 +254,7 @@ function Wave({
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(0.15);
 
-  useBurst(landing, () => {
+  useBurst(landing, usePrefersReducedMotion(), () => {
     "worklet";
     const e = WAVE_EASING;
     opacity.set(0);
@@ -325,7 +324,7 @@ function Spark({ index, landing, scale }: { index: number; landing: SharedValue<
   const { dx, dy, delay } = sparkOffset(index, scale);
   useTraceSource("live", () => Number(opacity.value > 0));
 
-  useBurst(landing, () => {
+  useBurst(landing, usePrefersReducedMotion(), () => {
     "worklet";
     const e = SPARK_EASING;
     opacity.set(0);

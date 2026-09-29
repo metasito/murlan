@@ -84,10 +84,10 @@ describe('a landing the JS side reports late', () => {
       result.current.moment({ kind: 'landing', cards: 2, bomb: false, mine: false });
       result.current.flush();
     });
-    const now = performance.now();
-    await act(async () => result.current.flightStarted('k', now - byMs, now + 100));
+    const reported = performance.now();
+    await act(async () => result.current.flightStarted('k', reported - byMs, reported + 100));
     await unmount();
-    return now;
+    return reported;
   }
 
   it('20 ms late still sounds, now', async () => {

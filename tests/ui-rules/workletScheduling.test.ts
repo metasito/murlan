@@ -45,7 +45,7 @@ test("the files that schedule back to JS are in the scanned set", () => {
     /\bscheduleOnRN\b/.test(readFileSync(path.join(repoRoot, rel), "utf8"))
   );
 
-  for (const rel of ["components/NotificationBanner.tsx", "components/table/pile.tsx"]) {
+  for (const rel of ["components/NotificationBanner.tsx", "components/table/useFlightClock.ts"]) {
     assert.ok(schedulers.includes(rel), `${rel} no longer schedules back to JS at all`);
   }
 });
