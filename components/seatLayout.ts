@@ -2,8 +2,8 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
-import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
+import { BACK_SCALE } from "./cardFaceModel.ts";
+import { seatFanArc } from "./fanGeometry.ts";
 import { Spacing } from "../lib/tokens.ts";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
@@ -264,26 +264,6 @@ export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;
 export function seatLabelH(scale: number): number {
   return (SEAT_NAME_LINE + SEAT_LABEL_GAP + SEAT_LABEL_PAD) * scale + CHIP_H(scale);
-}
-
-/**
- * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
- * (components/table/seats.tsx) performs for its wrapper box, and that
- * `sideSlotHeight` and `topFanHeight` below perform for theirs, so none of the
- * three can disagree with what the fan actually draws.
- */
-export function seatFanArc(count: number, backScale: number) {
-  const backW = CARD_BACK_W(backScale);
-  const backH = CARD_BACK_H(backScale);
-  const { cards, box } = solveArc(count, {
-    budget: SEAT_ARC,
-    cardW: backW,
-    cardH: backH,
-    scale: backScale,
-    room: Infinity,
-    flip: true,
-  });
-  return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
 }
 
 /**

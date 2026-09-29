@@ -1,9 +1,8 @@
 // tests/e2e/reducedMotionWobbleReset.spec.ts — a live toggle mid-wobble.
 //
-// `settleForMotion` (components/flightPhysics.ts) has its own unit coverage; what only a real
-// browser re-running Reanimated's driver reaches is the live path — `matchMedia` firing while a
-// landed combination wobbles, `FlyingCards`' effect re-running, and the style coming to rest on the
-// next frame. tests/native/'s reanimated mock never re-runs a `useAnimatedStyle` off a later write.
+// Only a real browser re-running Reanimated's driver reaches the live path — `matchMedia` firing
+// while a landed combination wobbles, `FlyingCards` re-rendering with the preference, and the style
+// coming to rest on the next frame. tests/native/'s reanimated mock never re-runs a `useAnimatedStyle`.
 import { test, expect, type Page } from "@playwright/test";
 import { openSeededGame } from "./helpers/offlineSeed";
 
@@ -43,7 +42,7 @@ test.describe("the landing wobble's reset survives a live reduced-motion toggle 
 
     await page.emulateMedia({ reducedMotion: "reduce" });
 
-    // The re-run effect also removes the flight after `Motion.duration.tap`: read before that fires.
+    // The flight unmounts when its wobble ends: read before that.
     let after: number | null = null;
     const atRest = async () => {
       after = await scaleOf(page);

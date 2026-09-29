@@ -19,7 +19,12 @@ import {
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
 import { handCountOf } from "../shared/protocol.ts";
-import { CARD_W, CARD_H, FIELD_SCALE } from "./cardFaceModel.ts";
+import { CARD_W, CARD_H, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { fanPoint } from "./fanGeometry.ts";
+import type { CardFrom } from "./flightPose.ts";
+
+/** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */
+const FAN_CARD_SCALE = 0.4;
 
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
@@ -66,10 +71,6 @@ export function arrivingCard(
   return undefined;
 }
 
-// The card in flight is `travel` (#126) — 380 was Weighted, the alternative
-// the owner rejected in favour of this one. Derived rather than restated, so
-// the throw cannot drift back to a number the decision already turned down.
-export const FLIGHT_MS: number = Motion.duration.travel;
 /** Fraction of the flight after which the card is on the felt and settling. */
 export const LANDING_FRACTION = 0.82;
 
@@ -77,17 +78,7 @@ export const LANDING_FRACTION = 0.82;
 export function impactDelayMs(reduceMotion: boolean): number {
   // Under reduced motion FlyingCards skips the flight, so there is nothing to
   // wait for and the feedback fires immediately.
-  return reduceMotion ? 0 : Math.round(Motion.anticipate + FLIGHT_MS * LANDING_FRACTION);
-}
-
-/** How far a card loads against its direction of travel before the throw — #126's Balanced keyframe. */
-export const ANTICIPATE_PX = 3;
-
-/** Where the anticipation leg pulls a card that starts `(dx, dy)` from the pile: straight back, away from it. */
-export function anticipationOffset(dx: number, dy: number): { x: number; y: number } {
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return { x: 0, y: 0 };
-  return { x: (dx / len) * ANTICIPATE_PX, y: (dy / len) * ANTICIPATE_PX };
+  return reduceMotion ? 0 : Math.round(Motion.throw.card * LANDING_FRACTION);
 }
 
 /** Delay from a play being registered to the turn it hands over being shown — the landing, then its hold. */
@@ -111,7 +102,7 @@ export const LAND_WOBBLE_MS = 400;
 
 /**
  * Its scale and rotation in degrees, `k` of the way through. Both are at rest at 0 and at 1, so
- * reduced motion needs only `k` held at 0 — `settleForMotion` is what keeps that true.
+ * reduced motion needs only `k` held at 0.
  */
 export function landWobble(k: number): { scale: number; rotate: number } {
   "worklet";
@@ -120,21 +111,6 @@ export function landWobble(k: number): { scale: number; rotate: number } {
     scale: 1 + 0.035 * Math.sin(50.8 * t) * Math.pow(1 - k, 3),
     rotate: 0.6 * Math.sin(40.8 * t) * Math.pow(1 - k, 2),
   };
-}
-
-/**
- * What the wobble's `k` should read the moment a flight's motion preference is
- * decided — at mount, and again if the player toggles reduced motion while a
- * flight is up. Reanimated's `cancelAnimation` (run by the effect's own
- * cleanup on that toggle) freezes a shared value at its current number
- * rather than resetting it, so the branch that skips the flight cannot rely
- * on `current` already being 0 by the time it runs: under reduced motion
- * this ignores `current` and always answers 0. Off reduced motion `current`
- * passes through unchanged — the flight's own animation is what actually
- * drives it from there.
- */
-export function settleForMotion(reduceMotion: boolean, current: number): number {
-  return reduceMotion ? 0 : current;
 }
 
 // ─── Screen shake ──────────────────────────────────────────────────────────────
@@ -861,32 +837,13 @@ export function readHandArrival(input: {
   };
 }
 
-// ─── Card jitter ──────────────────────────────────────────────────────────────
-
-/**
- * Cards thrown onto a table do not land square, so a combination keeps a small
- * jitter on top of the arc it lands on. The bound stays small: past a few
- * degrees the overlap stops reading as one combination.
- */
-export const COMBO_MAX_TILT = 4.5;
-
-/**
- * A card's own jitter (deg), derived from its id so the same combination looks
- * the same on every client and in every frame of its throw.
- */
-export function cardTilt(id: string, maxTilt: number): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return ((Math.abs(hash) % 200) / 100 - 1) * maxTilt;
-}
-
 // ─── Thrown plays ─────────────────────────────────────────────────────────────
 
 interface ThrownPlay {
   dir: FlyDirection;
   cards: Card[];
-  /** Where the throw starts, relative to where it lands. */
-  origin: { dx: number; dy: number };
+  /** Where each card starts, from the pile's centre: its own hand slot, or its seat's fan. */
+  from: CardFrom[];
   /** Where it lands: the pile's centre, in window points. */
   pile: { x: number; y: number };
   /** Impact reads heavier for these. */
@@ -929,16 +886,28 @@ export type SeatGeometry = Omit<ThrownPlayInput, "combo" | "playedBy">;
  * column leaves whichever seat is throwing, so a fan that shrinks the moment
  * the cards leave would move the pile out from under them mid-flight.
  */
-export function readThrownPlay(input: ThrownPlayInput): ThrownPlay {
+export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap<string, CardFrom>): ThrownPlay {
   const { combo, playedBy, players } = input;
   const { dir, origin, pile } = seatOrigin(input, playedBy, combo.cards.length);
   const thrower = players[playedBy];
+  let from: CardFrom[];
+  if (dir === "bottom") {
+    from = combo.cards.map((card) => {
+      const own = handOrigins?.get(card.id);
+      return own
+        ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy }
+        : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
+    });
+  } else {
+    const fan = fanPoint(seatPoint(input, playedBy), dir, input.scale, thrower ? handCountOf(thrower) : 0);
+    from = combo.cards.map(() => ({ ...fan, scale: FAN_CARD_SCALE }));
+  }
   return {
     dir,
     cards: combo.cards,
     heavy: combo.type === "bomb" || combo.type === "royal_straight",
     emptiedHand: !!thrower && handCountOf(thrower) === 0,
-    origin,
+    from,
     pile,
   };
 }

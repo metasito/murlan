@@ -10,9 +10,9 @@ import {
   seatGap,
   displayedHandCount,
   fanCounts,
-  seatFanArc,
   seatLabelH,
 } from "@/components/seatLayout";
+import { FAN_TURN, seatFanArc } from "@/components/fanGeometry";
 import { impactDelayMs, passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -79,9 +79,6 @@ export function usePassedSeats(
  */
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
-
-/** A quarter turn per side, so one construction serves all three seats. */
-const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
 
 /**
  * How far a departing back lifts (deg 1, points at scale 1) while it fades,

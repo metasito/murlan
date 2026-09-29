@@ -1,0 +1,44 @@
+// A seat's fan of backs: its shape, and where it sits beside the seat's ring.
+//
+// JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
+
+import { CARD_BACK_H, CARD_BACK_W, BACK_SCALE } from "./cardFaceModel.ts";
+import { arcBounds, solveArc, SEAT_ARC } from "./tableArc.ts";
+import { FAN_DRAWN_CARDS, SEAT_DISC, seatGap, type OpponentSide } from "./seatLayout.ts";
+
+/** A quarter turn per side, so one construction serves all three seats. */
+export const FAN_TURN: Record<OpponentSide, number> = { top: 0, left: -90, right: 90 };
+
+/**
+ * A seat's own fan of `count` backs at `backScale` — the one solve `CardFan`
+ * (components/table/seats.tsx) performs for its wrapper box, and that
+ * `sideSlotHeight` and `topFanHeight` (seatLayout.ts) perform for theirs, so none of the
+ * three can disagree with what the fan actually draws.
+ */
+export function seatFanArc(count: number, backScale: number) {
+  const backW = CARD_BACK_W(backScale);
+  const backH = CARD_BACK_H(backScale);
+  const { cards, box } = solveArc(count, {
+    budget: SEAT_ARC,
+    cardW: backW,
+    cardH: backH,
+    scale: backScale,
+    room: Infinity,
+    flip: true,
+  });
+  return { cards, box, bounds: arcBounds(cards, box, backW, backH) };
+}
+
+/** The fan's centre, from the pile, given its ring's (`seatPoint`), and the angle it is drawn at. */
+export function fanPoint(
+  ring: { dx: number; dy: number },
+  dir: OpponentSide,
+  scale: number,
+  count: number
+): { x: number; y: number; rot: number } {
+  const drawn = Math.min(count, FAN_DRAWN_CARDS[dir]);
+  const across = drawn > 0 ? seatFanArc(drawn, scale * BACK_SCALE).bounds.h : 0;
+  const along = (SEAT_DISC * scale) / 2 + seatGap(scale) + across / 2;
+  if (dir === "top") return { x: ring.dx, y: ring.dy + along, rot: FAN_TURN.top };
+  return { x: ring.dx + (dir === "left" ? along : -along), y: ring.dy, rot: FAN_TURN[dir] };
+}

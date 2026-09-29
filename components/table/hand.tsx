@@ -21,17 +21,19 @@ import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { cardAt, dropIndex } from "@/components/handOrder";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
-import { HAND_CROP, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
+import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
   CARD_W,
   CARD_H,
   CARD_BACK_W,
   CARD_BACK_H,
   cardRadius,
+  FIELD_SCALE,
   HAND_NEAR_RATIO,
   HAND_SCALE,
   HAND_SCALE_ON_TURN,
 } from "@/components/cardFaceModel";
+import type { CardFrom } from "@/components/flightPose";
 import { readHandArrival, type ExchangeView } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
@@ -471,6 +473,7 @@ export function StraightHand({
   startCardId,
   handBottomPad = 0,
   dealOffsetMs = 0,
+  onOrigins,
 }: {
   cards: Card[];
   selectedIds: string[];
@@ -531,6 +534,8 @@ export function StraightHand({
   handBottomPad?: number;
   /** How long after mounting a dealt hand its first card drops. */
   dealOffsetMs?: number;
+  /** Each drawn card's resting pose, from the hand zone's centre, in field-card units — where a throw leaves from. */
+  onOrigins?: (origins: ReadonlyMap<string, CardFrom>) => void;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -779,6 +784,28 @@ export function StraightHand({
   // Where each slot of the *whole* hand sits — where a released card is going.
   const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
 
+  // `handCenter` stands on the zone's padded floor (`handSection`, flex-end), and the row is centred in it.
+  const zoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), handBottomPad);
+  const rowCentreY = zoneH / 2 - handBottomPad - (visibleH + arcRise) / 2;
+  const fieldW = CARD_W(scale * FIELD_SCALE);
+  useEffect(() => {
+    if (!onOrigins) return;
+    const panShown = Math.min(Math.max(pan.get(), -panLimit), panLimit);
+    const origins = new Map<string, CardFrom>();
+    rest.forEach((card, i) => {
+      const at = arc[slotOf(i)] ?? arc[arc.length - 1];
+      const home = place.get(card.id) ?? at;
+      const selected = selectedSet.has(card.id);
+      origins.set(card.id, {
+        x: at.x + gapShift(i) + cardW / 2 - panShown,
+        y: rowCentreY + visibleH / 2 + crop + home.y - cardH / 2 + (selected ? -handRowHeadroom(cardH) : 0),
+        rot: home.rot + (selected ? SELECT_TILT : 0),
+        scale: cardW / fieldW,
+      });
+    });
+    onOrigins(origins);
+  });
+
   const releaseHeld = () => {
     landing.value = false;
     holding.value = false;
@@ -913,7 +940,7 @@ export function StraightHand({
           armed.value = false;
           scheduleOnRN(disarmHold);
         }
-        if (overhang > 0) pan.value = panFrom.value - dx;
+        if (overhang > 0) pan.set(panFrom.value - dx);
       }
     },
     onUpdate: (e) => {

@@ -14,7 +14,6 @@ import Animated, {
   FadeOut,
   type SharedValue,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
 import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
@@ -25,217 +24,98 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { COMBO_MAX_TILT, advancePile, anticipationOffset, cardTilt, collectPile, comboKey, EMPTY_PILE, FLIGHT_MS, flinchFor, impactDelayMs, landingHoldMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, settleForMotion, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
-import { FIELD_ARC, solveArc } from "@/components/tableArc";
+import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, impactDelayMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
-
-const FLY_ROTS: Record<FlyDirection, number> = {
-  bottom: -12, top: 12, left: -18, right: 18,
-};
-// How high the throw arcs. The flight's duration lives in flightPhysics,
-// because the table times its impact sound and shake against it.
-const ARC_PEAK = 22;
-/**
- * The longest a flight may hold the felt: well past the throw and the wobble after it, so it never
- * cuts a flight that is running — it only ends one that has stopped reporting. A floor that fired
- * first would run `onDone` twice.
- */
-const FLIGHT_LIMIT_MS = impactDelayMs(false) + LAND_WOBBLE_MS + FLIGHT_MS;
+import { a11yHidden } from "@/lib/a11y";
+import { landingPulsesFor } from "@/lib/device/moments";
+import { flightSpec, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
 
 /**
- * Where a combination's cards sit on the felt. A combination mid-throw and the
- * same combination the frame after it lands are one call, so it cannot shift
- * as it arrives.
+ * Where a combination's cards sit on the felt, the flight's own slots. A
+ * combination mid-throw and the same combination the frame after it lands are
+ * one call, so it cannot shift as it arrives.
  */
-function fieldArc(cards: Card[], cardScale: number, roomW: number) {
-  const cardW = CARD_W(cardScale);
-  const cardH = CARD_H(cardScale);
-  const { cards: arc, box } = solveArc(cards.length, {
-    budget: FIELD_ARC,
-    cardW,
-    cardH,
-    scale: cardScale,
-    room: roomW,
-  });
-  return { arc, box, cardH };
+function fieldSlots(cards: Card[], cardScale: number, roomW: number) {
+  const w = CARD_W(cardScale);
+  const h = CARD_H(cardScale);
+  const slots = pileSlots(cards.length, w, roomW);
+  const span = cards.length > 1 ? slots[cards.length - 1].x - slots[0].x : 0;
+  return { slots, w, h, boxW: span + w };
 }
 
 // ─── FlyingCards ──────────────────────────────────────────────────────────────
 
-export function FlyingCards({
-  cards,
-  direction,
-  origin,
-  onDone,
-  roomW,
-  scale = 1,
-}: {
+interface FlightCallbacks {
+  onStart?: (key: string, landsAt: number, endsAt: number) => void;
+  onEnd: (key: string) => void;
+  onContact?: (key: string) => void;
+  /** This flight's clock, once, for whatever else must move on it. */
+  onClock?: (key: string, clock: FlightClock) => void;
+}
+
+export function FlyingCards({ cards, flight, landing, signal, scale = 1, ...callbacks }: FlightCallbacks & {
   cards: Card[];
-  direction: FlyDirection;
-  /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
-  origin: { dx: number; dy: number };
-  onDone: () => void;
-  /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
-  roomW: number;
-  /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
+  flight: FlightSpec;
+  landing: LandingPayload;
+  signal: SharedValue<LandingSignal>;
   scale?: number;
 }) {
-  const { dx, dy } = origin;
-  const startRot = FLY_ROTS[direction];
-  const reduceMotion = usePrefersReducedMotion();
-
-  // A ref rather than the prop, so a caller handing over a fresh closure
-  // cannot restart the flight effect below mid-flight. The ref is written
-  // after commit, never during render — the only reader is a timer or an
-  // animation callback, both of which fire later.
-  const onDoneRef = useRef(onDone);
-  useEffect(() => {
-    onDoneRef.current = onDone;
-  });
-  // Defined on the JS thread so scheduleOnRN receives a real JS-thread reference.
-  const notifyDone = useCallback(() => onDoneRef.current(), []);
-
-  const tx = useSharedValue(dx);
-  const ty = useSharedValue(dy);
-  const rot = useSharedValue(startRot);
-  const opacity = useSharedValue(0);
-  // Parabolic arc — peak at mid-flight, then land
-  const arcY = useSharedValue(0);
-  const wobble = useSharedValue(0);
-  const lifted = useSharedValue(1);
-
-  useEffect(() => {
-    // Runs on every entry to this effect, including a toggle mid-flight —
-    // see settleForMotion for why that matters.
-    wobble.value = settleForMotion(reduceMotion, wobble.value);
-    if (reduceMotion) {
-      // The pile is about to show these cards anyway; skip the flight entirely
-      // and hand control straight back rather than jumping them across.
-      const id = setTimeout(() => onDoneRef.current(), Motion.duration.tap);
-      return () => clearTimeout(id);
-    }
-    const easing = Easing.bezier(0.22, 0.61, 0.36, 1.0);
-
-    opacity.value = withTiming(1, { duration: Motion.duration.flash * 0.7 });
-    const load = anticipationOffset(dx, dy);
-    const anticipate = { duration: Motion.anticipate, easing: Easing.out(Easing.quad) };
-    tx.value = withSequence(withTiming(dx + load.x, anticipate), withTiming(0, { duration: FLIGHT_MS, easing }));
-    ty.value = withSequence(withTiming(dy + load.y, anticipate), withTiming(0, { duration: FLIGHT_MS, easing }));
-    // The flight's own resting rotation is the pile's — 0, PileComboCards'
-    // own group rotation — so the handoff from FlyingCards to PlayedPile
-    // cannot read as a jump (#828).
-    rot.value = withSequence(
-      withTiming(startRot, anticipate),
-      withTiming(0, { duration: FLIGHT_MS, easing: Easing.out(Easing.cubic) })
-    );
-    arcY.value = withDelay(
-      Motion.anticipate,
-      withSequence(
-        withTiming(-ARC_PEAK, { duration: FLIGHT_MS * 0.5, easing: Easing.out(Easing.quad) }),
-        withTiming(0, { duration: FLIGHT_MS * 0.5, easing: Easing.in(Easing.quad) })
-      )
-    );
-    // On the landing onset: the tick usePileFlight fires the dust and the cue on.
-    wobble.value = withDelay(
-      impactDelayMs(reduceMotion),
-      withTiming(1, { duration: LAND_WOBBLE_MS, easing: Easing.linear }, (finished) => {
-        if (finished) scheduleOnRN(notifyDone);
-      })
-    );
-
-    lifted.value = withDelay(
-      impactDelayMs(reduceMotion),
-      withTiming(0, { duration: landingHoldMs(reduceMotion) })
-    );
-
-    // The floor under that callback. While a flight is up the pile draws
-    // nothing — the cards in the air are the cards on the felt — so a flight
-    // that never reports itself finished leaves the middle of the table empty
-    // for the rest of the round. `finished` is false for any interruption, and
-    // a spring that is cancelled or never scheduled reports nothing at all, so
-    // the landing cannot be the only way out.
-    const floor = setTimeout(() => onDoneRef.current(), FLIGHT_LIMIT_MS);
-
-    return () => {
-      clearTimeout(floor);
-      cancelAnimation(tx);
-      cancelAnimation(ty);
-      cancelAnimation(rot);
-      cancelAnimation(opacity);
-      cancelAnimation(arcY);
-      cancelAnimation(wobble);
-      cancelAnimation(lifted);
-    };
-    // Every entry is stable for the life of one flight — the caller remounts
-    // this component via `key` for each new one — so this runs once per flight.
-  }, [reduceMotion, notifyDone, dx, dy, startRot, tx, ty, rot, opacity, arcY, wobble, lifted]);
-
-  const aStyle = useAnimatedStyle(() => {
-    const w = landWobble(wobble.value);
-    return {
-      transform: [
-        { translateX: tx.value },
-        { translateY: ty.value + arcY.value },
-        { rotate: `${rot.value + w.rotate}deg` },
-        { scale: w.scale },
-      ],
-      opacity: opacity.value,
-    };
-  });
-
   const cardScale = scale * FIELD_SCALE;
-  const { arc, box, cardH } = fieldArc(cards, cardScale, roomW);
-
+  const w = CARD_W(cardScale);
+  const h = CARD_H(cardScale);
+  const on = useRef(callbacks);
+  useEffect(() => {
+    on.current = callbacks;
+  });
+  const started = useCallback((k: string, at: number, end: number) => on.current.onStart?.(k, at, end), []);
+  const ended = useCallback((k: string) => on.current.onEnd(k), []);
+  const touched = useCallback((k: string) => {
+    traceOnset("moment", "landing");
+    on.current.onContact?.(k);
+  }, []);
+  const clock = useFlightClock(signal, started, touched, ended);
+  const [armed] = useState(() => ({ spec: flight, landing }));
+  const { spec } = armed;
+  // Read live, not from the spec: a toggle mid-flight brings the cards to rest on the next frame (#786).
+  const still = usePrefersReducedMotion() || spec.reduced;
+  useEffect(() => {
+    on.current.onClock?.(armed.spec.key, clock);
+    clock.arm(armed.landing);
+    clock.begin(armed.spec);
+  }, [clock, armed]);
+  const group = useAnimatedStyle(() => {
+    const k = still ? 0 : Math.min(1, Math.max(0, (clock.elapsed.value - spec.end) / LAND_WOBBLE_MS));
+    const { scale: s, rotate } = landWobble(k);
+    return { transform: [{ scale: s }, { rotate: `${rotate}deg` }] };
+  });
   return (
-    <View style={[pileStyles.flyingContainer, { pointerEvents: "none" as const }]}>
-      <View style={[StyleSheet.absoluteFill, pileStyles.flyingInner]}>
-        <View style={{ width: box.w, height: box.h }}>
-          {arc.map((place, i) => (
-            <View
-              key={cards[i].id}
-              testID="flight-slot"
-              style={{ position: "absolute", left: box.w / 2 + place.x, top: place.y + (box.h - cardH), width: CARD_W(cardScale), height: cardH }}
-            />
-          ))}
-        </View>
-      </View>
-      <Animated.View
-        testID="flying-cards"
-        style={[pileStyles.flyingInner, { width: box.w, height: box.h }, aStyle]}
-      >
-        {arc.map((place, i) => (
-          <View
-            key={cards[i].id}
-            testID="flying-card"
-            style={{
-              position: "absolute",
-              left: box.w / 2 + place.x,
-              top: place.y + (box.h - cardH),
-              zIndex: i,
-              transform: [
-                { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
-              ],
-            }}
-          >
-            <LiftedShadow lifted={lifted} width={CARD_W(cardScale)} height={cardH} />
-            <View style={pileStyles.caughtCard}>
-              <CardView card={cards[i]} scale={cardScale} light="flat" />
-            </View>
-          </View>
-        ))}
-      </Animated.View>
-    </View>
+    <Animated.View testID="flying-cards" pointerEvents="none" style={[StyleSheet.absoluteFill, group]} {...a11yHidden()}>
+      {cards.map((card, i) => (
+        <FlyingCard key={card.id} card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} w={w} h={h} cardScale={cardScale} />
+      ))}
+    </Animated.View>
   );
 }
 
-/** Its own animated style per card: one style bound to several views drives only one of them. */
-function LiftedShadow({ lifted, width, height }: { lifted: SharedValue<number>; width: number; height: number }) {
-  const style = useAnimatedStyle(() => ({ opacity: lifted.value }));
+function FlyingCard({ card, i, spec, still, elapsed, w, h, cardScale }: {
+  card: Card; i: number; spec: FlightSpec; still: boolean; elapsed: SharedValue<number>; w: number; h: number; cardScale: number;
+}) {
+  const to = spec.to[i];
+  const style = useAnimatedStyle(() => {
+    const p = flightPose(still ? Infinity : elapsed.value, i, spec.n, spec.from[i], to, spec.catchUp);
+    return {
+      transform: [{ translateX: p.x - to.x }, { translateY: p.y - to.y }, { rotate: `${p.rot}deg` }, { scale: p.scale }],
+    };
+  });
+  const box = { position: "absolute" as const, left: "50%" as const, top: "50%" as const, width: w, height: h, marginLeft: to.x - w / 2, marginTop: to.y - h / 2 };
   return (
-    <Animated.View
-      testID="flying-shadow-lifted"
-      style={[pileStyles.liftedShadow, { width, height, borderRadius: cardRadius(width) }, style]}
-    />
+    <>
+      <View testID="flight-slot" pointerEvents="none" style={box} />
+      <Animated.View testID="flying-card" style={[box, { zIndex: i }, style]}>
+        <CardView card={card} scale={cardScale} light="flat" />
+      </Animated.View>
+    </>
   );
 }
 
@@ -395,22 +275,20 @@ function PileComboCards({
   /** Runs `catch` on every card here when it changes — omit for a layer that never should (the beaten `prev` combination). */
   catchTrigger?: number;
 }) {
-  const { arc, box, cardH } = fieldArc(cards, scale, roomW);
+  const { slots, w, h, boxW } = fieldSlots(cards, scale, roomW);
   return (
-    <View style={{ width: box.w, height: box.h, position: "relative" }}>
-      {arc.map((place, i) => {
+    <View style={{ width: boxW, height: h, position: "relative" }}>
+      {slots.map((slot, i) => {
         const face = <CardView card={cards[i]} scale={scale} light="flat" />;
         return (
           <View
             key={cards[i].id}
             style={{
               position: "absolute",
-              left: box.w / 2 + place.x,
-              top: place.y + (box.h - cardH),
+              left: boxW / 2 + slot.x - w / 2,
+              top: slot.y,
               zIndex: i,
-              transform: [
-                { rotate: `${place.rot + cardTilt(cards[i].id, COMBO_MAX_TILT)}deg` },
-              ],
+              transform: [{ rotate: `${slot.rot}deg` }],
             }}
           >
             {catchTrigger !== undefined ? (
@@ -434,18 +312,11 @@ function PileComboCards({
 const PILE_PREV_ROTATE_DEG = -7;
 const PILE_PREV_Y = 9;
 
-// The land spring's own overshoot on the whole pile — an ordinary win's
-// entire reaction (#764's tier table). Scaled at the trigger, the way `kick`
-// (useTableFeedback.ts) scales its own jolts, rather than left as a fixed
-// pixel count that reads huge on a phone and vanishes on a tablet (#790).
-const PILE_BOUNCE_DIP = 5;
-
 export function PlayedPile({
   prev,
   current,
   comboLabel = current,
   roundWinner,
-  bounceTrigger,
   catchTrigger,
   flinchTrigger,
   flinchTier,
@@ -462,7 +333,6 @@ export function PlayedPile({
    */
   comboLabel?: Combination | null;
   roundWinner: string | null;
-  bounceTrigger?: number;
   /** The flush: the play just landed emptied a hand. */
   catchTrigger?: number;
   /** Increments at the same `impactDelayMs()` landing everything else on the table reads — the beaten pile's own reaction to being displaced (#764). */
@@ -477,20 +347,9 @@ export function PlayedPile({
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
-  // The pile settles downward rather than scaling up: it holds card faces and
-  // a label, and scaling rasterised text is what makes it look cheap.
-  const settleY = useSharedValue(0);
   // The beaten combination's own reaction (#764): knocked further under the
   // new one, then spring-settled back to its resting offset.
   const flinchY = useSharedValue(0);
-
-  useEffect(() => {
-    if (!bounceTrigger || reduceMotion) return;
-    settleY.value = withSequence(
-      withTiming(-PILE_BOUNCE_DIP * scale, { duration: Motion.duration.flash }),
-      withSpring(0, Motion.spring.land)
-    );
-  }, [bounceTrigger, reduceMotion, scale, settleY]);
 
   // No `|| reduceMotion`: `flinchFor` already reads it and answers 0, the way
   // `traumaFor` does for the shake this composes with (#763). `* scale` for
@@ -506,17 +365,7 @@ export function PlayedPile({
     );
   }, [flinchTrigger, flinchTier, reduceMotion, scale, flinchY]);
 
-  useEffect(
-    () => () => {
-      cancelAnimation(settleY);
-      cancelAnimation(flinchY);
-    },
-    [settleY, flinchY]
-  );
-
-  const bounceStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: settleY.value }],
-  }));
+  useEffect(() => () => cancelAnimation(flinchY), [flinchY]);
 
   const prevLayerStyle = useAnimatedStyle(() => ({
     transform: [
@@ -528,7 +377,7 @@ export function PlayedPile({
   const isPower = comboLabel && POWER_COMBOS.has(comboLabel.type);
 
   return (
-    <Animated.View style={[pileStyles.pileArea, bounceStyle]} testID="pile-area">
+    <Animated.View style={pileStyles.pileArea} testID="pile-area">
       {roundWinner && (
         <Animated.View
           entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
@@ -566,7 +415,7 @@ export function PlayedPile({
         <View
           style={[
             pileStyles.comboLabel,
-            { marginTop: fieldArc(comboLabel.cards, cardScale, roomW).box.h / 2 + Spacing.snug },
+            { marginTop: fieldSlots(comboLabel.cards, cardScale, roomW).h / 2 + Spacing.snug },
           ]}
         >
           <ComboChip isPower={!!isPower}>
@@ -662,6 +511,20 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
   playRoundStart: () => void;
+  /** The viewer's hand cards as last drawn (`StraightHand`'s `onOrigins`), from the hand zone's centre. */
+  handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
+  /** The width share the field's cards may take — see FIELD_WIDTH_SHARE. */
+  roomW: number;
+  /** A reconnect is replaying the table, so the throw is the mockup's shorter catch-up. */
+  catchUp: boolean;
+}
+
+export interface FlyInfo {
+  key: string;
+  dir: FlyDirection;
+  cards: Card[];
+  spec: FlightSpec;
+  landing: LandingPayload;
 }
 
 /**
@@ -693,6 +556,9 @@ export function usePileFlight({
   burst,
   celebrateFlush,
   playRoundStart,
+  handOrigins,
+  roomW,
+  catchUp,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
   useTraceSource("flight", readFlightFromDom);
@@ -706,18 +572,12 @@ export function usePileFlight({
   );
   const [layers, setLayers] = useState<PileLayers>(NO_PILE);
   const [sweepTo, setSweepTo] = useState<{ dx: number; dy: number } | null>(null);
-  const [bounceTrigger, setBounceTrigger] = useState(0);
   // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
   // landing the shake and the impact sound wait for, never a second guess at it.
   const [flinchTrigger, setFlinchTrigger] = useState(0);
   const [flinchTier, setFlinchTier] = useState<ImpactTier>("ordinary");
-  const [flyInfo, setFlyInfo] = useState<{
-    key: string;
-    dir: FlyDirection;
-    cards: Card[];
-    /** Where the throw starts — components/flightPhysics.ts `flightOrigin`. */
-    origin: { dx: number; dy: number };
-  } | null>(null);
+  const [flights, setFlights] = useState<FlyInfo[]>([]);
+  const touched = useRef(new Set<string>());
   // False for exactly impactDelayMs() from the moment a flight begins — the
   // throwing seat's own held count and departing backs read off this, not off
   // flyInfo's own lifetime, which runs past the landing to cover `FlyingCards`'
@@ -779,7 +639,6 @@ export function usePileFlight({
     const openNewRound = () => {
       playRoundStart();
       setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
-      setFlyInfo(null);
       clearLanding();
     };
 
@@ -804,7 +663,6 @@ export function usePileFlight({
       if (roundHoldRef.current) return;
       if (prevComboKeyRef.current === "") {
         setLayers((l) => ({ ...l, onPile: EMPTY_PILE }));
-        setFlyInfo(null);
         clearLanding();
         return;
       }
@@ -843,7 +701,7 @@ export function usePileFlight({
     prevComboKeyRef.current = key;
     setLayers((l) => ({ ...l, onPile: advancePile(l.onPile, combo, lastPlayedBy) }));
 
-    const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy });
+    const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
 
     // The card is thrown here and arrives ~213ms later, so everything that
     // reads as *impact* waits for it. Announced for every seat, not only the
@@ -887,7 +745,19 @@ export function usePileFlight({
       setFlightLanded(true);
     }, impactDelayMs(reduceMotion));
 
-    setFlyInfo({ key, dir: thrown.dir, cards: thrown.cards, origin: thrown.origin });
+    const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
+    const landing: LandingPayload = {
+      tier: throwTier,
+      cards: thrown.cards.length,
+      x: thrown.pile.x,
+      y: thrown.pile.y,
+      flush: thrown.emptiedHand,
+      heavy: thrown.heavy,
+      mine: thrown.dir === "bottom",
+      pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: throwTier === "bomb", mine: thrown.dir === "bottom" }),
+    };
+    const flight = { key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing };
+    setFlights((f) => [...f.filter((x) => !touched.current.has(x.key)), flight]);
   }, [
     lastPlayedCombination,
     lastPlayedBy,
@@ -915,6 +785,9 @@ export function usePileFlight({
     surplus,
     bottomPad,
     handCardH,
+    handOrigins,
+    roomW,
+    catchUp,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -943,22 +816,23 @@ export function usePileFlight({
     return () => clearTimeout(dismiss);
   }, [roundWinnerTag]);
 
-  // The settle is what ends a flight, so the bounce the pile answers with is
-  // bumped from the same callback that takes the flying cards away.
-  const onFlightDone = useCallback(() => {
-    setFlyInfo(null);
-    setBounceTrigger((t) => t + 1);
+  // A flight still in the air when the next play lands keeps flying; one that
+  // has touched its slot yields it to the pile, so a card is never drawn twice.
+  const onFlightContact = useCallback((key: string) => touched.current.add(key), []);
+  const onFlightDone = useCallback((key: string) => {
+    touched.current.delete(key);
+    setFlights((f) => f.filter((x) => x.key !== key));
   }, []);
 
   return {
     pileState: layers.onPile,
     sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
-    flyInfo,
+    flights,
     flightLanded,
     flinchTrigger,
     flinchTier,
-    bounceTrigger,
     roundWinnerTag,
+    onFlightContact,
     onFlightDone,
     feltDim,
   };
@@ -977,10 +851,6 @@ const pileStyles = StyleSheet.create({
     justifyContent: "center",
     zIndex: Layer.sheet,
   },
-  flyingInner: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
   pileArea: {
     alignItems: "center",
     justifyContent: "center",
@@ -998,17 +868,6 @@ const pileStyles = StyleSheet.create({
     ...Shadow.goldSoft,
   },
   caughtCard: { zIndex: Layer.table },
-  // Only the raised half of the landing: the card's own stock already carries
-  // Shadow.card, so a second resting sibling would double it until the pile
-  // takes the card over.
-  liftedShadow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    zIndex: Layer.felt,
-    backgroundColor: Colors.cardPaper,
-    ...Shadow.cardLifted,
-  },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {

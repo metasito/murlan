@@ -376,12 +376,6 @@ export const Motion = {
     dwell: 1200,
   },
   /**
-   * The load before a deliberate launch — a small move against the direction of
-   * travel. This is what makes `travel` read as weight rather than as a
-   * duration. Crisp had none; that is most of what made it Crisp.
-   */
-  anticipate: 40,
-  /**
    * What each step becomes when the player asked for less motion.
    *
    * Not "off": travel is what goes, and the state change stays legible. A card

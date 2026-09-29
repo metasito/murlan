@@ -2,8 +2,7 @@
 //
 // The tier→trauma mapping and the decay math are asserted directly against
 // the pure functions in `tests/ui-rules/flightPhysics.test.ts` — a `useAnimatedStyle`
-// read off a rendered node freezes at mount (`settleForMotion`, same file,
-// documents the trap) and cannot pin a later reactive change. This only pins
+// read off a rendered node freezes at mount and cannot pin a later reactive change. This only pins
 // the shape `shakeStyle` starts at rest.
 import { describe, it, expect } from "@jest/globals";
 import React from "react";

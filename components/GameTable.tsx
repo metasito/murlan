@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeIn } from "react-native-reanimated";
+import Animated, { FadeIn, useSharedValue } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -30,6 +30,7 @@ import {
   openingIsPending,
   sortHand,
   type Card,
+  type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
 import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
@@ -44,6 +45,8 @@ import {
   type OpponentSide,
 } from "@/components/seatLayout";
 import { handCountOf, vacatedOf } from "@/shared/protocol";
+import type { CardFrom } from "@/components/flightPose";
+import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { comboKey, readExchange } from "@/components/flightPhysics";
 import { useExchangeTrips } from "@/components/table/ExchangeFlight";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
@@ -284,6 +287,8 @@ export interface GameTableProps {
   railExtra?: React.ReactNode;
   /** Transient strips under the top bar (online: reconnect notice). */
   banners?: React.ReactNode;
+  /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
+  catchUp?: boolean;
   /**
    * Full-screen layers above the table (game over, error toasts, waiting states).
    *
@@ -323,6 +328,7 @@ export function GameTable({
   disconnectedSeats = {},
   railExtra,
   banners,
+  catchUp = false,
   overlays,
   tableCovered = false,
 }: GameTableProps) {
@@ -723,15 +729,21 @@ export function GameTable({
     scale
   );
 
+  const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
+  // Merged, never replaced: by the throw's commit the hand has already redrawn without the thrown cards.
+  const handOrigins = useRef(new Map<string, CardFrom>());
+  const onHandOrigins = useCallback((drawn: ReadonlyMap<string, CardFrom>) => {
+    drawn.forEach((from, id) => handOrigins.current.set(id, from));
+  }, []);
   const {
     pileState,
     sweep,
-    flyInfo,
+    flights,
     flightLanded,
     flinchTrigger,
     flinchTier,
-    bounceTrigger,
     roundWinnerTag,
+    onFlightContact,
     onFlightDone,
     feltDim,
   } = usePileFlight({
@@ -747,7 +759,12 @@ export function GameTable({
     burst,
     celebrateFlush,
     playRoundStart: roundStart,
+    handOrigins,
+    roomW: frame.fieldRoomW,
+    catchUp,
   });
+  const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
+  const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -874,9 +891,10 @@ export function GameTable({
   // `flyInfo`'s own lifetime, which runs past the landing for the settle
   // spring. `impactDelayMs(reduceMotion)` is 0 under reduced motion, so
   // `flightLanded` is already true by the next render and nothing holds.
+  const lastFlight = flights.at(-1);
   const departingSide: OpponentSide | null =
-    flyInfo && !flightLanded && flyInfo.dir !== "bottom" ? flyInfo.dir : null;
-  const departingCount = departingSide ? flyInfo!.cards.length : 0;
+    lastFlight && !flightLanded && lastFlight.dir !== "bottom" ? lastFlight.dir : null;
+  const departingCount = departingSide ? lastFlight!.cards.length : 0;
 
   const timerActive =
     !!turnTimer &&
@@ -1170,7 +1188,8 @@ export function GameTable({
                 and the field centre in what is actually there rather than at a
                 guessed percentage, so a taller top seat takes it from the field
                 instead of overlapping it. */}
-            <View style={sharedTableStyles.midSection}>
+            {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
+            <View style={[sharedTableStyles.midSection, flights.length > 0 && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
                 {opponents.left && (
                   <SideOppSlot
@@ -1212,11 +1231,10 @@ export function GameTable({
                   />
                 ) : (
                   <PlayedPile
-                    prev={pileState.prev}
-                    current={flyInfo ? null : pileState.current}
+                    prev={landed(pileState.prev)}
+                    current={landed(pileState.current)}
                     comboLabel={flightLanded ? pileState.current : null}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    bounceTrigger={bounceTrigger}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
                     flinchTrigger={flinchTrigger}
                     flinchTier={flinchTier}
@@ -1252,17 +1270,18 @@ export function GameTable({
 
                 {deal.cards.length > 0 && <DealFlights cards={deal.cards} scale={scale} />}
 
-                {flyInfo && (
+                {flights.map((f) => (
                   <FlyingCards
-                    key={flyInfo.key}
-                    cards={flyInfo.cards}
-                    direction={flyInfo.dir}
-                    origin={flyInfo.origin}
-                    onDone={onFlightDone}
-                    roomW={frame.fieldRoomW}
+                    key={f.key}
+                    cards={f.cards}
+                    flight={f.spec}
+                    landing={f.landing}
+                    signal={landingSignal}
+                    onContact={onFlightContact}
+                    onEnd={onFlightDone}
                     scale={scale}
                   />
-                )}
+                ))}
 
                 {sweep && (
                   <SweepCards
@@ -1357,6 +1376,7 @@ export function GameTable({
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
                     handBottomPad={frame.bottomPad}
+                    onOrigins={onHandOrigins}
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).

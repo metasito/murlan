@@ -23,14 +23,13 @@ import {
   arrangeOpponents,
   type FlyDirection,
   sideSlotHeight,
-  seatFanArc,
   SEAT_DISC,
   seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
 } from "../../components/seatLayout.ts";
+import { seatFanArc } from "../../components/fanGeometry.ts";
 import {
-  cardTilt,
   arrivingCard,
   readHandArrival,
   readThrownPlay,
@@ -46,14 +45,10 @@ import {
   EMPTY_PILE,
   readExchange,
   INACTIVE_EXCHANGE,
-  ANTICIPATE_PX,
-  anticipationOffset,
-  handOffDelayMs,
   impactDelayMs,
   landingHoldMs,
   landWobble,
   LAND_WOBBLE_MS,
-  settleForMotion,
   comboImpactTier,
   landingTier,
   traumaFor,
@@ -61,8 +56,6 @@ import {
   shakeMagnitude,
   shakeOffset,
   shakeAmplitudeFor,
-  FLIGHT_MS,
-  LANDING_FRACTION,
   passedSeats,
   sparkOffset,
   SPARK_COUNT,
@@ -169,20 +162,6 @@ const combo = (ids: string[]): any => ({
 /** Four seats, all still holding cards. */
 const ALL_IN = [false, false, false, false];
 
-
-describe("cardTilt", () => {
-  test("the same card always tilts the same way, on every client and every frame", () => {
-    assert.equal(cardTilt("7H", 4.5), cardTilt("7H", 4.5));
-    assert.notEqual(cardTilt("7H", 4.5), cardTilt("8H", 4.5));
-  });
-
-  test("no card tilts past the bound it was given", () => {
-    for (const id of ["3S", "QD", "joker-1", "10C", "AH"]) {
-      assert.ok(Math.abs(cardTilt(id, 4.5)) <= 4.5);
-      assert.ok(Math.abs(cardTilt(id, 0)) === 0);
-    }
-  });
-});
 
 describe("comboKey", () => {
   test("the same cards played by different seats are different plays", () => {
@@ -612,55 +591,6 @@ describe("readExchange", () => {
 });
 
 
-describe("impact feedback is timed to the card landing, not to the throw", () => {
-  test("a played card takes 253ms to reach the pile — the anticipation leg, then the flight", () => {
-    // Sound, haptics and the bomb shake are scheduled against this. When they
-    // fired at throw time instead, the bang arrived a third of a second before
-    // the card that caused it.
-    //
-    // FLIGHT_MS derives from Motion.duration.travel (#829): the throw and the
-    // scale's own travel step had drifted to three different numbers (260 in
-    // Motion, 300 in the Scale mockup, 380 here) for what #126 settled once.
-    assert.equal(FLIGHT_MS, 260);
-    assert.equal(LANDING_FRACTION, 0.82);
-    assert.equal(Motion.anticipate, 40);
-    assert.equal(impactDelayMs(false), 253);
-  });
-
-  test("under reduced motion there is no flight to wait for", () => {
-    // FlyingCards skips the animation entirely, so a delay here would be a
-    // gap of silence rather than anticipation.
-    assert.equal(impactDelayMs(true), 0);
-  });
-
-  test("the delay is a whole number of milliseconds", () => {
-    // setTimeout truncates, and a fractional delay would drift against the
-    // animation it is supposed to match.
-    assert.equal(impactDelayMs(false) % 1, 0);
-  });
-});
-
-//
-describe("the anticipation leg and the hand-off", () => {
-  test("the load pulls the card straight back, away from the pile", () => {
-    assert.deepEqual(anticipationOffset(0, 100), { x: 0, y: ANTICIPATE_PX });
-    assert.deepEqual(anticipationOffset(-100, 0), { x: -ANTICIPATE_PX, y: 0 });
-    assert.deepEqual(anticipationOffset(0, 0), { x: 0, y: 0 });
-  });
-
-  test("the flight spends the anticipation step on every axis before it travels", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.match(src, /anticipationOffset\(dx, dy\)/);
-    assert.equal(src.match(/withTiming\([^()]*, anticipate\)/g)?.length, 3);
-    assert.match(src, /arcY\.value = withDelay\(\s*Motion\.anticipate,/);
-  });
-
-  test("the turn is handed over once the card has landed and held", () => {
-    assert.equal(handOffDelayMs(false), impactDelayMs(false) + landingHoldMs(false));
-    assert.equal(handOffDelayMs(true), 0);
-  });
-});
-
 describe("the table holds still at the landing frame", () => {
   test("a landed card gets a beat before its aftermath runs", () => {
     assert.equal(landingHoldMs(false), Hold.land);
@@ -673,19 +603,6 @@ describe("the table holds still at the landing frame", () => {
     // reading of the flag, which is the pair that could drift.
     assert.equal(impactDelayMs(true), 0);
     assert.equal(landingHoldMs(true), 0);
-  });
-
-  test("the wobble starts on the landing onset, the tick the dust and the cue fire on", () => {
-    const src = readPile();
-    assert.ok(
-      !/FLIGHT_MS\s*\*\s*LANDING_FRACTION/.test(src),
-      "pile.tsx must call impactDelayMs(), not recompute the landing"
-    );
-    const wobble = calls(src, "withDelay").filter((c) =>
-      /wobble\.value\s*=\s*$/.test(src.slice(0, c.start))
-    );
-    assert.deepEqual(wobble.map((c) => c.args[0]), ["impactDelayMs(reduceMotion)"], "the wobble must start on contact");
-    assert.match(wobble[0].args[1], /^withTiming\(1, \{ duration: LAND_WOBBLE_MS, easing: Easing\.linear \}/);
   });
 
   test("the call reader takes a timer's delay from the call, never from a comment beside it", () => {
@@ -702,11 +619,6 @@ describe("the table holds still at the landing frame", () => {
       calls(planted, "withDelay").map((c) => c.args),
       [["impactDelayMs(reduceMotion)", "withSequence(withTiming(1, { duration: 2 }), withSpring(0, cfg, (f) => {}))"]]
     );
-  });
-
-  test("the flight's safety floor clears the wobble", () => {
-    const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.match(src, /const FLIGHT_LIMIT_MS = impactDelayMs\(false\) \+ LAND_WOBBLE_MS \+ FLIGHT_MS;/);
   });
 });
 
@@ -728,54 +640,14 @@ describe("a landed combination wobbles for 400 ms, the mockup's landWobble", () 
     assert.ok(peak > 1.02 && peak < 1.035, `peak scale ${peak}`);
   });
 
-  test("pile.tsx draws the flying cards at the wobble's scale and rotation", () => {
+  test("pile.tsx draws the flying group at the wobble's scale and rotation, past the tween's end", () => {
     const src = readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8");
-    assert.ok(src.includes("const w = landWobble(wobble.value);"));
-    assert.match(src, /\{ rotate: `\$\{rot\.value \+ w\.rotate\}deg` \},\s*\{ scale: w\.scale \}/);
+    assert.ok(src.includes("(clock.elapsed.value - spec.end) / LAND_WOBBLE_MS"));
+    assert.ok(src.includes("const { scale: s, rotate } = landWobble(k);"));
+    assert.match(src, /transform: \[\{ scale: s \}, \{ rotate: `\$\{rotate\}deg` \}\]/);
   });
 });
 
-describe("settleForMotion", () => {
-  // Reanimated's cancelAnimation (the flight effect's own cleanup, re-run
-  // when `reduceMotion` flips) freezes a shared value at its current number
-  // rather than resetting it, so a live toggle mid-flight cannot rely on
-  // `settle` already being 0 by the time reduced motion takes over. These
-  // assert the behaviour directly — not a source pin — because the fix lives
-  // in a pure function pile.tsx also calls: unpinnable by rendering, though
-  // — a probe component mutating a shared value after mount, under this
-  // repo's jest-expo reanimated mock, left useAnimatedStyle's output at the
-  // value the component mounted with, the same frozen-at-mount trap checks.md
-  // documents for reading a value back out. So live reactivity on this exact
-  // path still needs an e2e toggle mid-flight or a device check; neither is
-  // what these prove.
-  test("reduced motion always resets to 0, whatever the incoming value was", () => {
-    assert.equal(settleForMotion(true, 0), 0);
-    assert.equal(settleForMotion(true, 1), 0);
-    assert.equal(settleForMotion(true, -0.07), 0);
-  });
-
-  test("off reduced motion the value passes through unchanged", () => {
-    assert.equal(settleForMotion(false, 0.42), 0.42);
-    assert.equal(settleForMotion(false, 0), 0);
-  });
-
-  test("FlyingCards runs it as the first thing its effect does, so a toggle cannot skip past it", () => {
-    // Anchored at the effect's own opening brace rather than searched for
-    // anywhere in the file: a call present but placed after a branch that
-    // returns early would never run under reduced motion — the defect this
-    // exists to catch — and an unanchored search cannot tell "runs first"
-    // from "is written down somewhere". Comments are blanked first, the way
-    // tests/tooling/e2eSentinels.test.ts does, so a copy of this exact text left
-    // behind in one does not read as the call.
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    assert.match(
-      src,
-      /useEffect\(\(\) => \{\s*wobble\.value = settleForMotion\(reduceMotion, wobble\.value\);/
-    );
-  });
-});
 
 describe("the table's own trauma escalation (#763)", () => {
   const DECAY_MS = Motion.duration.shake;
@@ -842,7 +714,7 @@ describe("the table's own trauma escalation (#763)", () => {
   // escaping), and answering a small non-zero number instead of true rest.
   // `tests/native/tableShake.test.tsx` cannot red on these — a
   // `useAnimatedStyle` read off a mounted node is frozen at whatever it was
-  // at mount (`settleForMotion`, above, documents the same trap) — so they
+  // at mount — so they
   // are pinned here, directly against the pure functions, the way #783 did.
   test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
     const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
@@ -1091,20 +963,6 @@ describe("the beaten pile's flinch (#764)", () => {
       src,
       /flinchFor\(flinchTier \?\? "ordinary", reduceMotion\) \* scale/,
       "the flinch's own trigger must multiply flinchFor's answer by the table's own scale"
-    );
-  });
-
-  // The critique found this exact defect again in the same file: the pile's
-  // own land-spring overshoot (the ordinary tier's whole effect) was a fixed
-  // pixel count too.
-  test("the pile's own bounce scales with the table too — the same defect class, fixed alongside the flinch", () => {
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    assert.match(
-      src,
-      /-PILE_BOUNCE_DIP \* scale/,
-      "PlayedPile's own bounce (the ordinary tier's whole effect) must scale with the table"
     );
   });
 });
@@ -1960,8 +1818,6 @@ describe("readThrownPlay", () => {
   test("the sweep heads for the round winner's seat, its fan at rest", () => {
     const players = table(3);
     const { playedBy: _p, combo: _c, ...geometry } = readInput(players, 3);
-    const nothingLeaving = { type: "single", cards: [], strength: 0 } as unknown as Combination;
-    assert.deepEqual(seatPoint(geometry, 3), read(players, 3, nothingLeaving).origin);
     assert.notDeepEqual(seatPoint(geometry, 3), seatPoint(geometry, 2));
   });
 
@@ -1987,10 +1843,14 @@ describe("readThrownPlay", () => {
     assert.equal(read(table(2, 1), 2).emptiedHand, false, "one card is not none");
   });
 
-  test("a throw from the top seat starts where that seat's pre-play fan put it", () => {
+  test("the top seat's ring moves with that seat's own count", () => {
+    const ring = (count: number) => {
+      const { playedBy: _p, combo: _c, ...geometry } = readInput(table(2, count), 2);
+      return seatPoint(geometry, 2);
+    };
     assert.notDeepEqual(
-      read(table(2, 1), 2).origin,
-      read(table(2, 5), 2).origin,
+      ring(1),
+      ring(5),
       "the top seat's own count has to reach the origin, or the pile cannot be placed under it"
     );
   });
@@ -2001,14 +1861,14 @@ describe("readThrownPlay", () => {
    * pass for the wrong reason at any two counts on this side of the cap.
    */
   test("past the drawn cap the column stops growing, so the pile stops moving", () => {
-    assert.deepEqual(read(table(2, 7), 2).origin, read(table(2, 11), 2).origin);
+    assert.deepEqual(read(table(2, 7), 2).from[0], read(table(2, 11), 2).from[0]);
   });
 
   test("each seat throws from its own side", () => {
     const players = table(1);
     const origins = [1, 2, 3].map((s) => ({
       dir: read(players, s).dir,
-      dx: read(players, s).origin.dx,
+      dx: read(players, s).from[0]!.x,
     }));
     assert.deepEqual(
       origins.map((o) => o.dir),
