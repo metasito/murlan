@@ -190,8 +190,8 @@ export interface TurnTimerConfig {
    */
   resetKey?: string;
   /**
-   * Count down while leading a new round too. False offline (leading has no
-   * deadline); true online, where the server arms its AFK timer every turn.
+   * The viewer's own chip counts down while leading a new round too (seat rings
+   * always do). False offline, no deadline; true online, armed every turn.
    */
   includeNewRound?: boolean;
   /**
