@@ -47,6 +47,7 @@ const NOT_A_BLOCKER: [string, number, string][] = [
   ["components/table/scorePill.tsx", 2, "the pill's press target and its open panel, each absolute within the pill's own box, never the table"],
   ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],
   ["app/index.tsx", 1, "the face of one animated card, absolute within that card's own view"],
+  ["components/table/ExchangeLegs.tsx", 3, "a traded card's face and back, each absolute within that card's own box; and the pointer-transparent layer the cards and tags ride on"],
   ["app/(online)/game.tsx", 1, 'the overlay layer itself is pointerEvents="box-none" — it takes no touch and holds no content, only the overlays that do'],
 ];
 

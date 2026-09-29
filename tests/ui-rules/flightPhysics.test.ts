@@ -4,23 +4,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import {
-  CARD_H,
-  BACK_SCALE,
-  HAND_SCALE,
-  cardScale,
-} from "../../components/cardFaceModel.ts";
+import { BACK_SCALE, CARD_W, FIELD_SCALE } from "../../components/cardFaceModel.ts";
 import {
   Trauma,
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
 import type { Card, Combination } from "../../lib/game/gameEngine.ts";
-import type { ExchangeAnnounceData } from "../../lib/game/sharedGameFlow.ts";
+import { GIVE_MS, givePose, receivePose } from "../../lib/game/exchangeTimeline.ts";
 import {
-  HAND_ZONE_H,
   arrangeOpponents,
-  type FlyDirection,
   sideSlotHeight,
   SEAT_DISC,
   seatGap,
@@ -32,9 +25,8 @@ import {
   arrivingCard,
   readHandArrival,
   readThrownPlay,
-  readExchangeTrips,
+  readExchangeLegs,
   flightOrigin,
-  exchangeFlight,
   comboKey,
   advancePile,
   collectPile,
@@ -62,7 +54,6 @@ import {
   type ImpactTier,
   type FlareKind,
 } from "../../components/flightPhysics.ts";
-import { computeTableFrame } from "../../components/tableFrame.ts";
 import {
   buildCombination,
   processPass,
@@ -1272,309 +1263,6 @@ describe("sparkOffset", () => {
   });
 });
 
-//
-// The exchange flies two cards at once, each from a seat to the other seat, and
-// the pair must never overlap on screen. That is the one claim a unit test can
-// make about it — where each card is at every moment is arithmetic — while
-// whether the rendered boxes actually stay apart is `tests/e2e/`'s job, because
-// react-test-renderer never runs layout.
-
-describe("exchangeFlight", () => {
-  const frame = {
-    scale: 1,
-    windowWidth: 800,
-    windowHeight: 600,
-    tableLeft: 40,
-    tableRight: 20,
-    tableTop: 10,
-    surplus: 0,
-    handZoneH: 100,
-    topDisplayedCount: 0,
-  };
-  // Different counts on the two sides, so a left⇄right trip that used one seat's
-  // slot height for both ends cannot pass here.
-  const sideDisplayedCounts = { left: 2, right: 9 };
-  // A real card is far taller than it is wide, which is the whole reason the
-  // clearance cannot be a single number: a pair passing one above the other
-  // needs the taller dimension between them.
-  const cardW = 60;
-  const cardH = 84;
-  /** Every ordered pair of distinct seats — the diagonals included. */
-  const SEATS = ["top", "bottom", "left", "right"] as const;
-  const PAIRS = SEATS.flatMap((from) =>
-    SEATS.filter((to) => to !== from).map((to) => [from, to] as const)
-  );
-
-  const sideCount = (d: "top" | "bottom" | "left" | "right") =>
-    d === "left" || d === "right" ? sideDisplayedCounts[d] : 0;
-
-  const dist = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) =>
-    Math.hypot(a.dx - b.dx, a.dy - b.dy);
-
-  /** Points along one trip: out to the meeting, held there, then on. */
-  const walk = (f: ReturnType<typeof exchangeFlight>) => {
-    const lerp = (a: { dx: number; dy: number }, b: { dx: number; dy: number }, t: number) => ({
-      dx: a.dx + (b.dx - a.dx) * t,
-      dy: a.dy + (b.dy - a.dy) * t,
-    });
-    const STEPS = 20;
-    const out = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.from, f.meet, i / STEPS));
-    const back = Array.from({ length: STEPS + 1 }, (_, i) => lerp(f.meet, f.to, i / STEPS));
-    return [...out, ...back];
-  };
-
-  /** Overlapping area of two cards centred at `a` and `b`, in px². */
-  const boxOverlap = (a: { dx: number; dy: number }, b: { dx: number; dy: number }) => {
-    const w = cardW - Math.abs(a.dx - b.dx);
-    const h = cardH - Math.abs(a.dy - b.dy);
-    return w > 0 && h > 0 ? w * h : 0;
-  };
-
-  test("a card leaves its owner's seat and arrives at the other one", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const origin = flightOrigin({ ...frame, dir: from, sideDisplayedCount: sideCount(from) });
-      const destination = flightOrigin({ ...frame, dir: to, sideDisplayedCount: sideCount(to) });
-      // The trip is derived from the same source the throw animation uses, so
-      // a card starts and ends at that seat's own point — offset into its lane,
-      // and no further than the lane itself is wide.
-      const lane = Math.max(cardW, cardH);
-      assert.ok(
-        dist(flight.from, origin) <= lane,
-        `${from} → ${to} starts ${dist(flight.from, origin).toFixed(0)}px from the ${from} seat`
-      );
-      assert.ok(
-        dist(flight.to, destination) <= lane,
-        `${from} → ${to} ends ${dist(flight.to, destination).toFixed(0)}px from the ${to} seat`
-      );
-      // …and both ends are displaced identically, which is what makes it a
-      // lane rather than a drift.
-      assert.deepEqual(
-        { dx: +(flight.from.dx - origin.dx).toFixed(9), dy: +(flight.from.dy - origin.dy).toFixed(9) },
-        { dx: +(flight.to.dx - destination.dx).toFixed(9), dy: +(flight.to.dy - destination.dy).toFixed(9) },
-        `${from} → ${to}: the two ends are offset differently`
-      );
-    }
-  });
-
-  test("the two cards of one exchange never overlap, at any point of the trip", () => {
-    for (const [from, to] of PAIRS) {
-      const out = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const back = exchangeFlight({ ...frame, sideDisplayedCounts, from: to, to: from, cardW, cardH });
-      // Every moment of the trip, not only the beat at the middle. Two lanes
-      // that only part where they meet still cross on the way there, and a
-      // browser saw exactly that (tests/e2e/exchangeNoOverlap.spec.ts) while an
-      // assertion about the meeting point alone reported everything fine.
-      //
-      // Boxes, not centres, for the same reason: two centres a card *width*
-      // apart are clear of each other only when the gap runs across the card.
-      const collisions = walk(out)
-        .map((a, i) => ({ i, area: boxOverlap(a, walk(back)[i]) }))
-        .filter((c) => c.area > 0);
-      assert.deepEqual(
-        collisions.map((c) => `step ${c.i}: ${c.area.toFixed(0)}px²`),
-        [],
-        `${from} ⇄ ${to}: the two cards overlap while they travel.`
-      );
-    }
-  });
-
-  test("the meeting point sits between the two seats, not past either of them", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const whole = dist(flight.from, flight.to);
-      // A meet outside the trip is a card that overshoots and doubles back —
-      // it reads as a miss rather than as a handover.
-      assert.ok(
-        dist(flight.from, flight.meet) < whole && dist(flight.meet, flight.to) < whole,
-        `${from} → ${to}: the meeting point is not between the seats`
-      );
-    }
-  });
-
-  test("the lane runs across the trip, so neither card is sent short or long", () => {
-    for (const [from, to] of PAIRS) {
-      const flight = exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-      const travel = { x: flight.to.dx - flight.from.dx, y: flight.to.dy - flight.from.dy };
-      // The lane is reported rather than recovered from the three points: all
-      // three carry it, so any difference between them has it cancelled out.
-      const along =
-        (travel.x * flight.lane.dx + travel.y * flight.lane.dy) / Math.hypot(travel.x, travel.y);
-      assert.ok(
-        Math.abs(along) < 1e-9,
-        `${from} → ${to}: the lane is displaced ${along.toFixed(2)}px along the ` +
-          `trip rather than across it, which changes when the card arrives`
-      );
-      assert.ok(
-        Math.hypot(flight.lane.dx, flight.lane.dy) > 0,
-        `${from} → ${to}: the trip has no lane, so anything placed off it lands on it`
-      );
-    }
-  });
-
-  test("a bigger card is given proportionally more room, not a fixed gap", () => {
-    const trip = (cardW: number, cardH: number) =>
-      exchangeFlight({ ...frame, sideDisplayedCounts, from: "bottom", to: "top", cardW, cardH });
-    const width = (f: ReturnType<typeof exchangeFlight>) => Math.hypot(f.lane.dx, f.lane.dy);
-    assert.ok(
-      width(trip(120, 168)) > width(trip(40, 56)),
-      "the clearance is a fixed distance rather than the card's own reach"
-    );
-  });
-
-  // #817: the owner read "got 2 of Diamonds" over his own hand, dark on a card
-  // face. The label used to sit at the landing point, and for the viewer's own
-  // seat that point is the hand zone's own centre (`flightOrigin`, "bottom").
-  describe("the seat labels", () => {
-    const tripFor = (from: FlyDirection, to: FlyDirection) =>
-      exchangeFlight({ ...frame, sideDisplayedCounts, from, to, cardW, cardH });
-
-    // The owner's own window as well as the reference one, measured the way the
-    // table measures it: a notched phone in landscape is tighter than the frame
-    // above in every direction, and its seats hold a full deal rather than a
-    // couple of cards — which is what puts a fan where a label wants to be.
-    const PHONE = { width: 844, height: 390 };
-    const phoneScale = cardScale(Math.min(PHONE.width, PHONE.height));
-    const phoneFrame = computeTableFrame({
-      ...PHONE,
-      insets: { top: 0, bottom: 21, left: 59, right: 0 },
-      scale: phoneScale,
-    });
-    const GEOMETRIES = [
-      { name: "the reference window", g: frame, sides: sideDisplayedCounts },
-      {
-        name: "a notched phone",
-        g: {
-          scale: phoneScale,
-          windowWidth: PHONE.width,
-          windowHeight: PHONE.height,
-          tableLeft: phoneFrame.tableLeft,
-          tableRight: phoneFrame.tableRight,
-          tableTop: phoneFrame.tableTop,
-          surplus: phoneFrame.surplus,
-          handZoneH: HAND_ZONE_H(CARD_H(phoneScale * HAND_SCALE), phoneFrame.bottomPad),
-          // Four seats, a fresh deal, thirteen cards each.
-          topDisplayedCount: 13,
-        },
-        sides: { left: 13, right: 13 },
-      },
-    ];
-
-    test("the label stops short of the seat it names, on every trip", () => {
-      for (const [from, to] of PAIRS) {
-        const flight = tripFor(from, to);
-        const tag = flight.tag;
-        const trip = dist(flight.from, flight.to);
-        // Measured along the trip alone: the lane offset is across it and
-        // would otherwise flatter the distance without moving the label off
-        // the seat's cards at all.
-        const ux = (flight.to.dx - flight.from.dx) / trip;
-        const uy = (flight.to.dy - flight.from.dy) / trip;
-        const short =
-          (flight.to.dx - tag.dx) * ux + (flight.to.dy - tag.dy) * uy;
-        assert.ok(
-          short >= cardH,
-          `${from} → ${to}: the label sits ${short.toFixed(0)}px short of the landing, ` +
-            `inside a ${cardH}px card`
-        );
-        // …and still on that seat's own half, or it is naming the wrong end.
-        assert.ok(
-          short < trip / 2,
-          `${from} → ${to}: the label fell back past the middle of the table`
-        );
-      }
-    });
-
-    test("the two labels stay a whole lane apart, as the two cards do", () => {
-      for (const [from, to] of PAIRS) {
-        const there = tripFor(from, to).tag;
-        const back = tripFor(to, from).tag;
-        assert.ok(
-          dist(there, back) > Math.max(cardW, cardH),
-          `${from} ⇄ ${to}: the two labels are ${dist(there, back).toFixed(0)}px apart`
-        );
-      }
-    });
-
-    test("the label is off the lane its own card landed on", () => {
-      for (const [from, to] of PAIRS) {
-        const flight = tripFor(from, to);
-        const tag = flight.tag;
-        assert.ok(
-          boxOverlap(tag, flight.to) === 0,
-          `${from} → ${to}: the label overlaps the card it describes`
-        );
-      }
-    });
-
-    // Every seat's, not only its own: the label is placed off one trip, and a
-    // trip knows nothing about the two seats it does not touch. Their cards are
-    // where their own would land, which is what `flightOrigin` answers.
-    test("the label is clear of every seat's cards, not only the pair trading", () => {
-      for (const geom of GEOMETRIES) {
-        const seatCard = (dir: FlyDirection) =>
-          flightOrigin({
-            ...geom.g,
-            dir,
-            sideDisplayedCount: dir === "left" || dir === "right" ? geom.sides[dir] : 0,
-          });
-        for (const [from, to] of PAIRS) {
-          const tag = exchangeFlight({
-            ...geom.g,
-            sideDisplayedCounts: geom.sides,
-            from,
-            to,
-            cardW,
-            cardH,
-          }).tag;
-          for (const seat of SEATS) {
-            assert.ok(
-              boxOverlap(tag, seatCard(seat)) === 0,
-              `${geom.name}, ${from} → ${to}: the label sits on the ${seat} seat's own cards`
-            );
-          }
-        }
-      }
-    });
-
-    // A trip standing off its lane can reach past the table it is drawn on: the
-    // lane's own offset is perpendicular to the travel, so on a diagonal it
-    // carries the label sideways as well as along, and the seat it names is
-    // already at the edge.
-    test("the label stays on the felt the seats are drawn on, and off the hand", () => {
-      for (const geom of GEOMETRIES) {
-        const pileX = geom.g.tableLeft + (geom.g.windowWidth - geom.g.tableLeft - geom.g.tableRight) / 2;
-        // The hand zone's own centre, from the same helper the flight uses —
-        // so the band the label must stay above is half a hand zone above it.
-        const handTop =
-          flightOrigin({ ...geom.g, dir: "bottom", sideDisplayedCount: 0 }).dy - geom.g.handZoneH / 2;
-        for (const [from, to] of PAIRS) {
-          const tag = exchangeFlight({
-            ...geom.g,
-            sideDisplayedCounts: geom.sides,
-            from,
-            to,
-            cardW,
-            cardH,
-          }).tag;
-          const x = pileX + tag.dx;
-          assert.ok(
-            x > geom.g.tableLeft && x < geom.g.windowWidth - geom.g.tableRight,
-            `${geom.name}, ${from} → ${to}: the label's centre is at x ${x.toFixed(0)}, ` +
-              `outside the table (${geom.g.tableLeft.toFixed(0)}…` +
-              `${(geom.g.windowWidth - geom.g.tableRight).toFixed(0)})`
-          );
-          assert.ok(
-            tag.dy < handTop,
-            `${geom.name}, ${from} → ${to}: the label's centre is ` +
-              `${(tag.dy - handTop).toFixed(0)}px into the player's own hand`
-          );
-        }
-      }
-    });
-  });
-});
-
 // What the table leaves a place for while the flight carrying it is still on
 // screen (#672).
 describe("arrivingCard", () => {
@@ -1713,32 +1401,6 @@ describe("arrivingCard", () => {
   });
 });
 
-// The flier retiring and the hand taking its card back are two views reading
-// one instant; a second `useTradedCardsLanded` call is a second clock for it,
-// and a clock that can drift from the one everything else reads is exactly
-// how the exchange's own flying card and the hand's arrival came to disagree
-// about when the trip is over (#533, reopened 2026-09-02: a residue outliving
-// the exchange). GameTable.tsx is the one call; every other view reads its
-// answer through a prop.
-describe("the exchange landing has one clock", () => {
-  const CALL = /(?<!function\s)\buseTradedCardsLanded\s*\(/g;
-  const HOME = "lib/game/sharedGameFlow.ts";
-
-  test("GameTable is the only caller of useTradedCardsLanded", () => {
-    assert.deepEqual(scan(CALL), ["components/GameTable.tsx: useTradedCardsLanded("]);
-  });
-
-  test("the scan fires on a second caller", () => {
-    const planted: [string, string][] = [
-      [HOME, "export function useTradedCardsLanded(a, b) { return true; }"],
-      ["components/ExchangeAnnouncement.tsx", "const landed = useTradedCardsLanded(visible, x);"],
-    ];
-    assert.deepEqual(scanSources(CALL, planted), [
-      "components/ExchangeAnnouncement.tsx: useTradedCardsLanded(",
-    ]);
-  });
-});
-
 describe("readThrownPlay", () => {
   const card = (id: string) =>
     ({ id, suit: "clubs", rank: "5", isJoker: false }) as Card;
@@ -1851,7 +1513,7 @@ describe("readThrownPlay", () => {
   });
 });
 
-describe("readExchangeTrips", () => {
+describe("readExchangeLegs", () => {
   const card = (id: string) =>
     ({ id, suit: "clubs", rank: "5", isJoker: false }) as Card;
   const seat = (id: string, cards: number) =>
@@ -1865,12 +1527,13 @@ describe("readExchangeTrips", () => {
   /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
   const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
 
-  const trips = (winnerIdx: number, loserIdx: number) =>
-    readExchangeTrips({
-      announce: { winnerIdx, loserIdx } as ExchangeAnnounceData,
+  const legs = (winnerIdx: number, loserIdx: number, table = players) =>
+    readExchangeLegs({
+      winnerIdx,
+      loserIdx,
       viewerSeat: 0,
-      players,
-      opponents: arrangeOpponents(players, 0),
+      players: table,
+      opponents: arrangeOpponents(table, 0),
       scale: 1,
       windowWidth: 844,
       windowHeight: 390,
@@ -1882,59 +1545,34 @@ describe("readExchangeTrips", () => {
       handCardH: 90,
     });
 
-  /**
-   * The two cards of a trade travel the same line in opposite directions, so
-   * either one's departure point is the other's arrival point once each is
-   * taken out of its own lane. A trip built from the wrong pair of seats
-   * cannot satisfy this, which is the defect the table's own geometry risks.
-   */
-  test("each card leaves from where the other one arrives", () => {
-    const { toWinner, toLoser } = trips(1, 2);
-    const unlaned = (p: { dx: number; dy: number }, lane: { dx: number; dy: number }) => ({
-      dx: p.dx - lane.dx,
-      dy: p.dy - lane.dy,
-    });
-    assert.deepEqual(
-      unlaned(toWinner.from, toWinner.lane),
-      unlaned(toLoser.to, toLoser.lane),
-      "the winner's card departs the loser's seat, which is where the loser's card lands"
-    );
-    assert.deepEqual(
-      unlaned(toWinner.to, toWinner.lane),
-      unlaned(toLoser.from, toLoser.lane)
-    );
+  test("the two cards, crossing at once, keep a card's width apart the whole way", () => {
+    for (const [winner, loser] of [[0, 2], [1, 3], [2, 1], [3, 0]]) {
+      const { receive, give } = legs(winner, loser);
+      for (let t = 0; t <= GIVE_MS; t += 4) {
+        const a = receivePose(t, receive);
+        const b = givePose(t, give);
+        if (a.visible && b.visible) {
+          assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= CARD_W(FIELD_SCALE), `${winner}⇄${loser} at ${t} ms`);
+        }
+      }
+    }
   });
 
-  test("swapping who won swaps the two trips", () => {
-    const asIs = trips(1, 3);
-    const swapped = trips(3, 1);
-    assert.deepEqual(asIs.toWinner.to, swapped.toLoser.to);
-    assert.deepEqual(asIs.toLoser.to, swapped.toWinner.to);
+  test("swapping who won swaps the two legs", () => {
+    assert.deepEqual(legs(1, 3).receive, legs(3, 1).give);
   });
 
-  /**
-   * A seat's fan sets where its own cards sit, so the trip has to start from
-   * the seat's real count rather than from a table-wide guess.
-   */
-  test("the top seat's own hand places the card it trades", () => {
-    const short = [seat("me", 5), seat("right", 6), seat("top", 1), seat("left", 8)];
-    const long = [seat("me", 5), seat("right", 6), seat("top", 5), seat("left", 8)];
-    const at = (table: Player[]) =>
-      readExchangeTrips({
-        announce: { winnerIdx: 2, loserIdx: 0 } as ExchangeAnnounceData,
-        viewerSeat: 0,
-        players: table,
-        opponents: arrangeOpponents(table, 0),
-        scale: 1,
-        windowWidth: 844,
-        windowHeight: 390,
-        tableLeft: 20,
-        tableRight: 20,
-        tableTop: 12,
-        surplus: 0,
-        bottomPad: 8,
-        handCardH: 90,
-      }).toWinner.to;
-    assert.notDeepEqual(at(short), at(long));
+  test("the viewer's end is the hand, face up; an opponent's is its fan, a back", () => {
+    const { receive } = legs(0, 2);
+    assert.equal(receive.toFace, true);
+    assert.equal(receive.fromFace, false);
+    const d = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
+    assert.ok(d(receive.rest, receive.to) < d(receive.from, receive.to) / 2, "it rests beside its receiver");
+  });
+
+  test("a side seat's own hand places the card it trades", () => {
+    const at = (leftCards: number) =>
+      legs(3, 0, [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", leftCards)]).receive.to;
+    assert.notDeepEqual(at(1), at(13));
   });
 });

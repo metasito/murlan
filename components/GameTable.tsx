@@ -33,7 +33,7 @@ import {
   type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
-import { useTradedCardsLanded, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -46,8 +46,8 @@ import {
 import { handCountOf, vacatedOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { comboKey, readExchange } from "@/components/flightPhysics";
-import { useExchangeTrips } from "@/components/table/ExchangeFlight";
+import { comboKey, readExchange, readExchangeLegs } from "@/components/flightPhysics";
+import { ExchangeLegs } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
@@ -55,7 +55,6 @@ import {
   BASE_SHORT_EDGE,
   CARD_H,
   cardScale,
-  FIELD_SCALE,
   HAND_SCALE,
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
@@ -102,7 +101,6 @@ import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { DealFlights, useDeal } from "@/components/table/deal";
-import { ExchangeAnnouncement } from "@/components/ExchangeAnnouncement";
 import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -435,13 +433,10 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  // Only until the card lands, not for the whole notice — the tags beside each
-  // seat stay up another `Reading.notice` to be read, and a hand short of a card
-  // for four seconds after it arrived is a different defect.
-  const tradedCardsLanded = useTradedCardsLanded(
-    exchangeAnnouncement?.visible === true,
-    exchangeAnnouncement?.data?.bothJokersException
-  );
+  const [legsLandedFor, setLegsLandedFor] = useState<ExchangeAnnounceData | null>(null);
+  const tradedCardsLanded =
+    exchangeAnnouncement?.visible === true &&
+    (exchangeAnnouncement.data?.bothJokersException === true || legsLandedFor === exchangeAnnouncement.data);
   const { handOnTable, withheldId, arrivingIndex, descendingId } = useHandArrival({
     hand: shownHand,
     exchange,
@@ -942,7 +937,8 @@ export function GameTable({
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
-  const exchangeTrips = useExchangeTrips(exchangeAnnouncement?.data, seatGeometry);
+  const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
+  const exchangeLegs = announced ? readExchangeLegs({ ...seatGeometry, winnerIdx: announced.winnerIdx, loserIdx: announced.loserIdx }) : null;
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
   useEffect(() => timeline.flush());
@@ -1222,20 +1218,15 @@ export function GameTable({
                     settle exactly where PlayedPile then redraws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
-                {exchangeAnnouncement?.data && exchangeTrips && (
-                  <ExchangeAnnouncement
-                    visible={exchangeAnnouncement.visible}
-                    winnerName={exchangeAnnouncement.data.winnerName}
-                    loserName={exchangeAnnouncement.data.loserName}
-                    bothJokersException={exchangeAnnouncement.data.bothJokersException}
-                    cardGiven={exchangeAnnouncement.data.cardGiven}
-                    cardReceived={exchangeAnnouncement.data.cardReceived}
-                    toWinner={exchangeTrips.toWinner}
-                    toLoser={exchangeTrips.toLoser}
-                    landed={tradedCardsLanded}
-                    scale={scale * FIELD_SCALE}
-                    onDismiss={exchangeAnnouncement.onDismiss}
-                    holdMsOverride={exchangeAnnouncement.holdMsOverride}
+                {announced && exchangeLegs && (
+                  <ExchangeLegs
+                    data={announced}
+                    legs={exchangeLegs}
+                    viewerSeat={spectating ? null : viewerSeat}
+                    scale={scale}
+                    onLanded={() => setLegsLandedFor(announced)}
+                    onDismiss={exchangeAnnouncement!.onDismiss}
+                    holdMsOverride={exchangeAnnouncement!.holdMsOverride}
                   />
                 )}
 

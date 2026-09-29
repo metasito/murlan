@@ -306,7 +306,7 @@ export const sq: Record<keyof typeof en, string> = {
   "exchange.receivedCardA11yLabel": "{{name}} të dha {{card}}",
   "exchange.receivedCardA11yLabelGiven": "Ke dhënë {{card}} te {{name}}",
   "exchange.receivedCardA11yLabelWatching": "{{loser}} i dha {{card}} {{winner}}",
-  "exchange.seatGot": "mori {{card}}",
+  "exchange.tag": "{{from}} › {{to}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Asi",

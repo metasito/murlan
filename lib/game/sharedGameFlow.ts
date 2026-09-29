@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 // Relative and extensioned, not `@/`: `tests/engine/sharedGameFlow.test.ts` loads this
 // under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
-import { EXCHANGE_FLIGHT_MS, exchangeAnnounceMs } from "../exchangeCeremony.ts";
 import { matchIsClosing } from "./gameEngine.ts";
 import type { Card, MatchLength } from "@/lib/game/gameEngine";
 
@@ -42,29 +41,6 @@ export function buildExchangeAnnounce(
     cardGiven: cards.given,
     cardReceived: cards.received,
   };
-}
-
-/**
- * Ends the ceremony on its own clock, beside the state it ends rather than
- * inside the view that draws it. The turn waits on this flag, and a flag only a
- * mounted overlay can clear is a table that stays under a ceremony for good if
- * the overlay ever does not mount.
- *
- * One implementation for both providers, for the same reason as everything else
- * in this file: the online and the offline table run the same ceremony, and two
- * clocks for it are two clocks that can disagree.
- */
-function useExchangeCeremonyExpiry(
-  announcing: boolean,
-  bothJokersException: boolean | undefined,
-  end: () => void,
-  holdMsOverride?: number
-): void {
-  useEffect(() => {
-    if (!announcing) return;
-    const done = setTimeout(end, holdMsOverride ?? exchangeAnnounceMs(bothJokersException ?? false));
-    return () => clearTimeout(done);
-  }, [announcing, bothJokersException, end, holdMsOverride]);
 }
 
 /**
@@ -113,29 +89,17 @@ export interface ExchangeAnnouncement {
 }
 
 /**
- * The whole ceremony: what is being announced, whether it still is, and the
- * clock that ends it. Both providers run this one, so a table cannot be under a
- * ceremony on one transport and not the other.
+ * The whole ceremony: what is being announced, and whether it still is. Both
+ * providers run this one, so a table cannot be under a ceremony on one
+ * transport and not the other. The table's `ExchangeLegs` ends it, on the
+ * legs' own landing plus a notice's reading.
  *
  * `phasePresent` is `gameState.exchangePhase !== undefined` — the record this
- * ceremony describes, read fresh every render. The reading clock is what ends
- * an ordinary trade; this is the floor under it, not a replacement for it: an
- * exchange stays on the felt for `Reading.notice` after it resolves by design,
- * and the phase itself lives at least that long too (the winner still has to
- * play out the rest of the hand). What it guards is the case the timer
- * cannot — a fresh match dealt, or the table reset, while the old ceremony's
- * clock is still counting down describes a trade that no longer has a record
- * to point to, and nothing should still be showing it.
- *
- * `holdMsOverride`, when given, replaces `exchangeAnnounceMs()` as the clock
- * this ceremony ends on. Only an offline-only caller may pass one (#915) — an
- * online table's clock must stay `exchangeAnnounceMs()` exactly, or the
- * client's overlay and the server's hold drift apart.
+ * ceremony describes, read fresh every render. A fresh match dealt, or the
+ * table reset, while the old ceremony is still up describes a trade that no
+ * longer has a record to point to, and nothing should still be showing it.
  */
-export function useExchangeAnnouncement(
-  phasePresent: boolean,
-  holdMsOverride?: number
-): ExchangeAnnouncement {
+export function useExchangeAnnouncement(phasePresent: boolean): ExchangeAnnouncement {
   const [opened, setOpened] = useState(false);
   const [data, setData] = useState<ExchangeAnnounceData | null>(null);
 
@@ -155,42 +119,5 @@ export function useExchangeAnnouncement(
   }, []);
   const end = useCallback(() => setOpened(false), []);
 
-  useExchangeCeremonyExpiry(announcing, data?.bothJokersException, end, holdMsOverride);
-
   return { announcing, data, announce, end };
-}
-
-/**
- * Whether the traded cards have arrived. False while they are still crossing.
- *
- * The ceremony outlives the flight by `Reading.notice` — the tags beside each
- * seat are there to be read after the cards land — so "the ceremony is running"
- * and "the card is still in the air" are different questions, and the hand
- * leaving a place for an arriving card is asking the second. Both the view that
- * draws the flight and the hand that waits for it read this one clock, because
- * two would be two that can disagree.
- *
- * Nothing flies when both Jokers cancelled the exchange, so nothing is ever in
- * the air.
- */
-export function useTradedCardsLanded(
-  announcing: boolean,
-  bothJokersException: boolean | undefined
-): boolean {
-  const [flightOver, setFlightOver] = useState(false);
-  // The clock belongs to one ceremony, so the ceremony ending is what retires
-  // it — carried over, the next trade would land before its cards left.
-  const [wasAnnouncing, setWasAnnouncing] = useState(announcing);
-  if (announcing !== wasAnnouncing) {
-    setWasAnnouncing(announcing);
-    if (!announcing) setFlightOver(false);
-  }
-
-  useEffect(() => {
-    if (!announcing || bothJokersException) return;
-    const land = setTimeout(() => setFlightOver(true), EXCHANGE_FLIGHT_MS);
-    return () => clearTimeout(land);
-  }, [announcing, bothJokersException]);
-
-  return announcing && (bothJokersException === true || flightOver);
 }

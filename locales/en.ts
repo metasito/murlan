@@ -306,7 +306,7 @@ export const en = {
   "exchange.receivedCardA11yLabelWatching": "{{loser}} gave {{winner}} {{card}}",
   // Beside each seat as that seat's card lands, so the two players not in the
   // exchange can read what each side got without a legend.
-  "exchange.seatGot": "got {{card}}",
+  "exchange.tag": "{{from}} › {{to}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",

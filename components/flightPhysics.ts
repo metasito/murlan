@@ -8,7 +8,6 @@ import { Spacing, Trauma } from "../lib/tokens.ts";
 import {
   HAND_ZONE_H,
   SEAT_DISC,
-  SIDE_SECTION_W,
   seatDirection,
   seatGap,
   seatLabelH,
@@ -18,12 +17,13 @@ import {
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
 import { handCountOf } from "../shared/protocol.ts";
-import { CARD_W, CARD_H, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { CARD_H, CARD_W, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
 import { fanPoint } from "./fanGeometry.ts";
 import type { CardFrom } from "./flightPose.ts";
+import { restPoint, type LegPoints } from "../lib/game/exchangeTimeline.ts";
 
 /** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */
-const FAN_CARD_SCALE = 0.4;
+export const FAN_CARD_SCALE = 0.4;
 
 // ─── Pile state ───────────────────────────────────────────────────────────────
 //
@@ -429,181 +429,6 @@ export function flightOrigin(input: FlightOriginInput): { dx: number; dy: number
   return { dx: ringCenterX - pileCenterX, dy: (slotH - midH) / 2 };
 }
 
-interface ExchangeFlightInput
-  extends Omit<FlightOriginInput, "dir" | "sideDisplayedCount"> {
-  /** The seat the card leaves. */
-  from: FlyDirection;
-  /** The seat it arrives at. */
-  to: FlyDirection;
-  /**
-   * Both side seats' displayed counts. A throw asks about one seat; an
-   * exchange has two ends, and they can both be side seats holding different
-   * numbers of cards — which is two different slot heights.
-   */
-  sideDisplayedCounts: { left: number; right: number };
-  /**
-   * The flying card's own box. Both dimensions, because the gap the two cards
-   * keep runs across their trip in whatever direction that happens to be: a
-   * pair passing side by side needs a card's width between them, and a pair
-   * passing one above the other needs its height.
-   */
-  cardW: number;
-  cardH: number;
-}
-
-export interface ExchangeFlight {
-  from: { dx: number; dy: number };
-  /** Where the card waits out the beat that makes the pair read as a trade. */
-  meet: { dx: number; dy: number };
-  to: { dx: number; dy: number };
-  /**
-   * The shift that took this trip out of the shared line and into its own
-   * lane, across the direction of travel and as long as the card's own reach
-   * that way. Anything that has to sit clear of this card — a label at the
-   * seat — goes further along it; the three points cannot supply that
-   * direction between them, since all three carry the same shift.
-   */
-  lane: { dx: number; dy: number };
-  /**
-   * Where this trip's "got this card" label sits — beside the seat it names,
-   * clear of the card it describes, and inside the table. Carried on the trip
-   * rather than derived at the label itself, which knows the geometry of
-   * nothing.
-   */
-  tag: { dx: number; dy: number };
-}
-
-/**
- * One card's trip across an exchange, in the same pile-relative deltas
- * `flightOrigin` speaks — so a card starts and ends exactly where that seat's
- * own cards do, rather than at a point measured a second time.
- *
- * The two cards of an exchange travel at once, in opposite directions along
- * the same line, and would collide on it. Each takes a lane instead: the whole
- * trip is shifted one clearance along the perpendicular of its own direction,
- * and because the two directions are opposite the two lanes are that whole gap
- * apart from departure to arrival. A pair that only parted at the middle would
- * still cross on the way there, which is the thing to keep in mind before
- * moving any of this: the separation has to hold at every moment, not at one.
- *
- * The clearance is how far a card of this size reaches along that
- * perpendicular. Half a card width would be the answer only for a pair
- * separated horizontally; separated vertically it leaves them a third of a card
- * deep in each other, and on a diagonal neither dimension alone is enough.
- *
- * The meeting point is the midpoint of the lane, where the two cards sit level
- * with each other for a beat. That beat is what makes the pair read as a trade
- * rather than as two deliveries that happen to coincide.
- */
-export function exchangeFlight(input: ExchangeFlightInput): ExchangeFlight {
-  const at = (dir: FlyDirection) =>
-    flightOrigin({
-      ...input,
-      dir,
-      sideDisplayedCount:
-        dir === "left" || dir === "right" ? input.sideDisplayedCounts[dir] : 0,
-    });
-  const from = at(input.from);
-  const to = at(input.to);
-
-  const vx = to.dx - from.dx;
-  const vy = to.dy - from.dy;
-  const len = Math.hypot(vx, vy);
-  // Two seats resolving to one point cannot happen on a laid-out table, but a
-  // zero-length trip would divide by zero rather than simply going nowhere.
-  const px = len === 0 ? 0 : -vy / len;
-  const py = len === 0 ? 0 : vx / len;
-  // How far a card of this size reaches along the perpendicular — its own
-  // support in that direction. Two lanes that far apart cannot overlap wherever
-  // either card happens to be along them, which is a stronger claim than two
-  // *points* that far apart and is the one this needs.
-  const clearance = (Math.abs(px) * input.cardW + Math.abs(py) * input.cardH) / 2;
-  const offX = len === 0 ? 0 : px * clearance;
-  const offY = len === 0 ? 0 : py * clearance;
-  const intoLane = (p: { dx: number; dy: number }) => ({ dx: p.dx + offX, dy: p.dy + offY });
-
-  const trip = {
-    from: intoLane(from),
-    meet: intoLane({ dx: (from.dx + to.dx) / 2, dy: (from.dy + to.dy) / 2 }),
-    to: intoLane(to),
-    lane: { dx: offX, dy: offY },
-  };
-  const pile = pileGeometry(input);
-  return {
-    ...trip,
-    // The band the pile sits in, less the columns the side seats sit in: the
-    // one region of the table that holds no cards, whoever is playing and
-    // however many they hold. The label is placed by its centre and drawn no
-    // wider than `TAG_MAX_W`, so half of that keeps its box inside as well.
-    tag: exchangeTagOffset(trip, {
-      minDx: input.tableLeft + SIDE_SECTION_W + TAG_MAX_W / 2 - pile.centerX,
-      maxDx: input.windowWidth - input.tableRight - SIDE_SECTION_W - TAG_MAX_W / 2 - pile.centerX,
-      minDy: TAG_CLEARANCE - pile.midH / 2,
-      maxDy: pile.midH / 2 - TAG_CLEARANCE,
-    }),
-  };
-}
-
-/**
- * How wide the label is allowed to get. Both a bound the clamp above can use —
- * a centre is only inside the table if half a label is too — and the width
- * `ExchangeSeatTag` draws it at, so the two cannot disagree about a box only
- * one of them can see.
- */
-export const TAG_MAX_W = 160;
-
-/**
- * The label's own reach: how far it stands off anything it must not touch —
- * its lane, beyond the card's own reach, and every edge it is clamped inside.
- * A single line of type in a padded box is smaller than this in both
- * directions, so the clearance holds for the box and not merely its centre.
- */
-const TAG_CLEARANCE = 30;
-/**
- * How far along its own trip the label sits — on its seat's side of the table,
- * and stopping well short of the seat itself.
- *
- * A label at the landing point lands *in* that seat's cards: for the viewer's
- * own seat the arrival is the hand zone's centre (`flightOrigin`, "bottom"), so
- * the words came out over the player's own hand and read as dark text on a card
- * face (#817). Short of it, the label is over felt in both directions, and the
- * perpendicular lane keeps it off the card it names and off the other tag.
- */
-const TAG_ALONG_TRIP = 0.72;
-
-/**
- * Where one seat's "got this card" label sits, in the same pile-relative deltas
- * the flight itself speaks.
- *
- * The lane runs across the direction of travel, so on a diagonal it carries the
- * label sideways as far as it carries it along — and the seat it names is
- * already at the table's edge. The bounds are what it may not leave; the table
- * clips what does, which costs the label its whole message and no error.
- */
-function exchangeTagOffset(
-  trip: Omit<ExchangeFlight, "tag">,
-  bounds: { minDx: number; maxDx: number; minDy: number; maxDy: number }
-): { dx: number; dy: number } {
-  const laneLen = Math.hypot(trip.lane.dx, trip.lane.dy) || 1;
-  const reach = laneLen + TAG_CLEARANCE;
-  // A window too small to hold the clearance on both sides has no room to
-  // clamp into; the middle of what there is beats an inverted box.
-  const clamp = (v: number, min: number, max: number) =>
-    min > max ? (min + max) / 2 : Math.min(Math.max(v, min), max);
-  return {
-    dx: clamp(
-      trip.from.dx + (trip.to.dx - trip.from.dx) * TAG_ALONG_TRIP + (trip.lane.dx / laneLen) * reach,
-      bounds.minDx,
-      bounds.maxDx
-    ),
-    dy: clamp(
-      trip.from.dy + (trip.to.dy - trip.from.dy) * TAG_ALONG_TRIP + (trip.lane.dy / laneLen) * reach,
-      bounds.minDy,
-      bounds.maxDy
-    ),
-  };
-}
-
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
@@ -883,45 +708,27 @@ function seatOrigin(
   return { dir, origin: flightOrigin(geometry), pile: { x: centerX, y: centerY } };
 }
 
-interface ExchangeTripsInput extends SeatGeometry {
-  announce: ExchangeAnnounceData;
-}
-
-/**
- * Both trips an exchange's cards make, from the seats that traded them.
- *
- * Measured here rather than at the announcement, for the same reason a throw's
- * origin is: this is where the table's geometry lives, and a second
- * measurement is how a card comes to land somewhere its seat is not. Nothing
- * is in flight when an exchange resolves, so each seat's displayed count is
- * simply the hand it holds.
- */
-export function readExchangeTrips(input: ExchangeTripsInput): {
-  toWinner: ExchangeFlight;
-  toLoser: ExchangeFlight;
-} {
-  const { announce, players, opponents } = input;
-  const geometry = {
-    scale: input.scale,
-    windowWidth: input.windowWidth,
-    windowHeight: input.windowHeight,
-    tableLeft: input.tableLeft,
-    tableRight: input.tableRight,
-    tableTop: input.tableTop,
-    surplus: input.surplus,
-    handZoneH: HAND_ZONE_H(input.handCardH, input.bottomPad),
-    topDisplayedCount: opponents.top ? handCountOf(opponents.top.player) : 0,
-    sideDisplayedCounts: {
-      left: opponents.left ? handCountOf(opponents.left.player) : 0,
-      right: opponents.right ? handCountOf(opponents.right.player) : 0,
-    },
-    cardW: CARD_W(input.scale * FIELD_SCALE),
-    cardH: CARD_H(input.scale * FIELD_SCALE),
+/** Both legs of an exchange, in the pile-relative points a throw flies in: a seat's fan, or the viewer's hand. */
+export function readExchangeLegs(input: SeatGeometry & { winnerIdx: number; loserIdx: number }): { receive: LegPoints; give: LegPoints } {
+  const end = (seat: number) => {
+    const { dir, origin } = seatOrigin(input, seat);
+    if (dir === "bottom") return { at: { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE }, face: true };
+    const player = input.players[seat];
+    return { at: { ...fanPoint(origin, dir, input.scale, player ? handCountOf(player) : 0), scale: FAN_CARD_SCALE }, face: false };
   };
-  const winnerDir = seatDirection(announce.winnerIdx, input.viewerSeat, players.length);
-  const loserDir = seatDirection(announce.loserIdx, input.viewerSeat, players.length);
-  return {
-    toWinner: exchangeFlight({ ...geometry, from: loserDir, to: winnerDir }),
-    toLoser: exchangeFlight({ ...geometry, from: winnerDir, to: loserDir }),
+  // The two cards cross at once along one line, so each keeps to its own lane: shifted across its
+  // travel by a card's reach that way, and the opposite way for the other card.
+  const w = CARD_W(input.scale * FIELD_SCALE);
+  const h = CARD_H(input.scale * FIELD_SCALE);
+  const leg = (giver: number, receiver: number): LegPoints => {
+    const from = end(giver);
+    const to = end(receiver);
+    const len = Math.hypot(to.at.x - from.at.x, to.at.y - from.at.y) || 1;
+    const px = -(to.at.y - from.at.y) / len;
+    const py = (to.at.x - from.at.x) / len;
+    const reach = (Math.abs(px) * w + Math.abs(py) * h) / 2;
+    const lane = <P extends { x: number; y: number }>(p: P): P => ({ ...p, x: p.x + px * reach, y: p.y + py * reach });
+    return { from: lane(from.at), fromFace: from.face, rest: lane(restPoint(to.at)), to: lane(to.at), toFace: to.face };
   };
+  return { receive: leg(input.loserIdx, input.winnerIdx), give: leg(input.winnerIdx, input.loserIdx) };
 }

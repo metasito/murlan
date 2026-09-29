@@ -291,7 +291,7 @@ export const it: Record<keyof typeof en, string> = {
   "exchange.receivedCardA11yLabel": "{{name}} ti ha dato {{card}}",
   "exchange.receivedCardA11yLabelGiven": "Hai dato {{card}} a {{name}}",
   "exchange.receivedCardA11yLabelWatching": "{{loser}} ha dato {{card}} a {{winner}}",
-  "exchange.seatGot": "ha ricevuto {{card}}",
+  "exchange.tag": "{{from}} › {{to}}",
 
   // ----------------------------------------------------------------- cards.*
   // Card names as read aloud/announced (ExchangeAnnouncement) — card ranks

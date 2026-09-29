@@ -1,5 +1,5 @@
 // tests/native/exchangeE2EHold.test.tsx — #915: `GameTable` forwards a
-// `holdMsOverride` through to `<ExchangeAnnouncement>`'s own dismiss clock,
+// `holdMsOverride` through to `<ExchangeLegs>`'s own dismiss clock,
 // rather than the prop being accepted and dropped. A regex over the source
 // cannot see whether a forwarding prop is wired to anything real — deleting
 // `holdMsOverride={exchangeAnnouncement.holdMsOverride}` from `GameTable.tsx`
@@ -70,6 +70,11 @@ const tableWith = (holdMsOverride: number | undefined, onDismiss: () => void) =>
 );
 
 const REAL_MS = exchangeAnnounceMs(false);
+const FRAME_MS = 16;
+/** Frame by frame, so the legs' clock reports its landing before the reading hold is set. */
+const frames = async (ms: number) => {
+  for (let t = 0; t < ms; t += FRAME_MS) await act(async () => jest.advanceTimersByTime(Math.min(FRAME_MS, ms - t)));
+};
 
 describe('the offline table forwards holdMsOverride to the overlay it renders', () => {
   beforeEach(() => {
@@ -79,15 +84,15 @@ describe('the offline table forwards holdMsOverride to the overlay it renders', 
     jest.useRealTimers();
   });
 
-  it('with no override, dismisses at the real duration', async () => {
+  it('with no override, dismisses at the real duration, within the frames its clock is sampled on', async () => {
     const onDismiss = jest.fn();
     const r = await render(tableWith(undefined, onDismiss));
     expect(screen.getByTestId('exchange-announce')).toBeTruthy();
 
-    await act(async () => jest.advanceTimersByTime(REAL_MS - 1));
+    await frames(REAL_MS - 1);
     expect(onDismiss).not.toHaveBeenCalled();
 
-    await act(async () => jest.advanceTimersByTime(1));
+    await frames(3 * FRAME_MS);
     expect(onDismiss).toHaveBeenCalledTimes(1);
 
     await r.unmount();

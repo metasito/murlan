@@ -10,7 +10,7 @@ const MODULE = "components/flightPhysics.ts";
 
 const OWNERS: Record<string, string> = {
   readHandArrival: "components/table/hand.tsx",
-  readExchangeTrips: "components/table/ExchangeFlight.tsx",
+  readExchangeLegs: "components/GameTable.tsx",
   passedSeats: "components/table/seats.tsx",
 };
 
@@ -31,7 +31,7 @@ function namesImportedFromModule(rel: string): string[] {
 const appFiles = ["app", "components", "lib"].flatMap(walk).filter((f) => f !== MODULE);
 const importers = [...appFiles, ...walk("tests")].map((rel) => ({ rel, names: namesImportedFromModule(rel) }));
 
-test("each hand-arrival, exchange-trip and passed-seat helper has one component owner", () => {
+test("each hand-arrival, exchange-leg and passed-seat helper has one component owner", () => {
   const strays = importers
     .filter(({ rel }) => rel.startsWith("app/") || rel.startsWith("components/"))
     .flatMap(({ rel, names }) =>

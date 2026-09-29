@@ -8,19 +8,13 @@ import { describe, it, expect } from '@jest/globals';
 
 import React from 'react';
 import { act, render, within } from '@testing-library/react-native';
-import { ExchangeAnnouncement } from '@/components/ExchangeAnnouncement';
+import { ExchangeLegs } from '@/components/table/ExchangeLegs';
 import type { Card } from '@/lib/game/gameEngine';
-import type { ExchangeFlight } from '@/components/flightPhysics';
+import { restPoint, type LegPoints } from '@/lib/game/exchangeTimeline';
 
-/** Geometry is exchangeFlight's business and tests/ui-rules/flightPhysics.test.ts's; this
- *  file is about what the announcement says, so any trip will do. */
-const TRIP: ExchangeFlight = {
-  from: { dx: 0, dy: 120 },
-  meet: { dx: 30, dy: 0 },
-  to: { dx: 0, dy: -120 },
-  lane: { dx: 30, dy: 0 },
-  tag: { dx: 60, dy: -60 },
-};
+/** Geometry is readExchangeLegs' business; this file is about what the ceremony says, so any leg will do. */
+const HAND = { x: 0, y: 120, rot: 0, scale: 1.2 };
+const LEG: LegPoints = { from: { x: 0, y: -120, rot: 0, scale: 0.4 }, fromFace: false, rest: restPoint(HAND), to: HAND, toFace: true };
 
 const WINNER = 'Ana';
 const LOSER = 'Bea';
@@ -28,19 +22,15 @@ const LOSER = 'Bea';
 const TAKEN: Card = { id: 'joker_colored', suit: null, rank: 'joker_colored', isJoker: true };
 const RETURNED: Card = { id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false };
 
-async function announce(props: { cardReceived?: Card; cardGiven?: Card }) {
+async function announce(props: { cardReceived?: Card; cardGiven?: Card; bothJokersException?: boolean }) {
   const view = await render(
-    <ExchangeAnnouncement
-      visible
-      winnerName={WINNER}
-      loserName={LOSER}
-      bothJokersException={false}
-      toWinner={TRIP}
-      toLoser={TRIP}
-      landed={false}
+    <ExchangeLegs
+      data={{ winnerName: WINNER, loserName: LOSER, winnerIdx: 1, loserIdx: 2, bothJokersException: false, ...props }}
+      legs={{ receive: LEG, give: LEG }}
+      viewerSeat={0}
       scale={1}
+      onLanded={() => {}}
       onDismiss={() => {}}
-      {...props}
     />
   );
   await act(async () => {});
@@ -84,24 +74,19 @@ describe('the exchange announcement states both legs', () => {
   });
 
   it('replaces both legs with the two-joker notice', async () => {
-    const view = await render(
-      <ExchangeAnnouncement
-        visible
-        winnerName={WINNER}
-        loserName={LOSER}
-        bothJokersException
-        toWinner={TRIP}
-        toLoser={TRIP}
-        landed={false}
-        scale={1}
-        onDismiss={() => {}}
-      />
-    );
-    await act(async () => {});
+    const view = await announce({ bothJokersException: true });
 
     expect(spoken(view)).toContain(LOSER);
     expect(givesCount(spoken(view), WINNER)).toBe(0);
 
+    await view.unmount();
+  });
+
+  it('tags each card with its giver, then its receiver', async () => {
+    const view = await announce({ cardReceived: TAKEN, cardGiven: RETURNED });
+    const text = (id: string) => view.getByTestId(id, { includeHiddenElements: true }).props.children;
+    expect(text('exchange-tag-to-winner')).toMatch(new RegExp(`${LOSER}.*${WINNER}`));
+    expect(text('exchange-tag-to-loser')).toMatch(new RegExp(`${WINNER}.*${LOSER}`));
     await view.unmount();
   });
 
