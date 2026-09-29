@@ -19,7 +19,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; selectedIds?: string[] };
+type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[] };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -37,7 +37,7 @@ const human = (turn: number, exchange = false): GameState => ({
 
 const table = (s: GameState, x: Extra = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} {...x} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} {...x} />
   </SafeAreaProvider>
 );
 
@@ -83,7 +83,7 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   deal: { sounds: ['deal'], run: botSounds },
   turn: { sounds: ['turn'], run: () => heard(table(human(1)), async (r) => { await act(async () => r.rerender(table(human(0)))); }) },
   select: { sounds: ['select'], run: () => heard(table(human(0)), () => press(seven())) },
-  deselect: { sounds: ['deselect'], run: () => heard(table(human(0), { selectedIds: [SEVEN_H.id] }), () => press(seven())) },
+  deselect: { sounds: ['deselect'], run: () => heard(table(human(0)), async () => { await press(seven()); await press(seven()); }) },
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
   give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },

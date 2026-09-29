@@ -116,8 +116,6 @@ const table = (opts: {
       }
       viewerSeat={opts.viewerSeat}
       spectating={opts.spectating}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

@@ -3,10 +3,12 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
+import { cardSpokenName } from '@/lib/cardNames';
+import { t } from '@/lib/i18n';
 import * as engine from '@/lib/game/gameEngine';
 import type { Card, Combination, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
@@ -49,13 +51,11 @@ const state = (over: Partial<GameState> = {}): GameState => ({
 
 const noop = () => {};
 
-const table = (gameState: GameState, selectedIds: string[]) => (
+const table = (gameState: GameState) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={selectedIds}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -66,6 +66,12 @@ const table = (gameState: GameState, selectedIds: string[]) => (
 
 const onPile = (over: Partial<GameState> = {}) => state({ lastPlayedCombination: PILE, lastPlayedBy: 1, ...over });
 
+const tap = async (c: Card) => {
+  await act(async () => {
+    fireEvent.press(screen.getByLabelText(cardSpokenName(c, t)));
+  });
+};
+
 const passaBorder = () => StyleSheet.flatten(screen.getByTestId('btn-passa').props.style).borderWidth;
 
 describe('the legal plays of a hand', () => {
@@ -75,20 +81,20 @@ describe('the legal plays of a hand', () => {
 
   it('are not counted again when a card is selected', async () => {
     const game = onPile();
-    const r = await render(table(game, []));
+    const r = await render(table(game));
     expect(legalPlays).toHaveBeenCalled();
     legalPlays.mockClear();
 
-    await r.rerender(table(game, [SEVEN_H.id]));
-    await r.rerender(table(game, [SEVEN_H.id, SEVEN_C.id]));
+    await tap(SEVEN_H);
+    await tap(SEVEN_C);
 
-    expect(screen.getByTestId('btn-gioca')).toBeTruthy();
+    expect(screen.getByLabelText(cardSpokenName(SEVEN_C, t)).props.accessibilityState?.selected).toBe(true);
     expect(legalPlays).not.toHaveBeenCalled();
     await r.unmount();
   });
 
   it('are not counted at all for a lead, where PASSA is not offered', async () => {
-    const r = await render(table(state(), [SEVEN_H.id]));
+    const r = await render(table(state()));
 
     expect(screen.getByTestId('btn-passa')).toBeTruthy();
     expect(legalPlays).not.toHaveBeenCalled();
@@ -96,33 +102,33 @@ describe('the legal plays of a hand', () => {
   });
 
   it('are counted again when the pile changes', async () => {
-    const r = await render(table(onPile(), []));
+    const r = await render(table(onPile()));
     legalPlays.mockClear();
 
-    await r.rerender(table(onPile({ lastPlayedCombination: JACKS }), []));
+    await r.rerender(table(onPile({ lastPlayedCombination: JACKS })));
 
     expect(legalPlays).toHaveBeenCalled();
     await r.unmount();
   });
 
   it('still mark PASSA as the only move when nothing beats the pile', async () => {
-    const r = await render(table(onPile(), []));
+    const r = await render(table(onPile()));
     expect(passaBorder()).toBeUndefined();
 
-    await r.rerender(table(onPile({ lastPlayedCombination: JACKS }), []));
+    await r.rerender(table(onPile({ lastPlayedCombination: JACKS })));
 
     expect(passaBorder()).toBe(2);
     await r.unmount();
   });
 
   it('follow the start card and whether the opening play is made', async () => {
-    const r = await render(table(onPile({ firstPlayMade: false, startCard: SEVEN_H }), []));
+    const r = await render(table(onPile({ firstPlayMade: false, startCard: SEVEN_H })));
     expect(passaBorder()).toBeUndefined();
 
-    await r.rerender(table(onPile({ firstPlayMade: false, startCard: THREE_S }), []));
+    await r.rerender(table(onPile({ firstPlayMade: false, startCard: THREE_S })));
     expect(passaBorder()).toBe(2);
 
-    await r.rerender(table(onPile({ firstPlayMade: true, startCard: THREE_S }), []));
+    await r.rerender(table(onPile({ firstPlayMade: true, startCard: THREE_S })));
     expect(passaBorder()).toBeUndefined();
     await r.unmount();
   });

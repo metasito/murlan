@@ -39,31 +39,6 @@ jest.mock('@/context/OnlineGameContext', () =>
   )
 );
 
-// The table's chrome is not what is under test; the callback path through it
-// is. This keeps that path exactly as GameTable wires it — `onSelectCard`
-// becomes the hand's `onPress` — and drops everything else.
-jest.mock('@/components/GameTable', () => {
-  const react = require('react') as typeof import('react');
-  const shared = require('@/components/table/hand') as typeof import('@/components/table/hand');
-  return {
-    GameTable: (props: {
-      gameState: GameState;
-      viewerSeat: number;
-      selectedIds: string[];
-      onSelectCard: (id: string) => void;
-    }) =>
-      react.createElement(shared.StraightHand, {
-        cards: props.gameState.players[props.viewerSeat].hand,
-        selectedIds: props.selectedIds,
-        onPress: props.onSelectCard,
-        disabled: false,
-        availW: 600,
-        roomW: 456,
-      }),
-  };
-});
-
-// Imported after the mock so the hand module picks it up.
 const { StraightHand } = require('@/components/table/hand') as typeof import('@/components/table/hand');
 
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType })
@@ -190,8 +165,8 @@ const screenView = () => (
 );
 
 // The comparators above only hold if what reaches them holds still. This drives
-// the real screen, so a per-render arrow anywhere on the path from
-// `onSelectCard` to a card's `onPress` shows up here as a full rebuild.
+// the real screen and the real table, so a per-render arrow anywhere on the
+// path from the screen to a card shows up here as a full rebuild.
 describe('an incoming game:state does not rebuild the online hand', () => {
   beforeEach(() => {
     mockCardRenders.n = 0;
@@ -201,7 +176,7 @@ describe('an incoming game:state does not rebuild the online hand', () => {
     mockOnline.value = online(hand());
     const r = await render(screenView());
     const afterMount = mockCardRenders.n;
-    expect(afterMount).toBe(RANKS.length);
+    expect(afterMount).toBeGreaterThanOrEqual(RANKS.length);
 
     mockOnline.value = online(hand());
     await r.rerender(screenView());

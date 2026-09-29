@@ -80,8 +80,6 @@ const table = (gameState: GameState, turnTimer: TurnTimerConfig) => (
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

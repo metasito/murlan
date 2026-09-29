@@ -65,7 +65,6 @@ function CaptureHarness() {
   // Before the null guard: a hook that runs on one render and not the next is
   // the error this ordering exists to prevent.
   const [live, setLive] = useState<GameState | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const seeded = React.useMemo(
     () => (picked ? captureGameState(picked) : null),
     [picked]
@@ -82,12 +81,6 @@ function CaptureHarness() {
     <GameTable
       gameState={gameState}
       viewerSeat={CAPTURE_VIEWER_SEAT}
-      selectedIds={selectedIds}
-      onSelectCard={(cardId) =>
-        setSelectedIds((ids) =>
-          ids.includes(cardId) ? ids.filter((id) => id !== cardId) : [...ids, cardId]
-        )
-      }
       // A capture is of a frame, not of a hand being played: the table stays on
       // the state it was asked for until the swing knob moves it.
       onPlay={() => {}}

@@ -69,8 +69,6 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0 }: { by: number;
       <GameTable
         gameState={state}
         viewerSeat={0}
-        selectedIds={[]}
-        onSelectCard={noop}
         onPlay={noop}
         onPass={noop}
         onQuit={noop}

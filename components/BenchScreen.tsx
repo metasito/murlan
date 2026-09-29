@@ -97,8 +97,6 @@ export function BenchScreen() {
         <GameTable
           gameState={table.state}
           viewerSeat={0}
-          selectedIds={[]}
-          onSelectCard={() => {}}
           onPlay={() => {}}
           onPass={() => {}}
           onExchangeGive={() => {}}

@@ -37,7 +37,7 @@ describe('a card press', () => {
   it('starts one source and fires one haptic, and touches neither the session nor a context', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
-        <GameTable gameState={state} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+        <GameTable gameState={state} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
       </SafeAreaProvider>
     );
     await settle(2000);

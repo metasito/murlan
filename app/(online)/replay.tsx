@@ -175,8 +175,6 @@ export default function ReplayScreen() {
       gameState={state}
       viewerSeat={0}
       spectating
-      selectedIds={[]}
-      onSelectCard={NOOP}
       onPlay={NOOP}
       onPass={NOOP}
       onQuit={() => router.back()}

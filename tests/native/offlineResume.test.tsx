@@ -73,16 +73,12 @@ function Probe() {
     resumeGame,
     setupGame,
     resetGame,
-    selectCard,
-    playSelected,
+    playCards,
     exchangeAnnouncing,
   } = useGame();
   // The opening play is forced to the 3♠, so it is the one move that is always
   // legal and always available without reading the engine's rules here.
-  const playOpening = () => {
-    const start = gameState?.startCard;
-    if (start) selectCard(start.id);
-  };
+  const start = gameState?.startCard;
   return (
     <>
       <Text testID="hand">{gameState ? String(gameState.players[0].hand.length) : "none"}</Text>
@@ -99,8 +95,7 @@ function Probe() {
       </Pressable>
       <Pressable testID="resume" onPress={() => resumeGame()}><Text>resume</Text></Pressable>
       <Pressable testID="reset" onPress={() => resetGame()}><Text>reset</Text></Pressable>
-      <Pressable testID="select" onPress={playOpening}><Text>select</Text></Pressable>
-      <Pressable testID="play" onPress={() => playSelected()}><Text>play</Text></Pressable>
+      <Pressable testID="play" onPress={() => start && playCards([start.id])}><Text>play</Text></Pressable>
     </>
   );
 }
@@ -163,7 +158,6 @@ test("the save tracks the game rather than being written once", async () => {
   });
 
   const before = decodeOfflineSave(await AsyncStorage.getItem(OFFLINE_SAVE_KEY));
-  await press(r, "select");
   await press(r, "play");
 
   await waitFor(async () => {
