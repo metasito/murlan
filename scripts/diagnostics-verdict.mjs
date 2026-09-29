@@ -115,7 +115,7 @@ function matchOnsets(starts, onsets, windowMs) {
 }
 
 export function burstStalls(rows) {
-  const frames = rows.filter((r) => r.k === "frame");
+  const frames = rows.filter((r) => r.k === "frame" && r.dt > 0);
   const spans = [...frames, ...rows.filter((r) => r.k === "jsLag")]
     .filter((r) => r.dt >= 34)
     .map((r) => [r.t - r.dt, r.t])
@@ -294,7 +294,7 @@ function halves(rows) {
   const marks = rows.filter((r) => r.k === "half").sort((a, b) => a.t - b.t);
   return marks.map((h, i) => {
     const own = rows.filter((r) => r.t >= h.t && r.t < (marks[i + 1]?.t ?? Infinity));
-    const p95 = own.filter((r) => r.k === "frame").map((r) => r.dt).sort((a, b) => a - b);
+    const p95 = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
     return { name: h.name, pair: h.pair, hz: medianHz(own), p95: p95.length ? p95[Math.ceil(p95.length * 0.95) - 1] : NaN, ...burstStalls(own) };
   });
 }

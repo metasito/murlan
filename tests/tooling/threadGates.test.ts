@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GATES, medianHz, verdict } from "../../scripts/diagnostics-verdict.mjs";
+import { GATES, burstStalls, medianHz, verdict } from "../../scripts/diagnostics-verdict.mjs";
 
 type Row = { k: string; t: number; [key: string]: unknown };
 
@@ -240,6 +240,31 @@ test("feltOpaque drops it when one opaque half has more stalls, though every p95
   const r = felt(pairs);
   assert.equal(r.metrics.wins, 4);
   assert.equal(r.metrics.outcome, "drop");
+});
+
+test("a frame with no interval changes neither a half's p95 nor the pair's comparison", () => {
+  const onHalf = (t: number, withNull: boolean): Row[] => [
+    { k: "half", t, name: "on", pair: (t / 1000 - 1) / 2 },
+    ...Array.from({ length: 18 }, (_, i) => ({ k: "frame", t: t + 10 + i * 8, dt: 8 })),
+    { k: "frame", t: t + 200, dt: 20 },
+    ...(withNull ? [{ k: "frame", t: t + 300, dt: null }] : []),
+  ];
+  const offHalf = (t: number): Row[] => [
+    { k: "half", t, name: "off", pair: (t / 1000 - 2) / 2 },
+    ...Array.from({ length: 19 }, (_, i) => ({ k: "frame", t: t + 10 + i * 10, dt: 10 })),
+  ];
+  const run = (withNull: boolean) => GATES.feltOpaque([1000, 3000, 5000, 7000].flatMap((t) => [...onHalf(t, withNull), ...offHalf(t + 1000)]));
+  const clean = run(false);
+  const nulled = run(true);
+  assert.equal(clean.metrics.on[0]?.p95, 20);
+  assert.equal(nulled.metrics.on[0]?.p95, 20);
+  assert.equal(nulled.metrics.wins, clean.metrics.wins);
+  assert.equal(nulled.metrics.outcome, "drop");
+});
+
+test("a frame with no interval is not a frame to burstStalls' fast share", () => {
+  const rows = [...frames(0, 248, 8), { k: "frame", t: 400, dt: null }];
+  assert.deepEqual(burstStalls(rows), { stalls: 0, fastShare: 1, frames: 31, jsTicks: 0 });
 });
 
 test("feltOpaque has no outcome, and fails, on three pairs", () => {
