@@ -35,26 +35,26 @@ const options = ts.getParsedCommandLineOfConfigFile(path.join(root, "tsconfig.js
 })!.options;
 
 const PLANTED = `import type { Card } from "../../lib/game/gameEngine.ts";
-import { drawnFanBounds, seatFanArc } from "../../components/fanGeometry.ts";
-export function plantedN(scale: number, n: number) { return scale * n; }
-export function plantedCards(input: { scale: number; cards: number }) { return input.scale * input.cards; }
-export function plantedHand(input: { scale: number; hand: readonly Card[] }) { return input.scale; }
-export const plantedNested = (input: { at: { sideDisplayedCounts: { left: number } } }) => input.at;
-export function plantedMap(scale: number, counts: ReadonlyMap<string, number>) { return scale; }
-export function plantedFan(scale: number) { return seatFanArc(3, scale).bounds.h; }
-const viaHelper = (scale: number) => seatFanArc(2, scale).bounds.w;
-export function plantedViaHelper(scale: number) { return viaHelper(scale); }
-export function plantedBand(scale: number) { return drawnFanBounds(scale).topH; }
-export function plantedScale(scale: number) { return scale; }
-export function plantedGeneric<T>(scale: number, n: T) { return scale; }
-export function plantedBounded<T extends number>(scale: number, n: T) { return scale * n; }
-export function plantedRecord(scale: number, counts: Record<string, number>) { return scale; }
-export function plantedIndex(scale: number, counts: { [seat: string]: number }) { return scale; }
-export function plantedTotal(scale: number, total: number) { return scale * total; }
-export function plantedSides(scale: number, side: { left: number; right: number }) { return scale * side.left; }
-export function plantedKeyed(scale: number, side: Record<"left" | "right", number>) { return scale * side.left; }
-export const plantedObject = { place(scale: number, n: number) { return scale * n; } };
-export class PlantedClass { place(scale: number, n: number) { return scale * n; } }
+  import { drawnFanBounds, seatFanArc } from "../../components/fanGeometry.ts";
+  export function plantedN(scale: number, n: number) { return scale * n; }
+  export function plantedCards(input: { scale: number; cards: number }) { return input.scale * input.cards; }
+  export function plantedHand(input: { scale: number; hand: readonly Card[] }) { return input.scale; }
+  export const plantedNested = (input: { at: { sideDisplayedCounts: { left: number } } }) => input.at;
+  export function plantedMap(scale: number, counts: ReadonlyMap<string, number>) { return scale; }
+  export function plantedFan(scale: number) { return seatFanArc(3, scale).bounds.h; }
+  const viaHelper = (scale: number) => seatFanArc(2, scale).bounds.w;
+  export function plantedViaHelper(scale: number) { return viaHelper(scale); }
+  export function plantedBand(scale: number) { return drawnFanBounds(scale).topH; }
+  export function plantedScale(scale: number) { return scale; }
+  export function plantedGeneric<T>(scale: number, n: T) { return scale; }
+  export function plantedBounded<T extends number>(scale: number, n: T) { return scale * n; }
+  export function plantedRecord(scale: number, counts: Record<string, number>) { return scale; }
+  export function plantedIndex(scale: number, counts: { [seat: string]: number }) { return scale; }
+  export function plantedTotal(scale: number, total: number) { return scale * total; }
+  export function plantedSides(scale: number, side: { left: number; right: number }) { return scale * side.left; }
+  export function plantedKeyed(scale: number, side: Record<"left" | "right", number>) { return scale * side.left; }
+  export const plantedObject = { place(scale: number, n: number) { return scale * n; } };
+  export class PlantedClass { place(scale: number, n: number) { return scale * n; } }
 `;
 const PLANTED_TWIN = `export function plantedScale(scale: number, n: number) { return scale * n; }`;
 const PROBES = new Map([[PROBE, PLANTED], [TWIN, PLANTED_TWIN]]);
