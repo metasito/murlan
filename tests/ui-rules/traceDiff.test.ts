@@ -84,6 +84,7 @@ describe("diffTraces", () => {
   test("a reach that moves a point 5 pt at the table's width fails; 3 pt passes", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 320).lamp!.r += 5 / 874))), new Set(["lamp"]));
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 320).lamp!.r -= 3 / 874))), new Set());
+    assert.deepEqual(fieldsOf(planted((tr) => delete (at(tr, 320).lamp as Partial<{ r: number }>).r)), new Set(["lamp"]));
   });
 
   test("a lamp level 0.04 off fails, and a flare 0.04 off", () => {

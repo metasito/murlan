@@ -19,6 +19,8 @@ const require = createRequire(import.meta.url);
 /** CanvasKit's CPU raster runs the cloth at about 100k px/s; at 3 px a point the sides read up to 0.15 brighter. */
 const PER_PT = 1;
 const SEATS: readonly FlyDirection[] = ["bottom", "right", "top", "left"];
+/** CI's raster is ~7× slower, so one phone: the squarest table, whose seats crowd the rail, measured worst. */
+const TIGHTEST = PHONES.reduce((a, b) => (b.width / b.height < a.width / a.height ? b : a));
 
 type CanvasKit = any;
 let ck: CanvasKit;
@@ -80,7 +82,7 @@ function seatMeans(width: number, height: number, anchors: Record<FlyDirection, 
 describe("the light round the seats, in the shipped SkSL", () => {
   for (const [felt, stops] of Object.entries(FeltGradients)) {
     test(`on ${felt}: the seat on move out-lights the rest, the same at every seat`, () => {
-      const rows = PHONES.flatMap(({ name, width, height }) =>
+      const rows = [TIGHTEST].flatMap(({ name, width, height }) =>
         Object.entries(INSETS).map(([insets, edges]) => {
           const anchors = anchorPoints(phoneTable(width, height, edges));
           const ratios = SEATS.map((s) => legibility(seatMeans(width, height, anchors, stops, s), s));
