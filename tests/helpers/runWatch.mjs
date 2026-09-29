@@ -7,7 +7,7 @@ const { heartbeat, idleMs } = workerData;
 let inFlight = [];
 parentPort.on("message", (files) => (inFlight = files));
 
-/** Linux only: elsewhere the runner's own cleanup reaps what this leaves. */
+/** Linux only: on win32 libuv's kill-on-close job reaps the children; macOS has neither. */
 function killChildren() {
   try {
     for (const tid of readdirSync("/proc/self/task")) {

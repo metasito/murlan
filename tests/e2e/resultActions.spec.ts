@@ -18,10 +18,13 @@
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
-import { settled } from "./helpers/settle";
+import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
 const RESULT_URL = /\/result/;
+const SCREEN = "body";
+/** The winner's swell rings for ~9s of spring time, and Reanimated caps a frame's step at 64ms, so a starved runner stretches it. */
+const REST_TIMEOUT_MS = 45_000;
 
 /** Nothing here reads the hand, only the screen after it; a fixed deal holds its length steady. */
 const DEAL_SEED = 1;
@@ -99,11 +102,14 @@ test("the result screen's actions read as a pair, below the rankings, at every s
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    // The branch swap remounts `ScoreRow`, which enters from `translateX(30)`,
-    // so every rank row is 30px past its resting right edge for the length of
-    // its own staggered spring. Measuring through that reads the entrance as
-    // overflow — the rows really are outside the window, just not for long.
-    await settled(page, 3000, '[data-testid="result-rankings"]');
+    // The swap waits on `onLayout` (a ResizeObserver on web), so the outgoing
+    // branch can sit still at the new width; the new one then remounts whole,
+    // and the winner's swell rings past the window long after the rank rows land.
+    await expect(
+      page.getByTestId("control-rail"),
+      `at ${vp.name} the board never swapped to this orientation's layout`
+    ).toHaveCount(vp.width > vp.height ? 1 : 0);
+    await atRest(page, SCREEN, REST_TIMEOUT_MS);
 
     const [home, primary, rankings] = await boxes(
       page,

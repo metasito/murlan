@@ -94,13 +94,19 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
   const frame = page.locator("#frame");
   const box = (await frame.boundingBox())!;
   await page.setViewportSize({ width: VIEWPORT.width * 2 - Math.round(box.width), height: VIEWPORT.height * 2 });
-  await page.evaluate(`(() => {
+  // Its motes sit wherever this load's `Math.random` put them, lit by the lamp, and ours has none.
+  const air = await page.evaluate(`(() => {
     ${DEPART_SCRIPT}
     T.go("rest", ${MOCKUP_REST_MS});
+    lamp.m.length = 0;
     const [x, y] = POOL.${MOCKUP_SEAT[side]};
     Object.assign(lamp, { tx: x, ty: y, x, y });
     step(0, true);
+    const s = Math.round(${PATCH.size} * V.K);
+    const { data } = fxc.getImageData(Math.round(${PATCH.x} * W * V.K), Math.round(${PATCH.y} * H * V.K), s, s);
+    return data.filter((_, i) => i % 4 === 3).reduce((a, b) => Math.max(a, b), 0);
   })()`);
+  expect(air, "the mockup's particle canvas over PATCH").toBe(0);
   const width = (await frame.boundingBox())!.width;
   expect(Math.round(width), "the mockup's table width").toBe(VIEWPORT.width);
   const cloth = await sample(page, await frame.screenshot({ type: "png" }), width);

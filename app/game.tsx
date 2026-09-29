@@ -17,6 +17,7 @@ import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
+import { OFFLINE_BOT_DELAY_MS } from "@/lib/game/offlineBotDelay";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
 import { uiFeedback } from "@/lib/device/feedback";
@@ -28,8 +29,6 @@ import { useTranslation } from "@/lib/i18n";
 // is untouched.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
-/** How long an AI "thinks" before playing. */
-const AI_DELAY = E2E_FAST ? 0 : 1100;
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
 /** Beat before the results screen takes over, so the last play is seen. */
@@ -120,7 +119,7 @@ export default function GameScreen() {
 
   useEffect(() => {
     if (aiTurnKey === null) return;
-    const t = setTimeout(() => runAITurnRef.current(), AI_DELAY);
+    const t = setTimeout(() => runAITurnRef.current(), OFFLINE_BOT_DELAY_MS);
     return () => clearTimeout(t);
   }, [aiTurnKey]);
 
