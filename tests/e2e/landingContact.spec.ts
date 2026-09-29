@@ -6,19 +6,27 @@ test.use({ launchOptions: { args: ["--autoplay-policy=no-user-gesture-required"]
 
 const SOUND_SPY = `(() => {
   window.__scheduled = [];
+  let used = null;
+  const stamp = AudioContext.prototype.getOutputTimestamp;
+  AudioContext.prototype.getOutputTimestamp = function () {
+    used = stamp.call(this);
+    queueMicrotask(() => (used = null));
+    return used;
+  };
   const start = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function (when = 0, ...rest) {
     const ctx = this.context;
-    const lead = Math.max(when, ctx.currentTime) - ctx.currentTime;
-    window.__scheduled.push({ at: performance.now() + lead * 1000, state: ctx.state });
+    // The engine's own stamp: the audio clock runs on under the paused page clock, and a fresh currentTime can be a render burst past it.
+    const s = used ?? { contextTime: ctx.currentTime, performanceTime: performance.now() };
+    window.__scheduled.push({ at: s.performanceTime + Math.max(0, when - s.contextTime) * 1000, state: ctx.state });
     return start.call(this, when, ...rest);
   };
 })()`;
 
 // The scheduled `when` only. Output latency is the device's, and Task 11's gate measures it on the phone; adding it here would move the spec with the headless browser's audio sink.
 test("each landing sound is scheduled for the frame the cards touch the pile", async ({ page, baseURL }) => {
-  await page.addInitScript(SOUND_SPY);
   await installVirtualClock(page, 1259);
+  await page.addInitScript(SOUND_SPY);
   await pairsTable(page, baseURL!);
   await takeOver(page);
   await page.evaluate(() => (globalThis as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
