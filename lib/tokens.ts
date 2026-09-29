@@ -432,6 +432,8 @@ export const Motion = {
   stagger: {
     deal: 42,
   },
+  /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
+  throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   // Gap between moves when a replay plays itself: slow enough to read one
   // combination, fast enough that a whole hand is not a sitting.
   replayStep: 1200,
