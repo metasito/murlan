@@ -9,6 +9,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { offlineGameSave } from "./offlineSeed";
+import { TABLE as GAME_TABLE, TABLE_DEALING } from "./selectors";
 import { skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
@@ -115,6 +116,10 @@ const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
 export const pass = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanPass: () => void }).murlanPass());
 
 export const botMove = (page: Page) => page.evaluate(() => (globalThis as unknown as { murlanBotMove: () => void }).murlanBotMove());
+
+/** Steps until the deal has landed: before it, the hand is still stacked on the pile and a click hits its top card. */
+export const dealt = (page: Page) =>
+  stepUntil(page, async () => (await page.locator(GAME_TABLE).getAttribute(TABLE_DEALING)) === "false", "the deal");
 
 export const playLowest = (cards: number) => async (page: Page) => {
   const hand = page.locator('[data-hand-state] [data-testid="card-box"]');

@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures";
 import { installVirtualClock, step, takeOver } from "./helpers/virtualClock";
-import { botMove, pairsTable, playLowest, recorded } from "./helpers/mockupParity";
+import { botMove, dealt, pairsTable, playLowest, recorded } from "./helpers/mockupParity";
 
 test.use({ launchOptions: { args: ["--autoplay-policy=no-user-gesture-required"] } });
 
@@ -21,6 +21,7 @@ test("each landing sound is scheduled for the frame the cards touch the pile", a
   await installVirtualClock(page, 1259);
   await pairsTable(page, baseURL!);
   await takeOver(page);
+  await dealt(page);
   await page.evaluate(() => (globalThis as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
   for (const move of [playLowest(2), botMove, botMove]) {
     await move(page);
