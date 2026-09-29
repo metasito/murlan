@@ -216,13 +216,13 @@ export function literalAssignments(text) {
   return vars;
 }
 
-/** `gh workflow run … --ref agent/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
+/** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
 function dispatchesOnTicketBranch(c, vars = {}) {
   const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
   const raw = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
   const name = /^\$\{?(\w+)\}?$/.exec(raw)?.[1];
   const ref = name ? (vars[name] ?? "") : raw;
-  return c.cmd === "gh" && c.args[0] === "workflow" && /^agent\/\d+-/.test(ref);
+  return c.cmd === "gh" && c.args[0] === "workflow" && /^(?:agent|claude)\/\d+-/.test(ref);
 }
 
 /** The path operand of `git worktree add`, or null when it names none. */
@@ -529,7 +529,7 @@ const RULES = [
       return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
     },
     message:
-      "A ticket dispatches the iOS and Android device workflows only on its own branch, " +
+      "A ticket dispatches the iOS and Android device workflows only on its own branch (agent/<n>-… or claude/<n>-…), " +
       "and only when its work needs a device run:\n" +
       "  gh workflow run ios.yml --ref agent/<n>-<slug>\n" +
       "A red device run is diagnosed from its maestro-debug artifacts and dispatched again after a " +
