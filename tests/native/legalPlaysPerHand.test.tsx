@@ -3,7 +3,8 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
@@ -68,7 +69,7 @@ const onPile = (over: Partial<GameState> = {}) => state({ lastPlayedCombination:
 
 const tap = async (c: Card) => {
   await act(async () => {
-    fireEvent.press(screen.getByLabelText(cardSpokenName(c, t)));
+    await activate(screen.getByLabelText(cardSpokenName(c, t)));
   });
 };
 

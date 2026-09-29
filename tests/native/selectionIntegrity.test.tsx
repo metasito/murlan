@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React, { Profiler } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
@@ -73,7 +74,7 @@ const table = (hand: Card[], onPlay: (ids: string[]) => void = noop) => (
 
 const tap = async (c: Card) => {
   await act(async () => {
-    fireEvent.press(screen.getByLabelText(cardSpokenName(c, t)));
+    await activate(screen.getByLabelText(cardSpokenName(c, t)));
   });
 };
 const selected = (c: Card) =>

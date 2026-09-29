@@ -3,6 +3,7 @@ import { expect, it, jest } from '@jest/globals';
 import React, { useEffect } from 'react';
 import { Pressable, Text } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
@@ -83,7 +84,7 @@ it('selecting a card renders no useLocalSession consumer', async () => {
   expect(before).toBeGreaterThan(atMount);
 
   await act(async () => {
-    fireEvent.press(node());
+    await activate(node());
   });
 
   expect(node().props.accessibilityState?.selected).toBe(true);

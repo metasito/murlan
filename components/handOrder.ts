@@ -72,6 +72,15 @@ export function cardAt(cardXs: readonly number[], cardW: number, x: number): num
   return null;
 }
 
+/** Which card's tap strip holds `x`, given each strip's left edge and width, or null for none. */
+export function stripAt(lefts: readonly number[], widths: readonly number[], x: number): number | null {
+  'worklet';
+  for (let i = lefts.length - 1; i >= 0; i--) {
+    if (x >= lefts[i] && x < lefts[i] + widths[i]) return i;
+  }
+  return null;
+}
+
 /**
  * Which slot a finger at `x` is dropping into, given the left edges of the
  * cards it is *not* holding.

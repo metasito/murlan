@@ -1,9 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { GestureDetector, GestureStateManager, usePanGesture } from "react-native-gesture-handler";
+import {
+  GestureDetector,
+  GestureStateManager,
+  PointerType,
+  usePanGesture,
+  useSimultaneousGestures,
+  useTapGesture,
+} from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import { TableText } from "./TableText";
 import Animated, {
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -12,16 +20,18 @@ import Animated, {
   withSequence,
   cancelAnimation,
   Easing,
+  type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { CardView } from "@/components/CardView";
+import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
-import { cardAt, dropIndex, lendBack } from "@/components/handOrder";
+import { cardAt, dropIndex, lendBack, stripAt } from "@/components/handOrder";
+import type { HandSelection } from "./useSelection";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
@@ -68,9 +78,9 @@ export function useHandArrival(input: {
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
-// `onPress` takes the card id rather than a bound zero-arg callback, so the
+// `onActivate` takes the card id rather than a bound zero-arg callback, so the
 // caller passes one unchanged reference for every card and CardItem binds its
-// own id once. CardView then sees a new `onPress` only when this card's id or
+// own id once. CardView then sees a new `onActivate` only when this card's id or
 // the callback changes — not when some other card's selection does.
 // How far a selected card tips as it is picked up. The rotation is what stops
 // the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
@@ -136,6 +146,8 @@ const HOLD_MS = 500;
  * the wobble a thumb has while it decides.
  */
 const DRAG_SLOP = 10;
+/** A press however long is still a press. The web tap times itself out with `setTimeout`, which fires at once past this. */
+const ANY_PRESS_MS = 2 ** 31 - 1;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
 const HELD_SCALE = 1.06;
@@ -169,7 +181,11 @@ interface CardItemProps {
   bottom: number;
   /** The card's own tilt on the arc, in degrees. */
   arcRot: number;
-  onPress: (id: string) => void;
+  onActivate: (id: string) => void;
+  /** The selection on the UI thread, which the lift, tilt and glow follow. */
+  shown: DerivedValue<string[]>;
+  /** The card under a finger that has not yet lifted. */
+  pressed: SharedValue<string | null>;
   disabled: boolean;
   zIndex: number;
   /** Draw the back — the hand belongs to someone else. */
@@ -234,7 +250,9 @@ function CardItemBase({
   left,
   bottom,
   arcRot,
-  onPress,
+  onActivate,
+  shown,
+  pressed,
   disabled,
   zIndex,
   dealDelay,
@@ -296,17 +314,32 @@ function CardItemBase({
     );
   }, [dealing]);
 
-  useEffect(() => {
-    if (reduceMotion) {
-      liftY.value = withTiming(isSelected ? selectLift : 0, { duration: Motion.duration.tap });
-      tilt.value = 0;
-      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-      return;
-    }
-    liftY.value = withSpring(isSelected ? selectLift : 0, Motion.spring.pickup);
-    tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
-    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-  }, [isSelected, reduceMotion, selectLift, liftY, tilt, glow]);
+  const press = useSharedValue(0);
+  const cardId = card.id;
+  useAnimatedReaction(
+    () => shown.value.includes(cardId),
+    (on, was) => {
+      if (on === was || (was === null && !on)) return;
+      glow.value = withTiming(on ? 1 : 0, { duration: Motion.duration.tap });
+      if (reduceMotion) {
+        liftY.value = withTiming(on ? selectLift : 0, { duration: Motion.duration.tap });
+        tilt.value = 0;
+        return;
+      }
+      liftY.value = withSpring(on ? selectLift : 0, Motion.spring.pickup);
+      tilt.value = withSpring(on ? SELECT_TILT : 0, Motion.spring.pickup);
+    },
+    [reduceMotion, selectLift]
+  );
+  useAnimatedReaction(
+    () => pressed.value === cardId,
+    (on, was) => {
+      if (on === was || (was === null && !on)) return;
+      if (reduceMotion) press.value = on ? 1 : 0;
+      else press.value = withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land);
+    },
+    [reduceMotion]
+  );
 
   // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than
   // two so a card cannot briefly be in both states as the phase turns on.
@@ -325,8 +358,9 @@ function CardItemBase({
       cancelAnimation(dealing);
       cancelAnimation(exchangeState);
       cancelAnimation(shift);
+      cancelAnimation(press);
     },
-    [liftY, tilt, glow, dealing, exchangeState, shift]
+    [liftY, tilt, glow, dealing, exchangeState, shift, press]
   );
   useEffect(() => {
     onDrawn?.(card.id, { liftY, tilt, shift });
@@ -336,12 +370,12 @@ function CardItemBase({
     const d = dealing.value;
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
-    const restRot = arcRot + tilt.value;
+    const restRot = arcRot + tilt.value + press.value * PRESS_TILT;
     return {
       opacity: hidden?.value.includes(card.id) ? 0 : dealFade ? 1 - d : 1,
       transform: [
         { translateX: dealFromX * d + shift.value },
-        { translateY: liftY.value + dealRise * d },
+        { translateY: liftY.value + press.value * PRESS_RISE + dealRise * d },
         { rotate: `${restRot * (1 - d)}deg` },
       ],
     };
@@ -358,8 +392,7 @@ function CardItemBase({
 
   const veilStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, -exchangeState.value) }));
 
-  const cardId = card.id;
-  const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
+  const handleActivate = useCallback(() => onActivate(cardId), [onActivate, cardId]);
   const handleMove = useCallback(
     (action: string) => onMove?.(cardId, action),
     [onMove, cardId]
@@ -367,6 +400,7 @@ function CardItemBase({
 
   return (
     <Animated.View
+      testID={`hand-card-${cardId}`}
       style={[
         handStyles.handCardWrap,
         // The card's own box, stated rather than taken from the child: the
@@ -402,7 +436,7 @@ function CardItemBase({
       <CardView
         card={card}
         selected={isSelected}
-        onPress={handlePress}
+        onActivate={handleActivate}
         disabled={disabled}
         faceDown={faceDown}
         scale={cardScale}
@@ -438,7 +472,9 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.left === b.left &&
     a.bottom === b.bottom &&
     a.arcRot === b.arcRot &&
-    a.onPress === b.onPress &&
+    a.onActivate === b.onActivate &&
+    a.shown === b.shown &&
+    a.pressed === b.pressed &&
     a.disabled === b.disabled &&
     a.zIndex === b.zIndex &&
     a.faceDown === b.faceDown &&
@@ -502,7 +538,8 @@ function liveFrom(x: () => number, y: () => number, rot: () => number, scale: nu
 export function StraightHand({
   cards,
   selectedIds,
-  onPress,
+  selection,
+  onActivate,
   disabled,
   availW,
   roomW,
@@ -523,8 +560,12 @@ export function StraightHand({
   onOrigins,
 }: {
   cards: Card[];
+  /** The store's selection, which a card's accessible state reports. */
   selectedIds: string[];
-  onPress: (id: string) => void;
+  /** The same selection on the UI thread, which a tap on the row writes and every card's lift follows. */
+  selection: HandSelection;
+  /** A screen reader's activate, or Enter or Space: the tap, from the JS thread. */
+  onActivate: (id: string) => void;
   disabled: boolean;
   /** The hard width: past it the row scrolls rather than clip or bury a card. */
   availW: number;
@@ -1035,6 +1076,33 @@ export function StraightHand({
     },
   });
 
+  const pressed = useSharedValue<string | null>(null);
+  const stripLefts = rest.map((_, i) => rowMid + (arc[slotOf(i)] ?? arc[arc.length - 1]).x);
+  const stripWidths = rest.map((_, i) => hitWidth(slotOf(i), arc.length, step, cardW));
+  const refused = rest.filter((card) => giveableSet?.has(card.id) === false).map((card) => card.id);
+  const tapSelection = selection.tap;
+  const tap = useTapGesture({
+    enabled: !disabled && !faceDown,
+    maxDistance: DRAG_SLOP,
+    maxDuration: ANY_PRESS_MS,
+    onBegin: (e) => {
+      // The web handler turns Enter and Space into a touch at the centre of whatever holds focus, in
+      // that element's own coordinates; the card's `onActivate` already answers both.
+      if (e.pointerType === PointerType.KEY) return;
+      const i = stripAt(stripLefts, stripWidths, e.x);
+      const id = i === null ? null : ids[i];
+      pressed.value = id === null || refused.includes(id) ? null : id;
+    },
+    onActivate: () => {
+      const id = pressed.value;
+      if (id !== null && !picking.value) tapSelection(id);
+    },
+    onFinalize: () => {
+      pressed.value = null;
+    },
+  });
+  const gestures = useSimultaneousGestures(drag, tap);
+
   if (n === 0) {
     return (
       <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
@@ -1045,7 +1113,7 @@ export function StraightHand({
   }
 
   const row = (
-    <GestureDetector gesture={drag}>
+    <GestureDetector gesture={gestures}>
     <View
       testID="hand-row"
       style={[
@@ -1074,7 +1142,9 @@ export function StraightHand({
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
           arcRot={home.rot}
-          onPress={onPress}
+          onActivate={onActivate}
+          shown={selection.shown}
+          pressed={pressed}
           a11yActions={arrangeable ? moveActions : undefined}
           onMove={arrangeable ? moveByAction : undefined}
           onDrawn={onDrawn}
