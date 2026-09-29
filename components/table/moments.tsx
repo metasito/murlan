@@ -1,10 +1,8 @@
 // The bomb's burst (flare + two waves + a ring of sparks), the manche's own
-// lamp lift, and the flush's sweep — one-shot celebrations fired by
-// components/useTableFeedback.ts's `boomTrigger`/`lampLiftTrigger`/
-// `flushTrigger` counters. "A number changed, play again" is the same
-// pattern PlayedPile's own `bounceTrigger` already uses: the trigger only
-// says an event happened, and each piece here decides for itself, against
-// `usePrefersReducedMotion`, whether to actually animate.
+// lamp lift, and the flush's sweep — one-shot celebrations. The burst and the
+// lift react to the landing signal on its contact frame; the sweep plays again
+// when `flushTrigger` (components/useTableFeedback.ts) changes. Each piece
+// decides for itself, against `usePrefersReducedMotion`, whether to animate.
 //
 // Every duration, delay and value below is the prototype's own `kick` /
 // `flare` / `wave` / `spark` / `sweep` keyframes (issue #200), `* scale` —
@@ -31,9 +29,11 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
-import { sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
+import { flareKindFor, lampLiftFor, sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
 import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 import type { LampRig } from "@/components/table/useLampRig";
+import { useLandingReaction } from "@/components/table/useLandingReaction";
+import type { LandingSignal } from "@/components/table/useFlightClock";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
 // at the pile is a brighter, whiter flash than the felt's own ambient
@@ -159,32 +159,41 @@ const FLARE_SETTLE_MS = FLARE_BRIEF_MS * 2;
 const FLARE_EASING = Easing.bezier(0.12, 0.72, 0.28, 1);
 const FLARE_Z = Layer.moment;
 
-function flareDurationMs(kind: FlareKind): number {
-  return kind === "settle" ? FLARE_SETTLE_MS : FLARE_BRIEF_MS;
+/** Runs `fire` on the contact frame of a landing that flares, unless reduced motion withholds the burst. */
+function useBurst(landing: SharedValue<LandingSignal>, fire: (kind: FlareKind) => void): void {
+  const reduceMotion = usePrefersReducedMotion();
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    const kind = flareKindFor(l.tier);
+    if (kind !== "none" && !reduceMotion) fire(kind);
+  });
 }
 
-function Flare({ trigger, scale, kind }: { trigger: number; scale: number; kind: FlareKind }) {
-  const reduceMotion = usePrefersReducedMotion();
+function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale: number }) {
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(0.15);
-  const flareMs = flareDurationMs(kind);
 
-  useEffect(() => {
-    if (!trigger || reduceMotion) return;
-    opacity.value = 0;
-    scaleV.value = 0.15;
+  useBurst(landing, (kind) => {
+    "worklet";
+    const flareMs = kind === "settle" ? FLARE_SETTLE_MS : FLARE_BRIEF_MS;
     const e = FLARE_EASING;
-    opacity.value = withSequence(
-      withTiming(1, { duration: flareMs * 0.06, easing: e }),
-      withTiming(1, { duration: flareMs * 0.06, easing: e }),
-      withTiming(0, { duration: flareMs * 0.88, easing: e })
+    opacity.set(0);
+    scaleV.set(0.15);
+    opacity.set(
+      withSequence(
+        withTiming(1, { duration: flareMs * 0.06, easing: e }),
+        withTiming(1, { duration: flareMs * 0.06, easing: e }),
+        withTiming(0, { duration: flareMs * 0.88, easing: e })
+      )
     );
-    scaleV.value = withSequence(
-      withTiming(0.9, { duration: flareMs * 0.06, easing: e }),
-      withTiming(1.05, { duration: flareMs * 0.06, easing: e }),
-      withTiming(7, { duration: flareMs * 0.88, easing: e })
+    scaleV.set(
+      withSequence(
+        withTiming(0.9, { duration: flareMs * 0.06, easing: e }),
+        withTiming(1.05, { duration: flareMs * 0.06, easing: e }),
+        withTiming(7, { duration: flareMs * 0.88, easing: e })
+      )
     );
-  }, [trigger, reduceMotion, flareMs, opacity, scaleV]);
+  });
 
   useEffect(
     () => () => {
@@ -233,34 +242,35 @@ const WAVE_RINGS = [
 ] as const;
 
 function Wave({
-  trigger,
+  landing,
   scale,
   delayMs,
   durationMs,
 }: {
-  trigger: number;
+  landing: SharedValue<LandingSignal>;
   scale: number;
   delayMs: number;
   durationMs: number;
 }) {
-  const reduceMotion = usePrefersReducedMotion();
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(0.15);
 
-  useEffect(() => {
-    if (!trigger || reduceMotion) return;
-    opacity.value = 0;
-    scaleV.value = 0.15;
+  useBurst(landing, () => {
+    "worklet";
     const e = WAVE_EASING;
-    opacity.value = withDelay(
-      delayMs,
-      withSequence(
-        withTiming(0.95, { duration: durationMs * 0.08, easing: e }),
-        withTiming(0, { duration: durationMs * 0.92, easing: e })
+    opacity.set(0);
+    scaleV.set(0.15);
+    opacity.set(
+      withDelay(
+        delayMs,
+        withSequence(
+          withTiming(0.95, { duration: durationMs * 0.08, easing: e }),
+          withTiming(0, { duration: durationMs * 0.92, easing: e })
+        )
       )
     );
-    scaleV.value = withDelay(delayMs, withTiming(6.5, { duration: durationMs, easing: e }));
-  }, [trigger, reduceMotion, delayMs, durationMs, opacity, scaleV]);
+    scaleV.set(withDelay(delayMs, withTiming(6.5, { duration: durationMs, easing: e })));
+  });
 
   useEffect(
     () => () => {
@@ -307,8 +317,7 @@ const SPARK_Z = Layer.moment + 1;
 const SPARK_SCALE_FROM = 0.4;
 const SPARK_SCALE_TO = 0.2;
 
-function Spark({ index, trigger, scale }: { index: number; trigger: number; scale: number }) {
-  const reduceMotion = usePrefersReducedMotion();
+function Spark({ index, landing, scale }: { index: number; landing: SharedValue<LandingSignal>; scale: number }) {
   const opacity = useSharedValue(0);
   // 0 at the spark's own origin, 1 at its landing offset — drives translate
   // and scale together so both share the one tween.
@@ -316,20 +325,22 @@ function Spark({ index, trigger, scale }: { index: number; trigger: number; scal
   const { dx, dy, delay } = sparkOffset(index, scale);
   useTraceSource("live", () => Number(opacity.value > 0));
 
-  useEffect(() => {
-    if (!trigger || reduceMotion) return;
-    opacity.value = 0;
-    progress.value = 0;
+  useBurst(landing, () => {
+    "worklet";
     const e = SPARK_EASING;
-    opacity.value = withDelay(
-      delay,
-      withSequence(
-        withTiming(1, { duration: SPARK_MS * 0.1, easing: e }),
-        withTiming(0, { duration: SPARK_MS * 0.9, easing: e })
+    opacity.set(0);
+    progress.set(0);
+    opacity.set(
+      withDelay(
+        delay,
+        withSequence(
+          withTiming(1, { duration: SPARK_MS * 0.1, easing: e }),
+          withTiming(0, { duration: SPARK_MS * 0.9, easing: e })
+        )
       )
     );
-    progress.value = withDelay(delay, withTiming(1, { duration: SPARK_MS, easing: e }));
-  }, [trigger, reduceMotion, delay, opacity, progress]);
+    progress.set(withDelay(delay, withTiming(1, { duration: SPARK_MS, easing: e })));
+  });
 
   useEffect(
     () => () => {
@@ -389,30 +400,19 @@ const BURST_Z = Layer.band;
 /**
  * The bomb's four layers, centred on the impact point — the same point
  * `PlayedPile` draws the pile at. Rendered as a sibling of it inside the
- * table's own centre section.
- *
- * `flareKind` names which of the two flaring tiers (#765) `trigger` is about
- * to re-fire for — "brief" for the bomb, "settle" for the partita — read off
- * `useTableFeedback`'s own `flareKind`, never guessed from `trigger` alone.
+ * table's own centre section. Each fires on the contact frame of a landing
+ * whose tier flares (#765) — "brief" for the bomb, "settle" for the partita.
  */
-export function BombBurst({
-  trigger,
-  scale,
-  flareKind,
-}: {
-  trigger: number;
-  scale: number;
-  flareKind: FlareKind;
-}) {
+export function BombBurst({ landing, scale }: { landing: SharedValue<LandingSignal>; scale: number }) {
   return (
     <View pointerEvents="none" style={[momentStyles.overlay, { zIndex: BURST_Z }]}>
       <View style={momentStyles.anchor}>
         {WAVE_RINGS.map((ring, i) => (
-          <Wave key={i} trigger={trigger} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
+          <Wave key={i} landing={landing} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
         ))}
-        <Flare trigger={trigger} scale={scale} kind={flareKind} />
+        <Flare landing={landing} scale={scale} />
         {SPARK_INDICES.map((i) => (
-          <Spark key={i} index={i} trigger={trigger} scale={scale} />
+          <Spark key={i} index={i} landing={landing} scale={scale} />
         ))}
       </View>
     </View>
@@ -436,11 +436,11 @@ const LIFT_SCALE_TO = 1.35;
 
 /** It glows where the rig's light stands, swayed; it keeps no lamp position of its own. */
 export function LampLift({
-  trigger,
+  landing,
   scale,
   rig,
 }: {
-  trigger: number;
+  landing: SharedValue<LandingSignal>;
   scale: number;
   rig: Pick<LampRig, "lamp" | "sx" | "sy">;
 }) {
@@ -448,17 +448,20 @@ export function LampLift({
   const opacity = useSharedValue(0);
   const scaleV = useSharedValue(LIFT_SCALE_FROM);
 
-  useEffect(() => {
-    if (!trigger || reduceMotion) return;
-    opacity.value = 0;
-    scaleV.value = LIFT_SCALE_FROM;
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    if (!lampLiftFor(l.tier) || reduceMotion) return;
     const e = LIFT_EASING;
-    opacity.value = withSequence(
-      withTiming(0.85, { duration: LIFT_MS * 0.3, easing: e }),
-      withTiming(0, { duration: LIFT_MS * 0.7, easing: e })
+    opacity.set(0);
+    scaleV.set(LIFT_SCALE_FROM);
+    opacity.set(
+      withSequence(
+        withTiming(0.85, { duration: LIFT_MS * 0.3, easing: e }),
+        withTiming(0, { duration: LIFT_MS * 0.7, easing: e })
+      )
     );
-    scaleV.value = withTiming(LIFT_SCALE_TO, { duration: LIFT_MS, easing: e });
-  }, [trigger, reduceMotion, opacity, scaleV]);
+    scaleV.set(withTiming(LIFT_SCALE_TO, { duration: LIFT_MS, easing: e }));
+  });
 
   useEffect(
     () => () => {

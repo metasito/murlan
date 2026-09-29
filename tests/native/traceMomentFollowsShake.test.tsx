@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals
 import { renderHook, act } from "@testing-library/react-native";
 import { useTableFeedback } from "@/components/useTableFeedback";
 import { setScreenShakeEnabled } from "@/lib/screenShake";
+import { makeMutable } from "react-native-reanimated";
+import type { ImpactTier } from "@/components/flightPhysics";
+import { NO_LANDING } from "@/components/table/useFlightClock";
+import { fireLanding } from "./helpers/landing";
 
 const mockTraceOnset = jest.fn();
 
@@ -32,32 +36,46 @@ const idleState = () => ({
 
 const momentOnsets = () => mockTraceOnset.mock.calls.filter(([kind]) => kind === "moment");
 
+async function mount() {
+  const landing = makeMutable(NO_LANDING);
+  const view = await renderHook(() => useTableFeedback({ ...idleState(), landing }));
+  await act(async () => { jest.advanceTimersByTime(16); });
+  const land = (tier: ImpactTier) =>
+    act(async () => {
+      fireLanding(landing, { cards: 4, tier });
+      jest.advanceTimersByTime(16);
+    });
+  return { ...view, land };
+}
+
 describe("the E2E trace records a shake's moment only when the shake fires", () => {
   beforeEach(() => {
     mockTraceOnset.mockClear();
+    jest.useFakeTimers();
   });
   afterEach(async () => {
+    jest.useRealTimers();
     await act(async () => setScreenShakeEnabled(true));
   });
 
   it("records a bomb's moment with screen shake on", async () => {
-    const { result, unmount } = await renderHook(() => useTableFeedback(idleState()));
-    await act(async () => result.current.shake("bomb"));
+    const { land, unmount } = await mount();
+    await land("bomb");
     expect(momentOnsets()).toEqual([["moment", "bomb"]]);
     await unmount();
   });
 
   it("records nothing with screen shake off", async () => {
     await act(async () => setScreenShakeEnabled(false));
-    const { result, unmount } = await renderHook(() => useTableFeedback(idleState()));
-    await act(async () => result.current.shake("bomb"));
+    const { land, unmount } = await mount();
+    await land("bomb");
     expect(momentOnsets()).toEqual([]);
     await unmount();
   });
 
   it("records nothing for a tier that carries no shake", async () => {
-    const { result, unmount } = await renderHook(() => useTableFeedback(idleState()));
-    await act(async () => result.current.shake("ordinary"));
+    const { land, unmount } = await mount();
+    await land("ordinary");
     expect(momentOnsets()).toEqual([]);
     await unmount();
   });

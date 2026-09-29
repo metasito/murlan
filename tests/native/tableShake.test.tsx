@@ -7,8 +7,9 @@
 import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
-import Animated from "react-native-reanimated";
+import Animated, { makeMutable } from "react-native-reanimated";
 import { useTableFeedback } from "@/components/useTableFeedback";
+import { NO_LANDING } from "@/components/table/useFlightClock";
 
 function flattenStyle(style: unknown): Record<string, unknown> {
   return Object.assign({}, ...(Array.isArray(style) ? style.filter(Boolean) : [style]));
@@ -32,6 +33,7 @@ const idleState = () => ({
   handScores: {},
   viewerId: undefined,
   scale: 1,
+  landing: makeMutable(NO_LANDING),
 });
 
 function ShakeProbe() {

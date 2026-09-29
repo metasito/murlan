@@ -169,6 +169,7 @@ export function landingTier(input: {
 
 /** The tier's peak trauma, or 0 outright when the player asked for less motion or no shake. */
 export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boolean): number {
+  "worklet";
   return reduceMotion || shakeOff ? 0 : TRAUMA_BY_TIER[tier];
 }
 
@@ -191,6 +192,7 @@ const FLINCH_BY_TIER: Record<ImpactTier, number> = {
 
 /** The tier's own flinch, or 0 outright when the player asked for less motion — the caller scales the answer by the table the way `shakeOffset` scales trauma. */
 export function flinchFor(tier: ImpactTier, reduceMotion: boolean): number {
+  "worklet";
   return reduceMotion ? 0 : FLINCH_BY_TIER[tier];
 }
 
@@ -244,6 +246,7 @@ interface ShakeAmplitude {
 
 /** Which peak a tier's shake reads — every tier but the bomb shares the default above. */
 export function shakeAmplitudeFor(tier: ImpactTier): ShakeAmplitude {
+  "worklet";
   if (tier === "bomb") {
     return { x: BOMB_SHAKE_AMPLITUDE_X, y: BOMB_SHAKE_AMPLITUDE_Y, rotate: BOMB_SHAKE_ROTATE_DEG };
   }
@@ -293,6 +296,7 @@ export function shakeOffset(
 export type FlareKind = "none" | "brief" | "settle";
 
 export function flareKindFor(tier: ImpactTier): FlareKind {
+  "worklet";
   if (tier === "bomb") return "brief";
   if (tier === "partitaWon") return "settle";
   return "none";
@@ -310,6 +314,7 @@ export function sparksFor(tier: ImpactTier): boolean {
 
 /** Whether a tier's landing lifts the lamp rather than flaring it. */
 export function lampLiftFor(tier: ImpactTier): boolean {
+  "worklet";
   return tier === "mancheWon";
 }
 

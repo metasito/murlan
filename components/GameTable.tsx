@@ -91,7 +91,6 @@ import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rema
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
 import { ParticleLayer } from "@/components/table/particleLayer";
-import { landDust, landingDustCount, type ParticleEmitter } from "@/components/table/particles";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
 import { GameSettingsSheet } from "@/components/table/settingsSheet";
@@ -662,6 +661,7 @@ export function GameTable({
     [tn, handOnTable.length, selectedIds.length]
   );
 
+  const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const {
     shownTurnIndex,
     giocaFlashStyle,
@@ -671,14 +671,9 @@ export function GameTable({
     giocaRejectX,
     playImpact,
     rejectPlay,
-    boomTrigger,
-    flareKind,
-    lampLiftTrigger,
     flushTrigger,
     celebrateFlush,
     shakeStyle,
-    shake,
-    burst,
   } = useTableFeedback({
     isMyTurn,
     currentTurnIndex: gameState.currentTurnIndex,
@@ -699,6 +694,7 @@ export function GameTable({
     scale,
     matchOver,
     matchWinners,
+    landing: landingSignal,
   });
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
@@ -710,26 +706,14 @@ export function GameTable({
     fresh: !gameState.firstPlayMade && !gameState.gameOver,
     width: W,
     height: H,
+    landing: landingSignal,
   });
-  const { flare, kick } = rig;
-  const particles = useRef<ParticleEmitter>(null);
-  const land = useCallback(
-    (cards: number, at: { x: number; y: number }) =>
-      particles.current?.emit(landDust(cards, landingDustCount(cards), at.x / rig.sx, at.y / rig.sy, Math.random)),
-    [rig.sx, rig.sy]
-  );
-  useEffect(() => {
-    if (!boomTrigger) return;
-    flare();
-    if (flareKind === "brief") kick();
-  }, [boomTrigger, flareKind, flare, kick]);
 
   const handLiftStyle = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
     scale
   );
 
-  const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   // Merged, never replaced: by the throw's commit the hand has already redrawn without the thrown cards.
   const handOrigins = useRef(new Map<string, CardFrom>());
   const onHandOrigins = useCallback((drawn: ReadonlyMap<string, CardFrom>) => {
@@ -740,11 +724,11 @@ export function GameTable({
     sweep,
     flights,
     flightLanded,
-    flinchTrigger,
-    flinchTier,
     roundWinnerTag,
     onFlightContact,
     onFlightDone,
+    onFlightClock,
+    bombClock,
     feltDim,
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
@@ -754,9 +738,6 @@ export function GameTable({
     matchOver,
     ...seatGeometry,
     playImpact,
-    land,
-    shake,
-    burst,
     celebrateFlush,
     playRoundStart: roundStart,
     handOrigins,
@@ -984,8 +965,8 @@ export function GameTable({
         {...a11yHidden()}
       >
         <Felt rig={rig} stops={felt} target={lampTarget} />
-        <LampLift trigger={lampLiftTrigger} scale={scale} rig={rig} />
-        <ParticleLayer ref={particles} sx={rig.sx} sy={rig.sy} />
+        <LampLift landing={landingSignal} scale={scale} rig={rig} />
+        <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
       </View>
 
@@ -1236,8 +1217,7 @@ export function GameTable({
                     comboLabel={flightLanded ? pileState.current : null}
                     roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
                     catchTrigger={pileFlushed ? flushTrigger : undefined}
-                    flinchTrigger={flinchTrigger}
-                    flinchTier={flinchTier}
+                    landing={landingSignal}
                     roomW={frame.fieldRoomW}
                     scale={scale}
                   />
@@ -1245,7 +1225,7 @@ export function GameTable({
 
                 {/* Centred on the same point the pile draws at, so the burst
                     rings the impact rather than the middle of the table box. */}
-                <BombBurst trigger={boomTrigger} scale={scale} flareKind={flareKind} />
+                <BombBurst landing={landingSignal} scale={scale} />
 
                 {/* Beside the pile, not beside the table: the flight has to
                     settle exactly where PlayedPile then redraws the same cards,
@@ -1279,6 +1259,8 @@ export function GameTable({
                     signal={landingSignal}
                     onContact={onFlightContact}
                     onEnd={onFlightDone}
+                    onClock={onFlightClock}
+                    bombClock={bombClock}
                     scale={scale}
                   />
                 ))}

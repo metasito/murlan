@@ -862,28 +862,19 @@ describe("the beaten pile's flinch (#764)", () => {
   // #764's own ticket: this exact shape shipped inert twice — a flinch that
   // fires but moves nothing a player can see. Pinning the wiring rather than
   // just the pure function is what would have caught that.
-  test("the flinch fires from the same impactDelayMs() landing the shake and the impact sound wait for — never a second derivation", () => {
-    const src = blankComments(
-      readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
-    );
-    const block = src.match(
-      /impactTimerRef\.current = setTimeout\(\(\) => \{[\s\S]*?\}, impactDelayMs\(reduceMotion\)\);/
-    );
-    assert.ok(block, "expected the impact timeout in usePileFlight");
-    assert.match(block![0], /shake\(tier\)/, "the shake must read the same tier the flinch does");
-    assert.match(
-      block![0],
-      /setFlinchTrigger/,
-      "the flinch must be triggered from this same landing, not a later one"
-    );
+  test("the flinch and the shake read the tier off the one landing signal — never a second derivation", () => {
+    const read = (...at: string[]) => blankComments(readFileSync(path.join(repoRoot, "components", ...at), "utf8"));
+    assert.match(read("table", "pile.tsx"), /useLandingReaction\(landing \?\? idle, \(l\) => \{[^}]*flinchFor\(l\.tier/);
+    assert.match(read("useTableFeedback.ts"), /useLandingReaction\(landing, \(l\) => \{[\s\S]*?traumaFor\(l\.tier/);
   });
 
-  test("every impact the table feels waits for the landing, and nothing waits for the throw's end instead", () => {
+  test("no impact the table feels waits on a timer: each starts at the flight's contact", () => {
     const src = readPile();
-    assert.deepEqual(
-      impactFeedbackTimers(src),
-      IMPACT_FEEDBACK.map((name) => `${name}: impactDelayMs(reduceMotion)`)
-    );
+    assert.deepEqual(impactFeedbackTimers(src), [
+      "playImpact: no timeout",
+      "celebrateFlush: no timeout",
+      "setFlightLanded(true): impactDelayMs(reduceMotion)",
+    ]);
     assert.deepEqual(bareFlightTimers(src), []);
   });
 
@@ -961,7 +952,7 @@ describe("the beaten pile's flinch (#764)", () => {
     );
     assert.match(
       src,
-      /flinchFor\(flinchTier \?\? "ordinary", reduceMotion\) \* scale/,
+      /flinchFor\(l\.tier, reduceMotion\) \* scale/,
       "the flinch's own trigger must multiply flinchFor's answer by the table's own scale"
     );
   });

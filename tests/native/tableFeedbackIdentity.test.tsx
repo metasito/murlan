@@ -16,9 +16,13 @@
 // not a thing to keep in an optimisation.
 import { describe, it, expect } from "@jest/globals";
 import { renderHook } from "@testing-library/react-native";
+import { makeMutable } from "react-native-reanimated";
 import { useTableFeedback } from "@/components/useTableFeedback";
+import { NO_LANDING } from "@/components/table/useFlightClock";
 
+const landing = makeMutable(NO_LANDING);
 const state = (scale: number) => ({
+  landing,
   isMyTurn: false,
   currentTurnIndex: 0,
   isFinished: false,

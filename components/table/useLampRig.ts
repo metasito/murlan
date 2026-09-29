@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
+import { flareKindFor } from "@/components/flightPhysics";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
+import { useLandingReaction } from "./useLandingReaction";
+import type { LandingSignal } from "./useFlightClock";
 
 /** The mockup's `deal` chapter: the lamp comes up from 75% as the cards fly. */
 const BREATH_FROM = 0.75;
@@ -34,12 +37,15 @@ export function useLampRig({
   fresh,
   width,
   height,
+  landing,
 }: {
   target: LampTarget;
   /** A deal is starting: the lamp breathes up with it. */
   fresh: boolean;
   width: number;
   height: number;
+  /** A landing that flares (#765) flares the lamp, and a bomb's kicks it, on the contact frame. */
+  landing: SharedValue<LandingSignal>;
 }): LampRig {
   const reduceMotion = usePrefersReducedMotion();
   const reduced = useSharedValue(reduceMotion);
@@ -71,6 +77,18 @@ export function useLampRig({
       return s;
     }, true);
   }, [fresh, lamp]);
+
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    const kind = flareKindFor(l.tier);
+    if (kind === "none" || reduced.value) return;
+    lamp.modify((s) => {
+      "worklet";
+      lampControls.flare(s, false);
+      if (kind === "brief") lampControls.kick(s, false);
+      return s;
+    }, true);
+  });
 
   const { sx, sy } = designScale(width, height);
   useTraceSource(

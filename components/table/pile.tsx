@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { View, StyleSheet } from "react-native";
 import { TableText } from "./TableText";
 import Animated, {
+  makeMutable,
+  useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -24,12 +27,13 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { type FlyDirection } from "@/components/seatLayout";
-import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, impactDelayMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type ImpactTier, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
+import { advancePile, collectPile, comboKey, EMPTY_PILE, flinchFor, impactDelayMs, landingTier, LAND_WOBBLE_MS, landWobble, NO_PILE, readThrownPlay, roundClosedWithWinner, seatPoint, type PileLayers, type PileState, type ThrownPlayInput } from "@/components/flightPhysics";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
-import { flightSpec, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
+import { flightSpec, NO_LANDING, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
+import { useLandingReaction } from "./useLandingReaction";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -54,11 +58,13 @@ interface FlightCallbacks {
   onClock?: (key: string, clock: FlightClock) => void;
 }
 
-export function FlyingCards({ cards, flight, landing, signal, scale = 1, ...callbacks }: FlightCallbacks & {
+export function FlyingCards({ cards, flight, landing, signal, bombClock, scale = 1, ...callbacks }: FlightCallbacks & {
   cards: Card[];
   flight: FlightSpec;
   landing: LandingPayload;
   signal: SharedValue<LandingSignal>;
+  /** A heavy flight's own clock, for the scrim, until it touches. */
+  bombClock?: SharedValue<BombClock>;
   scale?: number;
 }) {
   const cardScale = scale * FIELD_SCALE;
@@ -84,6 +90,16 @@ export function FlyingCards({ cards, flight, landing, signal, scale = 1, ...call
     clock.arm(armed.landing);
     clock.begin(armed.spec);
   }, [clock, armed]);
+  const heavy = armed.landing.heavy;
+  useAnimatedReaction(
+    () => clock.elapsed.value,
+    (t) => {
+      if (heavy && bombClock) bombClock.set(t < spec.contact ? { elapsed: t, contact: spec.contact } : NO_BOMB);
+    }
+  );
+  useEffect(() => () => {
+    if (heavy) bombClock?.set(NO_BOMB);
+  }, [heavy, bombClock]);
   const group = useAnimatedStyle(() => {
     const k = still ? 0 : Math.min(1, Math.max(0, (clock.elapsed.value - spec.end) / LAND_WOBBLE_MS));
     const { scale: s, rotate } = landWobble(k);
@@ -318,8 +334,7 @@ export function PlayedPile({
   comboLabel = current,
   roundWinner,
   catchTrigger,
-  flinchTrigger,
-  flinchTier,
+  landing,
   roomW,
   scale = 1,
 }: {
@@ -335,10 +350,8 @@ export function PlayedPile({
   roundWinner: string | null;
   /** The flush: the play just landed emptied a hand. */
   catchTrigger?: number;
-  /** Increments at the same `impactDelayMs()` landing everything else on the table reads — the beaten pile's own reaction to being displaced (#764). */
-  flinchTrigger?: number;
-  /** The tier `flinchTrigger`'s landing resolved to — flightPhysics.ts `flinchFor`. */
-  flinchTier?: ImpactTier;
+  /** The beaten pile flinches on the contact frame of the play that beat it (#764). */
+  landing?: SharedValue<LandingSignal>;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
@@ -355,15 +368,13 @@ export function PlayedPile({
   // `traumaFor` does for the shake this composes with (#763). `* scale` for
   // the same reason `shakeOffset` takes a scale — a knock is a fraction of
   // the table, not a fixed pixel count.
-  useEffect(() => {
-    if (!flinchTrigger) return;
-    const distance = flinchFor(flinchTier ?? "ordinary", reduceMotion) * scale;
+  const [idle] = useState(() => makeMutable(NO_LANDING));
+  useLandingReaction(landing ?? idle, (l) => {
+    "worklet";
+    const distance = flinchFor(l.tier, reduceMotion) * scale;
     if (distance === 0) return;
-    flinchY.value = withSequence(
-      withTiming(distance, { duration: Motion.duration.flash }),
-      withSpring(0, Motion.spring.land)
-    );
-  }, [flinchTrigger, flinchTier, reduceMotion, scale, flinchY]);
+    flinchY.set(withSequence(withTiming(distance, { duration: Motion.duration.flash }), withSpring(0, Motion.spring.land)));
+  });
 
   useEffect(() => () => cancelAnimation(flinchY), [flinchY]);
 
@@ -433,6 +444,14 @@ export function PlayedPile({
 
 const CHIP_RISE = Spacing.xs;
 const FELT_SCRIM_PEAK = 0.25;
+const SCRIM_EASING = Easing.in(Easing.quad);
+
+/** The bomb in the air: its clock until contact, then `NO_BOMB`. */
+export interface BombClock {
+  elapsed: number;
+  contact: number;
+}
+const NO_BOMB: BombClock = { elapsed: -1, contact: 0 };
 
 function ComboChip({ isPower, children }: { isPower: boolean; children: ReactNode }) {
   const reduceMotion = usePrefersReducedMotion();
@@ -494,9 +513,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   gameOver: boolean;
   /**
    * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
-   * second render the dedupe below skips, so the impact timeout reads a ref
-   * (current at the moment it fires) rather than the `matchOver` its own
-   * scheduling render closed over.
+   * second render the dedupe below skips, so a flight still in the air is
+   * re-armed with the tier it now closes on.
    */
   matchOver: boolean;
   /**
@@ -505,11 +523,9 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * where the audio native module has no JS implementation to import.
    */
   playImpact: (heavy: boolean, dir: FlyDirection, cards: number) => void;
-  /** The dust, at the pile's centre in window points; never asked for under reduced motion. */
-  land: (cards: number, at: { x: number; y: number }) => void;
-  shake: (tier: ImpactTier) => void;
-  burst: (tier: ImpactTier) => void;
   celebrateFlush: () => void;
+  /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
+  onClock?: (key: string, clock: FlightClock) => void;
   playRoundStart: () => void;
   /** The viewer's hand cards as last drawn (`StraightHand`'s `onOrigins`), from the hand zone's centre. */
   handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
@@ -525,6 +541,8 @@ export interface FlyInfo {
   cards: Card[];
   spec: FlightSpec;
   landing: LandingPayload;
+  comboType: Combination["type"];
+  handOver: boolean;
 }
 
 /**
@@ -551,10 +569,8 @@ export function usePileFlight({
   bottomPad,
   handCardH,
   playImpact,
-  land,
-  shake,
-  burst,
   celebrateFlush,
+  onClock,
   playRoundStart,
   handOrigins,
   roomW,
@@ -572,11 +588,11 @@ export function usePileFlight({
   );
   const [layers, setLayers] = useState<PileLayers>(NO_PILE);
   const [sweepTo, setSweepTo] = useState<{ dx: number; dy: number } | null>(null);
-  // The beaten pile's own reaction (#764): fired from the same impactDelayMs()
-  // landing the shake and the impact sound wait for, never a second guess at it.
-  const [flinchTrigger, setFlinchTrigger] = useState(0);
-  const [flinchTier, setFlinchTier] = useState<ImpactTier>("ordinary");
   const [flights, setFlights] = useState<FlyInfo[]>([]);
+  const flightsRef = useRef(flights);
+  useEffect(() => {
+    flightsRef.current = flights;
+  });
   const touched = useRef(new Set<string>());
   // False for exactly impactDelayMs() from the moment a flight begins — the
   // throwing seat's own held count and departing backs read off this, not off
@@ -584,11 +600,6 @@ export function usePileFlight({
   // settle spring too.
   const [flightLanded, setFlightLanded] = useState(true);
   const landTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Impact feedback is scheduled for the moment the thrown card lands, so it
-  // has to be cancellable: a fast next play, or leaving the table, must not
-  // fire a bang for a card that is no longer in the air.
-  const impactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Non-null while the winning combination is being held on the felt under the
   // round-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
@@ -599,25 +610,30 @@ export function usePileFlight({
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
   const matchOverRef = useRef(matchOver);
+  const clocks = useRef(new Map<string, FlightClock>());
   useEffect(() => {
     matchOverRef.current = matchOver;
+    for (const f of flightsRef.current) {
+      if (touched.current.has(f.key)) continue;
+      clocks.current.get(f.key)?.arm({ ...f.landing, tier: landingTier({ comboType: f.comboType, handOver: f.handOver, matchOver }) });
+    }
   }, [matchOver]);
 
-  const feltDim = useSharedValue(0);
-  const clearFeltDim = useCallback(() => {
-    cancelAnimation(feltDim);
-    feltDim.set(0);
-  }, [feltDim]);
+  // The bomb's flight writes its own clock here from the UI thread, so the scrim darkens on the
+  // frames the bomb falls and lifts on the one it lands.
+  const bombClock = useSharedValue<BombClock>(NO_BOMB);
+  const feltDim = useDerivedValue(() => {
+    const { elapsed, contact } = bombClock.value;
+    return elapsed < 0 ? 0 : FELT_SCRIM_PEAK * SCRIM_EASING(Math.min(1, elapsed / contact));
+  });
 
   useEffect(
     () => () => {
-      cancelAnimation(feltDim);
-      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
       if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
       if (sweepTimerRef.current) clearTimeout(sweepTimerRef.current);
       if (landTimerRef.current) clearTimeout(landTimerRef.current);
     },
-    [feltDim]
+    []
   );
 
   // The dedupe on `prevComboKeyRef` comes before anything with an effect, so a
@@ -666,8 +682,6 @@ export function usePileFlight({
         clearLanding();
         return;
       }
-      if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
-      clearFeltDim();
       prevComboKeyRef.current = "";
       if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
         const origin = seatPoint(geometry, roundWinner!);
@@ -691,7 +705,6 @@ export function usePileFlight({
     }
     const key = comboKey(combo, lastPlayedBy);
     if (key === prevComboKeyRef.current) return;
-    if (impactTimerRef.current) clearTimeout(impactTimerRef.current);
     // A lead inside the hold window ends it early: the new card has to fly
     // onto a cleared pile while the won cards sweep away underneath it.
     if (roundHoldRef.current) {
@@ -702,38 +715,6 @@ export function usePileFlight({
     setLayers((l) => ({ ...l, onPile: advancePile(l.onPile, combo, lastPlayedBy) }));
 
     const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
-
-    // The card is thrown here and arrives ~213ms later, so everything that
-    // reads as *impact* waits for it. Announced for every seat, not only the
-    // viewer's: the sound belongs to a card landing, not to a tap.
-    const throwTier = landingTier({
-      comboType: combo.type,
-      handOver: gameOver,
-      matchOver: matchOverRef.current,
-    });
-    clearFeltDim();
-    if (throwTier === "bomb" && !reduceMotion) {
-      feltDim.set(
-        withTiming(FELT_SCRIM_PEAK, { duration: impactDelayMs(reduceMotion), easing: Easing.in(Easing.quad) })
-      );
-    }
-
-    impactTimerRef.current = setTimeout(() => {
-      const tier = landingTier({
-        comboType: combo.type,
-        handOver: gameOver,
-        matchOver: matchOverRef.current,
-      });
-      traceOnset("moment", "landing");
-      playImpact(thrown.heavy, thrown.dir, combo.cards.length);
-      if (!reduceMotion) land(combo.cards.length, thrown.pile);
-      shake(tier);
-      clearFeltDim();
-      burst(tier);
-      setFlinchTier(tier);
-      setFlinchTrigger((t) => t + 1);
-      if (thrown.emptiedHand) celebrateFlush();
-    }, impactDelayMs(reduceMotion));
 
     // The throwing seat's held count and departing backs read off this same
     // boundary — the fan and the badge drop the instant the impact fires,
@@ -747,16 +728,16 @@ export function usePileFlight({
 
     const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
-      tier: throwTier,
+      tier: landingTier({ comboType: combo.type, handOver: gameOver, matchOver: matchOverRef.current }),
       cards: thrown.cards.length,
       x: thrown.pile.x,
       y: thrown.pile.y,
       flush: thrown.emptiedHand,
       heavy: thrown.heavy,
       mine: thrown.dir === "bottom",
-      pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: throwTier === "bomb", mine: thrown.dir === "bottom" }),
+      pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
     };
-    const flight = { key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing };
+    const flight = { key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing, comboType: combo.type, handOver: gameOver };
     setFlights((f) => [...f.filter((x) => !touched.current.has(x.key)), flight]);
   }, [
     lastPlayedCombination,
@@ -766,14 +747,7 @@ export function usePileFlight({
     viewerSeat,
     players.length,
     reduceMotion,
-    playImpact,
-    land,
-    shake,
-    burst,
-    celebrateFlush,
     playRoundStart,
-    clearFeltDim,
-    feltDim,
     players,
     opponents,
     scale,
@@ -818,22 +792,39 @@ export function usePileFlight({
 
   // A flight still in the air when the next play lands keeps flying; one that
   // has touched its slot yields it to the pile, so a card is never drawn twice.
-  const onFlightContact = useCallback((key: string) => touched.current.add(key), []);
+  const onFlightContact = useCallback(
+    (key: string) => {
+      touched.current.add(key);
+      const flight = flightsRef.current.find((f) => f.key === key);
+      if (!flight) return;
+      playImpact(flight.landing.heavy, flight.dir, flight.landing.cards);
+      if (flight.landing.flush) celebrateFlush();
+    },
+    [playImpact, celebrateFlush]
+  );
   const onFlightDone = useCallback((key: string) => {
     touched.current.delete(key);
+    clocks.current.delete(key);
     setFlights((f) => f.filter((x) => x.key !== key));
   }, []);
+  const onFlightClock = useCallback(
+    (key: string, clock: FlightClock) => {
+      clocks.current.set(key, clock);
+      onClock?.(key, clock);
+    },
+    [onClock]
+  );
 
   return {
     pileState: layers.onPile,
     sweep: layers.swept && sweepTo && { pile: layers.swept, origin: sweepTo },
     flights,
     flightLanded,
-    flinchTrigger,
-    flinchTier,
     roundWinnerTag,
     onFlightContact,
     onFlightDone,
+    onFlightClock,
+    bombClock,
     feltDim,
   };
 }

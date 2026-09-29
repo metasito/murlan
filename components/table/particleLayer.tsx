@@ -18,7 +18,10 @@ import {
 } from "@shopify/react-native-skia";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { useTraceSource } from "@/lib/e2eTrace";
-import { createParticles, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { createParticles, landDust, landingDustCount, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { useLandingReaction } from "./useLandingReaction";
+import type { LandingSignal } from "./useFlightClock";
 import { CELLS, D, DRAW_STRIDE, layout, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
 interface Field {
@@ -71,9 +74,25 @@ function stepper(field: SharedValue<Field>) {
   };
 }
 
-export function ParticleLayer({ ref, sx, sy }: { ref: Ref<ParticleEmitter>; sx: number; sy: number }) {
+export function ParticleLayer({ ref, sx, sy, landing }: {
+  ref?: Ref<ParticleEmitter>;
+  sx: number;
+  sy: number;
+  /** The landing dust is thrown on the contact frame, on this thread. */
+  landing: SharedValue<LandingSignal>;
+}) {
   const [sheet] = useState(bakeSheet);
   const field = useSharedValue<Field>({ s: createParticles(), d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE), shown: 0 });
+  const reduced = usePrefersReducedMotion();
+  useLandingReaction(landing, (l) => {
+    "worklet";
+    if (reduced) return;
+    field.modify((v) => {
+      "worklet";
+      for (const p of landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, Math.random)) spawn(v.s, p);
+      return v;
+    }, true);
+  });
 
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
   const [onFrame] = useState(() => stepper(field));

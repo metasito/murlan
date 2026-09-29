@@ -1,14 +1,17 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import { act, renderHook } from "@testing-library/react-native";
 import { handOffDelayMs } from "@/components/flightPhysics";
+import { makeMutable } from "react-native-reanimated";
 import { useTableFeedback } from "@/components/useTableFeedback";
+import { NO_LANDING } from "@/components/table/useFlightClock";
 
 import { bootFeedback, haptics, sounds } from "./helpers/feedback";
 
 const turns = () => sounds().filter((s) => s === "turn").length;
 const lights = () => haptics().filter((h) => h === "impactLight").length;
 
-const PLAYED = { type: "single", cards: [], value: 3 } as any;
+const landing = makeMutable(NO_LANDING);
+const PLAYED ={ type: "single", cards: [], value: 3 } as any;
 
 const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: any = null) => ({
   isMyTurn,
@@ -28,6 +31,7 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: a
   handScores: {},
   viewerId: "viewer",
   scale: 1,
+  landing,
 });
 
 describe("the turn-arrival cue", () => {
