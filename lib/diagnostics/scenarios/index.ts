@@ -6,3 +6,4 @@ import "./hapticOnset";
 import "./musicSwitch";
 import "./soak";
 import "./landingSync";
+import "./seatAnchors";

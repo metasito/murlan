@@ -17,6 +17,8 @@ export interface DiagRows {
   onset: { db: number; source: "app" | "mic" };
   level: { db: number };
   shake: { g: number };
+  ring: { name: string; x: number; y: number };
+  seatState: { id: string; of: number; hold: number };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];

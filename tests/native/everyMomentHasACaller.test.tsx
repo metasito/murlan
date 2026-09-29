@@ -11,7 +11,7 @@ import { MOMENTS, type MomentKind } from '@/lib/device/moments';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
-import { botManche, STEP_MS } from './helpers/botManche';
+import { botManche, playBotManche } from './helpers/botManche';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
@@ -57,12 +57,7 @@ async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<t
 }
 
 async function wholeManche(): Promise<string[]> {
-  const states = botManche();
-  const r = await render(table(states[0]));
-  for (const s of states.slice(1)) {
-    await act(async () => r.rerender(table(s)));
-    await settle(STEP_MS);
-  }
+  const r = await playBotManche(table);
   const out = heardIds();
   await r.unmount();
   return out;

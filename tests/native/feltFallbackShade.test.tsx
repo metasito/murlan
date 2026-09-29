@@ -14,7 +14,7 @@ jest.mock('@/components/table/feltSkiaBoundary', () => {
 });
 
 import { Felt } from '@/components/table/feltSkia.web';
-import { restingLamp } from '@/components/table/lampRig';
+import { lampPool, restingLamp } from '@/components/table/lampRig';
 import { SHADE_MAX } from '@/components/table/rail';
 import type { LampRig } from '@/components/table/useLampRig';
 import { FeltGradients } from '@/lib/tokens';
@@ -34,9 +34,9 @@ const nextFrame = () => act(() => new Promise<void>((frame) => requestAnimationF
 
 describe('the web fallback felt', () => {
   it('stays where WebGL draws on the CPU, and darkens with the lamp level as the Skia felt does', async () => {
-    const lamp = makeMutable(restingLamp('bottom', 0.75));
+    const lamp = makeMutable(restingLamp(lampPool('bottom'), 0.75));
     const rig = { lamp, sx: 1, sy: 1 } as unknown as LampRig;
-    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} target="bottom" />);
+    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} pool={lampPool('bottom')} />);
     await nextFrame();
 
     expect(createElement).toHaveBeenCalledWith('canvas');
