@@ -478,6 +478,26 @@ CardItem.displayName = "CardItem";
 
 // ─── StraightHand ─────────────────────────────────────────────────────────────
 
+/**
+ * Getters, read by the throw: a card thrown mid-lift leaves from where it is drawn, not from where
+ * its lift is going. Built outside the component because the React Compiler skips a component
+ * holding a getter.
+ */
+function liveFrom(x: () => number, y: () => number, rot: () => number, scale: number): CardFrom {
+  return {
+    get x() {
+      return x();
+    },
+    get y() {
+      return y();
+    },
+    get rot() {
+      return rot();
+    },
+    scale,
+  };
+}
+
 export function StraightHand({
   cards,
   selectedIds,
@@ -828,19 +848,15 @@ export function StraightHand({
       const d = drawnRef.current.get(card.id);
       const shiftTo = at.x - home.x + gapShift(i);
       const y0 = rowCentreY + visibleH / 2 + crop + home.y - cardH / 2;
-      // Getters, read by the throw: a card thrown mid-lift leaves from where it is drawn, not from where its lift is going.
-      origins.set(card.id, {
-        get x() {
-          return home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panShown();
-        },
-        get y() {
-          return y0 + (d ? d.liftY.get() : selected ? -handRowHeadroom(cardH) : 0);
-        },
-        get rot() {
-          return home.rot + (d ? d.tilt.get() : selected ? SELECT_TILT : 0);
-        },
-        scale: cardW / fieldW,
-      });
+      origins.set(
+        card.id,
+        liveFrom(
+          () => home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panShown(),
+          () => y0 + (d ? d.liftY.get() : selected ? -handRowHeadroom(cardH) : 0),
+          () => home.rot + (d ? d.tilt.get() : selected ? SELECT_TILT : 0),
+          cardW / fieldW
+        )
+      );
     });
     onOrigins(origins);
   });
