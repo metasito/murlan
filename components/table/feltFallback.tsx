@@ -2,7 +2,7 @@
 // and rail, lit once per lamp target into one DOM canvas, with no per-frame lighting.
 import { useEffect, useRef } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
-import { DESIGN, LIGHT_ABOVE, lampTarget, type LampTarget } from "./lampRig";
+import { DESIGN, LIGHT_ABOVE, type Pool } from "./lampRig";
 import { CLOTH_GLSL, clothUniforms } from "./feltShader";
 import { paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 
@@ -101,7 +101,7 @@ function grainLayer(width: number, height: number, ax: number, ay: number): HTML
   return cv;
 }
 
-function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: number, sy: number) {
+function bake(out: HTMLCanvasElement, stops: FeltStops, tx: number, ty: number, sx: number, sy: number) {
   const dpr = window.devicePixelRatio || 1;
   const ax = dpr * sx;
   const ay = dpr * sy;
@@ -109,7 +109,6 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: 
   out.height = Math.round(DESIGN.height * ay);
   const c = out.getContext("2d");
   if (!c) return;
-  const [tx, ty] = lampTarget(target);
   const lx = tx;
   const ly = ty - LIGHT_ABOVE;
   c.setTransform(ax, 0, 0, ay, 0, 0);
@@ -160,19 +159,20 @@ function bake(out: HTMLCanvasElement, stops: FeltStops, target: LampTarget, sx: 
 
 export function FeltFallback({
   stops,
-  target,
+  pool,
   sx,
   sy,
 }: {
   stops: FeltStops;
-  target: LampTarget;
+  pool: Pool;
   sx: number;
   sy: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const [px, py] = pool;
   useEffect(() => {
-    if (ref.current) bake(ref.current, stops, target, sx, sy);
-  }, [stops, target, sx, sy]);
+    if (ref.current) bake(ref.current, stops, px, py, sx, sy);
+  }, [stops, px, py, sx, sy]);
   return (
     <canvas
       ref={ref}

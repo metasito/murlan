@@ -14,11 +14,11 @@ import { StyleSheet } from "react-native";
 import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
 import { SPARK_COUNT, type ImpactTier } from "@/components/flightPhysics";
 import { BombBurst, LampLift } from "@/components/table/moments";
-import { restingLamp } from "@/components/table/lampRig";
+import { lampPool, restingLamp } from "@/components/table/lampRig";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { fireLanding } from "./helpers/landing";
 
-const RIG = { lamp: makeMutable(restingLamp("bottom")), sx: 1, sy: 1 };
+const RIG = { lamp: makeMutable(restingLamp(lampPool("bottom"))), sx: 1, sy: 1 };
 
 async function landed(ui: (landing: SharedValue<LandingSignal>) => React.ReactElement, tier: ImpactTier) {
   const landing = makeMutable(NO_LANDING);
