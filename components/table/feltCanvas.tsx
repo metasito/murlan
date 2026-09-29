@@ -1,10 +1,14 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { PixelRatio, StyleSheet } from "react-native";
 import {
+  AlphaType,
   Canvas,
+  ColorType,
+  type CanvasRef,
+  useCanvasRef,
   Group,
   Image,
   PaintStyle,
@@ -18,6 +22,8 @@ import {
 } from "@shopify/react-native-skia";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
+import { useBenchHandle } from "@/lib/diagnostics";
+import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
@@ -70,7 +76,20 @@ function bakeRail(k: number): SkImage | null {
   return image;
 }
 
+async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> {
+  const image = await canvas?.makeImageSnapshotAsync();
+  if (!image) return null;
+  const width = image.width();
+  const height = image.height();
+  const data = image.readPixels(0, 0, { width, height, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
+  image.dispose();
+  return data instanceof Uint8Array ? { width, height, data } : null;
+}
+
 export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
+  const canvas = useCanvasRef();
+  const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
+  useBenchHandle("feltSnapshot", snapshot);
   const k = PixelRatio.get() * Math.min(sx, sy);
   const rail = useMemo(() => bakeRail(k), [k]);
   // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
@@ -98,7 +117,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
 
   const { width, height } = DESIGN;
   return (
-    <Canvas style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
+    <Canvas ref={canvas} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}

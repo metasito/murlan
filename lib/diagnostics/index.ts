@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type { View } from "react-native";
 import type { DiagRow } from "./types";
+import type { LampSide, Pixels } from "./lampLegibility";
 
 export type { DiagRow, DiagRows } from "./types";
 
@@ -19,9 +20,22 @@ export function jsFromWall(): (wall: number) => number {
   return (wall) => wall + offset;
 }
 
-export const benchHandles: { cardPress?: (id: string) => void } = {};
+export interface TableAnchors {
+  width: number;
+  height: number;
+  /** Each seat's anchor, in the felt box's points. */
+  anchors: Readonly<Record<LampSide, { x: number; y: number }>>;
+}
 
-export function useBenchHandle(name: "cardPress", fn: (id: string) => void): void {
+export interface BenchHandles {
+  cardPress?: (id: string) => void;
+  feltSnapshot?: () => Promise<Pixels | null>;
+  tableAnchors?: () => TableAnchors;
+}
+
+export const benchHandles: BenchHandles = {};
+
+export function useBenchHandle<K extends keyof BenchHandles>(name: K, fn: NonNullable<BenchHandles[K]>): void {
   useEffect(() => {
     if (!DIAGNOSTICS) return;
     benchHandles[name] = fn;

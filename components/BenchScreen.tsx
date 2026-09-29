@@ -5,7 +5,9 @@ import { useKeepAwake } from "expo-keep-awake";
 import { GameTable } from "@/components/GameTable";
 import type { GameState } from "@/lib/game/gameEngine";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
-import { diag } from "@/lib/diagnostics";
+import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
+import { benchHandles, diag } from "@/lib/diagnostics";
+import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/lampLegibility";
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
@@ -16,7 +18,17 @@ import "@/lib/diagnostics/scenarios";
 
 const COPY = { runAll: "Run all" } as const;
 
-const collectorHost = (param: string | undefined) =>
+async function feltSample(): Promise<Record<LampSide, number>> {
+  const table = benchHandles.tableAnchors?.();
+  const pixels = await benchHandles.feltSnapshot?.();
+  if (!table || !pixels) throw new Error(`no ${table ? "felt snapshot" : "table anchors"} to sample`);
+  const perPt = pixels.width / table.width;
+  const felt = feltOnly(pixels, perPt);
+  const ring = legibilityRing(table.width, table.height);
+  return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
+}
+
+const collectorHost =(param: string | undefined) =>
   param ?? (process.env.EXPO_PUBLIC_DOMAIN ? new URL(process.env.EXPO_PUBLIC_DOMAIN).hostname : "127.0.0.1");
 
 export function BenchScreen() {
@@ -51,6 +63,7 @@ export function BenchScreen() {
           stopJs.current?.();
           stopJs.current = on ? startJsLag() : null;
         },
+        feltSample,
       };
       for (const [name, scenario] of benchScenarios()) {
         if (only && !only.includes(name)) continue;

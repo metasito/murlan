@@ -772,7 +772,8 @@ export function GameTable({
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
-  const lampAim = lampPools(anchorPoints(tableGeometry(seatGeometry)), W, H)[
+  const anchors = anchorPoints(tableGeometry(seatGeometry));
+  const lampAim = lampPools(anchors, W, H)[
     holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
   const rig = useLampRig({
@@ -782,6 +783,7 @@ export function GameTable({
     height: H,
     landing: landingSignal,
   });
+  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
   const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
