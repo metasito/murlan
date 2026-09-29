@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { AppState } from "react-native";
 import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
@@ -23,6 +24,9 @@ export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchU
     end: reduced ? 0 : flightEndMs(n, catchUp),
   };
 }
+
+/** No frames are drawn: a hidden page (react-native-web maps visibility here) or a backgrounded app. */
+export const inBackground = () => AppState.currentState === "background";
 
 interface Run { spec: FlightSpec | null; thrownAt: number; startedAt: number; touched: boolean }
 
@@ -82,7 +86,7 @@ export function useFlightClock(
       elapsed,
       arm: (l: LandingPayload) => landing.set(l),
       begin: (spec: FlightSpec) => {
-        run.set({ spec, thrownAt: performance.now(), startedAt: -1, touched: false });
+        run.set({ spec, thrownAt: inBackground() ? Infinity : performance.now(), startedAt: -1, touched: false });
         frames.setActive(true);
       },
     }),

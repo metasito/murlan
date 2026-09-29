@@ -17,6 +17,8 @@ export interface TableTimeline {
   /** Read at call time, so an effect later in the same commit sees the throw `awaitFlight` just took. */
   pending(): boolean;
   flightStarted(key: string, landsAt: number, endsAt: number): void;
+  /** A flight that will never start: its held moments are never sent. */
+  drop(key: string): void;
   flush(): void;
 }
 
@@ -74,6 +76,12 @@ export function useTableTimeline(): TableTimeline {
     },
     [send]
   );
+  const drop = useCallback((key: string) => {
+    held.current.delete(key);
+    if (awaiting.current !== key) return;
+    awaiting.current = null;
+    setClock((c) => ({ ...c, awaiting: c.awaiting === key ? null : c.awaiting }));
+  }, []);
   const flush = useCallback(() => {
     if (queued.current.size === 0) return;
     const batch = queued.current;
@@ -91,7 +99,7 @@ export function useTableTimeline(): TableTimeline {
   }, [times]);
   const inFlight = clock.awaiting !== null || (times !== null && landedAt !== times.landsAt);
   return useMemo(
-    () => ({ landsAt: times?.landsAt ?? null, handsOffAt: times?.handsOffAt ?? null, inFlight, moment, awaitFlight, pending, flightStarted, flush }),
-    [times, inFlight, moment, awaitFlight, pending, flightStarted, flush]
+    () => ({ landsAt: times?.landsAt ?? null, handsOffAt: times?.handsOffAt ?? null, inFlight, moment, awaitFlight, pending, flightStarted, drop, flush }),
+    [times, inFlight, moment, awaitFlight, pending, flightStarted, drop, flush]
   );
 }

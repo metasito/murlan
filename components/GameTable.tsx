@@ -707,6 +707,7 @@ export function GameTable({
     endSweep,
     flights,
     roundWinnerTag,
+    onFlightStart,
     onFlightContact,
     onFlightDone,
     onFlightClock,
@@ -1253,7 +1254,7 @@ export function GameTable({
                     flight={f.spec}
                     landing={f.landing}
                     signal={landingSignal}
-                    onStart={timeline.flightStarted}
+                    onStart={onFlightStart}
                     onContact={onFlightContact}
                     onEnd={onFlightDone}
                     onClock={onFlightClock}

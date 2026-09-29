@@ -33,7 +33,7 @@ import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { Sweep } from "@/components/table/moments";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
-import { flightSpec, NO_LANDING, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
+import { flightSpec, inBackground, NO_LANDING, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
 import { useLandingReaction } from "./useLandingReaction";
 import type { TableTimeline } from "./tableTimeline";
 
@@ -529,7 +529,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    */
   matchOver: boolean;
   /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
-  timeline: Pick<TableTimeline, "awaitFlight" | "moment">;
+  timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop">;
   celebrateFlush: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
@@ -550,6 +550,8 @@ export interface FlyInfo {
   landing: LandingPayload;
   comboType: Combination["type"];
   handOver: boolean;
+  /** Thrown while no frames were drawn (`inBackground`). */
+  hidden: boolean;
 }
 
 /**
@@ -584,7 +586,7 @@ export function usePileFlight({
   catchUp,
 }: PileFlightInput) {
   const reduceMotion = usePrefersReducedMotion();
-  const { awaitFlight, moment } = timeline;
+  const { awaitFlight, moment, flightStarted, drop } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
   // The seat that took the last round and a counter of how many rounds have
@@ -602,6 +604,7 @@ export function usePileFlight({
     flightsRef.current = flights;
   });
   const touched = useRef(new Set<string>());
+  const started = useRef(new Set<string>());
   // Non-null while the winning combination is being held on the felt under the
   // round-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
@@ -697,6 +700,9 @@ export function usePileFlight({
 
     const thrown = readThrownPlay({ ...geometry, combo, playedBy: lastPlayedBy }, handOrigins.current);
 
+    // The owner's ruling: throws queued while nothing was drawn land at once and in silence, all but the newest.
+    const unseen = new Set(flightsRef.current.filter((f) => f.hidden && !started.current.has(f.key)).map((f) => f.key));
+    unseen.forEach(drop);
     awaitFlight(key);
     moment({ kind: "landing", cards: combo.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" });
 
@@ -711,8 +717,11 @@ export function usePileFlight({
       mine: thrown.dir === "bottom",
       pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
     };
-    const flight = { key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing, comboType: combo.type, handOver: gameOver };
-    const superseded = touched.current;
+    const flight = {
+      key, dir: thrown.dir, cards: thrown.cards, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion), landing, comboType: combo.type, handOver: gameOver,
+      hidden: inBackground(),
+    };
+    const superseded = new Set([...touched.current, ...unseen]);
     touched.current = new Set();
     superseded.forEach((k) => clocks.current.delete(k));
     setFlights((f) => [...f.filter((x) => !superseded.has(x.key)), flight]);
@@ -741,6 +750,7 @@ export function usePileFlight({
     catchUp,
     awaitFlight,
     moment,
+    drop,
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
@@ -779,8 +789,16 @@ export function usePileFlight({
     },
     [celebrateFlush]
   );
+  const onFlightStart = useCallback(
+    (key: string, landsAt: number, endsAt: number) => {
+      started.current.add(key);
+      flightStarted(key, landsAt, endsAt);
+    },
+    [flightStarted]
+  );
   const onFlightDone = useCallback((key: string) => {
     touched.current.delete(key);
+    started.current.delete(key);
     clocks.current.delete(key);
     setFlights((f) => f.filter((x) => x.key !== key));
   }, []);
@@ -803,6 +821,7 @@ export function usePileFlight({
     endSweep,
     flights,
     roundWinnerTag,
+    onFlightStart,
     onFlightContact,
     onFlightDone,
     onFlightClock,
