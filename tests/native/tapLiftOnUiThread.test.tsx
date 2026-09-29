@@ -359,3 +359,79 @@ describe('the drag and the tap', () => {
     expect(seen).toEqual(new Set([undefined, ...HAND.map((c) => c.id)]));
   });
 });
+
+describe('a tap on a rotated card', () => {
+  const RANKS: Card['rank'][] = ['3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A', '2'];
+  const WIDE = RANKS.map((r) => card(r, 'diamonds'));
+  const LAST = WIDE[WIDE.length - 1];
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** The row point at (u, v) from the card's own centre, turned with the card as it is drawn. */
+  const onCard = (c: Card, u: number, v: number) => {
+    const { transform } = getAnimatedStyle(wrapper(c)) as unknown as { transform: Record<string, number | string>[] };
+    const b = StyleSheet.flatten(wrapper(c).props.style) as { left: number; bottom: number; width: number; height: number };
+    const rad = (parseFloat(transform[2].rotate as string) * Math.PI) / 180;
+    const cx = b.left + (transform[0].translateX as number) + b.width / 2;
+    const cy = rowH() - b.bottom - b.height / 2 + (transform[1].translateY as number);
+    const at = { x: cx + u * Math.cos(rad) - v * Math.sin(rad), y: cy + u * Math.sin(rad) + v * Math.cos(rad) };
+    return { at, flatTop: cy - b.height / 2, w: b.width, h: b.height };
+  };
+
+  async function tapsAt(shown: string[], pick: () => { x: number; y: number }) {
+    const tap = jest.fn<(id: string) => void>();
+    const view = await render(
+      <StraightHand cards={WIDE} selectedIds={shown} selection={{ shown: makeMutable(shown), tap }}
+        onActivate={noop} disabled={false} availW={600} roomW={456} />
+    );
+    await step(1500);
+    const at = pick();
+    const g = gesturesOf(mockRow.gesture!).tap;
+    await act(async () => {
+      call(g, 'onBegin', at);
+      call(g, 'onActivate', at);
+      call(g, 'onFinalize', at);
+    });
+    await view.unmount();
+    return tap.mock.calls.map((c) => c[0]);
+  }
+
+  it('takes the raised top-left corner of a card right of centre, above where an unturned card would end', async () => {
+    const c = WIDE[9];
+    let raised = false;
+    const picked = await tapsAt([], () => {
+      const probe = onCard(c, 0, 0);
+      const corner = onCard(c, -probe.w / 2 + 1, -probe.h / 2 + 0.5);
+      raised = corner.at.y < corner.flatTop;
+      return corner.at;
+    });
+    expect(raised).toBe(true);
+    expect(picked).toEqual([c.id]);
+  });
+
+  it('takes the raised top corner of the selected end card, turned by its tilt as well as the arc', async () => {
+    let raised = false;
+    const picked = await tapsAt([LAST.id], () => {
+      const probe = onCard(LAST, 0, 0);
+      const rot = parseFloat((getAnimatedStyle(wrapper(LAST)) as unknown as { transform: { rotate: string }[] }).transform[2].rotate);
+      const corner = onCard(LAST, rot > 0 ? -probe.w / 2 + 1 : probe.w / 2 - 1, -probe.h / 2 + 0.5);
+      raised = corner.at.y < corner.flatTop;
+      return corner.at;
+    });
+    expect(raised).toBe(true);
+    expect(picked).toEqual([LAST.id]);
+  });
+
+  it('refuses a finger just above the turned edge', async () => {
+    const c = WIDE[9];
+    const picked = await tapsAt([], () => {
+      const probe = onCard(c, 0, 0);
+      return onCard(c, -probe.w / 2 + 1, -probe.h / 2 - 1).at;
+    });
+    expect(picked).toEqual([]);
+  });
+});

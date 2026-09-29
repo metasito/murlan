@@ -901,16 +901,19 @@ export function StraightHand({
       lefts: [] as number[],
       widths: [] as number[],
       tops: [] as number[],
+      rots: [] as number[],
       refused: [] as boolean[],
     };
     rest.forEach((card, i) => {
       table.refused.push(giveableSet?.has(card.id) === false);
       const slot = slotForCard(i, parting);
       const at = arc[slot] ?? arc[arc.length - 1];
+      const home = place.get(card.id) ?? at;
       table.ids.push(card.id);
       table.lefts.push(rowMid + at.x);
       table.widths.push(hitWidth(slot, arc.length, step, cardW));
-      table.tops.push(visibleH + crop + (place.get(card.id) ?? at).y - cardH);
+      table.tops.push(visibleH + crop + home.y - cardH);
+      table.rots.push(home.rot);
     });
     return table;
   }, [rest, parting, arc, rowMid, step, cardW, visibleH, crop, place, cardH, giveableSet]);
@@ -924,7 +927,12 @@ export function StraightHand({
     if (i === null) return null;
     const id = strips.ids[i];
     if (lifted?.value.includes(id)) return null;
-    return y < strips.tops[i] - (shownIds.value.includes(id) ? liftH : 0) ? null : i;
+    const on = shownIds.value.includes(id);
+    // Turned about the card's centre as the card is drawn, so a raised corner is still the card.
+    const rad = ((strips.rots[i] + (on && !reduceMotion ? SELECT_TILT : 0)) * Math.PI) / 180;
+    const dx = x - strips.lefts[i] - cardW / 2;
+    const dy = y - (strips.tops[i] - (on ? liftH : 0)) - cardH / 2;
+    return dy * Math.cos(rad) - dx * Math.sin(rad) < -cardH / 2 ? null : i;
   };
   // Where each slot of the *whole* hand sits — where a released card is going.
   const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
