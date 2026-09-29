@@ -26,7 +26,8 @@ const card = (rank: Rank, suit: Suit): Card => ({ id: `${rank}_${suit}`, rank, s
 
 const SEVEN_H = card('7', 'hearts');
 const SEVEN_C = card('7', 'clubs');
-const HAND = [card('3', 'spades'), SEVEN_H, SEVEN_C];
+const THREE_S = card('3', 'spades');
+const HAND = [THREE_S, SEVEN_H, SEVEN_C];
 const PILE = engine.buildCombination([card('5', 'diamonds')]) as Combination;
 const JACKS = engine.buildCombination([card('J', 'spades'), card('J', 'hearts')]) as Combination;
 
@@ -63,13 +64,17 @@ const table = (gameState: GameState, selectedIds: string[]) => (
   </SafeAreaProvider>
 );
 
+const onPile = (over: Partial<GameState> = {}) => state({ lastPlayedCombination: PILE, lastPlayedBy: 1, ...over });
+
+const passaBorder = () => StyleSheet.flatten(screen.getByTestId('btn-passa').props.style).borderWidth;
+
 describe('the legal plays of a hand', () => {
   beforeEach(() => {
     legalPlays.mockClear();
   });
 
   it('are not counted again when a card is selected', async () => {
-    const game = state();
+    const game = onPile();
     const r = await render(table(game, []));
     expect(legalPlays).toHaveBeenCalled();
     legalPlays.mockClear();
@@ -82,24 +87,43 @@ describe('the legal plays of a hand', () => {
     await r.unmount();
   });
 
+  it('are not counted at all for a lead, where PASSA is not offered', async () => {
+    const r = await render(table(state(), [SEVEN_H.id]));
+
+    expect(screen.getByTestId('btn-passa')).toBeTruthy();
+    expect(legalPlays).not.toHaveBeenCalled();
+    await r.unmount();
+  });
+
   it('are counted again when the pile changes', async () => {
-    const r = await render(table(state(), []));
+    const r = await render(table(onPile(), []));
     legalPlays.mockClear();
 
-    await r.rerender(table(state({ lastPlayedCombination: PILE, lastPlayedBy: 1 }), []));
+    await r.rerender(table(onPile({ lastPlayedCombination: JACKS }), []));
 
     expect(legalPlays).toHaveBeenCalled();
     await r.unmount();
   });
 
   it('still mark PASSA as the only move when nothing beats the pile', async () => {
-    const passaBorder = () => StyleSheet.flatten(screen.getByTestId('btn-passa').props.style).borderWidth;
-    const r = await render(table(state({ lastPlayedCombination: PILE, lastPlayedBy: 1 }), []));
+    const r = await render(table(onPile(), []));
     expect(passaBorder()).toBeUndefined();
 
-    await r.rerender(table(state({ lastPlayedCombination: JACKS, lastPlayedBy: 1 }), []));
+    await r.rerender(table(onPile({ lastPlayedCombination: JACKS }), []));
 
     expect(passaBorder()).toBe(2);
+    await r.unmount();
+  });
+
+  it('follow the start card and whether the opening play is made', async () => {
+    const r = await render(table(onPile({ firstPlayMade: false, startCard: SEVEN_H }), []));
+    expect(passaBorder()).toBeUndefined();
+
+    await r.rerender(table(onPile({ firstPlayMade: false, startCard: THREE_S }), []));
+    expect(passaBorder()).toBe(2);
+
+    await r.rerender(table(onPile({ firstPlayMade: true, startCard: THREE_S }), []));
+    expect(passaBorder()).toBeUndefined();
     await r.unmount();
   });
 });

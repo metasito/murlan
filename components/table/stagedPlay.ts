@@ -27,8 +27,7 @@ export interface StagedPlay {
   refusal: PlayButtonLabel;
 }
 
-/** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
-export function canBeatPileOf(input: {
+type TableFacts = {
   hand: Card[];
   lastPlayedCombination: Combination | null;
   startCard: GameState["startCard"];
@@ -36,38 +35,33 @@ export function canBeatPileOf(input: {
   isNewRound: boolean;
   isMyTurn: boolean;
   isFinished: boolean;
-}): boolean {
-  if (!input.isMyTurn || input.isFinished) return false;
-  const requiresStartCard = !input.firstPlayMade && !!input.startCard;
-  return (
-    getAllValidPlays(
-      input.hand,
-      input.isNewRound ? null : input.lastPlayedCombination,
-      input.isNewRound,
-      requiresStartCard ? input.startCard : undefined
-    ).length > 0
-  );
+};
+
+function whatMustBeMet(input: TableFacts) {
+  return {
+    toBeat: input.isNewRound ? null : input.lastPlayedCombination,
+    requiredCard: !input.firstPlayMade && input.startCard ? input.startCard : undefined,
+  };
 }
 
-export function readStagedPlay(input: {
-  hand: Card[];
-  selectedIds: string[];
-  lastPlayedCombination: Combination | null;
-  startCard: GameState["startCard"];
-  firstPlayMade: boolean;
-  isNewRound: boolean;
-  isMyTurn: boolean;
-  isFinished: boolean;
-}): StagedPlay {
+/** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
+export function canBeatPileOf(input: TableFacts): boolean {
+  if (!input.isMyTurn || input.isFinished) return false;
+  const { toBeat, requiredCard } = whatMustBeMet(input);
+  return getAllValidPlays(input.hand, toBeat, input.isNewRound, requiredCard).length > 0;
+}
+
+export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): StagedPlay {
   const cards = input.hand.filter((c) => input.selectedIds.includes(c.id));
   const combo = cards.length > 0 ? buildCombination(cards) : null;
-  const requiresStartCard = !input.firstPlayMade && !!input.startCard;
+  const { toBeat, requiredCard } = whatMustBeMet(input);
+  const requiresStartCard = !!requiredCard;
   const selectionHasStartCard =
     !!input.startCard && cards.some((c) => c.id === input.startCard!.id);
 
   const isValid =
     combo !== null &&
-    canPlay(combo, input.isNewRound ? null : input.lastPlayedCombination) &&
+    canPlay(combo, toBeat) &&
     (!requiresStartCard || selectionHasStartCard);
 
   const pile = input.lastPlayedCombination;

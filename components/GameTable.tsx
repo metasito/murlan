@@ -518,9 +518,11 @@ export function GameTable({
       isFinished,
     ]
   );
-  const canBeatPile = React.useMemo(
+  const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
+  const passIsOnlyMove = React.useMemo(
     () =>
-      canBeatPileOf({
+      canPass &&
+      !canBeatPileOf({
         hand: sortedHand,
         lastPlayedCombination: gameState.lastPlayedCombination,
         startCard: gameState.startCard,
@@ -530,6 +532,7 @@ export function GameTable({
         isFinished,
       }),
     [
+      canPass,
       sortedHand,
       gameState.lastPlayedCombination,
       gameState.startCard,
@@ -545,8 +548,6 @@ export function GameTable({
     gameState.lastPlayedCombination,
     players
   );
-
-  const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -1414,7 +1415,7 @@ export function GameTable({
               {!spectating && (
                 <PassaButton
                   canPass={canPass}
-                  onlyMove={canPass && !canBeatPile}
+                  onlyMove={passIsOnlyMove}
                   flashStyle={passaFlashStyle}
                   onPress={handlePass}
                   a11yLabel={t("gameTable.passA11yLabel")}
