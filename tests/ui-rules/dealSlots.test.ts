@@ -43,6 +43,17 @@ function busiest(legs: readonly DealLeg[]): number {
 }
 
 describe("the deal's pool of views", () => {
+  test("hands a view on at the instant its leg lands and the next leaves, drawing neither twice", () => {
+    const to = { dx: 0, dy: -100 };
+    const first = { key: "a", leaveMs: 0, flightMs: 100, to };
+    const next = { key: "b", leaveMs: 100, flightMs: 100, to };
+    const slots = dealSlots([next, first]);
+    assert.deepEqual(slots, [[first, next]]);
+    assert.equal(legAt(slots[0], 100), first);
+    assert.equal(inAir(first, 100) || inAir(next, 100), false);
+    assert.equal(legAt(slots[0], 100.5), next);
+  });
+
   for (const [seats, legCount] of [[2, 14], [3, 36], [4, 40]] as const) {
     test(`${seats} players: one view per leg in the air at the busiest instant, at most half the legs`, () => {
       const legs = legsAt(seats);

@@ -14,7 +14,14 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => (mockReduce ? 'on' : 'off'),
 }));
 
+jest.mock('@/components/table/dealSlots', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/dealSlots')>('@/components/table/dealSlots');
+  return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
+});
+
 import { GameTable } from '@/components/GameTable';
+import { dealSlots } from '@/components/table/dealSlots';
+import { busiest } from './helpers/dealSweep';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
@@ -90,7 +97,9 @@ describe("an opponent's hand arrives with the deal", () => {
 
   it('counts at each seat exactly the backs whose flight has reached it, frame by frame', async () => {
     const r = await render(table());
-    expect(backs().length).toBeLessThanOrEqual(39 / 2);
+    const legs = jest.mocked(dealSlots).mock.calls.at(-1)![0];
+    expect(legs).toHaveLength(39);
+    expect(backs()).toHaveLength(busiest(legs));
     expect(seated()).toBe(0);
     expect(startsOf('deal')).toEqual([]);
 

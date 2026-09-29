@@ -19,15 +19,22 @@ jest.mock('react-native-reanimated', () => {
     },
   };
 });
+jest.mock('@/components/table/dealSlots', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/dealSlots')>('@/components/table/dealSlots');
+  return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
+});
 
 import { GameTable } from '@/components/GameTable';
-import { DealFlights, dealPose } from '@/components/table/deal';
-import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from '@/components/table/dealSlots';
+import { DealFlights } from '@/components/table/deal';
+import { dealPose } from '@/components/table/dealPose';
+import { dealFlightsFor, dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
 import { GEOMETRY, frames } from './helpers/exchangeLegs';
+import { busiest, inAir } from './helpers/dealSweep';
 import { bootFeedback } from './helpers/feedback';
 
 const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b));
+const slotted = () => jest.mocked(dealSlots).mock;
 
 const freshDeal = (seats: number): GameState => ({
   players: dealCards(seats).hands.map((hand, i) => ({ id: `p${i}`, name: `P${i}`, hand, type: 'human' }) as Player),
@@ -42,6 +49,12 @@ const freshDeal = (seats: number): GameState => ({
   firstPlayMade: false,
 });
 
+const table = (gameState: GameState) => (
+  <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
+    <GameTable gameState={gameState} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
+  </SafeAreaProvider>
+);
+
 describe('the deal flies on a pool of backs', () => {
   beforeEach(async () => {
     jest.useFakeTimers();
@@ -52,16 +65,32 @@ describe('the deal flies on a pool of backs', () => {
   });
 
   it.each([
-    [2, 7],
-    [3, 12],
-    [4, 17],
-  ])('draws %i players’ deal with %i backs on the 844 × 390 table', async (seats, pool) => {
-    const view = await render(
-      <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
-        <GameTable gameState={freshDeal(seats)} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
-      </SafeAreaProvider>
-    );
+    [2, 14, 7],
+    [3, 36, 12],
+    [4, 40, 17],
+  ])('draws %i players’ %i legs with as many backs as are ever in the air at once, %i on the 844 × 390 table', async (seats, legCount, pool) => {
+    const view = await render(table(freshDeal(seats)));
+    const legs = slotted().calls.at(-1)![0];
+    expect(legs).toHaveLength(legCount);
+    expect(backs()).toHaveLength(busiest(legs));
     expect(backs()).toHaveLength(pool);
+    await view.unmount();
+  });
+
+  it('keeps its legs and pooled slots through a re-render of the table mid-deal', async () => {
+    const gameState = freshDeal(4);
+    const view = await render(table(gameState));
+    await frames(400);
+    const calls = slotted().calls.length;
+    const pooled = slotted().results.at(-1)!.value;
+    expect(backs().length).toBeGreaterThan(0);
+
+    await view.rerender(table({ ...gameState }));
+    await frames(32);
+
+    expect(slotted().calls.length).toBe(calls);
+    expect(slotted().results.at(-1)!.value).toBe(pooled);
+    expect(backs().length).toBeGreaterThan(0);
     await view.unmount();
   });
 
@@ -79,7 +108,6 @@ describe('the deal flies on a pool of backs', () => {
     expect(backs()).toHaveLength(slots.length);
     expect(slots.length * 2).toBeLessThanOrEqual(legs.length);
 
-    const inAir = (leg: DealLeg, t: number) => leg.leaveMs < t && t < leg.leaveMs + leg.flightMs;
     const flown = new Set<string>();
     await frames(endMs + 200, () => {
       const t = clock.value;

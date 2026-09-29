@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
-  Easing,
   makeMutable,
   useAnimatedStyle,
   useFrameCallback,
@@ -18,6 +17,7 @@ import { handCountOf } from "@/shared/protocol";
 import type { SeatGeometry } from "@/components/flightPhysics";
 import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "@/lib/game/dealTimeline";
 import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
+import { dealPose } from "@/components/table/dealPose";
 
 /** When each of a seat's cards lands, on the deal's own clock. */
 export interface DealArrivals { at: readonly number[]; clock: SharedValue<number> }
@@ -28,6 +28,7 @@ interface Deal {
   offsetMs: number;
   counts: number[];
   flightsMs: number[];
+  legs: DealLeg[];
 }
 
 /**
@@ -57,12 +58,10 @@ export function useDeal({
   onLanded: () => void;
 } {
   const { players, viewerSeat } = geometry;
-  const newDeal = (key: number, offsetMs: number): Deal => ({
-    key,
-    offsetMs,
-    counts: players.map(handCountOf),
-    flightsMs: dealFlightsFor(geometry),
-  });
+  const newDeal = (key: number, offsetMs: number): Deal => {
+    const timing = { key, offsetMs, counts: players.map(handCountOf), flightsMs: dealFlightsFor(geometry) };
+    return { ...timing, legs: dealLegs(geometry, timing) };
+  };
   const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
   const [dealtFresh, setDealtFresh] = useState(fresh);
   if (fresh !== dealtFresh) {
@@ -83,7 +82,7 @@ export function useDeal({
     [deal, reduceMotion, clockOf]
   );
   const onLanded = useCallback(() => setDeal(null), []);
-  const cards = deal && arrivals ? dealLegs(geometry, deal) : [];
+  const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
@@ -93,20 +92,6 @@ export function useDeal({
     startMs: deal?.offsetMs ?? 0,
     endMs: deal ? dealEndMs(deal.counts, deal.offsetMs, deal.flightsMs) : 0,
     onLanded,
-  };
-}
-
-const DEAL_EASING = Easing.bezierFn(0.22, 0.61, 0.36, 1.0);
-const DEAL_SPIN_DEG = 180;
-
-/** A leg's pose at `clockMs` on the deal's clock, drawn only while it is in the air. */
-export function dealPose(leg: DealLeg, clockMs: number) {
-  "worklet";
-  const k = Math.min(1, Math.max(0, (clockMs - leg.leaveMs) / leg.flightMs));
-  const p = DEAL_EASING(k);
-  return {
-    opacity: k > 0 && k < 1 ? 1 : 0,
-    transform: [{ translateX: leg.to.dx * p }, { translateY: leg.to.dy * p }, { rotate: `${DEAL_SPIN_DEG * p}deg` }],
   };
 }
 
