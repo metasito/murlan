@@ -304,28 +304,26 @@ function ChipPlate({ isPower, still = false, children }: { isPower: boolean; sti
   );
 }
 
-/** The combination on top of the pile, named. `scale` is the table's. */
-export function ComboChip({ isPower, label, scale }: { isPower: boolean; label: string; scale: number }) {
+/** The combination on top of the pile, named. */
+export function ComboChip({ isPower, label }: { isPower: boolean; label: string }) {
   return (
-    <View style={{ transform: [{ scale }] }}>
-      <ChipPlate isPower={isPower}>
-        <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
-          {isPower ? "✦ " : ""}
-          {label}
-        </TableText>
-      </ChipPlate>
-    </View>
+    <ChipPlate isPower={isPower}>
+      <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
+        {isPower ? "✦ " : ""}
+        {label}
+      </TableText>
+    </ChipPlate>
   );
 }
 
-/** The seat that took the round, over the pile. `scale` is the table's. */
-export function RoundWinnerTag({ name, scale }: { name: string; scale: number }) {
+/** The seat that took the round, over the pile. */
+export function RoundWinnerTag({ name }: { name: string }) {
   const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
       exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
-      style={[pileStyles.winnerTag, { transform: [{ scale }] }]}
+      style={pileStyles.winnerTag}
     >
       <Ionicons name="star" size={9} color={Colors.gold} />
       <TableText style={pileStyles.winnerText}>{name}</TableText>
@@ -449,7 +447,7 @@ export function PileLayer(props: PileLayerProps) {
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
     <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
-      {roundWinner && !hidden ? <RoundWinnerTag name={roundWinner} scale={scale} /> : null}
+      {roundWinner && !hidden ? <RoundWinnerTag name={roundWinner} /> : null}
 
       <View style={[pileStyles.pileStack, { width: stack?.boxW ?? 0, height: stack?.h ?? 0 }]}>
         {groups.map(({ play, role, sweep: motion, sweepTop }) => (
@@ -492,7 +490,7 @@ export function PileLayer(props: PileLayerProps) {
             { marginTop: fieldSlots(comboLabel.cards, cardScale, roomW).h / 2 + Spacing.snug },
           ]}
         >
-          <ComboChip isPower={isPower} label={label} scale={scale} />
+          <ComboChip isPower={isPower} label={label} />
         </View>
       )}
     </View>
