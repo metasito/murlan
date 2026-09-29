@@ -95,7 +95,7 @@ import {
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
-import { readStagedPlay } from "@/components/table/stagedPlay";
+import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
 import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
@@ -518,14 +518,36 @@ export function GameTable({
       isFinished,
     ]
   );
+  const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
+  const passIsOnlyMove = React.useMemo(
+    () =>
+      canPass &&
+      !canBeatPileOf({
+        hand: sortedHand,
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        startCard: gameState.startCard,
+        firstPlayMade: gameState.firstPlayMade,
+        isNewRound,
+        isMyTurn,
+        isFinished,
+      }),
+    [
+      canPass,
+      sortedHand,
+      gameState.lastPlayedCombination,
+      gameState.startCard,
+      gameState.firstPlayMade,
+      isNewRound,
+      isMyTurn,
+      isFinished,
+    ]
+  );
   const passed = usePassedSeats(
     gameState.currentTurnIndex,
     gameState.lastPlayedBy,
     gameState.lastPlayedCombination,
     players
   );
-
-  const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -1395,7 +1417,7 @@ export function GameTable({
               {!spectating && (
                 <PassaButton
                   canPass={canPass}
-                  onlyMove={canPass && !staged.canBeatPile}
+                  onlyMove={passIsOnlyMove}
                   flashStyle={passaFlashStyle}
                   onPress={handlePass}
                   a11yLabel={t("gameTable.passA11yLabel")}

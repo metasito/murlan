@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readStagedPlay } from "../../components/table/stagedPlay.ts";
+import { canBeatPileOf, readStagedPlay } from "../../components/table/stagedPlay.ts";
 import type { Card, Combination, Rank } from "../../lib/game/gameEngine.ts";
 
 const card = (rank: Rank, suit: Card["suit"]): Card => ({
@@ -117,33 +117,42 @@ describe("the opening play", () => {
 });
 
 describe("whether the hand can answer the pile at all", () => {
-  test("a hand holding a higher pair can beat a pair", () => {
-    const s = staged({ lastPlayedCombination: pairOfSevens, isNewRound: false });
-    assert.equal(s.canBeatPile, false);
-    const withJacks = staged({
-      hand: [...HAND, card("J", "spades"), card("J", "hearts")],
-      lastPlayedCombination: pairOfSevens,
-      isNewRound: false,
+  const beatable = (over: Partial<Parameters<typeof canBeatPileOf>[0]>) =>
+    canBeatPileOf({
+      hand: HAND,
+      lastPlayedCombination: null,
+      startCard: undefined,
+      firstPlayMade: true,
+      isNewRound: true,
+      isMyTurn: true,
+      isFinished: false,
+      ...over,
     });
-    assert.equal(withJacks.canBeatPile, true);
+
+  test("a hand holding a higher pair can beat a pair", () => {
+    assert.equal(beatable({ lastPlayedCombination: pairOfSevens, isNewRound: false }), false);
+    assert.equal(
+      beatable({
+        hand: [...HAND, card("J", "spades"), card("J", "hearts")],
+        lastPlayedCombination: pairOfSevens,
+        isNewRound: false,
+      }),
+      true
+    );
   });
 
   test("a new round can always be led", () => {
-    assert.equal(staged({}).canBeatPile, true);
+    assert.equal(beatable({}), true);
   });
 
   test("off turn, and once out, nothing is answerable", () => {
-    const over = { lastPlayedCombination: null, isNewRound: true };
-    assert.equal(staged({ ...over, isMyTurn: false }).canBeatPile, false);
-    assert.equal(staged({ ...over, isFinished: true }).canBeatPile, false);
+    assert.equal(beatable({ isMyTurn: false }), false);
+    assert.equal(beatable({ isFinished: true }), false);
   });
 
   test("the start card constrains the opening lead", () => {
-    const opening = {
-      startCard: card("4", "clubs"),
-      firstPlayMade: false,
-    };
-    assert.equal(staged(opening).canBeatPile, false);
-    assert.equal(staged({ ...opening, startCard: THREE_SPADES }).canBeatPile, true);
+    const opening = { startCard: card("4", "clubs"), firstPlayMade: false };
+    assert.equal(beatable(opening), false);
+    assert.equal(beatable({ ...opening, startCard: THREE_SPADES }), true);
   });
 });
