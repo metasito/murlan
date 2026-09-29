@@ -43,6 +43,7 @@ import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Combination, Player } from "@/lib/game/gameEngine";
+import { useRingProbe } from "@/lib/diagnostics";
 
 /** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
 export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
@@ -376,6 +377,7 @@ function SeatRing({
     }
   );
   const lit = isActive || mark?.lit === true;
+  const probe = useRingProbe(name);
 
   useEffect(
     () => () => {
@@ -424,7 +426,7 @@ function SeatRing({
   const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
-    <View testID="seat-ring" {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} style={{ width: size, height: size }}>
+    <View ref={probe} testID="seat-ring" {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} style={{ width: size, height: size }}>
       <Animated.View
         testID="seat-ring-ping"
         pointerEvents="none"

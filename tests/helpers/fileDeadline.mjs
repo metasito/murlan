@@ -18,7 +18,9 @@ export function deadlineMs(env = process.env) {
 
 if (isMainThread && process.env.NODE_TEST_CONTEXT) {
   const watch = { file: process.argv[1], ms: deadlineMs() };
-  new Worker(new URL(import.meta.url), { workerData: { fileDeadline: watch } }).unref();
+  // Not the inherited execArgv: its `--import ./tests/…` resolves against the cwd when the worker
+  // boots, and a file that chdirs before then kills the worker, and with it the deadline.
+  new Worker(new URL(import.meta.url), { execArgv: [], workerData: { fileDeadline: watch } }).unref();
 } else if (workerData?.fileDeadline) {
   const { file, ms } = workerData.fileDeadline;
   setTimeout(() => {

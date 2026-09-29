@@ -10,6 +10,9 @@ export const DESIGN = { width: 874, height: 402 } as const;
 
 export type LampTarget = FlyDirection | "centre";
 
+/** Design points; reach 1 is the size of the light on the page the owner tuned. */
+export type Pool = readonly [x: number, y: number, reach: number];
+
 const POOL: Record<LampTarget, readonly [number, number]> = {
   bottom: [457, 292],
   right: [712, 196],
@@ -34,6 +37,9 @@ export interface Lamp {
   y: number;
   tx: number;
   ty: number;
+  /** The light's reach, gliding toward `tr` with the pool. */
+  r: number;
+  tr: number;
   ph: number;
   kick: number;
   flare: number;
@@ -49,7 +55,7 @@ export interface Lamp {
   level: number;
   f: number;
   /** What the last frame `lampMoved` passed drew. */
-  drawn: { lx: number; ly: number; level: number; f: number };
+  drawn: { lx: number; ly: number; level: number; f: number; r: number };
 }
 
 export function lampTarget(target: LampTarget): readonly [number, number] {
@@ -57,13 +63,19 @@ export function lampTarget(target: LampTarget): readonly [number, number] {
   return POOL[target];
 }
 
-export function restingLamp(target: LampTarget, level = 1): Lamp {
+export function lampPool(target: LampTarget): Pool {
   const [x, y] = POOL[target];
+  return [x, y, 1];
+}
+
+export function restingLamp([x, y, r]: Pool, level = 1): Lamp {
   return {
     x,
     y,
     tx: x,
     ty: y,
+    r,
+    tr: r,
     ph: 0,
     kick: 0,
     flare: 0,
@@ -76,13 +88,15 @@ export function restingLamp(target: LampTarget, level = 1): Lamp {
     ly: y - LIGHT_ABOVE,
     level,
     f: 0,
-    drawn: { lx: x, ly: y - LIGHT_ABOVE, level, f: 0 },
+    drawn: { lx: x, ly: y - LIGHT_ABOVE, level, f: 0, r },
   };
 }
 
 const POINT_STEP = 0.01;
 /** Half a step of 8-bit light. */
 const LIGHT_STEP = 1 / 512;
+/** Nothing the reach scales lies farther than the table's width from the light: under this, no point moves by a step. */
+const REACH_STEP = POINT_STEP / DESIGN.width;
 
 /** Whether this frame draws anything the last one drawn did not; the felt redraws only then. */
 export function lampMoved(s: Lamp): boolean {
@@ -92,12 +106,14 @@ export function lampMoved(s: Lamp): boolean {
     Math.abs(s.lx - d.lx) <= POINT_STEP &&
     Math.abs(s.ly - d.ly) <= POINT_STEP &&
     Math.abs(s.level - d.level) <= LIGHT_STEP &&
-    Math.abs(s.f - d.f) <= LIGHT_STEP;
+    Math.abs(s.f - d.f) <= LIGHT_STEP &&
+    Math.abs(s.r - d.r) <= REACH_STEP;
   if (still) return false;
   d.lx = s.lx;
   d.ly = s.ly;
   d.level = s.level;
   d.f = s.f;
+  d.r = s.r;
   return true;
 }
 
@@ -113,10 +129,12 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
   if (reduced) {
     s.x = s.tx;
     s.y = s.ty;
+    s.r = s.tr;
   } else {
     const e = 1 - Math.exp(-dt * GLIDE);
     s.x += (s.tx - s.x) * e;
     s.y += (s.ty - s.y) * e;
+    s.r += (s.tr - s.r) * e;
   }
   s.lvl += (s.lvlT - s.lvl) * (1 - Math.exp(-dt * s.lvlRate));
   const run = 1 - s.freeze;
@@ -133,12 +151,13 @@ export function stepLamp(s: Lamp, seconds: number, reduced: boolean): void {
 
 /** A moment's hold on the lamp: each call is what the mockup's chapters write into `lamp`. */
 export const lampControls = {
-  setTarget(s: Lamp, target: LampTarget, reduced: boolean): void {
+  setTarget(s: Lamp, pool: Pool, reduced: boolean): void {
     "worklet";
-    [s.tx, s.ty] = POOL[target];
+    [s.tx, s.ty, s.tr] = pool;
     if (reduced) {
       s.x = s.tx;
       s.y = s.ty;
+      s.r = s.tr;
     }
   },
   setLevel(s: Lamp, to: number, rate: number): void {
