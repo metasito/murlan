@@ -7,11 +7,15 @@
 // on the turn, which `playBtnValid` already does.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
+import { Pressable, Text } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
+import { GameProvider } from '@/context/GameContext';
+import { useLocalSession, useLocalTable } from '@/context/gameHooks';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t, type TranslationKey } from '@/lib/i18n';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
@@ -158,19 +162,95 @@ describe('selecting a card out of turn', () => {
   });
 });
 
-describe('another seat taking its turn', () => {
-  it('leaves the staged selection alone', async () => {
-    const r = await render(table({ gameState: state(1) }));
-    await pressCard(SEVEN_H);
-
-    const played = state(0, {
-      players: [seat('player_0', 'Ana', HAND), seat('player_1', 'Besi', [BOT_HAND[1]])],
+describe('passing', () => {
+  it('drops the staged selection', async () => {
+    const onPass = jest.fn();
+    const facing = state(0, {
       lastPlayedCombination: { type: 'single', cards: [BOT_HAND[0]], strength: 2 },
       lastPlayedBy: 1,
     });
-    await act(async () => r.rerender(table({ gameState: played })));
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable gameState={facing} viewerSeat={0} onPlay={noop} onPass={onPass} onQuit={noop} onExchangeGive={noop} />
+      </SafeAreaProvider>
+    );
+    await pressCard(SEVEN_H);
 
-    expect(selected(SEVEN_H)).toBe(true);
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-passa'));
+    });
+
+    expect(onPass).toHaveBeenCalledTimes(1);
+    expect(selected(SEVEN_H)).toBe(false);
+
+    await r.unmount();
+  });
+});
+
+function OfflineTable() {
+  const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
+  const { setupGame } = useLocalSession();
+  const start = gameState?.startCard;
+  return (
+    <>
+      <Pressable
+        testID="setup"
+        onPress={() =>
+          setupGame(
+            [
+              { name: 'Ana', type: 'human' },
+              { name: 'Luan', type: 'ai', personality: 'luan' },
+            ],
+            'free_for_all'
+          )
+        }
+      >
+        <Text>setup</Text>
+      </Pressable>
+      <Pressable testID="open" onPress={() => start && gameState?.currentTurnIndex === 0 && playCards([start.id])}>
+        <Text>open</Text>
+      </Pressable>
+      <Pressable testID="ai" onPress={runAITurn}>
+        <Text>ai</Text>
+      </Pressable>
+      <Text testID="turn">{gameState ? String(gameState.currentTurnIndex) : '-'}</Text>
+      <Text testID="held">{JSON.stringify(gameState?.players[0].hand.find((c) => !c.isJoker) ?? null)}</Text>
+      {gameState && (
+        <GameTable gameState={gameState} viewerSeat={0} onPlay={playCards} onPass={passTurn} onQuit={noop} onExchangeGive={noop} />
+      )}
+    </>
+  );
+}
+
+describe('an AI taking its turn offline', () => {
+  it('leaves the staged selection alone', async () => {
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <NotificationProvider>
+          <GameProvider>
+            <OfflineTable />
+          </GameProvider>
+        </NotificationProvider>
+      </SafeAreaProvider>
+    );
+    const tapTestId = async (id: string) => {
+      await act(async () => {
+        fireEvent.press(screen.getByTestId(id));
+      });
+    };
+    await tapTestId('setup');
+    await tapTestId('open');
+    expect(screen.getByTestId('turn').props.children).toBe('1');
+
+    const held = JSON.parse(screen.getByTestId('held').props.children as string) as Card;
+    const heldNode = () => screen.getByLabelText(cardSpokenName(held, t), { includeHiddenElements: true });
+    await act(async () => {
+      fireEvent.press(heldNode());
+    });
+
+    await tapTestId('ai');
+    expect(screen.getByTestId('turn').props.children).toBe('0');
+    expect(heldNode().props.accessibilityState?.selected).toBe(true);
 
     await r.unmount();
   });

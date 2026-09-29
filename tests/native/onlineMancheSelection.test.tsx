@@ -47,7 +47,6 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => ({
 });
 
 let mockGameState: GameState = stateWith([KING, NINE]);
-let mockError: string | null = null;
 const mockPlayCards = jest.fn<(ids: string[]) => void>();
 
 jest.mock('@/context/OnlineGameContext', () =>
@@ -60,7 +59,7 @@ jest.mock('@/context/OnlineGameContext', () =>
       rejoinFailed: false,
       reconnectNotice: null,
       connected: true,
-      error: mockError,
+      error: null,
       clearError: () => {},
       playCards: mockPlayCards,
       pass: () => {},
@@ -116,7 +115,6 @@ describe('the online table selection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGameState = stateWith([KING, NINE]);
-    mockError = null;
   });
 
   it('is cleared by the deal, even one that deals the staged card back', async () => {
@@ -155,14 +153,13 @@ describe('the online table selection', () => {
     await r.unmount();
   });
 
-  it('keeps the whole selection when the server rejects the play', async () => {
+  it('survives GIOCA, and keeps all of it while the hand holds still, as on a rejected play', async () => {
     const r = await render(screenUnderTest());
     await tap(KING);
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    mockError = 'Invalid play';
     await serverSends(r, stateWith([card('K', 'hearts'), card('9', 'spades')]));
     expect(selected(KING)).toBe(true);
     expect(selected(NINE)).toBe(false);

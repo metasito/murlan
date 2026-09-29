@@ -98,10 +98,9 @@ import {
 import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
 import {
   createSelectionStore,
-  followHand,
-  inMode,
   NO_SELECTION,
   press,
+  settle,
   type SelectionMode,
 } from "@/components/table/selection";
 import { TurnChip } from "@/components/table/turnChip";
@@ -505,7 +504,12 @@ export function GameTable({
   const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
   const [selection] = useState(() => createSelectionStore());
   const picked = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
-  const handSelection = inMode(picked, selectionMode).ids;
+  const heldIds = React.useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
+  const shown = React.useMemo(
+    () => settle(picked, heldIds, selectionMode),
+    [picked, heldIds, selectionMode]
+  );
+  const handSelection = shown.ids;
   const selectedIds = exchangeIsMine ? NO_SELECTION.ids : handSelection;
   const exchangePick = exchangeIsMine ? (handSelection[0] ?? null) : null;
   const staged = React.useMemo(
@@ -841,13 +845,6 @@ export function GameTable({
     return () => clearTimeout(id);
   }, [rejectHint]);
 
-  const heldIds = React.useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
-  const heldBefore = useRef(heldIds);
-  useEffect(() => {
-    const before = heldBefore.current;
-    heldBefore.current = heldIds;
-    selection.set(inMode(followHand(selection.get(), before, heldIds), selectionMode));
-  }, [selection, heldIds, selectionMode]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -860,11 +857,11 @@ export function GameTable({
   const handleCardPress = useCallback(
     (id: string) => {
       if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
-      const next = press(selection.get(), id, selectionMode);
+      const next = press(settle(selection.get(), heldIds, selectionMode), id);
       event([{ kind: next.ids.includes(id) ? "select" : "deselect" }]);
       selection.set(next);
     },
-    [isFinished, spectating, exchangeIsMine, exchangeIsWinners, selection, selectionMode]
+    [isFinished, spectating, exchangeIsMine, exchangeIsWinners, selection, heldIds, selectionMode]
   );
   useBenchHandle("cardPress", handleCardPress);
   // The button stays pressable while it is unavailable so a refusal has a
@@ -910,9 +907,9 @@ export function GameTable({
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
-    selection.set(NO_SELECTION);
+    selection.set({ ...shown, ids: [] });
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass, selection]);
+  }, [isMyTurn, isFinished, isNewRound, onPass, selection, shown]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 

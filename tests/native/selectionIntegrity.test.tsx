@@ -7,7 +7,7 @@
 // itself. Card ids are deterministic (`${rank}_${suit}`), so a leftover id also
 // matches a card in the next manche and renders it pre-selected.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import React from 'react';
+import React, { Profiler } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -120,6 +120,31 @@ describe('a staged card leaving the hand', () => {
     await act(async () => r.rerender(table(HAND)));
 
     expect(selected(SEVEN_H)).toBe(false);
+
+    await r.unmount();
+  });
+
+  it('draws the deal with the staged card already down, in its first committed frame', async () => {
+    const frames: boolean[] = [];
+    let watching = false;
+    const onRender = () => {
+      if (!watching) return;
+      const node = screen.queryByLabelText(cardSpokenName(SEVEN_H, t), { includeHiddenElements: true });
+      if (node) frames.push(node.props.accessibilityState?.selected === true);
+    };
+    const profiled = (hand: Card[]) => (
+      <Profiler id="table" onRender={onRender}>
+        {table(hand)}
+      </Profiler>
+    );
+    const r = await render(profiled([SEVEN_H, SEVEN_C, NINE]));
+    await tap(SEVEN_H);
+    watching = true;
+
+    await act(async () => r.rerender(profiled(HAND)));
+
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames).not.toContain(true);
 
     await r.unmount();
   });

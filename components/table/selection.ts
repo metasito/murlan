@@ -3,32 +3,28 @@ export type SelectionMode = "play" | "exchange";
 export interface Selection {
   mode: SelectionMode;
   ids: string[];
+  held: readonly string[];
 }
 
-export const NO_SELECTION: Selection = { mode: "play", ids: [] };
+export const NO_SELECTION: Selection = { mode: "play", ids: [], held: [] };
 
-export function inMode(selection: Selection, mode: SelectionMode): Selection {
-  return selection.mode === mode ? selection : { mode, ids: [] };
+function followHand(selection: Selection, hand: readonly string[]): Selection {
+  const had = new Set(selection.held);
+  if (hand.some((id) => !had.has(id))) return { mode: selection.mode, ids: [], held: hand };
+  if (hand.length === selection.held.length) return selection;
+  const kept = new Set(hand);
+  return { mode: selection.mode, ids: selection.ids.filter((id) => kept.has(id)), held: hand };
 }
 
-export function press(selection: Selection, id: string, mode: SelectionMode): Selection {
-  const { ids } = inMode(selection, mode);
-  if (mode === "exchange") return { mode, ids: ids[0] === id ? [] : [id] };
-  return { mode, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] };
+export function settle(selection: Selection, hand: readonly string[], mode: SelectionMode): Selection {
+  const followed = followHand(selection, hand);
+  return followed.mode === mode ? followed : { mode, ids: [], held: followed.held };
 }
 
-export function followHand(
-  selection: Selection,
-  before: readonly string[],
-  after: readonly string[]
-): Selection {
-  const had = new Set(before);
-  if (after.some((id) => !had.has(id))) {
-    return selection.ids.length === 0 ? selection : { mode: selection.mode, ids: [] };
-  }
-  const held = new Set(after);
-  const kept = selection.ids.filter((id) => held.has(id));
-  return kept.length === selection.ids.length ? selection : { mode: selection.mode, ids: kept };
+export function press(selection: Selection, id: string): Selection {
+  const { mode, ids, held } = selection;
+  if (mode === "exchange") return { mode, ids: ids[0] === id ? [] : [id], held };
+  return { mode, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id], held };
 }
 
 export interface SelectionStore {
