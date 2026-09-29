@@ -7,7 +7,7 @@ import { MenuCard } from "@/components/MenuCard";
 import { useSettings } from "@/context/SettingsContext";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
-import { hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import {
   CARD_BACK_IDS,
   TABLE_FELT_IDS,
@@ -48,7 +48,7 @@ function Option({
   return (
     <Pressable
       onPress={() => {
-        hapticSelection();
+        uiFeedback("selection");
         onPress();
       }}
       style={({ pressed }) => [

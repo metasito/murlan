@@ -7,14 +7,6 @@
 // list must never show a name an account deletion erased.
 import { describe, it, expect, jest } from '@jest/globals';
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
 import { ReplayTransport, ReplayMoveList } from '@/components/ReplayControls';

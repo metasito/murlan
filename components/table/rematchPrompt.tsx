@@ -10,7 +10,7 @@ import { TableText } from "./TableText";
 import { a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { hapticLight, hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import {
   Colors,
   FontSize,
@@ -77,7 +77,7 @@ export function RematchPromptPanel({
             <Pressable
               testID="btn-rematch-yes"
               onPress={() => {
-                hapticSelection();
+                uiFeedback("selection");
                 prompt.onAnswer(true);
               }}
               style={[styles.rematchChoice, styles.rematchChoiceYes]}
@@ -89,7 +89,7 @@ export function RematchPromptPanel({
             <Pressable
               testID="btn-rematch-no"
               onPress={() => {
-                hapticLight();
+                uiFeedback("light");
                 prompt.onAnswer(false);
               }}
               style={styles.rematchChoice}

@@ -384,7 +384,7 @@ function JokerStar({
 // regeneration are recorded in assets/images/cards/README.md.
 //
 // Each key is a function so Metro can statically resolve the require() calls,
-// the same shape lib/device/sounds.ts uses.
+// the same shape lib/device/soundAssets.ts uses.
 const COURT_ART: Record<string, () => number> = {
   J_clubs:      () => require("../assets/images/cards/jack_of_clubs.png") as number,
   J_diamonds:   () => require("../assets/images/cards/jack_of_diamonds.png") as number,

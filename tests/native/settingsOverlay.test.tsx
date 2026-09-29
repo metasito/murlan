@@ -14,10 +14,6 @@ jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: { addEventListener: jest.fn(() => () => {}) },
 }));
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
 // Hoisted above the factories below, which is why they carry the `mock` prefix
 // jest requires for an out-of-scope reference.
 const mockLogout = jest.fn<() => Promise<void>>();

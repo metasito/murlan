@@ -16,19 +16,6 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardPass: jest.fn(async () => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 const mockRunAITurn = jest.fn();
 
 /** The bot is on move and the exchange has just resolved. */

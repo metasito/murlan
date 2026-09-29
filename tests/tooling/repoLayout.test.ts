@@ -48,7 +48,7 @@ function danglingServerPaths(files: [string, string][], exists: (p: string) => b
 
 const LIB_FOLDERS: Record<string, string[]> = {
   game: ["gameEngine", "autoMove", "botPersonalities", "rating", "standings", "placement", "replay", "matchState", "sharedGameFlow"],
-  device: ["haptics", "music", "musicTracks", "musicTracks.web", "sounds", "pushRegistration", "orientation", "keyboard", "fonts", "fonts.web"],
+  device: ["feedback", "audioEngine", "hapticsEngine", "moments", "musicTracks", "musicTracks.web", "soundAssets", "pushRegistration", "orientation", "keyboard", "fonts", "fonts.web"],
 };
 const inLib = (p: string) => `lib/${p}`;
 const NAMED_LIB_FILE = /(?<![\w/.@-])lib\/[\w./-]+\.tsx?\b/g;

@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { hapticMedium, hapticSuccess } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -182,7 +182,7 @@ export default function FriendsScreen() {
     try {
       const res = await apiRequest("POST", "/api/friends/add", { username: searchResult.username });
       const data = await res.json();
-      hapticSuccess();
+      uiFeedback("success");
       showNotification({
         type: "friend_request",
         title: t("friends.requestSentTitle"),
@@ -221,7 +221,7 @@ export default function FriendsScreen() {
   }, []);
 
   function handleJoinGameInvite(roomCode: string) {
-    hapticMedium();
+    uiFeedback("medium");
     dismissGameInvite(roomCode);
     joinRoom(roomCode);
   }

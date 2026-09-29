@@ -7,12 +7,6 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
 import { TurnChip } from '@/components/table/turnChip';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';

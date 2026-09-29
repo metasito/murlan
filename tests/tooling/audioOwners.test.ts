@@ -13,6 +13,8 @@ const DIRS =["app", "components", "context", "lib", "modules"].filter((d) => exi
 const OWNERS: Record<string, string[]> = {
   "react-native-audio-api": ["lib/device/audioEngine.ts"],
   "react-native-turbo-haptics": ["lib/device/hapticsEngine.ts"],
+  "expo-audio": [],
+  "expo-haptics": [],
   "lib/device/audioEngine": ["lib/device/feedback.ts"],
   "lib/device/hapticsEngine": ["lib/device/feedback.ts"],
   "modules/murlan-audio-session": ["lib/device/audioEngine.ts"],

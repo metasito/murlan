@@ -14,29 +14,9 @@
 // not happen under jest at all: delete them and all four assertions fail.
 // Compiler output is not covered here, and a correctness-adjacent property is
 // not a thing to keep in an optimisation.
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect } from "@jest/globals";
 import { renderHook } from "@testing-library/react-native";
 import { useTableFeedback } from "@/components/useTableFeedback";
-
-jest.mock("@/lib/device/sounds", () => ({
-  playBomb: jest.fn(),
-  playCardPass: jest.fn(),
-  playCardPlay: jest.fn(),
-  playCombo: jest.fn(),
-  playExchange: jest.fn(),
-  playMancheLost: jest.fn(),
-  playMancheWon: jest.fn(),
-  playTurn: jest.fn(),
-}));
-jest.mock("@/lib/device/haptics", () => ({
-  hapticHeavy: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
 
 const state = (scale: number) => ({
   isMyTurn: false,

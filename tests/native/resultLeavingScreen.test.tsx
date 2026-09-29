@@ -13,21 +13,6 @@ jest.mock('expo-router', () => ({
   router: { replace: mockReplace, push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/device/haptics', () => ({
-  setHapticsMasterEnabled: jest.fn(),
-  hapticsEnabled: () => false,
-  hapticSelection: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticHeavy: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticError: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-
-jest.mock('@/lib/device/sounds', () => ({ holdSounds: () => () => {}, ensureAudioMode: jest.fn() }));
-
 const mockPlayers = [
   { id: 'player_0', name: 'Ana', type: 'human', cards: [] },
   { id: 'player_1', name: 'Bot', type: 'ai', cards: [] },

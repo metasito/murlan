@@ -1,6 +1,6 @@
 # Music
 
-The four loops `lib/device/music.ts` plays. Unlike the effects in `assets/sounds/`,
+The loops `lib/device/musicTracks.ts` names and `lib/device/audioEngine.ts` plays. Unlike the effects in `assets/sounds/`,
 these are **not built by a script** — they arrive pre-encoded, which is the
 decision #121 settled and `scripts/build-sounds.mjs`'s header records.
 
@@ -120,5 +120,5 @@ to fail on-device.
 are about 5 MB against the WebM set's 1.5 MB. Paid once in each native bundle,
 not over the wire to web players.
 
-Why music and the sound effects share one `AVAudioSession` category rather
-than each setting their own: `lib/device/sounds.ts`'s `ensureAudioMode()` docblock.
+Music and the sound effects share one `AVAudioSession` category, set once
+before the engine's one context is built (`lib/device/audioEngine.ts`).

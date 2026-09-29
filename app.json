@@ -45,7 +45,6 @@
           "backgroundColor": "#031008"
         }
       ],
-      "expo-audio",
       "expo-localization",
       "expo-notifications",
       [

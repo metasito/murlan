@@ -35,7 +35,7 @@ import {
 import { homeMenu, type HomeAction, type HomeTile } from "@/components/homeMenuModel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ACTIVE_ROOM_KEY } from "@/lib/storageKeys";
-import { hapticLight } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import Feather from "@expo/vector-icons/Feather";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
@@ -212,7 +212,7 @@ function HomeHero({
         testID="home-hero"
         onPress={() => {
           press();
-          hapticLight();
+          uiFeedback("light");
           onPress();
         }}
         accessibilityLabel={sublabel ? `${label}. ${sublabel}` : label}
@@ -267,7 +267,7 @@ function HomeModeTile({
         testID="home-mode-tile"
         onPress={() => {
           press();
-          hapticLight();
+          uiFeedback("light");
           onPress();
         }}
         disabled={disabled}
@@ -324,7 +324,7 @@ function HomeQuietRow({
       <Pressable
         testID="home-how-to-play"
         onPress={() => {
-          hapticLight();
+          uiFeedback("light");
           onPress();
         }}
         accessibilityLabel={label}
@@ -365,7 +365,7 @@ function HomeAccountButton({
     <Pressable
       testID={testID}
       onPress={() => {
-        hapticLight();
+        uiFeedback("light");
         onPress();
       }}
       accessibilityLabel={label}
@@ -500,7 +500,7 @@ function HomePlayerUnit({ onSettings }: { onSettings: () => void }) {
     <Animated.View style={[styles.playerUnit, entrance]}>
       <Pressable
         onPress={() => {
-          hapticLight();
+          uiFeedback("light");
           goProfile();
         }}
         accessibilityLabel={t("home.modeProfile")}
@@ -566,7 +566,7 @@ function HomePill({
     <Pressable
       testID={testID}
       onPress={() => {
-        hapticLight();
+        uiFeedback("light");
         onPress();
       }}
       accessibilityLabel={label}
@@ -620,7 +620,7 @@ function HomeInviteCard({
       <Pressable
         testID="home-invite-join"
         onPress={() => {
-          hapticLight();
+          uiFeedback("light");
           dismissGameInvite(roomCode);
           acceptInvite(roomCode);
           router.push("/(online)");

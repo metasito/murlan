@@ -4,40 +4,10 @@
 // `arrivingCard` (tests/ui-rules/flightPhysics.test.ts) says which card each seat is
 // owed. Only a rendered table says whether the fan actually leaves the place
 // for it, which is what #650 lands into.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
 
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';

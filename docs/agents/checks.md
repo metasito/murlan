@@ -149,8 +149,8 @@ Real device/web divergences, verifiable only on hardware:
 
 - **Reanimated v4 worklets** — the native-renderer suite's shim runs no UI thread and no frame
   loop; jank and a UI-thread crash are device-only.
-- **Audio** — `expo-audio` calls are asserted; whether sound is audible, mixed correctly, or
-  survives the silent switch is device-only.
+- **Audio** — the engine's calls into the mocked `react-native-audio-api` graph are asserted;
+  whether sound is audible, mixed correctly, or survives the silent switch is device-only.
 - **Screen orientation** — `expo-screen-orientation` is a no-op on web; the landscape lock has
   never run under any automated layer.
 - **Haptics** — gated and asserted (`tests/native/haptics.test.tsx` and siblings), but whether

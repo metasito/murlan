@@ -1,6 +1,6 @@
 // tests/tooling/soundAssets.test.ts — the sound files themselves.
 //
-// lib/device/sounds.ts and lib/device/soundAssets.ts require() these names. If one is missing, silent, empty, or
+// lib/device/soundAssets.ts require()s these names. If one is missing, silent, empty, or
 // not actually the format its extension claims, nothing throws: the effect just
 // never plays, on one platform or on all of them. That is the failure this
 // guards, and it is why every file is decoded and measured rather than merely
@@ -18,7 +18,7 @@ const soundsDir = path.join(repoRoot, "assets", "sounds");
 
 /** Every asset path the sound owners require(), read through the compiler. */
 function requiredFiles(): string[] {
-  const owners = ["lib/device/sounds.ts", "lib/device/soundAssets.ts"].filter((f) => existsSync(path.join(repoRoot, f)));
+  const owners = ["lib/device/soundAssets.ts"].filter((f) => existsSync(path.join(repoRoot, f)));
   const files = owners
     .flatMap((f) => moduleEdges(f, readFileSync(path.join(repoRoot, f), "utf8")))
     .filter((e) => e.via === "require" && e.to.startsWith("assets/sounds/"))
@@ -138,7 +138,7 @@ function integratedLoudness(pcm: Float32Array, fs: number): number {
  * Decoded length and integrated loudness of each shipped effect. Decoding alone
  * does not catch a truncated file — mpg123 reports no error on a short stream —
  * so the length is pinned per file. The loudness is pinned because each file
- * carries its own level: sounds.ts plays the picks at unity.
+ * carries its own level: the engine plays the picks at unity.
  */
 const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "bomb.mp3": { seconds: 1.475, lufs: -23.3 },
@@ -153,7 +153,6 @@ const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "partita_won.mp3": { seconds: 2.415, lufs: -18.6 },
   "pass.mp3": { seconds: 0.232, lufs: -27.7 },
   "play.mp3": { seconds: 0.235, lufs: -26.9 },
-  "reconnected.mp3": { seconds: 0.68, lufs: -24.9 },
   "reject.mp3": { seconds: 0.209, lufs: -19.3 },
   "room_full.mp3": { seconds: 0.287, lufs: -18.6 },
   "round_start.mp3": { seconds: 0.81, lufs: -22.7 },
@@ -186,12 +185,12 @@ const WINDOW_SECONDS = 0.01;
 const MAX_TRAILING_SILENCE = 0.11;
 
 describe("sound assets", () => {
-  test("lib/device/sounds.ts requires exactly the files that exist on disk", () => {
+  test("lib/device/soundAssets.ts requires exactly the files that exist on disk", () => {
     const required = requiredFiles().sort();
     const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
-    assert.deepEqual(onDisk, required, "assets/sounds and lib/device/sounds.ts disagree");
-    assert.equal(required.length, 20, "sounds.ts and soundAssets.ts together require twenty files");
+    assert.deepEqual(onDisk, required, "assets/sounds and lib/device/soundAssets.ts disagree");
+    assert.equal(required.length, 19, "soundAssets.ts requires nineteen files");
     assert.deepEqual(Object.keys(EXPECTED).sort(), required, "EXPECTED does not cover exactly the shipped effects");
   });
 

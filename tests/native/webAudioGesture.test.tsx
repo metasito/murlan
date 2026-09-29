@@ -7,12 +7,6 @@
 // mount" would pass just as green on a build that never plays audio at all.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
-jest.mock('react-native', () => ({ Platform: { OS: 'web' } }));
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: jest.fn(),
-  setAudioModeAsync: jest.fn(async () => {}),
-}));
-
 type Handler = () => void;
 
 let constructed = 0;
@@ -21,8 +15,11 @@ let decodeCalls = 0;
 let ctxState: string;
 let handlers: Map<string, Handler>;
 
+const node = () => ({ gain: { value: 0 }, connect() {} });
+
 class FakeAudioContext {
   state: string;
+  currentTime = 0;
   constructor() {
     constructed += 1;
     this.state = ctxState;
@@ -36,21 +33,18 @@ class FakeAudioContext {
     decodeCalls += 1;
     return Promise.resolve({} as AudioBuffer);
   }
-  createBufferSource() {
-    return { buffer: null, connect() {}, start() {} };
-  }
   createGain() {
-    return { gain: { value: 0 }, connect() {} };
+    return node();
   }
   get destination() {
     return {};
   }
 }
 
-function loadSounds() {
-  let mod!: typeof import('@/lib/device/sounds');
+function loadEngine() {
+  let mod!: typeof import('@/lib/device/audioEngine.web');
   jest.isolateModules(() => {
-    mod = require('@/lib/device/sounds') as typeof import('@/lib/device/sounds');
+    mod = require('@/lib/device/audioEngine.web') as typeof import('@/lib/device/audioEngine.web');
   });
   return mod;
 }
@@ -78,10 +72,10 @@ afterEach(() => {
 });
 
 describe('the web AudioContext waits for a gesture', () => {
-  it('builds no context while preloading on mount', async () => {
-    const sounds = loadSounds();
+  it('builds no context while preloading on start', async () => {
+    const engine = loadEngine();
 
-    await sounds.preloadSounds();
+    await engine.startAudio();
 
     expect(constructed).toBe(0);
     // The floor: preloading must still have done its work, or "no context"
@@ -90,9 +84,8 @@ describe('the web AudioContext waits for a gesture', () => {
   });
 
   it('builds the context on the first gesture, and resumes it before any await', async () => {
-    const sounds = loadSounds();
-    await sounds.preloadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    await engine.startAudio();
 
     const onPointerDown = handlers.get('pointerdown');
     expect(onPointerDown).toBeDefined();
@@ -107,9 +100,8 @@ describe('the web AudioContext waits for a gesture', () => {
 
   it('resumes from Safari\'s interrupted state, not just suspended', async () => {
     ctxState = 'interrupted';
-    const sounds = loadSounds();
-    await sounds.preloadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    await engine.startAudio();
 
     handlers.get('pointerdown')!();
 
@@ -117,11 +109,10 @@ describe('the web AudioContext waits for a gesture', () => {
   });
 
   it('decodes what the preload fetched only once there is a context to decode with', async () => {
-    const sounds = loadSounds();
-    await sounds.preloadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    await engine.startAudio();
 
-    // Bytes are fetched on mount, but nothing can decode them yet.
+    // Bytes are fetched on start, but nothing can decode them yet.
     expect(decodeCalls).toBe(0);
 
     handlers.get('pointerdown')!();
@@ -133,8 +124,8 @@ describe('the web AudioContext waits for a gesture', () => {
   it('asks for the playback session, so the ringer switch does not silence it', async () => {
     const session = { type: 'ambient' };
     (globalThis as Record<string, unknown>).navigator = { audioSession: session };
-    const sounds = loadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    void engine.startAudio();
 
     handlers.get('pointerdown')!();
 
@@ -145,8 +136,8 @@ describe('the web AudioContext waits for a gesture', () => {
   // unlock still has to build and resume the context rather than throwing.
   it('unlocks normally in a browser with no audio session to ask about', async () => {
     (globalThis as Record<string, unknown>).navigator = {};
-    const sounds = loadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    void engine.startAudio();
 
     expect(() => handlers.get('pointerdown')!()).not.toThrow();
     expect(constructed).toBe(1);
@@ -154,9 +145,8 @@ describe('the web AudioContext waits for a gesture', () => {
   });
 
   it('keeps listening, so a later interruption recovers on the next tap', async () => {
-    const sounds = loadSounds();
-    await sounds.preloadSounds();
-    sounds.bindWebAudioUnlock();
+    const engine = loadEngine();
+    await engine.startAudio();
 
     const tap = handlers.get('pointerdown')!;
     tap();

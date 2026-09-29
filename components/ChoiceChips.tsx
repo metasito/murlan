@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Colors, Spacing, Radius, FontSize, Type, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { a11yHidden, a11yState } from "@/lib/a11y";
-import { hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 
 export interface Choice<T> {
   value: T;
@@ -50,7 +50,7 @@ export function ChoiceChips<T extends string | number>({
           <Pressable
             key={String(choice.value)}
             onPress={() => {
-              hapticSelection();
+              uiFeedback("selection");
               onChange(choice.value);
             }}
             disabled={disabled}

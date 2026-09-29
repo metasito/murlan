@@ -7,19 +7,6 @@
 // suites over one screen is one suite too many to keep honest.
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 
-jest.mock('expo-audio', () => ({
-  createAudioPlayer: () => ({ play: () => {}, remove: () => {}, seekTo: async () => {}, volume: 1 }),
-  setAudioModeAsync: async () => {},
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: mockPush, replace: jest.fn() },

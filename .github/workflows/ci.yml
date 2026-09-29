@@ -554,6 +554,7 @@ jobs:
           list=$(find android node_modules/expo/android -name ExpoModulesPackageList.java 2>/dev/null | head -1)
           [ -n "$list" ] || { echo "::error::No ExpoModulesPackageList.java was generated."; exit 1; }
           grep -q "MurlanDiagnosticsModule" "$list"
+          if grep -qE "expo\.modules\.(audio|haptics)\." "$list"; then echo "::error::expo-audio or expo-haptics is still registered."; exit 1; fi
 
   ios-build:
     name: iOS compiles
@@ -595,6 +596,7 @@ jobs:
           [ -n "$provider" ] || { echo "::error::No ExpoModulesProvider.swift was generated."; exit 1; }
           grep -q "MurlanDiagnosticsModule" "$provider"
           grep -q "MurlanAudioSessionModule" "$provider"
+          if grep -qE "ExpoAudio|ExpoHaptics" ios/Podfile.lock "$provider"; then echo "::error::expo-audio or expo-haptics is still linked."; exit 1; fi
       # The workspace and scheme are named from app.json rather than fixed here,
       # so renaming the app does not silently stop compiling anything.
       - name: Compile

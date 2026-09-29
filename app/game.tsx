@@ -19,7 +19,7 @@ import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
-import { hapticWarn } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
@@ -206,7 +206,7 @@ export default function GameScreen() {
         // vanished. The pass sound is the table's, fired off the committed
         // state; what is added here is the warn haptic and the reason.
         onExpire: () => {
-          hapticWarn();
+          uiFeedback("warn");
           showNotification({
             type: "afk",
             title: t("game.autoPassTitle"),

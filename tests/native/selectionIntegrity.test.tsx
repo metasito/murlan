@@ -11,36 +11,6 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 

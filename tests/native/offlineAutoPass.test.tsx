@@ -18,19 +18,6 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardPass: jest.fn(async () => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 const mockPassTurn = jest.fn();
 const mockShowNotification = jest.fn();
 
@@ -95,14 +82,14 @@ jest.mock('@/components/GameTable', () => {
   };
 });
 
-import * as Haptics from 'expo-haptics';
-import { playCardPass } from '@/lib/device/sounds';
+import { bootFeedback, haptics, sounds } from './helpers/feedback';
 import { t } from '@/lib/i18n';
 import GameScreen from '@/app/game';
 
 describe('the offline turn clock expiring', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await bootFeedback();
   });
 
   it('passes with the warn haptic and a banner naming it, leaving the sound to the table', async () => {
@@ -112,8 +99,8 @@ describe('the offline turn clock expiring', () => {
       fireEvent.press(screen.getByTestId('expire'));
     });
 
-    expect(jest.mocked(Haptics.notificationAsync)).toHaveBeenCalledWith('warning');
-    expect(playCardPass).not.toHaveBeenCalled();
+    expect(haptics()).toContain('notificationWarning');
+    expect(sounds()).not.toContain('pass');
     expect(mockShowNotification).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'afk', title: t('game.autoPassTitle') })
     );

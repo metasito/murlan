@@ -2,15 +2,7 @@
 // partita the viewer won, and nothing else (#1102).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
-jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: mockState,

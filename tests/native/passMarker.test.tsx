@@ -9,28 +9,6 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
 // The flight collapses to a single timer, so nothing here waits on a spring.
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -38,7 +16,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { playCardPass } from '@/lib/device/sounds';
+import { bootFeedback, sounds } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
 import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
@@ -238,9 +216,12 @@ describe('the per-seat pass marker', () => {
 });
 
 describe('the pass sound', () => {
-  beforeEach(() => {
+  const count = (id: string) => sounds().filter((s) => s === id).length;
+
+  beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -255,7 +236,7 @@ describe('the pass sound', () => {
 
   it('fires for a seat that is not the viewer', async () => {
     const r = await render(table(LED));
-    expect(playCardPass).not.toHaveBeenCalled();
+    expect(count('pass')).toBe(0);
 
     await act(async () => {
       r.rerender(
@@ -269,7 +250,7 @@ describe('the pass sound', () => {
         )
       );
     });
-    expect(playCardPass).toHaveBeenCalledTimes(1);
+    expect(count('pass')).toBe(1);
     await r.unmount();
   });
 
@@ -289,7 +270,7 @@ describe('the pass sound', () => {
       fireEvent.press(screen.getByTestId('btn-passa'));
     });
     expect(onPass).toHaveBeenCalledTimes(1);
-    expect(playCardPass).not.toHaveBeenCalled();
+    expect(count('pass')).toBe(0);
 
     await act(async () => {
       r.rerender(
@@ -304,13 +285,13 @@ describe('the pass sound', () => {
         )
       );
     });
-    expect(playCardPass).toHaveBeenCalledTimes(1);
+    expect(count('pass')).toBe(1);
     await r.unmount();
   });
 
-  it('fires for the pass that closes the round, which raises no count edge', async () => {
+  it('sounds the pass that closes the round as the round won, which raises no count edge', async () => {
     // `processPass` resets passCount to zero on the pass that closes a round,
-    // so the close itself is the edge. It layers under the round-winner sting.
+    // so the close itself is the edge. One state change sounds one thing.
     const r = await render(
       table(
         state(4, {
@@ -321,7 +302,7 @@ describe('the pass sound', () => {
         })
       )
     );
-    jest.mocked(playCardPass).mockClear();
+    const passes = count('pass');
 
     await act(async () => {
       r.rerender(
@@ -336,7 +317,8 @@ describe('the pass sound', () => {
         )
       );
     });
-    expect(playCardPass).toHaveBeenCalledTimes(1);
+    expect(count('round_win')).toBe(1);
+    expect(count('pass')).toBe(passes);
     await r.unmount();
   });
 
@@ -360,7 +342,7 @@ describe('the pass sound', () => {
       fireEvent.press(screen.getByTestId('btn-passa'));
     });
     expect(onPass).toHaveBeenCalledTimes(1);
-    expect(playCardPass).not.toHaveBeenCalled();
+    expect(count('pass')).toBe(0);
 
     await act(async () => {
       r.rerender(
@@ -376,7 +358,7 @@ describe('the pass sound', () => {
         )
       );
     });
-    expect(playCardPass).toHaveBeenCalledTimes(1);
+    expect(count('round_win')).toBe(1);
     await r.unmount();
   });
 });

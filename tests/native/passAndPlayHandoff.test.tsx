@@ -10,36 +10,6 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-jest.mock('@/lib/device/sounds', () => ({
-  playCardSelect: jest.fn(async () => {}),
-  playCardPlay: jest.fn(async () => {}),
-  playCombo: jest.fn(async () => {}),
-  playCardPass: jest.fn(async () => {}),
-  playTurn: jest.fn(async () => {}),
-  playRoundStart: jest.fn(async () => {}),
-  playRoundWin: jest.fn(async () => {}),
-  playClockRunningOut: jest.fn(async () => {}),
-  stopClockRunningOut: jest.fn(async () => {}),
-  playBomb: jest.fn(async () => {}),
-  playMancheWon: jest.fn(async () => {}),
-  playMancheLost: jest.fn(async () => {}),
-  playDeal: jest.fn(async () => {}),
-  playExchange: jest.fn(async () => {}),
-  preloadSounds: jest.fn(async () => {}),
-  holdSounds: jest.fn(() => () => {}),
-  setSoundsMasterEnabled: jest.fn(() => {}),
-  setSoundsMasterVolume: jest.fn(() => {}),
-  ensureAudioMode: jest.fn(async () => {}),
-}));
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
-
 const card = (id: string, rank: Card['rank']): Card => ({ id, rank, suit: 'spades', isJoker: false });
 const SEAT0_LEAD = card('s0-7', '7');
 const SEAT0_REST = card('s0-4', '4');

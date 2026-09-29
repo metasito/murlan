@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { hapticError, hapticLight, hapticSelection, hapticSuccess } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
@@ -494,7 +494,7 @@ export default function TutorialScreen() {
   }
 
   async function handleSkip() {
-    hapticLight();
+    uiFeedback("light");
     // Nothing between the press and the navigation may be able to outlive it.
     // The resume marker is not read again until this screen is next opened, so
     // clearing it is started rather than waited on; the seen flag is awaited
@@ -507,7 +507,7 @@ export default function TutorialScreen() {
 
   function goBack() {
     if (stepIndex > 0) {
-      hapticSelection();
+      uiFeedback("selection");
       setStepIndex((i) => i - 1);
     } else {
       router.back();
@@ -516,12 +516,12 @@ export default function TutorialScreen() {
 
   async function goNext() {
     if (isLast) {
-      hapticSuccess();
+      uiFeedback("success");
       await clearProgress();
       router.replace({ pathname: "/lobby", params: { mode: "ai" } });
       return;
     }
-    hapticSelection();
+    uiFeedback("selection");
     setStepIndex((i) => i + 1);
   }
 
@@ -542,16 +542,16 @@ export default function TutorialScreen() {
     const result = evaluatePlay(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
-      hapticSuccess();
+      uiFeedback("success");
       setBeatDone(true);
     } else {
-      hapticError();
+      uiFeedback("error");
     }
   }
 
   function submitPass(b: PlayBeat) {
     setFeedback({ ok: true, text: b.successNarrative });
-    hapticSuccess();
+    uiFeedback("success");
     setBeatDone(true);
   }
 
@@ -565,10 +565,10 @@ export default function TutorialScreen() {
     const result = evaluateExchange(selected, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
-      hapticSuccess();
+      uiFeedback("success");
       setBeatDone(true);
     } else {
-      hapticError();
+      uiFeedback("error");
     }
   }
 

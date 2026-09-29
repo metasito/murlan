@@ -13,8 +13,8 @@
 // Output is 44.1 kHz mono MP3, encoded with lamejs (pure JS — no native
 // binary, no WASM build step, so this needs nothing beyond `npm install` to
 // run). MP3, not OGG: the casino pack ships OGG and iOS will not play it.
-// MP3 decodes natively on iOS, Android and every browser, so lib/device/sounds.ts
-// needs no per-platform format branch. The names must match lib/device/sounds.ts
+// MP3 decodes natively on iOS, Android and every browser, so lib/device/soundAssets.ts
+// needs no per-platform format branch. The names must match lib/device/soundAssets.ts
 // exactly.
 //
 // That reasoning is about *effects*, and does not carry to music. MP3 cannot

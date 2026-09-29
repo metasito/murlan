@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { hapticLight } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useAuth } from "@/context/AuthContext";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
@@ -62,7 +62,7 @@ export default function AuthScreen() {
       setError(t(tab === "register" ? "auth.missingFieldsRegister" : "auth.missingFields"));
       return;
     }
-    hapticLight();
+    uiFeedback("light");
     setLoading(true);
     try {
       if (tab === "login") {

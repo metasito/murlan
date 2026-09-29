@@ -1,17 +1,8 @@
 // tests/native/losingSeatHaptic.test.tsx — the manche's celebration haptic goes
 // only to the seat ResultBoard is celebrating, offline and online alike.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
+import { describe, it, expect, jest } from '@jest/globals';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
-jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 
 // Hoisted above the imports, so it reads these back at render time rather than
 // closing over them — which is what the `mock` prefix permits.
@@ -30,7 +21,7 @@ jest.mock('@/context/GameContext', () => ({
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { haptics } from './helpers/feedback';
 
 import ResultScreen from '@/app/result';
 import { GameOverOverlay } from '@/components/GameOverOverlay';
@@ -49,18 +40,14 @@ const seat = (
   team?: 'A' | 'B'
 ): Player => ({ id, name, hand: [], type, team });
 
-const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
-const firedCelebration = () => selectionAsync.mock.calls.length > 0;
+const selections = () => haptics().filter((h) => h === 'selection');
+const firedCelebration = () => selections().length > 0;
 
 // Read back by the mocked GameContext above, at render time.
 let mockState: GameState;
 let mockMatch: MatchState;
 
 describe('the celebration haptic goes only to the celebrated seat', () => {
-  beforeEach(() => {
-    selectionAsync.mockClear();
-  });
-
   it('offline: stays silent on the human seat that lost the hand', async () => {
     mockState = {
       players: [seat('player_0', 'Bot', 'ai'), seat('player_1', 'You', 'human')],
@@ -93,7 +80,7 @@ describe('the celebration haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(selectionAsync.mock.calls).toEqual([]);
+    expect(selections()).toEqual([]);
     await view.unmount();
   });
 
@@ -176,7 +163,7 @@ describe('the celebration haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(selectionAsync.mock.calls).toEqual([]);
+    expect(selections()).toEqual([]);
     await view.unmount();
   });
 
@@ -358,7 +345,7 @@ describe('the celebration haptic goes only to the celebrated seat', () => {
     );
     await act(async () => {});
 
-    expect(selectionAsync.mock.calls).toEqual([]);
+    expect(selections()).toEqual([]);
     await view.unmount();
   });
 });

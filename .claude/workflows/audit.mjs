@@ -94,7 +94,7 @@ Invariants to confirm:
   },
   {
     key: 'perf-client', model: 'opus', skills: ['react-native-best-practices', 'performance', 'core-web-vitals'],
-    start: 'components/GameTable.tsx, components/table/, components/CardView.tsx, context/, lib/device/sounds.ts, lib/device/music.ts, lib/device/fonts*.ts, metro.config.js, babel.config.js, docs/WEB-PERF.md, docs/BUNDLE.md, scripts/bundle-budget.mjs',
+    start: 'components/GameTable.tsx, components/table/, components/CardView.tsx, context/, lib/device/audioEngine.ts, lib/device/feedback.ts, lib/device/fonts*.ts, metro.config.js, babel.config.js, docs/WEB-PERF.md, docs/BUNDLE.md, scripts/bundle-budget.mjs',
     refs: 'Reanimated performance and worklets guides (no large captures, no functions in shared values); react.dev React Compiler; web.dev Core Web Vitals (LCP < 2.5 s, INP < 200 ms, CLS < 0.1).',
     ask: `- Re-render storms: context value identity, prop churn during card flights.
 - React Compiler bailouts.
@@ -152,7 +152,7 @@ List what BETA-PLAYTEST found that is still unaddressed.`,
   },
   {
     key: 'polish', kind: 'opportunities', model: 'opus', skills: ['game-feel', 'game-ui-design', 'react-native-best-practices'],
-    start: 'docs/FEEL-BAR.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/sounds.ts, lib/device/music.ts, lib/device/haptics.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
+    start: 'docs/FEEL-BAR.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/feedback.ts, lib/device/moments.ts, lib/device/audioEngine.ts, lib/device/hapticsEngine.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
     refs: 'game-feel skill (hit-stop, easing, squash and stretch, layered feedback); FEEL-BAR references per moment.',
     ask: `You propose improvements; you do not hunt defects.
 Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win, Loss, Reconnect, Idle table), plus menus, lobby, results and transitions.
@@ -488,7 +488,7 @@ ${JSON.stringify(finding)}`, {
 const judgeOpportunity = o => agent(`${COMMON}
 
 Judge this polish proposal. keep=false if it already exists, contradicts FEEL-BAR.md or an owner decision in the tracker,
-breaks reduced motion or an invariant, or cannot be built on the current stack (Reanimated, expo-audio, expo-haptics, react-native-svg) at its stated size.
+breaks reduced motion or an invariant, or cannot be built on the current stack (Reanimated, react-native-audio-api, react-native-turbo-haptics, react-native-svg) at its stated size.
 ${JSON.stringify(o)}`, { label: `judge:${o.title.slice(0, 40)}`, phase: 'Verify', model: 'sonnet', schema: KEEP })
   .then(v => v && { ...o, ...v })
 

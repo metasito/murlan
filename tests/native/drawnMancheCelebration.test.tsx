@@ -2,18 +2,9 @@
 // (GAME-RULES.md §11) has no seat or team to celebrate: first-and-fourth (3+0)
 // pays the same total as second-and-third (2+1). Nobody is congratulated and
 // no winning haptic fires, offline and online alike.
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-
-jest.mock('expo-haptics', () => ({
-  selectionAsync: jest.fn(async () => {}),
-  impactAsync: jest.fn(async () => {}),
-  notificationAsync: jest.fn(async () => {}),
-  ImpactFeedbackStyle: { Light: 'light', Medium: 'medium', Heavy: 'heavy' },
-  NotificationFeedbackType: { Success: 'success', Error: 'error', Warning: 'warning' },
-}));
+import { describe, it, expect, jest } from '@jest/globals';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
-jest.mock('expo-audio', () => ({ createAudioPlayer: jest.fn(), setAudioModeAsync: jest.fn() }));
 
 // Hoisted above the imports, so it reads these back at render time rather than
 // closing over them — which is what the `mock` prefix permits.
@@ -32,7 +23,7 @@ jest.mock('@/context/GameContext', () => ({
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
+import { haptics } from './helpers/feedback';
 
 import ResultScreen from '@/app/result';
 import { GameOverOverlay } from '@/components/GameOverOverlay';
@@ -53,7 +44,7 @@ const seat = (id: string, name: string, team: 'A' | 'B'): Player => ({
   team,
 });
 
-const selectionAsync = Haptics.selectionAsync as unknown as ReturnType<typeof jest.fn>;
+const selections = () => haptics().filter((h) => h === 'selection');
 
 // First-and-fourth (3+0) against second-and-third (2+1): both pay 3, a draw.
 const drawnRankings = ['player_0', 'player_1', 'player_2', 'player_3'];
@@ -63,10 +54,6 @@ let mockState: GameState;
 let mockMatch: MatchState;
 
 describe('a drawn manche in teams mode congratulates nobody', () => {
-  beforeEach(() => {
-    selectionAsync.mockClear();
-  });
-
   it('offline: fires no haptic for the seat that finished first', async () => {
     mockState = {
       players: [
@@ -102,7 +89,7 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
     );
     await act(async () => {});
 
-    expect(selectionAsync.mock.calls).toEqual([]);
+    expect(selections()).toEqual([]);
     expect(view.getByText(t('result.handDrawTitle'))).toBeTruthy();
     expect(view.getByText(t('result.handDrawSubtitle'))).toBeTruthy();
     expect(view.queryByText(t('result.handWinner'))).toBeNull();
@@ -157,7 +144,7 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
     );
     await act(async () => {});
 
-    expect(selectionAsync.mock.calls).toEqual([]);
+    expect(selections()).toEqual([]);
     expect(view.getByText(t('result.handDrawTitle'))).toBeTruthy();
     expect(view.getByText(t('result.handDrawSubtitle'))).toBeTruthy();
     expect(view.queryByText(t('result.handWinner'))).toBeNull();
@@ -170,10 +157,6 @@ describe('a drawn manche in teams mode congratulates nobody', () => {
 // across every prior manche too — is not. The draw belongs to that one hand,
 // never to the match it closed.
 describe('a manche that ends the match while being a draw itself still celebrates the match winner', () => {
-  beforeEach(() => {
-    selectionAsync.mockClear();
-  });
-
   const players = [
     seat('player_0', 'Ana', 'A'),
     seat('player_1', 'Besi', 'B'),
@@ -217,7 +200,7 @@ describe('a manche that ends the match while being a draw itself still celebrate
     expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
     expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
     expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
-    expect(selectionAsync).toHaveBeenCalled();
+    expect(selections()).not.toEqual([]);
     await view.unmount();
   });
 
@@ -267,7 +250,7 @@ describe('a manche that ends the match while being a draw itself still celebrate
     expect(view.getByText(t('result.matchOverTitle'))).toBeTruthy();
     expect(view.getByText(t('result.matchWinner'))).toBeTruthy();
     expect(view.getAllByText(t('lobby.team', { team: 'A' })).length).toBeGreaterThan(0);
-    expect(selectionAsync).toHaveBeenCalled();
+    expect(selections()).not.toEqual([]);
     await view.unmount();
   });
 });

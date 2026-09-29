@@ -3,28 +3,10 @@ import { act, renderHook } from "@testing-library/react-native";
 import { handOffDelayMs } from "@/components/flightPhysics";
 import { useTableFeedback } from "@/components/useTableFeedback";
 
-jest.mock("@/lib/device/sounds", () => ({
-  playBomb: jest.fn(),
-  playCardPass: jest.fn(),
-  playCardPlay: jest.fn(),
-  playCombo: jest.fn(),
-  playExchange: jest.fn(),
-  playMancheLost: jest.fn(),
-  playMancheWon: jest.fn(),
-  playTurn: jest.fn(),
-}));
-jest.mock("@/lib/device/haptics", () => ({
-  hapticHeavy: jest.fn(),
-  hapticLight: jest.fn(),
-  hapticMedium: jest.fn(),
-  hapticRigid: jest.fn(),
-  hapticSuccess: jest.fn(),
-  hapticWarn: jest.fn(),
-}));
-jest.mock("@/lib/device/music", () => ({ cancelMusicDuck: jest.fn(), duckMusicFor: jest.fn() }));
+import { bootFeedback, haptics, sounds } from "./helpers/feedback";
 
-import { playTurn } from "@/lib/device/sounds";
-import { hapticLight } from "@/lib/device/haptics";
+const turns = () => sounds().filter((s) => s === "turn").length;
+const lights = () => haptics().filter((h) => h === "impactLight").length;
 
 const PLAYED = { type: "single", cards: [], value: 3 } as any;
 
@@ -49,9 +31,10 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0, lastPlayedCombination: a
 });
 
 describe("the turn-arrival cue", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
@@ -62,17 +45,17 @@ describe("the turn-arrival cue", () => {
       (props: { isMyTurn: boolean }) => useTableFeedback(state(props.isMyTurn)),
       { initialProps: { isMyTurn: false } }
     );
-    expect(playTurn).not.toHaveBeenCalled();
-    expect(hapticLight).not.toHaveBeenCalled();
+    expect(turns()).toBe(0);
+    expect(lights()).toBe(0);
 
     await rerender({ isMyTurn: true });
-    expect(playTurn).toHaveBeenCalledTimes(1);
-    expect(hapticLight).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(1);
+    expect(lights()).toBe(1);
 
     // Staying on the viewer's turn across a re-render must not repeat either.
     await rerender({ isMyTurn: true });
-    expect(playTurn).toHaveBeenCalledTimes(1);
-    expect(hapticLight).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(1);
+    expect(lights()).toBe(1);
   });
 
   it("waits for the card that handed the turn over to land, and moves the lamp's seat with it", async () => {
@@ -84,12 +67,12 @@ describe("the turn-arrival cue", () => {
     await rerender({ isMyTurn: true, turn: 0, played: PLAYED });
     expect(result.current.shownTurnIndex).toBe(1);
     await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 1));
-    expect(playTurn).not.toHaveBeenCalled();
+    expect(turns()).toBe(0);
     expect(result.current.shownTurnIndex).toBe(1);
 
     await act(async () => jest.advanceTimersByTime(1));
-    expect(playTurn).toHaveBeenCalledTimes(1);
-    expect(hapticLight).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(1);
+    expect(lights()).toBe(1);
     expect(result.current.shownTurnIndex).toBe(0);
   });
 
@@ -100,7 +83,7 @@ describe("the turn-arrival cue", () => {
       { initialProps: { isMyTurn: false, turn: 1 } }
     );
     await rerender({ isMyTurn: true, turn: 0 });
-    expect(playTurn).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(1);
     expect(result.current.shownTurnIndex).toBe(0);
   });
 
@@ -112,8 +95,8 @@ describe("the turn-arrival cue", () => {
     );
     await rerender({ isMyTurn: true, played: PLAYED });
     await unmount();
-    jest.advanceTimersByTime(handOffDelayMs(false));
-    expect(playTurn).not.toHaveBeenCalled();
+    await act(async () => jest.advanceTimersByTime(handOffDelayMs(false)));
+    expect(turns()).toBe(0);
   });
 
   it("waits out a card still in flight when a pass closes the round straight after it", async () => {
@@ -126,10 +109,10 @@ describe("the turn-arrival cue", () => {
     await act(async () => jest.advanceTimersByTime(100));
     await rerender({ isMyTurn: true, turn: 0, played: null });
     await act(async () => jest.advanceTimersByTime(handOffDelayMs(false) - 101));
-    expect(playTurn).not.toHaveBeenCalled();
+    expect(turns()).toBe(0);
 
     await act(async () => jest.advanceTimersByTime(1));
-    expect(playTurn).toHaveBeenCalledTimes(1);
+    expect(turns()).toBe(1);
   });
 
   it("moves the lamp when the card lands, however many passes follow it in flight", async () => {
@@ -158,6 +141,6 @@ describe("the turn-arrival cue", () => {
     await rerender({ isMyTurn: true, played: PLAYED, gameOver: false });
     await rerender({ isMyTurn: true, played: PLAYED, gameOver: true });
     await act(async () => jest.advanceTimersByTime(handOffDelayMs(false)));
-    expect(playTurn).not.toHaveBeenCalled();
+    expect(turns()).toBe(0);
   });
 });

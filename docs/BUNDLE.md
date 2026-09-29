@@ -6,7 +6,7 @@ Regenerate with `node scripts/bundle-report.mjs > docs/BUNDLE.md` after adding/r
 
 ## Assets (`assets/`)
 
-Total: **8.86 MB** across 48 files.
+Total: **8.85 MB** across 48 files.
 
 | File | Size |
 |---|---|
@@ -41,16 +41,16 @@ Total: **8.86 MB** across 48 files.
 | assets/images/cards/queen_of_diamonds.png | 16.4 KB |
 | assets/sounds/turn.mp3 | 14.8 KB |
 | assets/sounds/exchange.mp3 | 14.3 KB |
-| assets/sounds/reconnected.mp3 | 14.3 KB |
 | assets/sounds/combo.mp3 | 13.8 KB |
 | assets/sounds/round_start.mp3 | 9.5 KB |
-| assets/music/README.md | 6.6 KB |
+| assets/music/README.md | 6.7 KB |
 | assets/sounds/select.mp3 | 6.2 KB |
 | assets/images/android-icon-background.png | 6.1 KB |
-| assets/sounds/README.md | 5.8 KB |
+| assets/sounds/README.md | 5.9 KB |
 | assets/sounds/pass.mp3 | 5.7 KB |
 | assets/sounds/play.mp3 | 5.7 KB |
 | assets/sounds/round_win.mp3 | 4.6 KB |
+| assets/sounds/manche_neutral.mp3 | 4.0 KB |
 | assets/fonts/Feather.subset.ttf | 3.7 KB |
 | assets/sounds/room_full.mp3 | 3.4 KB |
 | assets/sounds/seat_fill.mp3 | 3.1 KB |
@@ -61,7 +61,7 @@ Total: **8.86 MB** across 48 files.
 
 ## Production dependencies (installed size in `node_modules/`)
 
-Total: **122.66 MB** across 52 declared dependencies.
+Total: **121.31 MB** across 50 declared dependencies.
 
 | Package | Installed size |
 |---|---|
@@ -85,7 +85,6 @@ Total: **122.66 MB** across 52 declared dependencies.
 | socket.io | 1.61 MB |
 | expo-notifications | 1.56 MB |
 | socket.io-client | 1.35 MB |
-| expo-audio | 1.27 MB |
 | react-native-worklets | 1.08 MB |
 | @tanstack/react-query | 727.4 KB |
 | pino | 648.0 KB |
@@ -108,7 +107,6 @@ Total: **122.66 MB** across 52 declared dependencies.
 | bcryptjs | 109.7 KB |
 | helmet | 103.1 KB |
 | pg | 97.7 KB |
-| expo-haptics | 86.0 KB |
 | pino-http | 83.7 KB |
 | compression | 83.2 KB |
 | expo-system-ui | 82.0 KB |

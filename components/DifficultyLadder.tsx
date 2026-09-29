@@ -3,7 +3,7 @@
 // picking it never grows a second visual shape for the same three ids.
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { hapticSelection } from "@/lib/device/haptics";
+import { uiFeedback } from "@/lib/device/feedback";
 import { BOT_PERSONALITIES, BotPersonalityId, difficultyLabelKey, getBotPersonality } from "@/lib/game/botPersonalities";
 import type { AIDifficulty } from "@/lib/game/gameEngine";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -46,7 +46,7 @@ export function DifficultyLadder({
         return (
           <Pressable
             key={p.id}
-            onPress={() => { onChange(p.id); hapticSelection(); }}
+            onPress={() => { onChange(p.id); uiFeedback("selection"); }}
             style={[
               styles.ladderSeg,
               i > 0 && styles.ladderSegBorder,
