@@ -190,8 +190,8 @@ export interface TurnTimerConfig {
    */
   resetKey?: string;
   /**
-   * Count down while leading a new round too. False offline (leading has no
-   * deadline); true online, where the server arms its AFK timer every turn.
+   * The viewer's own chip counts down while leading a new round too (seat rings
+   * always do). False offline, no deadline; true online, armed every turn.
    */
   includeNewRound?: boolean;
   /**
@@ -895,6 +895,7 @@ export function GameTable({
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const announcementHolds = holdingForStart && (turnTimer?.pausable ?? false);
   const timerActive =
     !!turnTimer &&
     turnTimerActive({
@@ -904,7 +905,7 @@ export function GameTable({
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
       includeNewRound: turnTimer.includeNewRound ?? false,
-      announcementHolds: holdingForStart && (turnTimer.pausable ?? false),
+      announcementHolds,
     });
 
   // Changes on every move and every pass, so the countdown restarts once per
@@ -936,9 +937,10 @@ export function GameTable({
   const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
-  // counts down, so both are armed by one gate. There is no per-seat deadline
-  // to read — online the server arms one window per turn, offline there is none
-  // at all — so the turn changing is what arms it, exactly as it arms the chip.
+  // counts down, and the turn changing is what arms it. There is no per-seat
+  // deadline to read, so a lead sweeps offline too: the ring marks the seat on
+  // move (the mockup's `.seat.on .ring`), not a deadline, which offline a lead
+  // does not have.
   //
   // Asked about the seat the ring is drawn on, never about the viewer: a seat
   // that is not the viewer's still has a server deadline online once the viewer
@@ -955,7 +957,8 @@ export function GameTable({
       isNewRound,
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
-      includeNewRound: turnTimer.includeNewRound ?? false,
+      includeNewRound: true,
+      announcementHolds,
     })
       ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
       : undefined;
