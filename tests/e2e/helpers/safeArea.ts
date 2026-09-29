@@ -23,5 +23,5 @@ export async function setSafeArea(page: Page, left: number, bottom: number, righ
     },
     { left, bottom, right }
   );
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(600); // fixed wait on purpose: nothing marks the report, and an unchanged padding fires no transitionend
 }

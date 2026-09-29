@@ -13,7 +13,6 @@ import {
   restingLamp,
   stepLamp,
   type Lamp,
-  type LampTarget,
   type Pool,
 } from "../../components/table/lampRig.ts";
 import { seatDirection, type FlyDirection } from "../../components/seatLayout.ts";
