@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AppState } from "react-native";
-import { useAnimatedReaction, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { contactMs, flightEndMs, type CardFrom, type CardSlot } from "@/components/flightPose";
 import { LAND_WOBBLE_MS, type ImpactTier } from "@/components/flightPhysics";
@@ -36,7 +36,7 @@ export interface FlightClock {
   elapsed: SharedValue<number>;
   arm(landing: LandingPayload): void;
   begin(spec: FlightSpec): void;
-  /** Stops the flight where it would come to rest, with no landing and no report. */
+  /** Puts the cards at rest and stops the frames, with no landing and no report: the owner calls it once the flight has ended, or to withdraw it. */
   halt(): void;
 }
 
@@ -45,7 +45,6 @@ function stepper(
   elapsed: SharedValue<number>,
   landing: SharedValue<LandingPayload | null>,
   signal: SharedValue<LandingSignal>,
-  ends: SharedValue<number>,
   report: { start: (k: string, at: number, end: number) => void; touch: (k: string, at: number) => void; end: (k: string) => void }
 ) {
   return (frame: FrameInfo) => {
@@ -68,7 +67,6 @@ function stepper(
     if (t >= r.spec.end + (r.spec.reduced ? 0 : LAND_WOBBLE_MS)) {
       const key = r.spec.key;
       r.spec = null;
-      ends.value += 1;
       scheduleOnRN(report.end, key);
     }
   };
@@ -85,17 +83,9 @@ export function useFlightClock(
   const run = useSharedValue<Run>({ spec: null, thrownAt: 0, startedAt: -1, touched: false });
   const elapsed = useSharedValue(resting ? AT_REST : 0);
   const landing = useSharedValue<LandingPayload | null>(null);
-  const ends = useSharedValue(0);
   // The callbacks are the first render's: `PileLayer` hands in stable ones.
-  const [step] = useState(() => stepper(run, elapsed, landing, signal, ends, { start: onStart, touch: onContact, end: onEnd }));
-  const callback = useFrameCallback(step, false);
-  const stop = useCallback(() => callback.setActive(false), [callback]);
-  useAnimatedReaction(
-    () => ends.value,
-    (n, was) => {
-      if (was !== null && n !== was) scheduleOnRN(stop);
-    }
-  );
+  const [step] = useState(() => stepper(run, elapsed, landing, signal, { start: onStart, touch: onContact, end: onEnd }));
+  const frames = useFrameCallback(step, false);
   return useMemo(
     () => ({
       elapsed,
@@ -103,14 +93,14 @@ export function useFlightClock(
       begin: (spec: FlightSpec) => {
         run.set({ spec, thrownAt: inBackground() ? Infinity : performance.now(), startedAt: -1, touched: false });
         elapsed.set(0);
-        callback.setActive(true);
+        frames.setActive(true);
       },
       halt: () => {
-        callback.setActive(false);
+        frames.setActive(false);
         run.set({ spec: null, thrownAt: 0, startedAt: -1, touched: true });
         elapsed.set(AT_REST);
       },
     }),
-    [elapsed, landing, run, callback]
+    [elapsed, landing, run, frames]
   );
 }

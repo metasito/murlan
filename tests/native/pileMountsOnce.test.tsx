@@ -1,7 +1,9 @@
 // tests/native/pileMountsOnce.test.tsx — a played card is one view from the throw to the sweep.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, render, type RenderResult } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
+import type { TestInstance } from 'test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { FrameCallback } from 'react-native-reanimated';
 import type { FlightClock } from '@/components/table/useFlightClock';
@@ -63,6 +65,9 @@ import { bootFeedback, settle } from './helpers/feedback';
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
 const HOLD_MS = 1800;
+const OVERLAPPING = 2;
+const outOfSight = (n: TestInstance | null): boolean => !!n && (StyleSheet.flatten(n.props.style)?.display === 'none' || outOfSight(n.parent));
+const fliers = (view: RenderResult) => view.queryAllByTestId('flying-cards', { includeHiddenElements: true });
 const table = (s: GameState) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable gameState={s} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
@@ -92,6 +97,8 @@ describe.each<[string, 'on' | 'off']>([['reduced', 'on'], ['full', 'off']])('fou
     let round: string[] = [];
     let closedAt: number | null = null;
     let closed = 0;
+    let unseen = 0;
+    let inAir = 0;
     while (closed < 4 || closedAt !== null) {
       const next = offlineBotMove(state);
       if (!next) break;
@@ -118,11 +125,15 @@ describe.each<[string, 'on' | 'off']>([['reduced', 'on'], ['full', 'off']])('fou
         closedAt = performance.now();
         continue;
       }
-      await settle(1500);
+      inAir = Math.max(inAir, fliers(view).length);
+      unseen += fliers(view).filter(outOfSight).length;
+      await settle(closed >= OVERLAPPING ? 60 : 1500);
     }
     await settle(3000);
 
     expect(closed).toBeGreaterThanOrEqual(4);
+    expect(unseen).toBe(0);
+    if (preference === 'off') expect(inAir).toBeGreaterThanOrEqual(3);
     const played = new Set(mockMounts.map((m) => m.id));
     expect(played.size).toBeGreaterThan(4);
     for (const id of played) {
@@ -135,7 +146,7 @@ describe.each<[string, 'on' | 'off']>([['reduced', 'on'], ['full', 'off']])('fou
     expect([...sweptFrom.keys()].every((id) => played.has(id))).toBe(true);
     expect(mockBegins.slice().sort()).toEqual(plays.slice().sort());
     expect(mockFrames.all.size).toBeGreaterThan(4);
-    expect([...mockFrames.all].filter((f) => f.isActive)).toEqual([]);
+    expect([...mockFrames.all].filter((f) => f.isActive && f.callbackId !== -1)).toEqual([]);
     await view.unmount();
   }, 120_000);
 });

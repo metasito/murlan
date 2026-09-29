@@ -89,19 +89,26 @@ const PILE_PREV_ROTATE_DEG = -7;
 const PILE_PREV_Y = 9;
 const PILE_PREV_OPACITY = 0.3;
 
+const ROLE_RANK: Record<PlayRole, number> = { buried: 0, beaten: 1, top: 2 };
+// Over the moments, as the sweep and the throw were before they shared the pile's list.
+const SWEPT_Z = Layer.sheet;
+const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
+
 // ─── PlayGroup ────────────────────────────────────────────────────────────────
 
 /**
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, flinchY, signal, bombClock, report, cardScale, roomW }: {
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signal, bombClock, report, cardScale, roomW }: {
   play: TrickPlay;
   /** Non-null while the play is in the air; a group mounted without one never flies. */
   flight: Flight | null;
   role: PlayRole;
   sweep: SweepMotion | null;
   sweepTop: boolean;
+  /** Out of sight at rest; a play still moving is drawn regardless. */
+  hidden: boolean;
   flinchY: SharedValue<number>;
   signal: SharedValue<LandingSignal>;
   bombClock?: SharedValue<BombClock>;
@@ -126,8 +133,10 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, flinchY, signal, bombC
   }, [clock, armed, report]);
   const flush = armed?.landing.flush ?? false;
   const catching = useSharedValue(0);
+  const settled = useRef<Flight | null>(null);
   useEffect(() => {
-    if (flying || !armed) return;
+    if (flying || !armed || settled.current === armed) return;
+    settled.current = armed;
     // Only a flight that came to rest on its own frames catches; one withdrawn unseen lands in silence.
     if (flush && !still && clock.elapsed.get() >= armed.spec.end + LAND_WOBBLE_MS) {
       const half = CATCH_MS / 2;
@@ -138,15 +147,20 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, flinchY, signal, bombC
   useEffect(() => () => cancelAnimation(catching), [catching]);
 
   const heavy = armed?.landing.heavy ?? false;
+  // The scrim is this bomb's only until it touches: after that another may be falling.
   useAnimatedReaction(
     () => clock.elapsed.value,
-    (t) => {
-      if (heavy && bombClock) bombClock.set(t < spec.contact ? { elapsed: t, contact: spec.contact } : NO_BOMB);
+    (t, was) => {
+      if (!heavy || !bombClock) return;
+      if (t < spec.contact) bombClock.set({ elapsed: t, contact: spec.contact });
+      else if (was !== null && was < spec.contact) bombClock.set(NO_BOMB);
     }
   );
+  const { elapsed } = clock;
+  const contact = spec.contact;
   useEffect(() => () => {
-    if (heavy) bombClock?.set(NO_BOMB);
-  }, [heavy, bombClock]);
+    if (heavy && elapsed.get() < contact) bombClock?.set(NO_BOMB);
+  }, [heavy, bombClock, elapsed, contact]);
 
   const wobble = useAnimatedStyle(() => {
     const k = still ? 0 : Math.min(1, Math.max(0, (clock.elapsed.value - spec.end) / LAND_WOBBLE_MS));
@@ -169,11 +183,13 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, flinchY, signal, bombC
 
   const { slots, w, h } = fieldSlots(cards, cardScale, roomW);
   const testID = beaten && !sweep ? "pile-prev-layer" : sweepTop ? "sweep-cards" : undefined;
+  const zIndex = flying ? FLYING_Z : (sweep ? SWEPT_Z : Layer.table) + ROLE_RANK[role];
+  const out = !flying && (role === "buried" || (hidden && !sweep));
   return (
     <Animated.View
       testID={testID}
       pointerEvents="none"
-      style={[pileStyles.group, role === "buried" && pileStyles.buried, pose]}
+      style={[pileStyles.group, { zIndex }, out && pileStyles.buried, pose]}
       {...a11yHidden(flying || sweep !== null)}
     >
       <Animated.View testID={flying ? "flying-cards" : undefined} pointerEvents="none" style={[StyleSheet.absoluteFill, wobble]}>
@@ -182,7 +198,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, flinchY, signal, bombC
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={catching} cardScale={cardScale} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} cardScale={cardScale} />
             </Fragment>
           );
         })}
@@ -199,7 +215,8 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardSc
   elapsed: SharedValue<number>;
   box: { position: "absolute"; left: number; top: number; width: number; height: number };
   flying: boolean;
-  catching: SharedValue<number>;
+  /** Null for a play that empties no hand: it never catches. */
+  catching: SharedValue<number> | null;
   cardScale: number;
 }) {
   const from = spec.from[i];
@@ -212,14 +229,14 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardSc
   });
   // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
   // at render, so resizing the table cannot read as a fresh catch.
-  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catching.value * CATCH_LIFT * cardScale }] }));
+  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: (catching?.value ?? 0) * CATCH_LIFT * cardScale }] }));
   // Opacity only, on a childless sibling behind the card — the same
   // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
-  const glow = useAnimatedStyle(() => ({ opacity: catching.value }));
+  const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
   return (
     <Animated.View testID={flying ? "flying-card" : undefined} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
-        <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />
+        {catching && <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} light="flat" />
         </View>
@@ -288,25 +305,27 @@ function ChipPlate({ isPower, still = false, children }: { isPower: boolean; sti
 }
 
 /** The combination on top of the pile, named. `scale` is the table's. */
-export function ComboChip({ isPower, label }: { isPower: boolean; label: string; scale: number }) {
+export function ComboChip({ isPower, label, scale }: { isPower: boolean; label: string; scale: number }) {
   return (
-    <ChipPlate isPower={isPower}>
-      <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
-        {isPower ? "✦ " : ""}
-        {label}
-      </TableText>
-    </ChipPlate>
+    <View style={{ transform: [{ scale }] }}>
+      <ChipPlate isPower={isPower}>
+        <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
+          {isPower ? "✦ " : ""}
+          {label}
+        </TableText>
+      </ChipPlate>
+    </View>
   );
 }
 
 /** The seat that took the round, over the pile. `scale` is the table's. */
-export function RoundWinnerTag({ name }: { name: string; scale: number }) {
+export function RoundWinnerTag({ name, scale }: { name: string; scale: number }) {
   const reduceMotion = usePrefersReducedMotion();
   return (
     <Animated.View
       entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
       exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
-      style={pileStyles.winnerTag}
+      style={[pileStyles.winnerTag, { transform: [{ scale }] }]}
     >
       <Ionicons name="star" size={9} color={Colors.gold} />
       <TableText style={pileStyles.winnerText}>{name}</TableText>
@@ -341,7 +360,7 @@ export interface PileLayerProps {
   roomW: number;
   /** The table's own scale — the pile draws its cards at `scale * FIELD_SCALE`. */
   scale?: number;
-  /** Out of the layout while something else holds the centre; the plays keep their views and clocks. */
+  /** Out of the layout while something else holds the centre: plays at rest hide, and a play still moving keeps moving. */
   hidden?: boolean;
 }
 
@@ -387,11 +406,18 @@ export function PileLayer(props: PileLayerProps) {
   const swept = trick.swept;
   const travel = useSharedValue(0);
   const fade = useSharedValue(0);
+  const seated = useRef<Trick["swept"]>(null);
   useEffect(() => {
     if (!swept) return;
+    // A motion preference changing mid-sweep finishes this sweep, never starts it over.
+    if (seated.current !== swept) {
+      seated.current = swept;
+      travel.value = 0;
+      fade.value = 0;
+    }
     const travelMs = motionMs("travel", reduceMotion);
     const shiftMs = motionMs("shift", reduceMotion);
-    travel.value = reduceMotion ? 0 : withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
+    if (!reduceMotion) travel.value = withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
     fade.value = withSequence(
       withTiming(0, { duration: travelMs - shiftMs }),
       withTiming(1, { duration: shiftMs }, (finished) => {
@@ -401,8 +427,6 @@ export function PileLayer(props: PileLayerProps) {
     return () => {
       cancelAnimation(travel);
       cancelAnimation(fade);
-      travel.value = 0;
-      fade.value = 0;
     };
   }, [swept, reduceMotion, travel, fade, sweepEnd]);
   const sweep = useMemo(() => (swept ? { travel, fade, to: swept.to } : null), [swept, travel, fade]);
@@ -419,16 +443,13 @@ export function PileLayer(props: PileLayerProps) {
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;
-  const moving = flights.length > 0 || swept !== null;
   const isPower = !!comboLabel && POWER_COMBOS.has(comboLabel.type);
   const label = getComboLabel(comboLabel, t);
 
+  // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
-    <Animated.View
-      style={[pileStyles.pileArea, moving && { zIndex: Layer.sheet }, hidden && pileStyles.buried]}
-      testID="pile-area"
-    >
-      {roundWinner ? <RoundWinnerTag name={roundWinner} scale={scale} /> : null}
+    <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
+      {roundWinner && !hidden ? <RoundWinnerTag name={roundWinner} scale={scale} /> : null}
 
       <View style={[pileStyles.pileStack, { width: stack?.boxW ?? 0, height: stack?.h ?? 0 }]}>
         {groups.map(({ play, role, sweep: motion, sweepTop }) => (
@@ -439,6 +460,7 @@ export function PileLayer(props: PileLayerProps) {
             role={role}
             sweep={motion}
             sweepTop={sweepTop}
+            hidden={hidden}
             flinchY={flinchY}
             signal={signal}
             bombClock={bombClock}
@@ -449,7 +471,7 @@ export function PileLayer(props: PileLayerProps) {
         ))}
       </View>
 
-      {note ? (
+      {hidden ? null : note ? (
         <View
           {...a11yHidden()}
           style={[
@@ -473,7 +495,7 @@ export function PileLayer(props: PileLayerProps) {
           <ComboChip isPower={isPower} label={label} scale={scale} />
         </View>
       )}
-    </Animated.View>
+    </View>
   );
 }
 // ─── getComboLabel ────────────────────────────────────────────────────────────
@@ -791,6 +813,8 @@ const pileStyles = StyleSheet.create({
   // A point at the pile's centre, so a group turns, wobbles and sweeps about it.
   group: { position: "absolute", left: "50%", top: "50%", width: 0, height: 0 },
   buried: { display: "none" },
+  // Out of the flow while something else holds the centre, still centred for whatever is moving.
+  aside: { position: "absolute" },
   pileArea: {
     alignItems: "center",
     justifyContent: "center",
