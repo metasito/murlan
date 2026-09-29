@@ -78,4 +78,33 @@ describe('the frame loop runs only while armed or recording', () => {
     expect(active()).toBe(0);
     await view.unmount();
   });
+
+  it("a framed scenario that opens a window at once still gets an interval on the window's first frame", async () => {
+    mockRows.length = 0;
+    const bench = require('@/lib/diagnostics/bench') as typeof import('@/lib/diagnostics/bench');
+    bench.registerFramedScenario('firstFrameAtOnce', async (ctx) => {
+      ctx.frames(true);
+      await ctx.sleep(100);
+      ctx.frames(false);
+    });
+    const run = bench.benchScenarios().find(([name]) => name === 'firstFrameAtOnce')![1];
+    const view = await render(<probe.FrameProbe />);
+    await settle();
+    await act(() =>
+      run({
+        params: {},
+        showTable: async () => {},
+        sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        frames: (on, until) => probe.recordFrames(on, until),
+        armFrames: probe.armFrames,
+        feltSample: async () => {
+          throw new Error('unused');
+        },
+      })
+    );
+    const dts = mockRows.flatMap((r) => (r.k === 'frame' ? [r.dt] : []));
+    expect(dts.length).toBeGreaterThan(1);
+    expect(Number.isFinite(dts[0])).toBe(true);
+    await view.unmount();
+  });
 });

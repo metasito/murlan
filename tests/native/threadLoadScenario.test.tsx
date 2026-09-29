@@ -32,7 +32,7 @@ const table: BenchContext = {
     log.push(`frames ${on}`);
     if (until !== undefined) untils.push(until);
   },
-  armFrames: (on) => void log.push(`arm ${on}`),
+  armFrames: async (on) => void log.push(`arm ${on}`),
   feltSample: async () => {
     throw new Error('unused');
   },

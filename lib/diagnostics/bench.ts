@@ -7,7 +7,8 @@ export interface BenchContext {
   sleep(ms: number): Promise<void>;
   /** Opening with `until` (JS time) keeps the window to the first frame that ends past it. */
   frames(on: boolean, until?: number): void;
-  armFrames(on: boolean): void;
+  /** Arming resolves once the frame loop is running. */
+  armFrames(on: boolean): Promise<void>;
   /** Each seat's mean linear luminance round its ring, in one snapshot of the felt on screen; throws when there is none. */
   feltSample(): Promise<Readonly<Record<LampSide, number>>>;
 }
@@ -22,8 +23,9 @@ export function registerBenchScenario(name: string, run: Scenario): void {
 /** The frame loop runs for the whole scenario, so each window's first frame has an interval. */
 export function registerFramedScenario(name: string, run: Scenario): void {
   registerBenchScenario(name, async (ctx) => {
-    ctx.armFrames(true);
+    const running = ctx.armFrames(true);
     try {
+      await running;
       await run(ctx);
     } finally {
       ctx.armFrames(false);

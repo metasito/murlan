@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { makeMutable, useFrameCallback, type FrameInfo } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { diag, jsFromWall } from "./index";
 
 const recording = makeMutable(false);
@@ -9,12 +10,23 @@ const samples = makeMutable<number[]>([]);
 let probe: { setActive(on: boolean): void } | null = null;
 let armed = false;
 let open: { at: number; until: number } | null = null;
+const awaitingFrame = makeMutable(false);
+let firstFrame: (() => void) | null = null;
 const sync = () => probe?.setActive(armed);
+
+function frameSeen(): void {
+  firstFrame?.();
+  firstFrame = null;
+}
 
 export function sampleFrame(frame: FrameInfo): void {
   "worklet";
-  const dt = frame.timeSincePreviousFrame;
-  if (!recording.value || dt === null) return;
+  if (awaitingFrame.value) {
+    awaitingFrame.value = false;
+    scheduleOnRN(frameSeen);
+  }
+  if (!recording.value) return;
+  const dt = frame.timeSincePreviousFrame ?? NaN;
   const now = Date.now();
   samples.modify((a) => {
     "worklet";
@@ -24,10 +36,19 @@ export function sampleFrame(frame: FrameInfo): void {
   if (now >= closeAtWall.value) recording.value = false;
 }
 
-/** Keeps the frame loop running between windows, so each window's first frame has a previous one. */
-export function armFrames(on: boolean): void {
+/** Resolves on the loop's first frame, whose interval is null: from then on every frame has one. */
+export function armFrames(on: boolean): Promise<void> {
   armed = on;
+  frameSeen();
+  awaitingFrame.value = on;
+  const seen = on
+    ? new Promise<void>((resolve, reject) => {
+        firstFrame = resolve;
+        setTimeout(() => reject(new Error("the frame loop ran no frame within 1 s of arming")), 1000);
+      })
+    : Promise.resolve();
   sync();
+  return seen;
 }
 
 /**

@@ -176,8 +176,8 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   frame probe reads, so opening or closing a window renders nothing
   (`tests/native/benchRecording.test.tsx`). The probe's frame loop runs only while a scenario that
   records frames has armed it for its whole run (`registerFramedScenario`; a window opened unarmed
-  throws), so
-  each window's first frame has an interval and the other scenarios see the governor as a player
+  throws, and its body starts only after the loop's first frame), so
+  each window's first frame has an interval (one without is recorded with a null `dt`) and the other scenarios see the governor as a player
   does (`tests/native/frameProbe.test.tsx`, `tests/native/framedScenarios.test.tsx`). The iOS build keeps the worklets frame-rate governor
   on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
   turns it off.

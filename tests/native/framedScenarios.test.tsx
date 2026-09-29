@@ -22,7 +22,7 @@ const table: BenchContext = {
   showTable: async (state) => void log.push(state ? 'table' : 'no table'),
   sleep: async () => {},
   frames: (on) => void log.push(`frames ${on}`),
-  armFrames: (on) => void log.push(`arm ${on}`),
+  armFrames: async (on) => void log.push(`arm ${on}`),
   feltSample: async () => {
     throw new Error('unused');
   },

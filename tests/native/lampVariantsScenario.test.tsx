@@ -39,7 +39,7 @@ function litTable(lift: number): BenchContext {
     },
     sleep: (ms) => act(async () => void jest.advanceTimersByTime(ms)),
     frames: () => {},
-    armFrames: () => {},
+    armFrames: async () => {},
     feltSample: async () => {
       if (!onMove) throw new Error('no table on screen');
       const lit = onMove;
