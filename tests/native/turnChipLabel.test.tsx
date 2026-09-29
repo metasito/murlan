@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
-import { TurnChip } from '@/components/table/turnChip';
+import { TurnChip } from '@/components/table/notices/hud';
 import { bootFeedback, effects, haptics, soundOf } from './helpers/feedback';
 import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { tn } from '@/lib/i18n';

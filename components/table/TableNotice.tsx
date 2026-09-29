@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { makeShadow, NoticePalette } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -16,7 +16,15 @@ import {
   type NoticeShape,
 } from "./noticeModel";
 
-type Paint = { fill: string; edge: string; ink: string; strong: string; glow?: { color: string; opacity: number } };
+type Paint = {
+  fill: string;
+  edge: string;
+  ink: string;
+  strong: string;
+  warn?: string;
+  glow?: { color: string; opacity: number };
+  dot?: { color: string; glow?: number };
+};
 
 const Ink = createContext<{ paint: Paint; box: NoticeBox; scale: number } | null>(null);
 
@@ -73,7 +81,7 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
-        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(tone, scale), 0),
+        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(kind, tone, scale), 0),
         motion,
       ]}
     >
@@ -82,20 +90,41 @@ export function TableNotice<K extends NoticeKind>({
   );
 }
 
+function useInk(what: string) {
+  const ink = useContext(Ink);
+  if (!ink) throw new Error(`${what} is drawn inside a TableNotice`);
+  return ink;
+}
+
+export function NoticeDot({ testID }: { testID?: string }) {
+  const { paint, box } = useInk("NoticeDot");
+  const dot = paint.dot;
+  if (!dot) throw new Error("this notice's tone paints no dot");
+  return (
+    <View
+      testID={testID}
+      style={[
+        { width: box.dot, height: box.dot, borderRadius: box.dot / 2, backgroundColor: dot.color },
+        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, box.dotGlow, 0),
+      ]}
+    />
+  );
+}
+
 export function NoticeText({
   strong = false,
+  warn = false,
   maxWidth,
   testID,
   children,
 }: {
   strong?: boolean;
+  warn?: boolean;
   maxWidth?: number;
   testID?: string;
   children: ReactNode;
 }) {
-  const ink = useContext(Ink);
-  if (!ink) throw new Error("NoticeText is drawn inside a TableNotice");
-  const { paint, box, scale } = ink;
+  const { paint, box, scale } = useInk("NoticeText");
   return (
     <TableText
       numberOfLines={1}
@@ -105,7 +134,7 @@ export function NoticeText({
         (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
-          color: strong ? paint.strong : paint.ink,
+          color: !strong ? paint.ink : warn ? (paint.warn ?? paint.strong) : paint.strong,
           fontSize: box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
         },
