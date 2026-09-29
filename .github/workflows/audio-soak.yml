@@ -2,9 +2,6 @@
 name: Audio soak
 
 on:
-  push:
-    branches: [claude/1259-plan-1]
-    paths: [".github/workflows/audio-soak.yml"]
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 1"
