@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
-  Easing,
   makeMutable,
   useAnimatedStyle,
   useFrameCallback,
@@ -12,13 +11,13 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE } from "@/components/cardFaceModel";
-import { Layer, motionMs } from "@/lib/theme";
-import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { Layer } from "@/lib/theme";
 import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
-import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
-import { seatDirection } from "@/components/seatLayout";
-import { dealArrivalsMs, dealEndMs, dealFlightsMs, dealLeaveMs } from "@/lib/game/dealTimeline";
+import type { SeatGeometry } from "@/components/flightPhysics";
+import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "@/lib/game/dealTimeline";
+import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
+import { dealPose } from "@/components/table/dealPose";
 
 /** When each of a seat's cards lands, on the deal's own clock. */
 export interface DealArrivals { at: readonly number[]; clock: SharedValue<number> }
@@ -29,6 +28,7 @@ interface Deal {
   offsetMs: number;
   counts: number[];
   flightsMs: number[];
+  legs: DealLeg[];
 }
 
 /**
@@ -47,7 +47,7 @@ export function useDeal({
   entryMs: number;
   reduceMotion: boolean;
 }): {
-  cards: DealtCard[];
+  cards: DealLeg[];
   arrivalsFor: (seat: number) => DealArrivals | undefined;
   handOffsetMs: number | undefined;
   dealing: boolean;
@@ -57,13 +57,11 @@ export function useDeal({
   endMs: number;
   onLanded: () => void;
 } {
-  const { players, opponents, viewerSeat } = geometry;
-  const newDeal = (key: number, offsetMs: number): Deal => ({
-    key,
-    offsetMs,
-    counts: players.map(handCountOf),
-    flightsMs: dealFlightsMs(players.map((_, seat) => seatPoint(geometry, seatDirection(seat, viewerSeat, players.length)))),
-  });
+  const { players, viewerSeat } = geometry;
+  const newDeal = (key: number, offsetMs: number): Deal => {
+    const timing = { key, offsetMs, counts: players.map(handCountOf), flightsMs: dealFlightsFor(geometry) };
+    return { ...timing, legs: dealLegs(geometry, timing) };
+  };
   const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
   const [dealtFresh, setDealtFresh] = useState(fresh);
   if (fresh !== dealtFresh) {
@@ -84,20 +82,7 @@ export function useDeal({
     [deal, reduceMotion, clockOf]
   );
   const onLanded = useCallback(() => setDeal(null), []);
-  const cards: DealtCard[] =
-    deal && arrivals
-      ? (["top", "left", "right"] as const).flatMap((side) => {
-          const o = opponents[side];
-          if (!o) return [];
-          const to = seatPoint(geometry, side);
-          return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
-            key: `${deal.key}-${o.seat}-${round}`,
-            leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, players.length),
-            flightMs: deal.flightsMs[o.seat],
-            to,
-          }));
-        })
-      : [];
+  const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
@@ -110,29 +95,8 @@ export function useDeal({
   };
 }
 
-export interface DealtCard {
-  key: string;
-  /** When it leaves the pile, in ms after the deal started. */
-  leaveMs: number;
-  flightMs: number;
-  /** Its seat, from the pile — `flightOrigin` for that seat. */
-  to: { dx: number; dy: number };
-}
-
-const DEAL_EASING = Easing.bezierFn(0.22, 0.61, 0.36, 1.0);
-const DEAL_SPIN_DEG = 180;
-
-function DealtBack({ card, scale, clock }: { card: DealtCard; scale: number; clock: SharedValue<number> }) {
-  const flightMs = usePrefersReducedMotion() ? motionMs("travel", true) : card.flightMs;
-  const { dx, dy } = card.to;
-  const style = useAnimatedStyle(() => {
-    const k = Math.min(1, Math.max(0, (clock.value - card.leaveMs) / flightMs));
-    const p = DEAL_EASING(k);
-    return {
-      opacity: k > 0 && k < 1 ? 1 : 0,
-      transform: [{ translateX: dx * p }, { translateY: dy * p }, { rotate: `${DEAL_SPIN_DEG * p}deg` }],
-    };
-  });
+function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: number; clock: SharedValue<number> }) {
+  const style = useAnimatedStyle(() => dealPose(legAt(legs, clock.value), clock.value));
   return (
     <Animated.View testID="dealt-back" style={[dealStyles.back, style]}>
       <CardView card={{ id: "bk", suit: null, rank: "3", isJoker: false }} faceDown scale={scale * BACK_SCALE} />
@@ -154,12 +118,13 @@ function dealStepper(clock: SharedValue<number>, origin: SharedValue<number>, st
 }
 
 /**
- * The opponents' hands leaving the pile, one back per card, round-robin, all on the deal's one
- * clock. On its first frame it reports `onStarted(at)`, when the first card will leave in
- * `performance.now()` ms, so the cue is sent ahead; `onLanded` when the last lands.
+ * The opponents' hands leaving the pile, round-robin, all on the deal's one clock, drawn by as
+ * few backs as legs are ever in the air at once. On its first frame it reports `onStarted(at)`,
+ * when the first card will leave in `performance.now()` ms, so the cue is sent ahead; `onLanded`
+ * when the last lands, and its frame callback goes idle.
  */
 export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, onLanded }: {
-  cards: readonly DealtCard[];
+  cards: readonly DealLeg[];
   scale: number;
   clock: SharedValue<number>;
   startMs: number;
@@ -168,13 +133,21 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
   onLanded: () => void;
 }) {
   const origin = useSharedValue(-1);
-  const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, onLanded));
-  useFrameCallback(step);
+  const [landed, setLanded] = useState(false);
+  const [step] = useState(() => dealStepper(clock, origin, startMs, endMs, onStarted, () => {
+    setLanded(true);
+    onLanded();
+  }));
+  const frames = useFrameCallback(step);
+  useEffect(() => {
+    if (landed) frames.setActive(false);
+  }, [landed, frames]);
   useEffect(() => () => withdraw("deal"), []);
+  const slots = useMemo(() => dealSlots(cards), [cards]);
   return (
     <View style={[dealStyles.container, { pointerEvents: "none" as const }]}>
-      {cards.map((card) => (
-        <DealtBack key={card.key} card={card} scale={scale} clock={clock} />
+      {slots.map((legs) => (
+        <DealtBack key={legs[0].key} legs={legs} scale={scale} clock={clock} />
       ))}
     </View>
   );
