@@ -91,6 +91,7 @@ import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { lampPool } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
@@ -761,9 +762,9 @@ export function GameTable({
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
   // attention mechanism, pointed somewhere else — not a second device.
-  const lampTarget = holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length);
+  const lampAim = lampPool(holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length));
   const rig = useLampRig({
-    target: lampTarget,
+    pool: lampAim,
     fresh: dealFresh,
     width: W,
     height: H,
@@ -1023,7 +1024,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} target={lampTarget} />
+        <Felt rig={rig} stops={felt} pool={lampAim} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
