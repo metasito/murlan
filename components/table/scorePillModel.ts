@@ -110,7 +110,10 @@ export function scorePillHeader(board: number, unit: number): { x: number; y: nu
   };
 }
 
-export const PILL_SHADOW = { rest: { offsetY: 4, blur: 10 }, lifted: { offsetY: 18, blur: 36 } };
+export const PILL_SHADOW = { rest: { offsetY: 4, blur: 10 }, lifted: { offsetY: 18, blur: 36 }, spread: -8, alpha: 0.85 };
+
+/** Where `scorePillTop` gives way to `scorePillFoot` down the plate. */
+export const PILL_PLATE_STOPS = [0, 0.6, 1] as const;
 
 /** How far the lifted shadow has faded in over the resting one. */
 export function scorePillLift(open: number, board: number): number {

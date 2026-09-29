@@ -1,8 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
-import { makeShadow, NoticePalette } from "@/lib/theme";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg from "react-native-svg";
+import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import type { Suit } from "@/lib/game/gameEngine";
+import { SUIT_COLORS, SuitShape } from "@/components/CardView";
 import { TableText } from "./TableText";
 import {
   NOTICES,
@@ -10,13 +14,36 @@ import {
   noticeGlow,
   noticeRise,
   noticeTiming,
+  mockupPx,
+  panelLine,
+  panelParts,
   type KindTone,
   type NoticeBox,
   type NoticeKind,
   type NoticeShape,
+  type PanelLine,
 } from "./noticeModel";
+import { PILL_PLATE_STOPS, PILL_SHADOW } from "./scorePillModel";
 
-type Paint = { fill: string; edge: string; ink: string; strong: string; glow?: { color: string; opacity: number } };
+type Paint = {
+  fill: string;
+  edge: string;
+  ink: string;
+  strong: string;
+  glow?: { color: string; opacity: number };
+  top?: string;
+  quiet?: string;
+};
+
+const CARD_FACE = [Colors.cardPaper, Colors.cardPaperMid, Colors.cardPaperEdge] as const;
+const CARD_FACE_STOPS = [0, 0.55, 1] as const;
+const DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
+const PLATE_SHADOW = withAlpha(Colors.shadow, PILL_SHADOW.alpha);
+const DISC_EDGE = withAlpha(Colors.goldLit, 0.7);
+const DISC_GLOW = 10;
+const TILE_SHADOW = 3;
+const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
+const DIM_Z = Layer.hint;
 
 const Ink = createContext<{ paint: Paint; box: NoticeBox; scale: number } | null>(null);
 
@@ -59,26 +86,118 @@ export function TableNotice<K extends NoticeKind>({
   }));
 
   const ink = useMemo(() => ({ paint, box, scale }), [paint, box, scale]);
+  const panel = shape === "panel";
+  const unit = mockupPx(1, scale);
+  const { offsetY, blur } = PILL_SHADOW.lifted;
   return (
     <Animated.View
       testID={`notice-${kind}`}
       pointerEvents="none"
       style={[
-        styles.plate,
+        panel ? styles.panel : styles.plate,
         {
           height: box.height,
           paddingHorizontal: box.padX,
+          paddingVertical: box.padY,
           gap: box.gap,
           borderRadius: box.radius,
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
         paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(tone, scale), 0),
+        panel && {
+          width: box.width,
+          boxShadow: `0px ${offsetY * unit}px ${blur * unit}px ${PILL_SHADOW.spread * unit}px ${PLATE_SHADOW}`,
+        },
         motion,
       ]}
     >
+      {paint.top && (
+        <LinearGradient
+          colors={[paint.top, paint.fill, paint.fill]}
+          locations={PILL_PLATE_STOPS}
+          style={[StyleSheet.absoluteFill, { borderRadius: box.radius - StyleSheet.hairlineWidth }]}
+        />
+      )}
       <Ink.Provider value={ink}>{children}</Ink.Provider>
     </Animated.View>
+  );
+}
+
+export function NoticeDim() {
+  return <View pointerEvents="none" style={styles.dim} />;
+}
+
+function usePanelInk() {
+  const ink = useContext(Ink);
+  if (!ink) throw new Error("a panel's parts are drawn inside a TableNotice");
+  return ink;
+}
+
+export function NoticeLine({ line, children }: { line: PanelLine; children: ReactNode }) {
+  const { paint, scale } = usePanelInk();
+  const type = panelLine(line, scale);
+  return (
+    <TableText
+      style={[
+        styles.line,
+        type.bold && styles.bold,
+        line === "hint" && styles.hint,
+        { color: line === "main" ? paint.ink : paint.quiet ?? paint.ink, fontSize: type.fontSize, letterSpacing: type.tracking },
+      ]}
+    >
+      {children}
+    </TableText>
+  );
+}
+
+export function NoticeName({ children }: { children: ReactNode }) {
+  const { paint } = usePanelInk();
+  return <TableText style={[styles.bold, { color: paint.strong }]}>{children}</TableText>;
+}
+
+export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
+  const { scale } = usePanelInk();
+  const part = panelParts(scale);
+  const ink = SUIT_COLORS[suit];
+  return (
+    <LinearGradient
+      testID="notice-tile"
+      colors={CARD_FACE}
+      locations={CARD_FACE_STOPS}
+      start={{ x: 0.3, y: 0 }}
+      end={{ x: 0.7, y: 1 }}
+      style={[
+        styles.tile,
+        { width: part.tile.width, height: part.tile.height, borderRadius: part.tile.radius },
+        makeShadow(Colors.shadow, 0, mockupPx(1, scale), 0.5, mockupPx(TILE_SHADOW, scale), 0),
+      ]}
+    >
+      <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
+      <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX}>
+        <SuitShape suit={suit} color={ink} />
+      </Svg>
+    </LinearGradient>
+  );
+}
+
+export function NoticeDisc({ children }: { children: ReactNode }) {
+  const { paint, scale } = usePanelInk();
+  const part = panelParts(scale);
+  return (
+    <LinearGradient
+      testID="notice-disc"
+      colors={DISC_FILL}
+      start={{ x: 0.3, y: 0.25 }}
+      end={{ x: 1, y: 1 }}
+      style={[
+        styles.disc,
+        { width: part.disc, height: part.disc, borderRadius: part.disc / 2 },
+        makeShadow(Colors.goldLit, 0, 0, 0.3, mockupPx(DISC_GLOW, scale), 0),
+      ]}
+    >
+      <TableText style={[styles.bold, { color: paint.ink, fontSize: part.discFont }]}>{children}</TableText>
+    </LinearGradient>
   );
 }
 
@@ -122,6 +241,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderWidth: 1,
+  },
+  panel: { borderWidth: 1 },
+  dim: { ...StyleSheet.absoluteFill, backgroundColor: Scrim.medium, zIndex: DIM_Z },
+  line: { fontFamily: "Rajdhani_600SemiBold" },
+  hint: { textTransform: "uppercase", textAlign: "center" },
+  tile: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: Colors.cardEdge,
+  },
+  disc: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: DISC_EDGE,
   },
   text: {
     fontFamily: "Rajdhani_600SemiBold",

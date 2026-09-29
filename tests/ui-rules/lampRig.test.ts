@@ -143,6 +143,18 @@ describe("the lamp rig", () => {
     }
   });
 
+  test("the start announcement's light is over the table's middle, where its panel centres, under every inset", () => {
+    for (const { name: phone, width, height } of PHONES) {
+      for (const [insets, edges] of Object.entries(INSETS)) {
+        const anchors = anchorPoints(phoneTable(width, height, edges));
+        const [x, y] = lampPools(anchors, width, height).centre;
+        const { sx, sy } = designScale(width, height);
+        assert.ok(Math.abs(x * sx - anchors.top.x) < 1e-9, `${phone} at ${insets}: the light's x ${x * sx}, the table's middle ${anchors.top.x}`);
+        assert.ok(Math.abs(y * sy - height / 2) < 1e-9, `${phone} at ${insets}: the light's y ${y * sy}, the window's middle ${height / 2}`);
+      }
+    }
+  });
+
   test("a two- or three-player table aims at the seats it has: every table has a top seat and a hand", () => {
     assert.equal(seatDirection(1, 0, 2), "top", "two players face each other");
     assert.deepEqual([1, 2].map((s) => seatDirection(s, 0, 3)).sort(), ["right", "top"], "three players sit right and top");

@@ -48,7 +48,7 @@ term's meaning, and useless anywhere the term is not.
   *kind* (which surface it is), a *shape* in the lantern mockup's vocabulary — `pill`, `chip` (the
   mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`) its shape
   must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
-  `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill has; the
+  `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill and who starts have; the
   turn pill, the seat marks (`TableChip`), the pile's combination mark and the rest move in #1259
   plan 5's later tasks. Its kinds, their geometry in mockup pixels and their timings
   are `components/table/noticeModel.ts`, and each kind's gallery is

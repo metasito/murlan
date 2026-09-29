@@ -200,7 +200,7 @@ export const NoticePalette = {
     neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold },
   },
   panel: {
-    neutral: { fill: Colors.scorePillFoot, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.gold },
+    neutral: { fill: Colors.scorePillFoot, top: Colors.scorePillTop, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.goldLit, quiet: Colors.textMuted },
   },
 } as const;
 

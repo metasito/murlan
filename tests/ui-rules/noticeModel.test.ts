@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Colors, NoticePalette } from "../../lib/tokens.ts";
 import { CHIP_H } from "../../components/seatLayout.ts";
-import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, selectorBox, type NoticeKind } from "../../components/table/noticeModel.ts";
+import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, type NoticeKind } from "../../components/table/noticeModel.ts";
 
 const STAGE = 402 / 390;
 const at = (px: number, scale: number) => (px / STAGE) * scale;
@@ -49,6 +49,20 @@ test("every selector's box is the mockup's", () => {
       assert.equal(box.bold, px.bold, `${selector} weight`);
       near(box.fontSize, Math.max(at(px.font, s), 10), `${selector} type at ${s}`);
       if ("radius" in px) near(box.radius, at(px.radius, s), `${selector} radius at ${s}`);
+    }
+  }
+});
+
+// G1's approved line, tests/e2e/fixtures/notice-panel/index.html: padding=10 gap=6 radius=12 width=280.
+test("the who-starts panel takes G1's numbers, and its lines keep the table's floor", () => {
+  for (const s of SCALES) {
+    const box = noticeBox("whoStarts", s);
+    for (const [key, px] of [["padX", 10], ["padY", 10], ["gap", 6], ["radius", 12], ["width", 280]] as const) {
+      near(box[key] ?? NaN, at(px, s), `#panel ${key} at ${s}`);
+    }
+    assert.equal(box.height, undefined, "the panel grows with its words");
+    for (const [line, px] of [["main", 15], ["sub", 11], ["hint", 10]] as const) {
+      near(panelLine(line, s).fontSize, Math.max(at(px, s), 10), `${line} type at ${s}`);
     }
   }
 });

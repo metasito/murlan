@@ -538,7 +538,7 @@ describe("every sentence that names the opening card interpolates it", () => {
   const KEYS = [
     ["gameTable.playA11ySpokenStartCard", "{{card}}"],
     ["gameTable.startCardBannerSelf", "{{suit}}"],
-    ["gameTable.startCardBannerOther", "{{suit}}"],
+    ["gameShared.startReasonCard", "{{suit}}"],
   ] as const;
 
   test("no locale hardcodes ♠ — the 2-player fallback opener can hold any suit", () => {

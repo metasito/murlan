@@ -87,7 +87,7 @@ async function coveredByGate(page: Page, testId: string): Promise<boolean> {
 
 /** How far, in design points, the lamp's pool is from the centre of the announcement's words as laid out. */
 async function offTheWords(page: Page): Promise<number> {
-  const [lamp, words] = await Promise.all([tracedLamp(page), page.getByTestId("start-reason-card").boundingBox()]);
+  const [lamp, words] = await Promise.all([tracedLamp(page), page.getByTestId("notice-whoStarts").boundingBox()]);
   if (!words) throw new Error("the announcement has no words on screen");
   return Math.max(Math.abs(lamp.x - (words.x + words.width / 2)), Math.abs(lamp.y + LIGHT_ABOVE - (words.y + words.height / 2)));
 }

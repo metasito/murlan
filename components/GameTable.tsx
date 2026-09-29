@@ -33,6 +33,7 @@ import {
   sortHand,
   type Card,
   type GameState,
+  type StartReason,
 } from "@/lib/game/gameEngine";
 import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import type { LegStage } from "@/lib/game/exchangeTimeline";
@@ -81,9 +82,8 @@ import {
   useHandLift,
   RailKnob,
   sharedTableStyles,
-  StartCardBanner,
-  StartReasonBanner,
 } from "@/components/table/chrome";
+import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
   arrangedLabel,
   handLabel,
@@ -978,7 +978,13 @@ export function GameTable({
       ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
       : undefined;
 
-  const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
+  const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
+  const whoStarts: StartReason | undefined =
+    startReason ??
+    (gameState.startCard
+      ? { type: "start_card", card: gameState.startCard, playerIdx: gameState.currentTurnIndex }
+      : undefined);
+  const startGated = holdingForStart && !!startReason;
 
   const tradeName = (seat: number) => players[seat]?.name ?? "";
   const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
@@ -1105,11 +1111,16 @@ export function GameTable({
         {/* Over the whole table rather than inside the mid band: it holds the
             table as well as saying something, so the first tap is spent clearing
             it instead of playing a card. */}
-        {holdingForStart && startReason && (
-          <StartReasonBanner
-            reason={startReason}
-            players={players}
+        {(startGated || startCardDue) && whoStarts && (
+          <WhoStartsPanel
+            reason={whoStarts}
+            starterName={players[whoStarts.playerIdx]?.name ?? ""}
+            starterIsViewer={viewerOwnsSeat(whoStarts.playerIdx, viewerSeat, spectating)}
+            gated={startGated}
             onDone={() => setOpeningSpent(true)}
+            scale={scale}
+            tableLeft={frame.tableLeft}
+            tableRight={frame.tableRight}
           />
         )}
 
@@ -1244,13 +1255,6 @@ export function GameTable({
               </View>
 
               <View style={sharedTableStyles.centerSection}>
-                {showStartCardBanner && (
-                  <StartCardBanner
-                    card={gameState.startCard!}
-                    starterIsViewer={isMyTurn}
-                    starterName={players[gameState.currentTurnIndex]?.name ?? ""}
-                  />
-                )}
                 <PileLayer
                   trick={trick}
                   flights={flights}
@@ -1266,7 +1270,7 @@ export function GameTable({
                   roomW={frame.fieldRoomW}
                   scale={scale}
                   note={pileNote}
-                  hidden={showStartCardBanner}
+                  hidden={startCardDue}
                 />
 
                 {/* Centred on the same point the pile draws at, so the burst

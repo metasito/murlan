@@ -50,7 +50,7 @@ import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
 // the compiler catches a missing or misspelled suit instead of silently
 // yielding undefined.
-const SUIT_COLORS: Record<Suit, string> = {
+export const SUIT_COLORS: Record<Suit, string> = {
   spades: Colors.spade,
   hearts: Colors.heart,
   diamonds: Colors.diamond,
@@ -94,7 +94,7 @@ const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
  * is baked into the definition — nothing has to inherit through <Use>, which is
  * where this kind of hoist usually changes rendering silently.
  */
-function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
+export function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
   if (suit === "clubs") {
     return (
       <G id={id}>

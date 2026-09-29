@@ -220,7 +220,6 @@ const SELF = "self";
 const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
 const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
 const SHEET = sourceArray("SHEET_GRADIENT");
-const START_REASON = { plate: "startReasonStyles.card" };
 const CHIP = { plate: "chipStyles.chip" };
 const REMATCH = { plate: "styles.rematchPanel" };
 const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
@@ -233,10 +232,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
   "table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
   "table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
-  "table/chrome.tsx:startReasonStyles.eyebrow": START_REASON,
-  "table/chrome.tsx:startReasonStyles.main": START_REASON,
-  "table/chrome.tsx:startReasonStyles.sub": START_REASON,
-  "table/chrome.tsx:startReasonStyles.hint": START_REASON,
   "table/chrome.tsx:chipStyles.chipLabel": CHIP,
   "table/chrome.tsx:chipStyles.chipLabelStrong": CHIP,
   "table/chrome.tsx:chipStyles.chipLabelLit": CHIP,
@@ -256,8 +251,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.gain": SCORE_ROW,
   "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
-  "table/chrome.tsx:startCardStyles.glyph": { plate: "startCardStyles.banner" },
-  "table/chrome.tsx:startCardStyles.text": { plate: "startCardStyles.banner" },
   "table/hand.tsx:handStyles.emptyHandText": { plate: SELF },
   "table/pile.tsx:pileStyles.winnerText": { plate: "pileStyles.winnerTag" },
   "table/pile.tsx:pileStyles.comboChipText": { plate: "pileStyles.comboChip" },
@@ -327,14 +320,15 @@ test("the notice palette holds every shape, each with a tone", () => {
 });
 
 for (const [shape, tones] of Object.entries(NoticePalette)) {
-  for (const [tone, paint] of Object.entries(tones as Record<string, { fill: string; ink: string; strong: string }>)) {
-    test(`a ${tone} notice ${shape}'s ink and strong ink clear body contrast on every felt stop`, () => {
+  for (const [tone, paint] of Object.entries(tones as Record<string, { fill: string; ink: string; strong: string; top?: string; quiet?: string }>)) {
+    test(`a ${tone} notice ${shape}'s every ink clears body contrast on every felt stop`, () => {
       for (const [felt, gradient] of Object.entries(FeltGradients)) {
         for (const stop of gradient) {
-          const surface = resolve(paint.fill, stop);
-          for (const [which, ink] of [["ink", paint.ink], ["strong", paint.strong]]) {
-            const ratio = contrastRatio(resolve(ink, surface), surface);
-            assert.ok(ratio >= BODY_MIN, `${shape}.${tone}.${which} over ${felt} ${stop} is only ${ratio.toFixed(2)}:1`);
+          for (const surface of [paint.fill, paint.top ?? paint.fill].map((fill) => resolve(fill, stop))) {
+            for (const [which, ink] of [["ink", paint.ink], ["strong", paint.strong], ["quiet", paint.quiet ?? paint.ink]]) {
+              const ratio = contrastRatio(resolve(ink, surface), surface);
+              assert.ok(ratio >= BODY_MIN, `${shape}.${tone}.${which} over ${felt} ${stop} is only ${ratio.toFixed(2)}:1`);
+            }
           }
         }
       }

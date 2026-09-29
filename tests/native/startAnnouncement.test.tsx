@@ -254,6 +254,31 @@ describe('the manche-opening announcement', () => {
     await view.unmount();
   });
 
+  it('is one panel while the gate holds and the start card is due, and stays until the first play', async () => {
+    const dealt: GameState = {
+      ...state(OPENER),
+      firstPlayMade: false,
+      startCard: card(`3_${OPENER}`),
+      startReason: { type: 'start_card', card: card(`3_${OPENER}`), playerIdx: OPENER },
+    };
+    const plates = () => screen.queryAllByTestId('notice-whoStarts', { includeHiddenElements: true });
+    const view = await render(table(dealt));
+
+    expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();
+    expect(plates()).toHaveLength(1);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+
+    await fireEvent.press(screen.getByTestId('start-reason-gate', { includeHiddenElements: true }));
+    expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
+    expect(plates()).toHaveLength(1);
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+
+    await view.rerender(table({ ...midManche(OPENER + 1), firstPlayMade: true, startCard: dealt.startCard }));
+    expect(plates()).toHaveLength(0);
+
+    await view.unmount();
+  });
+
   it('holds the table while it is up, and hands it back afterwards', async () => {
     const view = await render(table(state(OPENER)));
 

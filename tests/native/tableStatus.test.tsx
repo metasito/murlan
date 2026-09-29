@@ -143,7 +143,7 @@ const filled = (key: keyof typeof locale, vars: Record<string, string>) =>
 
 const START_CARD = card('start', '3', 'spades');
 const startsSelf = filled('gameTable.startCardBannerSelf', { rank: '3', suit: '♠' });
-const startsOther = filled('gameTable.startCardBannerOther', { name: 'Ana', rank: '3', suit: '♠' });
+const startsOther = filled('gameShared.startReasonCard', { name: 'Ana', rank: '3', suit: '♠' });
 
 const dealt = (turn: number): GameState => ({
   ...state(turn),
@@ -184,8 +184,9 @@ describe('a watcher is never the player on move', () => {
 
   it('the start-card banner names the seat rather than the watcher', async () => {
     const r = await render(table(dealt(0), true));
-    expect(screen.queryByText(startsSelf)).toBeNull();
-    expect(screen.queryByText(startsOther)).not.toBeNull();
+    const panel = within(screen.getByTestId('notice-whoStarts', HIDDEN_TOO));
+    expect(panel.queryByText(startsSelf, HIDDEN_TOO)).toBeNull();
+    expect(panel.queryByText(startsOther, HIDDEN_TOO)).not.toBeNull();
     await r.unmount();
   });
 });
@@ -202,7 +203,8 @@ describe('a seated player is still the player on move', () => {
 
   it('the start-card banner uses the self form', async () => {
     const r = await render(table(dealt(0)));
-    expect(screen.queryByText(startsSelf)).not.toBeNull();
+    const panel = within(screen.getByTestId('notice-whoStarts', HIDDEN_TOO));
+    expect(panel.queryByText(startsSelf, HIDDEN_TOO)).not.toBeNull();
     await r.unmount();
   });
 
