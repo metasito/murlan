@@ -19,6 +19,7 @@ beforeAll(() => {
 
 let log: string[];
 let shown: GameState[];
+let untils: number[];
 
 const table: BenchContext = {
   params: {},
@@ -27,7 +28,11 @@ const table: BenchContext = {
     log.push(state ? 'table' : 'no table');
   },
   sleep: async (ms) => void log.push(`sleep ${ms}`),
-  frames: (on) => void log.push(`frames ${on}`),
+  frames: (on, until) => {
+    log.push(`frames ${on}`);
+    if (until !== undefined) untils.push(until);
+  },
+  armFrames: (on) => void log.push(`arm ${on}`),
   feltSample: async () => {
     throw new Error('unused');
   },
@@ -41,6 +46,7 @@ describe('the thread-load scenarios drive and record', () => {
     mockRows.length = 0;
     log = [];
     shown = [];
+    untils = [];
     delete diagnostics.benchHandles.lampFreeze;
     delete diagnostics.benchHandles.feltOpaque;
   });
@@ -55,7 +61,26 @@ describe('the thread-load scenarios drive and record', () => {
     const toggles = log.filter((l) => l.startsWith('frames'));
     expect(toggles).toEqual([...Array.from({ length: throws }, () => ['frames true', 'frames false']).flat(), 'frames false']);
     expect(log.filter((l) => l === 'sleep 700')).toHaveLength(throws);
-    expect(log.at(-1)).toBe('no table');
+    expect(untils).toEqual(mockRows.flatMap((r) => (r.k === 'throw' ? [r.t + 600] : [])));
+    expect(log.at(-1)).toBe('arm false');
+  });
+
+  it('each scenario arms the frame loop before its first window and disarms it after the last', async () => {
+    diagnostics.benchHandles.lampFreeze = () => {};
+    diagnostics.benchHandles.feltOpaque = () => {};
+    for (const name of ['throwStalls', 'restCost', 'feltOpaque']) {
+      log = [];
+      await scenarios.get(name)!(table);
+      const arms = log.filter((l) => l.startsWith('arm'));
+      expect(arms).toEqual(['arm true', 'arm false']);
+      expect(log[0]).toBe('arm true');
+      expect(log.at(-1)).toBe('arm false');
+    }
+  });
+
+  it('a failing scenario still disarms the frame loop', async () => {
+    await expect(scenarios.get('restCost')!(table)).rejects.toThrow();
+    expect(log.at(-1)).toBe('arm false');
   });
 
   it('restCost records four pairs of 30 s halves in ABBA order, and leaves the lamp swaying', async () => {
@@ -94,6 +119,6 @@ describe('the thread-load scenarios drive and record', () => {
     };
     await expect(scenarios.get('throwStalls')!(failing)).rejects.toThrow('boom');
     expect(log.filter((l) => l.startsWith('frames')).at(-1)).toBe('frames false');
-    expect(log.at(-1)).toBe('no table');
+    expect(log.slice(-2)).toEqual(['no table', 'arm false']);
   });
 });

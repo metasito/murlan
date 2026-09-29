@@ -5,7 +5,9 @@ export interface BenchContext {
   params: Record<string, string | undefined>;
   showTable(state: GameState | null): Promise<void>;
   sleep(ms: number): Promise<void>;
-  frames(on: boolean): void;
+  /** Opening with `until` (JS time) keeps the window to the first frame that ends past it. */
+  frames(on: boolean, until?: number): void;
+  armFrames(on: boolean): void;
   /** Each seat's mean linear luminance round its ring, in one snapshot of the felt on screen; throws when there is none. */
   feltSample(): Promise<Readonly<Record<LampSide, number>>>;
 }

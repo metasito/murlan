@@ -11,7 +11,7 @@ import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/l
 import { recorder } from "@/lib/diagnostics/recorder";
 import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
-import { FrameProbe, recordFrames } from "@/lib/diagnostics/FrameProbe";
+import { FrameProbe, armFrames, recordFrames } from "@/lib/diagnostics/FrameProbe";
 import { startJsLag } from "@/lib/diagnostics/jsLag";
 import { probe } from "@/lib/diagnostics/probe";
 import "@/lib/diagnostics/scenarios";
@@ -57,11 +57,12 @@ export function BenchScreen() {
             setTable({ state });
           }),
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
-        frames: (on) => {
-          recordFrames(on);
+        frames: (on, until) => {
+          recordFrames(on, until);
           stopJs.current?.();
           stopJs.current = on ? startJsLag() : null;
         },
+        armFrames,
         feltSample,
       };
       for (const [name, scenario] of benchScenarios()) {

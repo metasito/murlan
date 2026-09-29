@@ -19,14 +19,15 @@ interface ThrowOpts {
   throws?: number;
   unframed?: number[];
   late?: number[];
+  lateBy?: number;
   stall?: { throw: number; at: number; k: "frame" | "jsLag"; dt?: number };
   ticks?: number;
 }
 
-function throwRows({ throws = 10, unframed = [], late = [], stall, ticks = 80 }: ThrowOpts = {}): Row[] {
+function throwRows({ throws = 10, unframed = [], late = [], lateBy = 400, stall, ticks = 80 }: ThrowOpts = {}): Row[] {
   return Array.from({ length: throws }, (_, i) => {
     const t = 1000 + i * 1000;
-    let own: Row[] = unframed.includes(i) ? [] : frames(late.includes(i) ? t + 400 : t, t + 700, 8);
+    let own: Row[] = unframed.includes(i) ? [] : frames(late.includes(i) ? t + lateBy : t, t + 700, 8);
     const dt = stall?.dt ?? 40;
     if (stall?.throw === i && stall.k === "frame") own = at(own, t + stall.at, dt);
     if (stall?.throw === i && stall.k === "jsLag") own.push({ k: "jsLag", t: t + stall.at, dt });
@@ -98,17 +99,22 @@ test("throwStalls fails nine throws", () => {
   assert.equal(r.pass, false);
 });
 
-test("throwStalls fails when three of ten throws recorded no frames, and passes two", () => {
-  const three = GATES.throwStalls(throwRows({ unframed: [1, 5, 8] }));
-  assert.equal(three.metrics.framed, 0.7);
-  assert.equal(three.pass, false);
-  assert.equal(GATES.throwStalls(throwRows({ unframed: [1, 5] })).pass, true);
+test("throwStalls fails when one throw of ten recorded no frames", () => {
+  const r = GATES.throwStalls(throwRows({ unframed: [5] }));
+  assert.equal(r.metrics.framed, 0.9);
+  assert.equal(r.pass, false);
 });
 
-test("a window whose frames begin 400 ms late is not framed: three such fail", () => {
-  const r = GATES.throwStalls(throwRows({ late: [1, 5, 8] }));
-  assert.equal(r.metrics.framed, 0.7);
+test("a window whose frames begin 400 ms late is not framed: one such fails", () => {
+  const r = GATES.throwStalls(throwRows({ late: [5] }));
+  assert.equal(r.metrics.framed, 0.9);
   assert.equal(r.pass, false);
+});
+
+test("a window whose frames begin 100 ms late is still framed", () => {
+  const r = GATES.throwStalls(throwRows({ late: [5], lateBy: 100 }));
+  assert.equal(r.metrics.framed, 1);
+  assert.equal(r.pass, true);
 });
 
 test("throwStalls fails a run with no JS ticks", () => {

@@ -163,7 +163,7 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
   | Seats | Each opponent's `seat-ring` in window points (`measureInWindow` every 250 ms, during this scenario only), against its first sample in the deal's hold; every `seatState` recorded with one `of`, and every ring sampled in each state's own hold | all three rings in the deal's hold, finite and at distinct positions; drift ≤ 0.5 pt per axis | `seatAnchors`: each of `SEAT_COUNT_STATES`, settled 1.5 s, held 1 s |
   | Lamp | Each seat's worst `lampLegibility` ratio (on-move ring ÷ brightest other, `feltOnly` pixels of the felt canvas's snapshot) over one sway period | every seat ≥ `LAMP_FLOOR`, worst ÷ best ≥ `LAMP_SYMMETRY`, `LAMP_SWAY.samples` per seat | `lampVariants`: the four `lamp-*` capture states, settled 4 s, `LAMP_SWAY` 20 snapshots over 8 s |
-  | Throws | `burstStalls` over every interval overlapping [throw, throw + 600 ms]; `medianHz`, the median of each second's median frame rate | 0 stalls; ≥ 10 throws, frames covering ≥ 80 % of the 600 ms in ≥ 80 % of the windows, JS ticks > 0 | `throwStalls`: one bot manche through `driveBots`, recording opened before each `throw` row and closed 700 ms after |
+  | Throws | `burstStalls` over every interval overlapping [throw, throw + 600 ms]; `medianHz`, the median of each second's median frame rate | 0 stalls; ≥ 10 throws, frames covering ≥ 80 % of the 600 ms in every window, JS ticks > 0 | `throwStalls`: one bot manche through `driveBots`, recording opened before each `throw` row, kept to the first frame past 600 ms, capped at 700 ms (a cap reached records the gap as one interval) |
   | Rest | `medianHz` and `burstStalls` per `half`, frozen and swaying both reported | every swaying half ≥ 115 Hz, 0 stalls; four pairs, every half framed | `restCost`: a quiet table, `lampFreeze` 1 and 0, four pairs of 30 s halves |
   | Felt | Per pair, stalls and the p95 frame interval of each half | four pairs recorded; `outcome` `keep` when the opaque half has no more stalls in any pair and the lower p95 in ≥ 3 of 4, else `drop` | `feltOpaque`: a quiet table, `feltOpaque` on and off, four pairs of 20 s halves |
 
@@ -173,9 +173,12 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   it closes, so none may exceed its 5000 rows: 30 s at 120 Hz is 3600. A dropped row fails the
   gate. Pairs run ABBA (pairs 1 and 3 reversed), so drift over the run favours neither half; a p95
   interval, unlike `medianHz`, does not snap to the display rate. Recording is a shared value the
-  always-running frame probe reads, so opening or closing a window renders nothing
-  (`tests/native/benchRecording.test.tsx`). The iOS build keeps the worklets frame-rate governor on, as these gates measured it;
-  `tests/tooling/workletsGovernor.test.ts` fails a build that turns it off.
+  frame probe reads, so opening or closing a window renders nothing
+  (`tests/native/benchRecording.test.tsx`). The probe's frame loop runs only while a window is open
+  or a thread-load scenario has armed it, so the other scenarios see the governor as a player
+  does (`tests/native/frameProbe.test.tsx`). The iOS build keeps the worklets frame-rate governor
+  on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
+  turns it off.
 - Running them (about 50 minutes of the phone, untouched):
   1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
   2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.

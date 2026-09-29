@@ -285,7 +285,7 @@ function throwStalls(rows) {
   const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= 480).length / throws.length : 0;
   const { jsTicks } = burstStalls(rows);
   return {
-    pass: throws.length >= 10 && framed >= 0.8 && jsTicks > 0 && stalls === 0,
+    pass: throws.length >= 10 && framed === 1 && jsTicks > 0 && stalls === 0,
     metrics: { throws: throws.length, stalls, framed, jsTicks, medianHz: medianHz(rows) },
   };
 }
