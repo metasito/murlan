@@ -16,6 +16,8 @@ const PLANTED = {
     'import { test } from "node:test";\nimport { execFileSync } from "node:child_process";\n' +
     'test("waits on a child", () => { execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 20000)"]); });\n',
   "topLevel.test.mjs": 'import "node:test";\nawait new Promise(() => setInterval(() => {}, 1000));\n',
+  "movesCwd.test.mjs":
+    'import "node:test";\nprocess.chdir(import.meta.dirname);\nawait new Promise(() => setInterval(() => {}, 1000));\n',
 };
 
 describe("a test file that never finishes fails npm test by name", () => {
