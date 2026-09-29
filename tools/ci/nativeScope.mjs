@@ -16,8 +16,15 @@ const deps = (text) => {
   }
 };
 
-export function needsNative(changed, before, after) {
+const NATIVE_SOURCE = /(^|\/)(ios|android|apple|cpp)\/|\.(mm|m|h|cpp|java|kt|podspec)$/;
+
+const patchIsNative = (text) =>
+  text === null || [...text.matchAll(/^diff --git a\/(\S+) b\/(\S+)$/gm)].some((m) => NATIVE_SOURCE.test(m[1]) || NATIVE_SOURCE.test(m[2]));
+
+/** @param {(file: string) => string | null} [readPatch] */
+export function needsNative(changed, before, after, readPatch = () => null) {
   if (changed.some((f) => CONFIG.test(f))) return true;
+  if (changed.some((f) => f.startsWith("patches/") && patchIsNative(readPatch(f)))) return true;
   if (!changed.includes("package.json")) return false;
   const [a, b] = [deps(before), deps(after)];
   if (!a || !b) return true;
@@ -25,13 +32,23 @@ export function needsNative(changed, before, after) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+  const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   let answer = true;
   try {
     const base = process.argv[2];
     const changed = git("diff", "--name-only", base, "HEAD").split("\n").filter(Boolean);
     const before = changed.includes("package.json") ? git("show", `${base}:package.json`) : "";
-    answer = needsNative(changed, before, readFileSync("package.json", "utf8"));
+    const readPatch = (f) => {
+      for (const rev of ["HEAD", base]) {
+        try {
+          return git("show", `${rev}:${f}`);
+        } catch {
+          continue;
+        }
+      }
+      return null;
+    };
+    answer = needsNative(changed, before, readFileSync("package.json", "utf8"), readPatch);
   } catch {
     answer = true;
   }
