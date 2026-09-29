@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useTraceSource } from "@/lib/e2eTrace";
-import type { Pool } from "./lampRig";
+import type { LampLight, Pool } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 
 export interface FeltProps {
@@ -9,6 +9,7 @@ export interface FeltProps {
   stops: FeltStops;
   /** Where the lamp is headed: the web fallback bakes its light there. */
   pool: Pool;
+  light: LampLight;
 }
 
 /** Skia's readiness — loaded and its first frame drawn — for the trace; game information never waits on it. */

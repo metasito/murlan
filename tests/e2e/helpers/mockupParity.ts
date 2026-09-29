@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
-import { DEPART_SCRIPT } from "./lanternDepartures";
+import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
 import { seatAnchor, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
@@ -231,7 +231,7 @@ const MOCKUP_SAMPLE = `(() => {
     onsets: window.__parityOnsets.splice(0),
     live: P.length + lamp.m.length,
     dropped: 0,
-    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f },
+    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },
     flight: Math.max(0, ...[...document.querySelectorAll("#pile .grp.cur .card")].map((c) => {
@@ -343,6 +343,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   }, { x: px, y: py });
+  await expectDeparted(page);
   await page.context().close();
   return capture;
 }

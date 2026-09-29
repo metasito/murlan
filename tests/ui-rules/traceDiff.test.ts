@@ -22,7 +22,7 @@ function reference(): Trace {
       onsets: t === 32 ? ["sound:bomb", "moment:bomb"] : t === 96 ? ["haptic:hapticHeavy"] : [],
       live: t < 64 ? 40 : 100,
       dropped: t < 200 ? 0 : 10,
-      lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000 },
+      lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000, r: 1 + t / 2000 },
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
       scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
       flight: 0,
@@ -79,6 +79,11 @@ describe("diffTraces", () => {
   test("a lamp 5 pt off fails; 3 pt passes", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).lamp!.y += 5))), new Set(["lamp"]));
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).lamp!.x += 3))), new Set());
+  });
+
+  test("a reach that moves a point 5 pt at the table's width fails; 3 pt passes", () => {
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 320).lamp!.r += 5 / 874))), new Set(["lamp"]));
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 320).lamp!.r -= 3 / 874))), new Set());
   });
 
   test("a lamp level 0.04 off fails, and a flare 0.04 off", () => {

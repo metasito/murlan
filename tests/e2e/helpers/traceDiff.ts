@@ -1,6 +1,7 @@
 // The fidelity harness's gate (#1255): the mockup's trace against the app's. Pure, so
 // tests/ui-rules/traceDiff.test.ts plants a divergence per field.
 import type { TraceFrame } from "../../../lib/e2eTrace.ts";
+import { DESIGN } from "../../../components/table/lampRig.ts";
 
 export type { TraceFrame };
 
@@ -128,6 +129,8 @@ export function diffTraces(
     } else {
       const d = Math.hypot(a.lamp.x - m.lamp.x, a.lamp.y - m.lamp.y);
       if (d > tol.lampPt) fail("lamp", t, m.lamp, a.lamp, `lamp ${d.toFixed(1)} pt off`);
+      const grown = Math.abs(a.lamp.r - m.lamp.r) * DESIGN.width;
+      if (grown > tol.lampPt) fail("lamp", t, m.lamp, a.lamp, `the light's reach moves a point ${grown.toFixed(1)} pt at the table's width`);
       for (const k of ["level", "flare"] as const) {
         const mv = m.lamp[k];
         const av = a.lamp[k];
