@@ -3,7 +3,7 @@ import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/flightPhysics";
-import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type LampTarget } from "./lampRig";
+import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
 import { useLandingReaction } from "./useLandingReaction";
 import type { LandingSignal } from "./useFlightClock";
 
@@ -33,13 +33,13 @@ function lampStepper(lamp: SharedValue<Lamp>, reduced: SharedValue<boolean>) {
 }
 
 export function useLampRig({
-  target,
+  pool,
   fresh,
   width,
   height,
   landing,
 }: {
-  target: LampTarget;
+  pool: Pool;
   /** A deal is starting: the lamp breathes up with it. */
   fresh: boolean;
   width: number;
@@ -49,7 +49,8 @@ export function useLampRig({
 }): LampRig {
   const reduceMotion = usePrefersReducedMotion();
   const reduced = useSharedValue(reduceMotion);
-  const lamp = useSharedValue<Lamp>(restingLamp(target, fresh ? BREATH_FROM : 1));
+  const lamp = useSharedValue<Lamp>(restingLamp(pool, fresh ? BREATH_FROM : 1));
+  const [px, py, reach] = pool;
 
   useEffect(() => {
     reduced.value = reduceMotion;
@@ -63,10 +64,10 @@ export function useLampRig({
   useEffect(() => {
     lamp.modify((s) => {
       "worklet";
-      lampControls.setTarget(s, target, reduced.value);
+      lampControls.setTarget(s, [px, py, reach], reduced.value);
       return s;
     }, true);
-  }, [target, lamp, reduced]);
+  }, [px, py, reach, lamp, reduced]);
 
   useEffect(() => {
     if (!fresh) return;
