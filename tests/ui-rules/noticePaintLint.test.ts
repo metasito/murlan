@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { ESLint } from "eslint";
@@ -36,9 +36,40 @@ test("a hand-built plate in the notices directory is refused by both rules", asy
   }
 });
 
-test("the same plate outside the notices directory draws neither rule", async () => {
-  const rules = await firing(PLANT, "components/table/__plant.tsx");
-  assert.deepEqual(rules.filter((r) => r === SYNTAX || r === IMPORTS), []);
+test("the same plate outside the notices directory is refused only its palette import", async () => {
+  const found = await messages(PLANT, "components/table/__plant.tsx");
+  assert.deepEqual(found.filter((m) => m.ruleId === SYNTAX), []);
+  const imports = found.filter((m) => m.ruleId === IMPORTS).map((m) => m.message);
+  assert.ok(imports.length > 0 && imports.every((m) => m.includes("'NoticePalette'")), imports.join(" | "));
+});
+
+test("a string-keyed paint property and a namespace import are refused in the notices directory", async () => {
+  const found = await firing(
+    [`  import * as Theme from "@/lib/theme";`, `  export const s = { "backgroundColor": Theme.Colors.bg, "borderRadius": 3 };`].join("\n"),
+    `${NOTICES}/__plant.tsx`,
+  );
+  assert.equal(found.filter((r) => r === SYNTAX).length, 2, found.join(", "));
+  assert.ok(found.includes(IMPORTS), found.join(", "));
+});
+
+const reads = async (code: string, file = "components/table/__plant.tsx") => (await firing(code, file)).includes(IMPORTS);
+
+test("TableNotice is the one reader of the notice palette, however it is reached", async () => {
+  assert.ok(await reads(`  import { NoticePalette } from "@/lib/theme";\n  export const p = NoticePalette;`));
+  assert.ok(await reads(`  import * as Theme from "@/lib/theme";\n  export const p = Theme.NoticePalette;`));
+  assert.ok(await reads(`  export { NoticePalette } from "@/lib/tokens";`));
+  assert.ok(await reads(`  import { NoticePalette } from "../../lib/tokens.ts";\n  export const p = NoticePalette;`));
+  assert.ok(
+    await reads(`  import { type NoticePalette } from "@/lib/theme";\n  import { NoticePalette as P } from "@/lib/tokens";\n  export const p: typeof NoticePalette = P;`),
+    "a type-only import does not exempt the file's value import",
+  );
+  assert.ok(!(await reads(`  import { type NoticePalette } from "@/lib/theme";\n  export type P = typeof NoticePalette;`)));
+  assert.ok(!(await reads(`  import { NoticePalette } from "@/lib/theme";\n  export const p = NoticePalette;`, "components/table/TableNotice.tsx")));
+});
+
+test("the palette's reader and the model lint clean", async () => {
+  const results = await eslint.lintFiles(["components/table/TableNotice.tsx", "components/table/noticeModel.ts"].map((f) => path.join(ROOT, f)));
+  assert.deepEqual(results.flatMap((r) => r.messages.map((m) => `${path.basename(r.filePath)}:${m.line} ${m.message}`)), []);
 });
 
 test("the notices directory keeps the base token rules", async () => {
@@ -54,17 +85,4 @@ test("the notices directory is non-empty and its real files are clean", async ()
     r.messages.filter((m) => m.ruleId === SYNTAX || m.ruleId === IMPORTS).map((m) => `${path.basename(r.filePath)}:${m.line} ${m.message}`),
   );
   assert.deepEqual(refused, []);
-});
-
-test("TableNotice is the one reader of the notice palette", () => {
-  const readers: string[] = [];
-  for (const dir of ["app", "components", "context", "lib"]) {
-    for (const f of readdirSync(path.join(ROOT, dir), { recursive: true, encoding: "utf8" })) {
-      if (!/\.tsx?$/.test(f)) continue;
-      const rel = `${dir}/${f.split(path.sep).join("/")}`;
-      const src = readFileSync(path.join(ROOT, rel), "utf8");
-      if (/import\s+\{[^}]*\bNoticePalette\b[^}]*\}\s+from/.test(src) && !/import\s+\{[^}]*\btype NoticePalette\b/.test(src)) readers.push(rel);
-    }
-  }
-  assert.deepEqual(readers, ["components/table/TableNotice.tsx"]);
 });

@@ -12,26 +12,30 @@ const SCALES = [0.82, 1, 402 / 390, 1.13, 2];
 const near = (actual: number, expected: number, what: string) =>
   assert.ok(Math.abs(actual - expected) < 0.05, `${what}: ${actual} is not the mockup's ${expected}`);
 
-test("the HUD combination pill is the mockup's .chip at every scale", () => {
-  for (const s of SCALES) {
+// Today's TableChip (components/table/chrome.tsx on main): 11/7 pt, FontSize.xxs, .15em/.06em.
+test("the HUD combination pill keeps today's box at every scale, 412- and 430-pt phones included", () => {
+  for (const s of [...SCALES, 1.07]) {
     const box = noticeBox("hudCombo", s);
-    near(box.height ?? NaN, at(23.7, s), `.chip height at ${s}`);
     assert.equal(box.height, CHIP_H(s), "the HUD bands are laid out against CHIP_H");
-    near(box.padX, at(12, s), `.chip padding at ${s}`);
-    near(box.gap, at(6, s), `.chip gap at ${s}`);
-    near(box.tracking, at(1.55, s), `.chip tracking at ${s}`);
-    near(box.fontSize, Math.max(at(10, s), 10), `.chip type at ${s}`);
+    near(box.height ?? NaN, at(23.7, s), `.chip height at ${s}`);
+    near(box.padX, 11 * s, `padding at ${s}`);
+    near(box.gap, 7 * s, `gap at ${s}`);
+    near(box.fontSize, Math.max(9 * s, 10), `type at ${s}`);
+    near(box.tracking, 1.5 * s, `tracking at ${s}`);
+    near(box.strongTracking, 0.6 * s, `strong tracking at ${s}`);
+    assert.equal(box.bold, false);
   }
+  assert.equal(noticeBox("hudCombo", 1.07).fontSize, 10);
 });
 
 test("every selector's box is the mockup's", () => {
   const MOCKUP = {
-    ".chip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55 },
-    "#turn": { height: 23.7, padX: 13, gap: 7, font: 10, tracking: 1.55 },
-    ".floatchip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55 },
-    ".passo": { height: 15, padX: 7, gap: 0, font: 8, tracking: 1.28, radius: 8 },
-    ".cchip": { height: 15, padX: 9, gap: 0, font: 9, tracking: 1.5 },
-    "#score": { padX: 10, gap: 6, font: 9.5, tracking: 2, radius: 12 },
+    ".chip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55, bold: false },
+    "#turn": { height: 23.7, padX: 13, gap: 7, font: 10, tracking: 1.55, bold: false },
+    ".floatchip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55, bold: false },
+    ".passo": { height: 15, padX: 7, gap: 0, font: 8, tracking: 1.28, radius: 8, bold: true },
+    ".cchip": { height: 15, padX: 9, gap: 0, font: 9, tracking: 1.5, bold: true },
+    "#score": { padX: 10, gap: 6, font: 9.5, tracking: 2, radius: 12, bold: true },
   } as const;
   for (const s of SCALES) {
     for (const [selector, px] of Object.entries(MOCKUP)) {
@@ -41,6 +45,8 @@ test("every selector's box is the mockup's", () => {
       near(box.padX, at(px.padX, s), `${selector} padding at ${s}`);
       near(box.gap, at(px.gap, s), `${selector} gap at ${s}`);
       near(box.tracking, at(px.tracking, s), `${selector} tracking at ${s}`);
+      near(box.strongTracking, at(px.tracking, s), `${selector} strong tracking at ${s}`);
+      assert.equal(box.bold, px.bold, `${selector} weight`);
       near(box.fontSize, Math.max(at(px.font, s), 10), `${selector} type at ${s}`);
       if ("radius" in px) near(box.radius, at(px.radius, s), `${selector} radius at ${s}`);
     }
@@ -62,12 +68,12 @@ test("a notice rises 6 mockup px, and not at all under reduced motion", () => {
   }
 });
 
-test("pills and panels take 160 ms; marks and floats 100 in and 100 out (Q1)", () => {
+test("pills and panels take 160 ms; marks and floats 100 in, a 1000 hold, 100 out (Q1)", () => {
   for (const reduce of [false, true]) {
-    assert.deepEqual(noticeTiming("pill", reduce), { enter: 160, exit: 160 });
-    assert.deepEqual(noticeTiming("panel", reduce), { enter: 160, exit: 160 });
-    assert.deepEqual(noticeTiming("chip", reduce), { enter: 100, exit: 100 });
-    assert.deepEqual(noticeTiming("float", reduce), { enter: 100, exit: 100 });
+    assert.deepEqual(noticeTiming("pill", reduce), { enter: 160, hold: null, exit: 160 });
+    assert.deepEqual(noticeTiming("panel", reduce), { enter: 160, hold: null, exit: 160 });
+    assert.deepEqual(noticeTiming("chip", reduce), { enter: 100, hold: 1000, exit: 100 });
+    assert.deepEqual(noticeTiming("float", reduce), { enter: 100, hold: 1000, exit: 100 });
   }
 });
 

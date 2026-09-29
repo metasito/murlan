@@ -35,7 +35,7 @@ export function TableNotice<K extends NoticeKind>({
 }) {
   const shape: NoticeShape = NOTICES[kind].shape;
   const paint = (NoticePalette[shape] as Record<string, Paint>)[tone];
-  const box = noticeBox(kind, scale);
+  const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
   const reduceMotion = usePrefersReducedMotion();
   const { enter, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
@@ -44,7 +44,10 @@ export function TableNotice<K extends NoticeKind>({
   const risen = useSharedValue(0);
   useEffect(() => {
     life.value = withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
-    if (shown) risen.value = withTiming(1, { duration: enter });
+    if (shown) {
+      risen.value = 0;
+      risen.value = withTiming(1, { duration: enter });
+    }
     return () => {
       cancelAnimation(life);
       cancelAnimation(risen);
@@ -99,6 +102,7 @@ export function NoticeText({
       testID={testID}
       style={[
         styles.text,
+        (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
           color: strong ? paint.strong : paint.ink,
@@ -123,8 +127,6 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     textTransform: "uppercase",
   },
-  strong: {
-    fontFamily: "Rajdhani_700Bold",
-    fontVariant: ["tabular-nums"],
-  },
+  bold: { fontFamily: "Rajdhani_700Bold" },
+  strong: { fontVariant: ["tabular-nums"] },
 });

@@ -81,18 +81,19 @@ const TOKEN_SYNTAX = [
 
 // A later block replaces a rule's options rather than adding to them, so this one restates both.
 const NOTICES_DIR = "components/table/notices/**/*.{ts,tsx}";
-const noticeImports = () => {
-  const [level, { paths, patterns }] = audioLayers(null);
-  const importNames = NOTICE_PAINT_IMPORTS;
-  const message = NOTICE_PAINT_MESSAGE;
-  return [
-    level,
-    {
-      paths: [...paths, ...["@/lib/theme", "@/lib/tokens"].map((name) => ({ name, importNames, message }))],
-      patterns: [...patterns, { group: ["**/lib/theme", "**/lib/tokens", "**/lib/tokens.ts"], importNames, message }],
-    },
-  ];
-};
+const restrictTheme = ([level, { paths, patterns }], importNames, message, allowTypeImports) => [
+  level,
+  {
+    paths: [...paths, ...["@/lib/theme", "@/lib/tokens"].map((name) => ({ name, importNames, message, allowTypeImports }))],
+    patterns: [
+      ...patterns,
+      { group: ["**/lib/theme", "**/lib/theme.ts", "**/lib/tokens", "**/lib/tokens.ts"], importNames, message, allowTypeImports },
+    ],
+  },
+];
+const PALETTE_READER = "components/table/TableNotice.tsx";
+const PALETTE_MESSAGE = `${PALETTE_READER} is the one reader of NoticePalette: paint a notice through it.`;
+const paletteLayers = (file) => restrictTheme(audioLayers(file), ["NoticePalette"], PALETTE_MESSAGE, true);
 
 module.exports = defineConfig([
   expoConfig,
@@ -138,18 +139,22 @@ module.exports = defineConfig([
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    rules: { "@typescript-eslint/no-restricted-imports": paletteLayers(null) },
+  },
+  {
+    files: [PALETTE_READER],
     rules: { "@typescript-eslint/no-restricted-imports": audioLayers(null) },
   },
   {
     files: [NOTICES_DIR],
     rules: {
       "no-restricted-syntax": ["error", ...TOKEN_SYNTAX, { selector: NOTICE_PAINT, message: NOTICE_PAINT_MESSAGE }],
-      "@typescript-eslint/no-restricted-imports": noticeImports(),
+      "@typescript-eslint/no-restricted-imports": restrictTheme(audioLayers(null), NOTICE_PAINT_IMPORTS, NOTICE_PAINT_MESSAGE, false),
     },
   },
   ...["lib/device/audioEngine.ts", "lib/device/hapticsEngine.ts", "lib/device/feedback.ts", "lib/diagnostics/probe.ts"].map((file) => ({
     files: [file],
-    rules: { "@typescript-eslint/no-restricted-imports": audioLayers(file) },
+    rules: { "@typescript-eslint/no-restricted-imports": paletteLayers(file) },
   })),
   {
     // `eslint-config-expo` registers `@typescript-eslint` only for TS files, and

@@ -66,7 +66,7 @@ Verify against source before changing any.
 - **Reach for the shared piece before writing one**: `ScreenHeader`, `StateBlock`, `IconButton`,
   `Avatar`, `ResultBoard`, `AppModal`, `useIsLandscape()`. A local component never takes a shared
   one's name.
-- **Every table notice is painted by `TableNotice`**; `components/table/notices/` lays out only
+- **Paint new or moved notices with `TableNotice`**; `components/table/notices/` lays out only
   (`tests/ui-rules/noticePaintLint.test.ts`).
 - **Menu screens use `MenuLayout` / `MenuCard` / `MenuButton`**, with `app/profile.tsx` as the
   reference. The game tables and `app/index.tsx` are exempt.

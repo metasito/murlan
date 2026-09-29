@@ -74,8 +74,9 @@ const STRING_TOKEN_MESSAGE =
 const SCALED_LITERAL_MESSAGE =
   'Use a FontSize, Radius or Spacing token. A one-off that fits no step may be a named module constant, but not a bare number in a style object.';
 
+const NOTICE_PAINT_PROPS = '/^(backgroundColor|border\\w*(Color|Width|Radius)|shadow\\w*|elevation|boxShadow)$/';
 const NOTICE_PAINT =
-  'Property[key.name=/^(backgroundColor|border\\w*(Color|Width|Radius)|shadow\\w*|elevation|boxShadow)$/], ' +
+  `Property[key.name=${NOTICE_PAINT_PROPS}], Property[key.value=${NOTICE_PAINT_PROPS}], ` +
   'JSXOpeningElement[name.name="LinearGradient"], ' +
   'CallExpression[callee.name=/^make(Layered)?Shadow$/]';
 const NOTICE_PAINT_MESSAGE =
