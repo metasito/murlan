@@ -15,6 +15,13 @@ import { motionMs } from '@/lib/theme';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxAt, haptics, settle as advance, sounds, startsOf } from './helpers/feedback';
 
+let mockReduceMotion = false;
+jest.mock('@/lib/accessibility', () => ({
+  usePrefersReducedMotion: () => mockReduceMotion,
+  setMotionPreference: () => {},
+  getMotionPreference: () => 'system',
+}));
+
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
@@ -153,6 +160,7 @@ const settle = (ms = STING_MS) => advance(ms);
 
 describe('the end-of-hand sting', () => {
   beforeEach(async () => {
+    mockReduceMotion = false;
     jest.useFakeTimers();
     await bootFeedback();
   });
@@ -181,6 +189,16 @@ describe('the end-of-hand sting', () => {
     expect(sounds()).toContain('partitaWon');
     expect(sounds()).not.toContain('mancheWon');
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
+    await r.unmount();
+  });
+
+  it('under reduced motion a finished partita still leads with its haptic, the sting 300 ms after', async () => {
+    mockReduceMotion = true;
+    const t0 = performance.now();
+    const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
+    await advance(300);
+    expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
+    expect(startsOf('partitaWon')).toEqual([expect.closeTo(ctxAt(t0 + 300), 2)]);
     await r.unmount();
   });
 

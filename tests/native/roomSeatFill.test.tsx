@@ -1,5 +1,5 @@
 // tests/native/roomSeatFill.test.tsx — a seat filling in the room is heard and
-// seen: one clack per seat that fills, a sting when the last one does, and each
+// seen: one clack per update that fills a seat, a sting when the last one does, and each
 // row entering rather than appearing.
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 import React from "react";
@@ -60,7 +60,7 @@ describe("a seat filling in the room", () => {
     await view.unmount();
   });
 
-  it("clacks once per seat that fills, and stings once when the last one does", async () => {
+  it("clacks once per update that fills a seat, however many it fills, and stings once when the last one does", async () => {
     const view = await render(seatList([ANA]));
 
     await view.rerender(seatList([ANA, BEN]));
@@ -68,11 +68,11 @@ describe("a seat filling in the room", () => {
     expect(fulls()).toBe(0);
 
     await view.rerender(seatList([ANA, BEN, CEM, DRI]));
-    expect(fills()).toBe(3);
+    expect(fills()).toBe(2);
     expect(fulls()).toBe(1);
 
     await view.rerender(seatList([ANA, BEN, CEM, DRI]));
-    expect(fills()).toBe(3);
+    expect(fills()).toBe(2);
     expect(fulls()).toBe(1);
     await view.unmount();
   });

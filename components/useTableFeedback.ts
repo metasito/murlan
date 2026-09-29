@@ -395,7 +395,7 @@ export function useTableFeedback({
   }, [turn]);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !prevMyTurnRef.current) {
+    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) {
       const cue = () => event([{ kind: "turn" }]);
       if (handOffTimerRef.current) clearTimeout(handOffTimerRef.current);
       const wait = landsAtRef.current - performance.now();
@@ -403,7 +403,7 @@ export function useTableFeedback({
       else handOffTimerRef.current = setTimeout(cue, wait);
     }
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished]);
+  }, [isMyTurn, isFinished, gameOver]);
 
   useEffect(() => {
     if (exchangeActive && !prevExchangeActiveRef.current) event([{ kind: "exchange" }]);
@@ -459,7 +459,8 @@ export function useTableFeedback({
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    const at = performance.now() + handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion);
+    const delay = handOffDelayMs(reduceMotion) + motionMs("shift", reduceMotion);
+    const at = delay > 0 ? performance.now() + delay : undefined;
     if (matchOver && matchWinners.length > 0) {
       event([{ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }], at);
     } else {

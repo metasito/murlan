@@ -101,7 +101,7 @@ export function RoomSeatList({
     seatedRef.current = seated;
     if (!before) return;
     const filled = [...seated].filter((seat) => !before.has(seat)).length;
-    for (let i = 0; i < filled; i++) uiFeedback("seatFill");
+    if (filled > 0) uiFeedback("seatFill");
     if (filled > 0 && seated.size >= maxSeats) uiFeedback("roomFull");
   }, [players, maxSeats]);
 
