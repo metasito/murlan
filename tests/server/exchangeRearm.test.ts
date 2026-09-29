@@ -7,7 +7,8 @@ import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts
 import { botMoveDelayMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { initializeRematch, type GameState } from "../../lib/game/gameEngine.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { RECEIVE_MS, exchangeGiveDelayMs } from "../../lib/game/exchangeTimeline.ts";
+import { Motion } from "../../lib/tokens.ts";
 
 const ROOM = "exchange-rearm-room";
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
@@ -45,7 +46,7 @@ function exchangeTable(): OnlineGameState {
   return game;
 }
 
-test("a bot winner gives no earlier than the receive has been shown, and the next seat waits out the ceremony", (t) => {
+test("a bot winner gives no earlier than the receive has landed and been read, and the next seat waits out the ceremony", (t) => {
   t.mock.method(persistence, "writeActiveGame", async () => {});
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable();
@@ -54,7 +55,8 @@ test("a bot winner gives no earlier than the receive has been shown, and the nex
     armTurn(io, ROOM);
     const floor = exchangeGiveDelayMs(game.gameState.players.map((p) => p.hand.length));
     t.mock.timers.tick(floor - 1);
-    assert.equal(game.gameState.exchangePhase?.active, true, "gave before the receive was shown");
+    assert.ok(floor >= RECEIVE_MS + Motion.exchange.read, "the floor leaves the receive its landing and read");
+    assert.equal(game.gameState.exchangePhase?.active, true, "gave before the receive was read");
     t.mock.timers.tick(1);
     assert.equal(game.gameState.exchangePhase?.active ?? false, false, "the bot winner gave");
     const after = structuredClone(game.gameState);

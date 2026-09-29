@@ -64,7 +64,6 @@ const NO_WINNERS: readonly string[] = [];
 interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
-  exchangeActive: boolean;
   canPass: boolean;
   playBtnValid: boolean;
   selectedCount: number;
@@ -257,7 +256,6 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
 export function useTableFeedback({
   isMyTurn,
   isFinished,
-  exchangeActive,
   canPass,
   playBtnValid,
   selectedCount,
@@ -279,7 +277,6 @@ export function useTableFeedback({
   const reduceMotion = usePrefersReducedMotion();
   const screenShake = useScreenShakeEnabled();
   const prevMyTurnRef = useRef(false);
-  const prevExchangeActiveRef = useRef(false);
   const prevGameOverRef = useRef(false);
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
@@ -309,11 +306,6 @@ export function useTableFeedback({
     if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
     prevMyTurnRef.current = isMyTurn;
   }, [isMyTurn, isFinished, gameOver, moment]);
-
-  useEffect(() => {
-    if (exchangeActive && !prevExchangeActiveRef.current) moment({ kind: "exchange" });
-    prevExchangeActiveRef.current = exchangeActive;
-  }, [exchangeActive, moment]);
 
   // A pass moves nothing on the felt, so the sound is the whole event. Keyed
   // on the state the pass produced, not the tap, so a bot, an opponent and the

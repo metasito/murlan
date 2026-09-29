@@ -1,14 +1,16 @@
-import { Hold, Motion, Reading } from "../tokens.ts";
+import { Hold, Motion } from "../tokens.ts";
 import { DEAL_FLIGHT_MS, dealEndMs } from "./dealTimeline.ts";
 
 interface Point { x: number; y: number; rot: number }
 interface From extends Point { scale: number }
 export interface ExchangePose extends From { visible: boolean; face: boolean; flip: number }
 export interface LegPoints { from: From; fromFace: boolean; rest: From; to: From; toFace: boolean }
+/** Where a leg is, from its first visible frame (`flying`) to its landing. */
+export type LegStage = "waiting" | "flying" | "rest" | "tuck" | "landed";
+/** Offsets from a leg's first visible frame: at rest on the pile, leaving it, landed. */
+export interface LegTimes { rest: number; tuck: number; end: number }
 
 const X = Motion.exchange;
-const REST_REACH = 0.7;
-const REST_SCALE = 0.8;
 const ARC = 30;
 const clamp01 = (k: number) => {
   "worklet";
@@ -27,25 +29,41 @@ const turn = (k: number) => {
   return Math.max(0.02, Math.abs(Math.cos(Math.PI * clamp01(k))));
 };
 
-export const REST_AT_MS = X.lift + X.fly;
-export const REST_END_MS = REST_AT_MS + Hold.reveal;
-const LEG_MS = REST_END_MS + X.tuck;
-export const RECEIVE_LEAD = X.beat;
-export const GIVE_LEAD = X.giveWait;
-export const RECEIVE_MS = RECEIVE_LEAD + LEG_MS;
-export const GIVE_MS = GIVE_LEAD + LEG_MS;
-export const receiveSoundMs = RECEIVE_LEAD;
-export const giveSoundMs = GIVE_LEAD;
+export const LEG: LegTimes = { rest: X.lift + X.fly, tuck: X.lift + X.fly + Hold.reveal, end: X.lift + X.fly + Hold.reveal + X.tuck };
+/** Reduced motion keeps the rest, which is reading, and drops the travel either side of it. */
+export const REDUCED_LEG: LegTimes = { rest: 0, tuck: Hold.reveal, end: Hold.reveal };
+/** From the deal's end to the receive landing, and from the choice to the give landing. */
+export const RECEIVE_MS = X.beat + LEG.end;
+export const GIVE_MS = X.giveWait + LEG.end;
 
-export function restPoint(to: { x: number; y: number }): From {
+export function legTimes(reduced: boolean): LegTimes {
   "worklet";
-  return { x: to.x * REST_REACH, y: to.y * REST_REACH, rot: 0, scale: REST_SCALE };
+  return reduced ? REDUCED_LEG : LEG;
 }
 
-function legPose(t: number, p: LegPoints): ExchangePose {
+/** The pile's centre, where a traded card rests face up at a played card's size; `dx` lays the two Jokers side by side. */
+export function restPoint(dx = 0): From {
   "worklet";
+  return { x: dx, y: 0, rot: dx / 9, scale: 1 };
+}
+
+export function legStage(t: number, times: LegTimes): LegStage {
+  "worklet";
+  if (t < 0) return "waiting";
+  if (t < times.rest) return "flying";
+  if (t < times.tuck) return "rest";
+  if (t < times.end) return "tuck";
+  return "landed";
+}
+
+/** The card `t` ms after its leg's first visible frame (tests/e2e/fixtures/exchange-legs, `legRun`). */
+export function legPose(t: number, p: LegPoints, reduced = false): ExchangePose {
+  "worklet";
+  const times = legTimes(reduced);
+  if (t < 0) return { ...p.from, visible: false, face: p.fromFace, flip: 1 };
+  if (t >= times.end) return { ...p.to, visible: false, face: p.toFace, flip: 1 };
   const { from, rest, to } = p;
-  if (t < 0 || t >= LEG_MS) return { ...to, visible: false, face: p.toFace, flip: 1 };
+  if (t >= times.rest && t < times.tuck) return { ...rest, visible: true, face: true, flip: 1 };
   if (t < X.lift) {
     const k = t / X.lift;
     return {
@@ -56,7 +74,7 @@ function legPose(t: number, p: LegPoints): ExchangePose {
       flip: p.fromFace ? 1 : turn(k),
     };
   }
-  if (t < REST_AT_MS) {
+  if (t < times.rest) {
     const e = ease((t - X.lift) / X.fly);
     return {
       x: lerp(from.x, rest.x, e),
@@ -68,8 +86,7 @@ function legPose(t: number, p: LegPoints): ExchangePose {
       flip: 1,
     };
   }
-  if (t < REST_END_MS) return { ...rest, visible: true, face: true, flip: 1 };
-  const k = (t - REST_END_MS) / X.tuck;
+  const k = (t - times.tuck) / X.tuck;
   const e = ease(k);
   return {
     x: lerp(rest.x, to.x, e),
@@ -82,21 +99,12 @@ function legPose(t: number, p: LegPoints): ExchangePose {
   };
 }
 
-export function receivePose(t: number, leg: LegPoints): ExchangePose {
-  "worklet";
-  return legPose(t - RECEIVE_LEAD, leg);
-}
-
-export function givePose(t: number, leg: LegPoints): ExchangePose {
-  "worklet";
-  return legPose(t - GIVE_LEAD, leg);
-}
-
 /** The server has no seat geometry, so it deals every seat at the farthest seat's flight: never earlier than the client. */
 export function exchangeGiveDelayMs(counts: readonly number[]): number {
-  return dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS)) + RECEIVE_MS;
+  return dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS)) + RECEIVE_MS + X.read;
 }
 
+/** From the choice to the ceremony's close; for both Jokers, from the deal's end. */
 export function exchangeAnnounceFrom(bothJokersException: boolean): number {
-  return (bothJokersException ? 0 : GIVE_MS) + Reading.notice;
+  return (bothJokersException ? X.beat : X.giveWait) + LEG.end + X.read;
 }

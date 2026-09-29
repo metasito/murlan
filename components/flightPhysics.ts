@@ -17,10 +17,10 @@ import {
 } from "./seatLayout.ts";
 import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
 import { handCountOf } from "../shared/protocol.ts";
-import { CARD_H, CARD_W, FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
 import { fanPoint } from "./fanGeometry.ts";
 import type { CardFrom } from "./flightPose.ts";
-import { restPoint, type LegPoints } from "../lib/game/exchangeTimeline.ts";
+import { restPoint, type LegPoints, type LegStage } from "../lib/game/exchangeTimeline.ts";
 
 /** A card leaving a fan starts at the mockup's `.4` of its size on the felt (index.html `play()`). */
 export const FAN_CARD_SCALE = 0.4;
@@ -511,7 +511,7 @@ export function passedSeats(state: {
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────
 
-export interface ExchangeView {
+interface ExchangeView {
   active: boolean;
   /** The viewer owes the loser a card and must pick one. */
   viewerIsWinner: boolean;
@@ -519,11 +519,7 @@ export interface ExchangeView {
   viewerIsLoser: boolean;
   winner: Player | null;
   loser: Player | null;
-  /**
-   * The card taken off the loser. The engine puts it in the winner's hand as
-   * the phase opens while the prompt draws it on the felt, so the winner's fan
-   * has to know which card it is not drawing (#650).
-   */
+  /** The card taken off the loser, which the engine has already put in the winner's hand. */
   cardFromLoser: Card | null;
 }
 
@@ -553,49 +549,97 @@ export function readExchange(
   };
 }
 
+/** Each leg's stage, as `ExchangeLegs` reports it, for the trade `key` names. */
+export interface TradeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
+
+export const tradeKey = (trade: ExchangeAnnounceData): string =>
+  trade.bothJokersException ? `jokers:${trade.loserIdx}` : `${trade.loserIdx}>${trade.winnerIdx}:${trade.cardReceived?.id ?? ""}`;
+
+export const NO_STAGES: Omit<TradeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
+
+const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
+
+/**
+ * The seats a trade marks, and how far each opponent's drawn count is from its state's. The engine
+ * moves a card when the phase opens or the choice lands, so the giver shows one more until its card
+ * leaves and the receiver one fewer until it lands (the fixture's `S.counts`).
+ */
+export function readTradeSeats(trade: ExchangeAnnounceData | null, stages: TradeStages): { lit: number[]; shift: Map<number, number> } {
+  const lit = new Set<number>();
+  const shift = new Map<number, number>();
+  const add = (seat: number, n: number) => shift.set(seat, (shift.get(seat) ?? 0) + n);
+  if (!trade) return { lit: [], shift };
+  if (trade.bothJokersException) {
+    if (airborne(stages.receive)) {
+      lit.add(trade.loserIdx);
+      add(trade.loserIdx, -JOKERS.length);
+    }
+    return { lit: [...lit], shift };
+  }
+  const legs = [
+    { giver: trade.loserIdx, receiver: trade.winnerIdx, card: trade.cardReceived, stage: stages.receive },
+    { giver: trade.winnerIdx, receiver: trade.loserIdx, card: trade.cardGiven, stage: stages.give },
+  ];
+  for (const { giver, receiver, card, stage } of legs) {
+    if (!card) continue;
+    if (airborne(stage)) lit.add(giver);
+    if (stage === "rest" || stage === "tuck") lit.add(receiver);
+    if (stage === "waiting") add(giver, 1);
+    if (stage !== "landed") add(receiver, -1);
+  }
+  return { lit: [...lit], shift };
+}
+
 interface HandArrival {
-  /** Kept out of the fan, because something else is already drawing it. */
-  withheldId?: string;
-  /** The slot the row parts at — set only while the card is actually flying. */
+  /** Drawn although the state has already moved it: the viewer's traded card, until its leg leaves the hand. */
+  lent?: Card;
+  /** Kept out of the fan, because a flier is drawing them. */
+  withheldIds: string[];
+  /** The slot the row parts at: set only while the card flies in. */
   arrivingIndex?: number;
   /** What the parted slot is waiting for, so the row can travel it in. */
   descendingId?: string;
+  /** The card just received, which glows once it is in the hand. */
+  receivedId?: string;
 }
 
 /**
- * One window in which the receiving hand does not draw its traded card,
- * running from the exchange opening to the flight landing (#650).
- *
- * The engine gives the winner the loser's card as the phase opens while
- * `ExchangePrompt` draws that same card on the felt, and the ceremony then
- * commits and raises the flight in one tick — so without this the card is in
- * two places for the whole prompt and again for the whole flight.
- *
- * The row only *parts* for the second half: a gap held open beside the giveback
- * picker is a hole to choose next to rather than the first beat of an arrival.
+ * The viewer's traded cards, each drawn in exactly one place: in the hand until its leg's first
+ * visible frame, as its flier until it lands, and in the hand again from then on (#650).
  */
 export function readHandArrival(input: {
   /** The hand as arranged, which is where the card takes its place. */
   hand: Card[];
-  exchange: ExchangeView;
-  /** The live ceremony, or null when none is running. */
-  announce: ExchangeAnnounceData | null;
+  trade: ExchangeAnnounceData | null;
+  stages: TradeStages;
   /** Null for a spectator: a synthetic hand has nothing to hold back. */
   viewerSeat: number | null;
-  landed: boolean;
 }): HandArrival {
-  const incoming = arrivingCard(input.announce, input.viewerSeat);
-  const flying = input.landed ? undefined : incoming;
-  const onTheFelt = input.exchange.viewerIsWinner ? input.exchange.cardFromLoser : null;
-  const slot = flying === undefined ? -1 : input.hand.findIndex((c) => c.id === flying.id);
+  const { hand, trade, stages, viewerSeat } = input;
+  if (!trade || viewerSeat === null) return { withheldIds: [] };
+  const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
+  if (trade.bothJokersException) {
+    const shown = viewerSeat === trade.loserIdx && airborne(stages.receive);
+    return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
+  }
+  const winner = viewerSeat === trade.winnerIdx;
+  if (!winner && viewerSeat !== trade.loserIdx) return { withheldIds: [] };
+  const incoming = arrivingCard(trade, viewerSeat);
+  const outgoing = winner ? trade.cardGiven : trade.cardReceived;
+  const inStage = winner ? stages.receive : stages.give;
+  const outStage = winner ? stages.give : stages.receive;
+  const withheldIds: string[] = [];
+  if (incoming && inStage !== "landed" && holds(incoming)) withheldIds.push(incoming.id);
+  if (outgoing && outStage !== "waiting" && holds(outgoing)) withheldIds.push(outgoing.id);
+  const slot = incoming && inStage === "tuck" ? hand.findIndex((c) => c.id === incoming.id) : -1;
   return {
-    withheldId: flying?.id ?? onTheFelt?.id,
+    lent: outgoing && outStage === "waiting" && !holds(outgoing) ? outgoing : undefined,
+    withheldIds,
     // A card the ceremony names but the hand does not hold parts nothing: a gap
     // with nothing ever descending into it would stay open all game.
     arrivingIndex: slot < 0 ? undefined : slot,
-    // `incoming` rather than `flying`, so the id still names the card on the
-    // render it lands — which is the render the row mounts it on.
     descendingId: incoming?.id,
+    receivedId: incoming && inStage === "landed" ? incoming.id : undefined,
   };
 }
 
@@ -703,27 +747,39 @@ function seatOrigin(
   return { dir, origin: flightOrigin(geometry), pile: { x: centerX, y: centerY } };
 }
 
-/** Both legs of an exchange, in the pile-relative points a throw flies in: a seat's fan, or the viewer's hand. */
-export function readExchangeLegs(input: SeatGeometry & { winnerIdx: number; loserIdx: number }): { receive: LegPoints; give: LegPoints } {
-  const end = (seat: number) => {
+/** Both Jokers, red first: the fixture's `jokers()` lays them 18 pt either side of the pile's centre. */
+export const JOKERS: Card[] = [
+  { id: "joker_colored", suit: null, rank: "joker_colored", isJoker: true },
+  { id: "joker_bw", suit: null, rank: "joker_bw", isJoker: true },
+];
+const JOKER_SPREAD = 18;
+
+/** The trade's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
+export function readExchangeLegs(
+  input: SeatGeometry & { trade: ExchangeAnnounceData },
+  handOrigins?: ReadonlyMap<string, CardFrom>
+): { receive: LegPoints; give: LegPoints; jokers: LegPoints[] } {
+  const { trade } = input;
+  const end = (seat: number, card?: Card) => {
     const { dir, origin } = seatOrigin(input, seat);
-    if (dir === "bottom") return { at: { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE }, face: true };
+    if (dir === "bottom") {
+      const own = card && handOrigins?.get(card.id);
+      const at = own ? { ...own, x: own.x + origin.dx, y: own.y + origin.dy } : { x: origin.dx, y: origin.dy, rot: 0, scale: HAND_SCALE / FIELD_SCALE };
+      return { at, face: true };
+    }
     const player = input.players[seat];
     return { at: { ...fanPoint(origin, dir, input.scale, player ? handCountOf(player) : 0), scale: FAN_CARD_SCALE }, face: false };
   };
-  // The two cards cross at once along one line, so each keeps to its own lane: shifted across its
-  // travel by a card's reach that way, and the opposite way for the other card.
-  const w = CARD_W(input.scale * FIELD_SCALE);
-  const h = CARD_H(input.scale * FIELD_SCALE);
-  const leg = (giver: number, receiver: number): LegPoints => {
-    const from = end(giver);
-    const to = end(receiver);
-    const len = Math.hypot(to.at.x - from.at.x, to.at.y - from.at.y) || 1;
-    const px = -(to.at.y - from.at.y) / len;
-    const py = (to.at.x - from.at.x) / len;
-    const reach = (Math.abs(px) * w + Math.abs(py) * h) / 2;
-    const lane = <P extends { x: number; y: number }>(p: P): P => ({ ...p, x: p.x + px * reach, y: p.y + py * reach });
-    return { from: lane(from.at), fromFace: from.face, rest: lane(restPoint(to.at)), to: lane(to.at), toFace: to.face };
+  // The receiving hand draws no slot for the card until it lands, so it arrives at the row's centre and descends from there.
+  const leg = (giver: number, receiver: number, card: Card | undefined, rest = restPoint()): LegPoints => {
+    const from = end(giver, card);
+    const to = end(receiver, receiver === giver ? card : undefined);
+    return { from: from.at, fromFace: from.face, rest, to: to.at, toFace: to.face };
   };
-  return { receive: leg(input.loserIdx, input.winnerIdx), give: leg(input.winnerIdx, input.loserIdx) };
+  const loser = trade.loserIdx;
+  return {
+    receive: leg(loser, trade.winnerIdx, trade.cardReceived),
+    give: leg(trade.winnerIdx, loser, trade.cardGiven),
+    jokers: JOKERS.map((card, i) => leg(loser, loser, card, restPoint(i === 0 ? -JOKER_SPREAD : JOKER_SPREAD))),
+  };
 }

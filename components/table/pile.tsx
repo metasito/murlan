@@ -348,9 +348,12 @@ export function PlayedPile({
   landing,
   roomW,
   scale = 1,
+  note,
 }: {
   prev: Combination | null;
   current: Combination | null;
+  /** Said by the combination's chip in place of the combination: the exchange's who gives what to whom, under the card resting there. */
+  note?: { text: string; testID: string; cards: Card[] } | null;
   /**
    * The combination the chip names. Defaults to `current`; pass it
    * separately only when the chip must show before `current` does — the
@@ -433,7 +436,18 @@ export function PlayedPile({
         )}
       </View>
 
-      {comboLabel && (
+      {note ? (
+        <View
+          {...a11yHidden()}
+          style={[pileStyles.comboLabel, { marginTop: fieldSlots(note.cards, cardScale, roomW).h / 2 + Spacing.snug }]}
+        >
+          <ComboChip isPower={false}>
+            <TableText testID={note.testID} style={pileStyles.comboChipText}>
+              {note.text}
+            </TableText>
+          </ComboChip>
+        </View>
+      ) : comboLabel && (
         <View
           style={[
             pileStyles.comboLabel,

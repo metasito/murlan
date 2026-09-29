@@ -9,6 +9,7 @@ import Animated, {
   withSpring,
   withTiming,
   withDelay,
+  withSequence,
   cancelAnimation,
   Easing,
   type SharedValue,
@@ -35,12 +36,13 @@ import {
   HAND_SCALE_ON_TURN,
 } from "@/components/cardFaceModel";
 import type { CardFrom } from "@/components/flightPose";
-import { readHandArrival, type ExchangeView } from "@/components/flightPhysics";
+import { readHandArrival, type TradeStages } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
+import { sortHand } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 
 /**
- * The viewer's hand as the table draws it while a traded card is on its way in.
+ * The viewer's hand as the table draws it while a traded card is on its way in or out.
  *
  * Held back at display rather than by deferring the state: online the state is
  * the server's, and freezing a whole snapshot for the length of a phase would
@@ -48,31 +50,23 @@ import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
  * filtered second, so the card lands in the place the player arranged for it
  * instead of re-entering an order computed without it.
  */
-export function useHandArrival({
-  hand,
-  exchange,
-  announcement,
-  landed,
-  viewerSeat,
-}: {
+export function useHandArrival(input: {
   hand: Card[];
-  exchange: ExchangeView;
-  announcement: { visible: boolean; data: ExchangeAnnounceData | null } | undefined;
-  /** The exchange legs have landed: `ExchangeLegs` reports it from their own clock. */
-  landed: boolean;
+  trade: ExchangeAnnounceData | null;
+  stages: TradeStages;
   viewerSeat: number | null;
-}): { handOnTable: Card[]; withheldId?: string; arrivingIndex?: number; descendingId?: string } {
-  const { withheldId, arrivingIndex, descendingId } = readHandArrival({
-    hand,
-    exchange,
-    announce: announcement?.visible === true ? (announcement.data ?? null) : null,
-    viewerSeat,
-    landed,
-  });
-  const handOnTable = useSameCards(
-    withheldId === undefined ? hand : hand.filter((c) => c.id !== withheldId)
-  );
-  return { handOnTable, withheldId, arrivingIndex, descendingId };
+}): { handOnTable: Card[]; holding: boolean; arrivingIndex?: number; descendingId?: string; receivedId?: string } {
+  const first = readHandArrival(input);
+  const lent = first.lent;
+  const hand = lent ? withCard(input.hand, lent) : input.hand;
+  const { withheldIds, arrivingIndex, descendingId, receivedId } = lent ? readHandArrival({ ...input, hand }) : first;
+  const handOnTable = useSameCards(withheldIds.length === 0 ? hand : hand.filter((c) => !withheldIds.includes(c.id)));
+  return { handOnTable, holding: withheldIds.length > 0 || lent !== undefined, arrivingIndex, descendingId, receivedId };
+}
+
+function withCard(hand: Card[], card: Card): Card[] {
+  const at = sortHand([...hand, card]).findIndex((c) => c.id === card.id);
+  return [...hand.slice(0, at), card, ...hand.slice(at)];
 }
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
@@ -229,6 +223,8 @@ interface CardItemProps {
   onMove?: (id: string, action: string) => void;
   /** Hands the hand this card's drawn lift, tilt and shift, for a throw that leaves mid-lift. */
   onDrawn?: (id: string, drawn: DrawnCard) => void;
+  /** Just received in an exchange: it glows for `Motion.exchange.highlight`. */
+  received?: boolean;
 }
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
@@ -258,8 +254,21 @@ function CardItemBase({
   a11yActions,
   onMove,
   onDrawn,
+  received = false,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
+  const halo = useSharedValue(0);
+  useEffect(() => {
+    if (!received) return;
+    const edge = Motion.duration.tap;
+    halo.value = withSequence(
+      withTiming(1, { duration: edge }),
+      withTiming(1, { duration: Motion.exchange.highlight - 2 * edge }),
+      withTiming(0, { duration: edge })
+    );
+    return () => cancelAnimation(halo);
+  }, [received, halo]);
+  const haloStyle = useAnimatedStyle(() => ({ opacity: halo.value }));
   const selectLift = -handRowHeadroom(cardH);
   const liftY = useSharedValue(0);
   const tilt = useSharedValue(0);
@@ -383,6 +392,13 @@ function CardItemBase({
           ]}
         />
       )}
+      {received && (
+        <Animated.View
+          testID="hand-received-highlight"
+          pointerEvents="none"
+          style={[handStyles.giveableHalo, { borderRadius: cardRadius(cardW) + GIVEABLE_HALO_PAD }, haloStyle]}
+        />
+      )}
       <CardView
         card={card}
         selected={isSelected}
@@ -439,7 +455,8 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.shiftX === b.shiftX &&
     a.a11yActions === b.a11yActions &&
     a.onMove === b.onMove &&
-    a.onDrawn === b.onDrawn
+    a.onDrawn === b.onDrawn &&
+    a.received === b.received
   );
 }
 
@@ -477,6 +494,7 @@ export function StraightHand({
   onReorder,
   arrivingIndex,
   descendingId,
+  receivedId,
   startCardId,
   handBottomPad = 0,
   dealOffsetMs,
@@ -523,6 +541,8 @@ export function StraightHand({
    * rather than in from the deck: it is arriving off the felt, not being dealt.
    */
   descendingId?: string;
+  /** The card just received in an exchange, which glows. */
+  receivedId?: string;
   /**
    * The card the opening play must include, when this seat has to open. Only
    * that one card is named, and only while it is still owed: a device flow
@@ -1038,6 +1058,7 @@ export function StraightHand({
           a11yActions={arrangeable ? moveActions : undefined}
           onMove={arrangeable ? moveByAction : undefined}
           onDrawn={onDrawn}
+          received={card.id === receivedId}
           // An ungiveable card during an exchange is a button that reports
           // itself unavailable, rather than one that silently does nothing.
           disabled={disabled || giveable === false}

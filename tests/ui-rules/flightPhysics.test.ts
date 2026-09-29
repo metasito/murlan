@@ -4,14 +4,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { BACK_SCALE, CARD_W, FIELD_SCALE } from "../../components/cardFaceModel.ts";
+import { BACK_SCALE } from "../../components/cardFaceModel.ts";
 import {
   Trauma,
   Motion,
   Spacing,
 } from "../../lib/tokens.ts";
 import type { Card, Combination } from "../../lib/game/gameEngine.ts";
-import { GIVE_MS, givePose, receivePose } from "../../lib/game/exchangeTimeline.ts";
+import { LEG, legPose, type LegStage } from "../../lib/game/exchangeTimeline.ts";
+import type { CardFrom } from "../../components/flightPose.ts";
 import {
   arrangeOpponents,
   sideSlotHeight,
@@ -24,6 +25,9 @@ import { seatFanArc } from "../../components/fanGeometry.ts";
 import {
   arrivingCard,
   readHandArrival,
+  readTradeSeats,
+  NO_STAGES,
+  JOKERS,
   readThrownPlay,
   readExchangeLegs,
   flightOrigin,
@@ -1314,72 +1318,107 @@ describe("arrivingCard", () => {
     assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);
   });
 
-  // The one window in which the hand does not draw its traded card, from the
-  // exchange opening to the flight landing (#650).
+  // Each traded card drawn in exactly one place: the hand, its flier, or the hand again (#650).
   describe("readHandArrival", () => {
     const KEPT = { id: "9_clubs", suit: "clubs", rank: "9", isJoker: false } as const;
-    const hand = [KEPT, RECEIVED] as Card[];
-    const winnersPrompt = {
-      ...INACTIVE_EXCHANGE,
-      active: true,
-      viewerIsWinner: true,
-      cardFromLoser: RECEIVED as Card,
-    };
+    const choosing = { ...announce, cardGiven: undefined };
+    const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
     const read = (over: Partial<Parameters<typeof readHandArrival>[0]>) =>
-      readHandArrival({
-        hand,
-        exchange: INACTIVE_EXCHANGE,
-        announce: null,
-        viewerSeat: 1,
-        landed: false,
-        ...over,
-      });
+      readHandArrival({ hand: [KEPT, RECEIVED] as Card[], trade: announce, stages: at("waiting"), viewerSeat: 1, ...over });
 
     test("nothing is held back outside an exchange", () => {
-      assert.deepEqual(read({}), {
-        withheldId: undefined,
-        arrivingIndex: undefined,
-        descendingId: undefined,
-      });
+      assert.deepEqual(read({ trade: null }), { withheldIds: [] });
     });
 
-    // The engine gives the winner the card as the phase opens and the prompt
-    // draws it on the felt, so the fan must not draw it too.
-    test("the winner's prompt holds the card back without parting the row", () => {
-      const at = read({ exchange: winnersPrompt });
-      assert.equal(at.withheldId, RECEIVED.id);
-      assert.equal(at.arrivingIndex, undefined, "the row parts for a flight, not for a prompt");
+    test("the winner's hand keeps the card the engine already gave it out of the row until it lands", () => {
+      for (const s of ["waiting", "flying", "rest", "tuck"] as const) {
+        assert.deepEqual(read({ trade: choosing, stages: at(s) }).withheldIds, [RECEIVED.id], s);
+      }
+      assert.equal(read({ trade: choosing, stages: at("rest") }).arrivingIndex, undefined, "the row parts only for the tuck");
     });
 
-    test("the loser is holding nothing back while the winner chooses", () => {
-      const watching = { ...winnersPrompt, viewerIsWinner: false, viewerIsLoser: true };
-      assert.equal(read({ exchange: watching }).withheldId, undefined);
+    test("the tuck parts the row at the card's own place, and the landing gives it back to glow", () => {
+      const tuck = read({ trade: choosing, stages: at("tuck") });
+      assert.equal(tuck.arrivingIndex, 1);
+      assert.equal(tuck.descendingId, RECEIVED.id);
+      const landed = read({ trade: choosing, stages: at("landed") });
+      assert.deepEqual(landed.withheldIds, []);
+      assert.equal(landed.receivedId, RECEIVED.id);
+      assert.equal(tuck.receivedId, undefined, "no glow before it is in the hand");
     });
 
-    test("the flight parts the row at the card's own place in the hand", () => {
-      const at = read({ announce });
-      assert.equal(at.withheldId, RECEIVED.id);
-      assert.equal(at.arrivingIndex, 1);
-      assert.equal(at.descendingId, RECEIVED.id);
-    });
-
-    // A ceremony naming a card the hand does not hold would otherwise open a
-    // gap nothing ever descends into.
     test("a card the hand does not hold parts nothing", () => {
-      const at = read({ announce, hand: [KEPT] as Card[] });
-      assert.equal(at.arrivingIndex, undefined);
+      assert.equal(read({ trade: choosing, hand: [KEPT] as Card[], stages: at("tuck") }).arrivingIndex, undefined);
     });
 
-    test("the landing gives the card back, and still names it for its mount", () => {
-      const at = read({ announce, landed: true });
-      assert.equal(at.withheldId, undefined, "the hand draws it the moment it lands");
-      assert.equal(at.descendingId, RECEIVED.id, "…and it travels in on that same render");
+    test("the card the winner gives stays in its hand until its leg lifts out of it", () => {
+      const moved = [KEPT, RECEIVED] as Card[];
+      assert.deepEqual(read({ hand: moved, stages: at("landed", "waiting") }).lent, GIVEN);
+      assert.equal(read({ hand: moved, stages: at("landed", "flying") }).lent, undefined);
+      const held = [KEPT, RECEIVED, GIVEN] as Card[];
+      assert.deepEqual(read({ hand: held, stages: at("landed", "flying") }).withheldIds, [GIVEN.id]);
     });
 
-    test("a spectator's synthetic hand is left alone", () => {
-      const at = read({ announce, viewerSeat: null });
-      assert.equal(at.withheldId, undefined);
-      assert.equal(at.descendingId, undefined);
+    test("the loser lends the taken card until it lifts, then waits for the give", () => {
+      const loser = (hand: Card[], receive: LegStage, give: LegStage) =>
+        read({ hand, viewerSeat: 3, stages: at(receive, give) });
+      assert.deepEqual(loser([KEPT] as Card[], "waiting", "waiting").lent, RECEIVED);
+      assert.equal(loser([KEPT] as Card[], "flying", "waiting").lent, undefined);
+      const after = [KEPT, GIVEN] as Card[];
+      assert.deepEqual(loser(after, "landed", "rest").withheldIds, [GIVEN.id]);
+      assert.equal(loser(after, "landed", "tuck").arrivingIndex, 1);
+      assert.equal(loser(after, "landed", "landed").receivedId, GIVEN.id);
+    });
+
+    test("a bystander and a spectator are left alone", () => {
+      assert.deepEqual(read({ viewerSeat: 0, stages: at("tuck") }), { withheldIds: [] });
+      assert.deepEqual(read({ viewerSeat: null, stages: at("tuck") }), { withheldIds: [] });
+    });
+
+    test("both Jokers leave the loser's hand only while they are in the air", () => {
+      const jokers = { ...announce, bothJokersException: true };
+      const hand = [KEPT, ...JOKERS] as Card[];
+      const ids = (s: LegStage) => read({ trade: jokers, hand, viewerSeat: 3, stages: at(s) }).withheldIds;
+      assert.deepEqual(ids("waiting"), []);
+      assert.deepEqual(ids("rest"), JOKERS.map((c) => c.id));
+      assert.deepEqual(ids("landed"), []);
+    });
+  });
+
+  describe("readTradeSeats", () => {
+    const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
+    const seats = (trade: Parameters<typeof readTradeSeats>[0], receive: LegStage, give?: LegStage) => {
+      const { lit, shift } = readTradeSeats(trade, at(receive, give));
+      return { lit: [...lit].sort(), shift: Object.fromEntries(shift) };
+    };
+
+    test("the giver lights from its card's first frame, the receiver from the rest, both out at the landing", () => {
+      const choosing = { ...announce, cardGiven: undefined };
+      assert.deepEqual(seats(choosing, "waiting").lit, []);
+      assert.deepEqual(seats(choosing, "flying").lit, [3]);
+      assert.deepEqual(seats(choosing, "rest").lit, [1, 3]);
+      assert.deepEqual(seats(choosing, "tuck").lit, [1, 3]);
+      assert.deepEqual(seats(choosing, "landed").lit, []);
+      assert.deepEqual(seats(announce, "landed", "flying").lit, [1]);
+    });
+
+    test("each count shows the card where it is drawn, not where the engine moved it", () => {
+      const choosing = { ...announce, cardGiven: undefined };
+      assert.deepEqual(seats(choosing, "waiting").shift, { 1: -1, 3: 1 });
+      assert.deepEqual(seats(choosing, "flying").shift, { 1: -1 });
+      assert.deepEqual(seats(announce, "landed", "waiting").shift, { 1: 1, 3: -1 });
+      assert.deepEqual(seats(announce, "landed", "rest").shift, { 3: -1 });
+      assert.deepEqual(seats(announce, "landed", "landed").shift, {});
+    });
+
+    test("both Jokers light the loser and leave its fan while they fly", () => {
+      const jokers = { ...announce, bothJokersException: true };
+      assert.deepEqual(seats(jokers, "rest"), { lit: [3], shift: { 3: -2 } });
+      assert.deepEqual(seats(jokers, "landed"), { lit: [], shift: {} });
+    });
+
+    test("no trade marks nothing", () => {
+      assert.deepEqual(seats(null, "rest"), { lit: [], shift: {} });
     });
   });
 });
@@ -1510,35 +1549,54 @@ describe("readExchangeLegs", () => {
   /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
   const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
 
-  const legs = (winnerIdx: number, loserIdx: number, table = players) =>
-    readExchangeLegs({
-      winnerIdx,
-      loserIdx,
-      viewerSeat: 0,
-      players: table,
-      opponents: arrangeOpponents(table, 0),
-      scale: 1,
-      windowWidth: 844,
-      windowHeight: 390,
-      tableLeft: 20,
-      tableRight: 20,
-      tableTop: 12,
-      surplus: 0,
-      bottomPad: 8,
-      handCardH: 90,
-    });
+  const trade = (winnerIdx: number, loserIdx: number, bothJokersException = false) => ({
+    winnerName: "",
+    loserName: "",
+    winnerIdx,
+    loserIdx,
+    bothJokersException,
+    cardReceived: card("taken"),
+    cardGiven: card("given"),
+  });
+  const GEOMETRY = {
+    viewerSeat: 0,
+    scale: 1,
+    windowWidth: 844,
+    windowHeight: 390,
+    tableLeft: 20,
+    tableRight: 20,
+    tableTop: 12,
+    surplus: 0,
+    bottomPad: 8,
+    handCardH: 90,
+  };
+  const legs = (winnerIdx: number, loserIdx: number, table = players, origins?: Map<string, CardFrom>, jokers = false) =>
+    readExchangeLegs(
+      { ...GEOMETRY, trade: trade(winnerIdx, loserIdx, jokers), players: table, opponents: arrangeOpponents(table, 0) },
+      origins
+    );
 
-  test("the two cards, crossing at once, keep a card's width apart the whole way", () => {
+  test("every leg rests face up on the pile's own centre, at a played card's size", () => {
     for (const [winner, loser] of [[0, 2], [1, 3], [2, 1], [3, 0]]) {
       const { receive, give } = legs(winner, loser);
-      for (let t = 0; t <= GIVE_MS; t += 4) {
-        const a = receivePose(t, receive);
-        const b = givePose(t, give);
-        if (a.visible && b.visible) {
-          assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= CARD_W(FIELD_SCALE), `${winner}⇄${loser} at ${t} ms`);
-        }
+      for (const leg of [receive, give]) {
+        const p = legPose(LEG.rest, leg);
+        assert.deepEqual({ x: p.x, y: p.y, scale: p.scale, face: p.face }, { x: 0, y: 0, scale: 1, face: true }, `${winner}>${loser}`);
       }
     }
+  });
+
+  test("both Jokers rest side by side on the pile and go back to the loser", () => {
+    const { jokers } = legs(1, 3, players, undefined, true);
+    assert.deepEqual(jokers.map((j) => j.rest.x), [-18, 18]);
+    for (const j of jokers) assert.deepEqual(j.from, j.to, "they leave and return to the same fan");
+  });
+
+  test("the viewer's card leaves from, and never jumps off, its own place in the hand", () => {
+    const own = new Map<string, CardFrom>([["taken", { x: -40, y: -6, rot: 4, scale: 1.1 }]]);
+    const from = legs(2, 0, players, own).receive.from;
+    const hand = seatPoint({ ...GEOMETRY, players, opponents: arrangeOpponents(players, 0) }, 0);
+    assert.deepEqual(from, { x: -40 + hand.dx, y: -6 + hand.dy, rot: 4, scale: 1.1 });
   });
 
   test("swapping who won swaps the two legs", () => {
@@ -1549,8 +1607,6 @@ describe("readExchangeLegs", () => {
     const { receive } = legs(0, 2);
     assert.equal(receive.toFace, true);
     assert.equal(receive.fromFace, false);
-    const d = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.hypot(p.x - q.x, p.y - q.y);
-    assert.ok(d(receive.rest, receive.to) < d(receive.from, receive.to) / 2, "it rests beside its receiver");
   });
 
   test("a side seat's own hand places the card it trades", () => {

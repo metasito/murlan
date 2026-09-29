@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { View, StyleSheet, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { ChipText, TableChip } from "./chrome";
 import {
@@ -26,9 +26,11 @@ import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedReaction,
+  type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { DealArrivals } from "./deal";
+import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -41,6 +43,9 @@ import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Combination, Player } from "@/lib/game/gameEngine";
+
+/** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
+export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
 
 /**
  * Which seats have already answered the round on the table. Derived rather
@@ -332,6 +337,7 @@ function SeatRing({
   scale,
   countdown,
   focusMode = false,
+  mark,
 }: {
   name: string;
   isActive: boolean;
@@ -342,25 +348,34 @@ function SeatRing({
   countdown?: { seconds: number; resetKey: string };
   /** The felt and this ring are what carry the turn — everything else on the seat is quiet. */
   focusMode?: boolean;
+  mark?: SeatMark;
 }) {
   // One shot when the seat takes the turn: the ring itself says who is on move
   // for as long as it lasts, so this only has to catch the eye at the handover.
   const pingScale = useSharedValue(1);
   const pingOpacity = useSharedValue(0);
   const reduceMotion = usePrefersReducedMotion();
+  const ping = useCallback(() => {
+    "worklet";
+    pingScale.set(1);
+    pingOpacity.set(0.9);
+    pingScale.set(withTiming(RING_PING_SCALE, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) }));
+    pingOpacity.set(withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.quad) }));
+  }, [pingScale, pingOpacity]);
   useEffect(() => {
     if (!isActive || reduceMotion) return;
-    pingScale.value = 1;
-    pingOpacity.value = 0.9;
-    pingScale.value = withTiming(RING_PING_SCALE, {
-      duration: Motion.duration.reveal,
-      easing: Easing.out(Easing.cubic),
-    });
-    pingOpacity.value = withTiming(0, {
-      duration: Motion.duration.reveal,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [isActive, reduceMotion, pingScale, pingOpacity]);
+    ping();
+  }, [isActive, reduceMotion, ping]);
+  const flash = mark?.flash;
+  const own = mark?.seat ?? -1;
+  // On the frame the exchange stepper writes it, not a render later.
+  useAnimatedReaction(
+    () => (flash && flash.value.seat === own ? flash.value.seq : -1),
+    (seq, prev) => {
+      if (seq >= 0 && prev !== null && seq !== prev && !reduceMotion) ping();
+    }
+  );
+  const lit = isActive || mark?.lit === true;
 
   useEffect(
     () => () => {
@@ -409,8 +424,9 @@ function SeatRing({
   const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
-    <View testID="seat-ring" style={{ width: size, height: size }}>
+    <View testID="seat-ring" {...({ dataSet: { seatLit: String(lit) } } as ViewProps)} style={{ width: size, height: size }}>
       <Animated.View
+        testID="seat-ring-ping"
         pointerEvents="none"
         style={[
           seatStyles.ringPing,
@@ -434,9 +450,9 @@ function SeatRing({
         colors={SEAT_DISC_FILL}
         style={[
           seatStyles.disc,
-          isActive && seatStyles.discActive,
+          lit && seatStyles.discActive,
           { width: size, height: size, borderRadius: size / 2 },
-          isActive
+          lit
             ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
@@ -603,6 +619,7 @@ export function TopOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
+  mark,
 }: {
   player: Player;
   isActive: boolean;
@@ -621,16 +638,18 @@ export function TopOppSlot({
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
   dealArrivals?: DealArrivals;
+  mark?: SeatMark;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const displayed = Math.min(cardCount ?? player.hand.length, arrived);
+  const lit = isActive || mark?.lit === true;
   return (
     <View
       testID="top-seat"
       style={[
         seatStyles.topOppSlot,
         { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
-        !isActive && seatStyles.seatDim,
+        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -645,9 +664,10 @@ export function TopOppSlot({
         scale={scale}
         countdown={countdown}
         focusMode={focusMode}
+        mark={mark}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} side="top" isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side="top" isActive={lit} scale={scale} />
       )}
     </View>
   );
@@ -674,9 +694,11 @@ function SeatWho({
   countdown,
   anchor = "centre",
   focusMode = false,
+  mark,
 }: {
   name: string;
   isActive: boolean;
+  mark?: SeatMark;
   count: number;
   finishPos?: number;
   passed: boolean;
@@ -723,7 +745,7 @@ function SeatWho({
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
               { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
-              isActive && seatStyles.oppNameActive,
+              (isActive || mark?.lit) && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
           >
@@ -747,6 +769,7 @@ function SeatWho({
         scale={scale}
         countdown={countdown}
         focusMode={focusMode}
+        mark={mark}
       />
     </View>
   );
@@ -766,9 +789,11 @@ export function SideOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
+  mark,
 }: {
   player: Player;
   isActive: boolean;
+  mark?: SeatMark;
   side: "left" | "right";
   cardCount?: number;
   /** This seat has passed in the round on the table. */
@@ -789,6 +814,7 @@ export function SideOppSlot({
   const arrived = useArrivedCount(dealArrivals);
   const displayed = Math.min(cardCount ?? player.hand.length, arrived);
   const isLeft = side === "left";
+  const lit = isActive || mark?.lit === true;
   return (
     <View
       testID={`side-seat-${side}`}
@@ -796,7 +822,7 @@ export function SideOppSlot({
         seatStyles.sideOppSlot,
         { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
-        !isActive && seatStyles.seatDim,
+        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -812,9 +838,10 @@ export function SideOppSlot({
         countdown={countdown}
         anchor={isLeft ? "left" : "right"}
         focusMode={focusMode}
+        mark={mark}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} side={side} isActive={isActive} scale={scale} />
+        <CardFan count={displayed} side={side} isActive={lit} scale={scale} />
       )}
     </View>
   );

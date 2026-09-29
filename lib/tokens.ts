@@ -424,8 +424,8 @@ export const Motion = {
   },
   /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
-  /** The exchange's two legs, seat to seat, face up (#1259, D5 revised); `beat`, `giveWait`, `tuck` and `highlight` are the mockup's (index.html:543-551). */
-  exchange: { beat: 344, lift: 240, fly: 900, tuck: 320, highlight: 1000, giveWait: 420 },
+  /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
+  exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900 },
 } as const;
 
 /**
@@ -472,8 +472,8 @@ export const Reading = {
 export const Hold = {
   /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
   land: 175,
-  /** A face shown to be read before it moves on — the floor the #1259 research asks for. */
-  reveal: 600,
+  /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
+  reveal: 1500,
 } as const;
 
 /** How late a sound may still start and be heard as on time; later, it is dropped. */

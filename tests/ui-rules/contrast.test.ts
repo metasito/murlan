@@ -258,8 +258,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
   "table/chrome.tsx:startCardStyles.glyph": { plate: "startCardStyles.banner" },
   "table/chrome.tsx:startCardStyles.text": { plate: "startCardStyles.banner" },
-  "table/ExchangePrompt.tsx:styles.line": { plate: SELF },
-  "table/ExchangePrompt.tsx:styles.rule": { plate: SELF },
   "table/hand.tsx:handStyles.emptyHandText": { plate: SELF },
   "table/pile.tsx:pileStyles.winnerText": { plate: "pileStyles.winnerTag" },
   "table/pile.tsx:pileStyles.comboChipText": { plate: "pileStyles.comboChip" },

@@ -1,85 +1,88 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  GIVE_MS,
-  RECEIVE_MS,
+  LEG,
+  REDUCED_LEG,
   exchangeGiveDelayMs,
-  givePose,
-  receivePose,
-  receiveSoundMs,
+  legPose,
+  legStage,
   restPoint,
   type LegPoints,
 } from "../../lib/game/exchangeTimeline.ts";
 import { DEAL_FLIGHT_MS, dealEndMs, dealFlightsMs } from "../../lib/game/dealTimeline.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
-import { Hold, Motion, Reading } from "../../lib/tokens.ts";
+import { Hold, Motion } from "../../lib/tokens.ts";
 
+const X = Motion.exchange;
 const FAN = { x: -328, y: -42, rot: 90, scale: 0.37 };
 const SLOT = { x: 40, y: 150, rot: 2, scale: 1.2 };
 const TOP_FAN = { x: 0, y: -170, rot: 0, scale: 0.34 };
-const RECEIVE: LegPoints = { from: FAN, fromFace: false, rest: restPoint(SLOT), to: SLOT, toFace: true };
-const GIVE_TO_FAN: LegPoints = { from: SLOT, fromFace: true, rest: restPoint(FAN), to: FAN, toFace: false };
-const BYSTANDER_GIVE: LegPoints = { from: TOP_FAN, fromFace: false, rest: restPoint(FAN), to: FAN, toFace: false };
-const LEGS = [
-  { name: "receive", pose: (t: number) => receivePose(t, RECEIVE), end: RECEIVE_MS, leg: RECEIVE },
-  { name: "give into a fan", pose: (t: number) => givePose(t, GIVE_TO_FAN), end: GIVE_MS, leg: GIVE_TO_FAN },
-  { name: "give, fan to fan", pose: (t: number) => givePose(t, BYSTANDER_GIVE), end: GIVE_MS, leg: BYSTANDER_GIVE },
+const PILE = restPoint();
+const LEGS: { name: string; leg: LegPoints }[] = [
+  { name: "fan to the viewer's hand", leg: { from: FAN, fromFace: false, rest: PILE, to: SLOT, toFace: true } },
+  { name: "the viewer's hand into a fan", leg: { from: SLOT, fromFace: true, rest: PILE, to: FAN, toFace: false } },
+  { name: "fan to fan", leg: { from: TOP_FAN, fromFace: false, rest: PILE, to: FAN, toFace: false } },
 ];
 
-function sample(pose: (t: number) => { x: number; y: number; scale: number; visible: boolean; face: boolean; flip: number }, end: number) {
+function sample(leg: LegPoints, reduced = false) {
   const out = [];
-  for (let t = 0; t <= end + 50; t++) out.push({ t, ...pose(t) });
+  for (let t = -50; t <= LEG.end + 50; t++) out.push({ t, ...legPose(t, leg, reduced) });
   return out;
 }
 
-for (const { name, pose, end, leg } of LEGS) {
-  test(`${name}: the card never jumps, no two adjacent 1 ms samples more than 4 pt apart while it is visible`, () => {
-    const s = sample(pose, end);
+for (const { name, leg } of LEGS) {
+  test(`${name}: never jumps, no two adjacent 1 ms samples more than 4 pt apart while visible`, () => {
+    const s = sample(leg);
     for (let i = 1; i < s.length; i++) {
       if (s[i].visible && s[i - 1].visible) assert.ok(Math.hypot(s[i].x - s[i - 1].x, s[i].y - s[i - 1].y) <= 4, `jump at ${s[i].t} ms`);
     }
-    assert.ok(s[0].visible === false && s[s.length - 1].visible === false, "hidden before the lead and after it has tucked in");
+    assert.equal(s.find((p) => p.visible)!.t, 0, "the first visible frame is the leg's zero");
+    assert.equal(s.findLast((p) => p.visible)!.t, LEG.end - 1, "hidden from its landing on");
   });
 
-  test(`${name}: the face rests still, face up, beside the receiver for at least Hold.reveal`, () => {
-    const s = sample(pose, end);
-    const still = s.filter((p) => p.visible && p.face && p.flip > 0.5 && Math.hypot(p.x - leg.rest.x, p.y - leg.rest.y) < 0.5 && Math.abs(p.scale - leg.rest.scale) < 0.01);
-    assert.ok(still.length >= Hold.reveal, `the face rests for ${still.length} ms`);
-    assert.ok(Hold.reveal >= 600, "the #1259 reading floor");
+  test(`${name}: rests still, face up, at a played card's size on the pile centre for Hold.reveal`, () => {
+    const still = sample(leg).filter((p) => p.visible && p.face && p.flip === 1 && p.x === PILE.x && p.y === PILE.y && p.scale === 1);
+    assert.ok(still.length >= Hold.reveal, `rests for ${still.length} ms`);
   });
 
-  test(`${name}: face up to every seat from the lift to the tuck (D5, revised)`, () => {
-    const s = sample(pose, end).filter((p) => p.visible);
-    const firstFace = s.findIndex((p) => p.face);
-    const lastFace = s.findLastIndex((p) => p.face);
-    assert.ok(firstFace >= 0 && s.slice(firstFace, lastFace + 1).every((p) => p.face), "the face never turns away mid-leg");
+  test(`${name}: turns face up at the lift's midpoint and to its back at the tuck's midpoint`, () => {
+    const s = sample(leg).filter((p) => p.visible);
+    const faceAt = s.find((p) => p.face)!.t;
+    assert.equal(faceAt, leg.fromFace ? 0 : X.lift / 2);
+    const backAt = s.find((p) => p.t > LEG.rest && !p.face)?.t;
+    assert.equal(backAt, leg.toFace ? undefined : LEG.tuck + X.tuck / 2);
     const last = s.at(-1)!;
     assert.ok(Math.hypot(last.x - leg.to.x, last.y - leg.to.y) <= 1, "it tucks in where it is going");
-    assert.equal(last.face, leg.toFace, "a card tucked into a fan joins it as a back");
+  });
+
+  test(`${name}: under reduced motion it appears at the pile, rests, and is gone, with no flight`, () => {
+    const s = sample(leg, true).filter((p) => p.visible);
+    assert.equal(s.length, Hold.reveal);
+    assert.ok(s.every((p) => p.x === PILE.x && p.y === PILE.y && p.face), "only the rest is drawn");
   });
 }
 
-test("the receive sound is on the frame the back leaves the fan", () => {
-  const s = sample((t) => receivePose(t, RECEIVE), RECEIVE_MS);
-  const leaves = s.find((p) => p.visible)!.t;
-  assert.equal(receiveSoundMs, leaves);
+test("a leg's stages follow its pose: flying, at rest, leaving, landed", () => {
+  assert.deepEqual(
+    [-1, 0, LEG.rest - 1, LEG.rest, LEG.tuck - 1, LEG.tuck, LEG.end - 1, LEG.end].map((t) => legStage(t, LEG)),
+    ["waiting", "flying", "flying", "rest", "rest", "tuck", "tuck", "landed"]
+  );
+  assert.equal(legStage(0, REDUCED_LEG), "rest");
 });
 
-test("the ceremony holds the table for the give and then a notice's reading", () => {
-  const s = sample((t) => givePose(t, GIVE_TO_FAN), GIVE_MS);
-  const lastVisible = s.filter((p) => p.visible).at(-1)!.t;
-  assert.equal(exchangeAnnounceMs(false), lastVisible + 1 + Reading.notice);
-  assert.equal(exchangeAnnounceMs(true), Reading.notice);
+test("the ceremony holds the table for the give's wait, the give and a read", () => {
+  const landed = sample(LEGS[1].leg).findLast((p) => p.visible)!.t + 1;
+  assert.equal(exchangeAnnounceMs(false), X.giveWait + landed + X.read);
+  assert.equal(exchangeAnnounceMs(true), X.beat + landed + X.read);
 });
 
-test("the server's give floor is the client's own deal and receive, whatever the seats' distances", () => {
+test("the server's give floor is the client's own deal, receive and read, whatever the seats' distances", () => {
   const counts = [13, 13, 13, 13];
-  const s = sample((t) => receivePose(t, RECEIVE), RECEIVE_MS);
-  const received = s.filter((p) => p.visible).at(-1)!.t + 1;
+  const received = X.beat + sample(LEGS[0].leg).findLast((p) => p.visible)!.t + 1;
   const farthest = dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS));
-  assert.equal(exchangeGiveDelayMs(counts), farthest + received);
+  assert.equal(exchangeGiveDelayMs(counts), farthest + received + X.read);
   for (const seats of [[{ dx: 0, dy: 100 }, { dx: -300, dy: 0 }, { dx: 300, dy: 0 }, { dx: 0, dy: -120 }], [{ dx: 0, dy: 10 }, { dx: 5, dy: 0 }, { dx: 0, dy: -400 }, { dx: 20, dy: 0 }]]) {
-    const client = dealEndMs(counts, Motion.duration.reveal, dealFlightsMs(seats)) + received;
-    assert.ok(client <= exchangeGiveDelayMs(counts), `the client's receive ends at ${client}, after the server's floor`);
+    const client = dealEndMs(counts, Motion.duration.reveal, dealFlightsMs(seats)) + received + X.read;
+    assert.ok(client <= exchangeGiveDelayMs(counts), `the client's choice opens at ${client}, after the server's floor`);
   }
 });

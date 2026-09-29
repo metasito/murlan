@@ -286,10 +286,9 @@ export const en = {
   "reactionLayer.emoji.crown": "crown",
 
   // ----------------------------------------------------------------- exchange.*
-  // Under the card the loser gave, on the felt. The card is the prompt, so the
-  // line names the person and asks for the return rather than describing what
-  // is already on screen.
-  "exchange.prompt": "{{name}} gave you this — give one back",
+  // The turn chip's, while the trade runs and then while the winner chooses.
+  "exchange.chipTitle": "Exchange",
+  "exchange.chipGive": "Choose a card from 3 to 10 for {{name}}",
   // Murlan's 3-to-10 rule is this game's own; every other game in the family
   // lets the winner give any card. The glow says which cards; this says why.
   "exchange.noValidCards": "No card in 3–10 — give your lowest",
@@ -301,12 +300,10 @@ export const en = {
   "exchange.confirmA11yWaiting": "Give a card to {{name}}. Choose one of the highlighted cards first.",
   "exchange.cardA11yHint": "Chooses this card to give",
   "exchange.cardA11yNotGiveable": "Cannot be given — only a 3 to a 10 may be given",
-  "exchange.receivedCardA11yLabel": "{{name}} gave you {{card}}",
-  "exchange.receivedCardA11yLabelGiven": "You gave {{name}} {{card}}",
-  "exchange.receivedCardA11yLabelWatching": "{{loser}} gave {{winner}} {{card}}",
-  // Beside each seat as that seat's card lands, so the two players not in the
-  // exchange can read what each side got without a legend.
-  "exchange.tag": "{{from}} › {{to}}",
+  // Under the pile while a traded card rests there face up; `card` is its short name, "2♥".
+  "exchange.pileGives": "{{from}} gives {{card}} to {{to}}",
+  "exchange.pileYouGive": "You give {{card}} to {{to}}",
+  "exchange.pileGivesYou": "{{from}} gives you {{card}}",
 
   // ----------------------------------------------------------------- cards.*
   "cards.rankAce": "Ace",

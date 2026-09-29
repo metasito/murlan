@@ -25,6 +25,8 @@ import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
+  getCardDisplayRank,
+  getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
   openingIsPending,
@@ -33,7 +35,8 @@ import {
   type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
-import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import type { LegStage } from "@/lib/game/exchangeTimeline";
 import {
   CHIP_H,
   HAND_ZONE_H,
@@ -46,8 +49,8 @@ import {
 import { handCountOf, vacatedOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
-import { comboKey, readExchange, readExchangeLegs } from "@/components/flightPhysics";
-import { ExchangeLegs } from "@/components/table/ExchangeLegs";
+import { comboKey, JOKERS, NO_STAGES, readExchange, readTradeSeats, tradeKey, type TradeStages } from "@/components/flightPhysics";
+import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame } from "@/components/tableFrame";
 import { describeTableForA11y, type TableA11yExchange, type TableA11yLastPlay, type TableA11yOpponent } from "@/components/tableA11y";
@@ -101,7 +104,6 @@ import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { DealFlights, useDeal } from "@/components/table/deal";
-import { ExchangePrompt } from "@/components/table/ExchangePrompt";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
@@ -171,6 +173,7 @@ const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
  * `tests/e2e/helpers/selectors.ts` holds the other end.
  */
 const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
+const NO_DISMISS = () => {};
 const roundStart = () => event([{ kind: "roundStart" }]);
 
 const lockLandscape = () => {
@@ -269,6 +272,8 @@ export interface GameTableProps {
   onPass: () => void;
   onQuit: () => void;
   onExchangeGive: (cardId: string) => void;
+  /** The exchange's choice opens: the received card has landed and been read. The offline bot winner gives on it. */
+  onExchangeReady?: () => void;
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
@@ -319,6 +324,7 @@ export function GameTable({
   onPass,
   onQuit,
   onExchangeGive,
+  onExchangeReady,
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
@@ -433,15 +439,31 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo } = useHandOrder(viewerSeat, sortedHand);
-  const [legsLandedFor, setLegsLandedFor] = useState<ExchangeAnnounceData | null>(null);
-  const tradedCardsLanded =
-    exchangeAnnouncement?.visible === true &&
-    (exchangeAnnouncement.data?.bothJokersException === true || legsLandedFor === exchangeAnnouncement.data);
-  const { handOnTable, withheldId, arrivingIndex, descendingId } = useHandArrival({
+  // The trade runs from the phase opening, before any announcement: the receive flies ahead of the choice.
+  const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
+  const phase = gameState.exchangePhase;
+  const trade: ExchangeAnnounceData | null =
+    announced ??
+    (phase?.active && !phase.bothJokersException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
+  const [reported, setReported] = useState<TradeStages>({ key: "", ...NO_STAGES });
+  const stages: TradeStages =
+    trade && reported.key === tradeKey(trade) ? reported : { key: trade ? tradeKey(trade) : "", ...NO_STAGES };
+  const onTradeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
+    setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), [leg]: stage }));
+  }, []);
+  const onTradeReady = useCallback(
+    (key: string) => {
+      setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), ready: true }));
+      onExchangeReady?.();
+    },
+    [onExchangeReady]
+  );
+  const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
+  const tradeSeats = readTradeSeats(trade, stages);
+  const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
     hand: shownHand,
-    exchange,
-    announcement: exchangeAnnouncement,
-    landed: tradedCardsLanded,
+    trade,
+    stages,
     viewerSeat: spectating ? null : viewerSeat,
   });
   // Where the last move put a card. A drag shows its own answer; the discrete
@@ -671,7 +693,6 @@ export function GameTable({
   } = useTableFeedback({
     isMyTurn,
     isFinished,
-    exchangeActive: exchange.active,
     canPass,
     playBtnValid: staged.playable,
     selectedCount: selectedIds.length,
@@ -941,8 +962,42 @@ export function GameTable({
     pileState.playedBy === null ? undefined : players[pileState.playedBy];
   const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
 
-  const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
-  const exchangeLegs = announced ? readExchangeLegs({ ...seatGeometry, winnerIdx: announced.winnerIdx, loserIdx: announced.loserIdx }) : null;
+  const tradeName = (seat: number) => players[seat]?.name ?? "";
+  const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
+  const giveNote = (card: Card | undefined, from: number, to: number) => {
+    if (!card) return "";
+    const c = shortName(card);
+    if (viewerOwnsSeat(from, viewerSeat, spectating)) return t("exchange.pileYouGive", { card: c, to: tradeName(to) });
+    if (viewerOwnsSeat(to, viewerSeat, spectating)) return t("exchange.pileGivesYou", { from: tradeName(from), card: c });
+    return t("exchange.pileGives", { from: tradeName(from), card: c, to: tradeName(to) });
+  };
+  const pileNote = !trade
+    ? null
+    : trade.bothJokersException
+      ? stages.receive === "rest"
+        ? { text: t("exchangeAnnouncement.noSwapText"), testID: "exchange-no-swap", cards: JOKERS }
+        : null
+      : stages.receive === "rest" && trade.cardReceived
+        ? { text: giveNote(trade.cardReceived, trade.loserIdx, trade.winnerIdx), testID: "exchange-pile-label", cards: [trade.cardReceived] }
+        : stages.give === "rest" && trade.cardGiven
+          ? { text: giveNote(trade.cardGiven, trade.winnerIdx, trade.loserIdx), testID: "exchange-pile-label", cards: [trade.cardGiven] }
+          : null;
+
+  // The choice opens once the received card has landed and been read; until then the chip names the exchange.
+  const choiceOpen = exchange.active && stages.ready;
+  const exchangeChip = !trade
+    ? null
+    : !choiceOpen
+      ? t("exchange.chipTitle")
+      : exchange.viewerIsWinner
+        ? giveable && givebackIsFallback(giveable)
+          ? t("exchange.noValidCards")
+          : t("exchange.chipGive", { name: exchangeLoserName })
+        : exchange.viewerIsLoser
+          ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
+          : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
+  const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
   useEffect(() => timeline.flush());
@@ -1010,22 +1065,23 @@ export function GameTable({
           ]}
         >
           <A11yVeil veil={clockVeil}>
-            <TurnChip
-              scale={scale}
-              lit={viewerOnMove}
-              chipText={
-                viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName })
-              }
-              spokenSeat={
-                viewerOnMove
-                  ? t("gameTable.a11yYourTurn")
-                  : t("gameTable.a11yTurnOf", { name: onMoveName })
-              }
-              seconds={turnTimer?.seconds ?? 0}
-              active={timerActive}
-              resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
-              onExpire={turnTimer?.onExpire}
-            />
+            <View testID={choiceOpen ? "exchange-prompt" : undefined}>
+              <TurnChip
+                scale={scale}
+                lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
+                chipText={
+                  exchangeChip ?? (viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName }))
+                }
+                spokenSeat={
+                  exchangeChip ??
+                  (viewerOnMove ? t("gameTable.a11yYourTurn") : t("gameTable.a11yTurnOf", { name: onMoveName }))
+                }
+                seconds={turnTimer?.seconds ?? 0}
+                active={timerActive}
+                resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
+                onExpire={turnTimer?.onExpire}
+              />
+            </View>
           </A11yVeil>
         </Animated.View>
 
@@ -1142,8 +1198,8 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={opponents.top.seat === shownTurnIndex}
-                  cardCount={handCountOf(opponents.top.player)}
+                  isActive={!trade && opponents.top.seat === shownTurnIndex}
+                  cardCount={seatCount(opponents.top.seat, opponents.top.player)}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
                   vacated={vacatedOf(opponents.top.player)}
@@ -1151,6 +1207,7 @@ export function GameTable({
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
+                  mark={seatMark(opponents.top.seat)}
                 />
               ) : (
                 <View />
@@ -1162,14 +1219,14 @@ export function GameTable({
                 guessed percentage, so a taller top seat takes it from the field
                 instead of overlapping it. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, flights.length > 0 && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, (flights.length > 0 || trade !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft]}>
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={opponents.left.seat === shownTurnIndex}
+                    isActive={!trade && opponents.left.seat === shownTurnIndex}
                     side="left"
-                    cardCount={handCountOf(opponents.left.player)}
+                    cardCount={seatCount(opponents.left.seat, opponents.left.player)}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
                     passed={passed.includes(opponents.left.seat)}
                     vacated={vacatedOf(opponents.left.player)}
@@ -1177,25 +1234,13 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
+                    mark={seatMark(opponents.left.seat)}
                   />
                 )}
               </View>
 
               <View style={sharedTableStyles.centerSection}>
-                {exchange.active && !exchangeAnnouncement?.visible ? (
-                  // The round that opened this phase is already resolved, so the
-                  // centre is free — and it is the one place every seat is
-                  // already looking. It vacates the moment the cards fly.
-                  <ExchangePrompt
-                    receivedCard={gameState.exchangePhase?.cardFromLoser}
-                    winnerName={exchange.winner?.name ?? ""}
-                    loserName={exchangeLoserName}
-                    viewerIsWinner={exchange.viewerIsWinner}
-                    viewerIsLoser={exchange.viewerIsLoser}
-                    noValidCards={!!giveable && givebackIsFallback(giveable)}
-                    scale={scale}
-                  />
-                ) : showStartCardBanner ? (
+                {showStartCardBanner ? (
                   <StartCardBanner
                     card={gameState.startCard!}
                     starterIsViewer={isMyTurn}
@@ -1211,6 +1256,7 @@ export function GameTable({
                     landing={landingSignal}
                     roomW={frame.fieldRoomW}
                     scale={scale}
+                    note={pileNote}
                   />
                 )}
 
@@ -1222,15 +1268,21 @@ export function GameTable({
                     settle exactly where PlayedPile then redraws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
-                {announced && exchangeLegs && (
+                {trade && (
                   <ExchangeLegs
-                    data={announced}
-                    legs={exchangeLegs}
+                    key={stages.key}
+                    trade={trade}
+                    stages={stages}
+                    geometry={seatGeometry}
+                    handOrigins={handOrigins}
+                    go={!deal.dealing}
                     viewerSeat={spectating ? null : viewerSeat}
                     scale={scale}
-                    onLanded={() => setLegsLandedFor(announced)}
-                    onDismiss={exchangeAnnouncement!.onDismiss}
-                    holdMsOverride={exchangeAnnouncement!.holdMsOverride}
+                    flash={ringFlash}
+                    onStage={onTradeStage}
+                    onReady={onTradeReady}
+                    onDismiss={exchangeAnnouncement?.onDismiss ?? NO_DISMISS}
+                    holdMsOverride={exchangeAnnouncement?.holdMsOverride}
                   />
                 )}
 
@@ -1278,9 +1330,9 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={opponents.right.seat === shownTurnIndex}
+                    isActive={!trade && opponents.right.seat === shownTurnIndex}
                     side="right"
-                    cardCount={handCountOf(opponents.right.player)}
+                    cardCount={seatCount(opponents.right.seat, opponents.right.player)}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}
                     passed={passed.includes(opponents.right.seat)}
                     vacated={vacatedOf(opponents.right.player)}
@@ -1288,6 +1340,7 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
+                    mark={seatMark(opponents.right.seat)}
                   />
                 )}
               </View>
@@ -1349,12 +1402,13 @@ export function GameTable({
                     roomW={frame.handRoomW}
                     isMyTurn={isMyTurn && !isFinished}
                     scale={scale}
-                    // Off whenever a card is held back: the fan is drawn without
-                    // it, but `arrange` moves within the whole hand, so a drop
-                    // would land a slot from where the finger let go.
-                    onReorder={spectating || withheldId !== undefined ? undefined : arrange}
+                    // Off whenever a card is held back or lent: the fan is drawn
+                    // without the state's hand, but `arrange` moves within it, so
+                    // a drop would land a slot from where the finger let go.
+                    onReorder={spectating || holding ? undefined : arrange}
                     arrivingIndex={arrivingIndex}
                     descendingId={descendingId}
+                    receivedId={receivedId}
                     handBottomPad={frame.bottomPad}
                     onOrigins={onHandOrigins}
                     // Only while the opening is still owed. Named rather than

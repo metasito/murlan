@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -11,61 +11,101 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
-import { FAN_CARD_SCALE } from "@/components/flightPhysics";
+import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, tradeKey, type SeatGeometry, type TradeStages } from "@/components/flightPhysics";
+import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { cardSpokenName } from "@/lib/cardNames";
+import { event } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import {
-  GIVE_LEAD,
-  GIVE_MS,
-  RECEIVE_LEAD,
-  RECEIVE_MS,
-  REST_AT_MS,
-  REST_END_MS,
-  givePose,
-  receivePose,
-  restPoint,
-  type ExchangePose,
-  type LegPoints,
-} from "@/lib/game/exchangeTimeline";
+import { legPose, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
-import { Reading, Spacing } from "@/lib/theme";
-import { ExchangeTag } from "./ExchangeTag";
+import { Motion } from "@/lib/theme";
+import { inBackground } from "./useFlightClock";
 
-type PoseAt = (t: number, leg: LegPoints) => ExchangePose;
-interface LegClock { pose: PoseAt; lead: number; end: number }
-const RECEIVE: LegClock = { pose: receivePose, lead: RECEIVE_LEAD, end: RECEIVE_MS };
-const GIVE: LegClock = { pose: givePose, lead: GIVE_LEAD, end: GIVE_MS };
+export interface RingFlash { seq: number; seat: number }
+export type LegName = "receive" | "give";
+
+const X = Motion.exchange;
+const STAGES: LegStage[] = ["waiting", "flying", "rest", "tuck", "landed"];
 const BACK_CARD: Card = { id: "exchange-back", suit: null, rank: "3", isJoker: false };
+/** The points of the receive, the give and the two Jokers, in that order. */
+type Points = LegPoints[];
 
-function stepper(started: SharedValue<number>, elapsed: SharedValue<number>, landed: () => void) {
+interface Run { origin: number; stage: number[]; ready: boolean; done: boolean }
+interface Report { cue: (at: number) => void; stage: (leg: number, stage: number) => void; ready: () => void; done: () => void }
+
+/**
+ * One clock for the trade: the receive (or both Jokers) shows `beat` after the go, the give
+ * `giveWait` after the choice and never before the receive has landed and been read.
+ */
+function stepper(
+  run: SharedValue<Run>,
+  goAt: SharedValue<number>,
+  choiceAt: SharedValue<number>,
+  clock: SharedValue<number>,
+  shows: SharedValue<number[]>,
+  reduced: SharedValue<boolean>,
+  ends: SharedValue<number[]>,
+  flash: SharedValue<RingFlash>,
+  jokers: boolean,
+  report: Report
+) {
+  const ping = (seat: number) => {
+    "worklet";
+    if (seat >= 0) flash.value = { seq: flash.value.seq + 1, seat };
+  };
   return (frame: FrameInfo) => {
     "worklet";
-    if (started.value === -2) return;
-    if (started.value === -1) started.value = frame.timestamp;
-    elapsed.value = frame.timestamp - started.value;
-    if (elapsed.value >= GIVE_MS) {
-      started.value = -2;
-      scheduleOnRN(landed);
+    const r = run.value;
+    if (r.done || goAt.value < 0) return;
+    const times = legTimes(reduced.value);
+    if (r.origin < 0) {
+      // On the go's clock, not the first frame's: web hands a new frame callback its first frame two frames late.
+      r.origin = Math.min(frame.timestamp, goAt.value);
+      shows.value = [X.beat, Infinity];
+      scheduleOnRN(report.cue, r.origin + X.beat);
+    }
+    const t = frame.timestamp - r.origin;
+    const readyAt = shows.value[0] + times.end + X.read;
+    if (!jokers && shows.value[1] === Infinity && choiceAt.value >= 0) {
+      const give = Math.max(Math.min(frame.timestamp, choiceAt.value) - r.origin + X.giveWait, readyAt);
+      shows.value = [shows.value[0], give];
+      scheduleOnRN(report.cue, r.origin + give);
+    }
+    clock.value = t;
+    for (let leg = 0; leg < 2; leg++) {
+      const s = STAGES.indexOf(legStage(t - shows.value[leg], times));
+      if (s === r.stage[leg]) continue;
+      if (r.stage[leg] < 1 && s >= 1) ping(ends.value[leg * 2]);
+      if (r.stage[leg] < 2 && s >= 2) ping(ends.value[leg * 2 + 1]);
+      r.stage[leg] = s;
+      scheduleOnRN(report.stage, leg, s);
+    }
+    if (!jokers && !r.ready && t >= readyAt) {
+      r.ready = true;
+      scheduleOnRN(report.ready);
+    }
+    if (t >= shows.value[jokers ? 0 : 1] + times.end + X.read) {
+      r.done = true;
+      scheduleOnRN(report.done);
     }
   };
 }
 
-/** Reduced motion skips the travel: the card is shown at its rest from its lead. */
-function timeAt(t: number, clock: LegClock, reduceMotion: boolean): number {
-  "worklet";
-  return reduceMotion && t >= clock.lead ? clock.lead + REST_AT_MS : t;
+function useLegClock(...args: Parameters<typeof stepper>) {
+  const [step] = useState(() => stepper(...args));
+  return useFrameCallback(step, true);
 }
 
-function LegCard({ card, leg, clock, elapsed, scale, reduceMotion, testID }: {
-  card: Card; leg: LegPoints; clock: LegClock; elapsed: SharedValue<number>; scale: number; reduceMotion: boolean; testID: string;
+function LegCard({ card, leg, show, points, clock, shows, reduced, scale, testID }: {
+  card: Card; leg: number; show: number; points: SharedValue<Points>; clock: SharedValue<number>;
+  shows: SharedValue<number[]>; reduced: SharedValue<boolean>; scale: number; testID: string;
 }) {
   const w = CARD_W(scale * FIELD_SCALE);
   const h = CARD_H(scale * FIELD_SCALE);
-  // Held at its last pose past its own end: the hand draws it only once both legs have landed.
-  const pose = useDerivedValue(() => clock.pose(Math.min(timeAt(elapsed.value, clock, reduceMotion), clock.end - 1), leg));
+  const pose = useDerivedValue(() => legPose(clock.value - shows.value[show], points.value[leg], reduced.value));
   const style = useAnimatedStyle(() => {
     const p = pose.value;
     return {
@@ -87,131 +127,134 @@ function LegCard({ card, leg, clock, elapsed, scale, reduceMotion, testID }: {
   );
 }
 
-function LegTag({ name, leg, clock, elapsed, scale, reduceMotion, testID }: {
-  name: string; leg: LegPoints; clock: LegClock; elapsed: SharedValue<number>; scale: number; reduceMotion: boolean; testID: string;
-}) {
-  const [tag, setTag] = useState({ w: 0, h: 0 });
-  const w = CARD_W(scale * FIELD_SCALE);
-  const h = CARD_H(scale * FIELD_SCALE);
-  const towardPile = leg.rest.y > 0;
-  const style = useAnimatedStyle(() => {
-    const p = clock.pose(Math.min(timeAt(elapsed.value, clock, reduceMotion), clock.lead + REST_END_MS), leg);
-    const rad = (p.rot * Math.PI) / 180;
-    const half = ((Math.abs(Math.cos(rad)) * h + Math.abs(Math.sin(rad)) * w) * p.scale) / 2 + Spacing.xxs;
-    return {
-      opacity: elapsed.value >= clock.lead ? 1 : 0,
-      transform: [{ translateX: p.x - tag.w / 2 }, { translateY: towardPile ? p.y - half - tag.h : p.y + half }],
-    };
-  });
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.anchor, style]}
-      onLayout={(e) => setTag({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-    >
-      <ExchangeTag name={name} scale={scale} testID={testID} />
-    </Animated.View>
-  );
-}
-
-function NoSwapTag({ at, scale, text }: { at: { x: number; y: number }; scale: number; text: string }) {
-  const [tagW, setTagW] = useState(0);
-  return (
-    <View
-      pointerEvents="none"
-      style={[styles.anchor, { transform: [{ translateX: at.x - tagW / 2 }, { translateY: at.y }] }]}
-      onLayout={(e) => setTagW(e.nativeEvent.layout.width)}
-    >
-      <ExchangeTag name={text} scale={scale} testID="exchange-no-swap" />
-    </View>
-  );
-}
-
 /**
- * The trade on the table: each card flies seat to seat, face up, rests beside its receiver and
- * tucks in, carrying who gave it to whom (lib/game/exchangeTimeline.ts). One frame clock runs
- * both legs; `onLanded` is its end, and the ceremony holds a notice's reading past it.
+ * The trade on the table, giver → pile → receiver (tests/e2e/fixtures/exchange-legs, "Through the
+ * pile"). Mounted from the phase opening; `go` is the deal having landed. It reports each leg's
+ * stage, the choice opening (`onReady`) and the ceremony's end, all off its own frame clock.
  */
 export function ExchangeLegs({
-  data,
-  legs,
+  trade,
+  stages,
+  geometry,
+  handOrigins,
+  go,
   viewerSeat,
   scale,
-  onLanded,
+  flash,
+  onStage,
+  onReady,
   onDismiss,
   holdMsOverride,
 }: {
-  data: ExchangeAnnounceData;
-  legs: { receive: LegPoints; give: LegPoints };
+  trade: ExchangeAnnounceData;
+  stages: TradeStages;
+  geometry: SeatGeometry;
+  handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
+  go: boolean;
   viewerSeat: number | null;
   scale: number;
-  onLanded: () => void;
+  flash: SharedValue<RingFlash>;
+  onStage: (key: string, leg: LegName, stage: LegStage) => void;
+  onReady: (key: string) => void;
   onDismiss: () => void;
-  /** Replaces the reading hold as this ceremony's whole length (#915, offline e2e only). */
+  /** Replaces the ceremony's end: this long after the choice, or after mount for both Jokers (#915, offline e2e only). */
   holdMsOverride?: number;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
-  const [landed, setLanded] = useState(false);
-  const landedRef = useRef(onLanded);
-  const dismissRef = useRef(onDismiss);
+  const jokers = trade.bothJokersException;
+  const key = tradeKey(trade);
+  const calls = useRef({ onStage, onReady, onDismiss, key });
   useEffect(() => {
-    landedRef.current = onLanded;
-    dismissRef.current = onDismiss;
+    calls.current = { onStage, onReady, onDismiss, key };
   });
-  const started = useSharedValue(-1);
-  const elapsed = useSharedValue(0);
-  const [step] = useState(() => stepper(started, elapsed, () => setLanded(true)));
-  const frames = useFrameCallback(step, !data.bothJokersException);
-  useEffect(() => {
-    if (!landed) return;
-    frames.setActive(false);
-    landedRef.current();
-  }, [landed, frames]);
 
-  const waitingOnFlight = holdMsOverride === undefined && !data.bothJokersException && !landed;
+  const run = useSharedValue<Run>({ origin: -1, stage: [0, 0], ready: false, done: false });
+  const goAt = useSharedValue(-1);
+  const choiceAt = useSharedValue(-1);
+  const clock = useSharedValue(0);
+  const shows = useSharedValue([Infinity, Infinity]);
+  const reduced = useSharedValue(reduceMotion);
+  const own = (seat: number) => (seat === viewerSeat ? -1 : seat);
+  const ends = useSharedValue(
+    jokers ? [own(trade.loserIdx), -1, -1, -1] : [own(trade.loserIdx), own(trade.winnerIdx), own(trade.winnerIdx), own(trade.loserIdx)]
+  );
+  const [initial] = useState(() => {
+    const legs = readExchangeLegs({ ...geometry, trade });
+    return [legs.receive, legs.give, ...legs.jokers];
+  });
+  const pointsValue = useSharedValue<Points>(initial);
+  const holdRef = useRef(holdMsOverride);
+  const cue = useCallback((at: number) => event([{ kind: "exchange" }], at), []);
+  const stage = useCallback(
+    (leg: number, s: number) => calls.current.onStage(calls.current.key, leg === 0 ? "receive" : "give", STAGES[s]),
+    []
+  );
+  const ready = useCallback(() => calls.current.onReady(calls.current.key), []);
+  const done = useCallback(() => {
+    if (holdRef.current === undefined) calls.current.onDismiss();
+  }, []);
+  const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, jokers, { cue, stage, ready, done });
+
   useEffect(() => {
-    if (waitingOnFlight) return;
-    const done = setTimeout(() => dismissRef.current(), holdMsOverride ?? Reading.notice);
+    reduced.set(reduceMotion);
+  }, [reduced, reduceMotion]);
+  useEffect(() => {
+    if (go && goAt.get() < 0) goAt.set(inBackground() ? Infinity : performance.now());
+  }, [go, goAt]);
+  const chosen = trade.cardGiven !== undefined;
+  useEffect(() => {
+    if (chosen && choiceAt.get() < 0) choiceAt.set(inBackground() ? Infinity : performance.now());
+  }, [chosen, choiceAt]);
+  // Read after commit: the hand publishes where it drew each card then. A leg keeps the points it left with.
+  useEffect(() => {
+    const next = readExchangeLegs({ ...geometry, trade }, handOrigins.current);
+    const cur = pointsValue.get();
+    const fresh = (stage: LegStage) => stage === "waiting";
+    pointsValue.set([
+      fresh(stages.receive) ? next.receive : cur[0],
+      fresh(stages.give) ? next.give : cur[1],
+      ...(fresh(stages.receive) ? next.jokers : cur.slice(2)),
+    ]);
+  });
+  useEffect(() => {
+    if (run.get().done) frames.setActive(false);
+  });
+
+  useEffect(() => {
+    holdRef.current = holdMsOverride;
+    if (holdMsOverride === undefined || !(chosen || jokers)) return;
+    const done = setTimeout(() => calls.current.onDismiss(), holdMsOverride);
     return () => clearTimeout(done);
-  }, [waitingOnFlight, holdMsOverride]);
+  }, [holdMsOverride, chosen, jokers]);
 
   const nameOf = (seat: number) =>
-    seat === viewerSeat ? t("gameShared.you") : seat === data.winnerIdx ? data.winnerName : data.loserName;
-  const tag = (from: number, to: number) => t("exchange.tag", { from: nameOf(from), to: nameOf(to) });
-  const giveLine = (card: Card, from: string, to: string) =>
-    t("exchangeAnnouncement.giveLine", { from, card: cardSpokenName(card, t), to });
-  const a11yLabel = data.bothJokersException
-    ? t("exchangeAnnouncement.a11yNoSwap", { loserName: data.loserName })
+    seat === viewerSeat ? t("gameShared.you") : seat === trade.winnerIdx ? trade.winnerName : trade.loserName;
+  const shown = (stage: LegStage) => stage !== "waiting" && stage !== "flying";
+  const giveLine = (card: Card, from: number, to: number) =>
+    t("exchangeAnnouncement.giveLine", { from: nameOf(from), card: cardSpokenName(card, t), to: nameOf(to) });
+  const a11yLabel = jokers
+    ? shown(stages.receive) ? t("exchangeAnnouncement.a11yNoSwap", { loserName: trade.loserName }) : ""
     : [
-        data.cardReceived && giveLine(data.cardReceived, data.loserName, data.winnerName),
-        data.cardGiven && giveLine(data.cardGiven, data.winnerName, data.loserName),
+        trade.cardReceived && shown(stages.receive) && giveLine(trade.cardReceived, trade.loserIdx, trade.winnerIdx),
+        trade.cardGiven && shown(stages.give) && giveLine(trade.cardGiven, trade.winnerIdx, trade.loserIdx),
       ]
         .filter(Boolean)
         .join(". ");
 
+  const card = (c: Card, leg: number, show: number, testID: string) => (
+    <LegCard key={testID} card={c} leg={leg} show={show} points={pointsValue} clock={clock} shows={shows} reduced={reduced} scale={scale} testID={testID} />
+  );
   return (
     <View testID="exchange-announce" pointerEvents="none" style={StyleSheet.absoluteFill}>
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
       <View style={StyleSheet.absoluteFill} {...a11yHidden()}>
-        {data.bothJokersException ? (
-          <NoSwapTag at={restPoint(legs.receive.from)} scale={scale} text={t("exchangeAnnouncement.noSwapText")} />
-        ) : (
-          <>
-            {data.cardReceived && (
-              <>
-                {!landed && <LegCard card={data.cardReceived} leg={legs.receive} clock={RECEIVE} elapsed={elapsed} scale={scale} reduceMotion={reduceMotion} testID="exchange-flier-to-winner" />}
-                <LegTag name={tag(data.loserIdx, data.winnerIdx)} leg={legs.receive} clock={RECEIVE} elapsed={elapsed} scale={scale} reduceMotion={reduceMotion} testID="exchange-tag-to-winner" />
-              </>
-            )}
-            {data.cardGiven && (
-              <>
-                {!landed && <LegCard card={data.cardGiven} leg={legs.give} clock={GIVE} elapsed={elapsed} scale={scale} reduceMotion={reduceMotion} testID="exchange-flier-to-loser" />}
-                <LegTag name={tag(data.winnerIdx, data.loserIdx)} leg={legs.give} clock={GIVE} elapsed={elapsed} scale={scale} reduceMotion={reduceMotion} testID="exchange-tag-to-loser" />
-              </>
-            )}
-          </>
-        )}
+        {jokers
+          ? JOKERS.map((j, i) => card(j, 2 + i, 0, `exchange-joker-${i}`))
+          : [
+              trade.cardReceived && card(trade.cardReceived, 0, 0, "exchange-flier-to-winner"),
+              trade.cardGiven && card(trade.cardGiven, 1, 1, "exchange-flier-to-loser"),
+            ]}
       </View>
     </View>
   );
@@ -219,6 +262,5 @@ export function ExchangeLegs({
 
 const styles = StyleSheet.create({
   box: { position: "absolute", left: "50%", top: "50%" },
-  anchor: { position: "absolute", left: "50%", top: "50%" },
   centred: { alignItems: "center", justifyContent: "center" },
 });

@@ -92,7 +92,7 @@ export interface ExchangeAnnouncement {
  * The whole ceremony: what is being announced, and whether it still is. Both
  * providers run this one, so a table cannot be under a ceremony on one
  * transport and not the other. The table's `ExchangeLegs` ends it, on the
- * legs' own landing plus a notice's reading.
+ * give's own landing plus `Motion.exchange.read`.
  *
  * `phasePresent` is `gameState.exchangePhase !== undefined` — the record this
  * ceremony describes, read fresh every render. A fresh match dealt, or the
