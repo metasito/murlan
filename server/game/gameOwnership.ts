@@ -178,7 +178,7 @@ async function reclaim(): Promise<void> {
       reclaimRetry = null;
       void reclaim();
     }, OWNERSHIP_RECLAIM_RETRY_MS);
-    reclaimRetry.unref?.();
+    (reclaimRetry as unknown as { unref?: () => void }).unref?.();
   }
 }
 
