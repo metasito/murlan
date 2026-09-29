@@ -95,7 +95,7 @@ import {
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
-import { readStagedPlay } from "@/components/table/stagedPlay";
+import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
 import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
@@ -510,6 +510,27 @@ export function GameTable({
     [
       sortedHand,
       selectedIds,
+      gameState.lastPlayedCombination,
+      gameState.startCard,
+      gameState.firstPlayMade,
+      isNewRound,
+      isMyTurn,
+      isFinished,
+    ]
+  );
+  const canBeatPile = React.useMemo(
+    () =>
+      canBeatPileOf({
+        hand: sortedHand,
+        lastPlayedCombination: gameState.lastPlayedCombination,
+        startCard: gameState.startCard,
+        firstPlayMade: gameState.firstPlayMade,
+        isNewRound,
+        isMyTurn,
+        isFinished,
+      }),
+    [
+      sortedHand,
       gameState.lastPlayedCombination,
       gameState.startCard,
       gameState.firstPlayMade,
@@ -1393,7 +1414,7 @@ export function GameTable({
               {!spectating && (
                 <PassaButton
                   canPass={canPass}
-                  onlyMove={canPass && !staged.canBeatPile}
+                  onlyMove={canPass && !canBeatPile}
                   flashStyle={passaFlashStyle}
                   onPress={handlePass}
                   a11yLabel={t("gameTable.passA11yLabel")}

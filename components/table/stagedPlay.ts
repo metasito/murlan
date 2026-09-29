@@ -25,8 +25,28 @@ export interface StagedPlay {
   playable: boolean;
   /** Why not, when it is not. Two words for the button, a key for the sentence. */
   refusal: PlayButtonLabel;
-  /** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
-  canBeatPile: boolean;
+}
+
+/** Some selection of this hand is legal right now — so PASSA is a choice, not the only move. */
+export function canBeatPileOf(input: {
+  hand: Card[];
+  lastPlayedCombination: Combination | null;
+  startCard: GameState["startCard"];
+  firstPlayMade: boolean;
+  isNewRound: boolean;
+  isMyTurn: boolean;
+  isFinished: boolean;
+}): boolean {
+  if (!input.isMyTurn || input.isFinished) return false;
+  const requiresStartCard = !input.firstPlayMade && !!input.startCard;
+  return (
+    getAllValidPlays(
+      input.hand,
+      input.isNewRound ? null : input.lastPlayedCombination,
+      input.isNewRound,
+      requiresStartCard ? input.startCard : undefined
+    ).length > 0
+  );
 }
 
 export function readStagedPlay(input: {
@@ -55,14 +75,6 @@ export function readStagedPlay(input: {
   return {
     cards,
     playable: isValid && myMove,
-    canBeatPile:
-      myMove &&
-      getAllValidPlays(
-        input.hand,
-        input.isNewRound ? null : pile,
-        input.isNewRound,
-        requiresStartCard ? input.startCard : undefined
-      ).length > 0,
     refusal: playButtonLabel({
       isMyTurn: input.isMyTurn,
       isFinished: input.isFinished,
