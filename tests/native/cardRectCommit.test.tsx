@@ -22,7 +22,7 @@ function uiQueue() {
       modify: (fn: (v: T) => T) => void jobs.push(() => (now = fn(now))),
     } as unknown as SharedValue<T>;
   }
-  return { mutable, run: () => jobs.splice(0).forEach((job) => job()) };
+  return { mutable, run: () => jobs.splice(0).map((job) => job()).length };
 }
 
 const at = { x: 0, y: 0 };
@@ -74,6 +74,10 @@ describe('a card rect under queued UI writes', () => {
     expect(rects.get()['hand:a']?.x).toBe(1);
     ui.run();
     expect(rects.get()['hand:a']?.x).toBe(2);
+    const was = rects.get();
+    jest.advanceTimersByTime(50);
+    expect(ui.run()).toBeGreaterThan(0);
+    expect(rects.get()).toBe(was);
 
     await view.rerender(<Table turn={2} drawn={false} />);
     ui.run();

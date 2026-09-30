@@ -763,7 +763,10 @@ export function StraightHand({
   }));
   const panToFocused = (e: { target: unknown; currentTarget: unknown }) => {
     const target = e.target as HTMLElement;
-    const card = (target.closest('[data-testid^="hand-card-"]') as HTMLElement | null) ?? target;
+    // A press focuses the card too; panning then would slide the row out from under the finger.
+    if (!target.matches(":focus-visible")) return;
+    const card = target.closest<HTMLElement>('[data-testid^="hand-card-"]');
+    if (!card) return;
     const box = card.getBoundingClientRect();
     const view = (e.currentTarget as Element).getBoundingClientRect();
     // About the centre, at the unturned width: a tilted card's bounding box is wider than the row lets it show.

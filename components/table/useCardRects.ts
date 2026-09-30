@@ -72,7 +72,7 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
       rects.modify((r) => {
         "worklet";
         const rect = alive.value ? read() : null;
-        if (!alive.value || (!rect && r[key] === undefined)) return r;
+        if (!alive.value || sameRect(r[key], rect)) return r;
         const next = { ...r };
         if (rect) next[key] = rect;
         else delete next[key];
@@ -87,6 +87,12 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
       forget(rects, key, false);
     };
   }, [rects, key, drawn, read]);
+}
+
+function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
+  "worklet";
+  if (!a || !b) return !a && !b;
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.rot === b.rot && a.back === b.back && a.lift === b.lift && a.glow === b.glow && a.seen === b.seen;
 }
 
 /** Publishes cards laid out by a render, all under `prefix`: replaced in the commit that draws them, moved with the table. */

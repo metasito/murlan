@@ -5,7 +5,7 @@ import { test, expect } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
-import { tap } from "./helpers/press";
+import { tap, tapPoint } from "./helpers/press";
 import { E2E_SUSPEND_AI_KEY } from "../../lib/storageKeys";
 import { HAND_ZONE } from "./helpers/selectors.ts";
 import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
@@ -259,4 +259,33 @@ test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to i
     expectOnTheCards(await sample(page, 200), ["fan", "hand"]);
   }
   expect(reached, "Tab reached every card the window hid, at both ends").toEqual(before);
+});
+
+test("on a 4:3 tablet, a mouse press on the scrolled hand's clipped edge card leaves the row where it is", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+  await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
+  await settled(page, 3_000, '[data-testid="game-table"]');
+  const row = () =>
+    page.evaluate(() => {
+      const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"]')];
+      let win = cards[0]?.parentElement ?? null;
+      while (win && getComputedStyle(win).overflowX !== "clip") win = win.parentElement;
+      const edge = cards.at(-1)!.getBoundingClientRect();
+      return {
+        firstLeft: cards[0].offsetLeft + cards[0].parentElement!.getBoundingClientRect().left,
+        winRight: win!.getBoundingClientRect().right,
+        edgeRight: edge.right,
+        edgeMidY: (edge.top + edge.bottom) / 2,
+        focused: document.activeElement?.closest('[data-testid^="hand-card-"]')?.getAttribute("data-testid") ?? null,
+      };
+    });
+  const before = await row();
+  expect(before.edgeRight - before.winRight, "the edge card is clipped").toBeGreaterThan(10);
+  await tapPoint(page, before.winRight - 8, before.edgeMidY);
+  await expect.poll(async () => (await row()).focused, { message: "the press focused a hand card" }).not.toBeNull();
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  const after = await row();
+  expect(Math.abs(after.firstLeft - before.firstLeft), "the row moved under a press").toBeLessThanOrEqual(0.5);
 });
