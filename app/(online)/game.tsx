@@ -353,6 +353,7 @@ export default function OnlineGameScreen() {
           </>
         ) : null
       }
+      tableCovered={showGameOver && gameState.gameOver}
       overlays={(veiled) => (
         <>
           {/* A <Modal> renders above the settings sheet rather than behind it,
