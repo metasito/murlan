@@ -77,7 +77,8 @@ import { ScorePill } from "@/components/table/scorePill";
 import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
-import { HudComboPill, TurnChip } from "@/components/table/notices/hud";
+import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
+import { useDeviceOffline, useTableClaim } from "@/components/OfflineBanner";
 import {
   ControlRail,
   useFocusFade,
@@ -296,8 +297,10 @@ export interface GameTableProps {
 
   /** The rail's lower knob (online: the reactions trigger). */
   railExtra?: React.ReactNode;
-  /** Transient strips under the top bar (online: reconnect notice). */
+  /** Transient strips under the top bar (online: the end-match vote). */
   banners?: React.ReactNode;
+  /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
+  connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
   catchUp?: boolean;
   /**
@@ -338,6 +341,7 @@ export function GameTable({
   disconnectedSeats = {},
   railExtra,
   banners,
+  connection,
   catchUp = false,
   overlays,
   tableCovered = false,
@@ -358,6 +362,9 @@ export function GameTable({
   const knobSize = physicalTouchTarget(scale);
   const reduceMotion = usePrefersReducedMotion();
   const felt = useTableFelt();
+  const deviceOffline = useDeviceOffline();
+  const connectionNote: ConnectionNote | null =
+    connection === undefined ? null : deviceOffline ? { state: "offline", text: t("offlineBanner.text") } : connection;
 
   // Whether the rail's settings sheet is open, and the two toggles it owns
   // that live nowhere else: focus mode and the left-handed swap are a
@@ -411,6 +418,7 @@ export function GameTable({
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
+  useTableClaim(!focusMode && !tableCovered);
 
   // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
   // a counter so tapping again restarts the dwell instead of being swallowed as
@@ -1035,6 +1043,7 @@ export function GameTable({
                 active={timerActive}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
+                connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>
           </A11yVeil>

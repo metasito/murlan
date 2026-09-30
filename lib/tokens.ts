@@ -53,6 +53,14 @@ export const Colors = {
   dangerDim:    '#E8857E',              // the same alarm below that bar
   dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
+  offlineAlert: '#D32F2F',              // the offline pill's fill: danger, deep enough for body-size white text
+  // The turn pill carrying the connection: the lantern mockup's #turn.ok and #turn.bad.
+  onlineInk:    '#D4ECCE',
+  onlineEdge:   'rgba(143,191,138,0.7)',
+  onlineDot:    '#8FBF8A',
+  offlineInk:   '#FFCFC6',
+  offlineEdge:  '#D0574B',
+  offlineDot:   '#E0806F',
   // The turn chip in the last seconds of the viewer's own clock.
   ember:        '#FF8A5C',              // border
   emberGlow:    '#FF6E3C',
@@ -225,6 +233,9 @@ export const NoticePalette = {
       glow: { color: Colors.emberGlow, opacity: 0.5 },
       dot: { color: Colors.emberDot, glow: 1 },
     },
+    ok: { fill: Colors.chipFill, edge: Colors.onlineEdge, ink: Colors.onlineInk, strong: Colors.onlineInk, dot: { color: Colors.onlineDot } },
+    bad: { fill: Colors.chipFill, edge: Colors.offlineEdge, ink: Colors.offlineInk, strong: Colors.offlineInk, dot: { color: Colors.offlineDot } },
+    solid: { fill: Colors.offlineAlert, edge: Colors.offlineAlert, ink: Colors.white, strong: Colors.white },
   },
   chip: {
     neutral: { fill: 'rgba(3,14,9,0.85)', edge: Colors.goldBorder, ink: Colors.textSecondary, strong: Colors.textSecondary },
