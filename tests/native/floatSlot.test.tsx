@@ -100,6 +100,17 @@ describe('the float slot', () => {
     await r.unmount();
   });
 
+  it('the same words under a new float are said again: the region empties for a tick first', async () => {
+    const r = await render(slot({ id: 1, kind: 'reject', text: 'carta troppo bassa', live: true }));
+    await advance(16);
+    expect(liveRegion().props.accessibilityLabel).toBe('carta troppo bassa');
+    await r.rerender(slot({ id: 2, kind: 'reject', text: 'carta troppo bassa', live: true }));
+    expect(liveRegion().props.accessibilityLabel).toBe('');
+    await advance(16);
+    expect(liveRegion().props.accessibilityLabel).toBe('carta troppo bassa');
+    await r.unmount();
+  });
+
   it('a float that is not shown never comes in', async () => {
     const r = await render(
       <TableNotice kind="passFloat" tone="neutral" scale={1} shown={false}>

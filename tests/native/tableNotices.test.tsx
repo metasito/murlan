@@ -300,9 +300,9 @@ describe("the table's refusals and lines", () => {
   const edge = (id: string) => StyleSheet.flatten(screen.getByTestId(id, hidden).props.style).borderColor;
   const said = (text: string) =>
     screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
-  const at = (state: GameState, error: string | null = null) => (
+  const at = (state: GameState, error: string | null = null, tableCovered = false) => (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} viewerSeat={0} error={error} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={state} viewerSeat={0} error={error} tableCovered={tableCovered} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
   const withAna = (over: Partial<Player>) => ({ ...STATE, players: STATE.players.map((p, i) => (i === 0 ? { ...p, ...over } : p)) });
@@ -318,6 +318,24 @@ describe("the table's refusals and lines", () => {
     expect(edge('notice-rejectFloat')).toBe(NoticePalette.float.bad.edge);
     expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenTooLow'), hidden)).toBeTruthy();
     expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(1);
+    await r.unmount();
+  });
+
+  it('a refused reason is not read back when a cover over the table lifts', async () => {
+    const yours = { ...STATE, currentTurnIndex: 0 };
+    const r = await render(at(yours));
+    await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(card('3_0', '3', 'spades'), t)));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    await r.rerender(at(yours, null, true));
+    await r.rerender(at(yours));
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(0);
     await r.unmount();
   });
 
