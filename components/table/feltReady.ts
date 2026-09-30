@@ -15,9 +15,11 @@ export interface FeltProps {
   ready: boolean;
   onReady: () => void;
   cards: CardTable;
-  /** The seat names' label boxes, in window points: the felt under them stays dark enough to read. */
-  names: readonly { x: number; y: number; w: number; h: number }[];
+  /** The shown seat names' label boxes, in window points: the felt under each stays dark enough for its ink. */
+  names: readonly SeatNameBox[];
 }
+
+export interface SeatNameBox { x: number; y: number; w: number; h: number; lit: boolean }
 
 /**
  * How a card view on the table shades itself: `felt` where the felt draws every card's shadow, else

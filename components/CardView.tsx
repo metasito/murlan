@@ -726,6 +726,7 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
+        <View pointerEvents="none" style={[styles.lip, lipStyle]} />
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
             measuring what the player *sees* has to measure this.
@@ -735,7 +736,6 @@ function CardViewBase({
             and the platforms do not agree about that overflow on their own: the
             web hit-tests it and lets paint order settle which card wins, while
             UIKit does not hit-test outside a view's bounds at all. */}
-        <View pointerEvents="none" style={[styles.lip, lipStyle]} />
         <View
           testID="card-box"
           pointerEvents="none"

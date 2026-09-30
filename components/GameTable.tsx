@@ -826,7 +826,6 @@ export function GameTable({
   );
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
-  const nameBoxes = seatNameBoxes(cardTable.seats, scale);
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   useBenchHandle("lampFreeze", rig.freeze);
 
@@ -1014,6 +1013,18 @@ export function GameTable({
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const nameBoxes = seatNameBoxes(
+    cardTable.seats,
+    scale,
+    focusMode
+      ? {}
+      : Object.fromEntries(
+          (["top", "left", "right"] as const).flatMap((side) => {
+            const o = opponents[side];
+            return o ? [[side, (!trade && o.seat === shownTurnIndex) || seatMark(o.seat).lit]] : [];
+          })
+        )
+  );
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.

@@ -35,11 +35,25 @@ export function restingCast(pile: Point, pool: Pool, felt: Pick<Felt, "sx" | "sy
   return { x: o.x * felt.s, y: o.y * felt.s };
 }
 
-/** CSS's blur is twice the Gaussian's sigma, which Skia takes. */
-export function shadowPaint(path: ShadowPath): { dy: number; sigma: number; alpha: number } {
+/** CSS's blur is twice the Gaussian's sigma, which Skia takes; `s` the card scale. */
+export function shadowPaint(path: ShadowPath, s: number): { sigma: number; alpha: number } {
   "worklet";
-  if (path === "cast") return { dy: 0, sigma: CardShadow.cast.blur / 2, alpha: CardShadow.cast.alpha };
-  return { dy: CardShadow.contact.y, sigma: CardShadow.contact.blur / 2, alpha: CardShadow.alpha[path] };
+  if (path === "cast") return { sigma: (CardShadow.cast.blur / 2) * s, alpha: CardShadow.cast.alpha };
+  return { sigma: (CardShadow.contact.blur / 2) * s, alpha: CardShadow.alpha[path] };
+}
+
+/** A path's offset from its cards in design points at card scale 1; `pile` and `light` in design points. */
+export function shadowFall(path: ShadowPath, pile: Point, light: Point): Point {
+  "worklet";
+  return path === "cast" ? castOffset(pile, light) : { x: 0, y: CardShadow.contact.y };
+}
+
+export type ShadowTransform = [{ scaleX: number }, { scaleY: number }, { translateX: number }, { translateY: number }];
+
+/** Inside the felt's design-space group: back to window points, where the outlines are, then the fall at card scale. */
+export function shadowTransform(fall: Point, felt: Pick<Felt, "sx" | "sy" | "s">): ShadowTransform {
+  "worklet";
+  return [{ scaleX: 1 / felt.sx }, { scaleY: 1 / felt.sy }, { translateX: fall.x * felt.s }, { translateY: fall.y * felt.s }];
 }
 
 export interface PathSink {

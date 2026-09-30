@@ -12,45 +12,38 @@ import { GameTable } from '@/components/GameTable';
 import { CARD_SCOPES } from '@/components/table/cardRects';
 import { CardCastContext } from '@/components/table/feltReady';
 import { dealCards, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
-import { cardShadow } from '@/lib/theme';
+import { cardShadow, Shadow } from '@/lib/theme';
 import { frames } from './helpers/exchangeLegs';
 import { throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const SHADOW_PROPS = ['boxShadow', 'shadowOpacity', 'shadowRadius', 'elevation'];
-const SCOPE_OF: [RegExp, string][] = [[/^hand-card-/, 'hand'], [/^seat-back$/, 'fan'], [/^(flying-card|pile-card)$/, 'pile'], [/^dealt-back$/, 'deal'], [/^exchange-(flier|joker)-/, 'leg']];
-const HIDDEN = { includeHiddenElements: true };
+const SCOPE_ID = /^card-(hand|fan|pile|deal|leg):/;
 const noop = () => {};
 const seen = new Set<string>();
 
-function scopeOf(node: TestInstance): string | null {
-  for (let n: TestInstance | null = node; n; n = n.parent) {
-    const hit = SCOPE_OF.find(([id]) => typeof n!.props.testID === 'string' && id.test(n!.props.testID));
-    if (hit) return hit[1];
-  }
-  return null;
+function scopeOf(n: TestInstance): string | null {
+  const hit = typeof n.props.nativeID === 'string' ? SCOPE_ID.exec(n.props.nativeID) : null;
+  if (hit) return hit[1];
+  return typeof n.props.testID === 'string' && n.props.testID.startsWith('hand-card-') ? 'hand' : null;
 }
 
-/** Every view a card view draws, from its root (the face's box sits in its pressable), and those carrying a platform shadow. */
+const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {}) as Record<string, unknown>;
+const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.goldSoft[p]);
+
+/** Every view in every card's scope, and those carrying a platform shadow, the gold glows apart. */
 function cardHosts() {
-  const roots = [
-    ...screen.queryAllByTestId('card-box', HIDDEN).map((n) => n.parent!.parent!),
-    ...screen.queryAllByTestId('card-box-back', HIDDEN).map((n) => n.parent!),
-  ];
-  const hosts = roots.flatMap((root) => {
-    const scope = scopeOf(root);
-    if (scope) seen.add(scope);
-    return [root, ...root.queryAll(() => true)];
-  });
-  const shadowed = hosts.filter((n) => SHADOW_PROPS.some((p) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {})[p as keyof ViewStyle] !== undefined));
-  return { cards: roots.length, shadowed };
+  const scopes = screen.container.queryAll((n) => scopeOf(n) !== null);
+  const hosts = new Set(scopes.flatMap((s) => (seen.add(scopeOf(s)!), [s, ...s.queryAll(() => true)])));
+  const shadowed = [...hosts].filter((n) => SHADOW_PROPS.some((p) => styleOf(n)[p] !== undefined));
+  return { scopes: scopes.length, shadowed: shadowed.filter((n) => !isGlow(n)), glows: shadowed.filter(isGlow) };
 }
 
 function expectNoCardShadow() {
-  const { cards, shadowed } = cardHosts();
-  expect(cards).toBeGreaterThan(0);
-  expect(shadowed.map((n) => StyleSheet.flatten(n.props.style))).toEqual([]);
+  const { scopes, shadowed } = cardHosts();
+  expect(scopes).toBeGreaterThan(0);
+  expect(shadowed.map(styleOf)).toEqual([]);
 }
 
 const table = (gameState: GameState) => (
@@ -109,6 +102,14 @@ describe('a card view on the table', () => {
       await view.unmount();
     }
     expect(counts).toEqual([0, 0]);
+  }, 120_000);
+
+  it.failing('carries no gold glow behind it either (task 13 draws the glow on the felt)', async () => {
+    const view = await render(table(base(dealCards(4).hands.map((h, i) => seat(i, h)))));
+    await frames(64);
+    const { glows } = cardHosts();
+    await view.unmount();
+    expect(glows.length).toBe(0);
   }, 120_000);
 
   it('carries none on a dealt back in the air', async () => {

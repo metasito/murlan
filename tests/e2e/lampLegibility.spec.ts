@@ -34,6 +34,13 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     })
     .toBeGreaterThan(LAMP_UP);
   const anchors = Object.fromEntries(await Promise.all(SEATS.map(async (s) => [s, await seatAnchor(page, s)] as const)));
+  // The lamp's light alone: the bottom ring lies under the hand's shadow, a side's under its name's dim (seatNameContrast.spec.ts's).
+  await page.evaluate(() => {
+    const e2e = globalThis as unknown as { murlanCardShadows: (on: boolean) => void; murlanNameDims: (on: boolean) => void };
+    e2e.murlanCardShadows(false);
+    e2e.murlanNameDims(false);
+    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
   const { pixels: box, perPt, origin } = await feltPixels(page);
   const pixels = feltOnly(box, perPt);
   const ring = legibilityRing(pixels.width / perPt, pixels.height / perPt);

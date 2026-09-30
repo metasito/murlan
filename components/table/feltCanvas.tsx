@@ -23,18 +23,18 @@ import {
   type SkPath,
   type SkRRect,
 } from "@shopify/react-native-skia";
-import { useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
-import { CLOTH_SKSL, clothUniforms } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms, rgb } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildShadow, castOffset, SHADOW_PATHS, shadowPaint, type ShadowPath } from "./cardShadows";
+import { buildShadow, SHADOW_PATHS, shadowFall, shadowPaint, shadowTransform, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { FeltProps } from "./feltReady";
-import { nameShade } from "./legibilityRing";
+import { feltLight, nameCeiling, nameDim } from "./legibilityRing";
 import type { CardTable } from "./useCardRects";
 
 export interface FeltCanvasProps {
@@ -67,26 +67,63 @@ const NAME_EDGE = ring(RAIL_BAND - 1);
 const NAME_SOFT = 6;
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
 const DISPOSE_PATHS = Platform.OS === "web";
+const E2E = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+
+function countBuild() {
+  "worklet";
+  const e2e = globalThis as { murlanShadowBuilds?: number };
+  e2e.murlanShadowBuilds = (e2e.murlanShadowBuilds ?? 0) + 1;
+}
 
 function useShadowPath(kind: ShadowPath, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPath> {
   const builder = useMemo(() => Skia.PathBuilder.Make(), []);
-  const drawn = useSharedValue<SkPath | null>(null);
-  return useDerivedValue(() => {
-    builder.reset();
-    buildShadow(builder, kind, rects.value, felt, midX);
-    const path = builder.build();
-    if (DISPOSE_PATHS) drawn.value?.dispose();
-    drawn.value = path;
-    return path;
-  });
+  const empty = useMemo(() => Skia.Path.Make(), []);
+  const drawn = useSharedValue<SkPath>(empty);
+  // A reaction, not a derived value: a mapper takes every shared value in its closure as an input, and one writing `drawn` re-ran each frame.
+  useAnimatedReaction(
+    () => rects.value,
+    (all) => {
+      builder.reset();
+      buildShadow(builder, kind, all, felt, midX);
+      const last = drawn.value;
+      drawn.value = builder.build();
+      if (E2E) countBuild();
+      if (DISPOSE_PATHS) last.dispose();
+    },
+    [builder, kind, felt, midX]
+  );
+  useEffect(
+    () => () => {
+      if (!DISPOSE_PATHS) return;
+      drawn.value.dispose();
+      builder.dispose();
+    },
+    [builder, drawn]
+  );
+  return drawn;
 }
 
 function ShadowLayer({ path, kind, s }: { path: SharedValue<SkPath>; kind: ShadowPath; s: number }) {
-  const { sigma, alpha } = shadowPaint(kind);
+  const { sigma, alpha } = shadowPaint(kind, s);
   return (
     <Path path={path} color={withAlpha(Colors.shadow, alpha)}>
-      <BlurMask blur={sigma * s} style="normal" />
+      <BlurMask blur={sigma} style="normal" />
     </Path>
+  );
+}
+
+/** `box` in design points; dimmed by as much as the light at its point nearest the lamp needs. */
+function NameDim({ box, ceiling, cloth, lamp, on }: { box: { x: number; y: number; w: number; h: number }; ceiling: number; cloth: number[][]; lamp: SharedValue<Lamp>; on: SharedValue<number> }) {
+  const grey = useDerivedValue(() => {
+    const { lx, ly } = lamp.value;
+    const near = { x: Math.min(Math.max(lx, box.x), box.x + box.w), y: Math.min(Math.max(ly, box.y), box.y + box.h) };
+    const g = on.value ? Math.round(255 * nameDim(feltLight(cloth, lamp.value, near), ceiling)) : 255;
+    return `rgb(${g},${g},${g})`;
+  });
+  return (
+    <Rect x={box.x - 3 * NAME_SOFT} y={box.y - 3 * NAME_SOFT} width={box.w + 6 * NAME_SOFT} height={box.h + 6 * NAME_SOFT} color={grey} blendMode="multiply">
+      <BlurMask blur={NAME_SOFT} style="normal" />
+    </Rect>
   );
 }
 
@@ -161,19 +198,22 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
     fan: useShadowPath("fan", rects, felt, cards.hand.x),
   };
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
-  const fall = useDerivedValue(() => {
-    const o = castOffset(pile, { x: lamp.value.lx, y: lamp.value.ly });
-    return [{ translateX: o.x * s }, { translateY: o.y * s }];
-  });
-  const contact = useMemo(() => [{ translateY: shadowPaint("face").dy * s }], [s]);
+  const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: lamp.value.lx, y: lamp.value.ly }), felt));
+  const contact = shadowTransform(shadowFall("face", pile, pile), felt);
   const shadows = useSharedValue(1);
+  const dims = useSharedValue(1);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void };
+    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanNameDims?: (on: boolean) => void };
     e2e.murlanCardShadows = (on) => (shadows.value = on ? 1 : 0);
-    return () => void delete e2e.murlanCardShadows;
-  }, [shadows]);
-  const nameInk = useMemo(() => nameShade(stops, Colors.goldLit), [stops]);
+    e2e.murlanNameDims = (on) => (dims.value = on ? 1 : 0);
+    return () => {
+      delete e2e.murlanCardShadows;
+      delete e2e.murlanNameDims;
+    };
+  }, [shadows, dims]);
+  const ceilings = useMemo(() => ({ lit: nameCeiling(stops, Colors.goldLit), unlit: nameCeiling(stops, Colors.textMuted) }), [stops]);
+  const cloth = useMemo(() => stops.map(rgb), [stops]);
 
   useEffect(() => {
     if (!onReady) return;
@@ -206,12 +246,10 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
         )}
         <Group clip={NAME_EDGE}>
           {names.map((n, i) => (
-            <Rect key={i} x={n.x / sx - 3 * NAME_SOFT} y={n.y / sy - 3 * NAME_SOFT} width={n.w / sx + 6 * NAME_SOFT} height={n.h / sy + 6 * NAME_SOFT} color={nameInk} blendMode="darken">
-              <BlurMask blur={NAME_SOFT} style="normal" />
-            </Rect>
+            <NameDim key={i} box={{ x: n.x / sx, y: n.y / sy, w: n.w / sx, h: n.h / sy }} ceiling={n.lit ? ceilings.lit : ceilings.unlit} cloth={cloth} lamp={lamp} on={dims} />
           ))}
         </Group>
-        <Group transform={[{ scaleX: 1 / sx }, { scaleY: 1 / sy }]} opacity={shadows}>
+        <Group opacity={shadows}>
           <Group transform={fall}>
             <ShadowLayer path={paths.cast} kind="cast" s={s} />
           </Group>
