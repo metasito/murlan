@@ -134,7 +134,7 @@ export function NoticeText({
         (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
-          color: !strong ? paint.ink : warn ? (paint.warn ?? paint.strong) : paint.strong,
+          color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
           fontSize: box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
         },
