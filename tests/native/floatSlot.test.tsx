@@ -24,7 +24,11 @@ const advance = (ms: number) =>
   act(async () => {
     jest.advanceTimersByTime(ms);
   });
-const liveRegion = () => screen.UNSAFE_getByProps({ accessibilityLiveRegion: 'polite' });
+const liveRegion = () => {
+  const regions = screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite');
+  expect(regions).toHaveLength(1);
+  return regions[0];
+};
 
 beforeEach(async () => {
   jest.useFakeTimers();

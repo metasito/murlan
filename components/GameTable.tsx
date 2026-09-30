@@ -56,10 +56,13 @@ import {
   NO_STAGES,
   readExchange,
   readTradeSeats,
+  floatAt,
+  seatsJustPassed,
   tableGeometry,
   tradeKey,
   type TradeStages,
 } from "@/components/flightPhysics";
+import { FloatSlot, type Float } from "@/components/table/notices/floats";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
@@ -180,6 +183,8 @@ const TABLE_Z = { zIndex: Layer.table } as const;
  * rather than being covered by it.
  */
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
+
+const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
 
 /**
  * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
@@ -563,6 +568,14 @@ export function GameTable({
     gameState.lastPlayedCombination,
     players
   );
+  const [passSeen, setPassSeen] = useState(gameState);
+  const [float, setFloat] = useState<Float | null>(null);
+  if (passSeen !== gameState) {
+    setPassSeen(gameState);
+    if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
+      setFloat({ id: (float?.id ?? 0) + 1, text: t("gameShared.passedLabel") });
+    }
+  }
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -1116,6 +1129,8 @@ export function GameTable({
             />
           </View>
         )}
+
+        <FloatSlot float={float} at={floatAt(tableGeometry(seatGeometry))} scale={scale} veiled={tableWithdrawn} />
 
         {/* Over the whole table rather than inside the mid band: while gated it holds
             the table as well as saying something, so the first tap is spent clearing
