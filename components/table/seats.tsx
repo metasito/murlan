@@ -201,8 +201,8 @@ function useArrivedCount(arrivals: DealArrivals | undefined): number {
 const RING_GAP = 4;
 const RING_STROKE = 2;
 /**
- * A fifth turn signal, past the four #194 budgets, and one the prototype has
- * no equivalent for — deliberate, not an unswept leftover of the port.
+ * A turn signal the prototype has no equivalent for — deliberate, not an
+ * unswept leftover of the port.
  */
 const RING_PING_SCALE = 1.45;
 /** The urgent ring's 1Hz dim-and-back: a repeating beat, not a one-shot transition, so not a Motion step. */
@@ -333,6 +333,7 @@ function SeatRing({
   name,
   isActive,
   cardCount,
+  held,
   finishPos,
   scale,
   countdown,
@@ -342,6 +343,8 @@ function SeatRing({
   name: string;
   isActive: boolean;
   cardCount: number;
+  /** The seat's real hand, where `cardCount` is only what a running deal has landed so far. */
+  held: number;
   finishPos?: number;
   scale: number;
   /** The turn window, on the seat that is on move. Absent on every other seat. */
@@ -421,7 +424,7 @@ function SeatRing({
     .toUpperCase();
 
   const size = SEAT_DISC * scale;
-  const lastCard = finishPos === undefined && cardCount === 1;
+  const lastCard = finishPos === undefined && held === 1;
   const badge = SEAT_BADGE * (lastCard ? LAST_CARD_BADGE : 1) * scale;
   const showCount = finishPos !== undefined || !focusMode;
   return (
@@ -567,7 +570,8 @@ export function TopOppSlot({
   mark?: SeatMark;
 }) {
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
+  const held = cardCount ?? player.hand.length;
+  const displayed = Math.min(held, arrived);
   const lit = isActive || mark?.lit === true;
   return (
     <View
@@ -582,6 +586,7 @@ export function TopOppSlot({
         name={player.name}
         isActive={isActive}
         count={displayed}
+        held={held}
         finishPos={player.finishPosition}
         passed={passed}
         vacated={vacated}
@@ -611,6 +616,7 @@ function SeatWho({
   name,
   isActive,
   count,
+  held,
   finishPos,
   passed,
   vacated = false,
@@ -625,6 +631,7 @@ function SeatWho({
   isActive: boolean;
   mark?: SeatMark;
   count: number;
+  held: number;
   finishPos?: number;
   passed: boolean;
   /** The seat is a human's that left, played on by the engine. */
@@ -689,6 +696,7 @@ function SeatWho({
         name={name}
         isActive={isActive}
         cardCount={count}
+        held={held}
         finishPos={finishPos}
         scale={scale}
         countdown={countdown}
@@ -737,7 +745,8 @@ export function SideOppSlot({
   dealArrivals?: DealArrivals;
 }) {
   const arrived = useArrivedCount(dealArrivals);
-  const displayed = Math.min(cardCount ?? player.hand.length, arrived);
+  const held = cardCount ?? player.hand.length;
+  const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
   const lit = isActive || mark?.lit === true;
   return (
@@ -754,6 +763,7 @@ export function SideOppSlot({
         name={player.name}
         isActive={isActive}
         count={displayed}
+        held={held}
         finishPos={player.finishPosition}
         passed={passed}
         vacated={vacated}
