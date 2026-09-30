@@ -333,11 +333,14 @@ region is the same node before and after); new "float" case in
 **Depends on:** task 6; G2.
 
 **Acceptance:**
-- The reject hint and the online error toast are floats in the slot, held for `Reading.hint` and
-  `Reading.toast`, looking as G2 approved. The reject hint keeps its anchor beside GIOCA.
+- The reject hint and the online error toast are floats in the slot, held for the mark's 1000 ms
+  (G2's `floatHold=mark`, picked by eye over `Reading.hint` and `Reading.toast`), looking as G2
+  approved. The reject hint keeps its anchor beside GIOCA: its right edge on GIOCA's, 8 mockup
+  px above it, and it follows GIOCA across when the row is mirrored.
 - The "waiting for the others" line and the empty-hand line render through *TableNotice*, as G2
   approved, with their strings through `t()` unchanged.
-- The online screen's own toast styles are deleted; its new hook sits above `if (!gameState)`.
+- The online screen's own toast styles are deleted. It hands the table its `error` and adds no
+  hook: the table derives the toast from the error's changes, as it derives the pass float.
 - `finishedText`, `rejectHintText` and `emptyHandText` leave `contrast.test.ts`'s self-plated
   rows.
 

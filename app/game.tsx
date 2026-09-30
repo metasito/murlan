@@ -13,7 +13,6 @@ import {
   useLocalSession,
   useLocalTable,
 } from "@/context/gameHooks";
-import { useNotification } from "@/context/NotificationContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
@@ -38,7 +37,7 @@ const AI_SUSPENDED = suspendAI(E2E_FAST);
 
 export default function GameScreen() {
   const { t } = useTranslation();
-  const { showNotification } = useNotification();
+  const [autoPassed, setAutoPassed] = useState(0);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
   const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
   const { resetGame } = useLocalSession();
@@ -194,20 +193,17 @@ export default function GameScreen() {
         // Nothing else is keeping this clock, so it can be stopped while an
         // announcement holds the table.
         pausable: true,
-        // Offline nobody announces the deadline expiring — there is no server
-        // to send the banner the online screen gets — so the turn simply
-        // vanished. The pass sound is the table's, fired off the committed
-        // state; what is added here is the warn haptic and the reason.
+        // Offline there is no server to announce the deadline expiring, so the
+        // turn would simply vanish. The pass sound is the table's, fired off
+        // the committed state; what is added here is the warn haptic and the
+        // reason, which the table floats in place of its own pass.
         onExpire: () => {
           uiFeedback("warn");
-          showNotification({
-            type: "afk",
-            title: t("game.autoPassTitle"),
-            message: t("game.autoPassBody"),
-          });
+          setAutoPassed((n) => n + 1);
           passTurnRef.current();
         },
       }}
+      autoPassed={autoPassed}
       exchangeAnnouncement={{
         visible: exchangeAnnouncing,
         data: exchangeAnnounceData,

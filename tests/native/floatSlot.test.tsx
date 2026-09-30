@@ -17,7 +17,8 @@ const hidden = { includeHiddenElements: true };
 const AT = { x: 200, y: 100 };
 const { enter, hold, exit } = Motion.mark;
 
-const slot = (float: Float | null) => <FloatSlot float={float} at={AT} scale={1} veiled={false} />;
+const BESIDE = { giocaTop: 60, left: 0, right: 0, mirrored: false };
+const slot = (float: Float | null) => <FloatSlot float={float} at={AT} beside={BESIDE} scale={1} veiled={false} />;
 const drawn = () => {
   const style = getAnimatedStyle(screen.getByTestId(PLATE, hidden)) as { opacity?: number; transform?: Record<string, number>[] };
   return { opacity: style.opacity, rise: style.transform?.find((t) => 'translateY' in t)?.translateY };
@@ -43,7 +44,7 @@ afterEach(async () => {
 
 describe('the float slot', () => {
   it('rises and fades in over 100 ms, holds 1000 ms, fades out over 100 ms, and stays out', async () => {
-    const r = await render(slot({ id: 1, text: 'Passo', live: true }));
+    const r = await render(slot({ id: 1, kind: 'pass' as const, text: 'Passo', live: true }));
     expect(drawn()).toEqual({ opacity: 0, rise: noticeRise(1, false) });
     await advance(enter + 16);
     expect(drawn()).toEqual({ opacity: 1, rise: 0 });
@@ -57,11 +58,11 @@ describe('the float slot', () => {
   });
 
   it('a second float replaces the first and restarts its life, under the same live region', async () => {
-    const r = await render(slot({ id: 1, text: 'Passo', live: true }));
+    const r = await render(slot({ id: 1, kind: 'pass' as const, text: 'Passo', live: true }));
     await advance(enter + hold / 2);
     const region = liveRegion();
 
-    await r.rerender(slot({ id: 2, text: 'Passo', live: true }));
+    await r.rerender(slot({ id: 2, kind: 'pass' as const, text: 'Passo', live: true }));
     expect(screen.getAllByTestId(PLATE, hidden)).toHaveLength(1);
     expect(drawn().opacity).toBe(0);
     await advance(enter + hold - 16);
@@ -75,7 +76,7 @@ describe('the float slot', () => {
     const region = liveRegion();
     expect(screen.queryByTestId(PLATE, hidden)).toBeNull();
 
-    await r.rerender(slot({ id: 1, text: 'Passo', live: true }));
+    await r.rerender(slot({ id: 1, kind: 'pass' as const, text: 'Passo', live: true }));
     await advance(enter);
     expect(liveRegion()).toBe(region);
     expect(region.props.accessibilityLabel).toBe('Passo');
@@ -85,17 +86,28 @@ describe('the float slot', () => {
   });
 
   it('a float gone quiet keeps its life but empties the region, and lifting a veil reads nothing back', async () => {
-    const quiet = { id: 1, text: 'Passo', live: false };
+    const quiet = { id: 1, kind: 'pass' as const, text: 'Passo', live: false };
     const r = await render(slot({ ...quiet, live: true }));
     await advance(enter + hold / 2);
     await r.rerender(slot(quiet));
     expect(drawn().opacity).toBe(1);
     expect(liveRegion().props.accessibilityLabel).toBe('');
 
-    await r.rerender(<FloatSlot float={quiet} at={AT} scale={1} veiled />);
+    await r.rerender(<FloatSlot float={quiet} at={AT} beside={BESIDE} scale={1} veiled />);
     await r.rerender(slot(quiet));
     await advance(16);
     expect(liveRegion().props.accessibilityLabel).toBe('');
+    await r.unmount();
+  });
+
+  it('the same words under a new float are said again: the region empties for a tick first', async () => {
+    const r = await render(slot({ id: 1, kind: 'reject', text: 'carta troppo bassa', live: true }));
+    await advance(16);
+    expect(liveRegion().props.accessibilityLabel).toBe('carta troppo bassa');
+    await r.rerender(slot({ id: 2, kind: 'reject', text: 'carta troppo bassa', live: true }));
+    expect(liveRegion().props.accessibilityLabel).toBe('');
+    await advance(16);
+    expect(liveRegion().props.accessibilityLabel).toBe('carta troppo bassa');
     await r.unmount();
   });
 

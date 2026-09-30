@@ -3,9 +3,12 @@ import React, {
   useContext,
   useState,
   useCallback,
+  useEffect,
   useMemo,
   ReactNode,
 } from "react";
+
+const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
 export type NotificationType =
   | "friend_request"
@@ -76,6 +79,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         : next;
     });
   }, []);
+
+  // tests/e2e/tableFit.spec.ts raises a banner over a table on demand; inlined away outside an e2e build.
+  useEffect(() => {
+    if (!E2E_FAST) return;
+    const e2e = globalThis as { murlanNotify?: (n: NotificationData) => void };
+    e2e.murlanNotify = showNotification;
+    return () => {
+      delete e2e.murlanNotify;
+    };
+  }, [showNotification]);
 
   const notification = queue[0] ?? null;
 

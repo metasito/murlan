@@ -1,7 +1,7 @@
 /**
  * The online table's surface, in the six pieces a screen actually reads.
  *
- * `useOnlineGame()` hands back all thirty-seven fields, which makes every test
+ * `useOnlineGame()` hands back all thirty-eight fields, which makes every test
  * that touches any of them declare all of them: `connectingState.test.tsx`
  * wrote twenty-eight to assert a placeholder and a back button. These are
  * separate from the context module so a screen test can replace the slice it
@@ -110,11 +110,11 @@ export function useOnlineRoom() {
 
 /** The hand in front of you and the two things you can do with it. */
 export function useOnlineTable() {
-  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
+  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
     useTableSlice();
   return useMemo(
-    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats }),
-    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats]
+    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed }),
+    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed]
   );
 }
 

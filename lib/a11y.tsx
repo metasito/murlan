@@ -224,9 +224,12 @@ export function A11yStatus({
   veiled = false,
   role = "text",
   live = "polite",
+  nonce,
 }: {
   label: string;
   veiled?: boolean;
+  /** A new value re-arms the region, so the same sentence arriving again is announced again. */
+  nonce?: number;
   /** `alert` for a layer that arrives unbidden rather than a running commentary. */
   role?: "text" | "alert";
   /** Whether it waits for a pause. Separate from `role`, because `alert`'s
@@ -237,8 +240,10 @@ export function A11yStatus({
   const hidden = veiled || veiledAbove;
   const [armed, setArmed] = useState(!hidden);
   const [veilSeen, setVeilSeen] = useState(hidden);
-  if (veilSeen !== hidden) {
+  const [nonceSeen, setNonceSeen] = useState(nonce);
+  if (veilSeen !== hidden || nonceSeen !== nonce) {
     setVeilSeen(hidden);
+    setNonceSeen(nonce);
     setArmed(false);
   }
   useEffect(() => {
@@ -248,7 +253,7 @@ export function A11yStatus({
     // does. A task rather than React's next commit: the same one can carry both.
     const id = setTimeout(() => setArmed(true), 0);
     return () => clearTimeout(id);
-  }, [hidden]);
+  }, [hidden, nonce]);
   const spoken = hidden || !armed ? "" : label;
 
   return (

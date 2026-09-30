@@ -64,7 +64,7 @@ const ONLINE: Record<string, string[]> = {
     "room", "entrySource", "isSpectator", "createRoom", "joinRoom",
     "spectateRoom", "leaveRoom", "quickmatch", "setRoomVisibility", "startGame",
   ],
-  useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats"],
+  useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed"],
   useOnlineTurnClock: ["turnSeconds", "turnDeadlineMs"],
   useOnlineMatch: [
     "matchState", "cumulativeScores", "handScores", "ratingDeltas", "handRecorded",
@@ -179,7 +179,7 @@ test("each online slice reads one context, and no two read the same one", () => 
 test("nothing reaches past the slices for the whole surface", () => {
   // The slices are only worth having if they are the way in. Every context
   // hook stays exported because the slices are built on them, and each is also
-  // a way back past a slice — `useOnlineGame` to the thirty-seven-field
+  // a way back past a slice — `useOnlineGame` to the thirty-eight-field
   // destructure, a `use*Slice` to a context a screen has no business naming.
   // Every source directory, not the two that happen to hold consumers today:
   // a screen moved into a new one would leave the guard behind. The slice

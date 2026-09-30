@@ -9,7 +9,7 @@ import {
   useTapGesture,
 } from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
-import { TableText } from "./TableText";
+import { EmptyHandLine } from "./notices/tableLines";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -24,9 +24,8 @@ import Animated, {
   type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
-import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
@@ -1218,8 +1217,7 @@ export function StraightHand({
   if (n === 0) {
     return (
       <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
-        <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />
-        <TableText style={handStyles.emptyHandText}>{t("gameShared.emptyHand")}</TableText>
+        <EmptyHandLine scale={scale} />
       </View>
     );
   }
@@ -1411,17 +1409,5 @@ const handStyles = StyleSheet.create({
     top: -2, left: -2, right: -2, bottom: -2,
     zIndex: GIVEABLE_HALO_Z,
     backgroundColor: Colors.gold,
-  },
-  // Its own plate. Under a lamp that moves, the felt has no reliably dark end
-  // to sit on: the brightest cloth on the table is wherever the light is.
-  emptyHandText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.sm,
-    color: Colors.gold,
-    backgroundColor: Scrim.heavy,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-    overflow: "hidden",
   },
 });
