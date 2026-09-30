@@ -1,64 +1,116 @@
-// tests/e2e/offlineBannerFit.spec.ts — the offline banner's own band must
-// hold whatever height its text needs, in every locale, at the narrowest
-// supported width.
-//
-// #813 moved the banner's text to the large-text bar. Italian — the longest
-// of the three strings — wraps to two lines at that size, and the band used
-// to be a fixed 44px with `overflow` left at its RN default of `visible`:
-// the second line rendered outside the coloured strip on every phone width
-// rather than growing it to fit. No spec had ever driven OfflineBanner at
-// all, which is how that went unseen through #813 landing.
-//
-// Only a browser can see it. `react-test-renderer` never runs flexbox, so no
-// native test can say whether a wrapped line lands inside or outside its
-// parent's box — tests/native/offlineBannerLargeText.test.tsx pins the font
-// size and colour, not this.
+// tests/e2e/offlineBannerFit.spec.ts — the offline pill off the table (G2: offline.shape=pill
+// offline.tone=solid), in every locale: at the table's font-scale cap, what an OS text size of 3.1
+// becomes, its words stay on one line and truncate; the pill stays inside the viewport and covers
+// no control. Only a browser runs flexbox; tests/native/offlineBannerLargeText.test.tsx pins the cap
+// and the paint.
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
-import { PHONES } from "./helpers/phones";
 
-const BANNER = '[data-testid="offline-banner"]';
-const BANNER_TEXT = '[data-testid="offline-banner-text"]';
-
-/** The narrowest portrait width any supported handset renders at (PHONES lists landscape logical sizes, so the short edge is a phone's portrait width). */
-const NARROWEST_PORTRAIT_WIDTH = Math.min(...PHONES.map((p) => p.height));
-const PORTRAIT_HEIGHT = 844;
-
-/** Antialiasing/subpixel rounding, not a real overflow. */
+const PILL = '[data-testid="notice-offline"]';
+const TEXT = '[data-testid="offline-banner-text"]';
+const EXTRAS = pathToFileURL(path.resolve(__dirname, "fixtures", "notice-extras", "index.html")).href;
+const TABLE_FONT_SCALE_MAX = 1.2;
 const EPS = 1;
-
+const HALF_PT = 0.5;
 const LOCALES = ["en-US", "it-IT", "sq-AL"] as const;
+const VIEWPORTS = [
+  { width: 375, height: 812 },
+  { width: 874, height: 402 },
+] as const;
 
-test.describe("the offline banner's band holds its text at the narrowest width", () => {
+type Box = { x: number; y: number; w: number; h: number };
+
+const fullyShown = (page: Page, selector: string) =>
+  expect
+    .poll(
+      () =>
+        page.evaluate((sel) => {
+          let o = 1;
+          for (let n: Element | null = document.querySelector(sel); n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+          return o;
+        }, selector),
+      { message: `${selector} fully shown`, timeout: 15_000 }
+    )
+    .toBe(1);
+
+/** The pill's box after its words take the capped scale, how many lines they wrap to, and every control it covers. */
+function measure(page: Page, factor: number) {
+  return page.evaluate(
+    ([pillSel, textSel, factor]) => {
+      const text = document.querySelector<HTMLElement>(textSel)!;
+      text.style.fontSize = `${parseFloat(getComputedStyle(text).fontSize) * factor}px`;
+      const r = document.querySelector(pillSel)!.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      const lines = new Set([...range.getClientRects()].map((q) => Math.round(q.top))).size;
+      const focusable = [...document.querySelectorAll<HTMLElement>('a[href], button, input, [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])')]
+        .map((el) => ({ name: el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "", b: el.getBoundingClientRect() }))
+        .filter(({ b }) => b.width > 0 && b.height > 0);
+      const covered = focusable
+        .filter(({ b }) => Math.min(r.right, b.right) - Math.max(r.left, b.left) > 1 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 1)
+        .map(({ name }) => name);
+      return { box: { x: r.left, y: r.top, w: r.width, h: r.height }, lines, controls: focusable.length, covered };
+    },
+    [PILL, TEXT, factor] as const
+  );
+}
+
+for (const viewport of VIEWPORTS) {
   for (const locale of LOCALES) {
-    test(locale, async ({ browser, baseURL }) => {
-      const context = await browser.newContext({ locale });
+    test(`the offline pill at the font cap, ${locale}, ${viewport.width}x${viewport.height}`, async ({ browser, baseURL }) => {
+      test.setTimeout(120_000);
+      const context = await browser.newContext({ locale, viewport });
       const page = await context.newPage();
       try {
-        await page.setViewportSize({ width: NARROWEST_PORTRAIT_WIDTH, height: PORTRAIT_HEIGHT });
         await openApp(page, baseURL!);
         await context.setOffline(true);
-
-        const text = page.locator(BANNER_TEXT);
-        await expect(text).toBeVisible({ timeout: 15_000 });
-
-        const bannerBox = (await page.locator(BANNER).boundingBox())!;
-        const textBox = (await text.boundingBox())!;
-
-        expect(
-          textBox.y,
-          `${locale}: text top (${textBox.y}) sits above the banner's own top (${bannerBox.y})`
-        ).toBeGreaterThanOrEqual(bannerBox.y - EPS);
-        expect(
-          textBox.y + textBox.height,
-          `${locale}: text bottom (${textBox.y + textBox.height}) spills past the banner's ` +
-            `bottom (${bannerBox.y + bannerBox.height}) — the band did not grow to fit it`
-        ).toBeLessThanOrEqual(bannerBox.y + bannerBox.height + EPS);
-
+        await fullyShown(page, PILL);
+        const m = await measure(page, TABLE_FONT_SCALE_MAX);
         await context.setOffline(false);
+
+        const box: Box = m.box;
+        expect(m.controls, "the screen has controls to keep clear of").toBeGreaterThan(0);
+        expect(m.lines, "its words wrap").toBe(1);
+        expect(box.x, `the pill ${JSON.stringify(box)} leaves the viewport on the left`).toBeGreaterThanOrEqual(-EPS);
+        expect(box.y).toBeGreaterThanOrEqual(-EPS);
+        expect(box.x + box.w, `the pill ${JSON.stringify(box)} leaves the viewport on the right`).toBeLessThanOrEqual(viewport.width + EPS);
+        expect(m.covered, "the pill covers these controls").toEqual([]);
       } finally {
         await context.close();
       }
     });
+  }
+}
+
+test("the offline pill sits where G2's #n-offline does, and is as tall", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockupContext = await browser.newContext({ viewport: { width: 874 + 32, height: 900 }, reducedMotion: "reduce" });
+  const mockup = await mockupContext.newPage();
+  await mockup.goto(EXTRAS);
+  await mockup.evaluate(() => document.fonts.ready.then(() => undefined));
+  await fullyShown(mockup, "#n-offline");
+  const want = await mockup.evaluate(() => {
+    const stage = document.querySelector("#sc-offline .stage")!.getBoundingClientRect();
+    const k = stage.width / 874;
+    const r = document.querySelector("#n-offline")!.getBoundingClientRect();
+    return { y: (r.top - stage.top) / k, h: r.height / k };
+  });
+  await mockupContext.close();
+
+  const context = await browser.newContext({ locale: "it-IT", viewport: { width: 874, height: 402 } });
+  const page = await context.newPage();
+  try {
+    await openApp(page, baseURL!);
+    await context.setOffline(true);
+    await fullyShown(page, PILL);
+    const got = (await measure(page, 1)).box;
+    await context.setOffline(false);
+    expect(Math.abs(got.y - want.y), `the pill's top: app ${got.y}, mockup ${want.y}`).toBeLessThanOrEqual(HALF_PT);
+    expect(Math.abs(got.h - want.h), `the pill's height: app ${got.h}, mockup ${want.h}`).toBeLessThanOrEqual(HALF_PT);
+  } finally {
+    await context.close();
   }
 });
