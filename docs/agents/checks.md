@@ -166,16 +166,30 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   | G6 | The soak gate | as `audio-soak.yml` | `soak`, 30 minutes, capture off |
   | Seats | Each opponent's `seat-ring` in window points (`measureInWindow` every 250 ms, during this scenario only), against its first sample in the deal's hold; every `seatState` recorded with one `of`, and every ring sampled in each state's own hold | all three rings in the deal's hold, finite and at distinct positions; drift ≤ 0.5 pt per axis | `seatAnchors`: each of `SEAT_COUNT_STATES`, settled 1.5 s, held 1 s |
   | Lamp | Each seat's worst `lampLegibility` ratio (on-move ring ÷ brightest other, `feltOnly` pixels of the felt canvas's snapshot) over one sway period | every seat ≥ `LAMP_FLOOR`, worst ÷ best ≥ `LAMP_SYMMETRY`, `LAMP_SWAY.samples` per seat | `lampVariants`: the four `lamp-*` capture states, settled 4 s, `LAMP_SWAY` 20 snapshots over 8 s |
+  | Throws | `burstStalls` over every interval overlapping [throw, throw + 600 ms]; `medianHz`, the median of each second's median frame rate | 0 stalls; ≥ 10 throws, frames covering ≥ 80 % of the 600 ms in every window, JS ticks > 0 | `throwStalls`: one bot manche through `driveBots`, recording opened before each `throw` row, kept to the first frame past 600 ms, capped at 700 ms (a cap reached records the gap as one interval) |
+  | Rest | `medianHz` and `burstStalls` per `half`, frozen and swaying both reported | every swaying half ≥ 115 Hz, 0 stalls; four pairs, every half framed | `restCost`: a quiet table, `lampFreeze` 1 and 0, four pairs of 30 s halves |
+  | Felt | Per pair, stalls and the p95 frame interval of each half | four pairs recorded; `outcome` `keep` when the opaque half has no more stalls in any pair and the lower p95 in ≥ 3 of 4, else `drop` | `feltOpaque`: a quiet table, `feltOpaque` on and off, four pairs of 20 s halves |
 
   The 150 ms window is shorter than the 167 ms between taps, so a silent tap cannot borrow the
   next tap's onset. G3 reads the mic because the app track is stamped before the output path, so
-  only the mic hears when the speaker sounds.
-- Running them (about 40 minutes of the phone, untouched):
+  only the mic hears when the speaker sounds. A window's frames reach the recorder at once when
+  it closes, so none may exceed its 5000 rows: 30 s at 120 Hz is 3600. A dropped row fails the
+  gate. Pairs run ABBA (pairs 1 and 3 reversed), so drift over the run favours neither half; a p95
+  interval, unlike `medianHz`, does not snap to the display rate. Recording is a shared value the
+  frame probe reads, so opening or closing a window renders nothing
+  (`tests/native/benchRecording.test.tsx`). The probe's frame loop runs only while a scenario that
+  records frames has armed it for its whole run (`registerFramedScenario`; a window opened unarmed
+  throws, and its body starts only after the loop's first frame), so
+  each window's first frame has an interval (one without is recorded with a null `dt`) and the other scenarios see the governor as a player
+  does (`tests/native/frameProbe.test.tsx`, `tests/native/framedScenarios.test.tsx`). The iOS build keeps the worklets frame-rate governor
+  on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
+  turns it off.
+- Running them (about 50 minutes of the phone, untouched):
   1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
   2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.
   3. Allow the microphone and screen-recording prompts once each.
-  4. Lay the phone face up, plugged in, volume about half, ringer on, until the page lists
-     `soak: done`.
+  4. Lay the phone face up, plugged in, volume about half, ringer on, until the page lists every
+     scenario as done (`feltOpaque` is the last).
   5. On the PC: `node scripts/diagnostics-verdict.mjs diagnostics/<newest>.ndjson all`; the output
      goes in the PR.
 

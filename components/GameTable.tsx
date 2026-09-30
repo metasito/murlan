@@ -807,6 +807,7 @@ export function GameTable({
     landing: landingSignal,
   });
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
+  useBenchHandle("lampFreeze", rig.freeze);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
