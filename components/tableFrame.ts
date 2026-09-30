@@ -210,7 +210,7 @@ export function notificationTopOffset(opts: {
    */
   surplus: number;
 }): number {
-  if (!opts.landscape || opts.topPad >= 0) return opts.topPad;
+  if (!opts.landscape) return opts.topPad;
   const chipTop = Math.max(PAD_TOP * opts.scale, opts.topPad) + opts.surplus;
   return chipTop + CHIP_H(opts.scale) + PAD_INNER * opts.scale;
 }
