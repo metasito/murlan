@@ -1,8 +1,7 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
-import { useAnimatedReaction, useDerivedValue, useSharedValue, type DerivedValue } from "react-native-reanimated";
+import { useDerivedValue, useSharedValue, type DerivedValue } from "react-native-reanimated";
 import { scheduleOnRN, scheduleOnUI } from "react-native-worklets";
 import { press, settle, type Selection, type SelectionMode, type SelectionStore } from "./selection";
-import { traceTap } from "@/lib/tapTrace";
 
 export interface HandSelection {
   /** The settled selection's ids on the UI thread, ahead of the store while a tap is on its way to it. */
@@ -31,7 +30,6 @@ export function useSelection(
   const published = useRef<Selection | null>(null);
 
   useLayoutEffect(() => {
-    traceTap(`H n=${hand.length} mode=${mode} en=${enabled}`);
     live.current = { hand, mode, enabled, announce };
     held.set(hand);
     current.set(mode);
@@ -41,23 +39,15 @@ export function useSelection(
     () =>
       store.subscribe(() => {
         const now = store.get();
-        traceTap(`S ids=${now.ids.join(",")} held=${now.held.length} same=${now === published.current}`);
         if (now !== published.current) sel.set(now);
       }),
     [store, sel]
   );
 
   const shown = useDerivedValue(() => settle(sel.value, held.value, current.value).ids);
-  useAnimatedReaction(
-    () => shown.value.join(","),
-    (now, prev) => {
-      if (now !== prev) scheduleOnRN(traceTap, `V shown=${now} held=${sel.value.held.length}/${held.value.length}`);
-    }
-  );
   const correct = useCallback(
     (next: Selection, seq: number) => {
       'worklet';
-      scheduleOnRN(traceTap, `C seq=${seq} taps=${taps.value} ids=${next.ids.join(",")}`);
       if (taps.value === seq) sel.set(next);
     },
     [taps, sel]
@@ -65,7 +55,6 @@ export function useSelection(
   const publish = useCallback(
     (id: string, seq: number) => {
       const now = live.current;
-      traceTap(`P id=${id} seq=${seq} en=${now.enabled} store=${store.get().ids.join(",")} held=${store.get().held.length}/${now.hand.length}`);
       if (now.enabled) {
         const next = press(settle(store.get(), now.hand, now.mode), id);
         published.current = next;
@@ -78,7 +67,6 @@ export function useSelection(
   const tap = useCallback(
     (id: string) => {
       'worklet';
-      scheduleOnRN(traceTap, `T id=${id} on=${on.value} seq=${taps.value + 1}`);
       if (!on.value) return;
       const seq = taps.value + 1;
       taps.set(seq);

@@ -2,7 +2,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import type { Card, Rank } from '@/lib/game/gameEngine';
-import { gesturesOf, stillSelection } from './tapHelpers';
+import { gesturesOf, stillSelection, storeOf } from './tapHelpers';
 
 const mockHops = { n: 0 };
 jest.mock('react-native-worklets', () => {
@@ -39,7 +39,7 @@ describe('a finger scrolling the hand stops the hold clock once', () => {
     const view = await render(
       <StraightHand
         cards={cards}
-        selectedIds={[]}
+        store={storeOf()}
         selection={stillSelection()}
         onActivate={() => {}}
         onReorder={() => {}}

@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg from "react-native-svg";
@@ -56,12 +57,15 @@ export function TableNotice<K extends NoticeKind>({
   tone,
   scale,
   shown = true,
+  still = false,
   children,
 }: {
   kind: K;
   tone: KindTone<K>;
   scale: number;
   shown?: boolean;
+  /** Shown on the frame it mounts and gone on the frame it hides: for a notice another clock times. */
+  still?: boolean;
   children: ReactNode;
 }) {
   const shape: NoticeShape = NOTICES[kind].shape;
@@ -72,9 +76,13 @@ export function TableNotice<K extends NoticeKind>({
   const { enter, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
 
-  const life = useSharedValue(0);
-  const risen = useSharedValue(0);
+  const life = useSharedValue(still && shown ? 1 : 0);
+  const risen = useSharedValue(still ? 1 : 0);
   useEffect(() => {
+    if (still) {
+      life.value = shown ? 1 : 0;
+      return;
+    }
     life.value = withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
     if (shown) {
       risen.value = 0;
@@ -84,7 +92,7 @@ export function TableNotice<K extends NoticeKind>({
       cancelAnimation(life);
       cancelAnimation(risen);
     };
-  }, [shown, enter, exit, life, risen]);
+  }, [shown, still, enter, exit, life, risen]);
   const motion = useAnimatedStyle(() => ({
     opacity: life.value,
     transform: [{ translateY: (1 - risen.value) * rise }],
@@ -255,6 +263,12 @@ export function NoticeText({
       {children}
     </TableText>
   );
+}
+
+/** A glyph set as a letter of the plate's run: its size and ink, then the run's tracking. */
+export function NoticeIcon({ name }: { name: ComponentProps<typeof Ionicons>["name"] }) {
+  const { paint, box } = useInk("NoticeIcon");
+  return <Ionicons name={name} size={box.fontSize} color={paint.ink} style={{ marginRight: box.tracking }} />;
 }
 
 const styles = StyleSheet.create({

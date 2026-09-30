@@ -14,7 +14,7 @@ import { handRowHeadroom } from '@/components/seatLayout';
 import { setMotionPreference } from '@/lib/accessibility';
 import { bootFeedback, sounds } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
-import { activate, gesturesOf, type Captured } from './tapHelpers';
+import { activate, gesturesOf, storeOf, type Captured } from './tapHelpers';
 
 const mockHeld: { on: boolean; queue: (() => void)[] } = { on: false, queue: [] };
 jest.mock('react-native-worklets', () => {
@@ -246,7 +246,7 @@ describe('a tap on the hand', () => {
     const lifted = makeMutable<string[]>([SEVEN.id]);
     const tap = jest.fn();
     const alone = await render(
-      <StraightHand cards={HAND} selectedIds={[]} selection={{ shown: makeMutable<string[]>([]), tap }} onActivate={noop}
+      <StraightHand cards={HAND} store={storeOf()} selection={{ shown: makeMutable<string[]>([]), tap }} onActivate={noop}
         disabled={false} availW={600} roomW={456} lifted={lifted} />
     );
     await tapOn(SEVEN);
@@ -291,7 +291,7 @@ describe('in the exchange', () => {
     const view = await render(
       <StraightHand
         cards={HAND}
-        selectedIds={[]}
+        store={storeOf()}
         selection={{ shown: makeMutable<string[]>([]), tap }}
         onActivate={noop}
         disabled={false}
@@ -328,7 +328,7 @@ describe('the drag and the tap', () => {
     (globalThis as { _setGestureStateSync?: () => void })._setGestureStateSync = () => {};
     const mount = (tap: (id: string) => void) =>
       render(
-        <StraightHand cards={HAND} selectedIds={[]} selection={{ shown: makeMutable<string[]>([]), tap }}
+        <StraightHand cards={HAND} store={storeOf()} selection={{ shown: makeMutable<string[]>([]), tap }}
           onActivate={noop} onReorder={noop} disabled={false} availW={600} roomW={456} />
       );
     const probe = await mount(noop);
@@ -385,7 +385,7 @@ describe('a tap on a rotated card', () => {
   async function tapsAt(shown: string[], pick: () => { x: number; y: number }) {
     const tap = jest.fn<(id: string) => void>();
     const view = await render(
-      <StraightHand cards={WIDE} selectedIds={shown} selection={{ shown: makeMutable(shown), tap }}
+      <StraightHand cards={WIDE} store={storeOf(shown)} selection={{ shown: makeMutable(shown), tap }}
         onActivate={noop} disabled={false} availW={600} roomW={456} />
     );
     await step(1500);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { View, StyleSheet } from "react-native";
 import {
   GestureDetector,
@@ -32,7 +32,7 @@ import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
 import type { HandSelection } from "./useSelection";
-import { traceTap } from "@/lib/tapTrace";
+import type { SettledSelection } from "./selectionLeaves";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
@@ -176,7 +176,8 @@ const HELD_Z = Layer.held;
 
 interface CardItemProps {
   card: Card;
-  isSelected: boolean;
+  /** The selection, which this card's accessible state follows by its own membership. */
+  store: SettledSelection;
   left: number;
   /** How far the card's own bottom sits below the row's, from the arc. */
   bottom: number;
@@ -247,7 +248,7 @@ interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shi
 
 function CardItemBase({
   card,
-  isSelected,
+  store,
   left,
   bottom,
   arcRot,
@@ -319,6 +320,7 @@ function CardItemBase({
   const posed = useSharedValue("");
   const pressPosed = useSharedValue("");
   const cardId = card.id;
+  const isSelected = useSyncExternalStore(store.subscribe, () => store.get().ids.includes(cardId));
   // Keyed on every input, not on the selection's edge: a reaction keeps its previous value across a
   // change of dependencies, so a turn that resizes the card would otherwise leave the lift behind.
   useAnimatedReaction(
@@ -481,7 +483,7 @@ function CardItemBase({
 export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
   return (
     a.card.id === b.card.id &&
-    a.isSelected === b.isSelected &&
+    a.store === b.store &&
     a.left === b.left &&
     a.bottom === b.bottom &&
     a.arcRot === b.arcRot &&
@@ -550,7 +552,7 @@ function liveFrom(x: () => number, y: () => number, rot: () => number, scale: nu
 
 export function StraightHand({
   cards,
-  selectedIds,
+  store,
   selection,
   onActivate,
   disabled,
@@ -573,8 +575,8 @@ export function StraightHand({
   onOrigins,
 }: {
   cards: Card[];
-  /** The store's selection, which a card's accessible state reports. */
-  selectedIds: string[];
+  /** The selection, which each card subscribes to for its own accessible state; the row never re-renders for it. */
+  store: SettledSelection;
   /** The same selection on the UI thread, which a tap on the row writes and every card's lift follows. */
   selection: HandSelection;
   /** A screen reader's activate, or Enter or Space: the tap, from the JS thread. */
@@ -674,11 +676,6 @@ export function StraightHand({
   const crop = cardH * HAND_CROP;
   const visibleH = cardH - crop;
   const dealRise = DEAL_RISE_PX * cardScale;
-  // O(1) membership check per card instead of `selectedIds.includes(card.id)`
-  // (an O(k) scan repeated for every one of the up to 18 cards in a hand).
-  // Computed before the early return below — Rules of Hooks requires every
-  // hook to run unconditionally on every render of this component.
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const drawnRef = useRef(new Map<string, DrawnCard>());
   const onDrawn = useCallback((id: string, d: DrawnCard) => void drawnRef.current.set(id, d), []);
   const giveableSet = useMemo(
@@ -865,6 +862,7 @@ export function StraightHand({
   // and the rest are arced as a hand of n−1 inside the row's own unchanged box
   // — which is the whole of "the fan closes behind the card that left".
   const heldCard = heldId === null ? null : (cards.find((c) => c.id === heldId) ?? null);
+  const heldSelected = useSyncExternalStore(store.subscribe, () => heldId !== null && store.get().ids.includes(heldId));
   const rest = useMemo(
     () => (heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id)),
     [cards, heldCard]
@@ -949,7 +947,7 @@ export function StraightHand({
     rest.forEach((card, i) => {
       const at = arc[slotOf(i)] ?? arc[arc.length - 1];
       const home = place.get(card.id) ?? at;
-      const selected = selectedSet.has(card.id);
+      const selected = () => store.get().ids.includes(card.id);
       const d = drawnRef.current.get(card.id);
       const shiftTo = at.x - home.x + gapShift(i);
       const y0 = rowCentreY + visibleH / 2 + crop + home.y - cardH / 2;
@@ -957,8 +955,8 @@ export function StraightHand({
         card.id,
         liveFrom(
           () => home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panShown(),
-          () => y0 + (d ? d.liftY.get() : selected ? -handRowHeadroom(cardH) : 0),
-          () => home.rot + (d ? d.tilt.get() : selected ? SELECT_TILT : 0),
+          () => y0 + (d ? d.liftY.get() : selected() ? -handRowHeadroom(cardH) : 0),
+          () => home.rot + (d ? d.tilt.get() : selected() ? SELECT_TILT : 0),
           cardW / fieldW
         )
       );
@@ -1062,7 +1060,6 @@ export function StraightHand({
     onTouchesDown: (e) => {
       const touch = e.allTouches[0];
       if (touch === undefined) return;
-      scheduleOnRN(traceTap, `D x=${touch.x.toFixed(1)} y=${touch.y.toFixed(1)}`);
       fingerX.value = touch.x;
       fingerY.value = touch.y;
       grabX.value = touch.x;
@@ -1149,15 +1146,12 @@ export function StraightHand({
       if (e.pointerType === PointerType.KEY) return;
       const i = cardUnder(e.x, e.y);
       pressed.value = i === null || strips.refused[i] ? null : strips.ids[i];
-      scheduleOnRN(traceTap, `B ui=${String((globalThis as { _WORKLET?: boolean })._WORKLET)} x=${e.x.toFixed(1)} y=${e.y.toFixed(1)} i=${i} id=${pressed.value} n=${strips.ids.length} l0=${strips.lefts[0]?.toFixed(1)} w0=${strips.widths[0]?.toFixed(1)} t0=${strips.tops[0]?.toFixed(1)} lifted=${lifted?.value.length}`);
     },
     onActivate: () => {
       const id = pressed.value;
-      scheduleOnRN(traceTap, `A id=${id} picking=${picking.value}`);
       if (id !== null && !picking.value) tapSelection(id);
     },
     onFinalize: () => {
-      scheduleOnRN(traceTap, `F`);
       pressed.value = null;
     },
   });
@@ -1197,7 +1191,7 @@ export function StraightHand({
         <CardItem
           key={card.id}
           card={card}
-          isSelected={selectedSet.has(card.id)}
+          store={store}
           left={rowMid + home.x}
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
@@ -1254,7 +1248,7 @@ export function StraightHand({
         >
           <CardView
             card={heldCard}
-            selected={selectedSet.has(heldCard.id)}
+            selected={heldSelected}
             faceDown={faceDown}
             scale={cardScale}
             decorative

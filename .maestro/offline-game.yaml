@@ -199,9 +199,6 @@ appId: "${MAESTRO_APP_ID}"
       - tapOn:
           id: "card-start"
           waitToSettleTimeoutMs: 500
-      - copyTextFrom:
-          id: "tap-trace"
-      - evalScript: ${console.log('TAPTRACE ' + maestro.copiedText)}
       # The button turns on only for a legal selection, so this is what says the
       # tap reached the card the banner asked for rather than a neighbour.
       - assertVisible: "Gioca le carte selezionate"

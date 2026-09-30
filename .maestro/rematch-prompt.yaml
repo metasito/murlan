@@ -80,9 +80,6 @@ appId: "${MAESTRO_APP_ID}"
       - tapOn:
           id: "card-start"
           waitToSettleTimeoutMs: 500
-      - copyTextFrom:
-          id: "tap-trace"
-      - evalScript: ${console.log('TAPTRACE ' + maestro.copiedText)}
       - assertVisible: "Gioca le carte selezionate"
       - tapOn:
           id: "btn-gioca"

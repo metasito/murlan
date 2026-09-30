@@ -21,8 +21,6 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0) => ({
   isFinished: false,
   exchangeActive: false,
   canPass: false,
-  playBtnValid: false,
-  selectedCount: 0,
   passCount: 0,
   lastPlayedCombination: null,
   roundWinner: null,
