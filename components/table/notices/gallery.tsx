@@ -49,7 +49,7 @@ export const NOTICE_GALLERY = {
     {
       name: "back online",
       tone: "ok",
-      render: (scale) => <TurnChip {...turn(scale, true, 30)} connection={{ state: "reconnected", text: "Besnik is back" }} />,
+      render: (scale) => <TurnChip {...turn(scale, true, 30)} active={false} connection={{ state: "reconnected", text: "Besnik is back" }} />,
     },
     {
       name: "offline",

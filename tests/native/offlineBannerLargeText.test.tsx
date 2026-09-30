@@ -31,7 +31,7 @@ const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top:
 const hidden = { includeHiddenElements: true };
 const net = (isConnected: boolean | null) => act(async () => mockNetListeners.forEach((l) => l({ isConnected })));
 const Table = () => {
-  useTableClaim();
+  useTableClaim(true);
   return null;
 };
 

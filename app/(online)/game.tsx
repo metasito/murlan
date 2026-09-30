@@ -283,8 +283,8 @@ export default function OnlineGameScreen() {
         // an opponent taking their time.
         !connected
           ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
-          : reconnectNotice
-            ? { state: reconnectNotice.back ? "reconnected" : "away", text: reconnectNotice.text }
+          : reconnectNotice?.back
+            ? { state: "reconnected", text: reconnectNotice.text }
             : null
       }
       banners={

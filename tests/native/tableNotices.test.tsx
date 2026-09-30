@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 jest.mock('@/lib/accessibility', () => ({
@@ -24,6 +24,9 @@ jest.mock('@react-native-community/netinfo', () => ({
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
+import { OfflineBanner } from '@/components/OfflineBanner';
+import { en } from '@/locales/en';
+import { SettingsProvider } from '@/context/SettingsContext';
 import { TurnChip, type ConnectionNote } from '@/components/table/notices/hud';
 import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
@@ -192,16 +195,16 @@ describe('the turn pill', () => {
     await r.unmount();
   });
 
-  const connected = (state: ConnectionNote['state']) => (
-    <TurnChip seconds={30} active resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" connection={{ state, text: 'Note' }} />
+  const connected = (state: ConnectionNote['state'], active = true) => (
+    <TurnChip seconds={30} active={active} resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" connection={{ state, text: 'Note' }} />
   );
-  for (const [state, edge, ink, dot] of [
-    ['offline', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot],
-    ['reconnected', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot],
-    ['reconnecting', Colors.goldBorder, Colors.textMuted, Colors.gold],
+  for (const [state, edge, ink, dot, active] of [
+    ['offline', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot, true],
+    ['reconnected', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot, false],
+    ['reconnecting', Colors.goldBorder, Colors.textMuted, Colors.gold, true],
   ] as const) {
     it(`carries the connection, ${state}, in place of the seat and its count`, async () => {
-      const r = await render(connected(state));
+      const r = await render(connected(state, active));
       const hidden = { includeHiddenElements: true };
       const [plate] = screen.getAllByTestId('notice-turn', hidden);
       const dotStyle = StyleSheet.flatten(within(plate).getByTestId('turn-chip-dot', hidden).props.style);
@@ -228,6 +231,50 @@ describe('the turn pill', () => {
     expect(edge()).toBe(Colors.offlineEdge);
     await act(async () => mockNetListeners.forEach((l) => l({ isConnected: null })));
     expect(edge()).toBe(Colors.onlineEdge);
+    await r.unmount();
+  });
+
+  it("gives way to the viewer's own running clock when another seat is back", async () => {
+    const r = await render(connected('reconnected'));
+    await tick(30 - CLOCK_RUNNING_OUT_SECONDS);
+    const hidden = { includeHiddenElements: true };
+    expect(screen.getByTestId('turn-chip-count', hidden)).toBeTruthy();
+    expect(screen.queryByText('Note', hidden)).toBeNull();
+    expect(StyleSheet.flatten(screen.getAllByTestId('notice-turn', hidden)[0].props.style).borderColor).toBe(Colors.ember);
+    await r.unmount();
+  });
+
+  it('keeps the offline table on its clock when the device goes offline', async () => {
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      </SafeAreaProvider>,
+    );
+    const edge = () => StyleSheet.flatten(screen.getAllByTestId('notice-turn', { includeHiddenElements: true })[0].props.style).borderColor;
+    const before = edge();
+    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    expect(edge()).toBe(before);
+    await r.unmount();
+  });
+
+  it('leaves the offline note to the pill off the table while focus mode hides the turn pill', async () => {
+    const hidden = { includeHiddenElements: true };
+    const r = await render(
+      <SettingsProvider>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} connection={null} />
+          <OfflineBanner />
+        </SafeAreaProvider>
+      </SettingsProvider>,
+    );
+    const live = () => screen.getAllByTestId('offline-banner', hidden).at(-1)!.props.accessibilityLiveRegion;
+    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    expect(live()).toBe('none');
+    const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
+    await act(async () => fireEvent.press(knob));
+    await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
+    await act(async () => fireEvent.press(knob));
+    expect(live()).toBe('assertive');
     await r.unmount();
   });
 

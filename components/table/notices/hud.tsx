@@ -13,8 +13,8 @@ import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
 const HUD_NAME_MAX_W = 88;
 
 /** The connection as the turn pill carries it (Q8): the lantern mockup's `renderTurn` with `S.net` set. */
-export type ConnectionNote = { state: "offline" | "reconnecting" | "reconnected" | "away"; text: string };
-const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok", away: "neutral" } as const;
+export type ConnectionNote = { state: "offline" | "reconnecting" | "reconnected"; text: string };
+const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok" } as const;
 
 export function OfflinePill({ scale, shown = true }: { scale: number; shown?: boolean }) {
   const { t } = useTranslation();
@@ -54,7 +54,7 @@ export function TurnChip({
   lit,
   chipText,
   spokenSeat,
-  connection = null,
+  connection: carried = null,
 }: {
   seconds: number;
   active: boolean;
@@ -67,9 +67,11 @@ export function TurnChip({
   chipText: string;
   /** The same state as a sentence, which is what the group's name opens with. */
   spokenSeat: string;
+  /** Outranks the seat state; `reconnected` gives way to the viewer's own running clock. */
   connection?: ConnectionNote | null;
 }) {
   const { tn } = useTranslation();
+  const connection = carried?.state === "reconnected" && active ? null : carried;
   const [timeLeft, setTimeLeft] = useState(seconds);
   // Written after commit, never during render: the only reader is the interval
   // below, which fires a second later at the earliest.

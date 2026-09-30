@@ -37,16 +37,17 @@ const watch = (w: () => void) => {
 };
 const tableOnScreen = () => tables > 0;
 
-/** A table on screen carries the connection in its turn pill (Q8), so the pill off the table yields to it. */
-export function useTableClaim() {
+/** A table whose turn pill can be seen carries the connection in it (Q8), so the pill off the table yields to it. */
+export function useTableClaim(claim: boolean) {
   useEffect(() => {
+    if (!claim) return;
     tables += 1;
     tell();
     return () => {
       tables -= 1;
       tell();
     };
-  }, []);
+  }, [claim]);
 }
 
 /** `overTable`: drawn where no table can carry it, such as the settings sheet opened over one. */
