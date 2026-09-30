@@ -21,7 +21,7 @@ const BEATEN: Card = { id: "3_clubs", suit: "clubs", rank: "3", isJoker: false }
 const TOP: Card = { id: "4_clubs", suit: "clubs", rank: "4", isJoker: false };
 const AT_REST = { x: 0, y: 0, rot: 0, scale: 1 };
 const PLAYS = [flightOf("beaten", [BEATEN], [AT_REST]), flightOf("top", [TOP], [AT_REST])];
-/** The resting offset `PILE_PREV_Y` (components/table/pile.tsx) — pinned here too, so a change to one without the other is a red rather than a silent drift. */
+/** The resting offset `Beaten.drop` (lib/tokens.ts) — pinned here too, so a change to one without the other is a red rather than a silent drift. */
 const RESTING_Y = 9;
 const RESTING_ROTATE = "-7deg";
 

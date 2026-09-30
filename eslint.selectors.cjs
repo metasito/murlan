@@ -10,7 +10,7 @@
 // produce one that neither TypeScript nor a render test catches.
 
 const TOKEN_OBJECTS =
-  'Colors|Spacing|Radius|FontSize|Type|Motion|Reading|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks';
+  'Colors|Spacing|Radius|FontSize|Type|Motion|Reading|Scrim|Highlight|Shadow|FeltGradient|FeltGradients|CardBacks|Beaten';
 
 // Every edge shorthand React Native accepts, built from the two prefixes and
 // the edge suffixes rather than enumerated.
