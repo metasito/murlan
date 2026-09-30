@@ -13,7 +13,7 @@ jest.mock('@/lib/accessibility', () => ({
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
-import { NoticePalette } from '@/lib/theme';
+import { NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
@@ -44,12 +44,17 @@ describe('every notice kind paints one plate, in its tone', () => {
   }
 });
 
-// G1's `.tile` type is a fixed 13 px: a 22x30 face cannot take the OS text scale.
+// No layout runs here: mockupPolish's 1.2x case measures the fit; this pins the two halves of it.
 describe('the who-starts tile', () => {
-  it('keeps its rank at the mockup size whatever the text setting', async () => {
+  it('caps its rank like all table text, and grows to hold it rather than clipping', async () => {
     const r = await render(NOTICE_GALLERY.whoStarts[0].render(1));
-    const rank = within(screen.getByTestId('notice-tile')).getByText('3');
-    expect(rank.props.allowFontScaling).toBe(false);
+    const tile = screen.getByTestId('notice-tile');
+    const rank = within(tile).getByText('3');
+    expect(rank.props.allowFontScaling).not.toBe(false);
+    expect(rank.props.maxFontSizeMultiplier).toBe(TABLE_FONT_SCALE_MAX);
+    const box = StyleSheet.flatten(tile.props.style);
+    expect([box.width, box.height, box.overflow]).toEqual([undefined, undefined, undefined]);
+    expect(box.minHeight).toBeGreaterThan(0);
     await r.unmount();
   });
 });

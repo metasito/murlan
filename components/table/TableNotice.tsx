@@ -172,13 +172,11 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
       end={{ x: 0.7, y: 1 }}
       style={[
         styles.tile,
-        { width: part.tile.width, height: part.tile.height, borderRadius: part.tile.radius },
+        { minWidth: part.tile.width, minHeight: part.tile.height, borderRadius: part.tile.radius },
         { boxShadow: `0px ${part.tileLip}px 0px ${Colors.cardLip}, 0px ${unit}px ${TILE_SHADOW * unit}px ${TILE_CAST}` },
       ]}
     >
-      <TableText allowFontScaling={false} style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>
-        {rank}
-      </TableText>
+      <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
       <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX}>
         <SuitShape suit={suit} color={ink} />
       </Svg>

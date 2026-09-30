@@ -150,10 +150,17 @@ test("panel: who starts is the G1 panel, at its size, place, plate and dim", asy
         return r.right > after.right + 0.5 || r.bottom > after.bottom + 0.5 || el.scrollWidth > el.clientWidth + 1;
       })
       .map((el) => el.textContent);
-    return { widthBefore: before.width, widthAfter: after.width, grew: after.height > before.height, texts: texts.length, clipped };
+    const tile = plateEl.querySelector('[data-testid="notice-tile"]')!.getBoundingClientRect();
+    const rank = texts.find((el) => el.closest('[data-testid="notice-tile"]'))!;
+    const range = document.createRange();
+    range.selectNodeContents(rank);
+    const ink = range.getBoundingClientRect();
+    const tileHolds = ink.left >= tile.left - 0.5 && ink.right <= tile.right + 0.5 && ink.top >= tile.top - 0.5 && ink.bottom <= tile.bottom + 0.5;
+    return { widthBefore: before.width, widthAfter: after.width, grew: after.height > before.height, texts: texts.length, clipped, tileHolds };
   }, FONT_SCALE);
   expect(scaled.texts, "the panel has no words to scale").toBeGreaterThan(1);
   expect(scaled.widthAfter).toBeCloseTo(scaled.widthBefore, 1);
   expect(scaled.grew, "at 1.2x the panel did not grow with its words").toBe(true);
   expect(scaled.clipped, "at 1.2x these run past the panel").toEqual([]);
+  expect(scaled.tileHolds, "at 1.2x the start card's rank runs past its tile").toBe(true);
 });
