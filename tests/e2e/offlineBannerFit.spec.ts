@@ -28,8 +28,9 @@ const fullyShown = (page: Page, selector: string) =>
     .poll(
       () =>
         page.evaluate((sel) => {
-          let o = 1;
-          for (let n: Element | null = document.querySelector(sel); n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
+          const el = document.querySelector(sel);
+          let o = el ? 1 : 0;
+          for (let n: Element | null = el; n; n = n.parentElement) o *= Number(getComputedStyle(n).opacity);
           return o;
         }, selector),
       { message: `${selector} fully shown`, timeout: 15_000 }
