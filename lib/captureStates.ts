@@ -99,6 +99,14 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
     side: "right",
     pile: true,
   },
+  {
+    id: "passed",
+    label: "Your turn after two passes — PASSO beside the top seat's disc and under the right one's",
+    playerCount: 4,
+    turn: 0,
+    side: "bottom",
+    pile: true,
+  },
 ];
 
 const countState = (id: string, label: string, counts: CaptureState["counts"]): CaptureState => ({

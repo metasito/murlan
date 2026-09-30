@@ -515,9 +515,11 @@ function SeatRing({
 function PassedChip({ scale }: { scale: number }) {
   const { t } = useTranslation();
   return (
-    <TableChip scale={scale}>
-      <ChipText scale={scale}>{t("gameShared.passedLabel")}</ChipText>
-    </TableChip>
+    <View testID="notice-passed">
+      <TableChip scale={scale}>
+        <ChipText scale={scale}>{t("gameShared.passedLabel")}</ChipText>
+      </TableChip>
+    </View>
   );
 }
 
