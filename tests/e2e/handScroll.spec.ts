@@ -48,18 +48,17 @@ async function handRow(page: Page): Promise<HandCard[]> {
  * three runs measuring nothing.
  */
 async function handWindow(page: Page): Promise<{ left: number; right: number; hidden: number }> {
-  const found = await page.evaluate(() => {
-    for (const el of Array.from(document.querySelectorAll("div"))) {
+  // Walked up from a card, not searched for: the screen's own clipping boxes also hold a wider child.
+  const found = await page.evaluate((cards) => {
+    for (let el = document.querySelector(cards)?.parentElement ?? null; el; el = el.parentElement) {
       const child = el.firstElementChild;
-      if (child === null || getComputedStyle(el).overflow !== "hidden") continue;
+      if (child === null || !["hidden", "clip"].includes(getComputedStyle(el).overflow)) continue;
       const win = el.getBoundingClientRect();
       const row = child.getBoundingClientRect();
-      if (row.width > win.width + 1) {
-        return { left: win.left, right: win.right, hidden: row.width - win.width };
-      }
+      if (row.width > win.width + 1) return { left: win.left, right: win.right, hidden: row.width - win.width };
     }
     return null;
-  });
+  }, HAND_CARDS);
   expect(
     found,
     "no clipped row — this viewport did not overflow, so nothing here is under test"

@@ -254,7 +254,8 @@ export function useHandLift(active: boolean, scale: number) {
     return () => cancelAnimation(lift);
   }, [active, scale, reduceMotion, lift]);
 
-  return useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
+  const style = useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
+  return { style, lift };
 }
 
 /**

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ViewStyle } from "react-native";
 import {
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
   withSequence,
@@ -28,6 +29,7 @@ import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import type { LandingSignal } from "@/components/table/useFlightClock";
 import type { TableTimeline } from "@/components/table/tableTimeline";
+import type { TableMotion } from "@/components/table/cardRects";
 
 // The refusal shake on GIOCA: deliberately a third of the bomb's amplitude —
 // it is a "no", not an event. One leg duration for all four legs.
@@ -122,6 +124,7 @@ interface TableFeedback {
   celebrateFlush: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
+  tableMotion: SharedValue<TableMotion>;
 }
 
 /**
@@ -205,21 +208,21 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
     );
   };
 
-  const kickStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: kickX.value },
-      { translateY: kickY.value },
-      { scale: kickScale.value },
-    ],
-  }));
-
-  const shakeStyle = useAnimatedStyle(() => {
-    const { x, y, rotate } = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
+  const tableMotion = useDerivedValue<TableMotion>(() => {
+    const shake = shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
       x: shakeAmpX.value,
       y: shakeAmpY.value,
       rotate: shakeAmpRotate.value,
     });
-    return { transform: [{ translateX: x }, { translateY: y }, { rotate: `${rotate}deg` }] };
+    return { kx: kickX.value, ky: kickY.value, ks: kickScale.value, shx: shake.x, shy: shake.y, shr: shake.rotate };
+  });
+  const kickStyle = useAnimatedStyle(() => {
+    const m = tableMotion.value;
+    return { transform: [{ translateX: m.kx }, { translateY: m.ky }, { scale: m.ks }] };
+  });
+  const shakeStyle = useAnimatedStyle(() => {
+    const m = tableMotion.value;
+    return { transform: [{ translateX: m.shx }, { translateY: m.shy }, { rotate: `${m.shr}deg` }] };
   });
   useTraceSource("shake", () =>
     shakeOffset(shakeTrauma.value, shakeElapsed.value, shakeDecayMs.value, scale, {
@@ -246,7 +249,7 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
   const writers = useRef({ reject });
   const rejectPlay = useCallback(() => writers.current.reject(), []);
 
-  return { kickStyle, giocaRejectX, rejectPlay, shakeStyle };
+  return { kickStyle, giocaRejectX, rejectPlay, shakeStyle, tableMotion };
 }
 
 export function useTableFeedback({
@@ -287,7 +290,7 @@ export function useTableFeedback({
   // a finger is down, and the bomb's punch-in below, which peaks at 1.012 and
   // decays back to 1 within the one beat.
   const passaFlashVal = useSharedValue(0);
-  const { kickStyle, giocaRejectX, rejectPlay, shakeStyle } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
+  const { kickStyle, giocaRejectX, rejectPlay, shakeStyle, tableMotion } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
   // Sweep and the pile's catch own their animations; this just says "again".
   const [flushTrigger, setFlushTrigger] = useState(0);
 
@@ -386,6 +389,7 @@ export function useTableFeedback({
     flushTrigger,
     celebrateFlush,
     shakeStyle,
+    tableMotion,
   };
 }
 

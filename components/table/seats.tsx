@@ -11,7 +11,9 @@ import {
   seatGap,
   seatLabelH,
 } from "@/components/seatLayout";
-import { FAN_TURN, fanCounts, seatFanArc } from "@/components/fanGeometry";
+import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { fanBacks } from "./cardRects";
+import { useCardTable, useStaticCardRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -86,7 +88,8 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ at, boxW, backScale, isActive, zIndex }: {
+function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
+  id: string;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -96,6 +99,7 @@ function FanBack({ at, boxW, backScale, isActive, zIndex }: {
   return (
     <View
       testID="seat-back"
+      nativeID={`card-${id}`}
       style={{
         position: "absolute",
         zIndex,
@@ -126,6 +130,21 @@ function CardFan({
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  const table = useCardTable();
+  const drawn = useMemo(
+    () =>
+      table && count > 0
+        ? fanBacks(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), {
+            side,
+            count,
+            backScale: scale * BACK_SCALE,
+            leanDeg: FAN_LEAN_DEG,
+            perspective: FAN_PERSPECTIVE,
+          })
+        : [],
+    [table, side, count, scale]
+  );
+  useStaticCardRects(table, `fan:${side}:`, drawn);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -158,7 +177,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
         ))}
       </View>
     </View>

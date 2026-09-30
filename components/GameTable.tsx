@@ -111,6 +111,7 @@ import { PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { ParticleLayer } from "@/components/table/particleLayer";
@@ -733,6 +734,7 @@ export function GameTable({
     flushTrigger,
     celebrateFlush,
     shakeStyle,
+    tableMotion,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -753,7 +755,7 @@ export function GameTable({
     timeline,
   });
 
-  const handLiftStyle = useHandLift(
+  const { style: handLiftStyle, lift: handLift } = useHandLift(
     (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
     scale
   );
@@ -804,6 +806,22 @@ export function GameTable({
     height: H,
     landing: landingSignal,
   });
+  const cardTable = useCardTableValue(
+    {
+      pile: anchors.pile,
+      hand: anchors.bottom,
+      seats: { top: anchors.top, left: anchors.left, right: anchors.right },
+      felt: {
+        sx: rig.sx,
+        sy: rig.sy,
+        s: scale,
+        kickAt: { x: W / 2, y: H / 2 },
+        shakeAt: { x: (frame.tableLeft + W - frame.tableRight) / 2, y: (frame.tableTop + H - frame.surplus) / 2 },
+      },
+    },
+    tableMotion,
+    handLift
+  );
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   useBenchHandle("lampFreeze", rig.freeze);
 
@@ -997,6 +1015,7 @@ export function GameTable({
   useEffect(() => timeline.flush());
 
   return (
+    <CardTableProvider value={cardTable}>
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
@@ -1450,6 +1469,7 @@ export function GameTable({
         {W < H && <RotateOverlay />}
       </Animated.View>
     </View>
+    </CardTableProvider>
   );
 }
 

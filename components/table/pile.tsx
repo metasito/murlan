@@ -34,6 +34,8 @@ import { landingPulsesFor } from "@/lib/device/moments";
 import { AT_REST, flightSpec, inBackground, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
 import { useLandingReaction } from "./useLandingReaction";
 import type { TableTimeline } from "./tableTimeline";
+import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
+import { useCardRect, useCardTable } from "./useCardRects";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -71,6 +73,30 @@ interface SweepMotion {
 
 const SWEEP_SCALE = 0.6;
 
+interface GroupMotion { sweep: SweepMotion | null; flinchY: SharedValue<number>; flinchBy: SharedValue<string>; beaten: boolean; key: string }
+
+/** A play is knocked only by a later play's contact, and only while it is the beaten one (#764). */
+function groupPose(g: GroupMotion, turned: number): GroupPose & { opacity: number } {
+  "worklet";
+  const t = g.sweep ? g.sweep.travel.value : 0;
+  const fade = g.sweep ? g.sweep.fade.value : 0;
+  const flinch = g.beaten && g.flinchBy.value !== g.key ? g.flinchY.value : 0;
+  return {
+    tx: t * (g.sweep?.to.dx ?? 0),
+    ty: t * (g.sweep?.to.dy ?? 0),
+    scale: 1 - t * fade * (1 - SWEEP_SCALE),
+    drop: turned * Beaten.drop + flinch,
+    rot: turned * Beaten.rotateDeg,
+    opacity: 1 - fade,
+  };
+}
+
+function wobbleAt(elapsed: number, end: number, still: boolean): WobblePose {
+  "worklet";
+  const { scale, rotate } = landWobble(still ? 0 : Math.min(1, Math.max(0, (elapsed - end) / LAND_WOBBLE_MS)));
+  return { scale, rot: rotate };
+}
+
 // The flush's "catch": a hand-emptying play's own cards bloom gold and lift,
 // same 620ms every time — verbatim off the prototype's `catch` keyframe.
 // Two segments (0-50%, 50-100%), each ease-out, rather than one duration
@@ -78,6 +104,12 @@ const SWEEP_SCALE = 0.6;
 // not ramp continuously to it.
 const CATCH_MS = 620;
 const CATCH_LIFT = -9;
+
+function catchLift(catching: number, cardScale: number): number {
+  "worklet";
+  return catching * CATCH_LIFT * cardScale;
+}
+
 const CATCH_EASING = Easing.out(Easing.cubic);
 
 const BEATEN_EASING = Easing.bezier(0, 0, 0.58, 1);
@@ -161,9 +193,8 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
   }, [heavy, bombClock, elapsed, contact]);
 
   const wobble = useAnimatedStyle(() => {
-    const k = still ? 0 : Math.min(1, Math.max(0, (clock.elapsed.value - spec.end) / LAND_WOBBLE_MS));
-    const { scale: s, rotate } = landWobble(k);
-    return { transform: [{ scale: s }, { rotate: `${rotate}deg` }] };
+    const w = wobbleAt(clock.elapsed.value, spec.end, still);
+    return { transform: [{ scale: w.scale }, { rotate: `${w.rot}deg` }] };
   });
 
   const beaten = role === "beaten";
@@ -178,21 +209,15 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
   }, [beaten, buried, reduced, turned]);
   useEffect(() => () => cancelAnimation(turned), [turned]);
   const key = play.key;
+  const group = useMemo(() => ({ sweep, flinchY, flinchBy, beaten, key }), [sweep, flinchY, flinchBy, beaten, key]);
   // The beaten pose rides this one worklet with the flinch (#764) and the sweep: React Native
-  // replaces a style's `transform` wholesale. A play is knocked only by a later play's contact.
+  // replaces a style's `transform` wholesale.
   const pose = useAnimatedStyle(() => {
     const transform: ({ translateX: number } | { translateY: number } | { scale: number } | { rotate: string })[] = [];
-    let opacity = 1;
-    if (sweep) {
-      const t = sweep.travel.value;
-      transform.push({ translateX: t * sweep.to.dx }, { translateY: t * sweep.to.dy }, { scale: 1 - t * sweep.fade.value * (1 - SWEEP_SCALE) });
-      opacity *= 1 - sweep.fade.value;
-    }
-    const k = turned.value;
-    let drop = k * Beaten.drop;
-    if (beaten) drop += flinchBy.value === key ? 0 : flinchY.value;
-    transform.push({ translateY: drop }, { rotate: `${k * Beaten.rotateDeg}deg` });
-    return { opacity, transform };
+    const g = groupPose(group, turned.value);
+    if (sweep) transform.push({ translateX: g.tx }, { translateY: g.ty }, { scale: g.scale });
+    transform.push({ translateY: g.drop }, { rotate: `${g.rot}deg` });
+    return { opacity: g.opacity, transform };
   });
 
   const { slots, w, h } = fieldSlots(cards, cardScale, roomW);
@@ -212,7 +237,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} />
             </Fragment>
           );
         })}
@@ -221,7 +246,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
   );
 }
 
-function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale }: {
+function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale, group, out }: {
   card: Card;
   i: number;
   spec: FlightSpec;
@@ -233,9 +258,44 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   catching: SharedValue<number> | null;
   turned: SharedValue<number>;
   cardScale: number;
+  group: GroupMotion;
+  out: boolean;
 }) {
   const from = spec.from[i];
   const to = spec.to[i];
+  const table = useCardTable();
+  const slotX = box.left + box.width / 2 - to.x;
+  const slotY = box.top + box.height / 2 - to.y;
+  const pile = table?.pile;
+  const felt = table?.felt;
+  const motion = table?.motion;
+  useCardRect(
+    table,
+    `pile:${card.id}`,
+    !out,
+    () => {
+      "worklet";
+      if (!pile || !felt || !motion || out) return null;
+      const g = groupPose(group, turned.value);
+      if (g.opacity <= 0) return null;
+      const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
+      const c = catching?.value ?? 0;
+      const drawn = pileCard(pile, g, wobbleAt(elapsed.value, spec.end, still), {
+        slotX,
+        slotY,
+        x: p.x,
+        y: p.y,
+        rot: p.rot,
+        scale: p.scale,
+        liftY: catchLift(c, cardScale),
+        w: box.width,
+        h: box.height,
+        lift: c,
+        glow: c,
+      });
+      return designRect(drawn, felt, motion.value);
+    }
+  );
   const style = useAnimatedStyle(() => {
     const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
     return {
@@ -244,13 +304,13 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   });
   // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
   // at render, so resizing the table cannot read as a fresh catch.
-  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: (catching?.value ?? 0) * CATCH_LIFT * cardScale }] }));
+  const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catchLift(catching?.value ?? 0, cardScale) }] }));
   // Opacity only, on a childless sibling behind the card — the same
   // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
   const shade = useAnimatedStyle(() => ({ opacity: turned.value }));
   return (
-    <Animated.View testID={flying ? "flying-card" : undefined} style={[box, { zIndex: i }, style]}>
+    <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
         {catching && <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>

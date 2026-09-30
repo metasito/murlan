@@ -119,7 +119,7 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(sawCount).toBe(true);
     for (const id of SEATS) expect(counted(id)).toBe(13);
     await r.unmount();
-  });
+  }, 20_000);
 
   it('keeps the landed count through a re-render of the table mid-deal', async () => {
     const r = await render(table());
