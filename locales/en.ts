@@ -364,7 +364,6 @@ export const en = {
   // -------------------------------------------------------------- game.*
   "game.moveNotDelivered": "Your move did not reach the table. Check your connection and try again.",
   "game.autoPassTitle": "Auto-pass",
-  "game.autoPassBody": "Time is up: your turn was passed.",
   "game.seatLeft": "{{username}} — left",
   "game.endMatchVoteButton": "Vote to end match",
   "game.endMatchWithdrawButton": "Withdraw vote to end match",

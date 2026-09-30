@@ -367,7 +367,6 @@ export const sq: Record<keyof typeof en, string> = {
   // -------------------------------------------------------------- game.*
   "game.moveNotDelivered": "Lëvizja jote nuk arriti në tavolinë. Kontrollo lidhjen dhe provo përsëri.",
   "game.autoPassTitle": "Kalim automatik",
-  "game.autoPassBody": "Koha mbaroi: radha jote u kalua.",
   "game.seatLeft": "{{username}} — u largua",
   "game.endMatchVoteButton": "Voto për të përfunduar ndeshjen",
   "game.endMatchWithdrawButton": "Tërhiq votën për të përfunduar ndeshjen",

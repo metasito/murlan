@@ -206,7 +206,8 @@ describe('tapping an unavailable GIOCA', () => {
     expect(haptics()).toContain('rigid');
     expect(sounds().filter((s) => s === 'reject')).toHaveLength(1);
     expect(haptics()).not.toContain('notificationError');
-    expect(screen.getByText(t('gameTable.playA11ySpokenWrongType'))).toBeTruthy();
+    const hidden = { includeHiddenElements: true };
+    expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenWrongType'), hidden)).toBeTruthy();
 
     await r.unmount();
   });

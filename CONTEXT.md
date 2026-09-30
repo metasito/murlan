@@ -23,7 +23,7 @@ term's meaning, and useless anywhere the term is not.
   five callbacks and save nothing. `app/auth.tsx` and `app/recover.tsx` additionally carry #897's
   enumeration-safety behaviour on their success paths, which must survive any change to them.
 
-- **The online table's surface** — the 37 fields a screen reads from `OnlineGameContext`, exposed
+- **The online table's surface** — the 38 fields a screen reads from `OnlineGameContext`, exposed
   as the six slices in `context/onlineGameHooks.ts` (connection, room, table, turn clock, match,
   exchange). The slices are the seam, and `tests/ui-rules/contextSlices.test.ts` pins both that they
   partition the surface exclusively and that nothing outside four files reaches past them.
@@ -46,11 +46,12 @@ term's meaning, and useless anywhere the term is not.
 - **Notice** — anything the table tells a player in words on a plate of its own: the turn pill,
   a seat's PASSO, the combination, the connection notes, who starts, a refusal. A notice has a
   *kind* (which surface it is), a *shape* in the lantern mockup's vocabulary — `pill`, `chip` (the
-  mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`) its shape
-  must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
+  mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`, `solid`, `gold`)
+  its shape must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
   `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill, the turn
   pill, who starts, the seat marks and the pile's marks (the combination, the round winner, the
-  exchange label) and the viewer's own pass, the table's one float, have; the rest move in #1259
+  exchange label), the table's one float (the viewer's own pass, a refused play, a server error)
+  and the hand row's lines (waiting for the others, an empty hand) have; the rest move in #1259
   plan 5's later tasks. Its kinds, their geometry in mockup pixels and their timings
   are `components/table/noticeModel.ts`, and each kind's gallery is
   `components/table/notices/gallery.tsx`. Not a notice: the banners over the app

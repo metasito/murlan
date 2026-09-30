@@ -3,6 +3,9 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { activate } from './tapHelpers';
+import { t } from '@/lib/i18n';
+import { cardSpokenName } from '@/lib/cardNames';
 
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -288,6 +291,159 @@ describe('the turn pill', () => {
     const plates = within(stack).getAllByTestId('notice-turn', { includeHiddenElements: true });
     expect(plates).toHaveLength(1);
     expect(within(plates[0]).getAllByTestId('turn-chip-dot', { includeHiddenElements: true })).toHaveLength(1);
+    await r.unmount();
+  });
+});
+
+describe("the table's refusals and lines", () => {
+  const hidden = { includeHiddenElements: true };
+  const edge = (id: string) => StyleSheet.flatten(screen.getByTestId(id, hidden).props.style).borderColor;
+  const said = (text: string) =>
+    screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
+  const at = (state: GameState, error: string | null = null, tableCovered = false) => (
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <GameTable gameState={state} viewerSeat={0} error={error} tableCovered={tableCovered} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+    </SafeAreaProvider>
+  );
+  const withAna = (over: Partial<Player>) => ({ ...STATE, players: STATE.players.map((p, i) => (i === 0 ? { ...p, ...over } : p)) });
+
+  it('a refused GIOCA floats its reason in the bad tone, and the slot reads it out', async () => {
+    const r = await render(at({ ...STATE, currentTurnIndex: 0 }));
+    await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(card('3_0', '3', 'spades'), t)));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    expect(edge('notice-rejectFloat')).toBe(NoticePalette.float.bad.edge);
+    expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenTooLow'), hidden)).toBeTruthy();
+    expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(1);
+    await r.unmount();
+  });
+
+  it('a refused reason is not read back when a cover over the table lifts', async () => {
+    const yours = { ...STATE, currentTurnIndex: 0 };
+    const r = await render(at(yours));
+    await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(card('3_0', '3', 'spades'), t)));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    await r.rerender(at(yours, null, true));
+    await r.rerender(at(yours));
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(0);
+    await r.unmount();
+  });
+
+  it('a seat gone out waits for the others on a gold pill, in its own words', async () => {
+    const r = await render(at(withAna({ hand: [], finishPosition: 1 })));
+    expect(edge('notice-waitingOthers')).toBe(NoticePalette.pill.gold.edge);
+    expect(within(screen.getByTestId('notice-waitingOthers', hidden)).getByText(t('gameTable.waitingOthers'), hidden)).toBeTruthy();
+    await r.unmount();
+  });
+
+  it('an empty hand not yet out is the same gold pill', async () => {
+    const r = await render(at(withAna({ hand: [] })));
+    expect(edge('notice-emptyHand')).toBe(NoticePalette.pill.gold.edge);
+    expect(within(screen.getByTestId('notice-emptyHand', hidden)).getByText(t('gameShared.emptyHand'), hidden)).toBeTruthy();
+    await r.unmount();
+  });
+
+  it('an error arrives as the toast float in the bad tone, and the same error again floats again', async () => {
+    const r = await render(at(STATE, 'Nope'));
+    expect(edge('notice-errorToast')).toBe(NoticePalette.float.bad.edge);
+    expect(said('Nope')).toBe(1);
+    await r.rerender(at(STATE, null));
+    expect(said('Nope')).toBe(0);
+    await r.rerender(at(STATE, 'Nope'));
+    expect(said('Nope')).toBe(1);
+    expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
+    await r.unmount();
+  });
+
+  it('an error arriving under a cover is not read out when the cover lifts', async () => {
+    const r = await render(at(STATE, null, true));
+    await r.rerender(at(STATE, 'Nope', true));
+    await r.rerender(at(STATE, 'Nope'));
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(said('Nope')).toBe(0);
+    await r.unmount();
+  });
+});
+
+describe('an autopass', () => {
+  const hidden = { includeHiddenElements: true };
+  const onMove = { ...STATE, currentTurnIndex: 0 };
+  const passed = { ...STATE, currentTurnIndex: 3, passCount: 1 };
+  const at = (state: GameState, autoPassed: number) => (
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <GameTable gameState={state} viewerSeat={0} autoPassed={autoPassed} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+    </SafeAreaProvider>
+  );
+  const floated = () => {
+    const plates = screen.queryAllByTestId('notice-passFloat', hidden);
+    expect(plates).toHaveLength(1);
+    return within(plates[0]);
+  };
+  const reads = (words: string) => {
+    expect(floated().queryByText(words, hidden)).toBeTruthy();
+    expect(floated().queryByText(t('gameShared.passedLabel'), hidden)).toBeNull();
+  };
+
+  it('floats the pass reading its own title, the pass and its notice in one render', async () => {
+    const r = await render(at(onMove, 0));
+    await r.rerender(at(passed, 1));
+    reads(t('game.autoPassTitle'));
+    await r.unmount();
+  });
+
+  it('re-titles the viewer\'s pass that landed first, in the same life, never a second float', async () => {
+    const r = await render(at(onMove, 0));
+    await r.rerender(at(passed, 0));
+    const plate = screen.getByTestId('notice-passFloat', hidden);
+    await r.rerender(at(passed, 1));
+    reads(t('game.autoPassTitle'));
+    expect(screen.getByTestId('notice-passFloat', hidden)).toBe(plate);
+    await r.unmount();
+  });
+
+  it('floats nothing for a timed-out lead, where the server played a card rather than passed', async () => {
+    const leading = { ...STATE, currentTurnIndex: 0, lastPlayedCombination: null, lastPlayedBy: -1 };
+    const led = { ...STATE, currentTurnIndex: 3, lastPlayedCombination: buildCombination([card('3_0', '3', 'spades')]), lastPlayedBy: 0 };
+    const r = await render(at(leading, 0));
+    await r.rerender(at(led, 0));
+    await r.rerender(at(led, 1));
+    expect(screen.queryAllByTestId('notice-passFloat', hidden)).toHaveLength(0);
+    await r.unmount();
+  });
+});
+
+describe('the end-match vote', () => {
+  it('gives way to the open score pill, whose rows it would cover', async () => {
+    const hidden = { includeHiddenElements: true };
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable
+          gameState={STATE}
+          viewerSeat={0}
+          matchScore={{ scores: {}, target: 21 }}
+          endMatchVote={{ voted: false, votes: 0, total: 4, onPress: noop }}
+          onPlay={noop}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+        />
+      </SafeAreaProvider>,
+    );
+    expect(screen.getAllByTestId('notice-endMatchVote', hidden)).toHaveLength(1);
+    await fireEvent.press(screen.getByTestId('score-pill', hidden));
+    expect(screen.queryAllByTestId('notice-endMatchVote', hidden)).toHaveLength(0);
     await r.unmount();
   });
 });

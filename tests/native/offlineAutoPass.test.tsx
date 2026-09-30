@@ -63,14 +63,15 @@ jest.mock('@/context/NotificationContext', () => ({
 // The clock itself is GameTable's; what is under test is what the screen wires
 // to its expiry. A button standing in for "the countdown reached zero" keeps
 // the test off wall-clock timing entirely.
-const mockSeenTimer: { current?: TurnTimerConfig } = {};
+const mockSeenTimer: { current?: TurnTimerConfig; autoPassed?: number } = {};
 
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { turnTimer?: TurnTimerConfig }) => {
+    GameTable: (props: { turnTimer?: TurnTimerConfig; autoPassed?: number }) => {
       mockSeenTimer.current = props.turnTimer;
+      mockSeenTimer.autoPassed = props.autoPassed;
       return react.createElement(
         rn.Pressable,
         { testID: 'expire', onPress: () => props.turnTimer?.onExpire?.() },
@@ -81,7 +82,6 @@ jest.mock('@/components/GameTable', () => {
 });
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
-import { t } from '@/lib/i18n';
 import GameScreen from '@/app/game';
 
 describe('the offline turn clock expiring', () => {
@@ -90,8 +90,9 @@ describe('the offline turn clock expiring', () => {
     await bootFeedback();
   });
 
-  it('passes with the warn haptic and a banner naming it, leaving the sound to the table', async () => {
+  it('passes with the warn haptic and tells the table, whose pass float names it, leaving the sound to the table', async () => {
     const r = await render(<GameScreen />);
+    const before = mockSeenTimer.autoPassed;
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('expire'));
@@ -99,9 +100,8 @@ describe('the offline turn clock expiring', () => {
 
     expect(haptics()).toContain('notificationWarning');
     expect(sounds()).not.toContain('pass');
-    expect(mockShowNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'afk', title: t('game.autoPassTitle') })
-    );
+    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(mockSeenTimer.autoPassed).toBe((before ?? 0) + 1);
     expect(mockPassTurn).toHaveBeenCalledTimes(1);
 
     await r.unmount();

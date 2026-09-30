@@ -16,9 +16,8 @@ import {
   type GestureResponderEvent,
   type ViewStyle,
 } from "react-native";
-import { TableText } from "@/components/table/TableText";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { FadeIn, useSharedValue } from "react-native-reanimated";
+import Animated, { useSharedValue } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -39,6 +38,7 @@ import type { LegStage } from "@/lib/game/exchangeTimeline";
 import {
   CHIP_H,
   HAND_ZONE_H,
+  handVisibleH,
   actionBtnSize,
   HAND_ZONE_GAP,
   arrangeOpponents,
@@ -62,6 +62,9 @@ import {
   type TradeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
+import { mockupPx } from "@/components/table/noticeModel";
+import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
 import { computeTableFrame, sideSlotHeight, topBandHeight } from "@/components/tableFrame";
@@ -127,12 +130,7 @@ import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
-  FontSize,
-  Motion,
   motionMs,
-  Radius,
-  Reading,
-  Scrim,
   Spacing,
   Layer,
   TOUCH_TARGET_MIN,
@@ -156,14 +154,10 @@ import { useBenchHandle } from "@/lib/diagnostics";
 const WEB_CLIP =
   Platform.OS === "web" ? ({ overflow: "clip" } as unknown as ViewStyle) : null;
 
-// How wide the refused-play reason may get before it wraps onto its second
-// (and last) line. How long it stays up is `Reading.hint` (#829): a player
-// reads it, which is what `Reading` is for, not a Motion step.
-const REJECT_HINT_MAX_W = 260;
-/** Above the top bar and the rematch panel: the reason must not be covered. */
-const REJECT_HINT_Z = Layer.hint;
-/** The banner band sits over the felt, under the reject hint. */
+/** The banner band sits over the felt. */
 const BANNER_BAND_Z = Layer.band;
+/** G2: the end-match vote's top, under the score pill at rest. */
+const VOTE_BELOW_PILL = 7;
 /**
  * The felt is decoration and everything else is the game, so the game is
  * always on top. Stated rather than left to sibling order: the pool paints
@@ -184,6 +178,12 @@ const TABLE_Z = { zIndex: Layer.table } as const;
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
+const raised = (standing: Float | null, kind: Float["kind"], text: string, live = true): Float => ({
+  id: (standing?.id ?? 0) + 1,
+  kind,
+  text,
+  live,
+});
 
 const NO_DISMISS = () => {};
 const roundStart = () => event([{ kind: "roundStart" }]);
@@ -297,8 +297,14 @@ export interface GameTableProps {
 
   /** The rail's lower knob (online: the reactions trigger). */
   railExtra?: React.ReactNode;
-  /** Transient strips under the top bar (online: the end-match vote). */
+  /** Transient strips under the top bar (the replay's transport). */
   banners?: React.ReactNode;
+  /** The server's refusal, floated while it stands (online only). */
+  error?: string | null;
+  /** How many times the viewer's turn was passed for them: each new count floats the pass under its own title. */
+  autoPassed?: number;
+  /** The vote to end a match a seat has left, under the score pill (online only). */
+  endMatchVote?: EndMatchVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -341,6 +347,9 @@ export function GameTable({
   disconnectedSeats = {},
   railExtra,
   banners,
+  error = null,
+  autoPassed = 0,
+  endMatchVote = null,
   connection,
   catchUp = false,
   overlays,
@@ -419,11 +428,6 @@ export function GameTable({
 
   const focusFadeStyle = useFocusFade(focusMode);
   useTableClaim(!focusMode && !tableCovered);
-
-  // The reason a tap on an unavailable GIOCA was refused, spelled out. Keyed by
-  // a counter so tapping again restarts the dwell instead of being swallowed as
-  // an unchanged value.
-  const [rejectHint, setRejectHint] = useState<{ key: number; text: string } | null>(null);
 
   // ── Derived view of the game ────────────────────────────────────────────────
 
@@ -545,15 +549,35 @@ export function GameTable({
     players
   );
   const [passSeen, setPassSeen] = useState(gameState);
+  const [errorSeen, setErrorSeen] = useState<string | null>(null);
+  const [autoSeen, setAutoSeen] = useState(autoPassed);
   const [float, setFloat] = useState<Float | null>(null);
+  let floatNow = float;
   if (passSeen !== gameState) {
     setPassSeen(gameState);
     if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      setFloat({ id: (float?.id ?? 0) + 1, text: t("gameShared.passedLabel"), live: true });
-    } else if (float?.live) {
-      setFloat({ ...float, live: false });
+      floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"), !tableWithdrawn);
+    } else if (floatNow?.live) {
+      floatNow = { ...floatNow, live: false };
     }
   }
+  if (errorSeen !== error) {
+    setErrorSeen(error);
+    if (error) floatNow = raised(floatNow, "toast", error, !tableWithdrawn);
+    else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
+  }
+  if (autoSeen !== autoPassed) {
+    setAutoSeen(autoPassed);
+    // The state lands no later than the notice (offline one batch, online the server's order). Only a pass is
+    // re-titled, in its own life: a timed-out lead is a card the server played, and raises nothing.
+    if (floatNow?.kind === "pass" && floatNow.live) floatNow = { ...floatNow, kind: "autoPass", text: t("game.autoPassTitle") };
+  }
+  const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
+  if (withdrawnSeen !== tableWithdrawn) {
+    setWithdrawnSeen(tableWithdrawn);
+    if (tableWithdrawn && floatNow?.live) floatNow = { ...floatNow, live: false };
+  }
+  if (floatNow !== float) setFloat(floatNow);
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
@@ -810,12 +834,6 @@ export function GameTable({
     [navigation]
   );
 
-  useEffect(() => {
-    if (rejectHint === null) return;
-    const id = setTimeout(() => setRejectHint(null), Reading.hint);
-    return () => clearTimeout(id);
-  }, [rejectHint]);
-
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -843,8 +861,8 @@ export function GameTable({
   const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
   useBenchHandle("cardPress", uiSelection.tapFromJs);
   const showRefusal = useCallback(
-    (text: string) => setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text })),
-    [setRejectHint]
+    (text: string) => setFloat((standing) => raised(standing, "reject", text)),
+    [setFloat]
   );
   // Asked again rather than closing over `canPass`: with `canPass` as the
   // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
@@ -1061,7 +1079,33 @@ export function GameTable({
           </View>
         )}
 
-        <FloatSlot float={float} at={{ x: anchors.pile.x, y: floatTop(seatGeometry) }} scale={scale} veiled={tableWithdrawn} />
+        {endMatchVote && !scoreOpen && (
+          <View
+            {...behindVeil}
+            pointerEvents="box-none"
+            style={[
+              styles.voteSpot,
+              { right: W - pillAnchor.right, top: pillAnchor.top + pillAnchor.restH + mockupPx(VOTE_BELOW_PILL, scale) },
+            ]}
+          >
+            <A11yVeil veil={behindVeil}>
+              <EndMatchVote {...endMatchVote} scale={scale} />
+            </A11yVeil>
+          </View>
+        )}
+
+        <FloatSlot
+          float={float}
+          at={{ x: anchors.pile.x, y: floatTop(seatGeometry) }}
+          beside={{
+            giocaTop: frame.surplus + frame.bottomPad + actionBtn,
+            left: frame.tableLeft,
+            right: frame.tableRight,
+            mirrored: playOnLeft,
+          }}
+          scale={scale}
+          veiled={tableWithdrawn}
+        />
 
         {/* Over the whole table rather than inside the mid band: while gated it holds
             the table as well as saying something, so the first tap is spent clearing
@@ -1323,9 +1367,8 @@ export function GameTable({
               )}
 
               {isFinished ? (
-                <View style={styles.finishedRow}>
-                  <Ionicons name="trophy" size={18} color={Colors.gold} />
-                  <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
+                <View style={[styles.finishedRow, { width: frame.handAvailW, height: handVisibleH(handCardH) }]}>
+                  <WaitingLine scale={scale} />
                 </View>
               ) : (
                 <HandStatus store={shownSelection} cardCount={handOnTable.length}>
@@ -1402,35 +1445,6 @@ export function GameTable({
         )}
 
 
-        {/* Sits just above the hand row, at the GIOCA end of it — the button
-            wears two words, this is the whole sentence, next to the control the
-            player just pressed rather than at the far side of the screen. */}
-        {rejectHint && (
-          <Animated.View
-            key={rejectHint.key}
-            entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.tap)}
-            pointerEvents="none"
-            {...behindVeil}
-            style={[
-              styles.rejectHint,
-              {
-                bottom: HAND_ZONE_H(handCardH, frame.bottomPad) + Spacing.xs,
-                left: frame.tableLeft,
-                right: frame.tableRight,
-              },
-              playOnLeft && styles.rejectHintMirrored,
-            ]}
-          >
-            <TableText
-              style={[styles.rejectHintText, playOnLeft && styles.rejectHintTextMirrored]}
-              numberOfLines={2}
-              accessibilityLiveRegion="polite"
-            >
-              {rejectHint.text}
-            </TableText>
-          </Animated.View>
-        )}
-
         <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>
 
         {W < H && <RotateOverlay />}
@@ -1449,6 +1463,7 @@ const styles = StyleSheet.create({
     zIndex: BANNER_BAND_Z,
     pointerEvents: "box-none",
   },
+  voteSpot: { position: "absolute", zIndex: BANNER_BAND_Z },
 
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
@@ -1456,37 +1471,6 @@ const styles = StyleSheet.create({
   handSectionReversed: { flexDirection: "row-reverse" },
 
 
-  finishedRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  finishedText: {
-    fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm, color: Colors.gold,
-    backgroundColor: Scrim.heavy,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xxs,
-    overflow: "hidden",
-  },
-  rejectHint: {
-    position: "absolute",
-    zIndex: REJECT_HINT_Z,
-    alignItems: "flex-end",
-  },
-  // The hint belongs beside the button that raised it, so it follows GIOCA
-  // across when the hand row is mirrored.
-  rejectHintMirrored: { alignItems: "flex-start" },
-  rejectHintText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.xs,
-    color: Colors.text,
-    textAlign: "right",
-    maxWidth: REJECT_HINT_MAX_W,
-    backgroundColor: Scrim.heavy,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    overflow: "hidden",
-  },
-  rejectHintTextMirrored: { textAlign: "left" },
+  finishedRow: { alignItems: "center", justifyContent: "center" },
 
 });

@@ -6,10 +6,9 @@
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, useWindowDimensions } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   useOnlineConnection,
   useOnlineExchange,
@@ -31,10 +30,9 @@ import {
 } from "@/components/ReactionLayer";
 import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
-import { Colors, FontSize, Radius, Reading, Spacing, Type, Layer } from "@/lib/theme";
+import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
-import { A11yStatus, a11yHidden, useA11yHint } from "@/lib/a11y";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -59,9 +57,8 @@ export default function OnlineGameScreen() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { t } = useTranslation();
-  const endMatchVoteHint = useA11yHint(t("game.endMatchVoteHint"));
   const { user } = useAuth();
-  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats } =
+  const { gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed } =
     useOnlineTable();
   const { turnSeconds, turnDeadlineMs } = useOnlineTurnClock();
   const { isSpectator, entrySource, leaveRoom } = useOnlineRoom();
@@ -277,6 +274,7 @@ export default function OnlineGameScreen() {
         onAnswer: answerRematch,
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
+      error={error}
       connection={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
@@ -287,20 +285,14 @@ export default function OnlineGameScreen() {
             ? { state: "reconnected", text: reconnectNotice.text }
             : null
       }
-      banners={
-        anyVacatedSeat && !gameState.gameOver ? (
-          <>
-            <Pressable
-              style={styles.voteBanner}
-              hitSlop={Spacing.wide}
-              accessibilityRole="button"
-              accessibilityLabel={
-                hasVotedToEndMatch
-                  ? t("game.endMatchWithdrawButton")
-                  : t("game.endMatchVoteButton")
-              }
-              {...endMatchVoteHint.props}
-              onPress={() => {
+      autoPassed={autoPassed}
+      endMatchVote={
+        anyVacatedSeat && !gameState.gameOver
+          ? {
+              voted: hasVotedToEndMatch,
+              votes: endMatchVoteState?.votes.length ?? 0,
+              total: endMatchVoteState?.total ?? gameState.players.length,
+              onPress: () => {
                 uiFeedback("medium");
                 if (hasVotedToEndMatch) {
                   voteToEndMatch(false);
@@ -314,44 +306,9 @@ export default function OnlineGameScreen() {
                   destructive: true,
                   onConfirm: () => voteToEndMatch(true),
                 });
-              }}
-            >
-              <View style={styles.bannerRow} {...a11yHidden()}>
-                <Ionicons name="flag" size={14} color={Colors.gold} />
-                <Text style={styles.voteBannerText} numberOfLines={1}>
-                  {hasVotedToEndMatch
-                    ? t("game.endMatchVoteTallyVoted", {
-                        votes: endMatchVoteState?.votes.length ?? 1,
-                        total: endMatchVoteState?.total ?? gameState.players.length,
-                      })
-                    : endMatchVoteState && endMatchVoteState.votes.length > 0
-                      ? t("game.endMatchVoteTally", {
-                          votes: endMatchVoteState.votes.length,
-                          total: endMatchVoteState.total,
-                        })
-                      : t("game.endMatchVoteButton")}
-                </Text>
-              </View>
-              {endMatchVoteHint.node}
-            </Pressable>
-            {endMatchVoteState && endMatchVoteState.votes.length > 0 && (
-              <A11yStatus
-                label={
-                  hasVotedToEndMatch
-                    ? t("game.endMatchVoteTallyVoted", {
-                        votes: endMatchVoteState.votes.length,
-                        total: endMatchVoteState.total,
-                      })
-                    : t("game.endMatchVoteTally", {
-                        votes: endMatchVoteState.votes.length,
-                        total: endMatchVoteState.total,
-                      })
-                }
-                live="polite"
-              />
-            )}
-          </>
-        ) : null
+              },
+            }
+          : null
       }
       tableCovered={showGameOver && gameState.gameOver}
       overlays={(veiled) => (
@@ -381,13 +338,6 @@ export default function OnlineGameScreen() {
                 }}
                 onClose={() => setShowReactions(false)}
               />
-            )}
-
-            {error && (
-              <View style={styles.errorToast} accessibilityLiveRegion="polite">
-                <Ionicons name="alert-circle" size={15} color={Colors.white} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
             )}
 
             {showGameOver && gameState.gameOver && (
@@ -422,7 +372,6 @@ export default function OnlineGameScreen() {
 /** Keeps the lone button off the screen edges in landscape, where it is the
  *  full width of a phone lying down. */
 const CONNECTING_ACTION_W = 280;
-const BANNER_FONT = FontSize.xs + 1;
 
 const styles = StyleSheet.create({
   connecting: {
@@ -439,46 +388,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
   },
   connectingAction: { width: CONNECTING_ACTION_W, maxWidth: "100%" },
-
-  voteBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.slim,
-    backgroundColor: Colors.overlay,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.cosy,
-    paddingVertical: Spacing.xs,
-  },
-  voteBannerText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: BANNER_FONT,
-    color: Colors.gold,
-  },
-  bannerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.slim,
-  },
-
-
-  errorToast: {
-    position: "absolute",
-    bottom: 100,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.slim,
-    backgroundColor: Colors.dangerScrim,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.wide,
-    paddingVertical: Spacing.sm,
-    zIndex: Layer.overlay,
-    maxWidth: 340,
-  },
-  errorText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: BANNER_FONT,
-    color: Colors.white,
-    flexShrink: 1,
-  },
 });

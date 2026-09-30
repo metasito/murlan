@@ -270,13 +270,7 @@ test.describe("the table's bands", () => {
   });
 });
 
-// ─── The banner over the table ────────────────────────────────────────────────
-//
-// The notification banner is a sibling of the whole navigator at zIndex 9999
-// and the table's top bar is at the same origin at zIndex 10, so the banner
-// used to cover the billboard, the countdown and the hand count — at exactly
-// the moments they matter, since an auto-pass is what raises it. That is a
-// property of two laid-out boxes, which only a browser can measure.
+// ─── The offline clock running out ────────────────────────────────────────────
 
 /** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
 const AUTO_PASS_TITLE = "Passaggio automatico";
@@ -285,6 +279,72 @@ const OPPONENT_PLAYED = " ha giocato ";
 /** app/game.tsx HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
 const OFFLINE_CLOCK_MS = 30_000;
 
+/**
+ * Plays on until an opponent's combination is on the table and it is the
+ * viewer's turn — the only state in which the offline countdown runs
+ * (`turnTimerActive`, includeNewRound false). Leading is compulsory, so a lead
+ * has to be played rather than waited out; GIOCA is the only judge of which
+ * card is legal, exactly as in tests/e2e/helpers/bot.ts.
+ */
+async function waitForAnswerableTurn(page: Page): Promise<void> {
+  const table = page.locator('[data-testid="game-table"]');
+
+  await expect(async () => {
+    const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
+    if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
+    if (desc.startsWith(YOUR_TURN_PREFIX)) await playFirstLegalCard(page);
+    throw new Error("never reached a turn with a combination to answer");
+  }).toPass({ timeout: 120_000, intervals: [200] });
+}
+
+/** Plays the first single GIOCA accepts, and reports whether one was played. */
+async function playFirstLegalCard(page: Page): Promise<boolean> {
+  const gioca = page.locator('[data-testid="btn-gioca"]');
+  const labels = await page
+    .locator(`${HAND_ZONE} [role="button"]`)
+    .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
+  for (const label of labels) {
+    const card = page.locator(`${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`);
+    await tap(page, card).catch(() => {});
+    if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
+      await tap(page, gioca).catch(() => {});
+      return true;
+    }
+    await tap(page, card).catch(() => {});
+  }
+  return false;
+}
+
+test.describe("the offline clock running out", () => {
+  test("floats the pass under its own title, and raises no banner over the table", async ({ page, baseURL }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openApp(page, baseURL!);
+    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+
+    await waitForAnswerableTurn(page);
+
+    await expect(page.locator('[data-testid="notice-passFloat"]')).toContainText(AUTO_PASS_TITLE, {
+      timeout: OFFLINE_CLOCK_MS + 20_000,
+    });
+    // The banner never unmounts; empty, it names nothing.
+    await expect(page.locator('[data-testid="notification-banner"]')).not.toContainText(AUTO_PASS_TITLE);
+  });
+});
+
+// ─── The banner over the table ────────────────────────────────────────────────
+//
+// The notification banner is a sibling of the whole navigator, above the table's
+// top bar, so it can cover the turn pill and the countdown at the moment it is
+// explaining them. Online another seat's AFK pass still raises it over the table;
+// the e2e build's `murlanNotify` (context/NotificationContext.tsx) raises one here
+// without two accounts and two AFK windows. A property of two laid-out boxes,
+// which only a browser can measure.
+
+const BANNER = '[data-testid="notification-banner"]';
+const RAISED = "Besnik non risponde — passo automatico";
+
 interface Box {
   x: number;
   y: number;
@@ -292,12 +352,7 @@ interface Box {
   height: number;
 }
 
-/**
- * The element's box once it has stopped moving. The banner slides in over
- * 320ms from off the top of the screen, so a box read the moment its text
- * appears is a box mid-flight — reading until two consecutive samples agree
- * waits for the animation itself rather than for a guessed duration.
- */
+/** The element's box once two samples agree: the banner slides in from off the top. */
 async function settledBox(page: Page, selector: string): Promise<Box> {
   const locator = page.locator(selector);
   let previous = null as Box | null;
@@ -314,66 +369,24 @@ async function settledBox(page: Page, selector: string): Promise<Box> {
   return box!;
 }
 
-/**
- * Plays on until an opponent's combination is on the table and it is the
- * viewer's turn — the only state in which the offline countdown runs
- * (`turnTimerActive`, includeNewRound false). Leading is compulsory, so a lead
- * has to be played rather than waited out; GIOCA is the only judge of which
- * card is legal, exactly as in tests/e2e/helpers/bot.ts.
- */
-async function waitForAnswerableTurn(page: Page): Promise<void> {
-  const table = page.locator('[data-testid="game-table"]');
-  const gioca = page.locator('[data-testid="btn-gioca"]');
-
-  await expect(async () => {
-    const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
-    if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
-
-    if (desc.startsWith(YOUR_TURN_PREFIX)) {
-      const cards = page.locator(`${HAND_ZONE} [role="button"]`);
-      const labels = await cards.evaluateAll((els) =>
-        els.map((el) => el.getAttribute("aria-label") ?? "")
-      );
-      for (const label of labels) {
-        const card = page.locator(
-          `${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`
-        );
-        await tap(page, card).catch(() => {});
-        if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-          await tap(page, gioca).catch(() => {});
-          break;
-        }
-        await tap(page, card).catch(() => {});
-      }
-    }
-    throw new Error("never reached a turn with a combination to answer");
-  }).toPass({ timeout: 120_000, intervals: [200] });
-}
-
-test.describe("the notification banner over the game table", () => {
-  test("does not cover the top bar it is explaining", async ({ page, baseURL }) => {
-    test.setTimeout(240_000);
+test.describe("the notification banner over a live table", () => {
+  test("sits below the top bar it is explaining", async ({ page, baseURL }) => {
     await page.setViewportSize({ width: 844, height: 390 });
-    await openApp(page, baseURL!);
-    await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
+    await openSeededGame(page, baseURL!, 4);
     await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+    await page.evaluate(
+      (message) =>
+        (globalThis as { murlanNotify?: (n: object) => void }).murlanNotify!({ type: "afk", title: "Passaggio automatico", message }),
+      RAISED
+    );
+    await expect(page.locator(BANNER)).toContainText(RAISED);
 
-    await waitForAnswerableTurn(page);
-
-    // Letting the clock run out is the one notification an offline game raises.
-    const banner = page.locator('[data-testid="notification-banner"]');
-    await expect(banner).toContainText(AUTO_PASS_TITLE, {
-      timeout: OFFLINE_CLOCK_MS + 20_000,
-    });
-
-    const bannerBox = await settledBox(page, '[data-testid="notification-banner"]');
+    const bannerBox = await settledBox(page, BANNER);
     const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
-
     expect(
       bannerBox.y,
       `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
-        `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn billboard, ` +
-        `the countdown and the hand count`
+        `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn pill and the countdown`
     ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
   });
 });
