@@ -985,6 +985,7 @@ export function GameTable({
   useEffect(() => timeline.flush());
 
   return (
+    <CardTableProvider value={cardTable}>
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
@@ -1003,7 +1004,6 @@ export function GameTable({
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
-      <CardTableProvider value={cardTable}>
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={flushTrigger} width={W} height={H} />
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
@@ -1442,8 +1442,8 @@ export function GameTable({
 
         {W < H && <RotateOverlay />}
       </Animated.View>
-      </CardTableProvider>
     </View>
+    </CardTableProvider>
   );
 }
 
