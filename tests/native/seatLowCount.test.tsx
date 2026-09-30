@@ -1,7 +1,8 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
+import { makeMutable } from 'react-native-reanimated';
 
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -37,5 +38,18 @@ describe('a seat down to its last card', () => {
     expect(many.bubble.backgroundColor).not.toBe(LastCard.fill);
     expect(many.digit.color).not.toBe(LastCard.ink);
     expect(glowOf(many.bubble)).toBe('none');
+  });
+
+  it('is not the last card while a deal has landed only one of thirteen', async () => {
+    const dealArrivals = { at: Array.from({ length: 13 }, (_, i) => i * 100), clock: makeMutable(50) };
+    const r = await render(<TopOppSlot player={PLAYER} isActive={false} cardCount={13} dealArrivals={dealArrivals} />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText('1')).toBeTruthy();
+    const bubble = StyleSheet.flatten(screen.getByTestId('seat-card-count').props.style);
+    expect(bubble.backgroundColor).not.toBe(LastCard.fill);
+    expect(glowOf(bubble)).toBe('none');
+    await r.unmount();
   });
 });
