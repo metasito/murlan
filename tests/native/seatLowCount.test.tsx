@@ -10,7 +10,7 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { TopOppSlot } from '@/components/table/seats';
-import { Colors } from '@/lib/theme';
+import { LastCard } from '@/lib/theme';
 import type { Player } from '@/lib/game/gameEngine';
 
 const PLAYER: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
@@ -23,14 +23,19 @@ async function badgeAt(cardCount: number) {
   return { bubble, digit };
 }
 
+const glowOf = (style: { boxShadow?: unknown; shadowColor?: unknown }) => String(style.boxShadow ?? style.shadowColor ?? 'none');
+
 describe('a seat down to its last card', () => {
-  it('grows its badge by a quarter and lights its ring and digit', async () => {
+  it("grows its badge by a quarter and paints it the mockup's .badge.last: red, a pale edge, white ink, a red glow", async () => {
     const many = await badgeAt(14);
     const last = await badgeAt(1);
     expect(last.bubble.height).toBeCloseTo((many.bubble.height as number) * 1.25);
-    expect(last.bubble.borderColor).toBe(Colors.goldLit);
-    expect(last.digit.color).toBe(Colors.goldLit);
-    expect(many.bubble.borderColor).not.toBe(Colors.goldLit);
-    expect(many.digit.color).not.toBe(Colors.goldLit);
+    expect(last.bubble.backgroundColor).toBe(LastCard.fill);
+    expect(last.bubble.borderColor).toBe(LastCard.edge);
+    expect(last.digit.color).toBe(LastCard.ink);
+    expect(glowOf(last.bubble)).toMatch(new RegExp(`${LastCard.glow}|255,90,70`, 'i'));
+    expect(many.bubble.backgroundColor).not.toBe(LastCard.fill);
+    expect(many.digit.color).not.toBe(LastCard.ink);
+    expect(glowOf(many.bubble)).toBe('none');
   });
 });
