@@ -177,6 +177,7 @@ jobs:
         run: xcrun simctl bootstatus "$SIMULATOR_UDID"
 
       - name: Install the app on the simulator
+        id: install
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
 
       - name: Maestro is installed
@@ -204,13 +205,13 @@ jobs:
 
       # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
       - name: Photograph the felt
-        if: ${{ !cancelled() && matrix.felt }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/felt-opaque.yaml
 
       - name: The felt shows no black band and no black frame
-        if: ${{ !cancelled() && matrix.felt }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/felt"
           for shot in felt-first felt-settled; do
@@ -221,7 +222,7 @@ jobs:
           node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
       - name: Upload the felt screenshots
-        if: ${{ !cancelled() && matrix.felt }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: felt-ios

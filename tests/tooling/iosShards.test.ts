@@ -45,8 +45,9 @@ test("each shard runs its own flows, and exactly one photographs the felt", () =
   assert.ok(shards.length > 1);
   assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \$FLOWS/);
   assert.equal(shards.filter((s) => s.felt).length, 1);
+  assert.match(step(IOS, "Install the app on the simulator"), /\n {8}id: install\n/);
   for (const name of ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"]) {
-    assert.match(step(IOS, name), /if: \$\{\{ !cancelled\(\) && matrix\.felt \}\}\n/, name);
+    assert.match(step(IOS, name), /if: \$\{\{ !cancelled\(\) && matrix\.felt && steps\.install\.outcome == 'success' \}\}\n/, name);
   }
   assert.match(step(IOS, "Photograph the felt"), new RegExp(`test -e MAESTRO_APP_ID="\\$APP_ID" ${FELT}\\n`));
 });
