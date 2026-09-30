@@ -62,12 +62,20 @@ describe("the offline exchange overlay's E2E hold", () => {
         .filter((e) => e.isFile())
         .map((e) => `${dir}/${e.name}`)
     );
+    const actions = readdirSync(path.join(repoRoot, ".github/actions")).map(
+      (name) => `.github/actions/${name}/action.yml`
+    );
     const roots = trackedRootFiles(repoRoot);
-    const setters = [...workflows, ...scripts, ...roots].filter((rel) => FLAG.test(read(rel)));
+    const setters = [...actions, ...workflows, ...scripts, ...roots].filter((rel) => FLAG.test(read(rel)));
 
     assert.deepEqual(
       setters,
-      [".github/workflows/ios.yml", ".github/workflows/maestro.yml", "scripts/e2e-server.mjs"],
+      [
+        ".github/actions/ios-app/action.yml",
+        ".github/workflows/ios.yml",
+        ".github/workflows/maestro.yml",
+        "scripts/e2e-server.mjs",
+      ],
       `EXPO_PUBLIC_E2E_FAST zeroes every AI/result delay app/game.tsx has, not only the ` +
         `exchange hold — setting it anywhere a player's build is made ships that: ${setters.join(", ")}`
     );

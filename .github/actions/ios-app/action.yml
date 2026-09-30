@@ -1,0 +1,119 @@
+name: Build the iOS app, or restore it
+description: >
+  The native build's cache key, lookup, build and save, in one place: `ios.yml` restores through
+  it and `ios-app-cache.yml` saves main's through it, so the two cannot key or build differently.
+
+inputs:
+  lookup-only:
+    description: "true: only look the key up, and build and save on a miss."
+    required: false
+    default: "false"
+
+outputs:
+  cache-hit:
+    value: ${{ steps.cached.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # The dist-tag named for the installed SDK is the fingerprint version that reads that SDK's config.
+    # This file stands for every build input the fingerprint cannot see; the workflows calling it are not one.
+    - name: Fingerprint the native build
+      id: native
+      shell: bash
+      run: |
+        sdk=$(node -p "require('expo/package.json').version.split('.')[0]")
+        hash=$(npx --yes "@expo/fingerprint@sdk-$sdk" fingerprint:generate --platform ios \
+          | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).hash")
+        xcode=$(xcodebuild -version | shasum | cut -c1-12)
+        build=$(shasum < "$GITHUB_ACTION_PATH/action.yml" | cut -c1-12)
+        echo "key=ios-app-$RUNNER_ARCH-$xcode-$build-$hash" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      id: cached
+      with:
+        path: ${{ runner.temp }}/ios-app
+        key: ${{ steps.native.outputs.key }}
+        lookup-only: ${{ inputs.lookup-only }}
+
+    # Why a build of this app and no host client: the header of
+    # tests/tooling/realAppNotExpoGo.test.ts (#627).
+    #
+    # Release, not Debug: it bundles the JS into the app, so there is no
+    # Metro to start, no packager URL to reach, no deep link and no
+    # dev menu to be on top in the first place.
+    - name: Build the app
+      if: steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        # Read at module scope by every screen that names it (`app/game.tsx`,
+        # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
+        # every AI/result delay any of them has (`AI_DELAY`,
+        # `AI_EXCHANGE_DELAY`, `RESULT_DELAY`, `GAME_OVER_DELAY`) across all
+        # four flows this job drives, not only exchange-phase.yaml's. What
+        # that ticket needed from it is the offline exchange overlay holding
+        # open past the ~8.2s a real device's single tap-and-wait command
+        # takes to return (#915), instead of its real ~5.2s — but every flow
+        # here now runs at this pace. Never read outside a build this
+        # harness itself produced (`scripts/assertNotE2EFast.js`).
+        EXPO_PUBLIC_E2E_FAST: "1"
+      run: |
+        npx expo prebuild --platform ios --no-install
+        pod install --project-directory=ios
+        # Named from app.json rather than fixed here, so renaming the app
+        # does not silently start driving a stale build.
+        #
+        # Matched by the shell rather than by `ls`: this step runs under
+        # `bash -eo pipefail`, where a failed `ls` in a bare assignment kills
+        # the step on the spot and the message below never prints — the
+        # cause is then a raw "No such file or directory" instead of the one
+        # sentence saying what was expected.
+        workspace=""
+        for candidate in ios/*.xcworkspace; do
+          [ -d "$candidate" ] && { workspace="$candidate"; break; }
+        done
+        [ -n "$workspace" ] || { echo "::error::expo prebuild produced no ios/*.xcworkspace."; exit 1; }
+        scheme=$(basename "$workspace" .xcworkspace)
+        echo "Building scheme $scheme"
+        # One slice, for the machine this actually runs on. Release defaults
+        # ONLY_ACTIVE_ARCH to NO and so compiles every valid architecture:
+        # on an Apple-silicon runner half the build is an x86_64 slice
+        # nothing here can execute, and this step is 45% of the job. Asking
+        # for the active architecture says that in the setting that controls
+        # it, and stays right on a runner of either kind — where naming an
+        # architecture would hand the other one a binary its simulator
+        # cannot load. Measured: 794s to 533s.
+        xcodebuild \
+          -workspace "$workspace" \
+          -scheme "$scheme" \
+          -configuration Release \
+          -sdk iphonesimulator \
+          -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+          ONLY_ACTIVE_ARCH=YES \
+          COMPILER_INDEX_STORE_ENABLE=NO \
+          CODE_SIGNING_ALLOWED=NO \
+          build
+        app=""
+        for candidate in "$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator/"*.app; do
+          [ -d "$candidate" ] && { app="$candidate"; break; }
+        done
+        [ -n "$app" ] || { echo "::error::xcodebuild produced no .app."; exit 1; }
+        cp "$app/main.jsbundle" "$RUNNER_TEMP/xcode.jsbundle"
+        mkdir -p "$RUNNER_TEMP/ios-app"
+        cp -R "$app" "$RUNNER_TEMP/ios-app/"
+
+    - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      if: steps.cached.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/ios-app
+        key: ${{ steps.native.outputs.key }}
+
+    # A save that could not reserve the key only warns, which would leave a green run and no entry.
+    - name: The build is in the cache
+      if: inputs.lookup-only == 'true' && steps.cached.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ runner.temp }}/ios-app
+        key: ${{ steps.native.outputs.key }}
+        lookup-only: true
+        fail-on-cache-miss: true

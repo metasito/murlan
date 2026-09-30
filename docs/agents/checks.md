@@ -79,7 +79,9 @@ drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a 
 emulator. A ticket dispatches them from its own branch when its work needs a device run
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch
 can read only its own cache and main's, so a branch's first run restores main's native build
-instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
+instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
+that build on every push to main whose native fingerprint has none yet, and looks it up in about a
+minute when it has; it drives no device (`tests/tooling/iosAppCache.test.ts`). By the owner's decision; a
 red run is diagnosed from its artifacts, never rerun. A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
