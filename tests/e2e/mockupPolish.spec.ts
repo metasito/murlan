@@ -157,7 +157,7 @@ test("PASSO: another seat's pass is the mockup's .passo, beside the top disc and
   }
 });
 
-const PANEL_FIXTURE =pathToFileURL(path.resolve(__dirname, "fixtures", "notice-panel", "index.html")).href;
+const PANEL_FIXTURE = pathToFileURL(path.resolve(__dirname, "fixtures", "notice-panel", "index.html")).href;
 const DESIGN = { width: 874, height: 402 };
 const NEAREST = 0.5;
 const FONT_SCALE = 1.2;

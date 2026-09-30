@@ -4,7 +4,8 @@ import { act, render, screen } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { setMotionPreference } from '@/lib/accessibility';
 import { NoticeText, TableNotice } from '@/components/table/TableNotice';
-import { noticeRise } from '@/components/table/noticeModel';
+import { mockupPx, noticeRise } from '@/components/table/noticeModel';
+import { PassedMark } from '@/components/table/notices/seatMarks';
 
 const Pill = ({ shown }: { shown: boolean }) => (
   <TableNotice kind="hudCombo" tone="neutral" scale={1} shown={shown}>
@@ -12,8 +13,8 @@ const Pill = ({ shown }: { shown: boolean }) => (
   </TableNotice>
 );
 
-const drawn = () => {
-  const style = getAnimatedStyle(screen.getByTestId('notice-hudCombo')) as {
+const drawn = (kind = 'hudCombo') => {
+  const style = getAnimatedStyle(screen.getByTestId(`notice-${kind}`)) as {
     opacity?: number;
     transform?: Record<string, number>[];
   };
@@ -52,5 +53,22 @@ describe('a notice enters the same way every time it is shown', () => {
     await settle();
     expect(drawn()).toEqual({ opacity: 1, rise: 0 });
     await r.unmount();
+  });
+
+  it('another seat’s PASSO rises 6 pt and fades in over 100 ms, and appears in place under reduced motion', async () => {
+    jest.useFakeTimers();
+    await act(async () => setMotionPreference('off'));
+    const r = await render(<PassedMark side="side" disc={33} scale={1} />);
+    expect(drawn('passed')).toEqual({ opacity: 0, rise: mockupPx(6, 1) });
+    await act(async () => {
+      jest.advanceTimersByTime(120);
+    });
+    expect(drawn('passed')).toEqual({ opacity: 1, rise: 0 });
+    await r.unmount();
+
+    await act(async () => setMotionPreference('on'));
+    const still = await render(<PassedMark side="side" disc={33} scale={1} />);
+    expect(drawn('passed').rise).toBe(0);
+    await still.unmount();
   });
 });

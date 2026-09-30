@@ -254,7 +254,8 @@ green; "turn fits its band"). Run `tests/e2e/mockupParity.spec.ts`,
   held to the drawn box. Its ink stays `textSecondary` (.75 against the mockup's .7). The
   reconnecting and vacated marks keep their place under the name. The `passed` state is reachable
   on a development build (`app/capture.tsx`); `ios.yml` runs a Release build and photographs no
-  capture state, so the iOS photograph is the owner's.
+  capture state, so the iOS photograph is the owner's. Unrun check (rule 33): the owner photographs
+  `passed` on iOS from a development build (`app/capture.tsx`).
 
 **Tests:** new "PASSO" case in *tests/e2e/mockupPolish.spec.ts* (red on the 23 pt pill); edited
 `tests/native/passMarker.test.tsx` (finds the mark by `notice-passed`, counts unchanged) and

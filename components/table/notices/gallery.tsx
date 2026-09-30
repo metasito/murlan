@@ -1,8 +1,19 @@
 import type { ReactElement } from "react";
+import { View } from "react-native";
+import { SEAT_DISC } from "@/components/seatLayout";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { HudComboPill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
+
+const underDisc = (scale: number) => {
+  const disc = SEAT_DISC * scale;
+  return (
+    <View style={{ width: disc, height: disc }}>
+      <PassedMark side="side" disc={disc} scale={scale} />
+    </View>
+  );
+};
 
 const turn = (scale: number, lit: boolean, seconds: number) => ({
   scale,
@@ -65,7 +76,7 @@ export const NOTICE_GALLERY = {
       ),
     },
   ],
-  passed: [{ name: "a seat passed", tone: "neutral", render: (scale) => <PassedMark side="side" disc={0} scale={scale} /> }],
+  passed: [{ name: "a seat passed", tone: "neutral", render: underDisc }],
   reconnecting: [
     { name: "a seat reconnecting", tone: "neutral", render: (scale) => <ReconnectingMark seconds={25} resetKey="gallery" scale={scale} /> },
   ],
