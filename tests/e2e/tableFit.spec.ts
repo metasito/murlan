@@ -328,6 +328,7 @@ test.describe("the offline clock running out", () => {
     await expect(page.locator('[data-testid="notice-passFloat"]')).toContainText(AUTO_PASS_TITLE, {
       timeout: OFFLINE_CLOCK_MS + 20_000,
     });
-    await expect(page.locator('[data-testid="notification-banner"]')).toHaveCount(0);
+    // The banner never unmounts; empty, it names nothing.
+    await expect(page.locator('[data-testid="notification-banner"]')).not.toContainText(AUTO_PASS_TITLE);
   });
 });
