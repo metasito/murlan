@@ -2,6 +2,7 @@
 // (lib/diagnostics/lampLegibility.ts). JSX-free, runtime imports relative.
 
 import type { Pixels, Ring } from "../../lib/diagnostics/lampLegibility.ts";
+import type { FeltStops } from "../../lib/cosmetics.ts";
 import { cardScale } from "../cardFaceModel.ts";
 import { SEAT_DISC } from "../seatLayout.ts";
 import { designScale } from "./lampRig.ts";
@@ -36,4 +37,20 @@ export function feltOnly(pixels: Pixels, perPt: number): Pixels {
     }
   }
   return { width, height, data };
+}
+
+/** WCAG's body floor is 4.5; the margin covers the weave's brightest thread. */
+export const NAME_CONTRAST = 5;
+
+const linear = (c: number) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
+const encoded = (v: number) => Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055));
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const luminance = (lin: number[]) => 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+
+/** The lamp's own stop, dimmed until `ink` reads `NAME_CONTRAST`:1 over it: the brightest felt a seat name may stand on. */
+export function nameShade(stops: FeltStops, ink: string): string {
+  const floor = (luminance(rgb(ink).map(linear)) + 0.05) / NAME_CONTRAST - 0.05;
+  const lit = rgb(stops[0]).map(linear);
+  const k = Math.min(1, floor / luminance(lit));
+  return `#${lit.map((v) => encoded(v * k).toString(16).padStart(2, "0")).join("")}`;
 }

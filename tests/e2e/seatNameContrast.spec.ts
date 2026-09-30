@@ -1,6 +1,6 @@
 // tests/e2e/seatNameContrast.spec.ts — every bare seat name clears 4.5:1 over the brightest and the
 // darkest felt behind its glyphs, in every capture state at every phone (#1259 plan 5 task 13, Q9). The felt is
-// read alone: every other element hidden (the seat's ring, arc and glow with it), the rail masked by
+// read alone: every other element hidden (the seat's ring, arc and glow with it, and the drifting motes), the rail masked by
 // `feltOnly`, under the glyphs grown by a pixel. The attachment carries every candidate ink's ratio,
 // bare and under each dark text shadow.
 import { test, expect, type Page } from "@playwright/test";
@@ -175,7 +175,7 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
     await grab(page, "white", clip);
     await page.getByTestId("table-felt").evaluate((f, sel) => {
       for (const el of document.body.querySelectorAll<HTMLElement>("*")) {
-        if (!f.contains(el) && !el.contains(f) && !el.matches(sel)) el.style.visibility = "hidden";
+        if ((!f.contains(el) && !el.contains(f) && !el.matches(sel)) || el.matches('[data-testid="particles"]')) el.style.visibility = "hidden";
       }
     }, NAME);
     await paint(page, "visibility: visible !important; color: transparent !important; text-shadow: none !important;");
@@ -234,9 +234,6 @@ for (const phone of PHONES) {
   });
 
   test(`${phone.name}: the lit seat name clears 4.5:1 over the lamp's pool`, async ({ page, baseURL }) => {
-    // Known short: the lamp's pool is to dim under the name (plan 4's lamp task). This test turns red
-    // when it does, which is the signal to remove `.fail`. The counts it relies on are asserted above.
-    test.fail();
     test.setTimeout(300_000);
     const { judged } = await measure(page, baseURL!, phone, false);
     for (const { what, ratio } of judged.filter((n) => n.lit).flatMap((n) => n.ratios)) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);

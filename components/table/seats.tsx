@@ -802,6 +802,18 @@ export function SideOppSlot({
   );
 }
 
+/** Each opponent's label box as `SeatWho` stands it over the disc, in window points, from the discs' centres. */
+export function seatNameBoxes(seats: Record<OpponentSide, { x: number; y: number }>, scale: number): { x: number; y: number; w: number; h: number }[] {
+  const disc = SEAT_DISC * scale;
+  const h = seatLabelH(scale);
+  return (["top", "left", "right"] as const).map((side) => {
+    const at = seats[side];
+    const y = at.y - disc / 2 - h;
+    if (side === "top") return { x: at.x - (OPP_LABEL_MAX_W * scale) / 2, y, w: OPP_LABEL_MAX_W * scale, h };
+    return { x: side === "left" ? at.x - disc / 2 : at.x + disc / 2 - SIDE_LABEL_MAX_W, y, w: SIDE_LABEL_MAX_W, h };
+  });
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 /**

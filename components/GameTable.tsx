@@ -125,7 +125,9 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { TopOppSlot, SideOppSlot, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
+import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
+import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -822,6 +824,9 @@ export function GameTable({
     tableMotion,
     handLift
   );
+  const [feltReady, onFeltReady] = useFeltReady();
+  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
+  const nameBoxes = seatNameBoxes(cardTable.seats, scale);
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   useBenchHandle("lampFreeze", rig.freeze);
 
@@ -1016,6 +1021,7 @@ export function GameTable({
 
   return (
     <CardTableProvider value={cardTable}>
+    <CardCastContext.Provider value={cardCast}>
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
@@ -1025,7 +1031,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} />
+        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} names={nameBoxes} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
@@ -1469,6 +1475,7 @@ export function GameTable({
         {W < H && <RotateOverlay />}
       </Animated.View>
     </View>
+    </CardCastContext.Provider>
     </CardTableProvider>
   );
 }
