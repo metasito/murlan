@@ -65,8 +65,6 @@ interface TableFeedbackState {
   isMyTurn: boolean;
   isFinished: boolean;
   canPass: boolean;
-  playBtnValid: boolean;
-  selectedCount: number;
   passCount: number;
   lastPlayedCombination: Combination | null;
   roundWinner: number | null;
@@ -113,9 +111,7 @@ export function useShownTurn(currentTurnIndex: number, timeline: Pick<TableTimel
 }
 
 interface TableFeedback {
-  giocaFlashStyle: AnimatedStyle<ViewStyle>;
   passaFlashStyle: AnimatedStyle<ViewStyle>;
-  giocaGlowStyle: AnimatedStyle<ViewStyle>;
   kickStyle: AnimatedStyle<ViewStyle>;
   /** Driven by `rejectPlay`; GiocaButton folds it into its own press style. */
   giocaRejectX: SharedValue<number>;
@@ -257,8 +253,6 @@ export function useTableFeedback({
   isMyTurn,
   isFinished,
   canPass,
-  playBtnValid,
-  selectedCount,
   passCount,
   lastPlayedCombination,
   roundWinner,
@@ -292,9 +286,7 @@ export function useTableFeedback({
   // buttons' own press (BTN_PRESS_SCALE, GameTable.tsx), which lasts as long as
   // a finger is down, and the bomb's punch-in below, which peaks at 1.012 and
   // decays back to 1 within the one beat.
-  const giocaFlashVal = useSharedValue(0);
   const passaFlashVal = useSharedValue(0);
-  const giocaGlowVal = useSharedValue(0);
   const { kickStyle, giocaRejectX, rejectPlay, shakeStyle } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
   // Sweep and the pile's catch own their animations; this just says "again".
   const [flushTrigger, setFlushTrigger] = useState(0);
@@ -361,37 +353,6 @@ export function useTableFeedback({
     }
   }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners, moment]);
 
-  // GIOCA bloom — a slow gold pulse while the button is armed.
-  useEffect(() => {
-    if (playBtnValid && !reduceMotion) {
-      const breath = (to: number) =>
-        withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
-      giocaGlowVal.value = withRepeat(withSequence(breath(1.0), breath(0.35)), -1, false);
-    } else {
-      cancelAnimation(giocaGlowVal);
-      giocaGlowVal.value =
-        reduceMotion && playBtnValid
-          ? 0.6
-          : withTiming(0, { duration: Motion.duration.tap });
-    }
-    return () => {
-      cancelAnimation(giocaGlowVal);
-    };
-  }, [playBtnValid, reduceMotion, giocaGlowVal]);
-
-  // GIOCA flash as the selection grows or shrinks.
-  const prevSelectedLen = useRef(0);
-  useEffect(() => {
-    const hasSelection = selectedCount > 0 && isMyTurn && !isFinished;
-    if (hasSelection && prevSelectedLen.current !== selectedCount && !reduceMotion) {
-      giocaFlashVal.value = withSequence(
-        withTiming(1, { duration: Motion.duration.tap }),
-        withTiming(0, { duration: Motion.duration.shift })
-      );
-    }
-    prevSelectedLen.current = selectedCount;
-  }, [selectedCount, isMyTurn, isFinished, reduceMotion, giocaFlashVal]);
-
   // PASSA flash the moment passing becomes possible. `canPass` already folds in
   // whose turn it is, whether the viewer has finished, and whether the round is
   // new, so the transition into it is the whole trigger.
@@ -407,19 +368,9 @@ export function useTableFeedback({
   // Reanimated keeps driving shared values after unmount unless cancelled.
   // GiocaButton/PassaButton own and cancel their own press values; the impact
   // values cancel themselves, in the hook that owns them.
-  useEffect(
-    () => () => {
-      cancelAnimation(giocaFlashVal);
-      cancelAnimation(passaFlashVal);
-    },
-    [giocaFlashVal, passaFlashVal]
-  );
+  useEffect(() => () => cancelAnimation(passaFlashVal), [passaFlashVal]);
 
-  const giocaFlashStyle = useAnimatedStyle(() => ({ opacity: giocaFlashVal.value }));
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
-  // Opacity only, on the childless sibling behind the button. A shadow written
-  // per frame is main-thread paint the browser cannot composite.
-  const giocaGlowStyle = useAnimatedStyle(() => ({ opacity: giocaGlowVal.value }));
 
   const celebrateFlush = useCallback(() => {
     if (reduceMotion) return;
@@ -428,9 +379,7 @@ export function useTableFeedback({
   }, [reduceMotion]);
 
   return {
-    giocaFlashStyle,
     passaFlashStyle,
-    giocaGlowStyle,
     kickStyle,
     giocaRejectX,
     rejectPlay,
@@ -438,4 +387,44 @@ export function useTableFeedback({
     celebrateFlush,
     shakeStyle,
   };
+}
+
+/** GIOCA's own cues: the bloom while a staged play is legal, the flash as the staging changes. */
+export function useGiocaCues(playable: boolean, selectedCount: number, onMove: boolean) {
+  const reduceMotion = usePrefersReducedMotion();
+  const flash = useSharedValue(0);
+  const glow = useSharedValue(0);
+
+  useEffect(() => {
+    if (playable && !reduceMotion) {
+      const breath = (to: number) =>
+        withTiming(to, { duration: Motion.duration.dwell, easing: Easing.inOut(Easing.sin) });
+      glow.value = withRepeat(withSequence(breath(1.0), breath(0.35)), -1, false);
+    } else {
+      cancelAnimation(glow);
+      glow.value = reduceMotion && playable ? 0.6 : withTiming(0, { duration: Motion.duration.tap });
+    }
+    return () => {
+      cancelAnimation(glow);
+    };
+  }, [playable, reduceMotion, glow]);
+
+  const prevSelectedLen = useRef(0);
+  useEffect(() => {
+    if (selectedCount > 0 && onMove && prevSelectedLen.current !== selectedCount && !reduceMotion) {
+      flash.value = withSequence(
+        withTiming(1, { duration: Motion.duration.tap }),
+        withTiming(0, { duration: Motion.duration.shift })
+      );
+    }
+    prevSelectedLen.current = selectedCount;
+  }, [selectedCount, onMove, reduceMotion, flash]);
+
+  useEffect(() => () => cancelAnimation(flash), [flash]);
+
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
+  // Opacity only, on the childless sibling behind the button. A shadow written
+  // per frame is main-thread paint the browser cannot composite.
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
+  return { flashStyle, glowStyle };
 }
