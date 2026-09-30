@@ -40,6 +40,7 @@ appId: "${MAESTRO_APP_ID}"
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
+      MurlanE2EOpener: "1"
 - runFlow:
     commands:
       - extendedWaitUntil:
@@ -71,11 +72,19 @@ appId: "${MAESTRO_APP_ID}"
       id: "game-table"
     timeout: 90000
 
-# --- Hand 1: opening move, only if this seat was dealt the forced opener ---
+# --- Hand 1: opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
 - extendedWaitUntil:
     visible:
       id: "btn-passa"
     timeout: 60000
+# iOS deals this seat the opener (`lib/e2eOpener.ts`), so the tap on a card below runs on every ios.yml run.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Inizi tu.*"
+          timeout: 30000
 - runFlow:
     when:
       visible: "Inizi tu.*"
