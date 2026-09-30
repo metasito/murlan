@@ -611,7 +611,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameError = (payload: ServerPayload) => {
-      // Error is shown as an in-game toast in game.tsx (auto-clears after 3s)
       setError(translateServerPayload(payload));
     };
 
@@ -619,8 +618,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       payload: ServerPayload & { type: string }
     ) => {
       const text = translateServerPayload(payload);
-      const me = roomRef.current?.players.find((p) => p.userId === userId)?.username;
-      // The notice names the seat only by username; the viewer's own pass is the table's float, not a banner.
+      const dealt = gameStateRef.current as GameStateBroadcast | null;
+      const me = dealt?.players[dealt.viewerSeatIndex ?? -1]?.name;
+      // The server names the seat by the dealt `players[seat].name`, so that is what is compared; the
+      // viewer's own pass is the table's float, not a banner.
       if (payload.code === "PLAYER_AFK_AUTO_PASS" && me !== undefined && payload.params?.username === me) {
         setAutoPassed((n) => n + 1);
       } else if (payload.type === "afk") {

@@ -291,7 +291,6 @@ export function NoticeText({
       style={[
         styles.text,
         !box.upper && styles.sentence,
-        box.maxWidth !== undefined && styles.shrinks,
         (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
@@ -366,7 +365,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   sentence: { textTransform: "none" },
-  shrinks: { flexShrink: 1 },
   bold: { fontFamily: "Rajdhani_700Bold" },
   strong: { fontVariant: ["tabular-nums"] },
   badge: { backgroundColor: Colors.gold },

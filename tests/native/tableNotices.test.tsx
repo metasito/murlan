@@ -404,13 +404,12 @@ describe('an autopass', () => {
   });
 
   it('re-titles the viewer\'s pass that landed first, in the same life, never a second float', async () => {
-    const said = (text: string) =>
-      screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
     const r = await render(at(onMove, 0));
     await r.rerender(at(passed, 0));
+    const plate = screen.getByTestId('notice-passFloat', hidden);
     await r.rerender(at(passed, 1));
     reads(t('game.autoPassTitle'));
-    expect(said(t('game.autoPassTitle'))).toBe(1);
+    expect(screen.getByTestId('notice-passFloat', hidden)).toBe(plate);
     await r.unmount();
   });
 

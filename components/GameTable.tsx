@@ -178,7 +178,12 @@ const TABLE_Z = { zIndex: Layer.table } as const;
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
-const raised = (standing: Float | null, kind: Float["kind"], text: string): Float => ({ id: (standing?.id ?? 0) + 1, kind, text, live: true });
+const raised = (standing: Float | null, kind: Float["kind"], text: string, live = true): Float => ({
+  id: (standing?.id ?? 0) + 1,
+  kind,
+  text,
+  live,
+});
 
 const NO_DISMISS = () => {};
 const roundStart = () => event([{ kind: "roundStart" }]);
@@ -551,21 +556,21 @@ export function GameTable({
   if (passSeen !== gameState) {
     setPassSeen(gameState);
     if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      if (!(floatNow?.kind === "autoPass" && floatNow.live)) floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"));
+      floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"), !tableWithdrawn);
     } else if (floatNow?.live) {
       floatNow = { ...floatNow, live: false };
     }
   }
   if (errorSeen !== error) {
     setErrorSeen(error);
-    if (error) floatNow = raised(floatNow, "toast", error);
+    if (error) floatNow = raised(floatNow, "toast", error, !tableWithdrawn);
     else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
   }
   if (autoSeen !== autoPassed) {
     setAutoSeen(autoPassed);
-    const text = t("game.autoPassTitle");
-    // In place, not raised: the pass that landed first is this one, and a second life would float it twice.
-    floatNow = floatNow?.kind === "pass" && floatNow.live ? { ...floatNow, kind: "autoPass", text } : raised(floatNow, "autoPass", text);
+    // The state lands no later than the notice (offline one batch, online the server's order). Only a pass is
+    // re-titled, in its own life: a timed-out lead is a card the server played, and raises nothing.
+    if (floatNow?.kind === "pass" && floatNow.live) floatNow = { ...floatNow, kind: "autoPass", text: t("game.autoPassTitle") };
   }
   const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
   if (withdrawnSeen !== tableWithdrawn) {
@@ -1074,7 +1079,7 @@ export function GameTable({
           </View>
         )}
 
-        {endMatchVote && (
+        {endMatchVote && !scoreOpen && (
           <View
             {...behindVeil}
             pointerEvents="box-none"
