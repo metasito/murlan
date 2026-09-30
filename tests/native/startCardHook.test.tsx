@@ -15,6 +15,7 @@ import React from 'react';
 import { screen, render } from '@testing-library/react-native';
 import { StraightHand } from '@/components/table/hand';
 import type { Card } from '@/lib/game/gameEngine';
+import { stillSelection } from './tapHelpers';
 
 const HAND: Card[] = [
   { id: 'c-3c', rank: '3', suit: 'clubs' },
@@ -27,7 +28,8 @@ function renderHand(startCardId?: string) {
     <StraightHand
       cards={HAND}
       selectedIds={[]}
-      onPress={() => {}}
+      selection={stillSelection()}
+      onActivate={() => {}}
       disabled={false}
       availW={600}
       roomW={600}

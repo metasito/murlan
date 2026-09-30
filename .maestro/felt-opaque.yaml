@@ -1,0 +1,42 @@
+##
+# The felt's opaque Metal layer, photographed as the table appears and once it settles. The felt
+# mounts in portrait and GameTable's landscape lock resizes it; a device rotation after that cannot
+# resize it again, the lock holds. `tools/ci/feltPixels.mjs` reads both (ios.yml).
+# The launch path is offline-game.yaml's; its comments say why each step is there.
+appId: "${MAESTRO_APP_ID}"
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- runFlow:
+    commands:
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+- takeScreenshot: felt-first
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: felt-settled

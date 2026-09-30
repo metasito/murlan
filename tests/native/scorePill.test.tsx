@@ -17,6 +17,7 @@ import { cardSpokenName } from '@/lib/cardNames';
 import { t, tn } from '@/lib/i18n';
 import { motionMs } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
+import { activate } from './tapHelpers';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -124,7 +125,7 @@ describe('the score pill', () => {
     const r = await render(table());
     await press(pill());
     const card = () => screen.getByLabelText(cardSpokenName(SEVEN, t));
-    await press(card());
+    await activate(card());
     expect(card().props.accessibilityState?.selected).toBe(true);
     let tableRoot = null;
     for (let n = card().parent; n; n = n.parent) if (n.props.onStartShouldSetResponderCapture) tableRoot = n;
