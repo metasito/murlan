@@ -1,8 +1,8 @@
 // The felt, the rail and the lamp on them (#1252 § The felt, § The rail): one Skia canvas for the
 // whole table. On web it is only ever reached through `feltSkia.web.tsx`'s lazy boundary, once
 // CanvasKit has loaded — `Skia` is bound to it when this module is evaluated.
-import { useCallback, useEffect, useMemo } from "react";
-import { PixelRatio, StyleSheet } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PixelRatio, Platform, StyleSheet } from "react-native";
 import {
   AlphaType,
   Canvas,
@@ -38,6 +38,9 @@ export interface FeltCanvasProps {
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
+
+// On Android `opaque` swaps the canvas for a SurfaceView; on iOS it needs the Skia patch.
+const IOS = Platform.OS === "ios";
 
 function ring(d: number): SkRRect {
   const r = ringRect(d);
@@ -90,6 +93,9 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
   useBenchHandle("feltSnapshot", snapshot);
+  const [opaque, setOpaque] = useState(IOS);
+  const flipOpaque = useCallback((on: boolean) => setOpaque(IOS && on), []);
+  useBenchHandle("feltOpaque", flipOpaque);
   const k = PixelRatio.get() * Math.min(sx, sy);
   const rail = useMemo(() => bakeRail(k), [k]);
   // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
@@ -117,7 +123,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady }: FeltCanvasProps) {
 
   const { width, height } = DESIGN;
   return (
-    <Canvas ref={canvas} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
+    <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
       <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}

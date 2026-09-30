@@ -30,6 +30,7 @@ export interface TableAnchors {
 export interface BenchHandles {
   cardPress?: (id: string) => void;
   feltSnapshot?: () => Promise<Pixels | null>;
+  feltOpaque?: (on: boolean) => void;
   tableAnchors?: () => TableAnchors;
 }
 
