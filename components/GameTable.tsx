@@ -1028,7 +1028,7 @@ export function GameTable({
                 active={timerActive}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
-                connection={connectionNote}
+                connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>
           </A11yVeil>

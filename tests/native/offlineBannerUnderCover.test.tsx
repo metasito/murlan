@@ -1,5 +1,5 @@
-// tests/native/offlineBannerUnderCover.test.tsx — the online table hands the offline note back to
-// the pill off the table while its game-over overlay covers the turn pill that carries it.
+// tests/native/offlineBannerUnderCover.test.tsx — the online table stops claiming the offline note
+// while its game-over overlay covers the turn pill; the pill off the table paints under that board.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
@@ -96,7 +96,7 @@ const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top:
 const GAME_OVER_DELAY_CEILING = 10_000;
 
 describe('the pill off the online table', () => {
-  it('shows while the game-over overlay covers the turn pill', async () => {
+  it('stops yielding under the game-over cover', async () => {
     jest.useFakeTimers();
     const view = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
