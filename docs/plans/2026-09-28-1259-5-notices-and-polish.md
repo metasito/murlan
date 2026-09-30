@@ -372,9 +372,11 @@ region is the same node before and after); new "float" case in
   `Colors.danger` (#E53935, 4.23:1), because the notice palette's body-contrast check holds every
   tone to 4.5:1 and a pill's words are body text (lead's ruling). "Above the first focusable
   control" is checked as covering no visible focusable control. The device being offline outranks
-  the online screen's note, on both tables; another seat dropping is a steady-dot neutral note for
-  its 10 s, returning is `.ok` for its 3.5 s. The pill off the table yields while a table is
-  mounted, except the settings sheet's own, and is centred on the window, not at the table's 457.
+  the online screen's note, on the online table only: the offline game keeps its clock. Another
+  seat dropping stays on its seat chip, out of the pill; returning is `.ok` for its 3.5 s, and
+  never over the viewer's own running clock. The pill off the table yields while a table's turn
+  pill can be seen (not in focus mode or under a cover), except the settings sheet's own, and is
+  centred on the window, not at the table's 457.
   G2 drew it over a landscape menu; in a portrait window the menu's corner controls share that row
   (CI 36700729499: it covered "Accedi" at 375×812), so there it sits under the 44 pt control row.
 
