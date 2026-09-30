@@ -203,7 +203,7 @@ test("hapticOnset passes 30 shakes 20 ms after their pulses, and fails a missing
   assert.equal(verdict(rows((i) => (i < 5 ? 80 : 20)), "hapticOnset")?.pass, false);
 });
 
-type Gallery = { enterMs?: (shape: string) => number; stallAt?: number; period?: number; calmBlink?: boolean; calmOpacity?: number; skip?: number; tableRowAt?: number; hz?: number; enterDt?: number };
+type Gallery = { enterMs?: (shape: string) => number; stallAt?: number; period?: number; calmBlink?: boolean; calmOpacity?: number; skip?: number; tableRowAt?: number; hz?: number; enterDt?: number; dotSamples?: number };
 
 function gallery(o: Gallery = {}): object[] {
   const fixtures = [["turn", "pill"], ["whoStarts", "panel"], ["passed", "chip"], ["passFloat", "float"]] as const;
@@ -218,7 +218,11 @@ function gallery(o: Gallery = {}): object[] {
       if (n++ !== o.skip) rows.push({ ...entrance, src: "gallery" });
       for (let f = t; f < t + 1800; f += 1000 / (o.hz ?? 120)) rows.push({ k: "frame", t: f, dt: 1000 / (o.hz ?? 120) });
       if (kind === "turn" && !reduced) rows.push({ k: "blink", t: t + 1000, kind, period: o.period ?? 906 }, { k: "blink", t: t + 1900, kind, period: o.period ?? 906 });
-      if (kind === "turn" && reduced) rows.push({ k: "dot", t: t + 1850, kind, opacity: o.calmOpacity ?? 1 }, ...(o.calmBlink ? [{ k: "blink", t: t + 1000, kind, period: 900 }] : []));
+      if (kind === "turn" && reduced) {
+        const samples = o.dotSamples ?? 19;
+        for (let i = 0; i < samples; i++) rows.push({ k: "dot", t: t + 1850 - i * 100, kind, opacity: i === 9 ? o.calmOpacity ?? 1 : 1 });
+        if (o.calmBlink) rows.push({ k: "blink", t: t + 1000, kind, period: 900 });
+      }
       t += 1900;
     }
   }
@@ -244,6 +248,7 @@ test("noticeGallery fails a slow entrance, a stall, a slow blink, a blinking or 
   assert.equal(verdict(gallery({ period: 930 }), "noticeGallery")?.pass, false);
   assert.equal(verdict(gallery({ calmBlink: true }), "noticeGallery")?.pass, false);
   assert.equal(verdict(gallery({ calmOpacity: 0.25 }), "noticeGallery")?.pass, false);
+  assert.equal(verdict(gallery({ dotSamples: 1 }), "noticeGallery")?.pass, false);
   assert.equal(verdict(gallery({ skip: 6 }), "noticeGallery")?.metrics.unseen, 1);
 });
 

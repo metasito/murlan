@@ -330,6 +330,8 @@ const NET_BLINK_MS = 900;
 const GALLERY_ROUNDS = 5;
 // An entrance ends on the first frame at or past its length, so it may overrun by that frame's own interval.
 const ENTER_SLACK_MS = 1;
+// The calm dot is sampled every 100 ms of its 2 s showing (TableNotice's DOT_SAMPLE_MS): half of those is a floor.
+const DOT_SAMPLES_MIN = 10;
 
 function noticeGallery(rows) {
   const plan = rows.find((r) => r.k === "gallery");
@@ -350,6 +352,9 @@ function noticeGallery(rows) {
   const periods = rows.filter((r) => r.k === "blink" && r.t < calmFrom).map((r) => r.period);
   const calmBlinks = rows.filter((r) => r.k === "blink" && r.t >= calmFrom).length;
   const calmDots = rows.filter((r) => r.k === "dot" && r.t >= calmFrom).map((r) => r.opacity);
+  const dotRuns = shows
+    .map((s, i) => rows.filter((r) => r.k === "dot" && r.t >= s.t && r.t < (shows[i + 1]?.t ?? Infinity)).length)
+    .filter((n, i) => shows[i].reduced && n > 0);
   const periodOff = Math.abs(median(periods) - NET_BLINK_MS);
   const b = burstStalls(rows);
   const moving = shows.filter((s) => !s.reduced).length;
@@ -358,7 +363,7 @@ function noticeGallery(rows) {
     plan !== undefined && plan.fixtures > 0 && moving === GALLERY_ROUNDS * plan.fixtures && calm === plan.fixtures &&
     new Set(shows.map((s) => s.kind)).size === plan.kinds && unseen === 0 &&
     Object.values(enter).every((e) => e.off <= ENTER_SLACK_MS) &&
-    periods.length >= GALLERY_ROUNDS && periodOff <= frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) &&
+    periods.length >= GALLERY_ROUNDS && periodOff <= frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) && dotRuns.every((n) => n >= DOT_SAMPLES_MIN) &&
     b.frames > 0 && b.jsTicks > 0 && b.stalls === 0;
   return {
     pass,

@@ -62,6 +62,7 @@ const TILE_CAST = withAlpha(Colors.shadow, 0.5);
 const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
 const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
+const DOT_SAMPLE_MS = 100;
 
 const Ink = createContext<{ kind: NoticeKind; paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
@@ -106,14 +107,16 @@ export function TableNotice<K extends NoticeKind>({
   const wasShown = useRef(false);
   useEffect(() => {
     const leaving = wasShown.current && !shown;
+    const arriving = !wasShown.current && shown;
     wasShown.current = shown;
     const probe = { kind, shape, src };
     if (still) {
       life.value = shown ? 1 : 0;
-      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0, dt: 0 });
+      if (DIAGNOSTICS && arriving) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0, dt: 0 });
       return;
     }
-    const entrance = probed(withTiming(1, { duration: enter }), probe, "enter");
+    const fadeIn = withTiming(1, { duration: enter });
+    const entrance = arriving ? probed(fadeIn, probe, "enter") : fadeIn;
     const out = withTiming(0, { duration: exit });
     life.value = held !== null && shown
       ? withSequence(entrance, withTiming(1, { duration: held }), probed(out, probe, "exit"))
@@ -192,7 +195,14 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
   const opacity = useSharedValue(1);
   useEffect(() => {
     if (half === undefined || dim === undefined) {
-      return DIAGNOSTICS && blink ? () => diag({ k: "dot", t: performance.now(), kind, opacity: opacity.get() }) : undefined;
+      if (!DIAGNOSTICS || !blink) return undefined;
+      const sample = () => diag({ k: "dot", t: performance.now(), kind, opacity: opacity.get() });
+      sample();
+      const every = setInterval(sample, DOT_SAMPLE_MS);
+      return () => {
+        clearInterval(every);
+        sample();
+      };
     }
     let first: number | null = null;
     const halfEnded = (ms: number) => {

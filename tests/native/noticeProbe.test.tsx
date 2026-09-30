@@ -49,6 +49,23 @@ describe('a diagnostics build times every notice in UI frames', () => {
     }
   });
 
+  it('a pill already showing records no second entrance when its effect re-runs for another prop', async () => {
+    const { TableNotice, NoticeText } = require('@/components/table/TableNotice') as typeof import('@/components/table/TableNotice');
+    const pill = (still: boolean) => (
+      <TableNotice kind="hudCombo" tone="neutral" scale={1} still={still}>
+        <NoticeText>combo</NoticeText>
+      </TableNotice>
+    );
+    const view = await render(pill(false));
+    await advance(2000);
+    await act(async () => void view.rerender(pill(true)));
+    await advance(2000);
+    await act(async () => void view.rerender(pill(false)));
+    await advance(2000);
+    expect(rows('notice').map((r) => r.phase)).toEqual(['enter']);
+    await view.unmount();
+  });
+
   it('a notice inside the gallery stamps its rows gallery, one outside stamps none', async () => {
     const { NoticeSource } = require('@/components/table/TableNotice') as typeof import('@/components/table/TableNotice');
     const pill = gallery.hudCombo[0];
@@ -83,6 +100,9 @@ describe('a diagnostics build times every notice in UI frames', () => {
     await advance(2000);
     await view.unmount();
     expect(rows('blink')).toEqual([]);
-    expect(rows('dot').map((r) => [r.kind, r.opacity])).toEqual([['turn', 1]]);
+    const dots = rows('dot');
+    expect(dots.length).toBeGreaterThanOrEqual(10);
+    expect(dots.at(-1)!.t - dots[0].t).toBeGreaterThanOrEqual(1800);
+    expect(new Set(dots.map((r) => `${r.kind} ${r.opacity}`))).toEqual(new Set(['turn 1']));
   });
 });
