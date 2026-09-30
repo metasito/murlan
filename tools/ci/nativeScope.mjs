@@ -16,8 +16,34 @@ const deps = (text) => {
   }
 };
 
-export function needsNative(changed, before, after) {
+const NATIVE_SOURCE = /(^|\/)(ios|android|apple|cpp)\/|\.(mm|m|h|hpp|c|cpp|swift|java|kt|gradle|podspec)$/;
+
+const unquote = (p) => (p.startsWith('"') ? p.slice(1, -1).replace(/\\([0-7]{3}|.)/g, (_, e) => (e.length === 3 ? "_" : e)) : p);
+
+// git quotes a path with special characters, and leaves one with spaces bare.
+const headerPaths = (rest) => rest.split(/ (?="?b\/)/).map((p) => unquote(p).replace(/^[ab]\//, ""));
+
+const patchIsNative = (text) => {
+  if (text === null) return true;
+  const headers = [...text.matchAll(/^diff --git (.+?)\r?$/gm)];
+  return headers.length === 0 || headers.some((m) => headerPaths(m[1]).some((p) => NATIVE_SOURCE.test(p)));
+};
+
+export const patchReader = (show, base) => (f) => {
+  for (const rev of ["HEAD", base]) {
+    try {
+      return show(rev, f);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+};
+
+/** @param {(file: string) => string | null} [readPatch] */
+export function needsNative(changed, before, after, readPatch = () => null) {
   if (changed.some((f) => CONFIG.test(f))) return true;
+  if (changed.some((f) => f.startsWith("patches/") && patchIsNative(readPatch(f)))) return true;
   if (!changed.includes("package.json")) return false;
   const [a, b] = [deps(before), deps(after)];
   if (!a || !b) return true;
@@ -25,13 +51,14 @@ export function needsNative(changed, before, after) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+  const git = (...args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   let answer = true;
   try {
     const base = process.argv[2];
     const changed = git("diff", "--name-only", base, "HEAD").split("\n").filter(Boolean);
     const before = changed.includes("package.json") ? git("show", `${base}:package.json`) : "";
-    answer = needsNative(changed, before, readFileSync("package.json", "utf8"));
+    const readPatch = patchReader((rev, f) => git("show", `${rev}:${f}`), base);
+    answer = needsNative(changed, before, readFileSync("package.json", "utf8"), readPatch);
   } catch {
     answer = true;
   }

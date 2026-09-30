@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
-import { TurnChip } from '@/components/table/turnChip';
+import { TurnChip } from '@/components/table/notices/hud';
 import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
@@ -19,7 +20,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; selectedIds?: string[] };
+type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[] };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -37,12 +38,13 @@ const human = (turn: number, exchange = false): GameState => ({
 
 const table = (s: GameState, x: Extra = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} {...x} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} {...x} />
   </SafeAreaProvider>
 );
 
 const heardIds = (from = 0) => sounds().slice(from).flatMap((s) => (s ? [s] : []));
 const press = async (node: Parameters<typeof fireEvent.press>[0]) => act(async () => { fireEvent.press(node); });
+const pick = (node: Parameters<typeof fireEvent.press>[0]) => activate(node);
 const seven = () => screen.getAllByLabelText(cardSpokenName(SEVEN_H, t))[0];
 
 async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<typeof render>>) => Promise<void>): Promise<string[]> {
@@ -82,10 +84,10 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   roundStart: { sounds: ['round_start'], run: botSounds },
   deal: { sounds: ['deal'], run: botSounds },
   turn: { sounds: ['turn'], run: () => heard(table(human(1)), async (r) => { await act(async () => r.rerender(table(human(0)))); }) },
-  select: { sounds: ['select'], run: () => heard(table(human(0)), () => press(seven())) },
-  deselect: { sounds: ['deselect'], run: () => heard(table(human(0), { selectedIds: [SEVEN_H.id] }), () => press(seven())) },
+  select: { sounds: ['select'], run: () => heard(table(human(0)), () => pick(seven())) },
+  deselect: { sounds: ['deselect'], run: () => heard(table(human(0)), async () => { await pick(seven()); await pick(seven()); }) },
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
-  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
+  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await pick(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
   mancheOver: { sounds: ['mancheWon', 'mancheLost', 'mancheNeutral'], run: () => mancheEnd(() => ({})) },
   partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },

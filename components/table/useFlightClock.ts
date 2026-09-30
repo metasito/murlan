@@ -30,10 +30,14 @@ export const inBackground = () => AppState.currentState === "background";
 
 interface Run { spec: FlightSpec | null; thrownAt: number; startedAt: number; touched: boolean }
 
+export const AT_REST = Number.POSITIVE_INFINITY;
+
 export interface FlightClock {
   elapsed: SharedValue<number>;
   arm(landing: LandingPayload): void;
   begin(spec: FlightSpec): void;
+  /** Puts the cards at rest and stops the frames, with no landing and no report: the owner calls it once the flight has ended, or to withdraw it. */
+  halt(): void;
 }
 
 function stepper(
@@ -72,13 +76,14 @@ export function useFlightClock(
   signal: SharedValue<LandingSignal>,
   onStart: (key: string, landsAt: number, endsAt: number) => void,
   onContact: (key: string, at: number) => void,
-  onEnd: (key: string) => void
+  onEnd: (key: string) => void,
+  /** Cards that will not fly start where they rest; ones about to fly start where they are thrown from. */
+  resting = false
 ): FlightClock {
   const run = useSharedValue<Run>({ spec: null, thrownAt: 0, startedAt: -1, touched: false });
-  const elapsed = useSharedValue(0);
+  const elapsed = useSharedValue(resting ? AT_REST : 0);
   const landing = useSharedValue<LandingPayload | null>(null);
-  // The callbacks are the first render's: `FlyingCards` hands in stable ones. The frame callback
-  // stays registered, idle, until the flight unmounts.
+  // The callbacks are the first render's: `PileLayer` hands in stable ones.
   const [step] = useState(() => stepper(run, elapsed, landing, signal, { start: onStart, touch: onContact, end: onEnd }));
   const frames = useFrameCallback(step, false);
   return useMemo(
@@ -87,7 +92,13 @@ export function useFlightClock(
       arm: (l: LandingPayload) => landing.set(l),
       begin: (spec: FlightSpec) => {
         run.set({ spec, thrownAt: inBackground() ? Infinity : performance.now(), startedAt: -1, touched: false });
+        elapsed.set(0);
         frames.setActive(true);
+      },
+      halt: () => {
+        frames.setActive(false);
+        run.set({ spec: null, thrownAt: 0, startedAt: -1, touched: true });
+        elapsed.set(AT_REST);
       },
     }),
     [elapsed, landing, run, frames]

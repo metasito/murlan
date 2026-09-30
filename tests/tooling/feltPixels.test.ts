@@ -1,12 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { crc32, deflateSync } from "node:zlib";
-import { decodePng, feltVerdict } from "../../tools/ci/feltPixels.mjs";
+import { BLACK_MAX, decodePng, feltVerdict } from "../../tools/ci/feltPixels.mjs";
 
 const W = 40;
 const H = 24;
 const FELT = [22, 64, 44];
-const ROOM = [4, 6, 5];
+// ios.yml's felt-first.png on this branch: the darkest pixel along any 2-px edge band, as a max channel.
+const DARKEST_EDGE = 3;
+const ROOM = [1, DARKEST_EDGE, 2];
+
+test("black sits a margin of two below the darkest edge the table drew", () => {
+  assert.ok(BLACK_MAX <= DARKEST_EDGE - 2, `BLACK_MAX ${BLACK_MAX}`);
+});
 
 type Paint = (x: number, y: number) => number[];
 

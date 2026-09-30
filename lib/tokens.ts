@@ -184,6 +184,42 @@ export const Dust = {
   puff: 'rgba(230,215,180,0.1)',
 } as const;
 
+// What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
+// its one reader). Edges map the mockup's onto the gold scale (#1259 Q4).
+export const NoticePalette = {
+  pill: {
+    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold, warn: Colors.dangerDim, dot: { color: Colors.textMuted } },
+    lit: {
+      fill: Colors.chipFill,
+      edge: Colors.goldStrong,
+      ink: Colors.goldLit,
+      strong: Colors.gold,
+      warn: Colors.dangerDim,
+      glow: { color: Colors.goldLit, opacity: 0.32 },
+      dot: { color: Colors.goldLit, glow: 0.7 },
+    },
+    urgent: {
+      fill: Colors.chipFill,
+      edge: Colors.ember,
+      ink: Colors.emberLabel,
+      strong: Colors.emberCount,
+      warn: Colors.emberCount,
+      glow: { color: Colors.emberGlow, opacity: 0.5 },
+      dot: { color: Colors.emberDot, glow: 1 },
+    },
+  },
+  chip: {
+    neutral: { fill: 'rgba(3,14,9,0.85)', edge: Colors.goldBorder, ink: Colors.textSecondary, strong: Colors.textSecondary },
+    lit: { fill: Scrim.heavy, edge: Colors.goldStrong, ink: Colors.gold, strong: Colors.gold },
+  },
+  float: {
+    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold },
+  },
+  panel: {
+    neutral: { fill: Colors.scorePillFoot, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.gold },
+  },
+} as const;
+
 // PASSA is garnet, not alarm red: GIOCA's construction — a lit top lip, a face
 // darkening downward, a seated shadow — at lower luminance with the hue pulled
 // across, and no glow. The only lit object on the table is GIOCA, and only on
@@ -364,6 +400,8 @@ export const Motion = {
     flash: 90,
     /** The answer to a finger: a press state, a selection lifting. */
     tap: 120,
+    /** A notice's pill or panel arriving or leaving (D2, #1259). */
+    notice: 160,
     /** Something moving a short way inside its own container. */
     shift: 200,
     /** Something crossing the table — the card in flight. The whole feel hangs on this one. */
@@ -385,6 +423,8 @@ export const Motion = {
   reduced: {
     flash: null,
     tap: null,
+    /** Fade in place: `noticeRise` drops the travel. */
+    notice: null,
     /** Cross-fade in place, no travel. */
     shift: 0,
     /** Cross-fade in place, no travel. */
@@ -426,6 +466,8 @@ export const Motion = {
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900 },
+  /** A notice's mark or float, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
+  mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
 } as const;
 
 /**

@@ -16,7 +16,7 @@ export function pileUps(starts: number[], windowS: number): number[][] {
 
 const table = (s: GameState) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} selectedIds={[]} onSelectCard={noop} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
   </SafeAreaProvider>
 );
 

@@ -46,8 +46,6 @@ const tableWith = (holdMsOverride: number | undefined, onDismiss: () => void) =>
     <GameTable
       gameState={state()}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

@@ -246,23 +246,23 @@ jobs:
             .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
             .maestro/rematch-prompt.yaml
 
-      # Run from the output folder: takeScreenshot writes where Maestro was started.
+      # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
       - name: Photograph the felt
         if: ${{ !cancelled() }}
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
-        run: |
-          mkdir -p "$RUNNER_TEMP/felt"
-          cd "$RUNNER_TEMP/felt"
-          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-            "$GITHUB_WORKSPACE/.maestro/felt-opaque.yaml"
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/felt-opaque.yaml
 
       - name: The felt shows no black band and no black frame
         if: ${{ !cancelled() }}
         run: |
-          find "$GITHUB_WORKSPACE/.maestro" -name 'felt-*.png' -exec mv {} "$RUNNER_TEMP/felt/" \;
-          ls "$RUNNER_TEMP/felt"
-          node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-round-trip.png"
+          mkdir -p "$RUNNER_TEMP/felt"
+          for shot in felt-first felt-settled; do
+            found=$(find "$HOME/.maestro/tests" -path "*/felt-opaque/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
+            [ -n "$found" ] || { echo "::error::The felt flow wrote no $shot.png."; exit 1; }
+            cp "$found" "$RUNNER_TEMP/felt/$shot.png"
+          done
+          node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
       - name: Upload the felt screenshots
         if: ${{ !cancelled() }}

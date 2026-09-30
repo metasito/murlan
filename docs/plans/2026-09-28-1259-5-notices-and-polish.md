@@ -128,9 +128,10 @@ Every task keeps these selectors on the element the old one occupied, because sp
 ```ts
 type NoticeShape = "pill" | "chip" | "float" | "panel";
 type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad";
-// NoticeKind grows one entry per surface, task by task.
-const NOTICES = { /* kind: { shape, tones } */ } satisfies Record<NoticeKind, NoticeSpec>;
-const NOTICE_GALLERY = { /* kind: fixtures */ } satisfies Record<NoticeKind, NoticeFixture[]>;
+// A kind is one NOTICES entry; NoticeKind is its keys, so a surface is added in one place.
+const NOTICES = { /* kind: { shape, selector, tones } */ } as const satisfies Record<string, NoticeSpec>;
+type NoticeKind = keyof typeof NOTICES;
+const NOTICE_GALLERY = { /* kind: fixtures */ } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };
 ```
 
 **Acceptance:**
@@ -177,7 +178,7 @@ const NOTICE_GALLERY = { /* kind: fixtures */ } satisfies Record<NoticeKind, Not
 
 ### Task 2: The turn pill paints through *TableNotice* (no visible change)
 
-**Scope:** `components/table/turnChip.tsx` (deleted; its component moves to
+**Scope:** the turn chip's own module under `components/table/` (deleted; its component moves to
 *components/table/notices/hud.tsx*), *components/table/noticeModel.ts*,
 *components/table/notices/gallery.tsx*, `components/GameTable.tsx`, `app/tutorial.tsx`,
 `tests/native/turnChipLabel.test.tsx`, `tests/native/turnTimerAnnouncement.test.tsx`,

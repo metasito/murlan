@@ -1,18 +1,37 @@
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { ChipDot, ChipText, TableChip } from "./chrome";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
 import { event, silence } from "@/lib/device/feedback";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
+import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
 
-// ─── Turn chip ────────────────────────────────────────────────────────────────
-//
+/**
+ * The name run, capped so a long username ellipsizes rather than pushing the
+ * band wider than the felt has room for.
+ */
+const HUD_NAME_MAX_W = 88;
+
+export function HudComboPill({ scale, play }: { scale: number; play: { name: string; combo: string } | null }) {
+  const { t } = useTranslation();
+  return (
+    <TableNotice kind="hudCombo" tone="neutral" scale={scale}>
+      {play === null ? (
+        <NoticeText>{t("gameShared.emptyTable")}</NoticeText>
+      ) : (
+        <>
+          <NoticeText maxWidth={HUD_NAME_MAX_W}>{play.name}</NoticeText>
+          <NoticeText strong>{play.combo}</NoticeText>
+        </>
+      )}
+    </TableNotice>
+  );
+}
+
 // The chip and its countdown are one component so the once-a-second tick
 // re-renders a single chip and not the whole board — which, with hands of up to
 // 18 cards, matters. It is also the only place that holds both halves of what a
 // reader has to hear, since the seconds never leave this component's state.
-
 export function TurnChip({
   seconds,
   active,
@@ -107,17 +126,15 @@ export function TurnChip({
       <View {...a11yGroup(label)}>
         {/* The chip draws the words the group's name already says. */}
         <View {...a11yHidden()}>
-          <TableChip scale={scale} lit={lit} ember={ember}>
-            <ChipDot testID="turn-chip-dot" scale={scale} lit={lit} ember={ember} />
-            <ChipText scale={scale} lit={lit} ember={ember}>
-              {chipText}
-            </ChipText>
+          <TableNotice kind="turn" tone={ember ? "urgent" : lit ? "lit" : "neutral"} scale={scale}>
+            <NoticeDot testID="turn-chip-dot" />
+            <NoticeText>{chipText}</NoticeText>
             {active && (
-              <ChipText scale={scale} strong urgent={timeLeft <= threshold} ember={ember}>
+              <NoticeText strong warn={timeLeft <= threshold}>
                 {timeLeft}
-              </ChipText>
+              </NoticeText>
             )}
-          </TableChip>
+          </TableNotice>
         </View>
       </View>
     </>

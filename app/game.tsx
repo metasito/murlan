@@ -40,8 +40,7 @@ export default function GameScreen() {
   const { t } = useTranslation();
   const { showNotification } = useNotification();
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
-  const { gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn } =
-    useLocalTable();
+  const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
   const { resetGame } = useLocalSession();
   const {
     exchangeAnnouncing,
@@ -171,9 +170,7 @@ export default function GameScreen() {
       handScores={lastHandScores}
       matchScore={match.length === "single" ? undefined : { scores: match.scores, target: match.target }}
       viewerSeat={humanIdx}
-      selectedIds={selectedCards}
-      onSelectCard={selectCard}
-      onPlay={playSelected}
+      onPlay={playCards}
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onExchangeReady={onExchangeReady}

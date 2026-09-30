@@ -1,9 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { GestureDetector, GestureStateManager, usePanGesture } from "react-native-gesture-handler";
+import {
+  GestureDetector,
+  GestureStateManager,
+  PointerType,
+  usePanGesture,
+  useSimultaneousGestures,
+  useTapGesture,
+} from "react-native-gesture-handler";
 import { scheduleOnRN } from "react-native-worklets";
 import { TableText } from "./TableText";
 import Animated, {
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -12,16 +20,18 @@ import Animated, {
   withSequence,
   cancelAnimation,
   Easing,
+  type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { CardView } from "@/components/CardView";
+import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
 import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
-import { cardAt, dropIndex, lendBack } from "@/components/handOrder";
+import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
+import type { HandSelection } from "./useSelection";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
@@ -68,9 +78,9 @@ export function useHandArrival(input: {
 
 // ─── CardItem ─────────────────────────────────────────────────────────────────
 //
-// `onPress` takes the card id rather than a bound zero-arg callback, so the
+// `onActivate` takes the card id rather than a bound zero-arg callback, so the
 // caller passes one unchanged reference for every card and CardItem binds its
-// own id once. CardView then sees a new `onPress` only when this card's id or
+// own id once. CardView then sees a new `onActivate` only when this card's id or
 // the callback changes — not when some other card's selection does.
 // How far a selected card tips as it is picked up. The rotation is what stops
 // the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
@@ -136,6 +146,8 @@ const HOLD_MS = 500;
  * the wobble a thumb has while it decides.
  */
 const DRAG_SLOP = 10;
+/** A one-off off the scale: no duration at all, since a press however long is still a press. `setTimeout` fires at once past it. */
+const ANY_PRESS_MS = 2 ** 31 - 1;
 // Off the fan rather than up in the air: the card stays where it came from and
 // reads as one being picked out of a hand still being held.
 const HELD_SCALE = 1.06;
@@ -169,7 +181,11 @@ interface CardItemProps {
   bottom: number;
   /** The card's own tilt on the arc, in degrees. */
   arcRot: number;
-  onPress: (id: string) => void;
+  onActivate: (id: string) => void;
+  /** The selection on the UI thread, which the lift, tilt and glow follow. */
+  shown: DerivedValue<string[]>;
+  /** The card under a finger that has not yet lifted. */
+  pressed: SharedValue<string | null>;
   disabled: boolean;
   zIndex: number;
   /** Draw the back — the hand belongs to someone else. */
@@ -234,7 +250,9 @@ function CardItemBase({
   left,
   bottom,
   arcRot,
-  onPress,
+  onActivate,
+  shown,
+  pressed,
   disabled,
   zIndex,
   dealDelay,
@@ -296,17 +314,44 @@ function CardItemBase({
     );
   }, [dealing]);
 
-  useEffect(() => {
-    if (reduceMotion) {
-      liftY.value = withTiming(isSelected ? selectLift : 0, { duration: Motion.duration.tap });
-      tilt.value = 0;
-      glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-      return;
-    }
-    liftY.value = withSpring(isSelected ? selectLift : 0, Motion.spring.pickup);
-    tilt.value = withSpring(isSelected ? SELECT_TILT : 0, Motion.spring.pickup);
-    glow.value = withTiming(isSelected ? 1 : 0, { duration: Motion.duration.tap });
-  }, [isSelected, reduceMotion, selectLift, liftY, tilt, glow]);
+  const press = useSharedValue(0);
+  const posed = useSharedValue("");
+  const pressPosed = useSharedValue("");
+  const cardId = card.id;
+  // Keyed on every input, not on the selection's edge: a reaction keeps its previous value across a
+  // change of dependencies, so a turn that resizes the card would otherwise leave the lift behind.
+  useAnimatedReaction(
+    () => shown.value.includes(cardId),
+    (on) => {
+      const key = `${on}|${selectLift}|${reduceMotion}`;
+      if (key === posed.value) return;
+      const first = posed.value === "";
+      posed.value = key;
+      if (first && !on) return;
+      glow.value = withTiming(on ? 1 : 0, { duration: Motion.duration.tap });
+      if (reduceMotion) {
+        liftY.value = withTiming(on ? selectLift : 0, { duration: Motion.duration.tap });
+        tilt.value = 0;
+        return;
+      }
+      liftY.value = withSpring(on ? selectLift : 0, Motion.spring.pickup);
+      tilt.value = withSpring(on ? SELECT_TILT : 0, Motion.spring.pickup);
+    },
+    [reduceMotion, selectLift]
+  );
+  useAnimatedReaction(
+    () => pressed.value === cardId,
+    (on) => {
+      const key = `${on}|${reduceMotion}`;
+      if (key === pressPosed.value) return;
+      const first = pressPosed.value === "";
+      pressPosed.value = key;
+      if (first && !on) return;
+      if (reduceMotion) press.value = on ? 1 : 0;
+      else press.value = withSpring(on ? 1 : 0, on ? Motion.spring.pickup : Motion.spring.land);
+    },
+    [reduceMotion]
+  );
 
   // -1 sunk and faded, 0 untouched, +1 lifted and lit. One value rather than
   // two so a card cannot briefly be in both states as the phase turns on.
@@ -325,8 +370,9 @@ function CardItemBase({
       cancelAnimation(dealing);
       cancelAnimation(exchangeState);
       cancelAnimation(shift);
+      cancelAnimation(press);
     },
-    [liftY, tilt, glow, dealing, exchangeState, shift]
+    [liftY, tilt, glow, dealing, exchangeState, shift, press]
   );
   useEffect(() => {
     onDrawn?.(card.id, { liftY, tilt, shift });
@@ -336,12 +382,12 @@ function CardItemBase({
     const d = dealing.value;
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
-    const restRot = arcRot + tilt.value;
+    const restRot = arcRot + tilt.value + press.value * PRESS_TILT;
     return {
       opacity: hidden?.value.includes(card.id) ? 0 : dealFade ? 1 - d : 1,
       transform: [
         { translateX: dealFromX * d + shift.value },
-        { translateY: liftY.value + dealRise * d },
+        { translateY: liftY.value + press.value * PRESS_RISE + dealRise * d },
         { rotate: `${restRot * (1 - d)}deg` },
       ],
     };
@@ -358,8 +404,7 @@ function CardItemBase({
 
   const veilStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, -exchangeState.value) }));
 
-  const cardId = card.id;
-  const handlePress = useCallback(() => onPress(cardId), [onPress, cardId]);
+  const handleActivate = useCallback(() => onActivate(cardId), [onActivate, cardId]);
   const handleMove = useCallback(
     (action: string) => onMove?.(cardId, action),
     [onMove, cardId]
@@ -367,6 +412,7 @@ function CardItemBase({
 
   return (
     <Animated.View
+      testID={`hand-card-${cardId}`}
       style={[
         handStyles.handCardWrap,
         // The card's own box, stated rather than taken from the child: the
@@ -402,7 +448,7 @@ function CardItemBase({
       <CardView
         card={card}
         selected={isSelected}
-        onPress={handlePress}
+        onActivate={handleActivate}
         disabled={disabled}
         faceDown={faceDown}
         scale={cardScale}
@@ -438,7 +484,9 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.left === b.left &&
     a.bottom === b.bottom &&
     a.arcRot === b.arcRot &&
-    a.onPress === b.onPress &&
+    a.onActivate === b.onActivate &&
+    a.shown === b.shown &&
+    a.pressed === b.pressed &&
     a.disabled === b.disabled &&
     a.zIndex === b.zIndex &&
     a.faceDown === b.faceDown &&
@@ -502,7 +550,8 @@ function liveFrom(x: () => number, y: () => number, rot: () => number, scale: nu
 export function StraightHand({
   cards,
   selectedIds,
-  onPress,
+  selection,
+  onActivate,
   disabled,
   availW,
   roomW,
@@ -523,8 +572,12 @@ export function StraightHand({
   onOrigins,
 }: {
   cards: Card[];
+  /** The store's selection, which a card's accessible state reports. */
   selectedIds: string[];
-  onPress: (id: string) => void;
+  /** The same selection on the UI thread, which a tap on the row writes and every card's lift follows. */
+  selection: HandSelection;
+  /** A screen reader's activate, or Enter or Space: the tap, from the JS thread. */
+  onActivate: (id: string) => void;
   disabled: boolean;
   /** The hard width: past it the row scrolls rather than clip or bury a card. */
   availW: number;
@@ -745,9 +798,11 @@ export function StraightHand({
   // Solved for the span the step produced, so the arc and the overlap floor
   // cannot disagree about how wide the hand is. Above the empty-hand return,
   // because the clearance it feeds is read by a hook.
-  const solve = (count: number) =>
-    solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step });
-  const full = solve(slotCount);
+  const solve = useCallback(
+    (count: number) => solveArc(count, { budget: HAND_ARC, cardW, cardH, scale: cardScale, room: totalW, step }),
+    [cardW, cardH, cardScale, totalW, step]
+  );
+  const full = useMemo(() => solve(slotCount), [solve, slotCount]);
   const box = full.box;
   // The middle card rides highest, so the row is as tall as the card plus the
   // climb; the whole arc is then pushed past the bottom edge by the crop.
@@ -809,22 +864,28 @@ export function StraightHand({
   // and the rest are arced as a hand of n−1 inside the row's own unchanged box
   // — which is the whole of "the fan closes behind the card that left".
   const heldCard = heldId === null ? null : (cards.find((c) => c.id === heldId) ?? null);
-  const rest = heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id);
+  const rest = useMemo(
+    () => (heldCard === null ? cards : cards.filter((c) => c.id !== heldCard.id)),
+    [cards, heldCard]
+  );
 
   // The second arc: where the rest of the hand closes to with one card lifted
   // out. Every card is *placed* by `full` and moved to this, so the closing is
   // one animated value rather than a new `left` landing in a single frame — the
   // fan has to close continuously, or the cards jump between two arrangements
   // while the finger is still between them.
-  const arc = heldCard === null ? full.cards : solve(rest.length).cards;
+  const arc = useMemo(
+    () => (heldCard === null ? full.cards : solve(rest.length).cards),
+    [heldCard, full, solve, rest.length]
+  );
   const rowMid = (scrollable ? totalW : rowW) / 2;
   // Every card is *placed* by the row as it stood and *moved* to the row with
   // the slot in it. `left` is a plain style entry and never animates, so a card
   // placed straight at its n+1 slot would jump there in a frame; anchoring it
   // where it already was and carrying the whole delta in `shiftX` is what makes
   // the row visibly part (#650).
-  const closed = parting === undefined ? full : solve(n);
-  const place = new Map(cards.map((card, j) => [card.id, closed.cards[j]]));
+  const closed = useMemo(() => (parting === undefined ? full : solve(n)), [parting, full, solve, n]);
+  const place = useMemo(() => new Map(cards.map((card, j) => [card.id, closed.cards[j]])), [cards, closed]);
   // Split either side of the slot, so the hand's centre holds still while the
   // gap opens and nothing shifts out from under the thumb.
   const gapW = heldCard === null ? 0 : cardW * GAP_CARDS;
@@ -832,8 +893,47 @@ export function StraightHand({
   // Where the drop index is measured from: the arc without the gap in it. The
   // gap is a consequence of the slot, so measuring the slot against a row the
   // gap has already moved makes the two chase each other.
-  const lefts = arc.map((at) => rowMid + at.x);
-  const ids = rest.map((card) => card.id);
+  // The one table a finger is resolved against, the drag's pickup and drop and the tap alike: each
+  // card's strip where it is drawn, and its top edge at rest, in the row's own coordinates.
+  const strips = useMemo(() => {
+    const table = {
+      ids: [] as string[],
+      lefts: [] as number[],
+      widths: [] as number[],
+      tops: [] as number[],
+      rots: [] as number[],
+      refused: [] as boolean[],
+    };
+    rest.forEach((card, i) => {
+      table.refused.push(giveableSet?.has(card.id) === false);
+      const slot = slotForCard(i, parting);
+      const at = arc[slot] ?? arc[arc.length - 1];
+      const home = place.get(card.id) ?? at;
+      table.ids.push(card.id);
+      table.lefts.push(rowMid + at.x);
+      table.widths.push(hitWidth(slot, arc.length, step, cardW));
+      table.tops.push(visibleH + crop + home.y - cardH);
+      table.rots.push(home.rot);
+    });
+    return table;
+  }, [rest, parting, arc, rowMid, step, cardW, visibleH, crop, place, cardH, giveableSet]);
+  const lefts = strips.lefts;
+  const ids = strips.ids;
+  const liftH = handRowHeadroom(cardH);
+  const shownIds = selection.shown;
+  const cardUnder = (x: number, y: number): number | null => {
+    'worklet';
+    const i = stripAt(strips.lefts, strips.widths, x);
+    if (i === null) return null;
+    const id = strips.ids[i];
+    if (lifted?.value.includes(id)) return null;
+    const on = shownIds.value.includes(id);
+    // Turned about the card's centre as the card is drawn, so a raised corner is still the card.
+    const rad = ((strips.rots[i] + (on && !reduceMotion ? SELECT_TILT : 0)) * Math.PI) / 180;
+    const dx = x - strips.lefts[i] - cardW / 2;
+    const dy = y - (strips.tops[i] - (on ? liftH : 0)) - cardH / 2;
+    return dy * Math.cos(rad) - dx * Math.sin(rad) < -cardH / 2 ? null : i;
+  };
   // Where each slot of the *whole* hand sits — where a released card is going.
   const slots = full.cards.map((at) => ({ x: rowMid + at.x, y: crop + at.y, rot: at.rot }));
 
@@ -880,9 +980,9 @@ export function StraightHand({
     setDealArmed(false);
   };
 
-  const grab = (x: number) => {
+  const grab = (x: number, y: number) => {
     if (held.value !== null) return;
-    const i = cardAt(lefts, cardW, x);
+    const i = cardUnder(x, y);
     if (i === null) return;
     // The card comes up under the part of it the finger is actually on. Every
     // card but the last shows only a `step`-wide strip, so a finger almost
@@ -987,7 +1087,7 @@ export function StraightHand({
           picking.value = true;
           // From where the finger landed, not where it is now: that is the card
           // it chose, and the offset that brings it up under the same point.
-          scheduleOnRN(grab, grabX.value);
+          scheduleOnRN(grab, grabX.value, grabY.value);
         }
         return;
       }
@@ -1035,6 +1135,29 @@ export function StraightHand({
     },
   });
 
+  const pressed = useSharedValue<string | null>(null);
+  const tapSelection = selection.tap;
+  const tap = useTapGesture({
+    enabled: !disabled && !faceDown,
+    maxDistance: DRAG_SLOP,
+    maxDuration: ANY_PRESS_MS,
+    onBegin: (e) => {
+      // The web handler turns Enter and Space into a touch at the centre of whatever holds focus, in
+      // that element's own coordinates; the card's `onActivate` already answers both.
+      if (e.pointerType === PointerType.KEY) return;
+      const i = cardUnder(e.x, e.y);
+      pressed.value = i === null || strips.refused[i] ? null : strips.ids[i];
+    },
+    onActivate: () => {
+      const id = pressed.value;
+      if (id !== null && !picking.value) tapSelection(id);
+    },
+    onFinalize: () => {
+      pressed.value = null;
+    },
+  });
+  const gestures = useSimultaneousGestures(drag, tap);
+
   if (n === 0) {
     return (
       <View style={[handStyles.handCenter, { width: availW, height: visibleH }]}>
@@ -1045,7 +1168,7 @@ export function StraightHand({
   }
 
   const row = (
-    <GestureDetector gesture={drag}>
+    <GestureDetector gesture={gestures}>
     <View
       testID="hand-row"
       style={[
@@ -1074,7 +1197,9 @@ export function StraightHand({
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
           arcRot={home.rot}
-          onPress={onPress}
+          onActivate={onActivate}
+          shown={selection.shown}
+          pressed={pressed}
           a11yActions={arrangeable ? moveActions : undefined}
           onMove={arrangeable ? moveByAction : undefined}
           onDrawn={onDrawn}

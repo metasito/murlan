@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
@@ -58,20 +59,28 @@ const state = (over: Partial<GameState>): GameState => ({
 
 const noop = () => {};
 
-const table = (gameState: GameState, selectedIds: string[]) => (
+const table = (gameState: GameState, onPlay: (ids: string[]) => void = noop) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={selectedIds}
-      onSelectCard={noop}
-      onPlay={noop}
+      onPlay={onPlay}
       onPass={noop}
       onQuit={noop}
       onExchangeGive={noop}
     />
   </SafeAreaProvider>
 );
+
+const mount = async (gameState: GameState, picked: Card[], onPlay?: (ids: string[]) => void) => {
+  const r = await render(table(gameState, onPlay));
+  for (const c of picked) {
+    await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(c, t)));
+    });
+  }
+  return r;
+};
 
 // The refusal reason is no longer the button's own label — a 56pt square
 // cannot hold a sentence, so GIOCA says GIOCA and the reason reaches the player
@@ -86,11 +95,9 @@ describe('the refused GIOCA names the right reason', () => {
   const reasonOf = () => screen.getByTestId('btn-gioca').props.accessibilityLabel as string;
 
   it('calls a pair against a single the wrong type, not too low', async () => {
-    const r = await render(
-      table(
-        state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
-        [SEVEN_H.id, SEVEN_C.id]
-      )
+    const r = await mount(
+      state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+      [SEVEN_H, SEVEN_C]
     );
 
     expect(reasonOf()).toContain(t('gameTable.playA11ySpokenWrongType'));
@@ -100,9 +107,7 @@ describe('the refused GIOCA names the right reason', () => {
   });
 
   it('tells the opening play it needs the start card, and names it', async () => {
-    const r = await render(
-      table(state({ firstPlayMade: false, startCard: THREE_S }), [SEVEN_H.id, SEVEN_C.id])
-    );
+    const r = await mount(state({ firstPlayMade: false, startCard: THREE_S }), [SEVEN_H, SEVEN_C]);
 
     expect(reasonOf()).toContain(
       t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(THREE_S, t) })
@@ -114,9 +119,7 @@ describe('the refused GIOCA names the right reason', () => {
 
   it('names the actual 2-player fallback card, not the 3♠, when it opens instead', async () => {
     const FIVE_H = card('5', 'hearts');
-    const r = await render(
-      table(state({ firstPlayMade: false, startCard: FIVE_H }), [SEVEN_H.id, SEVEN_C.id])
-    );
+    const r = await mount(state({ firstPlayMade: false, startCard: FIVE_H }), [SEVEN_H, SEVEN_C]);
 
     expect(reasonOf()).toContain(
       t('gameTable.playA11ySpokenStartCard', { card: cardSpokenName(FIVE_H, t) })
@@ -127,11 +130,9 @@ describe('the refused GIOCA names the right reason', () => {
   });
 
   it('still says too low when the selection really is too low', async () => {
-    const r = await render(
-      table(
-        state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
-        [SEVEN_H.id]
-      )
+    const r = await mount(
+      state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+      [SEVEN_H]
     );
 
     expect(reasonOf()).toContain(t('gameTable.playA11ySpokenTooLow'));
@@ -140,11 +141,9 @@ describe('the refused GIOCA names the right reason', () => {
   });
 
   it('says GIOCA on the button whatever the reason is', async () => {
-    const r = await render(
-      table(
-        state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
-        [SEVEN_H.id]
-      )
+    const r = await mount(
+      state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+      [SEVEN_H]
     );
 
     // What the button says, not what it announces: the word is the button's own
@@ -163,9 +162,7 @@ describe('the start-card banner names the real fallback card', () => {
   const FIVE_H = card('5', 'hearts');
 
   it('the viewer opens: banner names the actual card, not the 3♠', async () => {
-    const r = await render(
-      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 }), [])
-    );
+    const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 })));
 
     expect(screen.getByText('You start! You hold the 5♥')).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
@@ -174,9 +171,7 @@ describe('the start-card banner names the real fallback card', () => {
   });
 
   it('another seat opens: banner names the actual card, not the 3♠', async () => {
-    const r = await render(
-      table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 }), [])
-    );
+    const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 })));
 
     expect(screen.getByText('Besi starts with the 5♥')).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
@@ -192,13 +187,13 @@ describe('tapping an unavailable GIOCA', () => {
   });
 
   const refusedTable = () =>
-    table(
+    mount(
       state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
-      [SEVEN_H.id, SEVEN_C.id]
+      [SEVEN_H, SEVEN_C]
     );
 
   it('answers with the rigid haptic, the refusal sound and the reason in words', async () => {
-    const r = await render(refusedTable());
+    const r = await refusedTable();
 
     expect(screen.queryByText(t('gameTable.playA11ySpokenWrongType'))).toBeNull();
 
@@ -215,7 +210,7 @@ describe('tapping an unavailable GIOCA', () => {
   });
 
   it('still reports itself unavailable to assistive tech', async () => {
-    const r = await render(refusedTable());
+    const r = await refusedTable();
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
@@ -233,19 +228,10 @@ describe('tapping an unavailable GIOCA', () => {
 
   it('does not submit the refused selection', async () => {
     const onPlay = jest.fn<(ids: string[]) => void>();
-    const r = await render(
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <GameTable
-          gameState={state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 })}
-          viewerSeat={0}
-          selectedIds={[SEVEN_H.id, SEVEN_C.id]}
-          onSelectCard={noop}
-          onPlay={onPlay}
-          onPass={noop}
-          onQuit={noop}
-          onExchangeGive={noop}
-        />
-      </SafeAreaProvider>
+    const r = await mount(
+      state({ lastPlayedCombination: single(card('9', 'diamonds')), lastPlayedBy: 1 }),
+      [SEVEN_H, SEVEN_C],
+      onPlay
     );
 
     await act(async () => {
@@ -265,13 +251,14 @@ describe('tapping an available GIOCA', () => {
   });
 
   it('answers with a selection tick, leaving the weight to the landing', async () => {
-    const r = await render(table(state({}), [SEVEN_H.id]));
+    const r = await mount(state({}), [SEVEN_H]);
+    const before = haptics().length;
 
     await act(async () => {
       fireEvent.press(screen.getByTestId('btn-gioca'));
     });
 
-    expect(haptics().filter((h) => h === 'selection')).toHaveLength(1);
+    expect(haptics().slice(before).filter((h) => h === 'selection')).toHaveLength(1);
     expect(haptics()).not.toContain('impactMedium');
 
     await r.unmount();

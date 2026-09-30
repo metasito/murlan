@@ -1,13 +1,9 @@
 // tests/native/flightShadow.test.tsx — a flying card carries no shadow of its own: the lamp
 // shadow is the felt's (ADR-0008).
 import { describe, it, expect } from '@jest/globals';
-import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-import { makeMutable } from 'react-native-reanimated';
-import { FlyingCards } from '@/components/table/pile';
-import { pileSlots } from '@/components/flightPose';
-import { flightSpec, NO_LANDING } from '@/components/table/useFlightClock';
 import type { Card } from '@/lib/game/gameEngine';
+import { flightOf, pileOf } from './helpers/landing';
 
 const CARDS: Card[] = [
   { id: 'A_clubs', rank: 'A', suit: 'clubs', isJoker: false } as Card,
@@ -16,19 +12,13 @@ const CARDS: Card[] = [
 
 describe('a flying card', () => {
   it('draws no lifted shadow', async () => {
-    const from = CARDS.map(() => ({ x: 0, y: -100, rot: 0, scale: 0.4 }));
-    const r = await render(
-      <FlyingCards
-        cards={CARDS}
-        flight={flightSpec('k', from, pileSlots(2, 60, 400), false, false)}
-        landing={NO_LANDING}
-        signal={makeMutable(NO_LANDING)}
-        onEnd={() => {}}
-      />
-    );
+    const flight = flightOf('k', CARDS, CARDS.map(() => ({ x: 0, y: -100, rot: 0, scale: 0.4 })));
+    const r = await render(pileOf({ plays: [flight], flights: [flight] }));
 
     expect(screen.queryByTestId('flying-shadow-lifted')).toBeNull();
-    for (const node of screen.getAllByTestId('flying-card', { includeHiddenElements: true })) {
+    const fliers = screen.getAllByTestId('flying-card', { includeHiddenElements: true });
+    expect(fliers).toHaveLength(CARDS.length);
+    for (const node of fliers) {
       const style = Object.assign({}, ...[node.props.style].flat(3).filter(Boolean));
       expect(style).not.toHaveProperty('shadowOpacity');
       expect(style).not.toHaveProperty('elevation');

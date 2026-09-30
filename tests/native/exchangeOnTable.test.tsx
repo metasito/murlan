@@ -17,6 +17,7 @@ import { t } from '@/lib/i18n';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { getValidGivebackCards } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
+import { activate } from './tapHelpers';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -79,8 +80,6 @@ const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void
       gameState={state(opts.exchange)}
       onExchangeReady={opts.onExchangeReady}
       viewerSeat={opts.viewerSeat}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -114,12 +113,12 @@ describe('the winner picks from their own hand', () => {
     const onExchangeGive = jest.fn<(id: string) => void>();
     const r = await render(table({ viewerSeat: 0, onExchangeGive }));
     await step(OPENS - 64);
-    await press(handCard(FIVE));
+    await activate(handCard(FIVE));
     await press(screen.getByTestId('btn-gioca'));
     expect(onExchangeGive).not.toHaveBeenCalled();
 
     await step(128);
-    await press(handCard(FIVE));
+    await activate(handCard(FIVE));
     await press(screen.getByTestId('btn-gioca'));
     expect(onExchangeGive).toHaveBeenCalledWith(FIVE.id);
     await r.unmount();
@@ -187,11 +186,11 @@ describe('the winner picks from their own hand', () => {
     await press(screen.getByTestId('btn-gioca'));
     expect(onExchangeGive).not.toHaveBeenCalled();
 
-    await press(handCard(FIVE));
+    await activate(handCard(FIVE));
     expect(onExchangeGive).not.toHaveBeenCalled();
 
     // A second tap replaces rather than adds — an exchange gives one card.
-    await press(handCard(NINE));
+    await activate(handCard(NINE));
     await press(screen.getByTestId('btn-gioca'));
     expect(onExchangeGive).toHaveBeenCalledTimes(1);
     expect(onExchangeGive).toHaveBeenCalledWith(NINE.id);
@@ -207,7 +206,7 @@ describe('the winner picks from their own hand', () => {
     expect(name()).toBe(t('exchange.confirmA11yWaiting', { name: LOSER }));
     expect(name()).not.toBe(t('gameTable.playA11yValid'));
 
-    await press(handCard(FIVE));
+    await activate(handCard(FIVE));
     expect(name()).toBe(
       t('exchange.confirmA11yReady', { card: spoken(FIVE), name: LOSER })
     );

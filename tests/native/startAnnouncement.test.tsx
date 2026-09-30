@@ -82,8 +82,6 @@ function table(gameState: GameState, opts: { viewerSeat?: number; turnTimer?: Tu
         gameState={gameState}
         viewerSeat={opts.viewerSeat ?? 0}
         turnTimer={opts.turnTimer}
-        selectedIds={[]}
-        onSelectCard={noop}
         onPlay={noop}
         onPass={noop}
         onQuit={noop}

@@ -1,6 +1,7 @@
 ##
-# The felt's opaque Metal layer, photographed: the table's first frame, and the table again after a
-# portrait round trip resizes its drawable. `tools/ci/feltPixels.mjs` reads both (ios.yml).
+# The felt's opaque Metal layer, photographed as the table appears and once it settles. The felt
+# mounts in portrait and GameTable's landscape lock resizes it; a device rotation after that cannot
+# resize it again, the lock holds. `tools/ci/feltPixels.mjs` reads both (ios.yml).
 # The launch path is offline-game.yaml's; its comments say why each step is there.
 appId: "${MAESTRO_APP_ID}"
 ---
@@ -36,16 +37,6 @@ appId: "${MAESTRO_APP_ID}"
       id: "game-table"
     timeout: 90000
 - takeScreenshot: felt-first
-- runFlow:
-    when:
-      platform: iOS
-    commands:
-      - setOrientation: PORTRAIT
-      - setOrientation: LANDSCAPE_LEFT
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 30000
 - waitForAnimationToEnd:
     timeout: 2000
-- takeScreenshot: felt-round-trip
+- takeScreenshot: felt-settled

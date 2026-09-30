@@ -14,7 +14,14 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => (mockReduce ? 'on' : 'off'),
 }));
 
+jest.mock('@/components/table/dealSlots', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/dealSlots')>('@/components/table/dealSlots');
+  return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
+});
+
 import { GameTable } from '@/components/GameTable';
+import { dealSlots } from '@/components/table/dealSlots';
+import { busiest } from './helpers/dealSweep';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
@@ -47,8 +54,6 @@ const table = (gameState: GameState = freshDeal) => (
     <GameTable
       gameState={gameState}
       viewerSeat={0}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}
@@ -64,10 +69,11 @@ const counted = (testID: string) => {
 };
 const seated = () => SEATS.reduce((sum, id) => sum + counted(id), 0);
 
-type Pose = { opacity?: number; transform?: Record<string, number>[] };
+type Pose = { opacity?: number; transform?: Record<string, number | string>[] };
 const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b) as Pose);
-const moved = (p: Pose) => (p.transform ?? []).some((t) => (t.translateX ?? 0) !== 0 || (t.translateY ?? 0) !== 0);
-const arrived = () => backs().filter((p) => p.opacity === 0 && moved(p)).length;
+const spin = (p: Pose) => parseFloat(String(p.transform?.find((t) => 'rotate' in t)?.rotate ?? 0));
+const landedSince = (before: Pose[], after: Pose[]) =>
+  after.filter((p, i) => before[i]?.opacity === 1 && (p.opacity !== 1 || spin(p) < spin(before[i]))).length;
 
 const handPoses = () =>
   screen.getAllByTestId('card-box').map((box) => {
@@ -91,17 +97,22 @@ describe("an opponent's hand arrives with the deal", () => {
 
   it('counts at each seat exactly the backs whose flight has reached it, frame by frame', async () => {
     const r = await render(table());
-    expect(backs()).toHaveLength(39);
+    const legs = jest.mocked(dealSlots).mock.calls.at(-1)![0];
+    expect(legs).toHaveLength(39);
+    expect(backs()).toHaveLength(busiest(legs));
     expect(seated()).toBe(0);
     expect(startsOf('deal')).toEqual([]);
 
     let frames = 0;
     let sawCount = false;
+    let arrived = 0;
+    let before = backs();
     while (screen.queryAllByTestId('dealt-back').length > 0 && frames++ < 2000) {
       await frame();
       if (screen.queryAllByTestId('dealt-back').length === 0) break;
+      arrived += landedSince(before, (before = backs()));
       expect(startsOf('deal')).toHaveLength(1);
-      expect(seated()).toBe(arrived());
+      expect(seated()).toBe(arrived);
       sawCount ||= seated() > 0 && seated() < 39;
     }
 

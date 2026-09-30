@@ -3,6 +3,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
 
@@ -35,7 +36,7 @@ const mockTable: { state: GameState; rematchOpen: boolean } = {
   },
 };
 
-const mockPlaySelected = jest.fn(() => {
+const mockPlayCards = jest.fn((_ids: string[]) => {
   const s = mockTable.state;
   mockTable.state = {
     ...s,
@@ -51,9 +52,7 @@ const mockAnswerRematch = jest.fn();
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: mockTable.state,
-    selectedCards: mockTable.state.currentTurnIndex === 0 ? ['s0-7'] : [],
-    selectCard: () => {},
-    playSelected: mockPlaySelected,
+    playCards: mockPlayCards,
     passTurn: () => {},
     resetGame: () => {},
     runAITurn: () => {},
@@ -98,9 +97,12 @@ describe('pass and play', () => {
     expect(cardShown(SEAT1_CARD)).toBe(false);
 
     await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(SEAT0_LEAD, t)));
+    });
+    await act(async () => {
       await fireEvent.press(screen.getByTestId('btn-gioca'));
     });
-    expect(mockPlaySelected).toHaveBeenCalledTimes(1);
+    expect(mockPlayCards).toHaveBeenCalledWith([SEAT0_LEAD.id]);
     await act(async () => {
       view.rerender(screenTree());
     });

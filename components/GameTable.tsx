@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   View,
   StyleSheet,
@@ -32,7 +32,6 @@ import {
   openingIsPending,
   sortHand,
   type Card,
-  type Combination,
   type GameState,
 } from "@/lib/game/gameEngine";
 import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
@@ -75,9 +74,8 @@ import { ScorePill } from "@/components/table/scorePill";
 import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
+import { HudComboPill, TurnChip } from "@/components/table/notices/hud";
 import {
-  CHIP_NAME_MAX_W,
-  ChipText,
   ControlRail,
   useFocusFade,
   useHandLift,
@@ -85,7 +83,6 @@ import {
   sharedTableStyles,
   StartCardBanner,
   StartReasonBanner,
-  TableChip,
 } from "@/components/table/chrome";
 import {
   arrangedLabel,
@@ -96,7 +93,15 @@ import {
   topBarLabel,
 } from "@/components/table/spokenLabels";
 import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
-import { TurnChip } from "@/components/table/turnChip";
+import {
+  createSelectionStore,
+  NO_SELECTION,
+  press,
+  settle,
+  type Selection,
+  type SelectionMode,
+} from "@/components/table/selection";
+import { useSelection } from "@/components/table/useSelection";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
@@ -110,8 +115,8 @@ import { GameSettingsSheet } from "@/components/table/settingsSheet";
 import { useShownTurn, useTableFeedback } from "@/components/useTableFeedback";
 import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
-import { FlyingCards, PlayedPile, SweepCards, getComboLabel, usePileFlight } from "@/components/table/pile";
-import { beatenPlay, topPlay } from "@/components/table/trick";
+import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
+import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
@@ -277,8 +282,6 @@ export interface GameTableProps {
    */
   spectating?: boolean;
 
-  selectedIds: string[];
-  onSelectCard: (cardId: string) => void;
   /** Only ever called with a selection that is a legal play. */
   onPlay: (cardIds: string[]) => void;
   onPass: () => void;
@@ -330,8 +333,6 @@ export function GameTable({
   matchScore,
   viewerSeat,
   spectating = false,
-  selectedIds,
-  onSelectCard,
   onPlay,
   onPass,
   onQuit,
@@ -496,6 +497,19 @@ export function GameTable({
     },
     [moveTo]
   );
+  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
+  const exchangeIsMine = exchangeIsWinners && choiceReady;
+  const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
+  const [selection] = useState(() => createSelectionStore());
+  const picked = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
+  const heldIds = React.useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
+  const shown = React.useMemo(
+    () => settle(picked, heldIds, selectionMode),
+    [picked, heldIds, selectionMode]
+  );
+  const handSelection = shown.ids;
+  const selectedIds = exchangeIsMine ? NO_SELECTION.ids : handSelection;
+  const exchangePick = exchangeIsMine ? (handSelection[0] ?? null) : null;
   const staged = React.useMemo(
     () =>
       readStagedPlay({
@@ -556,25 +570,12 @@ export function GameTable({
   // dialog, so the legality the engine enforces has to be readable in the fan:
   // `getValidGivebackCards` is the same call `processExchangeChoice` validates
   // against, asked here only to decide which cards light up.
-  const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
-  const exchangeIsMine = exchangeIsWinners && choiceReady;
   const giveable = React.useMemo(
     () =>
       exchangeIsMine ? getValidGivebackCards(sortedHand, exchange.cardFromLoser?.id) : undefined,
     [exchangeIsMine, sortedHand, exchange.cardFromLoser?.id]
   );
   const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
-  // Kept apart from `selectedIds`, which stages a *play*: an exchange gives one
-  // card, and folding it into a multi-select the play button also reads would
-  // let a staged combination survive into the next manche.
-  const [exchangePick, setExchangePick] = useState<string | null>(null);
-  // Card ids repeat across deals, so a pick that outlived its exchange would
-  // come back pointing at a different card.
-  const [pickedWhileMine, setPickedWhileMine] = useState(exchangeIsMine);
-  if (exchangeIsMine !== pickedWhileMine) {
-    setPickedWhileMine(exchangeIsMine);
-    if (!exchangeIsMine) setExchangePick(null);
-  }
   const pickedGiveCard = exchangePick
     ? (sortedHand.find((c) => c.id === exchangePick) ?? null)
     : null;
@@ -807,8 +808,6 @@ export function GameTable({
   });
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   useBenchHandle("lampFreeze", rig.freeze);
-  const flyingIds = new Set(flights.flatMap((f) => f.cards.map((c) => c.id)));
-  const landed = (c: Combination | null) => (c && c.cards.some((card) => flyingIds.has(card.id)) ? null : c);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -843,19 +842,6 @@ export function GameTable({
     return () => clearTimeout(id);
   }, [rejectHint]);
 
-  // A card can leave the hand without the player having touched it — the server
-  // moves for a seat that ran out of clock — and a staged id the hand no longer
-  // holds is both a lit GIOCA the server refuses and a play the viewer did not
-  // choose. `onSelectCard` toggles, so naming such an id drops it. An id the
-  // *new* hand does hold is a different problem, and the manche boundary is
-  // where it is cleared (app/(online)/game.tsx, context/GameContext.tsx).
-  useEffect(() => {
-    if (spectating) return;
-    const handIds = new Set(sortedHand.map((c) => c.id));
-    for (const id of selectedIds) {
-      if (!handIds.has(id)) onSelectCard(id);
-    }
-  }, [sortedHand, selectedIds, onSelectCard, spectating]);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -865,26 +851,23 @@ export function GameTable({
   // works, and it is what stops the turn clock starting from a blank hand.
   // Only the *submission* is gated on the turn: `staged.playable` already
   // requires it, so GIOCA lights on its own the moment the turn arrives.
-  const handSelection = exchangeIsMine ? (exchangePick ? [exchangePick] : []) : selectedIds;
-  const handSelectionRef = useRef(handSelection);
-  useEffect(() => {
-    handSelectionRef.current = handSelection;
-  });
+  const tapsReach = !(isFinished || spectating || (exchangeIsWinners && !exchangeIsMine));
+  const announceTap = useCallback(
+    (next: Selection, id: string) => {
+      event([{ kind: next.ids.includes(id) ? "select" : "deselect" }]);
+      selection.set(next);
+    },
+    [selection]
+  );
   const handleCardPress = useCallback(
     (id: string) => {
-      if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
-      event([{ kind: handSelectionRef.current.includes(id) ? "deselect" : "select" }]);
-      // An exchange gives exactly one card, so a second tap replaces the pick
-      // rather than adding to it.
-      if (exchangeIsMine) {
-        setExchangePick((prev) => (prev === id ? null : id));
-        return;
-      }
-      onSelectCard(id);
+      if (!tapsReach) return;
+      announceTap(press(settle(selection.get(), heldIds, selectionMode), id), id);
     },
-    [isFinished, spectating, onSelectCard, exchangeIsMine, exchangeIsWinners, setExchangePick]
+    [tapsReach, announceTap, selection, heldIds, selectionMode]
   );
-  useBenchHandle("cardPress", handleCardPress);
+  const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
+  useBenchHandle("cardPress", uiSelection.tapFromJs);
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
@@ -928,8 +911,9 @@ export function GameTable({
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
+    selection.set({ ...shown, ids: [] });
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass]);
+  }, [isMyTurn, isFinished, isNewRound, onPass, selection, shown]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1005,13 +989,6 @@ export function GameTable({
 
   const showStartCardBanner = !gameState.firstPlayMade && !!gameState.startCard;
 
-  // The catch belongs to the combination that emptied a hand, and to no other:
-  // the pile mounts fresh cards for every play, so each one would read a
-  // standing counter as its own cue. A seat holding nothing can only have
-  // thrown its last cards, so the top layer being theirs is the whole test.
-  const pileThrower = top === null ? undefined : players[top.playedBy];
-  const pileFlushed = !!pileThrower && handCountOf(pileThrower) === 0;
-
   const tradeName = (seat: number) => players[seat]?.name ?? "";
   const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
   const giveNote = (card: Card | undefined, from: number, to: number) => {
@@ -1086,20 +1063,7 @@ export function GameTable({
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
-            <TableChip scale={scale}>
-              {comboLabel === null ? (
-                <ChipText scale={scale}>{t("gameShared.emptyTable")}</ChipText>
-              ) : (
-                <>
-                  <ChipText scale={scale} maxWidth={CHIP_NAME_MAX_W}>
-                    {lastPlayName}
-                  </ChipText>
-                  <ChipText scale={scale} strong>
-                    {comboLabel}
-                  </ChipText>
-                </>
-              )}
-            </TableChip>
+            <HudComboPill scale={scale} play={comboLabel === null ? null : { name: lastPlayName, combo: comboLabel }} />
           </View>
         </Animated.View>
 
@@ -1289,32 +1253,37 @@ export function GameTable({
               </View>
 
               <View style={sharedTableStyles.centerSection}>
-                {showStartCardBanner ? (
+                {showStartCardBanner && (
                   <StartCardBanner
                     card={gameState.startCard!}
                     starterIsViewer={isMyTurn}
                     starterName={players[gameState.currentTurnIndex]?.name ?? ""}
                   />
-                ) : (
-                  <PlayedPile
-                    prev={landed(beatenPlay(trick.plays)?.combo ?? null)}
-                    current={landed(onTop)}
-                    comboLabel={timeline.inFlight ? null : onTop}
-                    roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
-                    catchTrigger={pileFlushed ? flushTrigger : undefined}
-                    landing={landingSignal}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                    note={pileNote}
-                  />
                 )}
+                <PileLayer
+                  trick={trick}
+                  flights={flights}
+                  signal={landingSignal}
+                  bombClock={bombClock}
+                  onFlightStart={onFlightStart}
+                  onFlightContact={onFlightContact}
+                  onFlightEnd={onFlightDone}
+                  onFlightClock={onFlightClock}
+                  onSweepEnd={endSweep}
+                  comboLabel={timeline.inFlight ? null : onTop}
+                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
+                  roomW={frame.fieldRoomW}
+                  scale={scale}
+                  note={pileNote}
+                  hidden={showStartCardBanner}
+                />
 
                 {/* Centred on the same point the pile draws at, so the burst
                     rings the impact rather than the middle of the table box. */}
                 <BombBurst landing={landingSignal} scale={scale} />
 
                 {/* Beside the pile, not beside the table: the flight has to
-                    settle exactly where PlayedPile then redraws the same cards,
+                    settle exactly where the pile then draws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
                 {trade && (
@@ -1346,33 +1315,6 @@ export function GameTable({
                     endMs={deal.endMs}
                     onStarted={dealCue}
                     onLanded={deal.onLanded}
-                  />
-                )}
-
-                {flights.map((f) => (
-                  <FlyingCards
-                    key={f.key}
-                    cards={f.cards}
-                    flight={f.spec}
-                    landing={f.landing}
-                    signal={landingSignal}
-                    onStart={onFlightStart}
-                    onContact={onFlightContact}
-                    onEnd={onFlightDone}
-                    onClock={onFlightClock}
-                    bombClock={bombClock}
-                    scale={scale}
-                  />
-                ))}
-
-                {trick.swept && (
-                  <SweepCards
-                    key={trick.swept.plays[0]?.key}
-                    plays={trick.swept.plays}
-                    origin={trick.swept.to}
-                    roomW={frame.fieldRoomW}
-                    scale={scale}
-                    onDone={endSweep}
                   />
                 )}
               </View>
@@ -1445,7 +1387,8 @@ export function GameTable({
                     faceDown={spectating}
                     cards={handOnTable}
                     selectedIds={handSelection}
-                    onPress={handleCardPress}
+                    selection={uiSelection}
+                    onActivate={handleCardPress}
                     disabled={isFinished || spectating}
                     giveableIds={giveableIds}
                     giveHint={t("exchange.cardA11yHint")}

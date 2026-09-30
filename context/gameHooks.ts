@@ -4,9 +4,8 @@
  * The online counterpart is `onlineGameHooks.ts`. The two are deliberately not
  * one set: the local game has no connection and no turn clock, its match
  * carries a tally and a local majority where the server's carries votes and
- * rating deltas, and card selection is local state the online screen does not
- * have. One hook spanning both would be a union with half its fields null on
- * either side.
+ * rating deltas. One hook spanning both would be a union with half its fields
+ * null on either side.
  *
  * Each is a projection, never a home for logic. What is genuinely one concept
  * lives in `lib/game/sharedGameFlow.ts` and both modes call it.
@@ -14,12 +13,12 @@
 import { useMemo } from "react";
 import { useGame } from "./GameContext";
 
-/** The hand, what is picked out of it, and the ways to spend a turn. */
+/** The hand and the ways to spend a turn. */
 export function useLocalTable() {
-  const { gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn } = useGame();
+  const { gameState, playCards, passTurn, runAITurn } = useGame();
   return useMemo(
-    () => ({ gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn }),
-    [gameState, selectedCards, selectCard, playSelected, passTurn, runAITurn]
+    () => ({ gameState, playCards, passTurn, runAITurn }),
+    [gameState, playCards, passTurn, runAITurn]
   );
 }
 

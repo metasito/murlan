@@ -304,12 +304,6 @@ const EMBER_GLOW = 18;
 const CHIP_TRACKING = 1.5;
 const CHIP_TRACKING_STRONG = 0.6;
 
-/**
- * The top-left chip's name run, capped so a long username ellipsizes rather
- * than pushing the band wider than the felt has room for.
- */
-export const CHIP_NAME_MAX_W = 88;
-
 const chipStyles = StyleSheet.create({
   chip: {
     flexDirection: "row",

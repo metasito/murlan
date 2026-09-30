@@ -2,6 +2,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render } from '@testing-library/react-native';
 import type { Card, Rank } from '@/lib/game/gameEngine';
+import { gesturesOf, stillSelection } from './tapHelpers';
 
 const mockHops = { n: 0 };
 jest.mock('react-native-worklets', () => {
@@ -15,8 +16,7 @@ jest.mock('react-native-worklets', () => {
   };
 });
 
-type Handler = (e: unknown) => void;
-const mockGesture: { current: { config: Record<string, Handler> } | null } = { current: null };
+const mockGesture: { current: Parameters<typeof gesturesOf>[0] | null } = { current: null };
 jest.mock('react-native-gesture-handler', () => {
   const actual = jest.requireActual('react-native-gesture-handler') as Record<string, unknown>;
   return {
@@ -40,14 +40,15 @@ describe('a finger scrolling the hand stops the hold clock once', () => {
       <StraightHand
         cards={cards}
         selectedIds={[]}
-        onPress={() => {}}
+        selection={stillSelection()}
+        onActivate={() => {}}
         onReorder={() => {}}
         disabled={false}
         availW={600}
         roomW={456}
       />
     );
-    const h = mockGesture.current!.config;
+    const h = gesturesOf(mockGesture.current!).pan.config as Record<string, (e: unknown) => void>;
     h.onTouchesDown(touch(100));
     const afterDown = mockHops.n;
     expect(afterDown).toBeGreaterThan(0);

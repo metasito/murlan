@@ -60,8 +60,6 @@ const table = (gameState: GameState, spectating = false) => (
       gameState={gameState}
       viewerSeat={0}
       spectating={spectating}
-      selectedIds={[]}
-      onSelectCard={noop}
       onPlay={noop}
       onPass={noop}
       onQuit={noop}

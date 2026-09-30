@@ -470,10 +470,21 @@ function OrnateCardBack({
 
 // ─── CardView ─────────────────────────────────────────────────────────────────
 
+/** The finger-down acknowledgement: how far a pressed card rises, in points, and tips, in degrees. */
+export const PRESS_RISE = -3;
+export const PRESS_TILT = -1.5;
+const ACTIVATE = "activate";
+const ACTIVATE_KEYS = new Set(["Enter", " "]);
+
 interface CardViewProps {
   card: Card;
   selected?: boolean;
   onPress?: () => void;
+  /**
+   * A screen reader's activate, and Enter and Space, with no touch of its own: a hand card's
+   * finger belongs to the row's tap (`components/table/hand.tsx`).
+   */
+  onActivate?: () => void;
   /** Multiplies the base card size (face 64×90, back 27×48 at scale 1). */
   scale?: number;
   /** Too small for a pip field — one centred mark instead, no court bitmap. */
@@ -541,6 +552,7 @@ function CardViewBase({
   card,
   selected = false,
   onPress,
+  onActivate,
   scale = 1,
   compact = false,
   faceDown = false,
@@ -570,7 +582,7 @@ function CardViewBase({
   // reads instantly even when the resulting selection is rejected.
   const press = useSharedValue(0);
 
-  const interactive = !!onPress && !disabled;
+  const interactive = (!!onPress || !!onActivate) && !disabled;
 
   useEffect(() => {
     if (noLift) {
@@ -596,6 +608,9 @@ function CardViewBase({
     if (!interactive) return;
     onPress!();
   };
+  const handleActivate = () => {
+    if (interactive) onActivate?.();
+  };
 
   useEffect(
     () => () => {
@@ -607,8 +622,8 @@ function CardViewBase({
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: translateY.value + press.value * -3 },
-      { rotate: `${press.value * -1.5}deg` },
+      { translateY: translateY.value + press.value * PRESS_RISE },
+      { rotate: `${press.value * PRESS_TILT}deg` },
     ],
   }));
 
@@ -660,24 +675,33 @@ function CardViewBase({
   // equivalent of the drag there is. Native reaches the same two actions
   // through VoiceOver's and TalkBack's own rotor.
   const webActionKeys =
-    Platform.OS === "web" && a11yActionKeys !== undefined && onA11yAction !== undefined
+    Platform.OS === "web" && (onActivate !== undefined || (a11yActionKeys !== undefined && onA11yAction !== undefined))
       ? {
           onKeyDown: (e: { key: string; preventDefault?: () => void }) => {
-            const action = a11yActionKeys[e.key];
-            if (action === undefined) return;
+            if (onActivate !== undefined && ACTIVATE_KEYS.has(e.key)) {
+              e.preventDefault?.();
+              handleActivate();
+              return;
+            }
+            const action = a11yActionKeys?.[e.key];
+            if (action === undefined || onA11yAction === undefined) return;
             e.preventDefault?.();
             onA11yAction(action);
           },
         }
       : {};
+  const actions = onActivate ? [{ name: ACTIVATE }, ...(a11yActions ?? [])] : a11yActions;
+  const onAction = (name: string) => {
+    if (onActivate && name === ACTIVATE) handleActivate();
+    else onA11yAction?.(name);
+  };
+  const touch = onPress ? { onPress: handlePress, onPressIn: handlePressIn, onPressOut: handlePressOut } : {};
 
   return (
     <Animated.View style={[animStyle, style]}>
       <Pressable
         testID={testID}
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        {...touch}
         disabled={!interactive}
         {...a11yHidden(decorative)}
         accessibilityLabel={decorative ? undefined : cardSpokenName(card, t)}
@@ -687,11 +711,11 @@ function CardViewBase({
         // An onPress that is momentarily disabled stays a button reporting
         // itself unavailable: dropping the role would make the hand vanish and
         // reappear in the button rotation every turn.
-        {...a11yState({ role: onPress ? "button" : undefined, selected, disabled: !interactive })}
+        {...a11yState({ role: onPress || onActivate ? "button" : undefined, selected, disabled: !interactive })}
         {...selectedHint.props}
-        accessibilityActions={a11yActions}
+        accessibilityActions={actions}
         onAccessibilityAction={
-          onA11yAction ? (e) => onA11yAction(e.nativeEvent.actionName) : undefined
+          onA11yAction || onActivate ? (e) => onAction(e.nativeEvent.actionName) : undefined
         }
         {...webActionKeys}
         // The pressable is the tap strip; the view inside it is the card. Two
@@ -829,6 +853,7 @@ export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean 
     a.card.id === b.card.id &&
     a.selected === b.selected &&
     a.onPress === b.onPress &&
+    a.onActivate === b.onActivate &&
     a.scale === b.scale &&
     a.compact === b.compact &&
     a.faceDown === b.faceDown &&

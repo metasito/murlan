@@ -77,7 +77,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 `.github/workflows/ios.yml` builds a release `.app`; `maestro.yml` compiles a release APK. Both
 drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a real simulator or
 emulator. A ticket dispatches them from its own branch when its work needs a device run
-(`gh workflow run ios.yml --ref agent/<n>-<slug>`), and both run on `main` twice a week: a branch
+(`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch
 can read only its own cache and main's, so a branch's first run restores main's native build
 instead of compiling it cold, and a cache unread for 7 days is evicted. By the owner's decision; a
 red run is diagnosed from its artifacts, never rerun. A red scheduled run files or comments on
@@ -100,14 +100,17 @@ holds both to it). Reproducing locally needs the same pin: `export MAESTRO_VERSI
 it must be exported above the pipe.
 
 CI compiles the Android and iOS projects on a pull request that changes `package.json`'s
-`dependencies` or the app config (`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
+`dependencies`, the app config, or a patch whose own diff touches native sources
+(`tools/ci/nativeScope.mjs`), and weekly. When a ticket asks for
 a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
 native=true`, then wait on it with `await-run.mjs`.
 
 `ios.yml` also runs `.maestro/felt-opaque.yaml`: the felt's Metal layer is opaque only through
 `patches/@shopify+react-native-skia+2.12.0.patch`, and an opaque layer whose drawable misses its
-bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the first frame, and after a
-portrait round trip) on a black band along an edge or over 5 % black; they upload as `felt-ios`.
+bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the table as it appears and
+settled, both after the landscape lock resized the felt) on a black band along an edge or over 5 %
+black; they upload as `felt-ios`. They show no black, not that the layer is opaque: the bench's
+`feltOpaque` gate is that proof.
 `ci.yml`'s `ios-build` fails when the patch did not apply.
 
 A device job proves the flows still run and the app renders *something* — it does not replace

@@ -40,9 +40,7 @@ const STATE: GameState = {
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: STATE,
-    selectedCards: [],
-    selectCard: () => {},
-    playSelected: () => {},
+    playCards: () => {},
     passTurn: mockPassTurn,
     resetGame: () => {},
     runAITurn: () => {},

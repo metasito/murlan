@@ -760,7 +760,7 @@ describe("the beaten pile's flinch (#764)", () => {
   // just the pure function is what would have caught that.
   test("the flinch and the shake read the tier off the one landing signal — never a second derivation", () => {
     const read = (...at: string[]) => blankComments(readFileSync(path.join(repoRoot, "components", ...at), "utf8"));
-    assert.match(read("table", "pile.tsx"), /useLandingReaction\(landing \?\? idle, \(l\) => \{[^}]*flinchFor\(l\.tier/);
+    assert.match(read("table", "pile.tsx"), /useLandingReaction\(signal, \(l\) => \{[^}]*flinchFor\(l\.tier/);
     assert.match(read("useTableFeedback.ts"), /useLandingReaction\(landing, \(l\) => \{[\s\S]*?traumaFor\(l\.tier/);
   });
 
@@ -801,33 +801,25 @@ describe("the beaten pile's flinch (#764)", () => {
   // and separately by dropping the static `-7deg` resting rotate outright —
   // both passed every test here. A scan proves the text is present, not that
   // it is reachable from the rendered node; `tests/native/pileFlinch.test.tsx`
-  // mounts `PlayedPile`, bumps `flinchTrigger`, and reads the beaten layer's
+  // mounts `PileLayer`, fires a landing, and reads the beaten group's
   // actual transform, which is the only thing that can tell the two apart.
 
   // A blind critique caught this exact shape: every test above stayed green
   // while the flinch was rewired onto `current`, the landing combination,
   // instead of `prev`, the one it beat — the whole point of the ticket. A
-  // string search for "prevLayerStyle" anywhere in the file cannot catch
-  // that; only asking which JSX branch carries it can.
-  test("the flinch lands on the beaten layer (prev), never on the new one — the whole point of the ticket", () => {
+  // string search for "flinchY" anywhere in the file cannot catch
+  // that; only asking which role's pose carries it can.
+  test("the flinch lands on the beaten group, never on the new one — the whole point of the ticket", () => {
     const src = blankComments(
       readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
     );
-    const stack = src.match(/<View style=\{pileStyles\.pileStack\}>[\s\S]*?<\/View>/);
-    assert.ok(stack, "expected the pile's own stacking View");
-    const prevBlock = stack![0].match(/\{prev &&[\s\S]*?\)\}/);
-    const currentBlock = stack![0].match(/\{current &&[\s\S]*?\)\}/);
-    assert.ok(prevBlock, "expected the prev-combo JSX branch inside the stack");
-    assert.ok(currentBlock, "expected the current-combo JSX branch inside the stack");
-    assert.match(
-      prevBlock![0],
-      /prevLayerStyle/,
-      "the flinch's own animated style must be applied to the beaten layer"
-    );
-    assert.doesNotMatch(
-      currentBlock![0],
-      /prevLayerStyle|flinchY/,
-      "the flinch must never reach the landing combination — displacing prev is the whole point of #764"
+    const pose = src.match(/const pose = useAnimatedStyle\(\(\) => \{[\s\S]*?\n {2}\}\);/);
+    assert.ok(pose, "expected the play group's own pose worklet");
+    assert.match(src, /const beaten = role === "beaten"/, "expected the pose's beaten flag to read the play's role");
+    assert.deepEqual(
+      pose![0].split("\n").filter((l) => /flinchY/.test(l)).map((l) => l.trim().startsWith("if (beaten)")),
+      [true],
+      "the flinch must never reach the landing combination — displacing the beaten play is the whole point of #764"
     );
   });
 
