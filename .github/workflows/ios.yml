@@ -31,18 +31,28 @@ permissions:
   issues: write
 
 jobs:
-  ios:
-    name: Drive the app on a real iOS simulator
+  flows:
+    name: Drive the app on a real iOS simulator (${{ matrix.shard }})
     runs-on: macos-latest
-    # Generous on purpose, and the same as maestro.yml's: this job compiles the
-    # app before it drives it, and then runs smoke.yaml, offline-game.yaml,
-    # exchange-phase.yaml and rematch-prompt.yaml — offline-game alone is a
-    # full hand, 16 minutes on a developer machine. A measured run of just
-    # smoke + offline-game is 23; exchange-phase and rematch-prompt add
-    # another ~8.5 (run 33899179508: 3m36s + 4m55s). Hitting the cap
-    # cancels the job, and a cancelled job skips every `if: failure()` step
-    # below, so an overrun costs the artefacts that would say what happened.
-    timeout-minutes: 100
+    # A cancelled job skips every `if: failure()` step below, so an overrun costs the artefacts
+    # that would say what happened.
+    timeout-minutes: 45
+    strategy:
+      # Each shard's flows are diagnosed from its own artefacts; one red shard must not cancel the rest.
+      fail-fast: false
+      # Balanced by run 36765362324's minutes per flow; each shard also pays ~2 of driver startup
+      # per maestro invocation. Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
+      matrix:
+        include:
+          - shard: rematch-prompt # 7.0
+            flows: .maestro/rematch-prompt.yaml
+          - shard: offline-game # 6.5
+            flows: .maestro/offline-game.yaml
+          - shard: exchange-phase # 5.3
+            flows: .maestro/exchange-phase.yaml
+          - shard: smoke-and-felt # 2.4, then felt-opaque 1.7 in its own invocation
+            flows: .maestro/smoke.yaml
+            felt: true
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -50,7 +60,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: npm
 
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
@@ -83,28 +92,43 @@ jobs:
           xcrun simctl boot "$udid"
 
       - name: Install dependencies
-        run: npm ci
+        uses: ./.github/actions/install
+        with:
+          node-version: 24
 
-      - name: Build the app, or restore it
+      # Started in the background, so it runs beside the fingerprint and restore below. The .app it
+      # writes into is a stand-in: hermesc embeds only its input's directory, which stays Xcode's.
+      - name: Start bundling the JS
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
+          mkdir -p "$products/js.app"
+          nohup bash -c 'tools/ci/rebundle-ios-app.sh "$1" > "$RUNNER_TEMP/bundle.log" 2>&1; echo $? > "$RUNNER_TEMP/bundle.status"' \
+            _ "$products/js.app" > /dev/null 2>&1 &
+
+      - name: Restore the app
         id: native
         uses: ./.github/actions/ios-app
 
       - name: Bundle the JS into the app
-        env:
-          EXPO_PUBLIC_E2E_FAST: "1"
         run: |
+          for _ in $(seq 1 300); do
+            [ -s "$RUNNER_TEMP/bundle.status" ] && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/bundle.log"
+          [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
           cached=""
           for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
             [ -d "$candidate" ] && { cached="$candidate"; break; }
           done
-          [ -n "$cached" ] || { echo "::error::No .app was built or restored."; exit 1; }
-          # Where Xcode built it: hermesc writes its input's path into the bytecode.
-          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
-          app="$products/$(basename "$cached")"
-          mkdir -p "$products"
+          [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
+          app="$(dirname "$JS_BUNDLE")/$(basename "$cached")"
           rm -rf "$app"
           cp -R "$cached" "$app"
-          tools/ci/rebundle-ios-app.sh "$app"
+          cp -R "$JS_BUNDLE/." "$app/"
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
           # not from app.json: a prebuild that renamed the bundle would
@@ -143,11 +167,6 @@ jobs:
           # off the binary that arrived.
           "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
 
-      # Both flows, named rather than globbed: the order is the thing being
-      # relied on. `clearState` makes each start from the same place, so either
-      # order has to work — but a directory glob would also pick up a flow added
-      # later and run it here without anyone deciding to.
-      #
       # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
       - name: Run the flows
         env:
@@ -157,22 +176,20 @@ jobs:
           # 2026-08-31, one of them burning the full five minutes below, which
           # is what says it was never coming up rather than coming up late.
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+          FLOWS: ${{ matrix.flows }}
         # Named rather than left to Maestro to resolve: run 33428373840 was the
         # first with `--device` and the first with no "iOS driver not ready in time".
-        run: |
-          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-            .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
-            .maestro/rematch-prompt.yaml
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" $FLOWS
 
       # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
       - name: Photograph the felt
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt }}
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/felt-opaque.yaml
 
       - name: The felt shows no black band and no black frame
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt }}
         run: |
           mkdir -p "$RUNNER_TEMP/felt"
           for shot in felt-first felt-settled; do
@@ -183,7 +200,7 @@ jobs:
           node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
       - name: Upload the felt screenshots
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: felt-ios
@@ -203,7 +220,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: crash-reports-ios
+          name: crash-reports-ios-${{ matrix.shard }}
           path: ${{ runner.temp }}/crash-reports/
           if-no-files-found: ignore
 
@@ -213,9 +230,25 @@ jobs:
         if: failure() || inputs.force-upload-debug
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: maestro-debug-ios
+          name: maestro-debug-ios-${{ matrix.shard }}
           path: ~/.maestro/tests/
           if-no-files-found: ignore
+
+  ios:
+    name: Drive the app on a real iOS simulator
+    needs: flows
+    # `always()`, so a skipped or cancelled shard reaches the check below and turns it red.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Every shard ran and passed
+        env:
+          SHARDS: ${{ needs.flows.result }}
+        run: |
+          echo "The shards' result: $SHARDS"
+          [ "$SHARDS" = success ]
 
       # `cancelled()` is the timeout: it skips every `failure()` step.
       - name: Report a red scheduled run to the tracker
