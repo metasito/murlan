@@ -381,9 +381,9 @@ test.describe("the notification banner over a live table", () => {
     });
     try {
       const { page } = table;
-      // The viewer leads; the other seat, which nobody drives, idles into the server's AFK move.
-      expect(await playFirstLegalCard(page), "no single card led").toBe(true);
-      await expect(page.locator(BANNER)).toContainText(OTHER_SEAT_AFK, { timeout: SERVER_AFK_MS + 20_000 });
+      // Nobody drives either seat: the viewer's own AFK move floats, and the other seat's, within two
+      // windows, raises the banner. Idling rather than leading keeps the opening gate out of it.
+      await expect(page.locator(BANNER)).toContainText(OTHER_SEAT_AFK, { timeout: 2 * SERVER_AFK_MS + 30_000 });
 
       const bannerBox = await settledBox(page, BANNER);
       const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
