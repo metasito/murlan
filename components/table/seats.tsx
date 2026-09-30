@@ -851,7 +851,8 @@ const seatStyles = StyleSheet.create({
   whoLabelRight: { alignItems: "flex-end" },
 
   // Bare on the felt, as the mockup's `.nm`: its ink is held to 4.5:1 over the
-  // brightest felt behind it by tests/e2e/seatNameContrast.spec.ts.
+  // felt behind it by tests/e2e/seatNameContrast.spec.ts. The lit name sits in
+  // the lamp's pool, too bright for any light ink, so it is dark.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.textMuted,
@@ -860,7 +861,7 @@ const seatStyles = StyleSheet.create({
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
   },
-  oppNameActive: { color: Colors.goldLit },
+  oppNameActive: { color: Colors.badgeInk },
 
   seatBadgeRow: {
     flexDirection: "row",

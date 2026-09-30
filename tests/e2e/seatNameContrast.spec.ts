@@ -1,5 +1,5 @@
-// tests/e2e/seatNameContrast.spec.ts — every bare seat name clears 4.5:1 over the brightest felt
-// behind its glyphs, in every capture state at every phone (#1259 plan 5 task 13, Q9). The felt is
+// tests/e2e/seatNameContrast.spec.ts — every bare seat name clears 4.5:1 over the brightest and the
+// darkest felt behind its glyphs, in every capture state at every phone (#1259 plan 5 task 13, Q9). The felt is
 // read alone: every other element hidden (the seat's ring, arc and glow with it), the rail masked by
 // `feltOnly`, under the glyphs grown by a pixel. The attachment carries every candidate ink's ratio,
 // bare and under each dark text shadow, which is what chose the ink in components/table/seats.tsx.
@@ -15,7 +15,7 @@ import type { TraceFrame } from "../../lib/e2eTrace";
 const BODY_MIN = 4.5;
 const LAMP_UP = 1 - 1 / 512;
 const NAME = '[data-testid="seat-name"]';
-const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit };
+const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit, badgeInk: Colors.badgeInk };
 const BLURS = [1, 2, 3];
 const ALPHAS = [0.5, 0.6, 0.7, 0.8, 0.9, 1];
 const SHADOWS = BLURS.flatMap((blur) => ALPHAS.map((alpha) => ({ key: `${blur}px ${alpha}`, css: `0 0 ${blur}px rgba(0,0,0,${alpha})` })));
@@ -61,8 +61,8 @@ async function grab(page: Page, key: string, clip: Rect): Promise<void> {
   }, [key, png] as const);
 }
 
-/** Per name, the brightest pixel of each shot under the glyphs (white against clear, grown a pixel) that is felt. */
-function brightestUnderGlyphs(page: Page, clip: Rect, boxes: Rect[], felt: number[], keys: string[]) {
+/** Per name, the brightest and the darkest pixel of each shot under the glyphs (white against clear, grown a pixel) that is felt. */
+function feltUnderGlyphs(page: Page, clip: Rect, boxes: Rect[], felt: number[], keys: string[]) {
   return page.evaluate(
     ([clip, boxes, felt, keys]) => {
       const shots = (window as unknown as { shots: Record<string, ImageData> }).shots;
@@ -96,18 +96,21 @@ function brightestUnderGlyphs(page: Page, clip: Rect, boxes: Rect[], felt: numbe
         }
         return {
           pixels: grown.size,
-          brightest: Object.fromEntries(
-            keys.map((key) => {
-              const d = shots[key].data;
-              let best = -1;
-              let rgb = [0, 0, 0];
-              for (const p of grown) {
-                const l = lum(d, p * 4);
-                if (l > best) [best, rgb] = [l, [d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]];
-              }
-              return [key, rgb];
-            })
-          ),
+          ...(["brightest", "darkest"] as const).reduce((out, end) => {
+            out[end] = Object.fromEntries(
+              keys.map((key) => {
+                const d = shots[key].data;
+                let best = end === "brightest" ? -1 : 2;
+                let rgb = [0, 0, 0];
+                for (const p of grown) {
+                  const l = lum(d, p * 4);
+                  if (end === "brightest" ? l > best : l < best) [best, rgb] = [l, [d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]];
+                }
+                return [key, rgb];
+              })
+            );
+            return out;
+          }, {} as Record<"brightest" | "darkest", Record<string, number[]>>),
         };
       });
     },
@@ -142,7 +145,7 @@ function clothIn(clip: Rect, felt: Rect, perPt: number): number[] {
 }
 
 for (const phone of PHONES) {
-  test(`${phone.name}: every seat name clears 4.5:1 over the brightest felt behind it`, async ({ page, baseURL }, info) => {
+  test(`${phone.name}: every seat name clears 4.5:1 over the felt behind it`, async ({ page, baseURL }, info) => {
     test.setTimeout(300_000);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: phone.width, height: phone.height });
@@ -184,27 +187,29 @@ for (const phone of PHONES) {
 
       const perPt = (await page.evaluate(() => (window as unknown as { shots: Record<string, ImageData> }).shots.clear.width)) / clip.w;
       const keys = ["bare", "own", ...SHADOWS.map((s) => s.key)];
-      const measured = await brightestUnderGlyphs(page, clip, all, clothIn(clip, { x: feltBox.x, y: feltBox.y, w: feltBox.width, h: feltBox.height }, perPt), keys);
+      const measured = await feltUnderGlyphs(page, clip, all, clothIn(clip, { x: feltBox.x, y: feltBox.y, w: feltBox.width, h: feltBox.height }, perPt), keys);
 
       shown.forEach((name, i) => {
-        const { pixels, brightest } = measured[i];
+        const { pixels, brightest, darkest } = measured[i];
         expect(pixels, `${state.id}: the name at ${JSON.stringify(name.box)} has felt under its glyphs`).toBeGreaterThan(0);
         const inks = Object.entries(CANDIDATES);
         report.push({
           phone: phone.name,
           state: state.id,
-          lit: /243, 224, 166/.test(name.ink),
+          lit: /36, 26, 6/.test(name.ink),
           bare: brightest.bare,
           plain: Object.fromEntries(inks.map(([t, c]) => [t, +ratio(parse(c), brightest.bare).toFixed(2)])),
           shadowed: Object.fromEntries(SHADOWS.map((s) => [s.key, Object.fromEntries(inks.map(([t, c]) => [t, +ratio(parse(c), brightest[s.key]).toFixed(2)]))])),
         });
-        const backdrop = name.shadow === "none" ? brightest.bare : brightest.own;
-        judged.push({ what: `${state.id} ${JSON.stringify(name.box)}: ${name.ink} (shadow ${name.shadow}) over rgb(${backdrop})`, ratio: ratio(parse(name.ink), backdrop) });
+        const key = name.shadow === "none" ? "bare" : "own";
+        for (const backdrop of [brightest[key], darkest[key]]) {
+          judged.push({ what: `${state.id} ${JSON.stringify(name.box)}: ${name.ink} (shadow ${name.shadow}) over rgb(${backdrop})`, ratio: ratio(parse(name.ink), backdrop) });
+        }
       });
     }
     await info.attach(`seat-name-contrast-${phone.width}x${phone.height}.json`, { body: JSON.stringify(report, null, 1), contentType: "application/json" });
     console.log(`${phone.name} seat-name-contrast ${JSON.stringify(report)}`);
-    expect(judged.length, "every state's three names judged").toBe(CAPTURE_STATES.length * 3);
+    expect(judged.length, "every state's three names judged").toBe(CAPTURE_STATES.length * 3 * 2);
     for (const { what, ratio } of judged) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
 }
