@@ -372,6 +372,17 @@ region is the same node before and after); new "float" case in
 - At a 3.1 font scale the pill's text is capped at `TABLE_FONT_SCALE_MAX` and truncates on one
   line; the pill stays within the viewport and above the first focusable control, at 375×812 and
   874×402.
+- As built: G2's solid pill fills with `Colors.offlineAlert` (#D32F2F, 4.98:1 under white), not
+  `Colors.danger` (#E53935, 4.23:1), because the notice palette's body-contrast check holds every
+  tone to 4.5:1 and a pill's words are body text (lead's ruling). "Above the first focusable
+  control" is checked as covering no visible focusable control. The device being offline outranks
+  the online screen's note, on the online table only: the offline game keeps its clock. Another
+  seat dropping stays on its seat chip, out of the pill; returning is `.ok` for its 3.5 s, and
+  never over the viewer's own running clock. The pill off the table yields while a table's turn
+  pill can be seen (not in focus mode or under a cover), except the settings sheet's own, and is
+  centred on the window, not at the table's 457.
+  G2 drew it over a landscape menu; in a portrait window the menu's corner controls share that row
+  (CI 36700729499: it covered "Accedi" at 375×812), so there it sits under the 44 pt control row.
 
 **Tests:** new "offline" case in *tests/e2e/mockupPolish.spec.ts* (against `#turn.bad`); edited
 `tests/native/offlineBannerLargeText.test.tsx`, `tests/e2e/offlineBannerFit.spec.ts`, and the

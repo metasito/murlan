@@ -46,7 +46,7 @@ term's meaning, and useless anywhere the term is not.
 - **Notice** — anything the table tells a player in words on a plate of its own: the turn pill,
   a seat's PASSO, the combination, the connection notes, who starts, a refusal. A notice has a
   *kind* (which surface it is), a *shape* in the lantern mockup's vocabulary — `pill`, `chip` (the
-  mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`, `gold`)
+  mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`, `solid`, `gold`)
   its shape must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
   `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill, the turn
   pill, who starts, the seat marks and the pile's marks (the combination, the round winner, the

@@ -8,7 +8,7 @@
 //
 // Imports lib/tokens — the same palette — not lib/theme, whose Shadow helper pulls
 // react-native in; that and the extension — docs/agents/checks.md, "Node's TypeScript loader".
-import { Colors, Garnet, Gradient, Scrim, FeltGradients, NoticePalette, Type } from "../../lib/tokens.ts";
+import { Colors, Garnet, Gradient, Scrim, FeltGradients, LastCard, NoticePalette, Type } from "../../lib/tokens.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -88,7 +88,7 @@ const SURFACES = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim, Garnet };
+const PALETTES: Record<string, Record<string, string>> = { Colors, Scrim, Garnet, LastCard };
 
 const COMPONENT_FILES: [string, string][] = readdirSync(path.join(repoRoot, "components"), { recursive: true, encoding: "utf8" })
   .filter((f) => f.endsWith(".tsx"))
@@ -252,7 +252,7 @@ const ON_TABLE: Record<string, Backdrop> = {
   // The disc's own gradient is darker than both stand-in stops.
   "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
   "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
-  "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubble" },
+  "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubbleLast" },
   "table/seats.tsx:seatStyles.oppName": { plate: SELF },
   "table/seats.tsx:seatStyles.oppNameActive": { plate: "seatStyles.oppName" },
   "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
@@ -375,8 +375,7 @@ for (const [name, color] of Object.entries(BODY_TEXT_COLORS)) {
 const LARGE_ONLY_TEXT_COLORS: Record<string, string> = {
   goldDark: Colors.goldDark,
   info: Colors.info,
-  // A fill: MenuButton's danger variant, the offline banner, the reconnect
-  // border. It clears 4.5:1 on no surface the app has, so text may only reach
+  // A fill: MenuButton's danger variant. It clears 4.5:1 on no surface the app has, so text may only reach
   // for it at >=18pt, or >=14pt bold — which in these units is 19px.
   danger: Colors.danger,
 };

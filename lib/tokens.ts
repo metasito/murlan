@@ -53,7 +53,12 @@ export const Colors = {
   dangerDim:    '#E8857E',              // the same alarm below that bar
   dangerScrim:  'rgba(229,57,53,0.92)', // the lobby's error banner
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
-  // A table notice that says no: the lantern mockup's #turn.bad.
+  offlineAlert: '#D32F2F',              // the offline pill's fill: danger, deep enough for body-size white text
+  // The lantern mockup's #turn.ok and #turn.bad: the turn pill carrying the connection, and `offline*`
+  // also a refusal's float.
+  onlineInk:    '#D4ECCE',
+  onlineEdge:   'rgba(143,191,138,0.7)',
+  onlineDot:    '#8FBF8A',
   offlineInk:   '#FFCFC6',
   offlineEdge:  '#D0574B',
   offlineDot:   '#E0806F',
@@ -198,6 +203,14 @@ export const Beaten = {
   shade: 'rgba(0,0,0,0.4)',
 } as const;
 
+// A seat down to its last card: the lantern mockup's `.badge.last` (#1259 D4 #4).
+export const LastCard = {
+  fill: '#9E1F26',
+  edge: '#FFB3A0',
+  ink:  '#FFFFFF',
+  glow: '#FF5A46',
+} as const;
+
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
 // its one reader). Edges map the mockup's onto the gold scale (#1259 Q4); the lit edge is `goldLitEdge`.
 export const NoticePalette = {
@@ -221,6 +234,9 @@ export const NoticePalette = {
       glow: { color: Colors.emberGlow, opacity: 0.5 },
       dot: { color: Colors.emberDot, glow: 1 },
     },
+    ok: { fill: Colors.chipFill, edge: Colors.onlineEdge, ink: Colors.onlineInk, strong: Colors.onlineInk, dot: { color: Colors.onlineDot } },
+    bad: { fill: Colors.chipFill, edge: Colors.offlineEdge, ink: Colors.offlineInk, strong: Colors.offlineInk, dot: { color: Colors.offlineDot } },
+    solid: { fill: Colors.offlineAlert, edge: Colors.offlineAlert, ink: Colors.white, strong: Colors.white },
     gold: { fill: Colors.chipFill, edge: Colors.goldStrong, ink: Colors.goldLit, strong: Colors.goldLit },
   },
   chip: {

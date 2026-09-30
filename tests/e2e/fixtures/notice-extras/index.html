@@ -1,0 +1,506 @@
+<!-- Fixture: design gate G2 of #1259 plan 5, the notices with no mockup counterpart, approved as
+     `G2: reject.place=above reject.tone=bad toast.shape=pill toast.tone=bad waiting.shape=pill waiting.tone=gold empty.shape=pill empty.tone=gold vote.shape=count vote.place=right offline.shape=pill offline.tone=solid floatHold=mark`,
+     which are its defaults here. The numbers in this file are the specification, with one ruling over it: the app fills
+     the solid offline pill with Colors.offlineAlert (#D32F2F) rather than #E53935, for body contrast under white ink. -->
+<title>Notice Extras</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#061009;--panel:#0b1710;--line:#1f2d24;--ink:#F0EAD6;--muted:#93a097;--gold:#C9A84C;--glit:#F3E0A6;--sel:#13200f}
+html,body{background:#061009;color:#F0EAD6;margin:0}
+body{font:15px/1.55 'Source Serif 4',Georgia,serif;padding-inline:16px;padding-block:22px 56px;overflow-x:hidden}
+*{box-sizing:border-box}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:16px;min-width:0}
+.eyebrow{font:700 12px/1.3 Rajdhani,'Arial Narrow',sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#C9A84C;margin:0}
+h1{font:700 clamp(30px,4.4vw,48px)/1.02 Rajdhani,'Arial Narrow',sans-serif;margin:6px 0 8px;text-wrap:balance;color:#F0EAD6}
+.lede{max-width:82ch;color:#93a097;margin:0}
+.lede b{color:#F0EAD6;font-weight:600}
+h2{font:700 13px/1.3 Rajdhani,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#C9A84C;margin:0 0 10px}
+h3{font:700 20px/1.1 Rajdhani,sans-serif;letter-spacing:.04em;margin:0;color:#F0EAD6}
+a{color:#F3E0A6}
+.frame{position:relative;width:100%;max-width:100%;aspect-ratio:874/402;border-radius:14px;overflow:hidden;background:#040605;box-shadow:0 0 0 1px #1f2d24,0 30px 60px -24px rgba(0,0,0,.9)}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.pill{font:700 14px/1 Rajdhani,sans-serif;letter-spacing:.08em;text-transform:uppercase;background:transparent;color:#F0EAD6;border:1px solid #1f2d24;border-radius:999px;padding:9px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.pill:hover{border-color:#C9A84C}
+.pill.gold{background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);color:#1d1606;border-color:#F3E0A6}
+.seg{display:inline-flex;flex-wrap:wrap;gap:4px}
+.seg button{font:700 13px/1 Rajdhani,sans-serif;letter-spacing:.06em;text-transform:uppercase;background:transparent;color:#F0EAD6;border:1px solid #1f2d24;border-radius:999px;padding:7px 11px;cursor:pointer}
+.seg button:hover{border-color:#C9A84C}
+.seg button[aria-pressed="true"]{background:#13200f;border-color:#C9A84C;color:#F3E0A6}
+.hint{font:600 14px/1.3 Rajdhani,sans-serif;color:#93a097;letter-spacing:.03em}
+.knobs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px 22px;border-top:1px solid #1f2d24;padding-top:16px}
+.kn{display:grid;gap:6px;align-content:start;min-width:0}
+.kn .lbl{font:700 12px/1.3 Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#C9A84C}
+.kn .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.kn input[type=range]{flex:1;min-width:0;accent-color:#C9A84C}
+.out{font:600 15px/1 Rajdhani,sans-serif;font-variant-numeric:tabular-nums;color:#F3E0A6;min-width:52px;text-align:right}
+.note{margin:0;font-size:13px;line-height:1.45;color:#93a097}
+.note b{color:#F0EAD6;font-weight:600}
+.note code,.copyrow code{font:13px/1.4 ui-monospace,Consolas,monospace;color:#d7c9a3}
+.pick{border-top:1px solid #1f2d24;padding-top:16px}
+.copyrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.copyrow code{flex:1 1 240px;min-width:0;overflow-wrap:anywhere;background:#0b1710;border:1px solid #1f2d24;border-radius:8px;padding:10px 12px;user-select:all}
+button:focus-visible,input:focus-visible{outline:2px solid #C9A84C;outline-offset:2px}
+
+/* ---------- the table, 874 x 402, from tests/e2e/fixtures/lantern-table ---------- */
+.stage{position:absolute;left:0;top:0;width:874px;height:402px;transform-origin:0 0;overflow:hidden;background:#040605;font-family:Rajdhani,'Arial Narrow',sans-serif;color:#F0EAD6;-webkit-font-smoothing:antialiased;--shx:0px;--shy:3px;--fs:1;user-select:none}
+.stage canvas.bg{position:absolute;left:0;top:0;width:874px;height:402px}
+.stage .tbl,.stage .hud,.stage .top,.stage .over{position:absolute;inset:0}
+.stage .hud,.stage .top,.stage .over,.stage .tbl{pointer-events:none}
+.stage .tbl>*{position:absolute;left:0;top:0;width:874px;height:402px}
+.card{position:absolute;box-sizing:border-box;background:linear-gradient(160deg,#FFFDF7,#F7F4EA 55%,#E6E1D2);border:1px solid rgba(90,78,52,.45);box-shadow:0 1.5px 0 #D6D0BC,0 1px 2px rgba(0,0,0,.3),var(--shx) var(--shy) 10px rgba(0,0,0,.5);overflow:hidden}
+.card svg{position:absolute;inset:0;display:block}
+.card .gl{position:absolute;inset:0;pointer-events:none}
+.grp{position:absolute;inset:0}
+.seat{position:absolute;width:0;height:0}
+.nm{position:absolute;top:-33.5px;left:-60px;width:120px;text-align:center;font:600 11.34px/11px Rajdhani,sans-serif;letter-spacing:1.55px;color:rgba(240,234,214,.58);text-transform:uppercase}
+.disc{position:absolute;left:-17px;top:-17px;width:34px;height:34px;box-sizing:border-box;border-radius:50%;background:linear-gradient(135deg,#12402A 20%,#061C12);border:1px solid rgba(201,168,76,.2);display:grid;place-items:center;font:700 13.4px/1 Rajdhani,sans-serif;color:#F0EAD6}
+.seat.on .disc{border-color:rgba(243,224,166,.7);box-shadow:0 0 14px rgba(243,224,166,.35)}
+.seat.on .nm{color:#F3E0A6}
+.seat.gone .disc,.seat.gone .nm{opacity:.38}
+.ring{position:absolute;inset:-6px;border-radius:50%;background:conic-gradient(#F3E0A6 calc(var(--p,100) * 1%),rgba(201,168,76,.14) 0);-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));opacity:0}
+.seat.on .ring{opacity:1}
+.badge{position:absolute;left:19.7px;top:19.7px;width:18.55px;height:18.55px;box-sizing:border-box;border-radius:50%;background:#03110A;border:1px solid rgba(201,168,76,.5);display:grid;place-items:center;font:700 10.3px/1 Rajdhani,sans-serif;color:#E2C06A}
+.badge.won{background:#C9A84C;border-color:rgba(201,168,76,.15)}
+.badge.last{transform:scale(1.25);background:#9e1f26;border-color:#ffb3a0;color:#fff;box-shadow:0 0 10px rgba(255,90,70,.6)}
+.fan{position:absolute;width:0;height:0}
+.bk{position:absolute;width:24.5px;height:43.5px;margin:-21.75px 0 0 -12.25px;border-radius:2.4px;box-shadow:inset 0 0 0 .7px rgba(201,168,76,.45),0 1px 2px rgba(0,0,0,.5)}
+.knob{position:absolute;left:6.3px;width:45.35px;height:45.35px;box-sizing:border-box;border-radius:50%;background:rgba(0,0,0,.6);border:1px solid rgba(201,168,76,.3);display:grid;place-items:center}
+.kmenu{top:13.4px}.kreact{top:343.25px}
+.kmenu i{display:block;width:15px;height:1.8px;border-radius:1px;background:rgba(240,234,214,.58);box-shadow:0 5px 0 rgba(240,234,214,.58),0 -5px 0 rgba(240,234,214,.58)}
+.chip{position:absolute;top:13.4px;height:23.7px;box-sizing:border-box;border-radius:999px;background:rgba(3,14,9,.72);border:1px solid rgba(201,168,76,.3);padding:0 12px;display:flex;align-items:center;gap:6px;font:600 10px/1 Rajdhani,sans-serif;letter-spacing:1.55px;text-transform:uppercase;color:rgba(240,234,214,.58);white-space:nowrap}
+.chip b{color:#C9A84C;font-weight:700}
+.combo{left:68.3px}
+.turn{left:457px;transform:translateX(-50%);gap:7px;padding:0 13px}
+.turn .dot{width:6px;height:6px;border-radius:50%;background:#C9A84C}
+.turn b{color:#F3E0A6;font-size:12px;min-width:13px;text-align:right;font-variant-numeric:tabular-nums}
+.turn.lit{color:#F3E0A6;border-color:rgba(243,224,166,.8);box-shadow:0 0 20.6px rgba(243,224,166,.28)}
+.turn.lit .dot{background:#F3E0A6;box-shadow:0 0 6px #F3E0A6}
+.cchip{position:absolute;left:457px;top:282px;transform:translate(-50%,-50%);height:15px;box-sizing:border-box;padding:0 9px;border-radius:999px;background:rgba(0,0,0,.6);border:1px solid rgba(201,168,76,.5);font:700 10px/13px Rajdhani,sans-serif;letter-spacing:1.5px;color:#C9A84C;text-transform:uppercase;white-space:nowrap}
+.act{position:absolute;top:345px;width:57.7px;height:57.7px;box-sizing:border-box;border-radius:14.4px;display:grid;place-items:center;font:700 12.37px/1 Rajdhani,sans-serif;letter-spacing:1.96px;text-transform:uppercase;background:rgba(0,0,0,.6);color:rgba(240,234,214,.4);box-shadow:0 4px 10px rgba(0,0,0,.5);border:1px solid rgba(201,168,76,.18)}
+.passa{left:58.5px}.gioca{left:799px}
+.passa.lit{color:#F0EAD6;border-color:rgba(201,168,76,.5)}
+.gioca.lit{background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);border:1px solid #F3E0A6;color:#2a1f08;box-shadow:0 4px 10px rgba(0,0,0,.5),0 0 26.8px rgba(243,224,166,.35)}
+.score{position:absolute;left:722.2px;top:13.4px;width:124px;height:23.7px;box-sizing:border-box;border-radius:11.85px;background:linear-gradient(180deg,rgba(18,36,26,.95),rgba(3,14,9,.93) 60%);border:1px solid rgba(201,168,76,.5);overflow:hidden;box-shadow:inset 0 1px 0 rgba(243,224,166,.1),0 4px 10px -8px rgba(0,0,0,.85)}
+.score .pc{position:absolute;left:0;top:0;right:0;height:21.7px;display:flex;align-items:center;gap:6px;padding:0 10px;white-space:nowrap}
+.pc svg{flex:none}
+.pc .me{font:600 9px/1 Rajdhani,sans-serif;letter-spacing:1.6px;color:rgba(240,234,214,.58);text-transform:uppercase}
+.pc .tot{font:700 14px/1 Rajdhani,sans-serif;color:#F3E0A6;font-variant-numeric:tabular-nums;margin-left:-1px}
+.pc .of{font:600 9px/1 Rajdhani,sans-serif;color:rgba(240,234,214,.42);margin-left:-5px;letter-spacing:.5px}
+.pc .sep{width:1px;height:11px;background:rgba(201,168,76,.3)}
+.pc .rk{font:700 9.5px/1 Rajdhani,sans-serif;color:#241a06;background:linear-gradient(160deg,#F3E0A6,#C9A84C 55%,#A8832B);border-radius:4px;padding:2.5px 4px 2px;letter-spacing:.5px}
+.score .prog{position:absolute;left:11px;right:11px;bottom:2.5px;height:1.5px;border-radius:1px;background:rgba(240,234,214,.07)}
+.score .prog i{position:absolute;left:0;top:0;bottom:0;border-radius:1px;background:linear-gradient(90deg,#A8832B,#F3E0A6)}
+.bb{height:30px;box-sizing:border-box;border-radius:15px;font:700 12px/28px Rajdhani,sans-serif;letter-spacing:2px;text-transform:uppercase;padding:0 16px;border:1px solid rgba(201,168,76,.5);background:rgba(3,14,9,.8);color:#F0EAD6;white-space:nowrap}
+.bb.pri{background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);color:#2a1f08;border-color:#F3E0A6}
+@media (max-width:640px){body{font-size:14px}}
+[hidden]{display:none!important}
+
+/* ---------- G2: the notices with no mockup counterpart, in the family's shapes ---------- */
+.nt{position:absolute;box-sizing:border-box;display:flex;align-items:center;gap:7px;font-family:Rajdhani,sans-serif;pointer-events:none}
+.nt .tx{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nt .dot{flex:none;width:6px;height:6px;border-radius:50%;background:#C9A84C}
+.nt svg{flex:none;display:block}
+.nt u{flex:none;text-decoration:none;background:#C9A84C;color:#17130a;border-radius:8px;padding:3px 7px;letter-spacing:1px;font-weight:700}
+.s-pill{min-height:23.7px;border-radius:999px;padding:4px 12px;background:rgba(3,14,9,.72);border:1px solid rgba(201,168,76,.3);font:600 calc(10px*var(--fs))/1 Rajdhani,sans-serif;letter-spacing:1.55px;text-transform:uppercase;color:rgba(240,234,214,.58);white-space:nowrap;max-width:420px}
+.s-float{min-height:23.7px;border-radius:12px;padding:5px 12px;background:rgba(3,14,9,.72);border:1px solid rgba(201,168,76,.3);font:600 calc(11px*var(--fs))/1.25 Rajdhani,sans-serif;letter-spacing:.5px;color:#F0EAD6;white-space:normal;max-width:260px}
+.s-plate{border-radius:12px;padding:8px 14px;background:linear-gradient(180deg,rgba(18,36,26,.95),rgba(3,14,9,.93) 60%);border:1px solid rgba(201,168,76,.5);box-shadow:inset 0 1px 0 rgba(243,224,166,.1),0 10px 24px -8px rgba(0,0,0,.85);font:600 calc(12px*var(--fs))/1.3 Rajdhani,sans-serif;letter-spacing:.4px;color:#F0EAD6;white-space:normal;max-width:300px}
+.s-line{font:600 calc(13px*var(--fs))/1.2 Rajdhani,sans-serif;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 10px rgba(0,0,0,.55)}
+.s-band{left:0;right:0;top:0;min-height:44px;justify-content:center;padding:8px 16px;background:rgba(3,14,9,.93);border-bottom:1px solid rgba(201,168,76,.5);box-shadow:0 8px 20px -8px rgba(0,0,0,.9);font:600 calc(14px*var(--fs))/1.2 Rajdhani,sans-serif;letter-spacing:.6px;color:#F0EAD6}
+.t-bad{color:#ffcfc6;border-color:#d0574b}.t-bad .dot{background:#e0806f}
+.s-line.t-gold,.s-pill.t-gold{color:#F3E0A6;border-color:rgba(201,168,76,.5)}
+.s-line.t-muted{color:rgba(240,234,214,.75)}
+.t-solid{background:#E53935;border-color:#E53935;color:#FFFFFF}
+.t-lit{color:#F3E0A6;border-color:rgba(243,224,166,.8);box-shadow:0 0 20.6px rgba(243,224,166,.28)}
+.nt.press{pointer-events:auto;cursor:pointer}
+.nt.press:focus-visible{outline:2px solid #F3E0A6;outline-offset:2px}
+/* the home menu behind the offline pill, from app/index.tsx's labels */
+.home{position:absolute;inset:0;background:radial-gradient(ellipse 60% 70% at 27% 45%,rgba(201,168,76,.10),rgba(201,168,76,0) 70%),#031008;font-family:Rajdhani,sans-serif;color:#F0EAD6}
+.home .icons{position:absolute;right:22px;top:14px;display:flex;gap:10px}
+.home .ic{width:36px;height:36px;border-radius:50%;background:rgba(0,0,0,.35);border:1px solid rgba(201,168,76,.3);display:grid;place-items:center}
+.home .mark{position:absolute;left:60px;width:360px;top:120px;text-align:center}
+.home .mark b{display:block;font:700 64px/1 Rajdhani,sans-serif;letter-spacing:12px;color:#C9A84C;text-shadow:0 0 30px rgba(201,168,76,.25)}
+.home .mark i{display:block;width:150px;height:3px;margin:12px auto;border-radius:2px;background:linear-gradient(90deg,#A8832B,#C9A84C,#A8832B)}
+.home .mark span{font:600 14px/1 Rajdhani,sans-serif;letter-spacing:5px;text-transform:uppercase;color:rgba(240,234,214,.58)}
+.home .col{position:absolute;left:470px;width:360px;top:84px;display:grid;gap:10px}
+.home .hero{height:64px;border-radius:16px;background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);color:#2a1f08;display:flex;align-items:center;justify-content:center;gap:10px;font:700 20px/1 Rajdhani,sans-serif;letter-spacing:3px;text-transform:uppercase;box-shadow:0 8px 20px -8px rgba(0,0,0,.8)}
+.home .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.home .tile2{height:54px;border-radius:14px;background:#0E2920;border:1px solid rgba(201,168,76,.3);display:flex;align-items:center;justify-content:center;gap:8px;font:700 15px/1 Rajdhani,sans-serif;letter-spacing:1.5px;text-transform:uppercase;color:#F0EAD6}
+.home .tile2.full{grid-column:1/-1}
+.home .quiet{display:flex;align-items:center;justify-content:center;gap:8px;font:600 14px/1 Rajdhani,sans-serif;letter-spacing:1px;color:rgba(240,234,214,.75);padding-top:6px}
+/* the page */
+.scene{display:grid;gap:10px;border-top:1px solid #1f2d24;padding-top:18px;min-width:0}
+.scene .ctl{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.scene .ctl .grp2{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.scene .ctl .k{font:700 12px/1 Rajdhani,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#93a097}
+.scene .ctl .k.aid{color:#6f7d73}
+.a11y{font:13px/1.4 ui-monospace,Consolas,monospace;color:#d7c9a3;background:#0b1710;border:1px solid #1f2d24;border-radius:8px;padding:8px 10px;overflow-wrap:anywhere}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Murlan &middot; #1259 plan 5 &middot; design gate G2</p>
+    <h1>The notices the mockup never drew</h1>
+    <p class="lede">Six notices with no counterpart in the Lantern Table, each drawn in the family's shapes (the <b>chip</b>, the <b>float</b> at the <b>.floatchip</b> slot, the <b>panel</b> plate, a bare <b>line</b>) and tones (neutral gold edge, <b>#turn.bad</b> red, <b>.lit</b> gold), each in the moment it appears. Where there is a real choice, two options sit under the table; controls marked grey only change what is shown and are not part of the pick. Replay shows each one's timing. Copy the line at the bottom.</p>
+  </header>
+
+  <div class="bar">
+    <button class="pill gold" id="replayAll" type="button">Replay all</button>
+    <span class="seg" id="langSeg" aria-label="Language"></span>
+    <span class="seg" id="fsSeg" aria-label="Font scale"></span>
+  </div>
+  <div class="bar"><span class="hint">A float's hold:</span><span class="seg" id="holdSeg" aria-label="Float hold"></span></div>
+  <p class="note" id="holdNote"></p>
+
+  <div id="scenes"></div>
+
+  <section class="pick">
+    <h2>Picked values</h2>
+    <div class="copyrow"><code id="line"></code><button class="pill gold" id="copyBtn" type="button">Copy</button></div>
+  </section>
+</div>
+
+<script>
+/* ---------------- the table, drawn as tests/e2e/fixtures/lantern-table draws it, held still ---------------- */
+const W=874,H=402,TAU=Math.PI*2,PILE=[457,222];
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)');
+function el(cls,html,parent,tag){const e=document.createElement(tag||'div');if(cls)e.className=cls;if(html)e.innerHTML=html;if(parent)parent.append(e);return e;}
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const shade=(h,k)=>'#'+hexRgb(h).map(v=>Math.min(255,Math.round(v*(1-k))).toString(16).padStart(2,'0')).join('');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* felt Verde and back Smeraldo, the defaults (#1243) */
+const GOLD='#C9A84C';
+const FELT=['#2E9F62','#23854F','#186B41','#0F4E31','#093320'];
+const BACK={field:['#1E6544','#19583B','#144B32','#0F3E29','#0A3120'],ink:GOLD,lattice:7,star:8};
+function starPts(cx,cy,r,n){const ri=r*(n<=4?.36:.46),p=[];for(let i=0;i<n*2;i++){const a=-Math.PI/2+i*Math.PI/n,q=i%2?ri:r;p.push((cx+Math.cos(a)*q).toFixed(1)+','+(cy+Math.sin(a)*q).toFixed(1));}return p.join(' ');}
+const BK={};
+function backURL(w,h){const key=w+'x'+h;if(BK[key])return BK[key];
+  const sp=BACK,ww=w*4,hh=h*4,m=ww*.12,iw=ww-2*m,ih=hh-2*m,lw=ww*.018,sr=ww*.19,st=ih/sp.lattice,ink=sp.ink,cx=ww/2,cy=hh/2,f=n=>n.toFixed(1);
+  let d='';for(let k=-ih;k<iw+ih;k+=st){const x=m+k;d+=`M${f(x)} ${f(m)}L${f(x-ih)} ${f(m+ih)}M${f(x-ih)} ${f(m)}L${f(x)} ${f(m+ih)}`;}
+  const stops=sp.field.map((c,i)=>`<stop offset="${i/4}" stop-color="${c}"/>`).join(''),fr=`x="${f(m)}" y="${f(m)}" width="${f(iw)}" height="${f(ih)}" rx="${f(ww*.05)}"`;
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(ww)} ${f(hh)}" preserveAspectRatio="none"><defs><radialGradient id="g" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(Math.hypot(ww,hh)/2)}">${stops}</radialGradient><clipPath id="c"><rect ${fr}/></clipPath></defs><rect width="${f(ww)}" height="${f(hh)}" fill="url(#g)"/><g clip-path="url(#c)"><path d="${d}" stroke="${shade(ink,.3)}" stroke-width="${f(lw)}" fill="none"/></g><rect ${fr} fill="none" stroke="${shade(ink,.3)}" stroke-width="${f(lw*1.3)}"/><circle cx="${f(cx)}" cy="${f(cy)}" r="${f(sr*1.15)}" fill="${sp.field[4]}"/><polygon points="${starPts(cx,cy,sr,sp.star)}" fill="${shade(ink,.12)}"/></svg>`;
+  return BK[key]=`url('data:image/svg+xml,${encodeURIComponent(svg)}')`;}
+
+/* the cloth: worsted twill, one lamp-lit shader (#1245) */
+const VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+const FS=`precision highp float;
+uniform vec2 uRes,uO,uLamp;
+uniform float uK,uLampH,uFlare,uPitch,uType,uJacOn,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;
+uniform vec3 uS0,uS1,uS2,uS3,uS4;uniform sampler2D uJac;
+vec3 stops(float t){t=clamp(t,0.,1.)*4.;if(t<1.)return mix(uS0,uS1,t);if(t<2.)return mix(uS1,uS2,t-1.);if(t<3.)return mix(uS2,uS3,t-2.);return mix(uS3,uS4,t-3.);}
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float h11(float n){return fract(sin(n*91.345+7.13)*47453.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1.,0.)),f.x),mix(h21(i+vec2(0.,1.)),h21(i+vec2(1.,1.)),f.x),f.y);}
+bool warpOver(vec2 c,float jac){
+ if(jac>.5)return mod(c.y*2.+c.x,5.)>.5;
+ if(uType<.5)return mod(c.x+c.y,2.)<.5;
+ if(uType<1.5)return mod(c.x+c.y,4.)<2.;
+ if(uType<2.5)return mod(floor(c.x/2.)+floor(c.y/2.),2.)<.5;
+ float s=mod(floor(c.x/6.),2.)<.5?c.x+c.y:c.y-c.x;return mod(s,4.)<2.;}
+void main(){
+ vec2 p=uO+vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uK;
+ vec2 q=abs(p-vec2(465.,201.))-vec2(389.,185.)+156.;
+ float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-156.;
+ float inside=clamp(.5-sd*uK,0.,1.);
+ if(inside<=0.){gl_FragColor=vec4(0.);return;}
+ float d=length((p-uLamp)*vec2(1.,1.15)),t=clamp(d/(420.+uFlare*120.),0.,1.);
+ vec3 alb=stops(t);
+ vec2 u=p/uPitch,c=floor(u),f=fract(u);
+ float jac=uJacOn>.5?step(.5,texture2D(uJac,p/36.).r):0.;
+ bool wo=warpOver(c,jac);
+ float ac=wo?f.x:f.y,al=wo?f.y:f.x;
+ float x=(ac-.5)/.44,prof=sqrt(max(0.,1.-x*x));
+ float dA=prof>.05?-x/prof:0.;
+ float dL=.9*cos(3.14159*al)*prof;
+ vec2 gr=wo?vec2(dA,dL):vec2(dL,dA);
+ vec3 n=normalize(vec3(-gr*.5,1.));
+ float tid=wo?c.x:c.y+517.;
+ float slub=vn(vec2(tid*1.7,(wo?u.y:u.x)*.12));
+ float tv=(h11(tid)-.5)*.12+(slub-.5)*.10-(wo?0.:uTwo);
+ vec3 L=normalize(vec3(uLamp-p,uLampH)),Hv=normalize(L+vec3(0.,0.,1.));
+ float diff=clamp((dot(n,L)+.35)/1.35,0.,1.);
+ vec3 T=wo?vec3(0.,1.,0.):vec3(1.,0.,0.);
+ float th=dot(T,Hv),spec=pow(sqrt(max(0.,1.-th*th)),uAniso);
+ float I=1./(1.+pow(d/260.,2.));
+ float vis=smoothstep(1.4,3.,uK*uPitch)*(1.-uCover);
+ float ao=mix(1.-uDepth,1.,prof)*(.8+.4*diff);
+ float shade=mix(1.,ao*(1.+tv),vis);
+ float mott=((vn(p*.06)-.5)*.08+(vn(p*.25)-.5)*.05)*uMott;
+ vec3 col=alb*shade*(1.+mott);
+ col+=mix(uS0,vec3(1.,.88,.66),.4)*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;
+ col*=1.+(h21(floor(p*uK))-.5)*uFuzz;
+ col+=vec3(1.,.78,.45)*pow(1.-t,2.)*(.14+.35*uFlare);
+ col*=1.-.72*smoothstep(160.,540.,length(p-vec2(457.,210.)));
+ gl_FragColor=vec4(col*inside,inside);}`;
+const TWILL={uType:1,uJacOn:0,uDepth:.42,uCover:.05,uFuzz:.05,uSheen:1,uAniso:14,uTwo:.03,uMott:.5,uPitch:1.1*.75};
+const GLC=document.createElement('canvas');
+function initGL(cv){const gl=cv.getContext('webgl',{premultipliedAlpha:true,antialias:false,preserveDrawingBuffer:true});if(!gl)return null;
+ try{const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+  const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,VS));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(p);gl.useProgram(p);
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const a=gl.getAttribLocation(p,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gl.createTexture());gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+  const U={};for(const n of['uRes','uO','uLamp','uK','uLampH','uFlare','uS0','uS1','uS2','uS3','uS4','uJac',...Object.keys(TWILL)])U[n]=gl.getUniformLocation(p,n);gl.uniform1i(U.uJac,0);return{gl,U};}
+ catch(e){console.error(e);return null;}}
+const GLX=initGL(GLC);
+function drawCloth(K,lx,ly,f){const{gl,U}=GLX;
+ const w=Math.round(W*K),h=Math.round(H*K);if(GLC.width!==w||GLC.height!==h){GLC.width=w;GLC.height=h;}
+ gl.viewport(0,0,w,h);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.uniform2f(U.uRes,w,h);gl.uniform2f(U.uO,0,0);gl.uniform1f(U.uK,K);gl.uniform2f(U.uLamp,lx,ly);gl.uniform1f(U.uLampH,200);gl.uniform1f(U.uFlare,f);
+ for(const k in TWILL)gl.uniform1f(U[k],TWILL[k]);
+ FELT.forEach((s,i)=>gl.uniform3fv(U['uS'+i],hexRgb(s).map(x=>x/255)));
+ gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+
+/* the rail: walnut with a brass line (#1245) */
+const RAIL=[{k:'wood',w:13,c:['#4a2f1c','#3a2415','#5e3d25'],grain:.6},{k:'line',w:1,c:'#b8923f'}];
+function ringPath(c,d){c.roundRect(62+d,2+d,806-2*d,398-2*d,170-d);}
+const RAILS={};
+function buildRail(K){const key=K.toFixed(3);if(RAILS[key])return RAILS[key];
+ const cv=document.createElement('canvas');cv.width=Math.round(W*K);cv.height=Math.round(H*K);const c=cv.getContext('2d');c.setTransform(K,0,0,K,0,0);
+ const r=rng(5);let d0=0;
+ for(const L of RAIL){
+  if(L.k==='wood'){const cols=L.c.map(hexRgb),step=.3;
+   for(let d=d0;d<d0+L.w-.01;d+=step){const a=r(),alt=a<.5?cols[1]:cols[2],m=Math.abs(a-.5)*2*L.grain*1.6;
+    c.beginPath();ringPath(c,d+step/2);c.lineWidth=step+.08;c.strokeStyle=`rgb(${cols[0].map((x,i)=>Math.round(x+(alt[i]-x)*Math.min(1,m)))})`;c.stroke();}
+   for(let d=d0+.2;d<d0+L.w;d+=.8){const segs=[];for(let i=0;i<6;i++)segs.push(4+r()*40,6+r()*60);
+    c.setLineDash(segs);c.lineDashOffset=r()*300;c.beginPath();ringPath(c,d);c.lineWidth=.35;c.strokeStyle=`rgba(0,0,0,${.1+.3*L.grain*r()})`;c.stroke();}
+   c.setLineDash([]);
+   for(const[dd,a]of[[d0+.3,.45],[d0+L.w-.3,.5]]){c.beginPath();ringPath(c,dd);c.lineWidth=.6;c.strokeStyle=`rgba(0,0,0,${a})`;c.stroke();}
+  }else{c.beginPath();ringPath(c,d0+L.w/2);c.lineWidth=L.w;c.strokeStyle=L.c;c.stroke();}
+  d0+=L.w;}
+ return RAILS[key]=cv;}
+function lightRail(c,K,lx,ly,f){c.save();c.setTransform(K,0,0,K,0,0);c.beginPath();ringPath(c,0);ringPath(c,14);c.clip('evenodd');
+ c.globalCompositeOperation='soft-light';let g=c.createRadialGradient(lx,ly,0,lx,ly,620);
+ g.addColorStop(0,`rgba(255,214,150,${.85+.15*f})`);g.addColorStop(.45,'rgba(128,112,92,.5)');g.addColorStop(1,'rgba(0,0,0,.95)');c.fillStyle=g;c.fillRect(0,0,W,H);
+ c.globalCompositeOperation='source-over';
+ g=c.createRadialGradient(lx,ly,0,lx,ly,340);g.addColorStop(0,`rgba(255,236,200,${.45+.3*f})`);g.addColorStop(1,'rgba(255,236,200,0)');
+ c.beginPath();ringPath(c,13*.32);c.lineWidth=1.1;c.strokeStyle=g;c.stroke();c.restore();}
+function paintFelt(cv,K,lx,ly){const c=cv.getContext('2d');
+ c.setTransform(1,0,0,1,0,0);c.fillStyle='#040605';c.fillRect(0,0,cv.width,cv.height);
+ c.setTransform(K,0,0,K,0,0);const g=c.createRadialGradient(lx,ly,0,lx,ly,420);FELT.forEach((s,i)=>g.addColorStop(i/4,s));c.beginPath();c.roundRect(76,16,778,370,156);c.fillStyle=g;c.fill();
+ c.setTransform(1,0,0,1,0,0);c.drawImage(buildRail(K),0,0);lightRail(c,K,lx,ly,0);
+ if(GLX){drawCloth(K,lx,ly,0);c.setTransform(1,0,0,1,0,0);c.drawImage(GLC,0,0);}}
+
+/* card faces: today's CardView */
+const SUIT_PATH={h:'M0,4.7 C-1.7,2.5 -4.7,0.5 -4.7,-1.8 C-4.7,-3.8 -3.3,-4.8 -2.1,-4.8 C-0.9,-4.8 -0.2,-3.9 0,-3.1 C0.2,-3.9 0.9,-4.8 2.1,-4.8 C3.3,-4.8 4.7,-3.8 4.7,-1.8 C4.7,0.5 1.7,2.5 0,4.7 Z',
+ d:'M0,-4.9 L3.5,0 L0,4.9 L-3.5,0 Z',
+ s:'M0,-4.9 C-0.6,-3.6 -4.6,-0.6 -4.6,1.6 C-4.6,3.2 -3.4,4.0 -2.4,4.0 C-1.4,4.0 -0.7,3.5 -0.3,2.8 C-0.5,3.9 -1.3,4.6 -2.2,5.0 L2.2,5.0 C1.3,4.6 0.5,3.9 0.3,2.8 C0.7,3.5 1.4,4.0 2.4,4.0 C3.4,4.0 4.6,3.2 4.6,1.6 C4.6,-0.6 0.6,-3.6 0,-4.9 Z'};
+const CLUB='<circle cx="0" cy="-2.5" r="2.3"/><circle cx="-2.7" cy="1.2" r="2.3"/><circle cx="2.7" cy="1.2" r="2.3"/><path d="M-2.2,5.0 C-0.9,4.1 -0.4,2.9 -0.3,1.4 L0.3,1.4 C0.4,2.9 0.9,4.1 2.2,5.0 Z"/>';
+const suit=(s,x,y,size,flip)=>`<g transform="translate(${x.toFixed(2)} ${y.toFixed(2)}) scale(${(size/10).toFixed(4)})${flip?' rotate(180)':''}">${s==='c'?CLUB:`<path d="${SUIT_PATH[s]}"/>`}</g>`;
+const T3=1/3,PIPS={2:[['c',0],['c',1]],3:[['c',0],['c',.5],['c',1]],4:[['l',0],['r',0],['l',1],['r',1]],5:[['l',0],['r',0],['c',.5],['l',1],['r',1]],
+ 6:[['l',0],['r',0],['l',.5],['r',.5],['l',1],['r',1]],7:[['l',0],['r',0],['c',.25],['l',.5],['r',.5],['l',1],['r',1]],
+ 8:[['l',0],['r',0],['c',.25],['l',.5],['r',.5],['c',.75],['l',1],['r',1]],9:[['l',0],['r',0],['l',T3],['r',T3],['c',.5],['l',2*T3],['r',2*T3],['l',1],['r',1]],
+ 10:[['l',0],['r',0],['c',1/6],['l',T3],['r',T3],['l',2*T3],['r',2*T3],['c',5/6],['l',1],['r',1]]};
+const COL={l:.33,c:.5,r:.67};
+const suitCol=s=>s==='h'||s==='d'?'#C8102E':'#1A1A1A';
+function cardHTML(id,w,h){const r=id.slice(0,-1),s=id.slice(-1),col=suitCol(s);
+  const fs=h*(r.length>1?12:15)/90,ins=h*4.5/90,ix=w*.118;
+  const corner=`<text x="${ix.toFixed(2)}" y="${(ins+fs*.8).toFixed(2)}" text-anchor="middle" font-family="Rajdhani,sans-serif" font-weight="700" font-size="${fs.toFixed(2)}" letter-spacing="-0.5">${r}</text>${suit(s,ix,h*.25,h*.10)}`;
+  let body='';
+  if(PIPS[r]){const sp=PIPS[r],sz=h*.145*(sp.length>6?.7:1);body=sp.map(([c,row])=>suit(s,w*COL[c],h*(.16+row*.68),sz,row>.5)).join('');}
+  else body=suit(s,w/2,h/2,h*.30);
+  return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" fill="${col}">${body}${corner}<g transform="rotate(180 ${w/2} ${h/2})">${corner}</g></svg>`;}
+function card(id,w,h){const d=el('card',cardHTML(id,w,h));d.style.width=w+'px';d.style.height=h+'px';d.style.borderRadius=(w*.05).toFixed(2)+'px';d._w=w;d._h=h;d._gl=el('gl','',d);return d;}
+function fanHTML(n){let h='';const step=8.2,Rr=155,bg=backURL(24.5,43.5);for(let i=0;i<n;i++){const m=i-(n-1)/2,ang=m*step/Rr,y=Rr*(1-Math.cos(ang));h+=`<div class="bk" style="background:${bg} center/100% 100%;transform:translate(${(m*step).toFixed(2)}px,${y.toFixed(2)}px) rotate(${(ang*180/Math.PI).toFixed(2)}deg)"></div>`;}return h;}
+function gloss(c,cx,cy,lx,ly){const w=c._w,h=c._h,vx=lx-cx,vy=ly-cy,d=Math.hypot(vx,vy)||1,b=clamp(1-Math.hypot(vx,vy*1.2)/440);
+  const ang=Math.atan2(vx/d,-vy/d),len=Math.abs(w*Math.sin(ang))+Math.abs(h*Math.cos(ang)),half=Math.hypot(w,h)/2,cp=50+Math.min(1,d/260)*.7*half/len*100,wp=half*.2/len*100,a=.05+.22*b;
+  c._gl.style.background=`radial-gradient(circle 85px at ${(w/2+vx).toFixed(1)}px ${(h/2+vy).toFixed(1)}px,rgba(255,248,232,.3),rgba(255,244,222,.1) 30%,rgba(255,244,222,0)),linear-gradient(${(ang*180/Math.PI).toFixed(1)}deg,rgba(255,246,228,0) ${(cp-wp).toFixed(1)}%,rgba(255,246,228,${a.toFixed(3)}) ${cp.toFixed(1)}%,rgba(255,246,228,0) ${(cp+wp).toFixed(1)}%)`;}
+
+/* the words the table itself wears, from locales/{it,en,sq}.ts */
+const TSTR={
+ it:{you:'Tu',yourTurn:'Il tuo turno',turnOf:'Turno di {{name}}',pass:'PASSA',play:'GIOCA',Singola:'Singola',Coppia:'Coppia'},
+ en:{you:'You',yourTurn:'Your turn',turnOf:"{{name}}'s turn",pass:'PASS',play:'PLAY',Singola:'Single',Coppia:'Pair'},
+ sq:{you:'Ti',yourTurn:'Radha jote',turnOf:'Radha e {{name}}',pass:'KALO',play:'LUAJ',Singola:'Letër teke',Coppia:'Dyshe'}};
+const fill=(s,o)=>s.replace(/\{\{(\w+)\}\}/g,(_,k)=>o[k]??'');
+
+/* the table's state, the fixture's layout */
+const POOL={you:[457,292],luan:[712,196],besnik:[457,116],gent:[202,196]};
+const NAMES={besnik:'Besnik',luan:'Luan',gent:'Gent'},INIT={besnik:'B',luan:'L',gent:'G'};
+const DISC={besnik:[457,77],gent:[83,179],luan:[831,179]};
+const FANAT={besnik:[457,124.5,0],gent:[129,180,-90],luan:[785,180,90]},FANMAX={besnik:7,gent:5,luan:5};
+const SEATK=['besnik','gent','luan'];
+const ICON='<svg width="11" height="11" viewBox="0 0 11 11" fill="#C9A84C"><rect x="0" y="5" width="3" height="6" rx=".6"/><rect x="4" y="1.5" width="3" height="9.5" rx=".6"/><rect x="8" y="3.5" width="3" height="7.5" rx=".6" opacity=".7"/></svg>';
+const CHEV='<svg width="7" height="5" viewBox="0 0 7 5"><path d="M.8 1l2.7 2.6L6.2 1" fill="none" stroke="rgba(240,234,214,.5)" stroke-width="1.2" stroke-linecap="round"/></svg>';
+const TROPHY=c=>`<svg viewBox="0 0 24 24" width="100%" height="100%" fill="${c}"><path d="M6 2h12v3h3v3a5 5 0 0 1-5 5 6 6 0 0 1-3 2.6V18h4v4H7v-4h4v-2.4A6 6 0 0 1 8 13a5 5 0 0 1-5-5V5h3zm0 5H5v1a3 3 0 0 0 1 2.2zm13 0h-1v3.2A3 3 0 0 0 19 8z"/></svg>`;
+const TABLES=[];
+function makeTable(frame){
+  frame.innerHTML=`<div class="stage"><canvas class="bg"></canvas><div class="tbl"><div class="pile"></div><div class="seats"></div><div class="hand"></div></div>
+  <div class="hud"><div class="knob kmenu"><i></i></div><div class="knob kreact"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="rgba(240,234,214,.62)" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.2 14.2c1 1.4 2.3 2.1 3.8 2.1s2.8-.7 3.8-2.1"/><circle cx="9" cy="9.8" r=".6" fill="rgba(240,234,214,.62)"/><circle cx="15" cy="9.8" r=".6" fill="rgba(240,234,214,.62)"/></svg></div>
+  <div class="chip combo"></div><div class="cchip" hidden></div><div class="act passa"></div><div class="act gioca"></div>
+  <div class="score"><div class="pc">${ICON}<span class="me"></span><span class="tot">15</span><span class="of">/21</span><i class="sep"></i><span class="rk">2&deg;</span>${CHEV}</div><div class="prog"><i style="width:71.4%"></i></div></div></div>
+  <div class="top"><div class="chip turn"></div></div><div class="over"></div></div>`;
+  const stage=$('.stage',frame),T={frame,stage,bg:$('canvas.bg',stage),over:$('.over',stage),K:0,S:null,lang:'it'};
+  T.set=o=>{T.S={turn:null,hand:[],sel:[],counts:{besnik:13,gent:13,luan:13},out:[],gone:[],pile:null,lamp:null,clock:18,gioca:false,passa:false,...o};T.render();T.paint();};
+  T.render=()=>{const S=T.S,L=TSTR[T.lang],sb=$('.seats',stage);sb.innerHTML='';
+    for(const k of SEATK){const[x,y]=DISC[k],[fx,fy,rot]=FANAT[k],gone=S.gone.includes(k),out=S.out.includes(k),n=S.counts[k];
+      if(!gone&&n>0){const f=el('fan',fanHTML(Math.min(n,FANMAX[k])),sb);f.style.left=fx+'px';f.style.top=fy+'px';f.style.transform=`rotate(${rot}deg) perspective(560px) rotateX(-17deg)`;}
+      const e=el('seat'+(S.turn===k?' on':'')+(gone?' gone':''),`<div class="nm">${NAMES[k]}</div><div class="disc"><div class="ring" style="--p:62"></div>${INIT[k]}<div class="badge${out?' won':n===1?' last':''}">${out?`<div style="width:9px;height:9px">${TROPHY('#03110A')}</div>`:gone?'':n}</div></div>`,sb);
+      e.style.left=x+'px';e.style.top=y+'px';}
+    const hb=$('.hand',stage);hb.innerHTML='';const ids=S.hand,on=S.turn==='you',w=on?79.16:71.25,h=on?111.32:100.19,n=ids.length,step=n>6?(on?36.4:38):48.5,Rr=2268,mm=(n-1)/2||1;T.cards=[];
+    ids.forEach((id,i)=>{const c=card(id,w,h),m=i-(n-1)/2,deg=m*step/Rr*180/Math.PI,left=457+m*step-w/2,top=402-(h-h*.2889)-15.5*(1-(m/mm)**2)-(S.sel.includes(id)?16:0);
+      c.style.left=left.toFixed(2)+'px';c.style.top=top.toFixed(2)+'px';c.style.transform=`rotate(${deg.toFixed(2)}deg)`;c.style.transformOrigin='50% 100%';hb.append(c);T.cards.push([c,left+w/2,top+h/2]);});
+    const pb=$('.pile',stage);pb.innerHTML='';const cc=$('.cchip',stage),cb=$('.combo',stage);
+    if(S.pile){const g=el('grp','',pb),cs=S.pile.cards,gap=cs.length<=2?34:28,CW=65.97,CH=92.77;
+      cs.forEach((id,i)=>{const x=PILE[0]+(i-(cs.length-1)/2)*gap,c=card(id,CW,CH);c.style.left=(x-CW/2)+'px';c.style.top=(PILE[1]-CH/2)+'px';c.style.transform=`rotate(${((i-(cs.length-1)/2)*1.2).toFixed(2)}deg)`;g.append(c);T.cards.push([c,x,PILE[1]]);});
+      const lab=L[S.pile.label]||S.pile.label;cc.hidden=false;cc.textContent=lab;cb.innerHTML=`${esc(S.pile.by==='you'?L.you:NAMES[S.pile.by])} <b>${esc(lab)}</b>`;cb.hidden=false;}
+    else{cc.hidden=true;cb.hidden=true;}
+    const t=$('.turn',stage);t.hidden=!S.turn;if(S.turn==='you'){t.className='chip turn lit';t.innerHTML=`<i class="dot"></i>${esc(L.yourTurn)} <b>${S.clock}</b>`;}
+    else if(S.turn){t.className='chip turn';t.innerHTML=`<i class="dot"></i>${esc(fill(L.turnOf,{name:NAMES[S.turn]}))}`;}
+    const pa=$('.passa',stage),gi=$('.gioca',stage);pa.textContent=L.pass;gi.textContent=L.play;pa.classList.toggle('lit',!!S.passa);gi.classList.toggle('lit',!!S.gioca);
+    $('.pc .me',stage).textContent=L.you;
+    const[lx,ly]=T.lampAt();for(const[c,x,y]of T.cards)gloss(c,x,y,lx,ly);
+    stage.style.setProperty('--shx',((PILE[0]-lx)/26).toFixed(1)+'px');stage.style.setProperty('--shy',(3+(PILE[1]-ly)/30).toFixed(1)+'px');};
+  T.lampAt=()=>{const k=T.S.lamp||T.S.turn||'you',[x,y]=POOL[k];return[x,y-40];};
+  T.paint=()=>{if(!T.K||!T.S)return;const[lx,ly]=T.lampAt();paintFelt(T.bg,T.K,lx,ly);};
+  T.size=()=>{const s=frame.clientWidth/W;if(!s)return;stage.style.transform=`scale(${s})`;const K=Math.min(2.5,Math.max(1,s*(devicePixelRatio||1)));
+    if(Math.abs(K-T.K)>.01){T.K=K;T.bg.width=Math.round(W*K);T.bg.height=Math.round(H*K);T.paint();}};
+  new ResizeObserver(T.size).observe(frame);TABLES.push(T);return T;}
+
+/* the family's timings: D2's 160 ms for a pill or a panel, Q1's 100 / hold / 100 for a mark or a float */
+function enter(node,kind){if(!node)return;node.getAnimations().forEach(a=>a.cancel());if(REDUCE.matches)return;
+  const e='cubic-bezier(.2,.8,.2,1)';
+  if(kind==='float')return node.animate([{opacity:0,translate:'0 6px'},{opacity:1,translate:'0 0'}],{duration:100,easing:e});
+  return node.animate([{opacity:0,scale:.96},{opacity:1,scale:1}],{duration:160,easing:e});}
+function floatCycle(node,hold,after){if(!node)return;node.getAnimations().forEach(a=>a.cancel());
+  if(REDUCE.matches){const a=node.animate([{opacity:1},{opacity:1,offset:.999},{opacity:0}],{duration:hold+200});a.onfinish=()=>after&&setTimeout(after,500);return;}
+  const tot=100+hold+100,e='cubic-bezier(.2,.8,.2,1)';
+  const a=node.animate([{opacity:0,translate:'0 6px',offset:0,easing:e},{opacity:1,translate:'0 0',offset:100/tot,easing:'linear'},{opacity:1,translate:'0 0',offset:(100+hold)/tot,easing:'ease-in'},{opacity:0,translate:'0 0',offset:1}],{duration:tot,fill:'forwards'});
+  a.onfinish=()=>setTimeout(()=>{a.cancel();enter(node,'float');after&&after();},500);}
+async function copyLine(btn,code,line){try{await navigator.clipboard.writeText(line);btn.textContent='Copied';}catch(e){const r=document.createRange();r.selectNodeContents(code);const s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent='Selected, press Ctrl+C';}setTimeout(()=>btn.textContent='Copy',1800);}
+function seg(box,vals,cur,on,labels){box.innerHTML='';vals.forEach((v,i)=>{const b=el('',esc(labels?labels[i]:v),box,'button');b.type='button';b.setAttribute('aria-pressed',v===cur);b.onclick=()=>{$$('button',box).forEach(x=>x.setAttribute('aria-pressed',x===b));on(v);};});}
+
+const G2S={
+ it:{tooLow:'carta troppo bassa',wrongLength:'deve avere lo stesso numero di carte di quella sul tavolo',cannotPass:'Non puoi passare',exchangePending:'Devi prima completare lo scambio',
+  waiting:'Hai finito! Aspetti gli altri...',empty:'Carte finite!',voteBtn:'Vota per terminare la partita',withdraw:'Ritira il voto per terminare la partita',tally:'{{votes}} di {{total}} d\'accordo a terminare la partita',tallyVoted:'{{votes}} di {{total}} d\'accordo. Tocca per ritirare il tuo voto.',voteHint:'Ogni giocatore rimasto deve essere d\'accordo — nessuna penalità.',
+  offline:'⚠️ Nessuna connessione Internet',subtitle:'Il Gioco di Carte',playOnline:'Gioca online',modeOffline:'Offline',friends:'Gioca con amici',passPlay:'Passa e gioca',howTo:'Come si gioca'},
+ en:{tooLow:'card too low',wrongLength:'it must have the same number of cards as the one on the table',cannotPass:"You can't pass",exchangePending:'You must complete the exchange first',
+  waiting:"You're done! Waiting for the others...",empty:'Hand empty!',voteBtn:'Vote to end match',withdraw:'Withdraw vote to end match',tally:'{{votes}} of {{total}} agreed to end the match',tallyVoted:'{{votes}} of {{total}} agreed. Tap to withdraw your vote.',voteHint:'Every remaining player must agree — nobody is penalised.',
+  offline:'⚠️ No internet connection',subtitle:'The Card Game',playOnline:'Play online',modeOffline:'Offline',friends:'Play with friends',passPlay:'Pass and play',howTo:'How to play'},
+ sq:{tooLow:'letër shumë e ulët',wrongLength:'duhet të ketë të njëjtin numër letrash si ajo në tavolinë',cannotPass:'Nuk mund të kalosh',exchangePending:'Duhet të përfundosh shkëmbimin më parë',
+  waiting:'Ke mbaruar! Duke pritur të tjerët...',empty:'Letrat mbaruan!',voteBtn:'Voto për të përfunduar ndeshjen',withdraw:'Tërhiq votën për të përfunduar ndeshjen',tally:'{{votes}} nga {{total}} u pajtuan të përfundojnë ndeshjen',tallyVoted:'{{votes}} nga {{total}} u pajtuan. Prek për të tërhequr votën tënde.',voteHint:'Çdo lojtar i mbetur duhet të pajtohet — askush nuk penalizohet.',
+  offline:'⚠️ Nuk ka lidhje interneti',subtitle:'Loja e Letrave',playOnline:'Luaj online',modeOffline:'Offline',friends:'Luaj me miq',passPlay:'Kalo dhe luaj',howTo:'Si luhet'}};
+let lang='it',fs=1,hold='mark';
+const HAND=['3h','4c','5c','5d','6s','7h','8s','9c','10d','Ad','Ah','2h'];
+const ICO={
+ trophy:c=>TROPHY(c).replace('width="100%" height="100%"','width="12" height="12"'),
+ check:c=>`<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="${c}"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#03110A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+ alert:c=>`<svg width="13" height="13" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="${c}" stroke-width="2"/><path d="M12 7v6" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="16.8" r="1.4" fill="${c}"/></svg>`,
+ flag:(c,f)=>`<svg width="12" height="12" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5" fill="${f?c:'none'}" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>`};
+const TONEC={bad:'#e0806f',neutral:'#C9A84C',gold:'#C9A84C',muted:'#C9A84C',solid:'#FFFFFF',family:'#e0806f'};
+
+const SCENES=[
+ {key:'reject',id:'n-reject',kind:'float',title:'(a) The reject hint, beside GIOCA',
+  context:'Your turn; you lift a card GIOCA cannot play and press it. The refusal is a float held for <code>Reading.hint</code>, anchored at the GIOCA end of the hand (it follows GIOCA across when the row is mirrored). The copy is <code>playRefusalLabel</code>\'s, verbatim and lower-case as today.',
+  opts:[['place',['above','beside'],['Above GIOCA','Left of GIOCA']],['tone',['neutral','bad'],['Neutral','Bad']]],
+  aids:[['text',['short','long'],['Short reason','Long reason']]],
+  pick:{place:'above',tone:'bad'},aid:{text:'short'},
+  notes:{place:{above:'<b>Above GIOCA</b>: right edge on GIOCA\'s, 8 pt over it. Clears the hand and sits where the eye already is.',beside:'<b>Left of GIOCA</b>: centred on the button, right edge 8 pt from it. Closer to the finger, but it lands on the hand\'s last cards.'},
+   tone:{neutral:'<b>Neutral</b>: the chip\'s plate and <code>goldBorder</code> edge with full ink. A refusal is not an error; it only says why.',bad:'<b>Bad</b>: <code>#turn.bad</code>\'s red edge, pink ink and dot. Says "no" louder, and borrows the colour the table keeps for a lost connection.'}},
+  table(s){return{turn:'you',hand:HAND,sel:['5c'],gioca:true,passa:true,pile:s.aid.text==='short'?{by:'luan',cards:['9h'],label:'Singola'}:{by:'luan',cards:['9h','9s'],label:'Coppia'}};},
+  html(s,S){const t=s.aid.text==='short'?S.tooLow:S.wrongLength,bad=s.pick.tone==='bad';
+   const pos=s.pick.place==='above'?'right:17.3px;bottom:65px;text-align:right':'right:83px;top:373.85px;transform:translateY(-50%)';
+   return `<div id="n-reject" class="nt s-float t-${s.pick.tone}" style="${pos}" aria-live="polite">${bad?'<i class="dot"></i>':''}<span>${esc(t)}</span></div>`;}},
+ {key:'toast',id:'n-toast',kind:'float',title:'(b) The online error toast',
+  context:'Online, your turn on a free table; you press PASSA and the server refuses. The toast is a float in the float slot (the <code>.floatchip</code> position, centred at 457, 300), held for <code>Reading.toast</code>. The copy is the server\'s error, e.g. <code>server.CANNOT_PASS</code>.',
+  opts:[['shape',['pill','plate'],['Pill','Plate']],['tone',['bad','neutral'],['Bad','Neutral']]],
+  aids:[['text',['short','long'],['Short error','Long error']]],
+  pick:{shape:'pill',tone:'bad'},aid:{text:'short'},
+  notes:{shape:{pill:'<b>Pill</b>: the <code>.chip</code> as the PASSO float is, one line in capitals with a dot; a long error truncates.',plate:'<b>Plate</b>: the panel plate, small: an alert glyph and the sentence in its own case, wrapping to two lines inside 300 pt.'},
+   tone:{bad:'<b>Bad</b>: <code>#turn.bad</code>\'s red edge and pink ink. It is an error, and today it is the red <code>dangerScrim</code> toast.',neutral:'<b>Neutral</b>: the family\'s gold edge. Calmer, but an error then reads like any other note.'}},
+  table(){return{turn:'you',hand:HAND,passa:true,gioca:false,pile:null};},
+  html(s,S){const t=s.aid.text==='short'?S.cannotPass:S.exchangePending,c=TONEC[s.pick.tone];
+   const lead=s.pick.shape==='pill'?'<i class="dot"></i>':ICO.alert(c);
+   return `<div id="n-toast" class="nt s-${s.pick.shape} t-${s.pick.tone}" style="left:457px;top:300px;transform:translateX(-50%)" aria-live="polite">${lead}<span class="tx">${esc(t)}</span></div>`;}},
+ {key:'waiting',id:'n-waiting',kind:'pill',title:'(c) "Waiting for the others"',
+  context:'You went out; the manche goes on without you. The line stands where your hand was, at the centre of the hand row, for the rest of the manche. The copy is <code>gameTable.waitingOthers</code>.',
+  opts:[['shape',['pill','line'],['Pill','Bare line']],['tone',['gold','muted'],['Gold','Muted']]],
+  pick:{shape:'pill',tone:'gold'},aid:{},
+  notes:{shape:{pill:'<b>Pill</b>: a <code>.chip</code> with the trophy, in capitals. Its own plate, so it reads wherever the lamp stands.',line:'<b>Bare line</b>: the words on the felt with the soft dark text shadow Q9 allows, no plate, sentence case at 13. Quieter, like the seat names.'},
+   tone:{gold:'<b>Gold</b>: <code>goldLit</code> ink and a <code>goldStrong</code> edge, the colour of a won seat. You finished; it is good news.',muted:'<b>Muted</b>: the chip\'s resting ink. The table\'s news is elsewhere now.'}},
+  table(){return{turn:'luan',hand:[],counts:{besnik:5,gent:3,luan:7},pile:{by:'besnik',cards:['8c','8d'],label:'Coppia'}};},
+  html(s,S){const c=s.pick.tone==='gold'?'#F3E0A6':'#C9A84C';
+   return `<div id="n-waiting" class="nt s-${s.pick.shape} t-${s.pick.tone}" style="left:457px;top:362px;transform:translate(-50%,-50%)">${ICO.trophy(c)}<span class="tx">${esc(S.waiting)}</span></div>`;}},
+ {key:'empty',id:'n-empty',kind:'pill',title:'(d) The empty-hand line',
+  context:'Your hand row with no cards in it: you have just played your last one. Today it is a check mark and the words on a dark plate, centred in the hand\'s place. The copy is <code>gameShared.emptyHand</code>.',
+  opts:[['shape',['pill','line'],['Pill','Bare line']],['tone',['gold','muted'],['Gold','Muted']]],
+  pick:{shape:'pill',tone:'gold'},aid:{},
+  notes:{shape:{pill:'<b>Pill</b>: a <code>.chip</code> with the check, in capitals, the same shape as (c) so the two read as one place.',line:'<b>Bare line</b>: the words on the felt, soft dark text shadow, no plate.'},
+   tone:{gold:'<b>Gold</b>: <code>goldLit</code>, as a win.',muted:'<b>Muted</b>: resting ink with a gold check; only a state of the hand.'}},
+  table(){return{turn:'gent',hand:[],counts:{besnik:6,gent:4,luan:8},pile:{by:'you',cards:['2h'],label:'Singola'}};},
+  html(s,S){const c=s.pick.tone==='gold'?'#F3E0A6':'#C9A84C';
+   return `<div id="n-empty" class="nt s-${s.pick.shape} t-${s.pick.tone}" style="left:457px;top:362px;transform:translate(-50%,-50%)">${ICO.check(c)}<span class="tx">${esc(S.empty)}</span></div>`;}},
+ {key:'vote',id:'n-vote',kind:'pill',title:'(e) The online end-match vote',
+  context:'Online; Gent left and his seat is empty. One pressable notice with one accessible name and a hint node; the tally is announced politely when it changes. Tap it here to vote or withdraw (the real app asks to confirm a vote first). The copy is <code>game.endMatchVote*</code>.',
+  opts:[['shape',['count','sentence'],['Label + count','Sentence']],['place',['right','left'],['Under the score pill','Under the combo chip']]],
+  aids:[['state',['idle','others','voted'],['No votes','1 of 4','You voted, 2 of 4']]],
+  pick:{shape:'count',place:'right'},aid:{state:'others'},
+  notes:{shape:{count:'<b>Label + count</b>: the button\'s words and the tally as the turn pill\'s gold badge (<code>#turn u</code>), 1/4. Voted, it lights as <code>.lit</code> and the flag fills.',sentence:'<b>Sentence</b>: today\'s tally sentences in the pill, which change with the state. Voted, it says how to withdraw; it runs long in Italian and Albanian.'},
+   place:{right:'<b>Under the score pill</b>: right-aligned with it, 7 pt below. The vote is about the match, and the score pill is the match. (Under the turn pill it would sit on the top seat\'s name.)',left:'<b>Under the combo chip</b>: left-aligned with it, 7 pt below, beside the menu knob.'}},
+  table(){return{turn:'besnik',hand:['4c','5d','6s','7h','8s','9c','10d','Ad','Ah','2h'],gone:['gent'],counts:{besnik:6,gent:0,luan:8},pile:{by:'luan',cards:['6s','6h'],label:'Coppia'}};},
+  html(s,S){const st=s.aid.state,voted=st==='voted',n=st==='idle'?0:st==='others'?1:2,tot=4;
+   const txt=s.pick.shape==='sentence'?(voted?fill(S.tallyVoted,{votes:n,total:tot}):n?fill(S.tally,{votes:n,total:tot}):S.voteBtn):S.voteBtn;
+   const badge=s.pick.shape==='count'&&n?`<u>${n}/${tot}</u>`:'';
+   const pos=s.pick.place==='right'?'right:27.8px;top:44.6px':'left:68.3px;top:44.6px';
+   const name=voted?S.withdraw:S.voteBtn;
+   return `<div id="n-vote" class="nt s-pill press${voted?' t-lit':''}" role="button" tabindex="0" aria-pressed="${voted}" aria-label="${esc(name)}" aria-describedby="n-vote-hint" style="${pos}">${ICO.flag(voted?'#F3E0A6':'#C9A84C',voted)}<span class="tx">${esc(txt)}</span>${badge}</div><span id="n-vote-hint" hidden>${esc(S.voteHint)}</span>`;},
+  a11y(s,S){const st=s.aid.state,voted=st==='voted',n=st==='idle'?0:st==='others'?1:2;
+   return `name: "${voted?S.withdraw:S.voteBtn}" · hint: "${S.voteHint}"${n?` · live, polite: "${voted?fill(S.tallyVoted,{votes:n,total:4}):fill(S.tally,{votes:n,total:4})}"`:''}`;}},
+ {key:'offline',id:'n-offline',kind:'pill',title:'(f) The offline pill, off the table',
+  context:'The phone loses its connection on the home screen. <code>OfflineBanner</code> becomes a notice at <code>Layer.alert</code>, at the top, over everything, announced assertively as today. On the table the turn pill carries the connection instead (Q8). The home menu behind it is drawn from <code>app/index.tsx</code>\'s labels. The copy is <code>offlineBanner.text</code>, warning sign included.',
+  opts:[['shape',['pill','band'],['Pill','Band']],['tone',['family','solid'],['Family red edge','Solid red']]],
+  pick:{shape:'pill',tone:'solid'},aid:{},
+  notes:{shape:{pill:'<b>Pill</b>: a <code>.chip</code> at the top centre, 13.4 pt down as the turn pill sits. The menu stays usable around it.',band:'<b>Band</b>: full width across the top, 44 pt, the family\'s dark plate with the edge along its foot; closest to today\'s placement.'},
+   tone:{family:'<b>Family red edge</b>: <code>#turn.bad</code>\'s colours on the dark plate. The same "offline" the table shows.',solid:'<b>Solid red</b>: today\'s <code>Colors.danger</code> fill with white ink. Loudest; nothing else in the family is filled red.'}},
+  html(s,S){const band=s.pick.shape==='band',cls=`nt s-${band?'band':'pill'} ${s.pick.tone==='solid'?'t-solid':'t-bad'}`;
+   const pos=band?'':'left:457px;top:13.4px;transform:translateX(-50%)';
+   return `<div id="n-offline" class="${cls}" role="alert" aria-live="assertive" style="${pos}"><span class="tx">${esc(S.offline)}</span></div>`;}}];
+
+function makeHome(frame){frame.innerHTML='<div class="stage"><div class="home"></div><div class="over"></div></div>';
+  const stage=$('.stage',frame),H0={frame,stage,over:$('.over',stage),home:$('.home',stage)};
+  const fit=()=>{const s=frame.clientWidth/W;if(s)stage.style.transform=`scale(${s})`;};new ResizeObserver(fit).observe(frame);return H0;}
+const ic=p=>`<div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(240,234,214,.75)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg></div>`;
+function renderHome(h,S){h.home.innerHTML=`<div class="icons">${ic('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>')}${ic('<circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.8"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M15.5 14.2c3.3-.4 6 1.6 6 5"/>')}${ic('<path d="M4 20V11h4v9M10 20V6h4v14M16 20v-6h4v6"/>')}${ic('<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>')}</div>
+  <div class="mark"><b>MURLAN</b><i></i><span>${esc(S.subtitle)}</span></div>
+  <div class="col"><div class="hero">${esc(S.playOnline)}</div><div class="tiles"><div class="tile2">${esc(S.modeOffline)}</div><div class="tile2">${esc(S.friends)}</div><div class="tile2 full">${esc(S.passPlay)}</div></div><div class="quiet"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(240,234,214,.75)" stroke-width="1.8"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20"/></svg>${esc(S.howTo)}</div></div>`;}
+
+const box=$('#scenes');
+for(const s of SCENES){
+  const sec=el('scene','',box,'section');sec.id='sc-'+s.key;
+  el('',esc(s.title),sec,'h3');el('note',s.context,sec,'p');
+  const fr=el('frame','',sec);s.T=s.key==='offline'?makeHome(fr):makeTable(fr);
+  const ctl=el('ctl','',sec);
+  for(const[k,vals,labels]of s.opts){const g=el('grp2','',ctl);el('k',esc(k),g,'span');seg(el('seg','',g,'span'),vals,s.pick[k],v=>{s.pick[k]=v;draw(s);s.replay();syncLine();},labels);}
+  for(const[k,vals,labels]of s.aids||[]){const g=el('grp2','',ctl);el('k aid',esc(k),g,'span');seg(el('seg','',g,'span'),vals,s.aid[k],v=>{s.aid[k]=v;draw(s,true);},labels);}
+  const rb=el('pill','Replay',ctl,'button');rb.type='button';
+  s.noteEl=el('note','',sec,'p');
+  if(s.a11y)s.a11yEl=el('a11y','',sec);
+  s.replay=()=>{const n=$('#'+s.id,s.T.over);if(s.kind==='float')floatCycle(n,hold==='mark'?1000:s.key==='reject'?2600:3000);else enter(n,'pill');};
+  rb.onclick=s.replay;
+}
+function draw(s,withTable){const S=G2S[lang];
+  if(s.key==='offline')renderHome(s.T,S);else if(withTable!==false){s.T.lang=lang;s.T.set(s.table(s));}
+  s.T.over.innerHTML=s.html(s,S);s.T.stage.style.setProperty('--fs',fs);
+  s.noteEl.innerHTML=Object.keys(s.notes).map(k=>s.notes[k][s.pick[k]]).join(' ');
+  if(s.a11y)s.a11yEl.textContent=s.a11y(s,S);
+  const v=$('#n-vote',s.T.over);if(v){const tog=()=>{s.aid.state=s.aid.state==='voted'?'others':'voted';const sg=$$('.seg',sec(s)).pop();$$('button',sg).forEach((b,i)=>b.setAttribute('aria-pressed',['idle','others','voted'][i]===s.aid.state));draw(s,false);enter($('#n-vote',s.T.over),'pill');};
+    v.onclick=tog;v.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();tog();}};}}
+const sec=s=>$('#sc-'+s.key);
+function drawAll(){SCENES.forEach(s=>draw(s));syncLine();}
+function pickLine(){return 'G2: '+SCENES.map(s=>Object.keys(s.pick).map(k=>`${s.key}.${k}=${s.pick[k]}`).join(' ')).join(' ')+` floatHold=${hold}`;}
+function syncLine(){$('#line').textContent=pickLine();
+  $('#holdNote').innerHTML=hold==='reading'?'<b>Reading</b>: 100 ms in, held for <code>Reading.hint</code> (2600 ms) or <code>Reading.toast</code> (3000 ms), 100 ms out, as task 7 says: a refusal and an error are read, not glanced at.':'<b>Mark</b>: Q1\'s mark timing, 100 ms in, 1000 ms held, 100 ms out, the same as PASSO. Shorter than today\'s readings of these two.';}
+seg($('#langSeg'),['it','en','sq'],lang,v=>{lang=v;drawAll();},['IT','EN','SQ']);
+seg($('#fsSeg'),['1','1.2'],'1',v=>{fs=+v;SCENES.forEach(s=>s.T.stage.style.setProperty('--fs',fs));},['Text 1.0×','Text 1.2×']);
+seg($('#holdSeg'),['reading','mark'],hold,v=>{hold=v;syncLine();SCENES.filter(s=>s.kind==='float').forEach(s=>s.replay());},['Reading (2600 / 3000 ms)','Mark (1000 ms)']);
+$('#replayAll').onclick=()=>SCENES.forEach(s=>s.replay());
+$('#copyBtn').onclick=()=>copyLine($('#copyBtn'),$('#line'),pickLine());
+drawAll();
+(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>SCENES.forEach(s=>s.replay()));
+</script>

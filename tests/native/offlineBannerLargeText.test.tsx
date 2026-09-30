@@ -1,19 +1,21 @@
-// tests/native/offlineBannerLargeText.test.tsx — #813: white text on
-// Colors.danger is 4.23:1, short of the 4.5:1 body-text floor but clear of
-// the 3.0:1 large-text one (tests/ui-rules/contrast.test.ts). The owner's decision was
-// to move the text to the large-text bar rather than change the colour —
-// `Colors.danger` is documented in lib/tokens.ts as a fill usable for "text
-// at the large-text bar". This reads the banner's own resolved style, not
-// just that its text node exists: a size dropped back below the floor must
-// fail here even though the text is still on screen.
+// tests/native/offlineBannerLargeText.test.tsx — the offline pill off the table, as G2 approved it
+// (offline.shape=pill offline.tone=solid): white ink on a red deep enough for body-size text, capped
+// at the table's font scale, one line, at Layer.alert; on the table the turn pill carries it instead.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+const mockNetListeners = new Set<(state: { isConnected: boolean | null }) => void>();
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
-  default: { addEventListener: jest.fn(() => () => {}) },
+  default: {
+    addEventListener: (l: (state: { isConnected: boolean | null }) => void) => {
+      mockNetListeners.add(l);
+      return () => mockNetListeners.delete(l);
+    },
+  },
 }));
 
 jest.mock('@/lib/accessibility', () => ({
@@ -22,24 +24,63 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { OfflineBanner } from '@/components/OfflineBanner';
-import { Colors } from '@/lib/theme';
+import { OfflineBanner, useTableClaim } from '@/components/OfflineBanner';
+import { Colors, Layer, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
 
-// WCAG 2 large text is >=18pt regular or >=14pt bold — 24px and ~18.66px in
-// this codebase's units (tests/ui-rules/tokenRoles.test.ts documents the same pair as
-// 24 and 19). The banner's text is Inter_400Regular, not bold, so the
-// regular-weight floor is the one that applies.
-const REGULAR_LARGE_TEXT_PX = 24;
+const METRICS = { frame: { x: 0, y: 0, width: 874, height: 402 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
+const hidden = { includeHiddenElements: true };
+const net = (isConnected: boolean | null) => act(async () => mockNetListeners.forEach((l) => l({ isConnected })));
+const Table = () => {
+  useTableClaim(true);
+  return null;
+};
 
-describe("the offline banner's text clears WCAG's large-text bar", () => {
-  it('is drawn at or above the regular-weight large-text floor, in white on Colors.danger', async () => {
-    const r = await render(<OfflineBanner />);
-    const text = screen.getByTestId('offline-banner-text', { includeHiddenElements: true });
-    const style = StyleSheet.flatten(text.props.style) as { fontSize?: number; color?: string };
+describe('the offline pill', () => {
+  it('is white on the offline alert red, capped at the table scale, on one line, at Layer.alert', async () => {
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OfflineBanner />
+      </SafeAreaProvider>,
+    );
+    await net(false);
+    const text = screen.getByTestId('offline-banner-text', hidden);
+    const ink = StyleSheet.flatten(text.props.style);
+    expect(ink.color).toBe(Colors.white);
+    expect(text.props.maxFontSizeMultiplier).toBe(TABLE_FONT_SCALE_MAX);
+    expect(text.props.numberOfLines).toBe(1);
+    expect(StyleSheet.flatten(screen.getByTestId('notice-offline', hidden).props.style).backgroundColor).toBe(Colors.offlineAlert);
+    const banner = screen.getByTestId('offline-banner', hidden);
+    expect(StyleSheet.flatten(banner.props.style).zIndex).toBe(Layer.alert);
+    expect(banner.props.accessibilityRole).toBe('alert');
+    expect(banner.props.accessibilityLiveRegion).toBe('assertive');
+    await r.unmount();
+  });
 
-    expect(style.fontSize ?? 0).toBeGreaterThanOrEqual(REGULAR_LARGE_TEXT_PX);
-    expect(style.color).toBe(Colors.white);
+  it('flags offline only on isConnected === false', async () => {
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OfflineBanner />
+      </SafeAreaProvider>,
+    );
+    const live = () => screen.getByTestId('offline-banner', hidden).props.accessibilityLiveRegion;
+    await net(null);
+    expect(live()).toBe('none');
+    await net(false);
+    expect(live()).toBe('assertive');
+    await r.unmount();
+  });
 
+  it('yields to a table on screen, except the instance drawn over one', async () => {
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <Table />
+        <OfflineBanner />
+        <OfflineBanner overTable />
+      </SafeAreaProvider>,
+    );
+    await net(false);
+    const regions = screen.getAllByTestId('offline-banner', hidden).map((b) => b.props.accessibilityLiveRegion);
+    expect(regions).toEqual(['none', 'assertive']);
     await r.unmount();
   });
 });

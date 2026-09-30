@@ -78,6 +78,9 @@ const INITIAL_MATCH: OnlineMatchState = {
 
 const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
 
+/** Another seat dropping (`back: false`) or returning, in the viewer's language. */
+export type ReconnectNotice = { text: string; back: boolean };
+
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: GameState | null;
@@ -85,7 +88,7 @@ interface OnlineGameContextValue {
   error: string | null;
   playerLeft: boolean;
   rejoinFailed: boolean;
-  reconnectNotice: string | null;
+  reconnectNotice: ReconnectNotice | null;
   mySeatIndex: number;
   /** The acting seat's remaining AFK window, as the server measured it. */
   turnSeconds: number;
@@ -298,7 +301,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     announce,
     end: acknowledgeExchange,
   } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
-  const [reconnectNotice, setReconnectNotice] = useState<string | null>(null);
+  const [reconnectNotice, setReconnectNotice] = useState<ReconnectNotice | null>(null);
   const [isSpectator, setIsSpectator] = useState(false);
 
   const prevExchangeActiveRef = useRef(false);
@@ -736,11 +739,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // The server sends { code, params, message }; rendering it here rather
       // than rebuilding the sentence keeps this in the player's language and
       // keeps the grace period truthful — it is configurable server-side.
-      const msg = translateServerPayload(payload);
-      setReconnectNotice(msg);
+      const notice = { text: translateServerPayload(payload), back: false };
+      setReconnectNotice(notice);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {
-        setReconnectNotice((cur) => (cur === msg ? null : cur));
+        setReconnectNotice((cur) => (cur === notice ? null : cur));
       }, 10_000);
 
       // The seat itself carries this for the whole grace, not a ten-second
@@ -759,11 +762,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onPlayerReconnected = (
       payload: ServerPayload & { userId: string; seatIndex?: number | null }
     ) => {
-      const msg = translateServerPayload(payload);
-      setReconnectNotice(msg);
+      const notice = { text: translateServerPayload(payload), back: true };
+      setReconnectNotice(notice);
       if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
       reconnectNoticeTimerRef.current = setTimeout(() => {
-        setReconnectNotice((cur) => (cur === msg ? null : cur));
+        setReconnectNotice((cur) => (cur === notice ? null : cur));
       }, 3_500);
 
       if (typeof payload.seatIndex === "number") {

@@ -4,7 +4,7 @@ import { SEAT_DISC } from "@/components/seatLayout";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
-import { HudComboPill, TurnChip } from "./hud";
+import { HudComboPill, OfflinePill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
@@ -43,7 +43,23 @@ export const NOTICE_GALLERY = {
     { name: "a bot on move", tone: "neutral", render: (scale) => <TurnChip {...turn(scale, false, 30)} /> },
     { name: "your turn", tone: "lit", render: (scale) => <TurnChip {...turn(scale, true, 30)} /> },
     { name: "your last seconds", tone: "urgent", render: (scale) => <TurnChip {...turn(scale, true, 3)} /> },
+    {
+      name: "reconnecting",
+      tone: "neutral",
+      render: (scale) => <TurnChip {...turn(scale, true, 30)} connection={{ state: "reconnecting", text: "Reconnecting…" }} />,
+    },
+    {
+      name: "back online",
+      tone: "ok",
+      render: (scale) => <TurnChip {...turn(scale, true, 30)} active={false} connection={{ state: "reconnected", text: "Besnik is back" }} />,
+    },
+    {
+      name: "offline",
+      tone: "bad",
+      render: (scale) => <TurnChip {...turn(scale, true, 30)} connection={{ state: "offline", text: "No internet connection" }} />,
+    },
   ],
+  offline: [{ name: "off the table", tone: "solid", render: (scale) => <OfflinePill scale={scale} /> }],
   whoStarts: [
     {
       name: "a seat holds the start card, gated",
