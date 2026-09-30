@@ -5,8 +5,10 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, fireEvent, waitFor, within } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
+import { NoticePalette } from '@/lib/theme';
 
 import { en as locale } from '@/locales/en';
 
@@ -100,10 +102,14 @@ jest.mock('@/context/onlineGameHooks', () => ({
 jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
+  const { EndMatchVote } = require('@/components/table/notices/netNotes') as typeof import('@/components/table/notices/netNotes');
   return {
-    GameTable: (props: { banners?: React.ReactNode; overlays?: (v: object) => React.ReactNode }) =>
+    GameTable: (props: {
+      endMatchVote?: import('@/components/table/notices/netNotes').EndMatchVoteNote | null;
+      overlays?: (v: object) => React.ReactNode;
+    }) =>
       react.createElement(rn.View, null, [
-        react.createElement(rn.View, { key: 'banners' }, props.banners ?? null),
+        props.endMatchVote ? react.createElement(EndMatchVote, { key: 'vote', ...props.endMatchVote, scale: 1 }) : null,
         react.createElement(rn.View, { key: 'overlays' }, props.overlays ? props.overlays({}) : null),
       ]),
   };
@@ -175,30 +181,27 @@ describe('the end-match vote banner, a seat vacated', () => {
       .replace('{{votes}}', '1')
       .replace('{{total}}', '2');
     const button = view.getByRole('button', { name: locale['game.endMatchWithdrawButton'] });
-    // The visible copy inside the control, and the live region's own copy —
-    // two nodes, and the live region's is not inside the button's own
-    // accessible subtree, so a screen reader announces it as it changes
-    // rather than only when the control is focused.
-    const allTallies = view.getAllByText(tallyText, { includeHiddenElements: true });
-    expect(allTallies.length).toBeGreaterThanOrEqual(2);
-    expect(within(button).queryAllByText(tallyText, { includeHiddenElements: true }).length).toBe(1);
+    // G2's count shape: the sentence is the live region's alone, outside the
+    // control, so it is announced as it changes; the plate shows the count.
+    expect(view.getAllByText(tallyText, { includeHiddenElements: true })).toHaveLength(1);
+    expect(within(button).queryAllByText(tallyText, { includeHiddenElements: true })).toHaveLength(0);
+    expect(within(button).getByText('1/2', { includeHiddenElements: true })).toBeTruthy();
 
     await view.unmount();
   });
 
-  it('shows a visible cue that a second tap withdraws, not just the same tally a non-voter sees', async () => {
+  it('is one notice plate, lit once the viewer has voted, so a second tap visibly withdraws', async () => {
+    const edge = (view: Awaited<ReturnType<typeof render>>) =>
+      StyleSheet.flatten(view.getByTestId('notice-endMatchVote', { includeHiddenElements: true }).props.style).borderColor;
+    const idle = await render(screenUnderTest());
+    expect(edge(idle)).toBe(NoticePalette.pill.neutral.edge);
+    await idle.unmount();
+
     mockEndMatchVoteState = { votes: ['alice'], total: 2 };
-    const view = await render(screenUnderTest());
-
-    // A sighted player who already voted must see something other than the
-    // plain tally a non-voter would — otherwise a second tap withdraws with
-    // no visible change (#894 review, finding 8).
-    const nonVoterTally = locale['game.endMatchVoteTally']
-      .replace('{{votes}}', '1')
-      .replace('{{total}}', '2');
-    expect(view.queryByText(nonVoterTally, { includeHiddenElements: true })).toBeNull();
-
-    await view.unmount();
+    const voted = await render(screenUnderTest());
+    expect(edge(voted)).toBe(NoticePalette.pill.lit.edge);
+    expect(voted.getAllByTestId('notice-endMatchVote', { includeHiddenElements: true })).toHaveLength(1);
+    await voted.unmount();
   });
 
   it('reverts to the base label once the tally returns to zero (a withdrawal)', async () => {

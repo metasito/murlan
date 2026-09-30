@@ -365,3 +365,44 @@ describe("the table's refusals and lines", () => {
     await r.unmount();
   });
 });
+
+describe('an autopass', () => {
+  const hidden = { includeHiddenElements: true };
+  const onMove = { ...STATE, currentTurnIndex: 0 };
+  const passed = { ...STATE, currentTurnIndex: 3, passCount: 1 };
+  const at = (state: GameState, autoPassed: number) => (
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <GameTable gameState={state} viewerSeat={0} autoPassed={autoPassed} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+    </SafeAreaProvider>
+  );
+  const floated = () => {
+    const plates = screen.queryAllByTestId('notice-passFloat', hidden);
+    expect(plates).toHaveLength(1);
+    return within(plates[0]);
+  };
+  const reads = (words: string) => {
+    expect(floated().queryByText(words, hidden)).toBeTruthy();
+    expect(floated().queryByText(t('gameShared.passedLabel'), hidden)).toBeNull();
+  };
+
+  it('floats the pass reading its own title, the pass and its notice in one render', async () => {
+    const r = await render(at(onMove, 0));
+    await r.rerender(at(passed, 1));
+    reads(t('game.autoPassTitle'));
+    await r.unmount();
+  });
+
+  it('takes the slot from the viewer\'s pass whichever of the two arrives first', async () => {
+    const noticeFirst = await render(at(onMove, 0));
+    await noticeFirst.rerender(at(onMove, 1));
+    await noticeFirst.rerender(at(passed, 1));
+    reads(t('game.autoPassTitle'));
+    await noticeFirst.unmount();
+
+    const stateFirst = await render(at(onMove, 0));
+    await stateFirst.rerender(at(passed, 0));
+    await stateFirst.rerender(at(passed, 1));
+    reads(t('game.autoPassTitle'));
+    await stateFirst.unmount();
+  });
+});
