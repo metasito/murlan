@@ -141,16 +141,20 @@ describe("both device jobs pin the tool that reads the screen", () => {
 
 describe("the iOS job drives this app, not Expo Go", () => {
   const workflow = code(".github/workflows/ios.yml");
+  const BUILD = ".github/actions/ios-app/action.yml";
 
   test("it builds and installs a build of this app", () => {
-    assert.match(workflow, /expo prebuild --platform ios/);
-    assert.match(workflow, /xcodebuild/);
+    assert.match(workflow, /uses: \.\/\.github\/actions\/ios-app\n/);
+    assert.match(code(BUILD), /expo prebuild --platform ios/);
+    assert.match(code(BUILD), /xcodebuild/);
     assert.match(workflow, /simctl install .*APP_BUNDLE/);
   });
 
   test("it never fetches or installs Expo Go", () => {
-    for (const trace of [/iosClientUrl/, /expo-go/i, /host\.exp/i]) {
-      assert.doesNotMatch(read(".github/workflows/ios.yml"), trace, `ios.yml still mentions ${trace}`);
+    for (const file of [".github/workflows/ios.yml", BUILD]) {
+      for (const trace of [/iosClientUrl/, /expo-go/i, /host\.exp/i]) {
+        assert.doesNotMatch(read(file), trace, `${file} still mentions ${trace}`);
+      }
     }
   });
 
