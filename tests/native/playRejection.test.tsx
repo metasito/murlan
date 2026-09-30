@@ -5,7 +5,7 @@
 // 3♠ — the two cases where "too low" teaches the wrong rule.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
@@ -163,7 +163,8 @@ describe('the start-card banner names the real fallback card', () => {
   it('the viewer opens: banner names the actual card, not the 3♠', async () => {
     const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 0 })));
 
-    expect(screen.getByText('You start! You hold the 5♥')).toBeTruthy();
+    const panel = within(screen.getByTestId('notice-whoStarts', { includeHiddenElements: true }));
+    expect(panel.getByText('You start! You hold the 5♥', { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();
@@ -172,7 +173,8 @@ describe('the start-card banner names the real fallback card', () => {
   it('another seat opens: banner names the actual card, not the 3♠', async () => {
     const r = await render(table(state({ firstPlayMade: false, startCard: FIVE_H, currentTurnIndex: 1 })));
 
-    expect(screen.getByText('Besi starts with the 5♥')).toBeTruthy();
+    const panel = within(screen.getByTestId('notice-whoStarts', { includeHiddenElements: true }));
+    expect(panel.getByText('Besi starts — holds the 5♥', { includeHiddenElements: true })).toBeTruthy();
     expect(screen.queryByText('♠')).toBeNull();
 
     await r.unmount();
