@@ -48,6 +48,20 @@ describe('a diagnostics build times every notice in UI frames', () => {
     }
   });
 
+  it('a notice inside the gallery stamps its rows gallery, one outside stamps none', async () => {
+    const { NoticeSource } = require('@/components/table/TableNotice') as typeof import('@/components/table/TableNotice');
+    const pill = gallery.hudCombo[0];
+    let view = await render(<NoticeSource.Provider value="gallery">{pill.render(1)}</NoticeSource.Provider>);
+    await advance(2000);
+    await view.unmount();
+    expect(rows('notice').map((r) => r.src)).toEqual(['gallery']);
+    mockRows.length = 0;
+    view = await render(pill.render(1));
+    await advance(2000);
+    await view.unmount();
+    expect(rows('notice').map((r) => r.src)).toEqual([undefined]);
+  });
+
   it("the reconnecting dot records each 900 ms blink, and under reduced motion no blink and an opacity of 1", async () => {
     const reconnecting = gallery.turn.find((f) => f.name === 'reconnecting')!;
     let view = await render(reconnecting.render(1));

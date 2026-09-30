@@ -5,6 +5,7 @@ import { useKeepAwake } from "expo-keep-awake";
 import { GameTable } from "@/components/GameTable";
 import { NOTICE_GALLERY, type NoticeFixture } from "@/components/table/notices/gallery";
 import type { NoticeKind } from "@/components/table/noticeModel";
+import { NoticeSource } from "@/components/table/TableNotice";
 import type { GameState } from "@/lib/game/gameEngine";
 import { Colors, FontSize, Layer, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
@@ -40,7 +41,7 @@ function GalleryStage({ bind }: { bind: (show: (shot: NoticeShot | null) => void
   const fixture = (NOTICE_GALLERY[shot.kind as NoticeKind] as NoticeFixture[])[shot.fixture];
   return (
     <View pointerEvents="none" style={styles.stage}>
-      {fixture.render(1)}
+      <NoticeSource.Provider value="gallery">{fixture.render(1)}</NoticeSource.Provider>
     </View>
   );
 }

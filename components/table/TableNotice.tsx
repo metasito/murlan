@@ -65,9 +65,14 @@ const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 
 const Ink = createContext<{ kind: NoticeKind; paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
-function probed<T>(animation: T, kind: NoticeKind, shape: NoticeShape, phase: DiagRows["notice"]["phase"]): T {
+/** Which stage a notice's diagnostics rows come from: the bench's gallery, or the table when unset. */
+export const NoticeSource = createContext<DiagRows["notice"]["src"]>(undefined);
+
+type Probe = { kind: NoticeKind; shape: NoticeShape; src: DiagRows["notice"]["src"] };
+
+function probed<T>(animation: T, probe: Probe, phase: DiagRows["notice"]["phase"]): T {
   if (!DIAGNOSTICS) return animation;
-  return clocked(animation, (ms) => diag({ k: "notice", t: performance.now(), kind, shape, phase, ms }));
+  return clocked(animation, (ms) => diag({ k: "notice", t: performance.now(), ...probe, phase, ms }));
 }
 
 export function TableNotice<K extends NoticeKind>({
@@ -94,6 +99,7 @@ export function TableNotice<K extends NoticeKind>({
   const { enter, hold, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
   const held = shape === "float" ? hold : null;
+  const src = useContext(NoticeSource);
 
   const life = useSharedValue(still && shown ? 1 : 0);
   const risen = useSharedValue(still ? 1 : 0);
@@ -101,16 +107,17 @@ export function TableNotice<K extends NoticeKind>({
   useEffect(() => {
     const leaving = wasShown.current && !shown;
     wasShown.current = shown;
+    const probe = { kind, shape, src };
     if (still) {
       life.value = shown ? 1 : 0;
-      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), kind, shape, phase: "still", ms: 0 });
+      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0 });
       return;
     }
-    const entrance = probed(withTiming(1, { duration: enter }), kind, shape, "enter");
+    const entrance = probed(withTiming(1, { duration: enter }), probe, "enter");
     const out = withTiming(0, { duration: exit });
     life.value = held !== null && shown
-      ? withSequence(entrance, withTiming(1, { duration: held }), probed(out, kind, shape, "exit"))
-      : shown ? entrance : leaving ? probed(out, kind, shape, "exit") : out;
+      ? withSequence(entrance, withTiming(1, { duration: held }), probed(out, probe, "exit"))
+      : shown ? entrance : leaving ? probed(out, probe, "exit") : out;
     if (shown) {
       risen.value = 0;
       risen.value = withTiming(1, { duration: enter });
@@ -119,7 +126,7 @@ export function TableNotice<K extends NoticeKind>({
       cancelAnimation(life);
       cancelAnimation(risen);
     };
-  }, [shown, still, held, enter, exit, life, risen, kind, shape]);
+  }, [shown, still, held, enter, exit, life, risen, kind, shape, src]);
   const motion = useAnimatedStyle(() => ({
     opacity: life.value,
     transform: [{ translateY: (1 - risen.value) * rise }],

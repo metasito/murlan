@@ -24,7 +24,7 @@ export interface DiagRows {
   lampLegibility: { side: LampSide; ratio: number };
   throw: Record<never, never>;
   half: { name: "frozen" | "swaying" | "on" | "off"; pair: number };
-  notice: { kind: string; shape: string; phase: "enter" | "exit" | "still"; ms: number };
+  notice: { kind: string; shape: string; phase: "enter" | "exit" | "still"; ms: number; src?: "gallery" };
   blink: { kind: string; period: number };
   dot: { kind: string; opacity: number };
   gallery: { kinds: number; fixtures: number };

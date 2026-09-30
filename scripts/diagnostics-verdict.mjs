@@ -335,7 +335,7 @@ function noticeGallery(rows) {
   const calmFrom = shows.find((s) => s.reduced)?.t ?? Infinity;
   const notices = rows.filter((r) => r.k === "notice");
   const unseen = shows.filter((s, i) =>
-    !notices.some((n) => n.kind === s.kind && (n.phase === "enter" || n.phase === "still") && n.t >= s.t && n.t < (shows[i + 1]?.t ?? Infinity))
+    !notices.some((n) => n.src === "gallery" && n.kind === s.kind && (n.phase === "enter" || n.phase === "still") && n.t >= s.t && n.t < (shows[i + 1]?.t ?? Infinity))
   ).length;
   const frameMs = Math.min(1000 / medianHz(rows), 1000 / 60);
   const enter = Object.fromEntries(
