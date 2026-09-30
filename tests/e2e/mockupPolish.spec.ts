@@ -537,6 +537,9 @@ test("reject: a refused GIOCA floats G2's reason, its right edge on GIOCA's and 
   await expect
     .poll(async () => (await app.plate(REJECT))?.opacity, { message: "the reason risen and faded in", intervals: [20], timeout: 30_000 })
     .toBe(1);
+  await expect
+    .poll(() => app.page.getByTestId("btn-gioca-box").evaluate((el) => getComputedStyle(el).transform), { message: "GIOCA's shake settled", intervals: [20] })
+    .toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
   const got = await readExtra(app.page, { stage: "body", plate: REJECT, beside: '[data-testid="btn-gioca"]' });
   await expect.poll(async () => (await app.plate(REJECT))?.opacity ?? 0, { message: "the reason gone", timeout: 5_000 }).toBe(0);
   await app.close();
@@ -571,6 +574,8 @@ test("waiting: a seat gone out waits on G2's gold pill, centred on the hand row"
   const row = got.beside.y + got.beside.h - handVisibleH(CARD_H(cardScale(DESIGN.height) * HAND_SCALE)) / 2;
   expect.soft(Math.abs(centre(got.box).x - centre(want.box).x), `the centre, ${centre(got.box).x} against ${centre(want.box).x}`).toBeLessThanOrEqual(ONE_PT);
   expect.soft(Math.abs(centre(got.box).y - row), `the middle, ${centre(got.box).y} against the hand row's ${row}`).toBeLessThanOrEqual(HALF_PT);
+  // G2 says "the centre of the hand row", and an out seat's row is the off-turn one, about 8 pt under G2's y.
+  expect.soft(Math.abs(centre(got.box).y - centre(want.box).y), `the middle against G2's, ${centre(got.box).y} against ${centre(want.box).y}`).toBeLessThanOrEqual(9);
 });
 
 const WAITING_SEATS = ["top-seat", "side-seat-left", "side-seat-right"];
