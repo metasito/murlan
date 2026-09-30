@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg from "react-native-svg";
 import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
@@ -73,8 +73,9 @@ export function TableNotice<K extends NoticeKind>({
   const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
   const glow = noticeGlow(kind, tone, scale);
   const reduceMotion = usePrefersReducedMotion();
-  const { enter, exit } = noticeTiming(shape, reduceMotion);
+  const { enter, hold, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
+  const held = shape === "float" ? hold : null;
 
   const life = useSharedValue(still && shown ? 1 : 0);
   const risen = useSharedValue(still ? 1 : 0);
@@ -83,7 +84,9 @@ export function TableNotice<K extends NoticeKind>({
       life.value = shown ? 1 : 0;
       return;
     }
-    life.value = withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
+    life.value = held !== null && shown
+      ? withSequence(withTiming(1, { duration: enter }), withTiming(1, { duration: held }), withTiming(0, { duration: exit }))
+      : withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
     if (shown) {
       risen.value = 0;
       risen.value = withTiming(1, { duration: enter });
@@ -92,7 +95,7 @@ export function TableNotice<K extends NoticeKind>({
       cancelAnimation(life);
       cancelAnimation(risen);
     };
-  }, [shown, still, enter, exit, life, risen]);
+  }, [shown, still, held, enter, exit, life, risen]);
   const motion = useAnimatedStyle(() => ({
     opacity: life.value,
     transform: [{ translateY: (1 - risen.value) * rise }],

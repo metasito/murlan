@@ -306,9 +306,10 @@ from `Motion`). Run
 **Depends on:** task 3.
 
 **Acceptance:**
-- When the viewer passes, a PASSO float appears at the mockup's `.floatchip` box (centred at
-  457, 300), rises and fades in over 100 ms, holds 1000 ms and fades out over 100 ms. `GameTable` derives it from the state it
-  already reads (`passedSeats`), so both game screens get it with no new screen state.
+- When the viewer passes, a PASSO float appears at the mockup's `.floatchip` box (centred on
+  457, its top at 300), rises and fades in over 100 ms, holds 1000 ms and fades out over 100 ms. `GameTable` derives it from the state it
+  already reads (`passedSeats`, and `roundClosedWithWinner` for the pass that closes a round, which
+  `passedSeats` never names), so both game screens get it with no new screen state.
 - The slot holds one float. A new float replaces the one standing and restarts its life; there is
   never a stacked or half-faded leftover.
 - The slot's `A11yStatus` stays mounted whether or not a float is up, so a float that arrives is
