@@ -1,7 +1,8 @@
 // The lantern fixture and the app on one 874×402 stage, each plate read as its box and computed paint.
 import type { Browser, Page } from "@playwright/test";
 import { FIXTURE, fitFrame, newSidePage, sideContext } from "./mockupParity";
-import { openCaptureState } from "./offlineSeed";
+import { openCaptureState, resumeSaved } from "./offlineSeed";
+import { E2E_SUSPEND_AI_KEY } from "../../../lib/storageKeys";
 import type { CaptureState } from "../../../lib/captureStates";
 
 export interface Rect {
@@ -74,6 +75,14 @@ export async function appAt(
   const page = await (await sideContext(browser, baseURL)).newPage();
   if (viewport) await page.setViewportSize(viewport);
   await openCaptureState(page, baseURL, state);
+  return stage(page, null);
+}
+
+/** A saved game resumed with every bot held, for a state no capture state is. */
+export async function appResumed(browser: Browser, baseURL: string, save: object): Promise<Stage> {
+  const page = await (await sideContext(browser, baseURL)).newPage();
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+  await resumeSaved(page, baseURL, save);
   return stage(page, null);
 }
 

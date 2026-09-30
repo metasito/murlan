@@ -2,12 +2,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { appAt, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
+import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
 import { cardScale } from "../../components/cardFaceModel";
-import { RANK_SLOTS } from "../../lib/game/gameEngine";
+import { buildCombination, RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
 
 const HALF_PT = 0.5;
 const ONE_PT = 1;
@@ -205,13 +205,39 @@ for (const phone of STAGES) {
 
 const FLOAT = '[data-testid="notice-passFloat"]';
 
+/** The mockup's clock chapter: Besnik has played, and the turn runs down to you. */
+function besnikLedYouAnswer() {
+  const names = ["Ana", "Besnik", "Gent", "Luan"];
+  const hands = [[card("5", "hearts"), card("K", "spades")], [card("J", "hearts")], [card("7", "clubs")], [card("4", "diamonds")]];
+  return {
+    version: 2,
+    gameState: {
+      players: names.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i], type: i === 0 ? "human" : "ai" })),
+      currentTurnIndex: 0,
+      lastPlayedCombination: buildCombination([card("9", "spades") as Card]),
+      lastPlayedBy: 1,
+      passCount: 0,
+      gameMode: "free_for_all",
+      roundWinner: null,
+      gameOver: false,
+      rankings: [],
+      firstPlayMade: true,
+    },
+    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    rematchAnswers: {},
+    players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
+    gameMode: "free_for_all",
+    dealFirstSeat: 0,
+  };
+}
+
 test("float: the viewer's own pass is the mockup's .floatchip, in its place, and goes", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const mockup = await mockupAt(browser, "clock", 4600);
   const want = await shown(mockup, ".floatchip");
   await mockup.close();
 
-  const app = await appAt(browser, baseURL!, LIT_WITH_COUNT);
+  const app = await appResumed(browser, baseURL!, besnikLedYouAnswer());
   await tap(app.page, app.page.getByTestId("btn-passa"));
   await expect
     .poll(async () => (await app.plate(FLOAT))?.opacity, { message: "the float risen and faded in", intervals: [20], timeout: 30_000 })
