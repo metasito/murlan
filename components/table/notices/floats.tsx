@@ -7,7 +7,8 @@ import { mockupPx } from "../noticeModel";
 /** Any width past the widest float: the slot only centres it. */
 const FLOAT_SLOT = 240;
 
-export type Float = { id: number; text: string };
+/** `live` while the state that raised it stands: the region's text goes with it, so the next float is a change. */
+export type Float = { id: number; text: string; live: boolean };
 
 export function PassFloat({ text, scale }: { text: string; scale: number }) {
   return (
@@ -26,7 +27,7 @@ export function FloatSlot({ float, at, scale, veiled }: { float: Float | null; a
   const slot = mockupPx(FLOAT_SLOT, scale);
   return (
     <>
-      <A11yStatus label={float?.text ?? ""} veiled={veiled} />
+      <A11yStatus label={float?.live ? float.text : ""} veiled={veiled} />
       {float && (
         <View pointerEvents="none" {...a11yHidden()} style={[styles.slot, { width: slot, left: at.x - slot / 2, top: at.y }]}>
           <PassFloat key={float.id} text={float.text} scale={scale} />

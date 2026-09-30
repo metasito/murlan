@@ -55,7 +55,7 @@ import {
   NO_STAGES,
   readExchange,
   readTradeSeats,
-  floatAt,
+  floatTop,
   seatsJustPassed,
   tableGeometry,
   tradeKey,
@@ -541,7 +541,9 @@ export function GameTable({
   if (passSeen !== gameState) {
     setPassSeen(gameState);
     if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      setFloat({ id: (float?.id ?? 0) + 1, text: t("gameShared.passedLabel") });
+      setFloat({ id: (float?.id ?? 0) + 1, text: t("gameShared.passedLabel"), live: true });
+    } else if (float?.live) {
+      setFloat({ ...float, live: false });
     }
   }
 
@@ -1050,7 +1052,7 @@ export function GameTable({
           </View>
         )}
 
-        <FloatSlot float={float} at={floatAt(tableGeometry(seatGeometry))} scale={scale} veiled={tableWithdrawn} />
+        <FloatSlot float={float} at={{ x: anchors.pile.x, y: floatTop(seatGeometry) }} scale={scale} veiled={tableWithdrawn} />
 
         {/* Over the whole table rather than inside the mid band: while gated it holds
             the table as well as saying something, so the first tap is spent clearing

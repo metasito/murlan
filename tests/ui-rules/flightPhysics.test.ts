@@ -20,6 +20,8 @@ import {
   seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
+  CHIP_H,
+  handVisibleH,
 } from "../../components/seatLayout.ts";
 import { drawnFanBounds, fanPoint, seatFanArc } from "../../components/fanGeometry.ts";
 import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
@@ -52,7 +54,7 @@ import {
   shakeAmplitudeFor,
   passedSeats,
   seatsJustPassed,
-  floatAt,
+  floatTop,
   sparkOffset,
   SPARK_COUNT,
   flareKindFor,
@@ -77,7 +79,7 @@ import {
   clientSources,
   scanSources,
 } from "../helpers/sourceScan.ts";
-import { phoneTable } from "../helpers/phoneTable.ts";
+import { INSETS, phonePlace } from "../helpers/phoneTable.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -1565,7 +1567,21 @@ describe("seatsJustPassed", () => {
 });
 
 test("the float slot is the mockup's .floatchip on its own stage: centred on the table, its top at 300", () => {
-  const at = floatAt(phoneTable(874, 402));
-  assert.ok(Math.abs(at.x - 457) <= 0.5, `x ${at.x}`);
-  assert.ok(Math.abs(at.y - 300) <= 0.5, `y ${at.y}`);
+  const place = phonePlace(874, 402);
+  assert.ok(Math.abs(anchorPoints(tableGeometry(place)).pile.x - 457) <= 0.5);
+  assert.ok(Math.abs(floatTop(place) - 300) <= 0.5, `y ${floatTop(place)}`);
+});
+
+test("the float clears the resting hand by the same gap whatever the safe area", () => {
+  for (const [width, height] of [[874, 402], [568, 320], [932, 430]]) {
+    const gaps = Object.entries(INSETS).map(([name, insets]) => {
+      const place = phonePlace(width, height, insets);
+      const cardTop = place.windowHeight - place.surplus - place.bottomPad - handVisibleH(place.handCardH);
+      return { name, gap: cardTop - (floatTop(place) + CHIP_H(place.scale)) };
+    });
+    for (const { name, gap } of gaps) {
+      assert.ok(gap > 0, `${width}×${height} at ${name}: the float overlaps the hand by ${-gap}`);
+      assert.ok(Math.abs(gap - gaps[0].gap) < 1e-9, `${width}×${height} at ${name}: gap ${gap} against ${gaps[0].gap}`);
+    }
+  }
 });

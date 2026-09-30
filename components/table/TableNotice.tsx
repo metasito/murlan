@@ -84,7 +84,7 @@ export function TableNotice<K extends NoticeKind>({
       life.value = shown ? 1 : 0;
       return;
     }
-    life.value = held !== null
+    life.value = held !== null && shown
       ? withSequence(withTiming(1, { duration: enter }), withTiming(1, { duration: held }), withTiming(0, { duration: exit }))
       : withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
     if (shown) {

@@ -363,9 +363,9 @@ export function anchorPoints(g: TableGeometry): Record<FlyDirection | "pile", { 
   };
 }
 
-/** The float slot's centre x and top edge, in window points: `.floatchip`, over the hand. */
-export function floatAt(g: TableGeometry): { x: number; y: number } {
-  return { x: anchorPoints(g).pile.x, y: g.windowHeight - g.surplus - floatAboveFoot(g.scale) };
+/** The float slot's top edge, in window points: `.floatchip`, above the hand row's floor. */
+export function floatTop(place: SeatPlace): number {
+  return place.windowHeight - place.surplus - place.bottomPad - floatAboveFoot(place.scale);
 }
 
 /**
