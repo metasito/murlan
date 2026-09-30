@@ -12,7 +12,7 @@ const CHIP = { height: FULL, padX: 12, gapX: 6, radius: FULL, font: 10, weight: 
 
 const MOCKUP = {
   ".chip": CHIP,
-  "#turn": { ...CHIP, padX: 13, gapX: 7, strongFont: 12 },
+  "#turn": { ...CHIP, padX: 130, gapX: 7, strongFont: 12 },
   ".floatchip": CHIP,
   ".passo": { height: 15, padX: 7, gapX: 0, radius: 8, font: 8, weight: 700, tracking: 1.28 },
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
