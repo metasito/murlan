@@ -105,7 +105,6 @@ for (const phone of STAGES) {
 
 const MARK = '[data-testid="notice-passed"]';
 const rgb = (colour: string) => colour.replace(/rgba?\(([^,]+),([^,]+),([^,)]+).*/, "$1,$2,$3").replace(/\s/g, "");
-const alpha = (colour: string) => Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(colour)?.[1] ?? 1);
 
 /** Each seat's mark as its centre x and top edge, off that seat's disc centre. */
 const markOffsets = (stage: Stage, seats: Record<string, string>, disc: string, mark: string) =>
@@ -145,7 +144,7 @@ test("PASSO: another seat's pass is the mockup's .passo, beside the top disc and
   expect.soft(got.edge, "the edge, the mockup's .35 on goldBorder (Q4)").toBe("rgba(201, 168, 76, 0.3)");
   expect.soft(rgb(got.edge), "the edge's colour").toBe(rgb(want.edge));
   expect.soft(rgb(got.ink), "the ink's colour").toBe(rgb(want.ink));
-  expect.soft(Math.abs(alpha(got.ink) - alpha(want.ink)), `the ink's alpha, ${got.ink} against ${want.ink}`).toBeLessThanOrEqual(0.05);
+  expect.soft(got.ink, `the ink, the mockup's ${want.ink} on textSecondary`).toBe("rgba(240, 234, 214, 0.75)");
   expect.soft(got.fontSize, "the text, at the table's floor (Q3)").toBe(10);
   expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against the mockup's ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
   expect.soft(Math.abs(got.radius - want.radius), `the radius, ${got.radius} against ${want.radius}`).toBeLessThanOrEqual(HALF_PT);
