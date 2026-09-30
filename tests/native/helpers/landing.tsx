@@ -17,7 +17,7 @@ import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine
 /** Writes one landing onto the signal, as the flight clock does on its contact frame. */
 export function fireLanding(
   signal: SharedValue<LandingSignal>,
-  l: { cards: number; heavy?: boolean; mine?: boolean; tier?: ImpactTier; flush?: boolean }
+  l: { cards: number; heavy?: boolean; mine?: boolean; tier?: ImpactTier; flush?: boolean; key?: string }
 ): void {
   const heavy = l.heavy ?? false;
   const mine = l.mine ?? false;
