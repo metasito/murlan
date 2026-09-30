@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
-import { act, render, screen, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { activate } from './tapHelpers';
+import { t } from '@/lib/i18n';
+import { cardSpokenName } from '@/lib/cardNames';
 
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -191,6 +194,62 @@ describe('the turn pill', () => {
     const plates = within(stack).getAllByTestId('notice-turn', { includeHiddenElements: true });
     expect(plates).toHaveLength(1);
     expect(within(plates[0]).getAllByTestId('turn-chip-dot', { includeHiddenElements: true })).toHaveLength(1);
+    await r.unmount();
+  });
+});
+
+describe("the table's refusals and lines", () => {
+  const hidden = { includeHiddenElements: true };
+  const edge = (id: string) => StyleSheet.flatten(screen.getByTestId(id, hidden).props.style).borderColor;
+  const said = () =>
+    screen
+      .getAllByRole('text', hidden)
+      .filter((n) => n.props.accessibilityLiveRegion === 'polite')
+      .map((n) => n.props.accessibilityLabel);
+  const at = (state: GameState, error: string | null = null) => (
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <GameTable gameState={state} viewerSeat={0} error={error} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+    </SafeAreaProvider>
+  );
+  const withAna = (over: Partial<Player>) => ({ ...STATE, players: STATE.players.map((p, i) => (i === 0 ? { ...p, ...over } : p)) });
+
+  it('a refused GIOCA floats its reason in the bad tone, and the slot reads it out', async () => {
+    const r = await render(at({ ...STATE, currentTurnIndex: 0 }));
+    await act(async () => {
+      await activate(screen.getByLabelText(cardSpokenName(card('3_0', '3', 'spades'), t)));
+    });
+    await act(async () => {
+      await fireEvent.press(screen.getByTestId('btn-gioca'));
+    });
+    expect(edge('notice-rejectFloat')).toBe(NoticePalette.float.bad.edge);
+    expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenTooLow'), hidden)).toBeTruthy();
+    expect(said()).toContain(t('gameTable.playA11ySpokenTooLow'));
+    await r.unmount();
+  });
+
+  it('a seat gone out waits for the others on a gold pill, in its own words', async () => {
+    const r = await render(at(withAna({ hand: [], finishPosition: 1 })));
+    expect(edge('notice-waitingOthers')).toBe(NoticePalette.pill.gold.edge);
+    expect(within(screen.getByTestId('notice-waitingOthers', hidden)).getByText(t('gameTable.waitingOthers'), hidden)).toBeTruthy();
+    await r.unmount();
+  });
+
+  it('an empty hand not yet out is the same gold pill', async () => {
+    const r = await render(at(withAna({ hand: [] })));
+    expect(edge('notice-emptyHand')).toBe(NoticePalette.pill.gold.edge);
+    expect(within(screen.getByTestId('notice-emptyHand', hidden)).getByText(t('gameShared.emptyHand'), hidden)).toBeTruthy();
+    await r.unmount();
+  });
+
+  it('an error arrives as the toast float in the bad tone, and the same error again floats again', async () => {
+    const r = await render(at(STATE, 'Nope'));
+    expect(edge('notice-errorToast')).toBe(NoticePalette.float.bad.edge);
+    expect(said()).toEqual(['Nope']);
+    await r.rerender(at(STATE, null));
+    expect(said()).toEqual(['']);
+    await r.rerender(at(STATE, 'Nope'));
+    expect(said()).toEqual(['Nope']);
+    expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
     await r.unmount();
   });
 });

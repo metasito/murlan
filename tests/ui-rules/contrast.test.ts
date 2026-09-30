@@ -224,8 +224,6 @@ const REMATCH = { plate: "styles.rematchPanel" };
 const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
 const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
 const ON_TABLE: Record<string, Backdrop> = {
-  "GameTable.tsx:styles.finishedText": { plate: SELF },
-  "GameTable.tsx:styles.rejectHintText": { plate: SELF },
   "table/actions.tsx:styles.playBtnLabel": { gradient: GIOCA },
   "table/actions.tsx:styles.playBtnSub": { gradient: GIOCA },
   // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
@@ -244,7 +242,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.gain": SCORE_ROW,
   "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
-  "table/hand.tsx:handStyles.emptyHandText": { plate: SELF },
   "table/rematchPrompt.tsx:styles.rematchTally": REMATCH,
   "table/rematchPrompt.tsx:styles.rematchTitle": REMATCH,
   "table/rematchPrompt.tsx:styles.rematchSubtitle": REMATCH,
