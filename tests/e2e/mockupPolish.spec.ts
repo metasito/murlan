@@ -6,7 +6,8 @@ import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } f
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { tap } from "./helpers/press";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
-import { cardScale } from "../../components/cardFaceModel";
+import { CARD_H, cardScale, HAND_SCALE } from "../../components/cardFaceModel";
+import { handVisibleH } from "../../components/seatLayout";
 import { buildCombination, RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
 
 const HALF_PT = 0.5;
@@ -450,4 +451,118 @@ test("panel: who starts is the G1 panel, at its size, place, plate and dim", asy
   expect(scaled.grew, "at 1.2x the panel did not grow with its words").toBe(true);
   expect(scaled.clipped, "at 1.2x these run past the panel").toEqual([]);
   expect(scaled.tileHolds, "at 1.2x the start card's rank runs past its tile").toBe(true);
+});
+
+const EXTRAS_FIXTURE = pathToFileURL(path.resolve(__dirname, "fixtures", "notice-extras", "index.html")).href;
+const REJECT = '[data-testid="notice-rejectFloat"]';
+const WAITING = '[data-testid="notice-waitingOthers"]';
+
+/** A G2 notice and its neighbour in design points, `stage` being the element its table is drawn in. */
+function readExtra(page: Page, sel: { stage: string; plate: string; beside: string }) {
+  return page.evaluate((s) => {
+    const q = (css: string) => {
+      const el = document.querySelector(css);
+      if (!el) throw new Error(`nothing matches ${css}`);
+      return el as HTMLElement;
+    };
+    const stageEl = q(s.stage);
+    const at = stageEl.getBoundingClientRect();
+    const k = at.width / 874;
+    const css = stageEl.offsetWidth / 874;
+    const rect = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: (r.left - at.left) / k, y: (r.top - at.top) / k, w: r.width / k, h: r.height / k };
+    };
+    const plate = q(s.plate);
+    const cs = getComputedStyle(plate);
+    const inside = [...plate.querySelectorAll("*")];
+    const inked = [plate, ...inside].find((n) => [...n.childNodes].some((c) => c.nodeType === Node.TEXT_NODE && c.textContent!.trim() !== ""));
+    const dot = inside.find((n) => {
+      const r = n.getBoundingClientRect();
+      return r.width > 3 && r.width < 9 && Math.abs(r.width - r.height) < 0.5 && getComputedStyle(n).backgroundColor !== "rgba(0, 0, 0, 0)";
+    });
+    const box = rect(plate);
+    return {
+      box,
+      fill: cs.backgroundColor,
+      edge: cs.borderTopColor,
+      ink: getComputedStyle(inked ?? plate).color,
+      fontSize: parseFloat(getComputedStyle(inked ?? plate).fontSize) / css,
+      radius: Math.min(parseFloat(cs.borderTopLeftRadius) / css, box.h / 2),
+      dot: dot ? getComputedStyle(dot).backgroundColor : null,
+      beside: rect(q(s.beside)),
+    };
+  }, sel);
+}
+
+type Extra = Awaited<ReturnType<typeof readExtra>>;
+
+async function g2(page: Page, scene: string, plate: string, beside: string): Promise<Extra> {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: DESIGN.width + 32, height: 900 });
+  await page.goto(EXTRAS_FIXTURE);
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  return readExtra(page, { stage: `${scene} .stage`, plate, beside: `${scene} ${beside}` });
+}
+
+function samePaint(got: Extra, want: Extra) {
+  expect.soft(got.fill, "the fill").toBe(want.fill);
+  expect.soft(got.edge, "the edge").toBe(want.edge);
+  expect.soft(got.ink, "the ink").toBe(want.ink);
+  expect.soft(got.dot, "the dot").toBe(want.dot);
+  expect.soft(got.fontSize, "the text").toBe(want.fontSize);
+  expect.soft(Math.abs(got.radius - want.radius), `the corner, ${got.radius} against ${want.radius}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.box.w - want.box.w), `the width, ${got.box.w} against ${want.box.w}`).toBeLessThanOrEqual(ONE_PT);
+}
+
+test("reject: a refused GIOCA floats G2's reason, its right edge on GIOCA's and 8 pt above it, and it goes", async ({ page, browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const want = await g2(page, "#sc-reject", "#n-reject", ".gioca");
+
+  const save = offlineGameSave(4, undefined, 0, {}, [["4_hearts", "5_hearts"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]]);
+  const app = await appResumed(browser, baseURL!, {
+    ...save,
+    gameState: { ...save.gameState, lastPlayedCombination: buildCombination([card("9", "spades") as Card]), lastPlayedBy: 1 },
+  });
+  await tap(app.page, app.page.locator('[data-hand-state] [data-testid="card-box"]').first());
+  await expect(app.page.locator('[data-hand-state] [aria-pressed="true"]')).toHaveCount(1);
+  await tap(app.page, app.page.getByTestId("btn-gioca"));
+  await expect
+    .poll(async () => (await app.plate(REJECT))?.opacity, { message: "the reason risen and faded in", intervals: [20], timeout: 30_000 })
+    .toBe(1);
+  const got = await readExtra(app.page, { stage: "body", plate: REJECT, beside: '[data-testid="btn-gioca"]' });
+  await expect.poll(async () => (await app.plate(REJECT))?.opacity ?? 0, { message: "the reason gone", timeout: 5_000 }).toBe(0);
+  await app.close();
+
+  samePaint(got, want);
+  const right = (b: Rect) => b.x + b.w;
+  const offRight = (e: Extra) => right(e.beside) - right(e.box);
+  const above = (e: Extra) => e.beside.y - (e.box.y + e.box.h);
+  expect.soft(Math.abs(offRight(got) - offRight(want)), `the right edge off GIOCA's, ${offRight(got)} against ${offRight(want)}`).toBeLessThanOrEqual(ONE_PT);
+  expect.soft(Math.abs(above(got) - above(want)), `the gap over GIOCA, ${above(got)} against ${above(want)}`).toBeLessThanOrEqual(ONE_PT);
+});
+
+test("waiting: a seat gone out waits on G2's gold pill, centred on the hand row", async ({ page, browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const want = await g2(page, "#sc-waiting", "#n-waiting", ".hand");
+
+  const save = offlineGameSave(4, undefined, 1, {}, [[], ["J_hearts", "Q_hearts"], ["7_clubs"], ["4_diamonds"]]);
+  const app = await appResumed(browser, baseURL!, {
+    ...save,
+    gameState: {
+      ...save.gameState,
+      players: save.gameState.players.map((p, i) => (i === 0 ? { ...p, finishPosition: 1 } : p)),
+      rankings: ["player_0"],
+    },
+  });
+  await expect.poll(async () => (await app.plate(WAITING))?.opacity, { message: "the line shown", timeout: 30_000 }).toBe(1);
+  const got = await readExtra(app.page, { stage: "body", plate: WAITING, beside: '[data-testid="hand-zone"]' });
+  await app.close();
+
+  samePaint(got, want);
+  const centre = (b: Rect) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2 });
+  const row = got.beside.y + got.beside.h - handVisibleH(CARD_H(cardScale(DESIGN.height) * HAND_SCALE)) / 2;
+  expect.soft(Math.abs(centre(got.box).x - centre(want.box).x), `the centre, ${centre(got.box).x} against ${centre(want.box).x}`).toBeLessThanOrEqual(ONE_PT);
+  expect.soft(Math.abs(centre(got.box).y - row), `the middle, ${centre(got.box).y} against the hand row's ${row}`).toBeLessThanOrEqual(HALF_PT);
 });
