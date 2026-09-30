@@ -10,7 +10,9 @@ import {
   seatGap,
   seatLabelH,
 } from "@/components/seatLayout";
-import { FAN_TURN, fanCounts, seatFanArc } from "@/components/fanGeometry";
+import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
+import { fanBackRects } from "./cardRects";
+import { useCardTable, useStaticCardRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -125,6 +127,21 @@ function CardFan({
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
+  const table = useCardTable();
+  const drawn = useMemo(
+    () =>
+      table && count > 0
+        ? fanBackRects(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), table, {
+            side,
+            count,
+            backScale: scale * BACK_SCALE,
+            leanDeg: FAN_LEAN_DEG,
+            perspective: FAN_PERSPECTIVE,
+          })
+        : [],
+    [table, side, count, scale]
+  );
+  useStaticCardRects(table, `fan:${side}:`, drawn);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;

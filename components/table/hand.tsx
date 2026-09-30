@@ -50,6 +50,8 @@ import type { CardFrom } from "@/components/flightPose";
 import { readHandArrival, type TradeStages } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import { handCardRect, type Felt, type Point } from "./cardRects";
+import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
 
 /**
  * The viewer's hand as the table draws it while a traded card is on its way in or out.
@@ -242,9 +244,18 @@ interface CardItemProps {
   received?: boolean;
   /** Ids drawn by an exchange flier instead, set on the UI thread on the frame it shows. */
   hidden?: SharedValue<string[]>;
+  /** Where the row sits on the table, for the card's rectangle. */
+  rects?: HandRow;
 }
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
+
+/** The row's left edge and baseline in window points at rest, and what moves it. */
+interface HandRow extends Point, Felt {
+  table: CardTable;
+  pan: SharedValue<number>;
+  panLimit: number;
+}
 
 function CardItemBase({
   card,
@@ -275,6 +286,7 @@ function CardItemBase({
   onDrawn,
   received = false,
   hidden,
+  rects,
 }: CardItemProps) {
   const reduceMotion = usePrefersReducedMotion();
   const halo = useSharedValue(0);
@@ -381,20 +393,38 @@ function CardItemBase({
     onDrawn?.(card.id, { liftY, tilt, shift });
   }, [onDrawn, card.id, liftY, tilt, shift]);
 
-  const aStyle = useAnimatedStyle(() => {
+  const pose = () => {
+    "worklet";
     const d = dealing.value;
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
     const restRot = arcRot + tilt.value + press.value * PRESS_TILT;
     return {
-      opacity: hidden?.value.includes(card.id) ? 0 : dealFade ? 1 - d : 1,
-      transform: [
-        { translateX: dealFromX * d + shift.value },
-        { translateY: liftY.value + press.value * PRESS_RISE + dealRise * d },
-        { rotate: `${restRot * (1 - d)}deg` },
-      ],
+      opacity: hidden?.value.includes(cardId) ? 0 : dealFade ? 1 - d : 1,
+      tx: dealFromX * d + shift.value,
+      ty: liftY.value + press.value * PRESS_RISE + dealRise * d,
+      rot: restRot * (1 - d),
+    };
+  };
+  const aStyle = useAnimatedStyle(() => {
+    const p = pose();
+    return {
+      opacity: p.opacity,
+      transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }],
     };
   });
+  useCardRect(
+    rects?.table ?? null,
+    `hand:${cardId}`,
+    () => {
+      "worklet";
+      const p = pose();
+      if (!rects || p.opacity <= 0) return null;
+      const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: 1, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
+      return handCardRect(rects, card, Math.min(Math.max(rects.pan.value, -rects.panLimit), rects.panLimit), rects.table.handLift.value);
+    },
+    [rects, cardId, left, bottom, cardW, cardH, faceDown, selectLift, arcRot, dealFade, dealFromX, dealRise, hidden, dealing, shift, liftY, tilt, press, glow]
+  );
 
   const giveableStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, exchangeState.value),
@@ -508,7 +538,8 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.onMove === b.onMove &&
     a.onDrawn === b.onDrawn &&
     a.received === b.received &&
-    a.hidden === b.hidden
+    a.hidden === b.hidden &&
+    a.rects === b.rects
   );
 }
 
@@ -842,19 +873,25 @@ export function StraightHand({
   // follows a finger in free two dimensions, which is what makes "held" legible
   // beside "selected" without a legend — selection has already spent lift,
   // rotation and a border.
-  const heldStyle = useAnimatedStyle(() => {
+  const heldPose = () => {
+    "worklet";
     const p = settle.value;
     // The wrapper sits at the row's own origin, so a card at `left: L` and
     // `bottom: B` is this same box translated by (L, −B).
     const fromX = fingerX.value - grabOffset.value;
     const fromY = Math.max(heldCeiling, fingerY.value - HELD_RISE - (visibleH - cardH / 2));
     return {
-      transform: [
-        { translateX: fromX + (settleX.value - fromX) * p },
-        { translateY: fromY + (settleY.value - fromY) * p },
-        { rotate: `${settleRot.value * p}deg` },
-        { scale: HELD_SCALE + (1 - HELD_SCALE) * p },
-      ],
+      p,
+      tx: fromX + (settleX.value - fromX) * p,
+      ty: fromY + (settleY.value - fromY) * p,
+      rot: settleRot.value * p,
+      scale: HELD_SCALE + (1 - HELD_SCALE) * p,
+    };
+  };
+  const heldStyle = useAnimatedStyle(() => {
+    const h = heldPose();
+    return {
+      transform: [{ translateX: h.tx }, { translateY: h.ty }, { rotate: `${h.rot}deg` }, { scale: h.scale }],
     };
   });
 
@@ -940,6 +977,27 @@ export function StraightHand({
   const zoneH = HAND_ZONE_H(CARD_H(scale * HAND_SCALE), handBottomPad);
   const rowCentreY = zoneH / 2 - handBottomPad - (visibleH + arcRise) / 2;
   const fieldW = CARD_W(scale * FIELD_SCALE);
+  const cardTable = useCardTable();
+  const rowBase = rowCentreY + visibleH / 2;
+  const handRow = useMemo(
+    () =>
+      cardTable
+        ? { table: cardTable, sx: cardTable.sx, sy: cardTable.sy, x: cardTable.hand.x - rowMid, y: cardTable.hand.y + rowBase, pan, panLimit }
+        : undefined,
+    [cardTable, rowMid, rowBase, pan, panLimit]
+  );
+  useCardRect(
+    cardTable,
+    `hand:${heldId ?? ""}`,
+    () => {
+      "worklet";
+      if (!handRow || heldId === null) return null;
+      const h = heldPose();
+      const card = { left: 0, bottom: 0, w: cardW, h: cardH, tx: h.tx, ty: h.ty, rot: h.rot, scale: h.scale, back: faceDown, lift: 1 - h.p, glow: 0 };
+      return handCardRect(handRow, card, Math.min(Math.max(pan.value, -panLimit), panLimit), handRow.table.handLift.value);
+    },
+    [handRow, heldId, cardW, cardH, faceDown, settle, fingerX, fingerY, grabOffset, settleX, settleY, settleRot, heldCeiling, visibleH, pan, panLimit]
+  );
   useEffect(() => {
     if (!onOrigins) return;
     const panShown = () => Math.min(Math.max(pan.get(), -panLimit), panLimit);
@@ -1204,6 +1262,7 @@ export function StraightHand({
           onDrawn={onDrawn}
           received={card.id === receivedId}
           hidden={lifted}
+          rects={handRow}
           // An ungiveable card during an exchange is a button that reports
           // itself unavailable, rather than one that silently does nothing.
           disabled={disabled || giveable === false}

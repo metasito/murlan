@@ -10,14 +10,16 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
-import { BACK_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W } from "@/components/cardFaceModel";
 import { Layer } from "@/lib/theme";
 import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
 import type { SeatGeometry } from "@/components/flightPhysics";
 import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "@/lib/game/dealTimeline";
 import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
-import { dealPose } from "@/components/table/dealPose";
+import { dealFlight, dealPose } from "@/components/table/dealPose";
+import { dealBackRect } from "@/components/table/cardRects";
+import { useCardRect, useCardTable } from "@/components/table/useCardRects";
 
 /** When each of a seat's cards lands, on the deal's own clock. */
 export interface DealArrivals { at: readonly number[]; clock: SharedValue<number> }
@@ -97,6 +99,19 @@ export function useDeal({
 
 function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: number; clock: SharedValue<number> }) {
   const style = useAnimatedStyle(() => dealPose(legAt(legs, clock.value), clock.value));
+  const table = useCardTable();
+  const w = CARD_BACK_W(scale * BACK_SCALE);
+  const h = CARD_BACK_H(scale * BACK_SCALE);
+  useCardRect(
+    table,
+    `deal:${legs[0].key}`,
+    () => {
+      "worklet";
+      const f = dealFlight(legAt(legs, clock.value), clock.value);
+      return table && f.inAir ? dealBackRect(table.pile, table, f, w, h) : null;
+    },
+    [table, legs, clock, w, h]
+  );
   return (
     <Animated.View testID="dealt-back" style={[dealStyles.back, style]}>
       <CardView card={{ id: "bk", suit: null, rank: "3", isJoker: false }} faceDown scale={scale * BACK_SCALE} />

@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
-import { BACK_SCALE, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
+import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
 import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, type SeatGeometry, type TradeStages } from "@/components/flightPhysics";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -22,6 +22,8 @@ import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { inBackground } from "./useFlightClock";
+import { legCardRect } from "./cardRects";
+import { useCardRect, useCardTable } from "./useCardRects";
 
 export interface RingFlash { seq: number; seat: number }
 export type LegName = "receive" | "give";
@@ -117,6 +119,21 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
       transform: [{ translateX: p.x }, { translateY: p.y }, { rotate: `${p.rot}deg` }, { scale: p.scale }, { scaleX: p.flip }],
     };
   });
+  const table = useCardTable();
+  const backScale = (scale * BACK_SCALE) / FAN_CARD_SCALE;
+  const backW = CARD_BACK_W(backScale);
+  const backH = CARD_BACK_H(backScale);
+  useCardRect(
+    table,
+    `leg:${testID}`,
+    () => {
+      "worklet";
+      const p = pose.value;
+      if (!table || !p.visible) return null;
+      return legCardRect(table.pile, table, p, p.face ? w : backW, p.face ? h : backH);
+    },
+    [table, pose, w, h, backW, backH]
+  );
   const face = useAnimatedStyle(() => ({ opacity: pose.value.face ? 1 : 0 }));
   const back = useAnimatedStyle(() => ({ opacity: pose.value.face ? 0 : 1 }));
   return (
@@ -125,7 +142,7 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
         <CardView card={card} scale={scale * FIELD_SCALE} noLift decorative light="flat" />
       </Animated.View>
       <Animated.View style={[StyleSheet.absoluteFill, styles.centred, back]}>
-        <CardView card={BACK_CARD} faceDown scale={(scale * BACK_SCALE) / FAN_CARD_SCALE} />
+        <CardView card={BACK_CARD} faceDown scale={backScale} />
       </Animated.View>
     </Animated.View>
   );
