@@ -17,6 +17,7 @@ import {
   SEAT_COUNT_STATES,
 } from "../../lib/captureStates.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
+import { passedSeats } from "../../components/flightPhysics.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
 
 type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
@@ -99,6 +100,16 @@ describe("capture states", () => {
 });
 
 describe("the state a capture renders", () => {
+  test("`passed` has two seats passed, the top one and a side one, and the viewer on move", () => {
+    const state = captureStateById("passed");
+    assert.ok(state, "no passed state");
+    const game = captureGameState(state);
+    assert.equal(game.currentTurnIndex, CAPTURE_VIEWER_SEAT);
+    const passed = passedSeats({ ...game, outOfCards: game.players.map((p) => p.hand.length === 0) });
+    const sides = passed.map((seat) => seatDirection(seat, CAPTURE_VIEWER_SEAT, game.players.length)).sort();
+    assert.deepEqual(sides, ["right", "top"]);
+  });
+
   test("deals the whole deck, once", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
