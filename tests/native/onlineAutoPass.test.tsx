@@ -3,7 +3,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 
-import { OnlineGameProvider, type RoomState } from '@/context/OnlineGameContext';
+import { OnlineGameProvider, type GameStateBroadcast } from '@/context/OnlineGameContext';
 import { useOnlineTable } from '@/context/onlineGameHooks';
 
 type Listener = (...args: unknown[]) => void;
@@ -30,18 +30,23 @@ jest.mock('@/context/NotificationContext', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
 
-const ROOM: RoomState = {
-  roomId: 'R1',
-  code: 'R1',
-  hostUserId: 'u1',
-  status: 'in_progress',
-  gameMode: 'free_for_all',
-  visibility: 'private',
-  maxPlayers: 2,
+/** The name the server reads for its notice is the dealt seat's, `gameState.players[seat].name`. */
+const DEALT: GameStateBroadcast = {
   players: [
-    { seatIndex: 0, userId: 'u1', username: 'Ana' },
-    { seatIndex: 1, userId: 'u2', username: 'Besi' },
+    { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
+    { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },
   ],
+  currentTurnIndex: 1,
+  lastPlayedCombination: null,
+  lastPlayedBy: -1,
+  passCount: 0,
+  gameMode: 'free_for_all',
+  roundWinner: null,
+  gameOver: false,
+  rankings: [],
+  firstPlayMade: true,
+  viewerSeatIndex: 0,
+  turnSecondsRemaining: 30,
 };
 
 const deliver = (event: string, payload: unknown) =>
@@ -69,7 +74,7 @@ describe('the server auto-passing', () => {
         </QueryClientProvider>
       ),
     });
-    await deliver('room:state', ROOM);
+    await deliver('game:state', DEALT);
     return view;
   };
 

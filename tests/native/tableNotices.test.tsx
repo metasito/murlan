@@ -364,6 +364,17 @@ describe("the table's refusals and lines", () => {
     expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
     await r.unmount();
   });
+
+  it('an error arriving under a cover is not read out when the cover lifts', async () => {
+    const r = await render(at(STATE, null, true));
+    await r.rerender(at(STATE, 'Nope', true));
+    await r.rerender(at(STATE, 'Nope'));
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(said('Nope')).toBe(0);
+    await r.unmount();
+  });
 });
 
 describe('an autopass', () => {
@@ -392,17 +403,48 @@ describe('an autopass', () => {
     await r.unmount();
   });
 
-  it('takes the slot from the viewer\'s pass whichever of the two arrives first', async () => {
-    const noticeFirst = await render(at(onMove, 0));
-    await noticeFirst.rerender(at(onMove, 1));
-    await noticeFirst.rerender(at(passed, 1));
+  it('re-titles the viewer\'s pass that landed first, in the same life, never a second float', async () => {
+    const said = (text: string) =>
+      screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
+    const r = await render(at(onMove, 0));
+    await r.rerender(at(passed, 0));
+    await r.rerender(at(passed, 1));
     reads(t('game.autoPassTitle'));
-    await noticeFirst.unmount();
+    expect(said(t('game.autoPassTitle'))).toBe(1);
+    await r.unmount();
+  });
 
-    const stateFirst = await render(at(onMove, 0));
-    await stateFirst.rerender(at(passed, 0));
-    await stateFirst.rerender(at(passed, 1));
-    reads(t('game.autoPassTitle'));
-    await stateFirst.unmount();
+  it('floats nothing for a timed-out lead, where the server played a card rather than passed', async () => {
+    const leading = { ...STATE, currentTurnIndex: 0, lastPlayedCombination: null, lastPlayedBy: -1 };
+    const led = { ...STATE, currentTurnIndex: 3, lastPlayedCombination: buildCombination([card('3_0', '3', 'spades')]), lastPlayedBy: 0 };
+    const r = await render(at(leading, 0));
+    await r.rerender(at(led, 0));
+    await r.rerender(at(led, 1));
+    expect(screen.queryAllByTestId('notice-passFloat', hidden)).toHaveLength(0);
+    await r.unmount();
+  });
+});
+
+describe('the end-match vote', () => {
+  it('gives way to the open score pill, whose rows it would cover', async () => {
+    const hidden = { includeHiddenElements: true };
+    const r = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable
+          gameState={STATE}
+          viewerSeat={0}
+          matchScore={{ scores: {}, target: 21 }}
+          endMatchVote={{ voted: false, votes: 0, total: 4, onPress: noop }}
+          onPlay={noop}
+          onPass={noop}
+          onQuit={noop}
+          onExchangeGive={noop}
+        />
+      </SafeAreaProvider>,
+    );
+    expect(screen.getAllByTestId('notice-endMatchVote', hidden)).toHaveLength(1);
+    await fireEvent.press(screen.getByTestId('score-pill', hidden));
+    expect(screen.queryAllByTestId('notice-endMatchVote', hidden)).toHaveLength(0);
+    await r.unmount();
   });
 });
