@@ -65,6 +65,31 @@ test("turn, lit: the glow is a static shadow", async ({ browser, baseURL }) => {
   expect(glows, "the glow at 0, 130, 370, 610 and 890 ms").toEqual(glows.map(() => first.glow));
 });
 
+const MARK = '[data-testid="combo-chip"] [data-testid="notice-combo"]';
+/** #1259 Q3: a mark's text renders at the table's floor of 10, over the mockup's 9. */
+const MARK_TEXT = 10;
+const padOf = (page: Page, selector: string) => page.evaluate((s) => parseFloat(getComputedStyle(document.querySelector(s)!).paddingLeft), selector);
+
+test("combination mark: the pair on the pile is named by the mockup's .cchip", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "rest", 1000);
+  const app = await appAt(browser, baseURL!, LIT_WITH_COUNT);
+  await expect(app.page.locator(MARK), "the combination mark").toBeVisible({ timeout: 30_000 });
+  const want = await shown(mockup, "#cchip");
+  const got = await shown(app, MARK);
+  const [wantPad, gotPad] = await Promise.all([padOf(mockup.page, "#cchip"), padOf(app.page, MARK)]);
+  await Promise.all([mockup.close(), app.close()]);
+
+  expect.soft(got.fill, "the fill").toBe(want.fill);
+  expect.soft(got.edge, "the edge").toBe(want.edge);
+  expect.soft(got.ink, "the ink").toBe(want.ink);
+  expect.soft(got.glow, "a mark casts no glow").toBe(want.glow);
+  expect.soft(got.fontSize, "the text, at the floor").toBe(MARK_TEXT);
+  expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against the mockup's ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.radius - want.radius), `the radius, ${got.radius} against the mockup's ${want.radius}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(gotPad - wantPad), `the padding, ${gotPad} against the mockup's ${wantPad}`).toBeLessThanOrEqual(HALF_PT);
+});
+
 for (const phone of STAGES) {
   test(`turn fits its band: Besnik on move, in it-IT, clear of every neighbour by the mockup's gap — ${phone.name}`, async ({
     browser,

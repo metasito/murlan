@@ -314,6 +314,11 @@ for (const [file, ref] of TABLE_TEXT) {
   });
 }
 
+test("the pile inks no text of its own: its notices are TableNotice's plate, in the palette loop below", () => {
+  assert.deepEqual(TABLE_TEXT.filter(([file]) => file === "table/pile.tsx"), []);
+  assert.ok(TABLE_TEXT.some(([file]) => file === "table/TableNotice.tsx"), "TableNotice inks no <TableText> style");
+});
+
 test("the notice palette holds every shape, each with a tone", () => {
   assert.deepEqual(Object.keys(NoticePalette).sort(), ["chip", "float", "panel", "pill"]);
   for (const tones of Object.values(NoticePalette)) assert.ok(Object.keys(tones).length > 0);

@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 // Reduced motion collapses a played card's flight to a single timer, so the
 // pile reaches its settled state on a tick rather than on a spring callback.
@@ -76,6 +77,11 @@ const table = (gameState: GameState) => (
 
 /** The tag's scope over the pile, not the same name on its seat. */
 const pileArea = () => within(screen.getByTestId('pile-area'));
+const tag = () => within(pileArea().getByTestId('notice-roundWinner', { includeHiddenElements: true }));
+const tagShown = () => {
+  getVisibleText(tag(), WINNER);
+  expect(tag().UNSAFE_getByType(Ionicons).props.name).toBe('star');
+};
 /** Not present, hidden or otherwise — the tag unmounts on dismissal rather
  *  than fading in place, so a plain absence check is the real claim here. */
 const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
@@ -92,7 +98,7 @@ describe('the round-winner tag', () => {
 
   it('shows the winner, dismisses itself, and shows the same winner again next round', async () => {
     const r = await render(table(closed()));
-    getVisibleText(pileArea(), WINNER);
+    tagShown();
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -104,7 +110,7 @@ describe('the round-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    getVisibleText(pileArea(), WINNER);
+    tagShown();
     expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
@@ -114,7 +120,7 @@ describe('the round-winner tag', () => {
     // Two-handed: the winner leads the next round and takes it as well, so
     // `roundWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
-    getVisibleText(pileArea(), WINNER);
+    tagShown();
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -128,7 +134,7 @@ describe('the round-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    getVisibleText(pileArea(), WINNER);
+    tagShown();
     expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
