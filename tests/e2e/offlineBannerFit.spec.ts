@@ -1,7 +1,7 @@
 // tests/e2e/offlineBannerFit.spec.ts — the offline pill off the table (G2: offline.shape=pill
 // offline.tone=solid), in every locale: at the table's font-scale cap, what an OS text size of 3.1
-// becomes, its words stay on one line and truncate; the pill stays inside the viewport and covers
-// no control. Only a browser runs flexbox; tests/native/offlineBannerLargeText.test.tsx pins the cap
+// becomes, its words stay inside the plate; the pill stays inside the viewport and covers no
+// control, on home and on a standing menu screen. Only a browser runs flexbox; tests/native/offlineBannerLargeText.test.tsx pins the cap
 // and the paint.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,36 +38,42 @@ const fullyShown = (page: Page, selector: string) =>
     )
     .toBe(1);
 
-/** The pill's box after its words take the capped scale, how many lines they wrap to, and every control it covers. */
+/** The pill's box after its words take the capped scale, where its words end and its padding starts, and every control it covers. */
 function measure(page: Page, factor: number) {
   return page.evaluate(
     ([pillSel, textSel, factor]) => {
       const text = document.querySelector<HTMLElement>(textSel)!;
       text.style.fontSize = `${parseFloat(getComputedStyle(text).fontSize) * factor}px`;
-      const r = document.querySelector(pillSel)!.getBoundingClientRect();
-      const range = document.createRange();
-      range.selectNodeContents(text);
-      const lines = new Set([...range.getClientRects()].map((q) => Math.round(q.top))).size;
+      const pill = document.querySelector<HTMLElement>(pillSel)!;
+      const r = pill.getBoundingClientRect();
+      const textRight = text.getBoundingClientRect().right;
+      const inner = r.right - parseFloat(getComputedStyle(pill).paddingRight);
       const focusable = [...document.querySelectorAll<HTMLElement>('a[href], button, input, [role="button"], [role="link"], [tabindex]:not([tabindex="-1"])')]
         .map((el) => ({ name: el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 24) ?? "", b: el.getBoundingClientRect() }))
         .filter(({ b }) => b.width > 0 && b.height > 0);
       const covered = focusable
         .filter(({ b }) => Math.min(r.right, b.right) - Math.max(r.left, b.left) > 1 && Math.min(r.bottom, b.bottom) - Math.max(r.top, b.top) > 1)
         .map(({ name }) => name);
-      return { box: { x: r.left, y: r.top, w: r.width, h: r.height }, lines, controls: focusable.length, covered };
+      return { box: { x: r.left, y: r.top, w: r.width, h: r.height }, textRight, inner, controls: focusable.length, covered };
     },
     [PILL, TEXT, factor] as const
   );
 }
 
-for (const viewport of VIEWPORTS) {
+const SCREENS = [...VIEWPORTS.map((viewport) => ({ path: "/", viewport })), { path: "/rules", viewport: VIEWPORTS[0] }];
+
+for (const { path: screenPath, viewport } of SCREENS) {
   for (const locale of LOCALES) {
-    test(`the offline pill at the font cap, ${locale}, ${viewport.width}x${viewport.height}`, async ({ browser, baseURL }) => {
+    test(`the offline pill at the font cap, ${locale}, ${screenPath}, ${viewport.width}x${viewport.height}`, async ({ browser, baseURL }) => {
       test.setTimeout(120_000);
       const context = await browser.newContext({ locale, viewport });
       const page = await context.newPage();
       try {
         await openApp(page, baseURL!);
+        if (screenPath !== "/") {
+          await page.goto(`${baseURL}${screenPath}`);
+          await page.getByRole("button").first().waitFor();
+        }
         await setDeviceOffline(context, page, true);
         await fullyShown(page, PILL);
         const m = await measure(page, TABLE_FONT_SCALE_MAX);
@@ -75,7 +81,7 @@ for (const viewport of VIEWPORTS) {
 
         const box: Box = m.box;
         expect(m.controls, "the screen has controls to keep clear of").toBeGreaterThan(0);
-        expect(m.lines, "its words wrap").toBe(1);
+        expect(m.textRight, "its words run past the plate's padding").toBeLessThanOrEqual(m.inner + EPS);
         expect(box.x, `the pill ${JSON.stringify(box)} leaves the viewport on the left`).toBeGreaterThanOrEqual(-EPS);
         expect(box.y).toBeGreaterThanOrEqual(-EPS);
         expect(box.x + box.w, `the pill ${JSON.stringify(box)} leaves the viewport on the right`).toBeLessThanOrEqual(viewport.width + EPS);

@@ -378,8 +378,7 @@ for (const [name, color] of Object.entries(BODY_TEXT_COLORS)) {
 const LARGE_ONLY_TEXT_COLORS: Record<string, string> = {
   goldDark: Colors.goldDark,
   info: Colors.info,
-  // A fill: MenuButton's danger variant, the offline banner, the reconnect
-  // border. It clears 4.5:1 on no surface the app has, so text may only reach
+  // A fill: MenuButton's danger variant. It clears 4.5:1 on no surface the app has, so text may only reach
   // for it at >=18pt, or >=14pt bold — which in these units is 19px.
   danger: Colors.danger,
 };
