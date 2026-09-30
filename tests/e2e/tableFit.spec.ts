@@ -10,7 +10,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
-import { openOnlineTable } from "./helpers/onlineTable";
 import { buildCombination } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_ZONE, TABLE_SCREEN, TABLE_STATE } from "./helpers/selectors.ts";
@@ -338,14 +337,13 @@ test.describe("the offline clock running out", () => {
 //
 // The notification banner is a sibling of the whole navigator, above the table's
 // top bar, so it can cover the turn pill and the countdown at the moment it is
-// explaining them. Online another seat's AFK pass still raises it over the table.
-// A property of two laid-out boxes, which only a browser can measure.
+// explaining them. Online another seat's AFK pass still raises it over the table;
+// the e2e build's `murlanNotify` (context/NotificationContext.tsx) raises one here
+// without two accounts and two AFK windows. A property of two laid-out boxes,
+// which only a browser can measure.
 
-/** locales/it.ts `server.PLAYER_AFK_AUTO_PASS`, another seat's. */
-const OTHER_SEAT_AFK = "non risponde";
-/** playwright.config.ts `MURLAN_AFK_TIMEOUT_MS`. */
-const SERVER_AFK_MS = 30_000;
 const BANNER = '[data-testid="notification-banner"]';
+const RAISED = "Besnik non risponde — passo automatico";
 
 interface Box {
   x: number;
@@ -372,28 +370,23 @@ async function settledBox(page: Page, selector: string): Promise<Box> {
 }
 
 test.describe("the notification banner over a live table", () => {
-  test("sits below the top bar it is explaining", async ({ browser, baseURL }) => {
-    test.setTimeout(240_000);
-    const table = await openOnlineTable(browser, baseURL!, {
-      playerCount: 2,
-      gameMode: "free_for_all",
-      viewport: { width: 844, height: 390 },
-    });
-    try {
-      const { page } = table;
-      // Nobody drives either seat: the viewer's own AFK move floats, and the other seat's, within two
-      // windows, raises the banner. Idling rather than leading keeps the opening gate out of it.
-      await expect(page.locator(BANNER)).toContainText(OTHER_SEAT_AFK, { timeout: 2 * SERVER_AFK_MS + 30_000 });
+  test("sits below the top bar it is explaining", async ({ page, baseURL }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await openSeededGame(page, baseURL!, 4);
+    await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
+    await page.evaluate(
+      (message) =>
+        (globalThis as { murlanNotify?: (n: object) => void }).murlanNotify!({ type: "afk", title: "Passaggio automatico", message }),
+      RAISED
+    );
+    await expect(page.locator(BANNER)).toContainText(RAISED);
 
-      const bannerBox = await settledBox(page, BANNER);
-      const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
-      expect(
-        bannerBox.y,
-        `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
-          `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn pill and the countdown`
-      ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
-    } finally {
-      await table.close();
-    }
+    const bannerBox = await settledBox(page, BANNER);
+    const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
+    expect(
+      bannerBox.y,
+      `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
+        `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn pill and the countdown`
+    ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
   });
 });
