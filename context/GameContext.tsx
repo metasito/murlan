@@ -27,6 +27,8 @@ import {
 } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform, Settings } from "react-native";
+import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -49,6 +51,8 @@ import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "
 // at bundle build time, so this only ever takes the fast path in a build the
 // E2E harness produced itself.
 const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
+// A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
+const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 /**
  * How long the offline exchange overlay holds under Maestro. A real device's
  * `btn-prossima-manche` tap doesn't return for ~8.2s, measured on the iOS
@@ -181,7 +185,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // A brand-new table is always "a new match", so `matchOver` is
       // unconditionally `true` here.
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
-      const state = initializeGame(players, mode, firstSeat);
+      const viewer = Math.max(0, players.findIndex((p) => p.type === "human"));
+      const state = E2E_OPENER
+        ? initializeOpeningAt(players, mode, firstSeat, viewer)
+        : initializeGame(players, mode, firstSeat);
       setGameState(state);
       setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));
