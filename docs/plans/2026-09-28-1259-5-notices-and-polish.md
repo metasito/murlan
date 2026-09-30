@@ -375,6 +375,8 @@ region is the same node before and after); new "float" case in
   the online screen's note, on both tables; another seat dropping is a steady-dot neutral note for
   its 10 s, returning is `.ok` for its 3.5 s. The pill off the table yields while a table is
   mounted, except the settings sheet's own, and is centred on the window, not at the table's 457.
+  G2 drew it over a landscape menu; in a portrait window the menu's corner controls share that row
+  (CI 36700729499: it covered "Accedi" at 375×812), so there it sits under the 44 pt control row.
 
 **Tests:** new "offline" case in *tests/e2e/mockupPolish.spec.ts* (against `#turn.bad`); edited
 `tests/native/offlineBannerLargeText.test.tsx`, `tests/e2e/offlineBannerFit.spec.ts`, and the
