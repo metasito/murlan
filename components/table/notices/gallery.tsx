@@ -2,7 +2,8 @@ import type { ReactElement } from "react";
 import { View } from "react-native";
 import { SEAT_DISC } from "@/components/seatLayout";
 import type { KindTone, NoticeKind } from "../noticeModel";
-import { PassFloat } from "./floats";
+import { ErrorToast, PassFloat, RejectFloat } from "./floats";
+import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
@@ -96,4 +97,15 @@ export const NOTICE_GALLERY = {
   ],
   vacated: [{ name: "a seat left", tone: "neutral", render: (scale) => <VacatedMark username="Besnik" scale={scale} /> }],
   passFloat: [{ name: "your own pass", tone: "neutral", render: (scale) => <PassFloat text="Passo" scale={scale} /> }],
+  rejectFloat: [
+    { name: "a play too low", tone: "bad", render: (scale) => <RejectFloat text="carta troppo bassa" scale={scale} /> },
+    {
+      name: "the longest reason, mirrored",
+      tone: "bad",
+      render: (scale) => <RejectFloat text="deve avere lo stesso numero di carte di quella sul tavolo" scale={scale} mirrored />,
+    },
+  ],
+  errorToast: [{ name: "the server refuses a pass", tone: "bad", render: (scale) => <ErrorToast text="Non puoi passare" scale={scale} /> }],
+  waitingOthers: [{ name: "you went out", tone: "gold", render: (scale) => <WaitingLine scale={scale} /> }],
+  emptyHand: [{ name: "your hand played out", tone: "gold", render: (scale) => <EmptyHandLine scale={scale} /> }],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };

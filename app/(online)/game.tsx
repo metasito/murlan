@@ -277,6 +277,7 @@ export default function OnlineGameScreen() {
         onAnswer: answerRematch,
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
+      error={error}
       banners={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
@@ -392,13 +393,6 @@ export default function OnlineGameScreen() {
               />
             )}
 
-            {error && (
-              <View style={styles.errorToast} accessibilityLiveRegion="polite">
-                <Ionicons name="alert-circle" size={15} color={Colors.white} />
-                <Text style={styles.errorText}>{error}</Text>
-              </View>
-            )}
-
             {showGameOver && gameState.gameOver && (
               <GameOverOverlay
                 gameState={gameState}
@@ -472,27 +466,5 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.slim,
-  },
-
-
-  errorToast: {
-    position: "absolute",
-    bottom: 100,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.slim,
-    backgroundColor: Colors.dangerScrim,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.wide,
-    paddingVertical: Spacing.sm,
-    zIndex: Layer.overlay,
-    maxWidth: 340,
-  },
-  errorText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: BANNER_FONT,
-    color: Colors.white,
-    flexShrink: 1,
   },
 });

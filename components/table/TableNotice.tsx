@@ -120,6 +120,8 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
+        box.minHeight !== undefined && { minHeight: box.minHeight },
+        box.maxWidth !== undefined && { maxWidth: box.maxWidth },
         paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, glow.plate, 0),
         panel && {
           width: box.width,
@@ -237,28 +239,34 @@ export function NoticeText({
   strong = false,
   warn = false,
   maxWidth,
+  align,
   testID,
   children,
 }: {
   strong?: boolean;
   warn?: boolean;
   maxWidth?: number;
+  align?: "left" | "right";
   testID?: string;
   children: ReactNode;
 }) {
   const { paint, box, scale } = useInk("NoticeText");
   return (
     <TableText
-      numberOfLines={1}
+      numberOfLines={box.lines}
       testID={testID}
       style={[
         styles.text,
+        !box.upper && styles.sentence,
+        box.maxWidth !== undefined && styles.shrinks,
         (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
           color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
           fontSize: strong ? box.strongFontSize : box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
+          lineHeight: box.lineHeight,
+          textAlign: align,
         },
         maxWidth !== undefined && { maxWidth: maxWidth * scale },
       ]}
@@ -272,6 +280,12 @@ export function NoticeText({
 export function NoticeIcon({ name }: { name: ComponentProps<typeof Ionicons>["name"] }) {
   const { paint, box } = useInk("NoticeIcon");
   return <Ionicons name={name} size={box.fontSize} color={paint.ink} style={{ marginRight: box.tracking }} />;
+}
+
+/** A glyph beside the plate's words, `px` mockup px square. */
+export function NoticeGlyph({ name, px }: { name: ComponentProps<typeof Ionicons>["name"]; px: number }) {
+  const { paint, scale } = useInk("NoticeGlyph");
+  return <Ionicons name={name} size={mockupPx(px, scale)} color={paint.ink} />;
 }
 
 const styles = StyleSheet.create({
@@ -300,6 +314,8 @@ const styles = StyleSheet.create({
     fontFamily: "Rajdhani_600SemiBold",
     textTransform: "uppercase",
   },
+  sentence: { textTransform: "none" },
+  shrinks: { flexShrink: 1 },
   bold: { fontFamily: "Rajdhani_700Bold" },
   strong: { fontVariant: ["tabular-nums"] },
 });

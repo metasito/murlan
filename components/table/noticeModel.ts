@@ -4,11 +4,12 @@ import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
-export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad";
+export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "gold";
 export type ToneOf<S extends NoticeShape> = keyof (typeof NoticePalette)[S] & NoticeTone;
 
 const FULL = "full";
 const CHIP = { height: FULL, padX: 12, gapX: 6, radius: FULL, font: 10, weight: 600, tracking: 1.55 } as const;
+const EXTRA_PILL = { ...CHIP, gapX: 7 } as const;
 
 const MOCKUP = {
   ".chip": CHIP,
@@ -19,6 +20,10 @@ const MOCKUP = {
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
   "#score": { padX: 10, gapX: 6, radius: 12, font: 9.5, weight: 700, tracking: 2 },
   "#panel": { padX: 10, padY: 10, gapX: 6, radius: 12, font: 15, weight: 700, tracking: 0.3, width: 280 },
+  "#n-reject": { minHeight: FULL, padX: 12, padY: 5, gapX: 7, radius: 12, font: 11, weight: 600, tracking: 0.5, leading: 1.25, maxWidth: 260, lines: 2, sentence: true },
+  "#n-toast": { ...EXTRA_PILL, maxWidth: 420 },
+  "#n-waiting": EXTRA_PILL,
+  "#n-empty": EXTRA_PILL,
 } as const;
 export type NoticeSelector = keyof typeof MOCKUP;
 
@@ -49,6 +54,10 @@ export const NOTICES = {
   roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
+  rejectFloat: { shape: "float", selector: "#n-reject", tones: ["bad"] },
+  errorToast: { shape: "float", selector: "#n-toast", tones: ["bad"] },
+  waitingOthers: { shape: "pill", selector: "#n-waiting", tones: ["gold"] },
+  emptyHand: { shape: "pill", selector: "#n-empty", tones: ["gold"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
@@ -58,7 +67,12 @@ export const mockupPx = at;
 
 export type NoticeBox = {
   height: number | undefined;
+  minHeight: number | undefined;
   width: number | undefined;
+  maxWidth: number | undefined;
+  lines: number;
+  upper: boolean;
+  lineHeight: number | undefined;
   padX: number;
   padY: number;
   gap: number;
@@ -73,15 +87,21 @@ export type NoticeBox = {
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
   const px = MOCKUP[selector];
-  const height = !("height" in px) ? undefined : px.height === FULL ? CHIP_H(scale) : at(px.height, scale);
+  const tall = (h: number | typeof FULL) => (h === FULL ? CHIP_H(scale) : at(h, scale));
+  const fontSize = tableFontSize(at(px.font, 1), scale);
   return {
-    height,
+    height: "height" in px ? tall(px.height) : undefined,
+    minHeight: "minHeight" in px ? tall(px.minHeight) : undefined,
     width: "width" in px ? at(px.width, scale) : undefined,
+    maxWidth: "maxWidth" in px ? at(px.maxWidth, scale) : undefined,
+    lines: "lines" in px ? px.lines : 1,
+    upper: !("sentence" in px),
+    lineHeight: "leading" in px ? fontSize * px.leading : undefined,
     padX: at(px.padX, scale),
     padY: "padY" in px ? at(px.padY, scale) : 0,
     gap: at(px.gapX, scale),
     radius: px.radius === FULL ? Radius.full : at(px.radius, scale),
-    fontSize: tableFontSize(at(px.font, 1), scale),
+    fontSize,
     strongFontSize: tableFontSize(at("strongFont" in px ? px.strongFont : px.font, 1), scale),
     bold: px.weight === 700,
     tracking: at(px.tracking, scale),

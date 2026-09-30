@@ -51,8 +51,12 @@ export const Colors = {
   // Alarm: error state and destructive action. Pick by role, not by eye.
   danger:       '#E53935',              // fills, borders, icons, text at the large-text bar
   dangerDim:    '#E8857E',              // the same alarm below that bar
-  dangerScrim:  'rgba(229,57,53,0.92)', // error toast over the felt
+  dangerScrim:  'rgba(229,57,53,0.92)', // the lobby's error banner
   redMuted:     'rgba(239,68,68,0.15)', // the error box's wash, bordered by dangerDim
+  // A table notice that says no: the lantern mockup's #turn.bad.
+  offlineInk:   '#FFCFC6',
+  offlineEdge:  '#D0574B',
+  offlineDot:   '#E0806F',
   // The turn chip in the last seconds of the viewer's own clock.
   ember:        '#FF8A5C',              // border
   emberGlow:    '#FF6E3C',
@@ -217,6 +221,7 @@ export const NoticePalette = {
       glow: { color: Colors.emberGlow, opacity: 0.5 },
       dot: { color: Colors.emberDot, glow: 1 },
     },
+    gold: { fill: Colors.chipFill, edge: Colors.goldStrong, ink: Colors.goldLit, strong: Colors.goldLit },
   },
   chip: {
     neutral: { fill: 'rgba(3,14,9,0.85)', edge: Colors.goldBorder, ink: Colors.textSecondary, strong: Colors.textSecondary },
@@ -224,6 +229,7 @@ export const NoticePalette = {
   },
   float: {
     neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold },
+    bad: { fill: Colors.chipFill, edge: Colors.offlineEdge, ink: Colors.offlineInk, strong: Colors.offlineInk, dot: { color: Colors.offlineDot } },
   },
   panel: {
     neutral: { fill: Colors.scorePillFoot, top: Colors.scorePillTop, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.goldLit, quiet: Colors.textMuted, hairline: 'rgba(243,224,166,0.1)' },
@@ -510,8 +516,6 @@ export const Reading = {
   notice: 4000,
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
-  /** A short refusal — why a tap did nothing — read at a glance, not owed a full notice's length. */
-  hint: 2600,
   /** A transient in-game error, cleared rather than left to stack. */
   toast: 3000,
 } as const;

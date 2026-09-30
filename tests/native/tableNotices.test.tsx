@@ -201,11 +201,8 @@ describe('the turn pill', () => {
 describe("the table's refusals and lines", () => {
   const hidden = { includeHiddenElements: true };
   const edge = (id: string) => StyleSheet.flatten(screen.getByTestId(id, hidden).props.style).borderColor;
-  const said = () =>
-    screen
-      .getAllByRole('text', hidden)
-      .filter((n) => n.props.accessibilityLiveRegion === 'polite')
-      .map((n) => n.props.accessibilityLabel);
+  const said = (text: string) =>
+    screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
   const at = (state: GameState, error: string | null = null) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable gameState={state} viewerSeat={0} error={error} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
@@ -223,7 +220,7 @@ describe("the table's refusals and lines", () => {
     });
     expect(edge('notice-rejectFloat')).toBe(NoticePalette.float.bad.edge);
     expect(within(screen.getByTestId('notice-rejectFloat', hidden)).getByText(t('gameTable.playA11ySpokenTooLow'), hidden)).toBeTruthy();
-    expect(said()).toContain(t('gameTable.playA11ySpokenTooLow'));
+    expect(said(t('gameTable.playA11ySpokenTooLow'))).toBe(1);
     await r.unmount();
   });
 
@@ -244,11 +241,11 @@ describe("the table's refusals and lines", () => {
   it('an error arrives as the toast float in the bad tone, and the same error again floats again', async () => {
     const r = await render(at(STATE, 'Nope'));
     expect(edge('notice-errorToast')).toBe(NoticePalette.float.bad.edge);
-    expect(said()).toEqual(['Nope']);
+    expect(said('Nope')).toBe(1);
     await r.rerender(at(STATE, null));
-    expect(said()).toEqual(['']);
+    expect(said('Nope')).toBe(0);
     await r.rerender(at(STATE, 'Nope'));
-    expect(said()).toEqual(['Nope']);
+    expect(said('Nope')).toBe(1);
     expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
     await r.unmount();
   });
