@@ -13,8 +13,9 @@ export interface FlightSpec {
   end: number;
 }
 export interface LandingPayload { tier: ImpactTier; cards: number; x: number; y: number; flush: boolean; heavy: boolean; mine: boolean; pulses: readonly PulseStep[] }
-export interface LandingSignal extends LandingPayload { seq: number; at: number }
-export const NO_LANDING: LandingSignal = { seq: 0, at: 0, tier: "ordinary", cards: 0, x: 0, y: 0, flush: false, heavy: false, mine: false, pulses: [] };
+/** `key`: the play whose contact this is. */
+export interface LandingSignal extends LandingPayload { key: string; seq: number; at: number }
+export const NO_LANDING: LandingSignal = { key: "", seq: 0, at: 0, tier: "ordinary", cards: 0, x: 0, y: 0, flush: false, heavy: false, mine: false, pulses: [] };
 
 export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchUp: boolean, reduced: boolean): FlightSpec {
   const n = to.length;
@@ -61,7 +62,7 @@ function stepper(
     if (!r.touched && t >= r.spec.contact) {
       r.touched = true;
       const l = landing.value;
-      if (l) signal.value = { ...l, seq: signal.value.seq + 1, at: frame.timestamp };
+      if (l) signal.value = { ...l, key: r.spec.key, seq: signal.value.seq + 1, at: frame.timestamp };
       scheduleOnRN(report.touch, r.spec.key, frame.timestamp);
     }
     if (t >= r.spec.end + (r.spec.reduced ? 0 : LAND_WOBBLE_MS)) {

@@ -468,10 +468,11 @@ export const Motion = {
  *
  * A `null` reduced form is a step with nothing to shorten — a flash is over
  * before it registers as movement, and a loop gives up its repeat rather than
- * its duration — so the step's own length stands. Everything else takes the
- * answer `Motion.reduced` already wrote down, which is the point: a call site
+ * its duration — so the step's own length stands. Every other ladder step takes
+ * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
- * screen and an instant jump in the next.
+ * screen and an instant jump in the next. `beaten`, the one step off the ladder,
+ * has its reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
  */
 export function motionMs(step: keyof typeof Motion.duration | "beaten", reduceMotion: boolean): number {
   if (step === "beaten") return reduceMotion ? 0 : Motion.beaten;

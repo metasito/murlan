@@ -82,8 +82,6 @@ const CATCH_MS = 620;
 const CATCH_LIFT = -9;
 const CATCH_EASING = Easing.out(Easing.cubic);
 
-// The beaten pose rides the group's one worklet with the flinch (#764) and the
-// sweep: React Native replaces a style's `transform` wholesale.
 const BEATEN_EASING = Easing.bezier(0, 0, 0.58, 1);
 // Over the card, never a `filter` on the group: on iOS that darkens the felt beneath.
 const SHADE_Z = Layer.table + 1;
@@ -99,7 +97,7 @@ const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signal, bombClock, report, cardScale, roomW }: {
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinchBy, signal, bombClock, report, cardScale, roomW }: {
   play: TrickPlay;
   /** Non-null while the play is in the air; a group mounted without one never flies. */
   flight: Flight | null;
@@ -109,6 +107,8 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
   /** Out of sight at rest; a play still moving is drawn regardless. */
   hidden: boolean;
   flinchY: SharedValue<number>;
+  /** The play whose contact set off the flinch. */
+  flinchBy: SharedValue<string>;
   signal: SharedValue<LandingSignal>;
   bombClock?: SharedValue<BombClock>;
   report: Report;
@@ -169,13 +169,19 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
   });
 
   const beaten = role === "beaten";
+  const buried = role === "buried";
   const turned = useSharedValue(beaten ? 1 : 0);
   useEffect(() => {
+    // Buried in the air, it is still drawn until it lands: a turn under way finishes rather than turning back.
+    if (buried) return;
     const to = beaten ? 1 : 0;
     const ms = motionMs("beaten", reduced);
     turned.set(ms === 0 ? to : withTiming(to, { duration: ms, easing: BEATEN_EASING }));
-  }, [beaten, reduced, turned]);
+  }, [beaten, buried, reduced, turned]);
   useEffect(() => () => cancelAnimation(turned), [turned]);
+  const key = play.key;
+  // The beaten pose rides this one worklet with the flinch (#764) and the sweep: React Native
+  // replaces a style's `transform` wholesale. A play is knocked only by a later play's contact.
   const pose = useAnimatedStyle(() => {
     const transform: ({ translateX: number } | { translateY: number } | { scale: number } | { rotate: string })[] = [];
     let opacity = 1;
@@ -186,13 +192,13 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
     }
     const k = turned.value;
     let drop = k * Beaten.drop;
-    if (beaten) drop += flinchY.value;
+    if (beaten) drop += flinchBy.value === key ? 0 : flinchY.value;
     transform.push({ translateY: drop }, { rotate: `${k * Beaten.rotateDeg}deg` });
     return { opacity, transform };
   });
 
   const { slots, w, h } = fieldSlots(cards, cardScale, roomW);
-  const testID = beaten && !sweep ? "pile-prev-layer" : sweepTop ? "sweep-cards" : undefined;
+  const testID = sweep ? (sweepTop ? "sweep-cards" : undefined) : beaten ? "pile-prev-layer" : role === "buried" ? "pile-buried-layer" : undefined;
   const zIndex = flying ? FLYING_Z : (sweep ? SWEPT_Z : Layer.table) + ROLE_RANK[role];
   const out = !flying && (role === "buried" || (hidden && !sweep));
   return (
@@ -406,8 +412,10 @@ export function PileLayer(props: PileLayerProps) {
   // `flinchFor` already reads it and answers 0. `* scale` because a knock is a
   // fraction of the table, not a fixed pixel count.
   const flinchY = useSharedValue(0);
+  const flinchBy = useSharedValue("");
   useLandingReaction(signal, (l) => {
     "worklet";
+    flinchBy.set(l.key);
     const distance = flinchFor(l.tier, reduceMotion) * scale;
     if (distance === 0) return;
     flinchY.set(withSequence(withTiming(distance, { duration: Motion.duration.flash }), withSpring(0, Motion.spring.land)));
@@ -473,6 +481,7 @@ export function PileLayer(props: PileLayerProps) {
             sweepTop={sweepTop}
             hidden={hidden}
             flinchY={flinchY}
+            flinchBy={flinchBy}
             signal={signal}
             bombClock={bombClock}
             report={report}
