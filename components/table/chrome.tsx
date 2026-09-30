@@ -8,172 +8,20 @@ import {
   withTiming,
   cancelAnimation,
 } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Colors,
   FontSize,
   makeShadow,
   Motion,
   Radius,
-  Reading,
   Scrim,
   Spacing,
-  Type,
   Layer,
 } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, a11yState, A11yStatus } from "@/lib/a11y";
-import type { Card, StartReason } from "@/lib/game/gameEngine";
-import { getCardDisplayRank, getSuitSymbol } from "@/lib/game/gameEngine";
+import { a11yState } from "@/lib/a11y";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
 import { tableFontSize } from "@/components/cardFaceModel";
-
-// ─── StartReasonBanner ────────────────────────────────────────────────────────
-
-/**
- * Who starts the manche, and why — held over the table for as long as it takes
- * to read it and no longer.
- *
- * It is a gate rather than a banner: it covers the table, so the first tap
- * spends itself clearing this instead of playing a card, and the caller stops
- * the turn clock while it is up (`turnTimerActive`, turnTimerUi.ts) wherever
- * that clock is the client's own. The moment it describes is one seat's turn to
- * open, so the caller unmounts it the instant the table moves past that seat —
- * a message about who starts is worth nothing once someone has played.
- *
- * Under reduced motion the words are unchanged: the whole cue is text and a
- * lamp already pointed at it, never an animation carrying the meaning on its
- * own.
- */
-export function StartReasonBanner({
-  reason,
-  players,
-  onDone,
-}: {
-  reason: StartReason;
-  players: { name: string; type: string }[];
-  /** Told once, when the gate closes — by the clock or by the player. */
-  onDone: () => void;
-}) {
-  const { t } = useTranslation();
-  const doneRef = useRef(onDone);
-  useEffect(() => {
-    doneRef.current = onDone;
-  });
-  // Whether it is still up is the caller's to hold, not a second flag here:
-  // the caller is also the one that knows when the moment being announced has
-  // passed, and two answers to one question is how a gate comes back.
-  useEffect(() => {
-    const timer = setTimeout(() => doneRef.current(), Reading.notice);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const playerName = players[reason.playerIdx]?.name ?? "?";
-  let mainText = "";
-  let subText = "";
-
-  if (reason.type === "start_card" && reason.card) {
-    mainText = t("gameShared.startReasonCard", {
-      name: playerName,
-      rank: getCardDisplayRank(reason.card.rank),
-      suit: getSuitSymbol(reason.card.suit),
-    });
-    const isThreeOfSpades = reason.card.rank === "3" && reason.card.suit === "spades";
-    if (!isThreeOfSpades) subText = t("gameShared.startReasonCardSub");
-  } else if (reason.type === "lost_round") {
-    mainText = t("gameShared.startReasonLostRound", { name: playerName });
-  } else if (reason.type === "won_no_swap") {
-    mainText = t("gameShared.startReasonWonNoSwap", { name: playerName });
-  }
-
-  return (
-    <>
-      {/* Its own node, never the control: a live region announces rather than
-          being landed on (CLAUDE.md), and the gate below is unreachable. */}
-      <A11yStatus
-        label={[mainText, subText].filter(Boolean).join(". ")}
-        role="alert"
-        live="assertive"
-      />
-      <Pressable
-        testID="start-reason-gate"
-        onPress={() => doneRef.current()}
-        style={startReasonStyles.gate}
-        {...a11yHidden()}
-      >
-        <View testID="start-reason-card" style={startReasonStyles.card}>
-          <LinearGradient
-            colors={[Colors.goldMuted, Colors.goldClear]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <TableText style={startReasonStyles.eyebrow}>
-            {t("gameShared.startReasonEyebrow")}
-          </TableText>
-          <TableText style={startReasonStyles.main}>{mainText}</TableText>
-          {subText ? <TableText style={startReasonStyles.sub}>{subText}</TableText> : null}
-          <TableText style={startReasonStyles.hint}>
-            {t("gameShared.startReasonDismiss")}
-          </TableText>
-        </View>
-      </Pressable>
-    </>
-  );
-}
-
-/**
- * Over the table and its rail both, because holding the table is the point.
- * Under the settings sheet and every overlay, which are `Layer.sheet` and up.
- */
-const START_REASON_Z = Layer.hint;
-const START_REASON_MAX_W = 420;
-
-const startReasonStyles = StyleSheet.create({
-  gate: {
-    ...StyleSheet.absoluteFill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Scrim.medium,
-    zIndex: START_REASON_Z,
-  },
-  card: {
-    backgroundColor: Colors.overlayStrong,
-    borderColor: Colors.gold,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.cosy,
-    alignItems: "center",
-    maxWidth: START_REASON_MAX_W,
-    gap: Spacing.xs,
-    overflow: "hidden",
-  },
-  eyebrow: {
-    ...Type.caption,
-    color: Colors.gold,
-    letterSpacing: 3,
-    textTransform: "uppercase",
-  },
-  main: {
-    ...Type.heading,
-    color: Colors.goldLit,
-    letterSpacing: 0.5,
-    textAlign: "center",
-  },
-  sub: {
-    ...Type.caption,
-    color: Colors.textSecondary,
-    textAlign: "center",
-  },
-  hint: {
-    ...Type.caption,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
-});
 
 // ─── HUD chips ────────────────────────────────────────────────────────────────
 //
@@ -590,46 +438,3 @@ export function useFocusFade(focusMode: boolean) {
 
   return useAnimatedStyle(() => ({ opacity: fade.value }));
 }
-
-/**
- * The pre-first-play banner naming who opens and with what card. A component
- * of its own rather than inline JSX: `card` is only read here, so `rank` and
- * `suit` derive once instead of once per interpolation.
- */
-export function StartCardBanner({
-  card,
-  starterIsViewer,
-  starterName,
-}: {
-  card: Card;
-  starterIsViewer: boolean;
-  starterName: string;
-}) {
-  const { t } = useTranslation();
-  const rank = getCardDisplayRank(card.rank);
-  const suit = getSuitSymbol(card.suit);
-  return (
-    <View style={startCardStyles.banner}>
-      <TableText style={startCardStyles.glyph}>{suit}</TableText>
-      <TableText style={startCardStyles.text}>
-        {starterIsViewer
-          ? t("gameTable.startCardBannerSelf", { rank, suit })
-          : t("gameTable.startCardBannerOther", { name: starterName, rank, suit })}
-      </TableText>
-    </View>
-  );
-}
-
-const startCardStyles = StyleSheet.create({
-  banner: {
-    alignItems: "center", gap: Spacing.slim,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.snug, borderRadius: Radius.md,
-    backgroundColor: Scrim.medium,
-    borderWidth: 1, borderColor: Colors.goldSoft,
-  },
-  glyph: { fontSize: FontSize.xxl, color: Colors.text },
-  text: {
-    fontFamily: "Rajdhani_600SemiBold", fontSize: FontSize.sm,
-    color: Colors.text, textAlign: "center", letterSpacing: 0.5,
-  },
-});

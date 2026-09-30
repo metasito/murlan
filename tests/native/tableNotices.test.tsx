@@ -16,7 +16,7 @@ import { GameTable } from '@/components/GameTable';
 import { TurnChip } from '@/components/table/notices/hud';
 import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
-import { Colors, makeShadow, NoticePalette } from '@/lib/theme';
+import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
 import { buildCombination, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 
 const KINDS = Object.keys(NOTICES) as NoticeKind[];
@@ -45,6 +45,21 @@ describe('every notice kind paints one plate, in its tone', () => {
       expect([...shown].sort()).toEqual([...NOTICES[kind].tones].sort());
     });
   }
+});
+
+// No layout runs here: mockupPolish's 1.2x case measures the fit; this pins the two halves of it.
+describe('the who-starts tile', () => {
+  it('caps its rank like all table text, and grows to hold it rather than clipping', async () => {
+    const r = await render(NOTICE_GALLERY.whoStarts[0].render(1));
+    const tile = screen.getByTestId('notice-tile');
+    const rank = within(tile).getByText('3');
+    expect(rank.props.allowFontScaling).not.toBe(false);
+    expect(rank.props.maxFontSizeMultiplier).toBe(TABLE_FONT_SCALE_MAX);
+    const box = StyleSheet.flatten(tile.props.style);
+    expect([box.width, box.height, box.overflow]).toEqual([undefined, undefined, undefined]);
+    expect(box.minHeight).toBeGreaterThan(0);
+    await r.unmount();
+  });
 });
 
 const card = (id: string, rank: Card['rank'], suit: Card['suit']): Card => ({ id, rank, suit, isJoker: false });

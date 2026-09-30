@@ -27,6 +27,7 @@ import type { PillRow, PillStandings } from "@/lib/game/scorePill";
 import { tableFontSize } from "@/components/cardFaceModel";
 import {
   PILL_HEADER,
+  PILL_PLATE_STOPS,
   PILL_ROW,
   PILL_SHADOW,
   scorePillBox,
@@ -46,8 +47,7 @@ import {
 
 const OPEN_EASING = Easing.out(Easing.back(1.70158));
 const CLOSE_EASING = Easing.out(Easing.cubic);
-const SHADOW = withAlpha(Colors.shadow, 0.85);
-const SHADOW_SPREAD = -8;
+const SHADOW = withAlpha(Colors.shadow, PILL_SHADOW.alpha);
 
 // The mockup's px, multiplied by `anchor.unit`.
 const PX = {
@@ -131,7 +131,7 @@ export function ScorePill({
   });
   const liftStyle = useAnimatedStyle(() => ({ opacity: scorePillLift(progress.value, boardProgress.value) }));
   const shadowOf = ({ offsetY, blur }: { offsetY: number; blur: number }) => ({
-    boxShadow: `0px ${offsetY * u}px ${blur * u}px ${SHADOW_SPREAD * u}px ${SHADOW}`,
+    boxShadow: `0px ${offsetY * u}px ${blur * u}px ${PILL_SHADOW.spread * u}px ${SHADOW}`,
   });
   const chipStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).chip }));
   // Transparent is not enough: the rows would still be laid out past the pill, off the screen's right edge.
@@ -172,7 +172,7 @@ export function ScorePill({
       <Animated.View pointerEvents="none" style={[styles.pill, pillStyle]}>
         <LinearGradient
           colors={[Colors.scorePillTop, Colors.scorePillFoot, Colors.scorePillFoot]}
-          locations={[0, 0.6, 1]}
+          locations={PILL_PLATE_STOPS}
           style={StyleSheet.absoluteFill}
         />
         <Animated.View

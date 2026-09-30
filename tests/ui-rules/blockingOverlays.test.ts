@@ -71,7 +71,7 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
     ],
   ],
   [
-    "components/table/chrome.tsx",
+    "components/table/notices/panels.tsx",
     1,
     'testID="start-reason-gate"',
     "there is nothing inside it to focus and nothing to answer: it holds the table for one " +

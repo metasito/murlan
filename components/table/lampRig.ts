@@ -16,7 +16,7 @@ export type Pool = readonly [x: number, y: number, reach: number];
 
 type Point = { readonly x: number; readonly y: number };
 
-/** Where the start announcement swings the light: onto its words, centred in the box the felt stretches over. */
+/** The middle of the window; the start announcement's light takes its x from the table the words centre on. */
 export const TABLE_CENTRE: Pool = [DESIGN.width / 2, DESIGN.height / 2, 1];
 
 /** The hand-to-top distance on the page he tuned, in design points: reach 1. */
@@ -44,7 +44,8 @@ export function poolOver(side: FlyDirection, seat: Point, top: Point, bottom: Po
 
 export function lampPools(anchors: Record<FlyDirection, Point>, width: number, height: number): Record<LampTarget, Pool> {
   const over = (side: FlyDirection) => poolOver(side, anchors[side], anchors.top, anchors.bottom, width, height);
-  return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre: TABLE_CENTRE };
+  const centre: Pool = [anchors.top.x / designScale(width, height).sx, TABLE_CENTRE[1], TABLE_CENTRE[2]];
+  return { bottom: over("bottom"), right: over("right"), top: over("top"), left: over("left"), centre };
 }
 /** The light's size at reach 1, in design points: the owner's G1 sliders, the pool's bright radius and the vignette's. */
 export const LAMP_LIGHT = { poolR: 380, vigR: 380 } as const;
