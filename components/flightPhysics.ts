@@ -10,6 +10,7 @@ import type { FlyDirection, OpponentArrangement } from "./seatLayout.ts";
 import { sideSlotHeight, topBandHeight } from "./tableFrame.ts";
 import { handCountOf } from "../shared/protocol.ts";
 import { FIELD_SCALE, HAND_SCALE } from "./cardFaceModel.ts";
+import { floatAboveFoot } from "./table/noticeModel.ts";
 import { fanPoint } from "./fanGeometry.ts";
 import type { CardFrom } from "./flightPose.ts";
 import { restPoint, type LegPoints, type LegStage } from "../lib/game/exchangeTimeline.ts";
@@ -362,6 +363,11 @@ export function anchorPoints(g: TableGeometry): Record<FlyDirection | "pile", { 
   };
 }
 
+/** The float slot's top edge, in window points: `.floatchip`, above the hand row's floor. */
+export function floatTop(place: SeatPlace): number {
+  return place.windowHeight - place.surplus - place.bottomPad - floatAboveFoot(place.scale);
+}
+
 /**
  * The delta a throw starts at: from the throwing seat's own point to the
  * pile's. `PileLayer` (components/table/pile.tsx) animates this toward
@@ -432,6 +438,20 @@ export function passedSeats(state: {
     passed.push(seat);
   }
   return passed;
+}
+
+type PassView = Parameters<typeof passedSeats>[0] & { roundWinner?: number | null };
+
+/**
+ * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
+ * when a pass closed the round, which `passedSeats` never names because the round is gone with it.
+ */
+export function seatsJustPassed(before: PassView, after: PassView): number[] {
+  const was = passedSeats(before);
+  const now = passedSeats(after).filter((seat) => !was.includes(seat));
+  const closedByPass =
+    before.lastPlayedCombination !== null && roundClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
+  return closedByPass ? [...now, before.currentTurnIndex] : now;
 }
 
 // ─── Exchange phase ───────────────────────────────────────────────────────────
