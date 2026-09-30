@@ -50,6 +50,7 @@ export const NOTICES = {
   combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
@@ -111,6 +112,13 @@ const MARK_AT = { top: { x: -60, y: -8 }, side: { x: 0, y: 27 } } as const;
 /** `.seat[data-side] .passo`: the mark's centre x and top edge, off the disc's centre. */
 export function markAt(side: keyof typeof MARK_AT, scale: number): { x: number; y: number } {
   return { x: at(MARK_AT[side].x, scale), y: at(MARK_AT[side].y, scale) };
+}
+
+const FLOAT_TOP = 300;
+
+/** `.floatchip`'s top edge, up from the foot of the stage. */
+export function floatAboveFoot(scale: number): number {
+  return at(MOCKUP_STAGE_H - FLOAT_TOP, scale);
 }
 
 const PANEL_LINES = {

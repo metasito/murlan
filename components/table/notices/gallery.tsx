@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { View } from "react-native";
 import { SEAT_DISC } from "@/components/seatLayout";
 import type { KindTone, NoticeKind } from "../noticeModel";
+import { PassFloat } from "./floats";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
@@ -110,4 +111,5 @@ export const NOTICE_GALLERY = {
     { name: "a seat reconnecting", tone: "neutral", render: (scale) => <ReconnectingMark seconds={25} resetKey="gallery" scale={scale} /> },
   ],
   vacated: [{ name: "a seat left", tone: "neutral", render: (scale) => <VacatedMark username="Besnik" scale={scale} /> }],
+  passFloat: [{ name: "your own pass", tone: "neutral", render: (scale) => <PassFloat text="Passo" scale={scale} /> }],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };
