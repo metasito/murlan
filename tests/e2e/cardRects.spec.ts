@@ -16,7 +16,7 @@ const VIEWPORTS = [
 ];
 const TOLERANCE = 1;
 
-interface Worst { frames: number; scopes: string[]; centre: number; size: number; rot: number; worstAt: string; badFrames: number; counts: string[] }
+interface Worst { frames: number; scopes: string[]; centre: number; size: number; rot: number; worstAt: string; badFrames: number; counts: string[]; moved: number }
 
 /**
  * Samples every frame for `ms`: each published rectangle against the corners of its own card's
@@ -29,8 +29,9 @@ async function sample(page: Page, ms: number, until?: string): Promise<Worst> {
       new Promise<Worst>((done) => {
         type Rect = { x: number; y: number; w: number; h: number; rot: number };
         const g = globalThis as { murlanCardRects?: () => Record<string, Rect>; murlanCardFelt?: () => { sx: number; sy: number; s: number } };
-        const worst: Worst = { frames: 0, scopes: [], centre: 0, size: 0, rot: 0, worstAt: "", badFrames: 0, counts: [] };
+        const worst: Worst = { frames: 0, scopes: [], centre: 0, size: 0, rot: 0, worstAt: "", badFrames: 0, counts: [], moved: 0 };
         const seen = new Set<string>();
+        const restAt = new Map<string, { x: number; y: number }>();
         const shown = (el: Element) => {
           for (let n: Element | null = el; n; n = n.parentElement) {
             const s = getComputedStyle(n);
@@ -92,6 +93,11 @@ async function sample(page: Page, ms: number, until?: string): Promise<Worst> {
             const w = Math.hypot(right.x - left.x, right.y - left.y);
             const h = Math.hypot(bottom.x - top.x, bottom.y - top.y);
             const rot = (Math.atan2(right.y - left.y, right.x - left.x) * 180) / Math.PI;
+            if (key.startsWith("fan:")) {
+              const rest = restAt.get(key) ?? { x: cx, y: cy };
+              restAt.set(key, rest);
+              worst.moved = Math.max(worst.moved, Math.hypot(cx - rest.x, cy - rest.y));
+            }
             const off = [Math.hypot(cx - r.x * felt.sx, cy - r.y * felt.sy), Math.max(Math.abs(w - r.w * felt.s), Math.abs(h - r.h * felt.s)), Math.abs(((((rot - r.rot) % 360) + 540) % 360) - 180)];
             if (Math.max(off[0] - worst.centre, off[1] - worst.size, off[2] - worst.rot) > 0.5) worst.worstAt = `${key} at ${Math.round(performance.now() - t0)}ms: ${off.map((v) => v.toFixed(2)).join(" ")} dx ${(cx - r.x * felt.sx).toFixed(1)} dy ${(cy - r.y * felt.sy).toFixed(1)} drawn ${rot.toFixed(1)} published ${r.rot.toFixed(1)}`;
             frameOff = Math.max(frameOff, ...off);
@@ -170,7 +176,9 @@ for (const vp of VIEWPORTS) {
       }
       const during = sample(page, 2_600);
       await tap(page, page.getByTestId("btn-gioca"));
-      expectOnTheCards(await during, ["fan", "hand", "pile"]);
+      const w = await during;
+      expect(w.moved, "the table moved while it was sampled").toBeGreaterThan(3);
+      expectOnTheCards(w, ["fan", "hand", "pile"]);
     });
 
     test("a picked card is where it is drawn through its lift, and publishes its lift and glow", async ({ page, baseURL }) => {
@@ -212,3 +220,43 @@ for (const vp of VIEWPORTS) {
     });
   });
 }
+
+test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to it, and its rect follows", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+  await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
+  await settled(page, 3_000, '[data-testid="game-table"]');
+  // Measured about the centre at the unturned width: a tilted card's bounding box outgrows what the row can show.
+  const hand = () =>
+    page.evaluate(() => {
+      const cards = [...document.querySelectorAll<HTMLElement>('[data-testid^="hand-card-"]')];
+      let win = cards[0]?.parentElement ?? null;
+      while (win && getComputedStyle(win).overflowX !== "clip") win = win.parentElement;
+      const w = win?.getBoundingClientRect();
+      const out = (el: HTMLElement) => {
+        const c = el.getBoundingClientRect();
+        const [mid, half] = [(c.left + c.right) / 2, el.offsetWidth / 2];
+        return w ? Math.max(0, w.left - (mid - half), mid + half - w.right) : 0;
+      };
+      const focused = document.activeElement?.closest<HTMLElement>('[data-testid^="hand-card-"]');
+      return {
+        clipped: cards.filter((el) => out(el) > 1).map((el) => el.getAttribute("data-testid")!),
+        focused: focused?.getAttribute("data-testid") ?? null,
+        focusedOut: focused ? out(focused) : 0,
+      };
+    });
+  const before = (await hand()).clipped;
+  expect(before.length, "a full hand overflows its window here").toBeGreaterThan(1);
+  const reached: string[] = [];
+  for (let i = 0; i < 60; i++) {
+    await page.keyboard.press("Tab");
+    const { focused } = await hand();
+    if (!focused && reached.length > 0) break;
+    if (!focused || !before.includes(focused) || reached.includes(focused)) continue;
+    reached.push(focused);
+    await expect.poll(async () => (await hand()).focusedOut, { message: `${focused} is still outside its window by`, timeout: 2_000 }).toBeLessThanOrEqual(1);
+    expectOnTheCards(await sample(page, 200), ["fan", "hand"]);
+  }
+  expect(reached, "Tab reached every card the window hid, at both ends").toEqual(before);
+});

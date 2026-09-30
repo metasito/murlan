@@ -821,6 +821,7 @@ describe("the beaten pile's flinch (#764)", () => {
     const helper = src.match(/function groupPose\([\s\S]*?\n\}/);
     assert.ok(helper, "expected the one group pose both the style and the card's rectangle read");
     assert.match(src, /const beaten = role === "beaten"/, "expected the pose's beaten flag to read the play's role");
+    assert.match(src, /const group = useMemo\(\(\) => \(\{[^}]*\bbeaten, /, "the pose's `beaten` is that flag, not a literal");
     assert.deepEqual(
       helper![0].split("\n").filter((l) => /flinchY/.test(l)).map((l) => /\bg\.beaten && g\.flinchBy\.value !== g\.key \? g\.flinchY\.value : 0\b/.test(l)),
       [true],

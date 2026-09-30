@@ -761,6 +761,17 @@ export function StraightHand({
       { translateX: -(panLimit + panShown(pan.value, panLimit)) },
     ],
   }));
+  const panToFocused = (e: { target: unknown; currentTarget: unknown }) => {
+    const target = e.target as HTMLElement;
+    const card = (target.closest('[data-testid^="hand-card-"]') as HTMLElement | null) ?? target;
+    const box = card.getBoundingClientRect();
+    const view = (e.currentTarget as Element).getBoundingClientRect();
+    // About the centre, at the unturned width: a tilted card's bounding box is wider than the row lets it show.
+    const mid = (box.left + box.right) / 2;
+    const half = card.offsetWidth / 2;
+    const by = Math.max(0, mid + half - view.right) - Math.max(0, view.left - (mid - half));
+    if (by !== 0) pan.set(panShown(panShown(pan.get(), panLimit) + by, panLimit));
+  };
 
   // ─── Reordering ────────────────────────────────────────────────────────────
   const canReorder = onReorder !== undefined && !disabled && !faceDown;
@@ -1354,6 +1365,7 @@ export function StraightHand({
               // `clip` on web: a focused card would otherwise scroll a `hidden` box, sliding the row off the pan it is drawn and hit-tested by.
               overflow: Platform.OS === "web" ? ("clip" as "hidden") : "hidden",
             }}
+            onFocus={Platform.OS === "web" ? panToFocused : undefined}
           >
             <Animated.View style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>
           </View>

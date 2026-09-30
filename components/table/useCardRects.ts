@@ -56,8 +56,9 @@ function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
 
 /**
  * Publishes one card from the UI thread whenever a shared value `read` reaches moves; null while it is
- * not drawn. The mapper starts and stops with the commit, never a frame after it: a view that draws or
- * leaves in a commit has its rect written or cleared in that same commit.
+ * not drawn. A commit queues its writes in order — the last run's forget, then this run's rect, read on
+ * the UI thread from values the commit has already set — so a card still drawn is never left out once
+ * the UI thread has run them. On native nothing on JS sees them within the commit.
  */
 export function useCardRect(table: CardTable | null, key: string, drawn: boolean, read: () => CardRect | null): void {
   const rects = table?.rects;
@@ -65,33 +66,27 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
     if (!rects) return;
     if (!drawn) return forget(rects, key, false);
     const alive = makeMutable(true);
-    const publish = (rect: CardRect | null) => {
+    const publish = () => {
       "worklet";
-      if (!alive.value || (!rect && rects.value[key] === undefined)) return;
+      // A new object on a change and `r` itself on none: with `forceUpdate` off, only a change notifies.
       rects.modify((r) => {
         "worklet";
-        if (rect) r[key] = rect;
-        else delete r[key];
-        return r;
-      });
+        const rect = alive.value ? read() : null;
+        if (!alive.value || (!rect && r[key] === undefined)) return r;
+        const next = { ...r };
+        if (rect) next[key] = rect;
+        else delete next[key];
+        return next;
+      }, false);
     };
-    const first = read();
-    if (!sameRect(rects.get()[key], first)) publish(first);
-    const mapper = startMapper(() => {
-      "worklet";
-      publish(read());
-    }, Object.values((read as { __closure?: Record<string, unknown> }).__closure ?? {}));
+    publish();
+    const mapper = startMapper(publish, Object.values((read as { __closure?: Record<string, unknown> }).__closure ?? {}));
     return () => {
       alive.value = false;
       stopMapper(mapper);
       forget(rects, key, false);
     };
   }, [rects, key, drawn, read]);
-}
-
-function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
-  if (!a || !b) return !a && !b;
-  return (Object.keys(b) as (keyof CardRect)[]).every((k) => a[k] === b[k]);
 }
 
 /** Publishes cards laid out by a render, all under `prefix`: replaced in the commit that draws them, moved with the table. */
@@ -102,23 +97,20 @@ export function useStaticCardRects(table: CardTable | null, prefix: string, card
   useLayoutEffect(() => {
     if (!rects || !felt || !motion) return;
     const alive = makeMutable(true);
-    const publish = (m: TableMotion) => {
+    const publish = () => {
       "worklet";
-      if (!alive.value) return;
       rects.modify((r) => {
         "worklet";
+        if (!alive.value) return r;
         for (const k of Object.keys(r)) if (k.startsWith(prefix)) delete r[k];
         cards.forEach((c, i) => {
-          r[`${prefix}${i}`] = designRect(c, felt, m);
+          r[`${prefix}${i}`] = designRect(c, felt, motion.value);
         });
         return r;
       });
     };
-    publish(motion.get());
-    const mapper = startMapper(() => {
-      "worklet";
-      publish(motion.value);
-    }, [motion]);
+    publish();
+    const mapper = startMapper(publish, [motion]);
     return () => {
       alive.value = false;
       stopMapper(mapper);
