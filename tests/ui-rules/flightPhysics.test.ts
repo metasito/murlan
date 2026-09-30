@@ -20,6 +20,8 @@ import {
   seatGap,
   seatLabelH,
   FAN_DRAWN_CARDS,
+  CHIP_H,
+  handVisibleH,
 } from "../../components/seatLayout.ts";
 import { drawnFanBounds, fanPoint, seatFanArc } from "../../components/fanGeometry.ts";
 import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
@@ -51,6 +53,8 @@ import {
   shakeOffset,
   shakeAmplitudeFor,
   passedSeats,
+  seatsJustPassed,
+  floatTop,
   sparkOffset,
   SPARK_COUNT,
   flareKindFor,
@@ -75,6 +79,7 @@ import {
   clientSources,
   scanSources,
 } from "../helpers/sourceScan.ts";
+import { INSETS, phonePlace } from "../helpers/phoneTable.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -1534,4 +1539,49 @@ describe("readExchangeLegs", () => {
       legs(3, 0, [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", leftCards)]).receive.to;
     assert.notDeepEqual(at(1), at(13));
   });
+});
+
+describe("seatsJustPassed", () => {
+  const hands = (): Player[] =>
+    (["5", "7", "9", "J"] as const).map((rank, i) => makePlayer(`player_${i}`, [c(rank, "spades"), c("3", "hearts")]));
+  const view = (s: GameState) => ({
+    currentTurnIndex: s.currentTurnIndex,
+    lastPlayedBy: s.lastPlayedBy,
+    lastPlayedCombination: s.lastPlayedCombination,
+    roundWinner: s.roundWinner,
+    outOfCards: s.players.map((p) => p.hand.length === 0),
+  });
+
+  test("each engine pass names the seat that made it, the one closing the round too; a play names nobody", () => {
+    let s = makeState(hands(), { currentTurnIndex: 3, lastPlayedBy: 3, firstPlayMade: true });
+    const step = (next: GameState) => {
+      const passed = seatsJustPassed(view(s), view(next));
+      s = next;
+      return passed;
+    };
+    assert.deepEqual(step(processPlay(s, buildCombination([c("J", "spades")])!)), []);
+    for (const seat of [2, 1, 0]) assert.deepEqual(step(processPass(s)), [seat], `seat ${seat}'s pass`);
+    assert.equal(s.lastPlayedCombination, null, "the third pass closed the round");
+    assert.deepEqual(seatsJustPassed(view(s), view(s)), [], "an unchanged state names nobody");
+  });
+});
+
+test("the float slot is the mockup's .floatchip on its own stage: centred on the table, its top at 300", () => {
+  const place = phonePlace(874, 402);
+  assert.ok(Math.abs(anchorPoints(tableGeometry(place)).pile.x - 457) <= 0.5);
+  assert.ok(Math.abs(floatTop(place) - 300) <= 0.5, `y ${floatTop(place)}`);
+});
+
+test("the float clears the resting hand by the same gap whatever the safe area", () => {
+  for (const [width, height] of [[874, 402], [568, 320], [932, 430]]) {
+    const gaps = Object.entries(INSETS).map(([name, insets]) => {
+      const place = phonePlace(width, height, insets);
+      const cardTop = place.windowHeight - place.surplus - place.bottomPad - handVisibleH(place.handCardH);
+      return { name, gap: cardTop - (floatTop(place) + CHIP_H(place.scale)) };
+    });
+    for (const { name, gap } of gaps) {
+      assert.ok(gap > 0, `${width}×${height} at ${name}: the float overlaps the hand by ${-gap}`);
+      assert.ok(Math.abs(gap - gaps[0].gap) < 1e-9, `${width}×${height} at ${name}: gap ${gap} against ${gaps[0].gap}`);
+    }
+  }
 });

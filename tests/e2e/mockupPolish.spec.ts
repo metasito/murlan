@@ -2,11 +2,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { appAt, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
-import { resumeSaved } from "./helpers/offlineSeed";
+import { appAt, appResumed, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
+import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
+import { tap } from "./helpers/press";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
 import { cardScale } from "../../components/cardFaceModel";
-import { RANK_SLOTS } from "../../lib/game/gameEngine";
+import { buildCombination, RANK_SLOTS, type Card } from "../../lib/game/gameEngine";
 
 const HALF_PT = 0.5;
 const ONE_PT = 1;
@@ -23,6 +24,17 @@ const LIT_WITH_COUNT: CaptureState = { ...captureStateById("lamp-bottom")!, id: 
 const shown = async (stage: Stage, selector: string, run?: string): Promise<PlatePaint> => {
   await expect.poll(async () => (await stage.plate(selector))?.opacity, { message: `${selector} fully shown`, timeout: 30_000 }).toBe(1);
   return (await stage.plate(selector, run))!;
+};
+
+/** The plate's glow now and after each wait. */
+const glowsOver = async (stage: Stage, selector: string, waits: number[]) => {
+  const glows = [(await stage.plate(selector))!.glow];
+  for (const wait of waits) {
+    // fixed wait on purpose: the glow sampled at uneven instants, so no loop's period divides them all
+    await stage.page.waitForTimeout(wait);
+    glows.push((await stage.plate(selector))!.glow);
+  }
+  return glows;
 };
 
 /** Negative where the two overlap. */
@@ -54,12 +66,7 @@ test("turn, lit: the glow is a static shadow", async ({ browser, baseURL }) => {
   test.setTimeout(120_000);
   const app = await appAt(browser, baseURL!, LIT_WITH_COUNT);
   const first = await shown(app, TURN);
-  const glows = [first.glow];
-  for (const wait of [130, 240, 240, 280]) {
-    // fixed wait on purpose: the glow sampled at uneven instants, so no loop's period divides them all
-    await app.page.waitForTimeout(wait);
-    glows.push((await app.plate(TURN))!.glow);
-  }
+  const glows = await glowsOver(app, TURN, [130, 240, 240, 280]);
   await app.close();
   expect(first.glow, "a lit pill glows").not.toBeNull();
   expect(glows, "the glow at 0, 130, 370, 610 and 890 ms").toEqual(glows.map(() => first.glow));
@@ -201,6 +208,41 @@ for (const phone of STAGES) {
     expect(clipped, "the label is cut short").toBe(false);
   });
 }
+
+const FLOAT = '[data-testid="notice-passFloat"]';
+
+/** The mockup's clock chapter: seat 1 has played, and the turn runs down to you. */
+function seatOneLedYouAnswer() {
+  const save = offlineGameSave(4, undefined, 0, {}, [["5_hearts", "K_spades"], ["J_hearts"], ["7_clubs"], ["4_diamonds"]]);
+  return { ...save, gameState: { ...save.gameState, lastPlayedCombination: buildCombination([card("9", "spades") as Card]), lastPlayedBy: 1 } };
+}
+
+test("float: the viewer's own pass is the mockup's .floatchip, in its place, and goes", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "clock", 4600);
+  const want = await shown(mockup, ".floatchip");
+  await mockup.close();
+
+  const app = await appResumed(browser, baseURL!, seatOneLedYouAnswer());
+  await tap(app.page, app.page.getByTestId("btn-passa"));
+  await expect
+    .poll(async () => (await app.plate(FLOAT))?.opacity, { message: "the float risen and faded in", intervals: [20], timeout: 30_000 })
+    .toBe(1);
+  const got = (await app.plate(FLOAT))!;
+  await expect.poll(async () => (await app.plate(FLOAT))?.opacity ?? 0, { message: "the float gone", timeout: 5_000 }).toBe(0);
+  await app.close();
+
+  expect.soft(got.fill, "the fill").toBe(want.fill);
+  expect.soft(got.edge, "the edge").toBe(want.edge);
+  expect.soft(got.ink, "the ink").toBe(want.ink);
+  expect.soft(got.glow, "a float casts no glow").toBe(want.glow);
+  expect.soft(got.fontSize, "the text").toBe(want.fontSize);
+  expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.box.w - want.box.w), `the width, ${got.box.w} against ${want.box.w}`).toBeLessThanOrEqual(ONE_PT);
+  const centre = (b: Rect) => b.x + b.w / 2;
+  expect.soft(Math.abs(centre(got.box) - centre(want.box)), `the centre, ${centre(got.box)} against ${centre(want.box)}`).toBeLessThanOrEqual(ONE_PT);
+  expect.soft(Math.abs(got.box.y - want.box.y), `the top, ${got.box.y} against ${want.box.y}`).toBeLessThanOrEqual(ONE_PT);
+});
 
 const MARK = '[data-testid="notice-passed"]';
 const rgb = (colour: string) => colour.replace(/rgba?\(([^,]+),([^,]+),([^,)]+).*/, "$1,$2,$3").replace(/\s/g, "");
@@ -414,4 +456,55 @@ test("panel: who starts is the G1 panel, at its size, place, plate and dim", asy
   expect(scaled.grew, "at 1.2x the panel did not grow with its words").toBe(true);
   expect(scaled.clipped, "at 1.2x these run past the panel").toEqual([]);
   expect(scaled.tileHolds, "at 1.2x the start card's rank runs past its tile").toBe(true);
+});
+
+const WAITING_SEATS = ["top-seat", "side-seat-left", "side-seat-right"];
+/** Every part of a seat: the disc, its badge, the name over it and the first back of its fan. */
+const SEAT_PARTS = ["seat-ring", "seat-card-count", "seat-name", "seat-back"];
+
+test("seats are not dimmed: every seat waiting for its turn is at full strength, as the mockup's", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "rest", 1000);
+  const want = await Promise.all([".seat:not(.on) .disc", ".seat:not(.on) .badge", ".seat:not(.on) .nm", ".fan"].map(async (part) => (await mockup.plate(part))?.opacity));
+  await mockup.close();
+  expect(want, "the mockup's waiting seat: disc, badge, name, fan").toEqual([1, 1, 1, 1]);
+
+  const app = await appAt(browser, baseURL!, captureStateById("lamp-bottom")!);
+  const parts = WAITING_SEATS.flatMap((seat) => SEAT_PARTS.map((part) => `[data-testid="${seat}"] [data-testid="${part}"]`));
+  await expect(app.page.locator(parts[0]), "the top seat").toBeVisible({ timeout: 30_000 });
+  await expect
+    .poll(async () => Object.fromEntries(await Promise.all(parts.map(async (s) => [s, (await app.plate(s))?.opacity ?? null]))), {
+      message: "each waiting seat's every part, with its ancestors' opacity",
+      timeout: 10_000,
+    })
+    .toEqual(Object.fromEntries(parts.map((s) => [s, 1])));
+  await app.close();
+});
+
+const LAST_BADGE = '[data-testid="top-seat"] [data-testid="seat-card-count"]';
+const grownBy = (page: Page, selector: string) =>
+  page.evaluate((s) => new DOMMatrixReadOnly(getComputedStyle(document.querySelector(s)!).transform).a, selector);
+
+test("last card: the seat down to one card wears the mockup's red .badge.last, its glow static", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "mwin", 100);
+  const want = await mockup.plate(".badge.last");
+  expect(want, "Besnik holds one card in the mockup").not.toBeNull();
+  const grown = await grownBy(mockup.page, ".badge.last");
+  await mockup.close();
+
+  const app = await appAt(browser, baseURL!, captureStateById("counts-2-1-2")!);
+  await expect(app.page.locator(LAST_BADGE), "the top seat's badge").toHaveText("1", { timeout: 30_000 });
+  const got = (await app.plate(LAST_BADGE))!;
+  const glows = await glowsOver(app, LAST_BADGE, [130, 240, 280]);
+  await app.close();
+
+  const wantBlur = want!.glow!.blur * grown;
+  expect.soft(got.fill, "the fill").toBe(want!.fill);
+  expect.soft(got.edge, "the edge").toBe(want!.edge);
+  expect.soft(got.ink, "the digit's ink").toBe(want!.ink);
+  expect.soft(got.glow?.color, "the glow's colour").toBe(want!.glow?.color);
+  expect.soft(Math.abs((got.glow?.blur ?? 0) - wantBlur), `the glow's blur, ${got.glow?.blur} against the mockup's ${wantBlur}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.box.h - want!.box.h), `the badge, ${got.box.h} tall against the mockup's ${want!.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect(glows, "the glow at 0, 130, 370 and 650 ms").toEqual(glows.map(() => got.glow));
 });

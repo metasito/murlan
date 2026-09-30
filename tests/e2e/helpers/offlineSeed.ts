@@ -118,7 +118,7 @@ export function offlineGameSave(
  * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a seeded
  * bot turn is over before a spec can measure it (`lib/e2eAiSuspend.ts`).
  */
-async function holdSeededTurn(page: Page): Promise<void> {
+export async function holdSeededTurn(page: Page): Promise<void> {
   await page.addInitScript(
     ({ key }) => window.localStorage.setItem(key, "1"),
     { key: E2E_SUSPEND_AI_KEY }

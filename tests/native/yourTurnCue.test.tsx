@@ -1,6 +1,5 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
-import { act, render, renderHook } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
+import { act, render, renderHook, within } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 import { Hold } from "@/lib/tokens";
@@ -87,7 +86,7 @@ describe("the turn-arrival cue", () => {
     await act(async () => {
       jest.advanceTimersByTime(1500);
     });
-    const topLit = () => StyleSheet.flatten(view.getByTestId("top-seat").props.style).opacity === undefined;
+    const topLit = () => within(view.getByTestId("top-seat")).getByTestId("seat-ring").props.dataSet?.seatLit === "true";
     expect(topLit()).toBe(false);
     await act(async () => view.rerender(tableAfter({ by: 1, combo: SINGLE, turn: 2 })));
     expect(topLit()).toBe(false);
