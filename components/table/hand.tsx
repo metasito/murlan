@@ -13,6 +13,7 @@ import { TableText } from "./TableText";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
   withTiming,
@@ -424,7 +425,7 @@ function CardItemBase({
       const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: 1, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
       return handCardRect(place, card, Math.min(Math.max(place.pan.value, -place.panLimit), place.panLimit), place.lift.value);
     },
-    [place, cardId, left, bottom, cardW, cardH, faceDown, selectLift, arcRot, dealFade, dealFromX, dealRise, hidden, dealing, shift, liftY, tilt, press, glow]
+    [place, cardId, left, bottom, cardW, cardH, faceDown, selectLift, arcRot, dealFade, dealFromX, dealRise, hidden]
   );
 
   const giveableStyle = useAnimatedStyle(() => ({
@@ -874,22 +875,22 @@ export function StraightHand({
   // follows a finger in free two dimensions, which is what makes "held" legible
   // beside "selected" without a legend — selection has already spent lift,
   // rotation and a border.
-  const heldPose = (p: number, fx: number, fy: number, grabbed: number, toX: number, toY: number, toRot: number) => {
-    "worklet";
+  const heldAt = useDerivedValue(() => {
+    const p = settle.value;
     // The wrapper sits at the row's own origin, so a card at `left: L` and
     // `bottom: B` is this same box translated by (L, −B).
-    const fromX = fx - grabbed;
-    const fromY = Math.max(heldCeiling, fy - HELD_RISE - (visibleH - cardH / 2));
+    const fromX = fingerX.value - grabOffset.value;
+    const fromY = Math.max(heldCeiling, fingerY.value - HELD_RISE - (visibleH - cardH / 2));
     return {
       p,
-      tx: fromX + (toX - fromX) * p,
-      ty: fromY + (toY - fromY) * p,
-      rot: toRot * p,
+      tx: fromX + (settleX.value - fromX) * p,
+      ty: fromY + (settleY.value - fromY) * p,
+      rot: settleRot.value * p,
       scale: HELD_SCALE + (1 - HELD_SCALE) * p,
     };
-  };
+  });
   const heldStyle = useAnimatedStyle(() => {
-    const h = heldPose(settle.value, fingerX.value, fingerY.value, grabOffset.value, settleX.value, settleY.value, settleRot.value);
+    const h = heldAt.value;
     return {
       transform: [{ translateX: h.tx }, { translateY: h.ty }, { rotate: `${h.rot}deg` }, { scale: h.scale }],
     };
@@ -991,11 +992,11 @@ export function StraightHand({
     () => {
       "worklet";
       if (!heldPlace || heldId === null) return null;
-      const h = heldPose(settle.value, fingerX.value, fingerY.value, grabOffset.value, settleX.value, settleY.value, settleRot.value);
+      const h = heldAt.value;
       const card = { left: 0, bottom: 0, w: cardW, h: cardH, tx: h.tx, ty: h.ty, rot: h.rot, scale: h.scale, back: faceDown, lift: 1 - h.p, glow: 0 };
       return handCardRect(heldPlace, card, Math.min(Math.max(heldPlace.pan.value, -panLimit), panLimit), heldPlace.lift.value);
     },
-    [heldPlace, heldId, cardW, cardH, faceDown, settle, fingerX, fingerY, grabOffset, settleX, settleY, settleRot, heldCeiling, visibleH, panLimit]
+    [heldPlace, heldId, cardW, cardH, faceDown, heldAt, panLimit]
   );
   useEffect(() => {
     if (!onOrigins) return;
