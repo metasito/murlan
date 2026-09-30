@@ -245,9 +245,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
   "table/hand.tsx:handStyles.emptyHandText": { plate: SELF },
-  "table/pile.tsx:pileStyles.winnerText": { plate: "pileStyles.winnerTag" },
-  "table/pile.tsx:pileStyles.comboChipText": { plate: "pileStyles.comboChip" },
-  "table/pile.tsx:pileStyles.comboChipTextPower": { plate: "pileStyles.comboChip" },
   "table/rematchPrompt.tsx:styles.rematchTally": REMATCH,
   "table/rematchPrompt.tsx:styles.rematchTitle": REMATCH,
   "table/rematchPrompt.tsx:styles.rematchSubtitle": REMATCH,
@@ -306,6 +303,11 @@ for (const [file, ref] of TABLE_TEXT) {
     }
   });
 }
+
+test("the pile inks no text of its own: its notices are TableNotice's plate, in the palette loop below", () => {
+  assert.deepEqual(TABLE_TEXT.filter(([file]) => file === "table/pile.tsx"), []);
+  assert.ok(TABLE_TEXT.some(([file]) => file === "table/TableNotice.tsx"), "TableNotice inks no <TableText> style");
+});
 
 test("the notice palette holds every shape, each with a tone", () => {
   assert.deepEqual(Object.keys(NoticePalette).sort(), ["chip", "float", "panel", "pill"]);

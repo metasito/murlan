@@ -47,6 +47,9 @@ export const NOTICES = {
   passed: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
+  combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];

@@ -11,6 +11,8 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 // Reduced motion collapses a played card's flight to a single timer, so the
 // pile reaches its settled state on a tick rather than on a spring callback.
@@ -22,7 +24,6 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { bootFeedback, startsOf } from './helpers/feedback';
 import { GameTable } from '@/components/GameTable';
-import { getVisibleText } from './visibilityHelpers';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -76,6 +77,18 @@ const table = (gameState: GameState) => (
 
 /** The tag's scope over the pile, not the same name on its seat. */
 const pileArea = () => within(screen.getByTestId('pile-area'));
+const plate = () => pileArea().getByTestId('notice-roundWinner', { includeHiddenElements: true });
+/** #1259 Q1: a mark enters in the mockup's 100 ms. */
+const MARK_ENTER_MS = 100;
+const STAR = String.fromCodePoint(Number(Ionicons.glyphMap.star));
+const tagShown = async () => {
+  await act(async () => {
+    jest.advanceTimersByTime(MARK_ENTER_MS);
+  });
+  expect((getAnimatedStyle(plate()) as { opacity?: number }).opacity).toBe(1);
+  within(plate()).getByText(WINNER, { includeHiddenElements: true });
+  within(plate()).getByText(STAR, { includeHiddenElements: true });
+};
 /** Not present, hidden or otherwise — the tag unmounts on dismissal rather
  *  than fading in place, so a plain absence check is the real claim here. */
 const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
@@ -92,7 +105,7 @@ describe('the round-winner tag', () => {
 
   it('shows the winner, dismisses itself, and shows the same winner again next round', async () => {
     const r = await render(table(closed()));
-    getVisibleText(pileArea(), WINNER);
+    await tagShown();
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -104,7 +117,7 @@ describe('the round-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    getVisibleText(pileArea(), WINNER);
+    await tagShown();
     expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
@@ -114,7 +127,7 @@ describe('the round-winner tag', () => {
     // Two-handed: the winner leads the next round and takes it as well, so
     // `roundWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
-    getVisibleText(pileArea(), WINNER);
+    await tagShown();
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -128,7 +141,7 @@ describe('the round-winner tag', () => {
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
-    getVisibleText(pileArea(), WINNER);
+    await tagShown();
     expect(startsOf('round_win')).toHaveLength(1);
 
     await r.unmount();
