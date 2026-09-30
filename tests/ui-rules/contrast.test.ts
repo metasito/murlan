@@ -275,6 +275,11 @@ test("every inked <TableText> style says what it is painted over", () => {
   assert.deepEqual(stale, [], "no <TableText> names these any more");
 });
 
+test("no <TableText> style paints its own plate: table text sits on the felt or inside a notice", () => {
+  const plated = TABLE_TEXT.filter(([file, ref]) => styleFill(file, ref) !== null).map(([file, ref]) => `${file}:${ref}`);
+  assert.deepEqual(plated, []);
+});
+
 for (const [file, ref] of TABLE_TEXT) {
   const id = `${file}:${ref}`;
   const backdrop = ON_TABLE[id];
