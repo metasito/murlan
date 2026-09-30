@@ -1,6 +1,13 @@
 import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg from "react-native-svg";
 import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
@@ -10,6 +17,7 @@ import { SUIT_COLORS, SuitShape } from "@/components/CardView";
 import { TableText } from "./TableText";
 import {
   NOTICES,
+  noticeBlink,
   noticeBox,
   noticeGlow,
   noticeRise,
@@ -139,16 +147,31 @@ function useInk(what: string) {
   return ink;
 }
 
-export function NoticeDot({ testID }: { testID?: string }) {
+export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: boolean }) {
   const { paint, box, dotGlow } = useInk("NoticeDot");
+  const reduceMotion = usePrefersReducedMotion();
+  const timing = blink ? noticeBlink(reduceMotion) : null;
+  const half = timing?.half;
+  const dim = timing?.dim;
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    if (half === undefined || dim === undefined) return;
+    opacity.value = withRepeat(withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) }), -1, true);
+    return () => {
+      cancelAnimation(opacity);
+      opacity.value = 1;
+    };
+  }, [half, dim, opacity]);
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const dot = paint.dot;
   if (!dot) throw new Error("this notice's tone paints no dot");
   return (
-    <View
+    <Animated.View
       testID={testID}
       style={[
         { width: box.dot, height: box.dot, borderRadius: box.dot / 2, backgroundColor: dot.color },
         dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, dotGlow, 0),
+        fade,
       ]}
     />
   );
@@ -282,6 +305,7 @@ const styles = StyleSheet.create({
   text: {
     fontFamily: "Rajdhani_600SemiBold",
     textTransform: "uppercase",
+    flexShrink: 1,
   },
   bold: { fontFamily: "Rajdhani_700Bold" },
   strong: { fontVariant: ["tabular-nums"] },

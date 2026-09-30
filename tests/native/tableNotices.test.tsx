@@ -10,10 +10,21 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
+const mockNetListeners = new Set<(state: { isConnected: boolean | null }) => void>();
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: (l: (state: { isConnected: boolean | null }) => void) => {
+      mockNetListeners.add(l);
+      return () => mockNetListeners.delete(l);
+    },
+  },
+}));
+
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
-import { TurnChip } from '@/components/table/notices/hud';
+import { TurnChip, type ConnectionNote } from '@/components/table/notices/hud';
 import { CHIP_H } from '@/components/seatLayout';
 import { CLOCK_RUNNING_OUT_SECONDS, urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Colors, makeShadow, NoticePalette, TABLE_FONT_SCALE_MAX } from '@/lib/theme';
@@ -178,6 +189,45 @@ describe('the turn pill', () => {
     expect(d.dot).toMatchObject({ backgroundColor: Colors.emberDot, ...makeShadow(Colors.emberDot, 0, 0, 1, 9 * S, 0) });
     expect(d.label).toBe(Colors.emberLabel);
     expect(d.count(CLOCK_RUNNING_OUT_SECONDS)).toBe(Colors.emberCount);
+    await r.unmount();
+  });
+
+  const connected = (state: ConnectionNote['state']) => (
+    <TurnChip seconds={30} active resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" connection={{ state, text: 'Note' }} />
+  );
+  for (const [state, edge, ink, dot] of [
+    ['offline', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot],
+    ['reconnected', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot],
+    ['reconnecting', Colors.goldBorder, Colors.textMuted, Colors.gold],
+  ] as const) {
+    it(`carries the connection, ${state}, in place of the seat and its count`, async () => {
+      const r = await render(connected(state));
+      const hidden = { includeHiddenElements: true };
+      const [plate] = screen.getAllByTestId('notice-turn', hidden);
+      const dotStyle = StyleSheet.flatten(within(plate).getByTestId('turn-chip-dot', hidden).props.style);
+      expect(StyleSheet.flatten(plate.props.style).borderColor).toBe(edge);
+      expect(dotStyle.backgroundColor).toBe(dot);
+      expect(StyleSheet.flatten(within(plate).getByText('Note', hidden).props.style).color).toBe(ink);
+      expect(screen.queryByTestId('turn-chip-count', hidden)).toBeNull();
+      expect(screen.queryByText('Your turn', hidden)).toBeNull();
+      expect(dotStyle.opacity ?? 1).toBe(1);
+      await r.unmount();
+    });
+  }
+
+  it('turns bad on the table when the device goes offline, and reads the online screen\'s note otherwise', async () => {
+    const table = (connection?: ConnectionNote) => (
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} connection={connection} />
+      </SafeAreaProvider>
+    );
+    const edge = () => StyleSheet.flatten(screen.getAllByTestId('notice-turn', { includeHiddenElements: true })[0].props.style).borderColor;
+    const r = await render(table({ state: 'reconnected', text: 'Besi is back' }));
+    expect(edge()).toBe(Colors.onlineEdge);
+    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    expect(edge()).toBe(Colors.offlineEdge);
+    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: null })));
+    expect(edge()).toBe(Colors.onlineEdge);
     await r.unmount();
   });
 

@@ -44,7 +44,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineConnection: () => ({
     connected: true,
     error: null,
-    reconnectNotice: 'Carl disconnected',
+    reconnectNotice: { text: 'Carl disconnected', back: false },
     playerLeft: false,
     rejoinFailed: false,
     clearError: jest.fn(),

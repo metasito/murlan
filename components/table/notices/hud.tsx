@@ -12,6 +12,19 @@ import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
  */
 const HUD_NAME_MAX_W = 88;
 
+/** The connection as the turn pill carries it (Q8): the lantern mockup's `renderTurn` with `S.net` set. */
+export type ConnectionNote = { state: "offline" | "reconnecting" | "reconnected" | "away"; text: string };
+const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok", away: "neutral" } as const;
+
+export function OfflinePill({ scale, shown = true }: { scale: number; shown?: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <TableNotice kind="offline" tone="solid" scale={scale} shown={shown}>
+      <NoticeText testID="offline-banner-text">{t("offlineBanner.text")}</NoticeText>
+    </TableNotice>
+  );
+}
+
 export function HudComboPill({ scale, play }: { scale: number; play: { name: string; combo: string } | null }) {
   const { t } = useTranslation();
   return (
@@ -41,6 +54,7 @@ export function TurnChip({
   lit,
   chipText,
   spokenSeat,
+  connection = null,
 }: {
   seconds: number;
   active: boolean;
@@ -53,6 +67,7 @@ export function TurnChip({
   chipText: string;
   /** The same state as a sentence, which is what the group's name opens with. */
   spokenSeat: string;
+  connection?: ConnectionNote | null;
 }) {
   const { tn } = useTranslation();
   const [timeLeft, setTimeLeft] = useState(seconds);
@@ -110,26 +125,30 @@ export function TurnChip({
   //
   // Empty rather than unmounted or veiled: a region that arrives with its text
   // already in it announces nothing, so the node has to outlive the turn.
-  const announce =
-    active && (timeLeft === seconds || timeLeft === threshold)
+  const announce = connection
+    ? connection.text
+    : active && (timeLeft === seconds || timeLeft === threshold)
       ? tn("gameTable.a11ySecondsLeft", timeLeft)
       : "";
-  const label = active
-    ? `${spokenSeat} ${tn("gameTable.a11ySecondsLeft", timeLeft)}`
-    : spokenSeat;
+  const label = connection
+    ? connection.text
+    : active
+      ? `${spokenSeat} ${tn("gameTable.a11ySecondsLeft", timeLeft)}`
+      : spokenSeat;
+  const tone = connection ? CONNECTION_TONE[connection.state] : ember ? "urgent" : lit ? "lit" : "neutral";
   return (
     <>
       {/* Its own node, and outside the group rather than under it: a live
           region announces rather than being landed on (CLAUDE.md), and
           `accessible` seals every descendant into one leaf on iOS. */}
-      <A11yStatus label={announce} />
+      <A11yStatus label={announce} live={connection?.state === "offline" ? "assertive" : "polite"} />
       <View {...a11yGroup(label)}>
         {/* The chip draws the words the group's name already says. */}
         <View {...a11yHidden()}>
-          <TableNotice kind="turn" tone={ember ? "urgent" : lit ? "lit" : "neutral"} scale={scale}>
-            <NoticeDot testID="turn-chip-dot" />
-            <NoticeText>{chipText}</NoticeText>
-            {active && (
+          <TableNotice kind="turn" tone={tone} scale={scale}>
+            <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
+            <NoticeText>{connection ? connection.text : chipText}</NoticeText>
+            {active && !connection && (
               <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
                 {timeLeft}
               </NoticeText>

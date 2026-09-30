@@ -4,7 +4,7 @@ import { cardScale, tableFontSize } from "../cardFaceModel.ts";
 import { CHIP_H } from "../seatLayout.ts";
 
 export type NoticeShape = "pill" | "chip" | "float" | "panel";
-export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad";
+export type NoticeTone = "neutral" | "lit" | "urgent" | "ok" | "bad" | "solid";
 export type ToneOf<S extends NoticeShape> = keyof (typeof NoticePalette)[S] & NoticeTone;
 
 const FULL = "full";
@@ -18,6 +18,7 @@ const MOCKUP = {
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
   "#score": { padX: 10, gapX: 6, radius: 12, font: 9.5, weight: 700, tracking: 2 },
   "#panel": { padX: 10, padY: 10, gapX: 6, radius: 12, font: 15, weight: 700, tracking: 0.3, width: 280 },
+  "#n-offline": { ...CHIP, gapX: 7 },
 } as const;
 export type NoticeSelector = keyof typeof MOCKUP;
 
@@ -39,7 +40,8 @@ export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
-  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
+  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent", "ok", "bad"], keepsEmber: true },
+  offline: { shape: "pill", selector: "#n-offline", tones: ["solid"] },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
@@ -145,6 +147,12 @@ export function noticeGlow(kind: NoticeKind, tone: NoticeTone, scale: number): G
 
 export function noticeRise(scale: number, reduceMotion: boolean): number {
   return reduceMotion ? 0 : at(RISE, scale);
+}
+
+const BLINK_DIM = 0.25;
+
+export function noticeBlink(reduceMotion: boolean): { half: number; dim: number } | null {
+  return reduceMotion ? null : { half: Motion.mark.blink / 2, dim: BLINK_DIM };
 }
 
 export function noticeTiming(

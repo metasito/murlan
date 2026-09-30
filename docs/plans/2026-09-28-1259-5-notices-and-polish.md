@@ -362,6 +362,13 @@ region is the same node before and after); new "float" case in
 - At a 3.1 font scale the pill's text is capped at `TABLE_FONT_SCALE_MAX` and truncates on one
   line; the pill stays within the viewport and above the first focusable control, at 375×812 and
   874×402.
+- As built: G2's solid pill fills with `Colors.offlineAlert` (#D32F2F, 4.98:1 under white), not
+  `Colors.danger` (#E53935, 4.23:1), because the notice palette's body-contrast check holds every
+  tone to 4.5:1 and a pill's words are body text (lead's ruling). "Above the first focusable
+  control" is checked as covering no visible focusable control. The device being offline outranks
+  the online screen's note, on both tables; another seat dropping is a steady-dot neutral note for
+  its 10 s, returning is `.ok` for its 3.5 s. The pill off the table yields while a table is
+  mounted, except the settings sheet's own, and is centred on the window, not at the table's 457.
 
 **Tests:** new "offline" case in *tests/e2e/mockupPolish.spec.ts* (against `#turn.bad`); edited
 `tests/native/offlineBannerLargeText.test.tsx`, `tests/e2e/offlineBannerFit.spec.ts`, and the

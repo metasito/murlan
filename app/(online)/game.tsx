@@ -277,31 +277,21 @@ export default function OnlineGameScreen() {
         onAnswer: answerRematch,
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
-      banners={
+      connection={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
         // an opponent taking their time.
-        !connected ? (
-          <View style={[styles.reconnectBanner, styles.reconnectBannerAlert]}>
-            <Ionicons name="cloud-offline" size={14} color={Colors.danger} />
-            <Text
-              style={[styles.reconnectBannerText, styles.reconnectBannerTextAlert]}
-              numberOfLines={1}
-            >
-              {t("onlineGame.reconnecting")}
-            </Text>
-          </View>
-        ) : reconnectNotice ? (
-          <View style={styles.reconnectBanner}>
-            <Ionicons name="wifi" size={14} color={Colors.gold} />
-            <Text style={styles.reconnectBannerText} numberOfLines={1}>
-              {reconnectNotice}
-            </Text>
-          </View>
-        ) : anyVacatedSeat && !gameState.gameOver ? (
+        !connected
+          ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
+          : reconnectNotice
+            ? { state: reconnectNotice.back ? "reconnected" : "away", text: reconnectNotice.text }
+            : null
+      }
+      banners={
+        anyVacatedSeat && !gameState.gameOver ? (
           <>
             <Pressable
-              style={styles.reconnectBanner}
+              style={styles.voteBanner}
               hitSlop={Spacing.wide}
               accessibilityRole="button"
               accessibilityLabel={
@@ -328,7 +318,7 @@ export default function OnlineGameScreen() {
             >
               <View style={styles.bannerRow} {...a11yHidden()}>
                 <Ionicons name="flag" size={14} color={Colors.gold} />
-                <Text style={styles.reconnectBannerText} numberOfLines={1}>
+                <Text style={styles.voteBannerText} numberOfLines={1}>
                   {hasVotedToEndMatch
                     ? t("game.endMatchVoteTallyVoted", {
                         votes: endMatchVoteState?.votes.length ?? 1,
@@ -449,7 +439,7 @@ const styles = StyleSheet.create({
   },
   connectingAction: { width: CONNECTING_ACTION_W, maxWidth: "100%" },
 
-  reconnectBanner: {
+  voteBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.slim,
@@ -458,16 +448,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.cosy,
     paddingVertical: Spacing.xs,
   },
-  reconnectBannerText: {
+  voteBannerText: {
     fontFamily: "Inter_500Medium",
     fontSize: BANNER_FONT,
     color: Colors.gold,
   },
-  reconnectBannerAlert: {
-    borderWidth: 1,
-    borderColor: Colors.danger,
-  },
-  reconnectBannerTextAlert: { color: Colors.dangerDim },
   bannerRow: {
     flexDirection: "row",
     alignItems: "center",
