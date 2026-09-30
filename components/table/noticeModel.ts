@@ -41,6 +41,9 @@ export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
+  combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];

@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { HudComboPill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
+import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
 
 const turn = (scale: number, lit: boolean, seconds: number) => ({
   scale,
@@ -62,6 +63,18 @@ export const NOTICE_GALLERY = {
       render: (scale) => (
         <WhoStartsCard gated scale={scale} starterName="Gent" starterIsViewer={false} reason={{ type: "lost_round", playerIdx: 3 }} />
       ),
+    },
+  ],
+  combo: [
+    { name: "a pair", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Coppia" /> },
+    { name: "a bomb, the same mark", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Bomba ×4" /> },
+  ],
+  roundWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <RoundWinnerMark scale={scale} name="Besnik" /> }],
+  pileLabel: [
+    {
+      name: "the exchange's card on the pile",
+      tone: "lit",
+      render: (scale) => <PileLabelMark scale={scale} testID="exchange-pile-label" text="Luan dà 2♥ a Ana" />,
     },
   ],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };

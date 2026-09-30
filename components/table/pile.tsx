@@ -1,6 +1,5 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
-import { TableText } from "./TableText";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -11,14 +10,12 @@ import Animated, {
   withSequence,
   Easing,
   cancelAnimation,
-  FadeIn,
   FadeOut,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Beaten, Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, Colors, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -30,7 +27,7 @@ import { seatDirection } from "@/components/seatLayout";
 import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrownPlay, roundClosedWithWinner, seatPoint, type ThrownPlayInput } from "@/components/flightPhysics";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
-import { Sweep } from "@/components/table/moments";
+import { ComboMark, PileLabelMark, RoundWinnerMark } from "./notices/pileNotices";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
 import { AT_REST, flightSpec, inBackground, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
@@ -275,9 +272,6 @@ const COMBO_LABEL_KEYS: Record<string, TranslationKey> = {
   royal_straight: "gameShared.comboRoyalStraight",
 };
 
-const POWER_COMBOS = new Set(["bomb", "royal_straight"]);
-
-const CHIP_RISE = Spacing.xs;
 const FELT_SCRIM_PEAK = 0.25;
 const SCRIM_EASING = Easing.in(Easing.quad);
 
@@ -287,68 +281,6 @@ export interface BombClock {
   contact: number;
 }
 const NO_BOMB: BombClock = { elapsed: -1, contact: 0 };
-
-/** `still`: shown on the frame it mounts, for a note the leg's own clock times. */
-function ChipPlate({ isPower, still = false, children }: { isPower: boolean; still?: boolean; children: ReactNode }) {
-  const reduceMotion = usePrefersReducedMotion() || still;
-  const enter = useSharedValue(reduceMotion ? 1 : 0);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-
-  useEffect(() => {
-    enter.value = reduceMotion
-      ? 1
-      : withTiming(1, { duration: Motion.duration.shift, easing: Easing.out(Easing.quad) });
-  }, [reduceMotion, enter]);
-
-  useEffect(() => () => cancelAnimation(enter), [enter]);
-
-  const enterStyle = useAnimatedStyle(() => ({
-    opacity: enter.value,
-    transform: [{ translateY: (1 - enter.value) * CHIP_RISE }],
-  }));
-
-  return (
-    <Animated.View
-      testID="combo-chip"
-      style={[pileStyles.comboChip, isPower && pileStyles.comboChipPower, enterStyle]}
-      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
-    >
-      {children}
-      {isPower && !reduceMotion && (
-        <View testID="combo-chip-sheen" style={StyleSheet.absoluteFill} pointerEvents="none">
-          {size && <Sweep trigger={1} width={size.w} height={size.h} durationMs={Motion.duration.reveal} />}
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-/** The combination on top of the pile, named. */
-export function ComboChip({ isPower, label }: { isPower: boolean; label: string }) {
-  return (
-    <ChipPlate isPower={isPower}>
-      <TableText style={[pileStyles.comboChipText, isPower && pileStyles.comboChipTextPower]}>
-        {isPower ? "✦ " : ""}
-        {label}
-      </TableText>
-    </ChipPlate>
-  );
-}
-
-/** The seat that took the round, over the pile. */
-export function RoundWinnerTag({ name }: { name: string }) {
-  const reduceMotion = usePrefersReducedMotion();
-  return (
-    <Animated.View
-      entering={reduceMotion ? undefined : FadeIn.duration(Motion.duration.travel)}
-      exiting={reduceMotion ? undefined : FadeOut.duration(Motion.duration.travel)}
-      style={pileStyles.winnerTag}
-    >
-      <Ionicons name="star" size={9} color={Colors.gold} />
-      <TableText style={pileStyles.winnerText}>{name}</TableText>
-    </Animated.View>
-  );
-}
 
 // ─── PileLayer ────────────────────────────────────────────────────────────────
 
@@ -462,13 +394,16 @@ export function PileLayer(props: PileLayerProps) {
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;
-  const isPower = !!comboLabel && POWER_COMBOS.has(comboLabel.type);
   const label = getComboLabel(comboLabel, t);
 
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
     <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
-      {roundWinner && !hidden ? <RoundWinnerTag name={roundWinner} /> : null}
+      {roundWinner && !hidden ? (
+        <Animated.View exiting={reduceMotion ? undefined : FadeOut.duration(Motion.mark.exit)} style={pileStyles.winnerAt}>
+          <RoundWinnerMark name={roundWinner} scale={scale} />
+        </Animated.View>
+      ) : null}
 
       <View style={[pileStyles.pileStack, { width: stack?.boxW ?? 0, height: stack?.h ?? 0 }]}>
         {groups.map(({ play, role, sweep: motion, sweepTop }) => (
@@ -499,11 +434,7 @@ export function PileLayer(props: PileLayerProps) {
             { width: roomW, marginLeft: -roomW / 2, marginTop: fieldSlots(note.cards, cardScale, roomW).h / 2 + Spacing.snug },
           ]}
         >
-          <ChipPlate isPower={false} still>
-            <TableText testID={note.testID} style={pileStyles.comboChipText}>
-              {note.text}
-            </TableText>
-          </ChipPlate>
+          <PileLabelMark text={note.text} testID={note.testID} scale={scale} />
         </View>
       ) : comboLabel && label !== null && (
         <View
@@ -512,7 +443,9 @@ export function PileLayer(props: PileLayerProps) {
             { marginTop: fieldSlots(comboLabel.cards, cardScale, roomW).h / 2 + Spacing.snug },
           ]}
         >
-          <ComboChip isPower={isPower} label={label} />
+          <View testID="combo-chip">
+            <ComboMark label={label} scale={scale} />
+          </View>
         </View>
       )}
     </View>
@@ -853,27 +786,7 @@ const pileStyles = StyleSheet.create({
   },
   caughtCard: { zIndex: Layer.table },
   beatenShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: SHADE_Z, backgroundColor: Beaten.shade },
-  // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
-  // stop of any felt. The border is where the chip's identity lives.
-  winnerTag: {
-    position: "absolute",
-    top: -28,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    backgroundColor: Scrim.heavy,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.snug,
-    paddingVertical: Spacing.xs,
-    borderWidth: 1,
-    borderColor: Colors.goldDark,
-    zIndex: Layer.rail,
-  },
-  winnerText: {
-    fontFamily: "Rajdhani_600SemiBold",
-    fontSize: FontSize.xs,
-    color: Colors.gold,
-  },
+  winnerAt: { position: "absolute", top: -28, zIndex: Layer.rail },
   pileStack: {
     alignItems: "center",
     justifyContent: "center",
@@ -884,26 +797,4 @@ const pileStyles = StyleSheet.create({
   comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
   // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note wraps a word a line.
   noteLabel: { position: "absolute", top: "50%", left: "50%", alignItems: "center" },
-  comboChip: {
-    backgroundColor: Scrim.heavy,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.snug,
-    paddingVertical: Spacing.xxs,
-    borderWidth: 1,
-    borderColor: Colors.goldStrong,
-  },
-  comboChipPower: {
-    borderColor: Colors.bombBorder,
-    overflow: "hidden",
-  },
-  comboChipText: {
-    fontFamily: "Rajdhani_700Bold",
-    fontSize: FontSize.xxs,
-    color: Colors.gold,
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
-  comboChipTextPower: {
-    color: Colors.bombText,
-  },
 });
