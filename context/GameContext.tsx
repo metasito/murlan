@@ -28,7 +28,7 @@ import {
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform, Settings } from "react-native";
-import { dealOpeningTo, E2E_OPENER_KEY } from "@/lib/e2eOpener";
+import { initializeOpeningAt, E2E_OPENER_KEY } from "@/lib/e2eOpener";
 import {
   OFFLINE_SAVE_KEY,
   decodeOfflineSave,
@@ -186,8 +186,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // unconditionally `true` here.
       const firstSeat = dealFirstSeatFor(true, 0, players.length);
       const viewer = Math.max(0, players.findIndex((p) => p.type === "human"));
-      const dealt = E2E_OPENER ? dealOpeningTo(players.length, firstSeat, viewer) : undefined;
-      const state = initializeGame(players, mode, firstSeat, dealt);
+      const state = E2E_OPENER
+        ? initializeOpeningAt(players, mode, firstSeat, viewer)
+        : initializeGame(players, mode, firstSeat);
       setGameState(state);
       setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));

@@ -60,7 +60,7 @@ appId: "${MAESTRO_APP_ID}"
       id: "game-table"
     timeout: 90000
 
-# --- Opening move, only if this seat was dealt the forced opener ---
+# --- Opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
 - extendedWaitUntil:
     visible:
       id: "btn-passa"
