@@ -59,6 +59,7 @@ const TILE_SHADOW = 3;
 const TILE_CAST = withAlpha(Colors.shadow, 0.5);
 const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
+const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 
 const Ink = createContext<{ paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
@@ -317,7 +318,24 @@ export function NoticeIcon({ name }: { name: ComponentProps<typeof Ionicons>["na
 /** A glyph beside the plate's words, `px` mockup px square. */
 export function NoticeGlyph({ name, px }: { name: ComponentProps<typeof Ionicons>["name"]; px: number }) {
   const { paint, scale } = useInk("NoticeGlyph");
-  return <Ionicons name={name} size={mockupPx(px, scale)} color={paint.ink} />;
+  return <Ionicons name={name} size={mockupPx(px, scale)} color={paint.strong} />;
+}
+
+/** A count on gold at the plate's end, as `#turn u`. */
+export function NoticeBadge({ children }: { children: ReactNode }) {
+  const { box, scale } = useInk("NoticeBadge");
+  return (
+    <View
+      style={[
+        styles.badge,
+        { paddingHorizontal: mockupPx(BADGE.padX, scale), paddingVertical: mockupPx(BADGE.padY, scale), borderRadius: mockupPx(BADGE.radius, scale) },
+      ]}
+    >
+      <TableText style={[styles.bold, styles.strong, { color: Colors.badgeInk, fontSize: box.fontSize, letterSpacing: mockupPx(BADGE.tracking, scale) }]}>
+        {children}
+      </TableText>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -351,4 +369,5 @@ const styles = StyleSheet.create({
   shrinks: { flexShrink: 1 },
   bold: { fontFamily: "Rajdhani_700Bold" },
   strong: { fontVariant: ["tabular-nums"] },
+  badge: { backgroundColor: Colors.gold },
 });

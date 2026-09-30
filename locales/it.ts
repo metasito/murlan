@@ -360,7 +360,6 @@ export const it: Record<keyof typeof en, string> = {
   // online the server announces its own.
   "game.moveNotDelivered": "La tua mossa non è arrivata al tavolo. Controlla la connessione e riprova.",
   "game.autoPassTitle": "Passaggio automatico",
-  "game.autoPassBody": "Tempo scaduto: hai passato il turno.",
   "game.seatLeft": "{{username}} — uscito",
   "game.endMatchVoteButton": "Vota per terminare la partita",
   "game.endMatchWithdrawButton": "Ritira il voto per terminare la partita",

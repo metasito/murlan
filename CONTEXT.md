@@ -23,7 +23,7 @@ term's meaning, and useless anywhere the term is not.
   five callbacks and save nothing. `app/auth.tsx` and `app/recover.tsx` additionally carry #897's
   enumeration-safety behaviour on their success paths, which must survive any change to them.
 
-- **The online table's surface** — the 37 fields a screen reads from `OnlineGameContext`, exposed
+- **The online table's surface** — the 38 fields a screen reads from `OnlineGameContext`, exposed
   as the six slices in `context/onlineGameHooks.ts` (connection, room, table, turn clock, match,
   exchange). The slices are the seam, and `tests/ui-rules/contextSlices.test.ts` pins both that they
   partition the surface exclusively and that nothing outside four files reaches past them.

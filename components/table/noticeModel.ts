@@ -25,6 +25,7 @@ const MOCKUP = {
   "#n-toast": { ...EXTRA_PILL, maxWidth: 420 },
   "#n-waiting": EXTRA_PILL,
   "#n-empty": EXTRA_PILL,
+  "#n-vote": EXTRA_PILL,
 } as const;
 export type NoticeSelector = keyof typeof MOCKUP;
 
@@ -60,6 +61,7 @@ export const NOTICES = {
   errorToast: { shape: "float", selector: "#n-toast", tones: ["bad"] },
   waitingOthers: { shape: "pill", selector: "#n-waiting", tones: ["gold"] },
   emptyHand: { shape: "pill", selector: "#n-empty", tones: ["gold"] },
+  endMatchVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
@@ -172,6 +174,7 @@ export function panelParts(scale: number) {
 type Glow = { plate: number; dot: number };
 const GLOW: Partial<Record<NoticeSelector, Partial<Record<NoticeTone, Glow>>>> = {
   "#turn": { lit: { plate: 20.6, dot: DOT }, urgent: { plate: 18, dot: DOT } },
+  "#n-vote": { lit: { plate: 20.6, dot: 0 } },
 };
 /** #1265's ember, in points at scale 1: plan 5 changes no ember value, so it stands over `#turn.urgent`'s. */
 const EMBER: Glow = { plate: 18, dot: 9 };

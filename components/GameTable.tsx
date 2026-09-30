@@ -62,6 +62,8 @@ import {
   type TradeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
+import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
 import { canPassNow as canPassNowOf, turnTimerActive } from "@/components/turnTimerUi";
@@ -154,6 +156,8 @@ const WEB_CLIP =
 
 /** The banner band sits over the felt. */
 const BANNER_BAND_Z = Layer.band;
+/** G2: the end-match vote's top, under the score pill at rest. */
+const VOTE_BELOW_PILL = 7;
 /**
  * The felt is decoration and everything else is the game, so the game is
  * always on top. Stated rather than left to sibling order: the pool paints
@@ -288,10 +292,14 @@ export interface GameTableProps {
 
   /** The rail's lower knob (online: the reactions trigger). */
   railExtra?: React.ReactNode;
-  /** Transient strips under the top bar (online: the end-match vote). */
+  /** Transient strips under the top bar (the replay's transport). */
   banners?: React.ReactNode;
   /** The server's refusal, floated while it stands (online only). */
   error?: string | null;
+  /** How many times the viewer's turn was passed for them: each new count floats the pass under its own title. */
+  autoPassed?: number;
+  /** The vote to end a match a seat has left, under the score pill (online only). */
+  endMatchVote?: EndMatchVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -335,6 +343,8 @@ export function GameTable({
   railExtra,
   banners,
   error = null,
+  autoPassed = 0,
+  endMatchVote = null,
   connection,
   catchUp = false,
   overlays,
@@ -535,12 +545,13 @@ export function GameTable({
   );
   const [passSeen, setPassSeen] = useState(gameState);
   const [errorSeen, setErrorSeen] = useState<string | null>(null);
+  const [autoSeen, setAutoSeen] = useState(autoPassed);
   const [float, setFloat] = useState<Float | null>(null);
   let floatNow = float;
   if (passSeen !== gameState) {
     setPassSeen(gameState);
     if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"));
+      if (!(floatNow?.kind === "autoPass" && floatNow.live)) floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"));
     } else if (floatNow?.live) {
       floatNow = { ...floatNow, live: false };
     }
@@ -549,6 +560,12 @@ export function GameTable({
     setErrorSeen(error);
     if (error) floatNow = raised(floatNow, "toast", error);
     else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
+  }
+  if (autoSeen !== autoPassed) {
+    setAutoSeen(autoPassed);
+    const text = t("game.autoPassTitle");
+    // In place, not raised: the pass that landed first is this one, and a second life would float it twice.
+    floatNow = floatNow?.kind === "pass" && floatNow.live ? { ...floatNow, kind: "autoPass", text } : raised(floatNow, "autoPass", text);
   }
   const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
   if (withdrawnSeen !== tableWithdrawn) {
@@ -1057,6 +1074,21 @@ export function GameTable({
           </View>
         )}
 
+        {endMatchVote && (
+          <View
+            {...behindVeil}
+            pointerEvents="box-none"
+            style={[
+              styles.voteSpot,
+              { right: W - pillAnchor.right, top: pillAnchor.top + pillAnchor.restH + mockupPx(VOTE_BELOW_PILL, scale) },
+            ]}
+          >
+            <A11yVeil veil={behindVeil}>
+              <EndMatchVote {...endMatchVote} scale={scale} />
+            </A11yVeil>
+          </View>
+        )}
+
         <FloatSlot
           float={float}
           at={{ x: anchors.pile.x, y: floatTop(seatGeometry) }}
@@ -1426,6 +1458,7 @@ const styles = StyleSheet.create({
     zIndex: BANNER_BAND_Z,
     pointerEvents: "box-none",
   },
+  voteSpot: { position: "absolute", zIndex: BANNER_BAND_Z },
 
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },

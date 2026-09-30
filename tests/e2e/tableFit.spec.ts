@@ -270,13 +270,7 @@ test.describe("the table's bands", () => {
   });
 });
 
-// ─── The banner over the table ────────────────────────────────────────────────
-//
-// The notification banner is a sibling of the whole navigator at zIndex 9999
-// and the table's top bar is at the same origin at zIndex 10, so the banner
-// used to cover the billboard, the countdown and the hand count — at exactly
-// the moments they matter, since an auto-pass is what raises it. That is a
-// property of two laid-out boxes, which only a browser can measure.
+// ─── The offline clock running out ────────────────────────────────────────────
 
 /** locales/it.ts `game.autoPassTitle` — the offline clock expiring. */
 const AUTO_PASS_TITLE = "Passaggio automatico";
@@ -284,35 +278,6 @@ const AUTO_PASS_TITLE = "Passaggio automatico";
 const OPPONENT_PLAYED = " ha giocato ";
 /** app/game.tsx HUMAN_TURN_SECONDS, which EXPO_PUBLIC_E2E_FAST does not shorten. */
 const OFFLINE_CLOCK_MS = 30_000;
-
-interface Box {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/**
- * The element's box once it has stopped moving. The banner slides in over
- * 320ms from off the top of the screen, so a box read the moment its text
- * appears is a box mid-flight — reading until two consecutive samples agree
- * waits for the animation itself rather than for a guessed duration.
- */
-async function settledBox(page: Page, selector: string): Promise<Box> {
-  const locator = page.locator(selector);
-  let previous = null as Box | null;
-  let box = null as Box | null;
-  await expect
-    .poll(
-      async () => {
-        [previous, box] = [box, await locator.boundingBox()];
-        return !!box && !!previous && box.y === previous.y && box.height === previous.height;
-      },
-      { message: `${selector} never settled into a stable position`, timeout: 10_000, intervals: [100] }
-    )
-    .toBe(true);
-  return box!;
-}
 
 /**
  * Plays on until an opponent's combination is on the table and it is the
@@ -350,8 +315,8 @@ async function waitForAnswerableTurn(page: Page): Promise<void> {
   }).toPass({ timeout: 120_000, intervals: [200] });
 }
 
-test.describe("the notification banner over the game table", () => {
-  test("does not cover the top bar it is explaining", async ({ page, baseURL }) => {
+test.describe("the offline clock running out", () => {
+  test("floats the pass under its own title, and raises no banner over the table", async ({ page, baseURL }) => {
     test.setTimeout(240_000);
     await page.setViewportSize({ width: 844, height: 390 });
     await openApp(page, baseURL!);
@@ -360,20 +325,9 @@ test.describe("the notification banner over the game table", () => {
 
     await waitForAnswerableTurn(page);
 
-    // Letting the clock run out is the one notification an offline game raises.
-    const banner = page.locator('[data-testid="notification-banner"]');
-    await expect(banner).toContainText(AUTO_PASS_TITLE, {
+    await expect(page.locator('[data-testid="notice-passFloat"]')).toContainText(AUTO_PASS_TITLE, {
       timeout: OFFLINE_CLOCK_MS + 20_000,
     });
-
-    const bannerBox = await settledBox(page, '[data-testid="notification-banner"]');
-    const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
-
-    expect(
-      bannerBox.y,
-      `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
-        `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn billboard, ` +
-        `the countdown and the hand count`
-    ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
+    await expect(page.locator('[data-testid="notification-banner"]')).toHaveCount(0);
   });
 });

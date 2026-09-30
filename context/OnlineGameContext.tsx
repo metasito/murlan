@@ -100,6 +100,8 @@ interface OnlineGameContextValue {
   endMatchVoteState: RematchVoteState | null;
   /** Seats mid disconnect grace, by seat — the countdown for the whole 60 s window. */
   disconnectedSeats: Record<number, { seconds: number; resetKey: string }>;
+  /** How many times the server has passed the viewer's turn for them. */
+  autoPassed: number;
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by engine player id. */
   handScores: Record<string, number>;
@@ -187,7 +189,7 @@ type RoomSlice = Pick<
 >;
 type TableSlice = Pick<
   OnlineGameContextValue,
-  "gameState" | "mySeatIndex" | "playCards" | "pass" | "sendReaction" | "disconnectedSeats"
+  "gameState" | "mySeatIndex" | "playCards" | "pass" | "sendReaction" | "disconnectedSeats" | "autoPassed"
 >;
 type TurnClockSlice = Pick<OnlineGameContextValue, "turnSeconds" | "turnDeadlineMs">;
 type MatchSlice = Pick<
@@ -286,6 +288,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [disconnectedSeats, setDisconnectedSeats] = useState<
     Record<number, { seconds: number; resetKey: string }>
   >({});
+  const [autoPassed, setAutoPassed] = useState(0);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [handScores, setHandScores] = useState<Record<string, number>>({});
   /** What the hand just played did to each seat's ladder rating, by user id. */
@@ -616,7 +619,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       payload: ServerPayload & { type: string }
     ) => {
       const text = translateServerPayload(payload);
-      if (payload.type === "afk") {
+      const me = roomRef.current?.players.find((p) => p.userId === userId)?.username;
+      // The notice names the seat only by username; the viewer's own pass is the table's float, not a banner.
+      if (payload.code === "PLAYER_AFK_AUTO_PASS" && me !== undefined && payload.params?.username === me) {
+        setAutoPassed((n) => n + 1);
+      } else if (payload.type === "afk") {
         showNotification({
           type: "afk",
           title: t("game.autoPassTitle"),
@@ -1066,8 +1073,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   );
 
   const tableValue = useMemo(
-    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats }),
-    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats]
+    () => ({ gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed }),
+    [gameState, mySeatIndex, playCards, pass, sendReaction, disconnectedSeats, autoPassed]
   );
 
   const turnClockValue = useMemo(

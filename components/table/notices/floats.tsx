@@ -10,7 +10,7 @@ const FLOAT_SLOT = 440;
 const ABOVE_GIOCA = 8;
 
 /** `live` while the state that raised it stands: the region's text goes with it, so the next float is a change. */
-export type Float = { id: number; kind: "pass" | "reject" | "toast"; text: string; live: boolean };
+export type Float = { id: number; kind: "pass" | "autoPass" | "reject" | "toast"; text: string; live: boolean };
 
 /** GIOCA's top edge, up from the window's foot, and the table's edges it sits against. */
 export type BesideGioca = { giocaTop: number; left: number; right: number; mirrored: boolean };

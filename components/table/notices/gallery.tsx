@@ -5,6 +5,7 @@ import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
+import { EndMatchVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
@@ -27,6 +28,8 @@ const turn = (scale: number, lit: boolean, seconds: number) => ({
   chipText: lit ? "Your turn" : "Turn of Besnik",
   spokenSeat: "",
 });
+
+const vote = (voted: boolean, votes: number) => ({ voted, votes, total: 4, onPress: () => {} });
 
 export type NoticeFixture<K extends NoticeKind = NoticeKind> = {
   name: string;
@@ -124,4 +127,9 @@ export const NOTICE_GALLERY = {
   errorToast: [{ name: "the server refuses a pass", tone: "bad", render: (scale) => <ErrorToast text="Non puoi passare" scale={scale} /> }],
   waitingOthers: [{ name: "you went out", tone: "gold", render: (scale) => <WaitingLine scale={scale} /> }],
   emptyHand: [{ name: "your hand played out", tone: "gold", render: (scale) => <EmptyHandLine scale={scale} /> }],
+  endMatchVote: [
+    { name: "a seat left, no votes", tone: "neutral", render: (scale) => <EndMatchVote {...vote(false, 0)} scale={scale} /> },
+    { name: "another seat voted", tone: "neutral", render: (scale) => <EndMatchVote {...vote(false, 1)} scale={scale} /> },
+    { name: "you voted", tone: "lit", render: (scale) => <EndMatchVote {...vote(true, 2)} scale={scale} /> },
+  ],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };
