@@ -43,6 +43,7 @@ describe('a diagnostics build times every notice in UI frames', () => {
       got.forEach((r, i) => {
         expect(r.ms).toBeGreaterThanOrEqual(want[i][3]);
         expect(r.ms).toBeLessThan(want[i][3] + FRAME);
+        if (r.phase !== 'still') expect(r.dt).toBeGreaterThan(r.ms - want[i][3]);
       });
       await view.unmount();
     }

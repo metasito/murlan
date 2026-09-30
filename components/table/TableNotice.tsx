@@ -72,7 +72,7 @@ type Probe = { kind: NoticeKind; shape: NoticeShape; src: DiagRows["notice"]["sr
 
 function probed<T>(animation: T, probe: Probe, phase: DiagRows["notice"]["phase"]): T {
   if (!DIAGNOSTICS) return animation;
-  return clocked(animation, (ms) => diag({ k: "notice", t: performance.now(), ...probe, phase, ms }));
+  return clocked(animation, (ms, dt) => diag({ k: "notice", t: performance.now(), ...probe, phase, ms, dt }));
 }
 
 export function TableNotice<K extends NoticeKind>({
@@ -110,7 +110,7 @@ export function TableNotice<K extends NoticeKind>({
     const probe = { kind, shape, src };
     if (still) {
       life.value = shown ? 1 : 0;
-      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0 });
+      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0, dt: 0 });
       return;
     }
     const entrance = probed(withTiming(1, { duration: enter }), probe, "enter");

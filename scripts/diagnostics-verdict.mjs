@@ -328,6 +328,8 @@ function feltOpaque(rows) {
 const NOTICE_ENTER_MS = { pill: 160, panel: 160, chip: 100, float: 100 };
 const NET_BLINK_MS = 900;
 const GALLERY_ROUNDS = 5;
+// An entrance ends on the first frame at or past its length, so it may overrun by that frame's own interval.
+const ENTER_SLACK_MS = 1;
 
 function noticeGallery(rows) {
   const plan = rows.find((r) => r.k === "gallery");
@@ -340,8 +342,9 @@ function noticeGallery(rows) {
   const frameMs = Math.min(1000 / medianHz(rows), 1000 / 60);
   const enter = Object.fromEntries(
     Object.entries(NOTICE_ENTER_MS).map(([shape, ms]) => {
-      const p = p90(notices.filter((n) => n.phase === "enter" && n.shape === shape).map((n) => n.ms));
-      return [shape, { p90: p, off: Math.abs(p - ms) }];
+      const entrances = notices.filter((n) => n.phase === "enter" && n.shape === shape);
+      const off = entrances.map((n) => (n.ms < ms ? ms - n.ms : Math.max(0, n.ms - ms - (n.dt ?? 0))));
+      return [shape, { p90: p90(entrances.map((n) => n.ms)), off: p90(off) }];
     })
   );
   const periods = rows.filter((r) => r.k === "blink" && r.t < calmFrom).map((r) => r.period);
@@ -354,7 +357,7 @@ function noticeGallery(rows) {
   const pass =
     plan !== undefined && plan.fixtures > 0 && moving === GALLERY_ROUNDS * plan.fixtures && calm === plan.fixtures &&
     new Set(shows.map((s) => s.kind)).size === plan.kinds && unseen === 0 &&
-    Object.values(enter).every((e) => e.off <= frameMs) &&
+    Object.values(enter).every((e) => e.off <= ENTER_SLACK_MS) &&
     periods.length >= GALLERY_ROUNDS && periodOff <= frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) &&
     b.frames > 0 && b.jsTicks > 0 && b.stalls === 0;
   return {
