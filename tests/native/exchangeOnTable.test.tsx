@@ -18,6 +18,7 @@ import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { getValidGivebackCards } from '@/lib/game/gameEngine';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 import { activate } from './tapHelpers';
+import type { ConnectionNote } from '@/components/table/notices/hud';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -74,7 +75,7 @@ const state = (exchange = true): GameState => ({
 
 const noop = () => {};
 
-const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void; onExchangeReady?: () => void; exchange?: boolean }) => (
+const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void; onExchangeReady?: () => void; exchange?: boolean; connection?: ConnectionNote }) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={state(opts.exchange)}
@@ -84,6 +85,7 @@ const table = (opts: { viewerSeat: number; onExchangeGive?: (id: string) => void
       onPass={noop}
       onQuit={noop}
       onExchangeGive={opts.onExchangeGive ?? noop}
+      connection={opts.connection}
     />
   </SafeAreaProvider>
 );
@@ -243,6 +245,17 @@ describe('the choice opens once the received card has landed and been read', () 
     await r.unmount();
     jest.useRealTimers();
   });
+});
+
+it("keeps the exchange prompt's words over another seat coming back", async () => {
+  jest.useFakeTimers();
+  const r = await render(table({ viewerSeat: 0, connection: { state: 'reconnected', text: 'Cesk is back' } }));
+  await open();
+  const prompt = screen.getByTestId('exchange-prompt');
+  expect(within(prompt).queryAllByText(t('exchange.chipGive', { name: LOSER }), { includeHiddenElements: true }).length).toBeGreaterThan(0);
+  expect(within(prompt).queryAllByText('Cesk is back', { includeHiddenElements: true })).toHaveLength(0);
+  await r.unmount();
+  jest.useRealTimers();
 });
 
 describe('the other seats can read the exchange from the table', () => {

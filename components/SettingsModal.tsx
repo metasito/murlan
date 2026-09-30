@@ -434,7 +434,7 @@ export function SettingsModal({ visible, onClose }: Props) {
             paint over it. */}
         <NotificationBanner notification={notification} onDismiss={dismissNotification} />
         <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
-        <OfflineBanner />
+        <OfflineBanner overTable />
       </GestureHandlerRootView>
     </AppModal>
   );

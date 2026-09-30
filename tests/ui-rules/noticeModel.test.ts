@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Colors, NoticePalette } from "../../lib/tokens.ts";
 import { CHIP_H } from "../../components/seatLayout.ts";
-import { markAt, NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
+import { markAt, NOTICES, noticeBlink, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
 
 const STAGE = 402 / 390;
 const at = (px: number, scale: number) => (px / STAGE) * scale;
@@ -109,7 +109,29 @@ test("the turn pill is #turn's box at every scale, its count #turn b's 12 px", (
     assert.deepEqual(noticeBox("turn", s), selectorBox("#turn", s));
     near(noticeBox("turn", s).strongFontSize, Math.max(at(12, s), 10), `#turn b at ${s}`);
   }
-  assert.deepEqual([...NOTICES.turn.tones].sort(), ["lit", "neutral", "urgent"]);
+  assert.deepEqual([...NOTICES.turn.tones].sort(), ["bad", "lit", "neutral", "ok", "urgent"]);
+});
+
+test("the connection tones are #turn.ok and #turn.bad; the dot blinks as .net's 0.9 s, still under reduced motion", () => {
+  const { ok, bad } = NoticePalette.pill;
+  assert.deepEqual([ok.edge, ok.ink, ok.dot.color], ["rgba(143,191,138,0.7)", "#D4ECCE", "#8FBF8A"]);
+  assert.deepEqual([bad.edge, bad.ink, bad.dot.color], ["#D0574B", "#FFCFC6", "#E0806F"]);
+  assert.deepEqual(noticeBlink(false), { half: 450, dim: 0.25 });
+  assert.equal(noticeBlink(true), null);
+});
+
+// G2's approved line: offline.shape=pill offline.tone=solid; the fill deepened from Colors.danger to clear body contrast.
+test("the offline pill is G2's #n-offline: a .chip with a 7 px gap, solid red with white ink", () => {
+  for (const s of SCALES) {
+    const box = noticeBox("offline", s);
+    near(box.height ?? NaN, at(23.7, s), `height at ${s}`);
+    near(box.padX, at(12, s), `padding at ${s}`);
+    near(box.gap, at(7, s), `gap at ${s}`);
+    near(box.fontSize, Math.max(at(10, s), 10), `type at ${s}`);
+  }
+  assert.deepEqual([...NOTICES.offline.tones], ["solid"]);
+  const solid = NoticePalette.pill.solid;
+  assert.deepEqual([solid.fill, solid.edge, solid.ink], ["#D32F2F", "#D32F2F", "#FFFFFF"]);
 });
 
 test("the lit pill is #turn.lit: its edge, its glow, its count and its dot", () => {
