@@ -102,7 +102,7 @@ import {
   type SelectionMode,
 } from "@/components/table/selection";
 import { useSelection } from "@/components/table/useSelection";
-import { useTapTrace } from "@/lib/tapTrace";
+import { traceTap, useTapTrace } from "@/lib/tapTrace";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
@@ -353,6 +353,7 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
   const { width: W, height: H } = useWindowDimensions();
+  useEffect(() => traceTap(`W ${W}x${H}`), [W, H]);
   // The window's own short edge, so a phone and a browser at the same size draw the same
   // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
   // carries the home indicator — and taking it off here instead shrinks the cards on device

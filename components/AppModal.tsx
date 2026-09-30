@@ -3,8 +3,9 @@
 // React Native's Modal defaults to `supportedOrientations={["portrait"]}` on
 // iOS, so one opened in landscape rotates the whole app and leaves the screen
 // underneath laid out for the old size — every tap then lands on nothing.
-import React from "react";
+import React, { useEffect } from "react";
 import { Modal } from "react-native";
+import { traceTap } from "@/lib/tapTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 
 export function AppModal({
@@ -29,8 +30,14 @@ export function AppModal({
   children: React.ReactNode;
 }) {
   const reduceMotion = usePrefersReducedMotion();
+  useEffect(() => {
+    traceTap(`M mount ${accessibilityLabel ?? ""} v=${visible}`);
+    return () => traceTap(`M unmount ${accessibilityLabel ?? ""}`);
+  }, [accessibilityLabel, visible]);
   return (
     <Modal
+      onShow={() => traceTap(`M shown ${accessibilityLabel ?? ""}`)}
+      onDismiss={() => traceTap(`M dismissed ${accessibilityLabel ?? ""}`)}
       visible={visible}
       transparent
       animationType={reduceMotion ? "none" : animation}
