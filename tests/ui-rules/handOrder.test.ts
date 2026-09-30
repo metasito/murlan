@@ -6,7 +6,7 @@
 // itself the next time the server hands the array back in its own order.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyHandOrder, cardAt, dropIndex, lendBack, moveCard } from "../../components/handOrder.ts";
+import { applyHandOrder, dropIndex, lendBack, moveCard, stripAt } from "../../components/handOrder.ts";
 import type { Card } from "../../lib/game/gameEngine.ts";
 
 /** Cards by rank alone — the suit plays no part in any of this. */
@@ -126,21 +126,31 @@ test("an empty rest offers exactly one slot", () => {
   assert.equal(dropIndex([], 60, 999), 0);
 });
 
-// ─── cardAt ──────────────────────────────────────────────────────────────────
+// ─── stripAt ────────────────────────────────────────────────────────────────
 
 test("the card under the finger is the one drawn on top of the others", () => {
   // Four cards 40 apart, 60 wide: every one but the last is half-covered by
   // its neighbour, so x=50 is inside both card 0 and card 1.
   const xs = [0, 40, 80, 120];
-  assert.equal(cardAt(xs, 60, 50), 1);
-  assert.equal(cardAt(xs, 60, 10), 0);
-  assert.equal(cardAt(xs, 60, 170), 3);
+  assert.equal(stripAt(xs, [40, 40, 40, 60], 50), 1);
+  assert.equal(stripAt(xs, [40, 40, 40, 60], 10), 0);
+  assert.equal(stripAt(xs, [40, 40, 40, 60], 170), 3);
 });
 
 test("a finger off either end of the row is on no card", () => {
-  assert.equal(cardAt([0, 40], 60, -1), null);
-  assert.equal(cardAt([0, 40], 60, 101), null);
-  assert.equal(cardAt([], 60, 0), null);
+  assert.equal(stripAt([0, 40], [40, 60], -1), null);
+  assert.equal(stripAt([0, 40], [40, 60], 101), null);
+  assert.equal(stripAt([], [], 0), null);
+});
+
+test("a tap belongs to the strip it lands in, and a slot held open for an arrival is no card's", () => {
+  const lefts = [0, 40, 120];
+  const widths = [40, 40, 60];
+  assert.equal(stripAt(lefts, widths, 39), 0);
+  assert.equal(stripAt(lefts, widths, 40), 1);
+  assert.equal(stripAt(lefts, widths, 100), null);
+  assert.equal(stripAt(lefts, widths, 179), 2);
+  assert.equal(stripAt(lefts, widths, 180), null);
 });
 
 test("the last slot sits a whole card past the last card, not on it", () => {

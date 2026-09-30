@@ -9,6 +9,7 @@ export interface Selection {
 export const NO_SELECTION: Selection = { mode: "play", ids: [], held: [] };
 
 function followHand(selection: Selection, hand: readonly string[]): Selection {
+  'worklet';
   const had = new Set(selection.held);
   if (hand.some((id) => !had.has(id))) return { mode: selection.mode, ids: [], held: hand };
   if (hand.length === selection.held.length) return selection;
@@ -17,11 +18,13 @@ function followHand(selection: Selection, hand: readonly string[]): Selection {
 }
 
 export function settle(selection: Selection, hand: readonly string[], mode: SelectionMode): Selection {
+  'worklet';
   const followed = followHand(selection, hand);
   return followed.mode === mode ? followed : { mode, ids: [], held: followed.held };
 }
 
 export function press(selection: Selection, id: string): Selection {
+  'worklet';
   const { mode, ids, held } = selection;
   if (mode === "exchange") return { mode, ids: ids[0] === id ? [] : [id], held };
   return { mode, ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id], held };

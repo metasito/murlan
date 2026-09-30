@@ -25,6 +25,7 @@
   "handClearance.spec.ts": 16.6,
   "handParity.spec.ts": 57.4,
   "handScroll.spec.ts": 8.8,
+  "handTapClick.spec.ts": 12.7,
   "handTapStrips.spec.ts": 3.5,
   "homeArena.spec.ts": 5.9,
   "homeCardField.spec.ts": 1.2,

@@ -5,6 +5,7 @@ import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
+import { stillSelection } from './tapHelpers';
 
 // CardView asks lib/cosmetics which back to draw exactly once per render, and
 // it asks before any branch, so counting that call counts renders of every card
@@ -56,11 +57,13 @@ const hand = (): Card[] =>
 
 const noop = () => {};
 
-const view = (cards: Card[], selectedIds: string[], onPress: (id: string) => void) => (
+const SELECTION = stillSelection();
+const view = (cards: Card[], selectedIds: string[], onActivate: (id: string) => void) => (
   <StraightHand
     cards={cards}
     selectedIds={selectedIds}
-    onPress={onPress}
+    selection={SELECTION}
+    onActivate={onActivate}
     disabled={false}
     availW={600}
     roomW={456}
@@ -92,7 +95,7 @@ describe('the hand is not rebuilt by a render that changes nothing about it', ()
 
   // The reason GameTable stabilizes handleCardPress with useCallback: a fresh
   // arrow per render defeats every comparator below it.
-  it('a new onPress reference rebuilds every card', async () => {
+  it('a new onActivate reference rebuilds every card', async () => {
     const r = await render(view(hand(), [], noop));
     mockCardRenders.n = 0;
 

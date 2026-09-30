@@ -3,6 +3,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
 
@@ -96,7 +97,7 @@ describe('pass and play', () => {
     expect(cardShown(SEAT1_CARD)).toBe(false);
 
     await act(async () => {
-      await fireEvent.press(screen.getByLabelText(cardSpokenName(SEAT0_LEAD, t)));
+      await activate(screen.getByLabelText(cardSpokenName(SEAT0_LEAD, t)));
     });
     await act(async () => {
       await fireEvent.press(screen.getByTestId('btn-gioca'));
