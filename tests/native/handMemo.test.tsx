@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import type { Card, GameState, Rank } from '@/lib/game/gameEngine';
-import { stillSelection } from './tapHelpers';
+import { stillSelection, storeOf } from './tapHelpers';
 
 // CardView asks lib/cosmetics which back to draw exactly once per render, and
 // it asks before any branch, so counting that call counts renders of every card
@@ -58,10 +58,11 @@ const hand = (): Card[] =>
 const noop = () => {};
 
 const SELECTION = stillSelection();
-const view = (cards: Card[], selectedIds: string[], onActivate: (id: string) => void) => (
+let store = storeOf();
+const view = (cards: Card[], onActivate: (id: string) => void) => (
   <StraightHand
     cards={cards}
-    selectedIds={selectedIds}
+    store={store}
     selection={SELECTION}
     onActivate={onActivate}
     disabled={false}
@@ -73,33 +74,34 @@ const view = (cards: Card[], selectedIds: string[], onActivate: (id: string) => 
 describe('the hand is not rebuilt by a render that changes nothing about it', () => {
   beforeEach(() => {
     mockCardRenders.n = 0;
+    store = storeOf();
   });
 
   it('re-rendering with a fresh array of the same cards commits no card render', async () => {
-    const r = await render(view(hand(), [], noop));
+    const r = await render(view(hand(), noop));
     const afterMount = mockCardRenders.n;
     expect(afterMount).toBe(RANKS.length);
 
-    await r.rerender(view(hand(), [], noop));
+    await r.rerender(view(hand(), noop));
     expect(mockCardRenders.n).toBe(afterMount);
   });
 
   // The other half of the claim: the memo must not be swallowing real updates.
-  it('selecting a card still re-renders it', async () => {
-    const r = await render(view(hand(), [], noop));
+  it('selecting a card re-renders that card alone', async () => {
+    await render(view(hand(), noop));
     mockCardRenders.n = 0;
 
-    await r.rerender(view(hand(), ['5_spades'], noop));
-    expect(mockCardRenders.n).toBeGreaterThan(0);
+    await act(async () => store.set({ mode: 'play', ids: ['5_spades'], held: [] }));
+    expect(mockCardRenders.n).toBe(1);
   });
 
   // The reason GameTable stabilizes handleCardPress with useCallback: a fresh
   // arrow per render defeats every comparator below it.
   it('a new onActivate reference rebuilds every card', async () => {
-    const r = await render(view(hand(), [], noop));
+    const r = await render(view(hand(), noop));
     mockCardRenders.n = 0;
 
-    await r.rerender(view(hand(), [], () => {}));
+    await r.rerender(view(hand(), () => {}));
     expect(mockCardRenders.n).toBe(RANKS.length);
   });
 });

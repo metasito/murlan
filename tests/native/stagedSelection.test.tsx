@@ -4,7 +4,7 @@
 // With three opponents the viewer spends three-odd seconds a round holding a
 // hand they were not allowed to touch, and then starts the turn clock from a blank
 // selection. Selection is now open at all times; only the submission is gated
-// on the turn, which `playBtnValid` already does.
+// on the turn, which GIOCA's staged play (`readStagedPlay`) already does.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { Pressable, Text } from 'react-native';

@@ -6,7 +6,7 @@
 // source onto `GameTableProps` and passes its own extras through the slots.
 // Nothing below knows or cares which mode it is running in.
 
-import React, { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   View,
   StyleSheet,
@@ -14,7 +14,6 @@ import {
   useWindowDimensions,
   type AccessibilityProps,
   type GestureResponderEvent,
-  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { TableText } from "@/components/table/TableText";
@@ -83,27 +82,26 @@ import {
   useHandLift,
   RailKnob,
   sharedTableStyles,
+  harnessState,
 } from "@/components/table/chrome";
 import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
   arrangedLabel,
-  handLabel,
   lastPlayLabel,
-  playRefusalLabel,
   tableStrings,
   topBarLabel,
 } from "@/components/table/spokenLabels";
-import { canBeatPileOf, readStagedPlay } from "@/components/table/stagedPlay";
+import { canBeatPileOf } from "@/components/table/stagedPlay";
 import {
   createSelectionStore,
-  NO_SELECTION,
   press,
   settle,
   type Selection,
   type SelectionMode,
 } from "@/components/table/selection";
 import { useSelection } from "@/components/table/useSelection";
-import { GiocaButton, PassaButton } from "@/components/table/actions";
+import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
+import { PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
@@ -182,15 +180,6 @@ const TABLE_Z = { zIndex: Layer.table } as const;
  */
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
-/**
- * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
- * react-native-web's own escape hatch and reaches the DOM; React Native has no such
- * prop and no types for it, which is what the cast is for. It is deliberately not an
- * `accessibilityLabel`: these containers cannot be `accessible` without collapsing
- * their controls into one leaf, so a name on them would reach no reader at all.
- * `tests/e2e/helpers/selectors.ts` holds the other end.
- */
-const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
 const NO_DISMISS = () => {};
 const roundStart = () => event([{ kind: "roundStart" }]);
 
@@ -508,40 +497,19 @@ export function GameTable({
   const exchangeIsWinners = exchange.active && exchange.viewerIsWinner;
   const exchangeIsMine = exchangeIsWinners && choiceReady;
   const selectionMode: SelectionMode = exchangeIsMine ? "exchange" : "play";
+  // Nothing here subscribes to the selection: a tap renders only the leaves that show it.
   const [selection] = useState(() => createSelectionStore());
-  const picked = useSyncExternalStore(selection.subscribe, selection.get, selection.get);
   const heldIds = React.useMemo(() => sortedHand.map((c) => c.id), [sortedHand]);
-  const shown = React.useMemo(
-    () => settle(picked, heldIds, selectionMode),
-    [picked, heldIds, selectionMode]
+  const shownSelection = React.useMemo(
+    () => settledSelection(selection, heldIds, selectionMode),
+    [selection, heldIds, selectionMode]
   );
-  const handSelection = shown.ids;
-  const selectedIds = exchangeIsMine ? NO_SELECTION.ids : handSelection;
-  const exchangePick = exchangeIsMine ? (handSelection[0] ?? null) : null;
-  const staged = React.useMemo(
-    () =>
-      readStagedPlay({
-        hand: sortedHand,
-        selectedIds,
-        lastPlayedCombination: gameState.lastPlayedCombination,
-        startCard: gameState.startCard,
-        firstPlayMade: gameState.firstPlayMade,
-        isNewRound,
-        isMyTurn,
-        isFinished,
-      }),
-    [
-      sortedHand,
-      selectedIds,
-      gameState.lastPlayedCombination,
-      gameState.startCard,
-      gameState.firstPlayMade,
-      isNewRound,
-      isMyTurn,
-      isFinished,
-    ]
+  // A memo so the compiler sees `isMyTurn` frozen before an object carries it into a call: bare,
+  // every later memo on `isMyTurn` fails to preserve and GameTable goes uncompiled.
+  const canPass = React.useMemo(
+    () => canPassNowOf({ isMyTurn, isFinished, isNewRound }),
+    [isMyTurn, isFinished, isNewRound]
   );
-  const canPass = canPassNowOf({ isMyTurn, isFinished, isNewRound });
   const passIsOnlyMove = React.useMemo(
     () =>
       canPass &&
@@ -584,15 +552,7 @@ export function GameTable({
     [exchangeIsMine, sortedHand, exchange.cardFromLoser?.id]
   );
   const giveableIds = React.useMemo(() => giveable?.map((c) => c.id), [giveable]);
-  const pickedGiveCard = exchangePick
-    ? (sortedHand.find((c) => c.id === exchangePick) ?? null)
-    : null;
   const exchangeLoserName = exchange.loser?.name ?? "";
-
-  const dimReasonText = playRefusalLabel(
-    { refusal: staged.refusal, isMyTurn, isFinished, startCard: gameState.startCard },
-    t
-  );
 
   const opponents = React.useMemo(
     () => arrangeOpponents(players, viewerSeat),
@@ -724,17 +684,10 @@ export function GameTable({
     [arranged, shownHand, handOnTable.length, t]
   );
 
-  const handA11yLabel = React.useMemo(
-    () => handLabel(handOnTable.length, selectedIds.length, tn),
-    [tn, handOnTable.length, selectedIds.length]
-  );
-
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
   const {
-    giocaFlashStyle,
     passaFlashStyle,
-    giocaGlowStyle,
     kickStyle,
     giocaRejectX,
     rejectPlay,
@@ -745,8 +698,6 @@ export function GameTable({
     isMyTurn,
     isFinished,
     canPass,
-    playBtnValid: staged.playable,
-    selectedCount: selectedIds.length,
     passCount: gameState.passCount,
     lastPlayedCombination: gameState.lastPlayedCombination,
     roundWinner: gameState.roundWinner,
@@ -853,12 +804,12 @@ export function GameTable({
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  // These three reach the memoized hand as props, so they are stabilized by
-  // hand: a fresh arrow per render defeats every card's memo comparator.
+  // The tap handlers reach the memoized hand as props, so they are stabilized
+  // by hand: a fresh arrow per render defeats every card's memo comparator.
   // Staging a play while an opponent thinks is how every game in this family
   // works, and it is what stops the turn clock starting from a blank hand.
-  // Only the *submission* is gated on the turn: `staged.playable` already
-  // requires it, so GIOCA lights on its own the moment the turn arrives.
+  // Only the *submission* is gated on the turn, by `GiocaControl`'s staged
+  // play, so GIOCA lights on its own the moment the turn arrives.
   const tapsReach = !(isFinished || spectating || (exchangeIsWinners && !exchangeIsMine));
   const announceTap = useCallback(
     (next: Selection, id: string) => {
@@ -876,41 +827,10 @@ export function GameTable({
   );
   const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
   useBenchHandle("cardPress", uiSelection.tapFromJs);
-  // The button stays pressable while it is unavailable so a refusal has a
-  // channel: a rigid haptic, a shake, and the reason in words. It keeps
-  // reporting itself as disabled to assistive tech.
-  const handlePlay = useCallback(() => {
-    if (!staged.playable) {
-      event([{ kind: "reject" }]);
-      setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text: dimReasonText }));
-      rejectPlay();
-      return;
-    }
-    // Haptic only: the throw is acknowledged in the hand, and the landing sounds
-    // when the card actually reaches the pile.
-    uiFeedback("selection");
-    // The validated set, not the raw selection: the server rejects — silently —
-    // any request naming a card the hand does not hold.
-    onPlay(staged.cards.map((c) => c.id));
-  }, [staged, onPlay, dimReasonText, rejectPlay, setRejectHint]);
-  // The table's own GIOCA is the exchange's confirm — a second floating button
-  // would be the dialog this replaced, in a smaller coat (#532). Its own
-  // function rather than a branch inside handlePlay: they answer the same key,
-  // but only one of them is a play, and the compiler cannot preserve a manual
-  // memo over a translated string (scripts/react-compiler-probe.mjs).
-  const handleExchangeGive = () => {
-    if (!exchangePick) {
-      event([{ kind: "reject" }]);
-      setRejectHint((prev) => ({
-        key: (prev?.key ?? 0) + 1,
-        text: t("exchange.confirmA11yWaiting", { name: exchangeLoserName }),
-      }));
-      rejectPlay();
-      return;
-    }
-    event([{ kind: "give" }]);
-    onExchangeGive(exchangePick);
-  };
+  const showRefusal = useCallback(
+    (text: string) => setRejectHint((prev) => ({ key: (prev?.key ?? 0) + 1, text })),
+    [setRejectHint]
+  );
   // Asked again rather than closing over `canPass`: with `canPass` as the
   // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
   // React Compiler skips the whole component.
@@ -919,9 +839,9 @@ export function GameTable({
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
-    selection.set({ ...shown, ids: [] });
+    selection.set({ ...settle(selection.get(), heldIds, selectionMode), ids: [] });
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass, selection, shown]);
+  }, [isMyTurn, isFinished, isNewRound, onPass, selection, heldIds, selectionMode]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1391,16 +1311,12 @@ export function GameTable({
                   <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
                 </View>
               ) : (
-                // The harness's hook, for the same reason as the table's above: no
-                // `accessible` here — it would hide every card's own label behind one
-                // leaf — so a name on this wrapper would reach nobody.
-                <View {...harnessState({ handState: handA11yLabel })}>
-                  <A11yStatus label={handA11yLabel} />
+                <HandStatus store={shownSelection} cardCount={handOnTable.length}>
                   {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                   <StraightHand
                     faceDown={spectating}
                     cards={handOnTable}
-                    selectedIds={handSelection}
+                    store={shownSelection}
                     selection={uiSelection}
                     onActivate={handleCardPress}
                     disabled={isFinished || spectating}
@@ -1429,33 +1345,26 @@ export function GameTable({
                       gameState.firstPlayMade ? undefined : gameState.startCard?.id
                     }
                   />
-                </View>
+                </HandStatus>
               )}
 
               {!spectating && (
-                <GiocaButton
+                <GiocaControl
+                  store={shownSelection}
+                  hand={sortedHand}
+                  lastPlayedCombination={gameState.lastPlayedCombination}
+                  startCard={gameState.startCard}
+                  firstPlayMade={gameState.firstPlayMade}
+                  isNewRound={isNewRound}
+                  isMyTurn={isMyTurn}
+                  isFinished={isFinished}
+                  giveTo={exchangeIsMine ? exchangeLoserName : null}
                   lit={exchangeIsMine || (isMyTurn && !isFinished && !exchange.active)}
-                  label={exchangeIsMine ? t("exchange.confirm") : t("gameTable.playLabelGioca")}
                   rejectX={giocaRejectX}
-                  flashStyle={giocaFlashStyle}
-                  glowStyle={giocaGlowStyle}
-                  onPress={exchangeIsMine ? handleExchangeGive : handlePlay}
-                  // The visible `3c` suffix is hidden and deliberately not folded
-                  // in here: each card already reports its own selectedness, and a
-                  // button whose name changes on every tap is re-announced on
-                  // every tap. `tests/e2e/helpers/bot.ts` also reads this exact
-                  // sentence as the signal that the play is legal.
-                  a11yLabel={
-                    staged.playable
-                      ? t("gameTable.playA11yValid")
-                      : t("gameTable.playA11yUnavailable", { reason: dimReasonText })
-                  }
-                  exchange={
-                    exchangeIsMine
-                      ? { toName: exchangeLoserName, picked: pickedGiveCard }
-                      : undefined
-                  }
-                  selectedCount={exchangeIsMine ? 0 : selectedIds.length}
+                  rejectPlay={rejectPlay}
+                  onRefuse={showRefusal}
+                  onPlay={onPlay}
+                  onGive={onExchangeGive}
                   size={actionBtn}
                   scale={scale}
                 />
