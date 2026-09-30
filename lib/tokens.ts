@@ -27,7 +27,8 @@ export const Colors = {
   // The lit end of the gold: what the lamp leaves on a gold surface that is
   // currently the table's own subject — the seat on move, the turn chip, GIOCA.
   goldLit:      '#F3E0A6',
-  goldDark:     '#A8832B',
+  goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
+  goldDark:    '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
   goldGhost:  'rgba(201,168,76,0.06)', // wash behind large areas
@@ -191,12 +192,12 @@ export const NoticePalette = {
     neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold, warn: Colors.dangerDim, dot: { color: Colors.textMuted } },
     lit: {
       fill: Colors.chipFill,
-      edge: Colors.goldStrong,
+      edge: Colors.goldLitEdge,
       ink: Colors.goldLit,
-      strong: Colors.gold,
+      strong: Colors.goldLit,
       warn: Colors.dangerDim,
-      glow: { color: Colors.goldLit, opacity: 0.32 },
-      dot: { color: Colors.goldLit, glow: 0.7 },
+      glow: { color: Colors.goldLit, opacity: 0.28 },
+      dot: { color: Colors.goldLit, glow: 1 },
     },
     urgent: {
       fill: Colors.chipFill,

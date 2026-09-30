@@ -7,9 +7,9 @@ import { TableText } from "./TableText";
 import {
   NOTICES,
   noticeBox,
-  noticeGlow,
   noticeRise,
   noticeTiming,
+  selectorGlow,
   type KindTone,
   type NoticeBox,
   type NoticeKind,
@@ -81,7 +81,7 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
-        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(kind, tone, scale), 0),
+        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, selectorGlow(tone, scale), 0),
         motion,
       ]}
     >
@@ -135,7 +135,7 @@ export function NoticeText({
         strong && styles.strong,
         {
           color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
-          fontSize: box.fontSize,
+          fontSize: strong ? box.strongFontSize : box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
         },
         maxWidth !== undefined && { maxWidth: maxWidth * scale },

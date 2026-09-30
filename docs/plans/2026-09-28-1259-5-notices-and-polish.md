@@ -217,6 +217,8 @@ const NOTICE_GALLERY = { /* kind: fixtures */ } satisfies { [K in NoticeKind]: N
   (`openCaptureState`, `resumeSaved`), exporting what it needs rather than copying it.
 - The viewer's lit turn pill matches `#turn.lit`: its edge `rgba(243,224,166,.8)` and its glow, where
   today it is `goldStrong`. The glow is a static shadow, never animated.
+- As built: the turn pill takes all of `#turn`'s box in every tone (padding, gap, the dot and its
+  6 px glow, `#turn b`'s 12 px count), and the lit count is `#turn b`'s `#F3E0A6`.
 - Under `it-IT`, with Besnik (the longest bot name) on move, the turn pill stays inside
   `game-hud-stack`'s box.
 
