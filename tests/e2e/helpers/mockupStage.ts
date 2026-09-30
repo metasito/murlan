@@ -31,7 +31,7 @@ export interface Stage {
   close: () => Promise<void>;
 }
 
-const stage = (page: Page, origin: string | null): Stage => ({
+export const stage = (page: Page, origin: string | null): Stage => ({
   page,
   plate: (selector, run) => readPlate(page, selector, run ?? null, origin),
   boxes: (selector, text = false) =>

@@ -4,6 +4,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   cancelAnimation,
   Easing,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -164,7 +165,14 @@ export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: 
   const opacity = useSharedValue(1);
   useEffect(() => {
     if (half === undefined || dim === undefined) return;
-    opacity.value = withRepeat(withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) }), -1, true);
+    // `noticeBlink` already answers the app's preference; Reanimated's own reads the system's once, at load.
+    opacity.value = withRepeat(
+      withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+      undefined,
+      ReduceMotion.Never
+    );
     return () => {
       cancelAnimation(opacity);
       opacity.value = 1;
