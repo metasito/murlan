@@ -87,6 +87,8 @@ function CaptureHarness() {
       onPass={() => {}}
       onExchangeGive={() => {}}
       onQuit={() => router.replace("/capture")}
+      // Carries a connection like the online table, so the device-offline pill can be photographed.
+      connection={null}
       // The rail's lower knob, where the online table puts reactions. The swing
       // between two lamp positions is a state of its own and the only one that
       // needs an input to reach, so it takes a control that is already part of

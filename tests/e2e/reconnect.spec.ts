@@ -62,17 +62,23 @@ test("online — a dropped connection says so, and the table comes back", async 
     // by an error or left silently frozen.
     await expect(page.getByTestId("notice-turn").getByText(RECONNECTING)).toBeVisible({ timeout: 45_000 });
     await expect(table).toBeVisible();
-    const blink = await page
-      .getByTestId("notice-turn")
-      .getByTestId("turn-chip-dot")
-      .evaluate(async (dot) => {
-        const seen: number[] = [];
-        for (let i = 0; i < 9; i++) {
-          seen.push(Number(getComputedStyle(dot).opacity));
-          await new Promise((r) => setTimeout(r, 125));
-        }
-        return seen;
-      });
+    const sampleDot = () =>
+      page
+        .getByTestId("notice-turn")
+        .getByTestId("turn-chip-dot")
+        .evaluate(async (dot) => {
+          const seen: number[] = [];
+          for (let i = 0; i < 9; i++) {
+            seen.push(Number(getComputedStyle(dot).opacity));
+            // fixed wait on purpose: nine samples 125 ms apart span one 900 ms blink
+            await new Promise((r) => setTimeout(r, 125));
+          }
+          return seen;
+        });
+    const still = await sampleDot();
+    expect(Math.min(...still), `the dot holds still under reduced motion: ${still}`).toBe(1);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const blink = await sampleDot();
     expect(Math.min(...blink), `the reconnecting dot blinks: ${blink}`).toBeLessThanOrEqual(0.4);
     expect(Math.max(...blink), `the reconnecting dot blinks: ${blink}`).toBeGreaterThanOrEqual(0.9);
 
