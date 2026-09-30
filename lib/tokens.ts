@@ -70,6 +70,8 @@ export const Colors = {
   // Engraved line work on the face — neutral, so it never fights the suit colour.
   cardInk:      '#26323C',
   cardEdge:     'rgba(90,78,52,0.45)',
+  // The paper ramp's own shade seen edge-on: a card's lip, and the who-starts tile's.
+  cardLip:      '#D6D0BC',
 
   // Traditional red/black. Suit identity is carried by the pip glyph, so colour
   // is not the only channel. Role: card suit ink, on the card face or anywhere
@@ -217,7 +219,7 @@ export const NoticePalette = {
     neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold },
   },
   panel: {
-    neutral: { fill: Colors.scorePillFoot, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.gold },
+    neutral: { fill: Colors.scorePillFoot, top: Colors.scorePillTop, edge: Colors.goldStrong, ink: Colors.text, strong: Colors.goldLit, quiet: Colors.textMuted, hairline: 'rgba(243,224,166,0.1)' },
   },
 } as const;
 

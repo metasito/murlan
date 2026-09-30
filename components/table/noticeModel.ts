@@ -17,6 +17,7 @@ const MOCKUP = {
   ".passo": { height: 15, padX: 7, gapX: 0, radius: 8, font: 8, weight: 700, tracking: 1.28 },
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
   "#score": { padX: 10, gapX: 6, radius: 12, font: 9.5, weight: 700, tracking: 2 },
+  "#panel": { padX: 10, padY: 10, gapX: 6, radius: 12, font: 15, weight: 700, tracking: 0.3, width: 280 },
 } as const;
 export type NoticeSelector = keyof typeof MOCKUP;
 
@@ -39,15 +40,19 @@ export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
+  whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
 
 const at = (px: number, scale: number) => (px / cardScale(MOCKUP_STAGE_H)) * scale;
+export const mockupPx = at;
 
 export type NoticeBox = {
   height: number | undefined;
+  width: number | undefined;
   padX: number;
+  padY: number;
   gap: number;
   radius: number;
   fontSize: number;
@@ -63,7 +68,9 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
   const height = !("height" in px) ? undefined : px.height === FULL ? CHIP_H(scale) : at(px.height, scale);
   return {
     height,
+    width: "width" in px ? at(px.width, scale) : undefined,
     padX: at(px.padX, scale),
+    padY: "padY" in px ? at(px.padY, scale) : 0,
     gap: at(px.gapX, scale),
     radius: px.radius === FULL ? Radius.full : at(px.radius, scale),
     fontSize: tableFontSize(at(px.font, 1), scale),
@@ -87,6 +94,34 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
     strongFontSize: tableFontSize(TABLE_CHIP.font, scale),
     tracking: TABLE_CHIP.tracking * scale,
     strongTracking: TABLE_CHIP.strongTracking * scale,
+  };
+}
+
+const PANEL_LINES = {
+  main: { font: 15, weight: 700, tracking: 0.3 },
+  sub: { font: 11, weight: 600, tracking: 0.4 },
+  hint: { font: 10, weight: 600, tracking: 1.5 },
+} as const;
+export type PanelLine = keyof typeof PANEL_LINES;
+
+export function panelLine(line: PanelLine, scale: number): { fontSize: number; tracking: number; bold: boolean } {
+  const px = PANEL_LINES[line];
+  return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale), bold: px.weight === 700 };
+}
+
+const PANEL_PARTS = { rowX: 7.5, subY: 2, tileW: 22, tileH: 30, tileRadius: 3, tileLip: 1.5, tileFont: 13, tileSuit: 11, disc: 24, discFont: 10 } as const;
+
+export function panelParts(scale: number) {
+  const p = PANEL_PARTS;
+  return {
+    rowGap: at(p.rowX, scale),
+    subGap: at(p.subY, scale),
+    tile: { width: at(p.tileW, scale), height: at(p.tileH, scale), radius: at(p.tileRadius, scale) },
+    tileLip: at(p.tileLip, scale),
+    tileFont: tableFontSize(at(p.tileFont, 1), scale),
+    tileSuit: at(p.tileSuit, scale),
+    disc: at(p.disc, scale),
+    discFont: tableFontSize(at(p.discFont, 1), scale),
   };
 }
 

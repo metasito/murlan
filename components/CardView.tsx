@@ -50,7 +50,7 @@ import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 // ("spade"), so the mapping has to be explicit. Typed as Record<Suit, string> so
 // the compiler catches a missing or misspelled suit instead of silently
 // yielding undefined.
-const SUIT_COLORS: Record<Suit, string> = {
+export const SUIT_COLORS: Record<Suit, string> = {
   spades: Colors.spade,
   hearts: Colors.heart,
   diamonds: Colors.diamond,
@@ -94,7 +94,7 @@ const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
  * is baked into the definition — nothing has to inherit through <Use>, which is
  * where this kind of hoist usually changes rendering silently.
  */
-function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
+export function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
   if (suit === "clubs") {
     return (
       <G id={id}>
@@ -778,10 +778,6 @@ function CardViewBase({
 }
 
 // ─── Card stock ───────────────────────────────────────────────────────────────
-//
-// A local one-off rather than a design token (lib/tokens.ts): the lip is the
-// paper ramp's own shade seen edge-on, and has no second use to name a token for.
-const STOCK_LIP_COLOR = "#D6D0BC";
 
 /**
  * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
@@ -798,7 +794,7 @@ const STOCK_LIP_COLOR = "#D6D0BC";
 function cardStockShadow(lipHeight: number): Record<string, any> {
   const base = Shadow.card as Record<string, any>;
   if (typeof base.boxShadow !== "string") return base;
-  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}, ${base.boxShadow}` };
+  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${Colors.cardLip}, ${base.boxShadow}` };
 }
 
 // ─── TopLight ─────────────────────────────────────────────────────────────────
