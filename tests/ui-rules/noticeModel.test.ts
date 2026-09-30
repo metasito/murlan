@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Colors, NoticePalette } from "../../lib/tokens.ts";
 import { CHIP_H } from "../../components/seatLayout.ts";
-import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
+import { markAt, NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
 
 const STAGE = 402 / 390;
 const at = (px: number, scale: number) => (px / STAGE) * scale;
@@ -12,7 +12,7 @@ const SCALES = [0.82, 1, 402 / 390, 1.13, 2];
 const near = (actual: number, expected: number, what: string) =>
   assert.ok(Math.abs(actual - expected) < 0.05, `${what}: ${actual} is not the mockup's ${expected}`);
 
-// Today's TableChip (components/table/chrome.tsx on main): 11/7 pt, FontSize.xxs, .15em/.06em.
+// The HUD chip before plan 5 (chrome.tsx's deleted TableChip): 11/7 pt, FontSize.xxs, .15em/.06em.
 test("the HUD combination pill keeps today's box at every scale, 412- and 430-pt phones included", () => {
   for (const s of [...SCALES, 1.07]) {
     const box = noticeBox("hudCombo", s);
@@ -33,7 +33,7 @@ test("every selector's box is the mockup's", () => {
     ".chip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55, bold: false },
     "#turn": { height: 23.7, padX: 13, gap: 7, font: 10, strongFont: 12, tracking: 1.55, bold: false },
     ".floatchip": { height: 23.7, padX: 12, gap: 6, font: 10, tracking: 1.55, bold: false },
-    ".passo": { height: 15, padX: 7, gap: 0, font: 8, tracking: 1.28, radius: 8, bold: true },
+    ".passo": { height: 17, padX: 7, gap: 0, font: 8, tracking: 1.28, radius: 8, bold: true },
     ".cchip": { height: 15, padX: 9, gap: 0, font: 9, tracking: 1.5, bold: true },
     "#score": { padX: 10, gap: 6, font: 9.5, tracking: 2, radius: 12, bold: true },
   } as const;
@@ -65,6 +65,19 @@ test("the who-starts panel takes G1's numbers, and its lines keep the table's fl
     for (const [line, px] of [["main", 15], ["sub", 11], ["hint", 10]] as const) {
       near(panelLine(line, s).fontSize, Math.max(at(px, s), 10), `${line} type at ${s}`);
     }
+  }
+});
+
+// `.passo` is content-box: 15 px and its two 1 px edges. `.seat[data-side] .passo` is centred by translateX(-50%).
+test("a seat mark is a .passo at the mockup's place: 60 left of the top disc, 27 under a side disc", () => {
+  for (const kind of ["passed", "reconnecting", "vacated"] as const) {
+    assert.deepEqual({ shape: NOTICES[kind].shape, selector: NOTICES[kind].selector }, { shape: "chip", selector: ".passo" }, kind);
+  }
+  for (const s of SCALES) {
+    near(markAt("top", s).x, at(-60, s), `top x at ${s}`);
+    near(markAt("top", s).y, at(-8, s), `top y at ${s}`);
+    near(markAt("side", s).x, 0, `side x at ${s}`);
+    near(markAt("side", s).y, at(27, s), `side y at ${s}`);
   }
 });
 

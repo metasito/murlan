@@ -250,6 +250,11 @@ green; "turn fits its band"). Run `tests/e2e/mockupParity.spec.ts`,
   contrast rows; no other component paints a chip.
 - A `passed` state in `lib/captureStates.ts` (two seats passed, the viewer on move) so `ios.yml`
   photographs the marks on iOS (rule 36).
+- As built: `.passo` is content-box, so it draws 17 pt tall (15 and its two 1 pt edges); the mark is
+  held to the drawn box. Its ink stays `textSecondary` (.75 against the mockup's .7). The
+  reconnecting and vacated marks keep their place under the name. The `passed` state is reachable
+  on a development build (`app/capture.tsx`); `ios.yml` runs a Release build and photographs no
+  capture state, so the iOS photograph is the owner's.
 
 **Tests:** new "PASSO" case in *tests/e2e/mockupPolish.spec.ts* (red on the 23 pt pill); edited
 `tests/native/passMarker.test.tsx` (finds the mark by `notice-passed`, counts unchanged) and

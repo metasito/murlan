@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import type { KindTone, NoticeKind } from "../noticeModel";
 import { HudComboPill, TurnChip } from "./hud";
 import { WhoStartsCard } from "./panels";
+import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const turn = (scale: number, lit: boolean, seconds: number) => ({
   scale,
@@ -64,4 +65,9 @@ export const NOTICE_GALLERY = {
       ),
     },
   ],
+  passed: [{ name: "a seat passed", tone: "neutral", render: (scale) => <PassedMark side="side" disc={0} scale={scale} /> }],
+  reconnecting: [
+    { name: "a seat reconnecting", tone: "neutral", render: (scale) => <ReconnectingMark seconds={25} resetKey="gallery" scale={scale} /> },
+  ],
+  vacated: [{ name: "a seat left", tone: "neutral", render: (scale) => <VacatedMark username="Besnik" scale={scale} /> }],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };
