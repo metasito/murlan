@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, type ComponentProps, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
@@ -15,7 +15,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg from "react-native-svg";
 import { Colors, Layer, makeShadow, NoticePalette, Scrim, withAlpha } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { DIAGNOSTICS, diag, type DiagRows } from "@/lib/diagnostics";
 import type { Suit } from "@/lib/game/gameEngine";
+import { clocked } from "./noticeClock";
 import { SUIT_COLORS, SuitShape } from "@/components/CardView";
 import { TableText } from "./TableText";
 import {
@@ -61,7 +63,12 @@ const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
 const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 
-const Ink = createContext<{ paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
+const Ink = createContext<{ kind: NoticeKind; paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
+
+function probed<T>(animation: T, kind: NoticeKind, shape: NoticeShape, phase: DiagRows["notice"]["phase"]): T {
+  if (!DIAGNOSTICS) return animation;
+  return clocked(animation, (ms) => diag({ k: "notice", t: performance.now(), kind, shape, phase, ms }));
+}
 
 export function TableNotice<K extends NoticeKind>({
   kind,
@@ -90,14 +97,20 @@ export function TableNotice<K extends NoticeKind>({
 
   const life = useSharedValue(still && shown ? 1 : 0);
   const risen = useSharedValue(still ? 1 : 0);
+  const wasShown = useRef(false);
   useEffect(() => {
+    const leaving = wasShown.current && !shown;
+    wasShown.current = shown;
     if (still) {
       life.value = shown ? 1 : 0;
+      if (DIAGNOSTICS && shown) diag({ k: "notice", t: performance.now(), kind, shape, phase: "still", ms: 0 });
       return;
     }
+    const entrance = probed(withTiming(1, { duration: enter }), kind, shape, "enter");
+    const out = withTiming(0, { duration: exit });
     life.value = held !== null && shown
-      ? withSequence(withTiming(1, { duration: enter }), withTiming(1, { duration: held }), withTiming(0, { duration: exit }))
-      : withTiming(shown ? 1 : 0, { duration: shown ? enter : exit });
+      ? withSequence(entrance, withTiming(1, { duration: held }), probed(out, kind, shape, "exit"))
+      : shown ? entrance : leaving ? probed(out, kind, shape, "exit") : out;
     if (shown) {
       risen.value = 0;
       risen.value = withTiming(1, { duration: enter });
@@ -106,13 +119,13 @@ export function TableNotice<K extends NoticeKind>({
       cancelAnimation(life);
       cancelAnimation(risen);
     };
-  }, [shown, still, held, enter, exit, life, risen]);
+  }, [shown, still, held, enter, exit, life, risen, kind, shape]);
   const motion = useAnimatedStyle(() => ({
     opacity: life.value,
     transform: [{ translateY: (1 - risen.value) * rise }],
   }));
 
-  const ink = useMemo(() => ({ paint, box, dotGlow: glow.dot, scale }), [paint, box, glow.dot, scale]);
+  const ink = useMemo(() => ({ kind, paint, box, dotGlow: glow.dot, scale }), [kind, paint, box, glow.dot, scale]);
   const panel = shape === "panel";
   const unit = mockupPx(1, scale);
   const { offsetY, blur } = PILL_SHADOW.lifted;
@@ -164,27 +177,33 @@ function useInk(what: string) {
 }
 
 export function NoticeDot({ testID, blink = false }: { testID?: string; blink?: boolean }) {
-  const { paint, box, dotGlow } = useInk("NoticeDot");
+  const { kind, paint, box, dotGlow } = useInk("NoticeDot");
   const reduceMotion = usePrefersReducedMotion();
   const timing = blink ? noticeBlink(reduceMotion) : null;
   const half = timing?.half;
   const dim = timing?.dim;
   const opacity = useSharedValue(1);
   useEffect(() => {
-    if (half === undefined || dim === undefined) return;
+    if (half === undefined || dim === undefined) {
+      return DIAGNOSTICS && blink ? () => diag({ k: "dot", t: performance.now(), kind, opacity: opacity.get() }) : undefined;
+    }
+    let first: number | null = null;
+    const halfEnded = (ms: number) => {
+      if (first === null) {
+        first = ms;
+        return;
+      }
+      diag({ k: "blink", t: performance.now(), kind, period: first + ms });
+      first = null;
+    };
+    const fade = withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) });
     // `noticeBlink` already answers the app's preference; Reanimated's own reads the system's once, at load.
-    opacity.value = withRepeat(
-      withTiming(dim, { duration: half, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      true,
-      undefined,
-      ReduceMotion.Never
-    );
+    opacity.value = withRepeat(DIAGNOSTICS ? clocked(fade, halfEnded) : fade, -1, true, undefined, ReduceMotion.Never);
     return () => {
       cancelAnimation(opacity);
       opacity.value = 1;
     };
-  }, [half, dim, opacity]);
+  }, [half, dim, opacity, blink, kind]);
   const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
   const dot = paint.dot;
   if (!dot) throw new Error("this notice's tone paints no dot");

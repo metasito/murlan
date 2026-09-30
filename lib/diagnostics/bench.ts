@@ -11,7 +11,13 @@ export interface BenchContext {
   armFrames(on: boolean): Promise<void>;
   /** Each seat's mean linear luminance round its ring, in one snapshot of the felt on screen; throws when there is none. */
   feltSample(): Promise<Readonly<Record<LampSide, number>>>;
+  /** Each notice kind's gallery fixtures, by name. */
+  gallery: Readonly<Record<string, readonly string[]>>;
+  /** One gallery fixture mounted over the table, or none. */
+  showNotice(shot: NoticeShot | null): void;
 }
+
+export type NoticeShot = { kind: string; fixture: number };
 
 type Scenario = (ctx: BenchContext) => Promise<void>;
 const scenarios = new Map<string, Scenario>();
