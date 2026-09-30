@@ -19,7 +19,6 @@ jest.mock("@/lib/accessibility", () => ({
 
 import { getAnimatedStyle } from "react-native-reanimated";
 import { GameTable } from "@/components/GameTable";
-import { getVisibleText } from "./visibilityHelpers";
 import type { Card, Combination, GameState, Player } from "@/lib/game/gameEngine";
 
 const METRICS = {
@@ -43,6 +42,8 @@ const SINGLE_CARD: Card = { id: "K_hearts", rank: "K", suit: "hearts", isJoker: 
 const WINNING_PLAY: Combination = { type: "single", cards: [SINGLE_CARD], strength: 13 };
 
 const noop = () => {};
+/** #1259 Q1: a mark enters in the mockup's 100 ms; under reduced motion the fade stays. */
+const MARK_ENTER_MS = 100;
 const opacityOf = (testID: string) =>
   (getAnimatedStyle(screen.getByTestId(testID, { includeHiddenElements: true })) as { opacity?: number }).opacity ?? 0;
 const table = (gameState: GameState, matchOver: boolean) => (
@@ -123,8 +124,12 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
       });
     }
 
-    const pile = within(screen.getByTestId("pile-area"));
-    getVisibleText(pile, /bomb/i);
+    await act(async () => {
+      jest.advanceTimersByTime(MARK_ENTER_MS);
+    });
+    const mark = within(screen.getByTestId("pile-area")).getByTestId("notice-combo", { includeHiddenElements: true });
+    within(mark).getByText(/bomb/i, { includeHiddenElements: true });
+    expect((getAnimatedStyle(mark) as { opacity?: number }).opacity).toBe(1);
 
     await r.unmount();
   });
