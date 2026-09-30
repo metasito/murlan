@@ -51,6 +51,8 @@ import {
   shakeOffset,
   shakeAmplitudeFor,
   passedSeats,
+  seatsJustPassed,
+  floatAt,
   sparkOffset,
   SPARK_COUNT,
   flareKindFor,
@@ -75,6 +77,7 @@ import {
   clientSources,
   scanSources,
 } from "../helpers/sourceScan.ts";
+import { phoneTable } from "../helpers/phoneTable.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -1534,4 +1537,35 @@ describe("readExchangeLegs", () => {
       legs(3, 0, [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", leftCards)]).receive.to;
     assert.notDeepEqual(at(1), at(13));
   });
+});
+
+describe("seatsJustPassed", () => {
+  const hands = (): Player[] =>
+    (["5", "7", "9", "J"] as const).map((rank, i) => makePlayer(`player_${i}`, [c(rank, "spades"), c("3", "hearts")]));
+  const view = (s: GameState) => ({
+    currentTurnIndex: s.currentTurnIndex,
+    lastPlayedBy: s.lastPlayedBy,
+    lastPlayedCombination: s.lastPlayedCombination,
+    roundWinner: s.roundWinner,
+    outOfCards: s.players.map((p) => p.hand.length === 0),
+  });
+
+  test("each engine pass names the seat that made it, the one closing the round too; a play names nobody", () => {
+    let s = makeState(hands(), { currentTurnIndex: 3, lastPlayedBy: 3, firstPlayMade: true });
+    const step = (next: GameState) => {
+      const passed = seatsJustPassed(view(s), view(next));
+      s = next;
+      return passed;
+    };
+    assert.deepEqual(step(processPlay(s, buildCombination([c("J", "spades")])!)), []);
+    for (const seat of [2, 1, 0]) assert.deepEqual(step(processPass(s)), [seat], `seat ${seat}'s pass`);
+    assert.equal(s.lastPlayedCombination, null, "the third pass closed the round");
+    assert.deepEqual(seatsJustPassed(view(s), view(s)), [], "an unchanged state names nobody");
+  });
+});
+
+test("the float slot is the mockup's .floatchip on its own stage: centred on the table, its top at 300", () => {
+  const at = floatAt(phoneTable(874, 402));
+  assert.ok(Math.abs(at.x - 457) <= 0.5, `x ${at.x}`);
+  assert.ok(Math.abs(at.y - 300) <= 0.5, `y ${at.y}`);
 });

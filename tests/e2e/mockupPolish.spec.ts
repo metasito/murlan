@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { appAt, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { tap } from "./helpers/press";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
 import { cardScale } from "../../components/cardFaceModel";
 import { RANK_SLOTS } from "../../lib/game/gameEngine";
@@ -201,6 +202,35 @@ for (const phone of STAGES) {
     expect(clipped, "the label is cut short").toBe(false);
   });
 }
+
+const FLOAT = '[data-testid="notice-passFloat"]';
+
+test("float: the viewer's own pass is the mockup's .floatchip, in its place, and goes", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "clock", 4600);
+  const want = await shown(mockup, ".floatchip");
+  await mockup.close();
+
+  const app = await appAt(browser, baseURL!, LIT_WITH_COUNT);
+  await tap(app.page, app.page.getByTestId("btn-passa"));
+  await expect
+    .poll(async () => (await app.plate(FLOAT))?.opacity, { message: "the float risen and faded in", intervals: [20], timeout: 30_000 })
+    .toBe(1);
+  const got = (await app.plate(FLOAT))!;
+  await expect.poll(async () => (await app.plate(FLOAT))?.opacity ?? 0, { message: "the float gone", timeout: 5_000 }).toBe(0);
+  await app.close();
+
+  expect.soft(got.fill, "the fill").toBe(want.fill);
+  expect.soft(got.edge, "the edge").toBe(want.edge);
+  expect.soft(got.ink, "the ink").toBe(want.ink);
+  expect.soft(got.glow, "a float casts no glow").toBe(want.glow);
+  expect.soft(got.fontSize, "the text").toBe(want.fontSize);
+  expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.box.w - want.box.w), `the width, ${got.box.w} against ${want.box.w}`).toBeLessThanOrEqual(ONE_PT);
+  const centre = (b: Rect) => b.x + b.w / 2;
+  expect.soft(Math.abs(centre(got.box) - centre(want.box)), `the centre, ${centre(got.box)} against ${centre(want.box)}`).toBeLessThanOrEqual(ONE_PT);
+  expect.soft(Math.abs(got.box.y - want.box.y), `the top, ${got.box.y} against ${want.box.y}`).toBeLessThanOrEqual(ONE_PT);
+});
 
 const MARK = '[data-testid="notice-passed"]';
 const rgb = (colour: string) => colour.replace(/rgba?\(([^,]+),([^,]+),([^,)]+).*/, "$1,$2,$3").replace(/\s/g, "");
