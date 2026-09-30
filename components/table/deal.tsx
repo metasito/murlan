@@ -102,15 +102,17 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
   const table = useCardTable();
   const w = CARD_BACK_W(scale * BACK_SCALE);
   const h = CARD_BACK_H(scale * BACK_SCALE);
+  const pile = table?.pile;
+  const felt = table?.felt;
   useCardRect(
     table,
     `deal:${legs[0].key}`,
     () => {
       "worklet";
       const f = dealFlight(legAt(legs, clock.value), clock.value);
-      return table && f.inAir ? dealBackRect(table.pile, table, f, w, h) : null;
+      return pile && felt && f.inAir ? dealBackRect(pile, felt, f, w, h) : null;
     },
-    [table, legs, clock, w, h]
+    [pile, felt, legs, clock, w, h]
   );
   return (
     <Animated.View testID="dealt-back" style={[dealStyles.back, style]}>

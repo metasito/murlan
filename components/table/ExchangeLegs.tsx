@@ -123,16 +123,18 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
   const backScale = (scale * BACK_SCALE) / FAN_CARD_SCALE;
   const backW = CARD_BACK_W(backScale);
   const backH = CARD_BACK_H(backScale);
+  const pile = table?.pile;
+  const felt = table?.felt;
   useCardRect(
     table,
     `leg:${testID}`,
     () => {
       "worklet";
       const p = pose.value;
-      if (!table || !p.visible) return null;
-      return legCardRect(table.pile, table, p, p.face ? w : backW, p.face ? h : backH);
+      if (!pile || !felt || !p.visible) return null;
+      return legCardRect(pile, felt, p, p.face ? w : backW, p.face ? h : backH);
     },
-    [table, pose, w, h, backW, backH]
+    [pile, felt, pose, w, h, backW, backH]
   );
   const face = useAnimatedStyle(() => ({ opacity: pose.value.face ? 1 : 0 }));
   const back = useAnimatedStyle(() => ({ opacity: pose.value.face ? 0 : 1 }));

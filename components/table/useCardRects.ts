@@ -3,9 +3,14 @@ import { useAnimatedReaction, useSharedValue, type SharedValue } from "react-nat
 import type { OpponentSide } from "@/components/seatLayout";
 import type { CardRect, CardRects, Felt, Point } from "./cardRects";
 
-/** The one registry, and the laid-out places every owner measures its cards from, in window points. */
-export interface CardTable extends Felt {
+/**
+ * The one registry, and the laid-out places every owner measures its cards from, in window points.
+ * A publisher's `read` takes the places and never `rects`: a mapper re-runs on every shared value its
+ * closure reaches, so one reaching the registry would re-run on every other card's write.
+ */
+export interface CardTable {
   rects: SharedValue<CardRects>;
+  felt: Felt;
   pile: Point;
   /** The hand zone's centre before its lift. */
   hand: Point;
@@ -35,7 +40,7 @@ export function useCardTableValue(places: Places, felt: Felt, handLift: SharedVa
       if (e2e.murlanCardRects === read) delete e2e.murlanCardRects;
     };
   }, [rects]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), sx, sy, rects, handLift }), [key, sx, sy, rects, handLift]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), felt: { sx, sy }, rects, handLift }), [key, sx, sy, rects, handLift]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

@@ -72,6 +72,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   shiftX: [0, 24],
   received: [false, true],
   hidden: [{ value: [] }, { value: [] }],
+  rects: [{ place: { x: 0 } }, { place: { x: 0 } }],
 };
 
 /**

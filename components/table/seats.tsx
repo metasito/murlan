@@ -131,7 +131,7 @@ function CardFan({
   const drawn = useMemo(
     () =>
       table && count > 0
-        ? fanBackRects(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), table, {
+        ? fanBackRects(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), table.felt, {
             side,
             count,
             backScale: scale * BACK_SCALE,

@@ -256,17 +256,19 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   const { sweep, flinchY, flinchBy, beaten, key, out } = group;
   const slotX = box.left + box.width / 2 - to.x;
   const slotY = box.top + box.height / 2 - to.y;
+  const pile = table?.pile;
+  const felt = table?.felt;
   useCardRect(
     table,
     `pile:${card.id}`,
     () => {
       "worklet";
-      if (!table || out) return null;
+      if (!pile || !felt || out) return null;
       const g = groupPose(sweep, turned.value, beaten && flinchBy.value !== key ? flinchY.value : 0);
       if (g.opacity <= 0) return null;
       const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
       const c = catching?.value ?? 0;
-      return pileCardRect(table.pile, table, g, wobbleAt(elapsed.value, spec.end, still), {
+      return pileCardRect(pile, felt, g, wobbleAt(elapsed.value, spec.end, still), {
         slotX,
         slotY,
         x: p.x,
@@ -280,7 +282,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
         glow: c,
       });
     },
-    [table, out, sweep, turned, beaten, flinchBy, flinchY, key, still, elapsed, i, spec, from, to, catching, cardScale, slotX, slotY, box.width, box.height]
+    [pile, felt, out, sweep, turned, beaten, flinchBy, flinchY, key, still, elapsed, i, spec, from, to, catching, cardScale, slotX, slotY, box.width, box.height]
   );
   const style = useAnimatedStyle(() => {
     const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
