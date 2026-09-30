@@ -482,7 +482,9 @@ function readExtra(page: Page, sel: { stage: string; plate: string; beside: stri
     const plate = q(s.plate);
     const cs = getComputedStyle(plate);
     const inside = [...plate.querySelectorAll("*")];
-    const inked = [plate, ...inside].find((n) => [...n.childNodes].some((c) => c.nodeType === Node.TEXT_NODE && c.textContent!.trim() !== ""));
+    const inked = [plate, ...inside].find(
+      (n) => !/ionicons/i.test(getComputedStyle(n).fontFamily) && [...n.childNodes].some((c) => c.nodeType === Node.TEXT_NODE && c.textContent!.trim() !== ""),
+    );
     const dot = inside.find((n) => {
       const r = n.getBoundingClientRect();
       return r.width > 3 && r.width < 9 && Math.abs(r.width - r.height) < 0.5 && getComputedStyle(n).backgroundColor !== "rgba(0, 0, 0, 0)";
