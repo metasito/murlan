@@ -102,6 +102,7 @@ import {
   type SelectionMode,
 } from "@/components/table/selection";
 import { useSelection } from "@/components/table/useSelection";
+import { useTapTrace } from "@/lib/tapTrace";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
@@ -868,6 +869,7 @@ export function GameTable({
   );
   const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
   useBenchHandle("cardPress", uiSelection.tapFromJs);
+  const tapTrace = useTapTrace();
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
@@ -1386,6 +1388,9 @@ export function GameTable({
                 // `accessible` here — it would hide every card's own label behind one
                 // leaf — so a name on this wrapper would reach nobody.
                 <View {...harnessState({ handState: handA11yLabel })}>
+                  {process.env.EXPO_PUBLIC_E2E_FAST === "1" && (
+                    <View testID="tap-trace" accessible accessibilityLabel={tapTrace || "empty"} style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1 }} />
+                  )}
                   <A11yStatus label={handA11yLabel} />
                   {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                   <StraightHand

@@ -40,6 +40,7 @@ appId: "${MAESTRO_APP_ID}"
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
+      MurlanE2EOpener: "1"
 - runFlow:
     commands:
       - extendedWaitUntil:
@@ -76,6 +77,14 @@ appId: "${MAESTRO_APP_ID}"
     visible:
       id: "btn-passa"
     timeout: 60000
+# iOS deals this seat the opener (`lib/e2eOpener.ts`), so the tap on a card below runs on every ios.yml run.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Inizi tu.*"
+          timeout: 30000
 - runFlow:
     when:
       visible: "Inizi tu.*"
@@ -83,6 +92,9 @@ appId: "${MAESTRO_APP_ID}"
       - tapOn:
           id: "card-start"
           waitToSettleTimeoutMs: 500
+      - copyTextFrom:
+          id: "tap-trace"
+      - evalScript: ${console.log('TAPTRACE ' + maestro.copiedText)}
       - assertVisible: "Gioca le carte selezionate"
       - tapOn:
           id: "btn-gioca"

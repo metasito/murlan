@@ -32,6 +32,7 @@ import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
 import type { HandSelection } from "./useSelection";
+import { traceTap } from "@/lib/tapTrace";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
@@ -1061,6 +1062,7 @@ export function StraightHand({
     onTouchesDown: (e) => {
       const touch = e.allTouches[0];
       if (touch === undefined) return;
+      scheduleOnRN(traceTap, `D x=${touch.x.toFixed(1)} y=${touch.y.toFixed(1)}`);
       fingerX.value = touch.x;
       fingerY.value = touch.y;
       grabX.value = touch.x;
@@ -1147,12 +1149,15 @@ export function StraightHand({
       if (e.pointerType === PointerType.KEY) return;
       const i = cardUnder(e.x, e.y);
       pressed.value = i === null || strips.refused[i] ? null : strips.ids[i];
+      scheduleOnRN(traceTap, `B ui=${String((globalThis as { _WORKLET?: boolean })._WORKLET)} x=${e.x.toFixed(1)} y=${e.y.toFixed(1)} i=${i} id=${pressed.value} n=${strips.ids.length} l0=${strips.lefts[0]?.toFixed(1)} w0=${strips.widths[0]?.toFixed(1)} t0=${strips.tops[0]?.toFixed(1)} lifted=${lifted?.value.length}`);
     },
     onActivate: () => {
       const id = pressed.value;
+      scheduleOnRN(traceTap, `A id=${id} picking=${picking.value}`);
       if (id !== null && !picking.value) tapSelection(id);
     },
     onFinalize: () => {
+      scheduleOnRN(traceTap, `F`);
       pressed.value = null;
     },
   });

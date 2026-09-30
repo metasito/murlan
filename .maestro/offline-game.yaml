@@ -46,6 +46,7 @@ appId: "${MAESTRO_APP_ID}"
     arguments:
       AppleLanguages: "(it-IT)"
       AppleLocale: "it_IT"
+      MurlanE2EOpener: "1"
 # Waited for and exited on the Skip button, which the header carries on every beat.
 # "GUIDA RAPIDA" is the card title of an `info` beat only — a `play` beat titles the card
 # after itself and `complete` has its own — so gating on it would skip the block on most of
@@ -161,6 +162,14 @@ appId: "${MAESTRO_APP_ID}"
     visible:
       id: "btn-passa"
     timeout: 60000
+# iOS deals this seat the opener (`lib/e2eOpener.ts`), so the tap on a card below runs on every ios.yml run.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Inizi tu.*"
+          timeout: 30000
 # Opening is not optional for the seat that has to do it: passing is illegal
 # until the first card is down, so a flow that skips this waits out the whole
 # hand tapping a button that can never enable.
@@ -190,6 +199,9 @@ appId: "${MAESTRO_APP_ID}"
       - tapOn:
           id: "card-start"
           waitToSettleTimeoutMs: 500
+      - copyTextFrom:
+          id: "tap-trace"
+      - evalScript: ${console.log('TAPTRACE ' + maestro.copiedText)}
       # The button turns on only for a legal selection, so this is what says the
       # tap reached the card the banner asked for rather than a neighbour.
       - assertVisible: "Gioca le carte selezionate"
