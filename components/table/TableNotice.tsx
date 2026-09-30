@@ -62,6 +62,7 @@ const TILE_CAST = withAlpha(Colors.shadow, 0.5);
 const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
 const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
+// A one-off: how often diagnostics read the calm dot, not a motion the player sees.
 const DOT_SAMPLE_MS = 100;
 
 const Ink = createContext<{ kind: NoticeKind; paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
