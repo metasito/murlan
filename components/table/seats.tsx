@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, type ViewProps } from "react-native";
+import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
 import { mockupPx } from "./noticeModel";
@@ -38,7 +38,7 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
-import { Colors, LastCard, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/theme";
+import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing } from "@/lib/theme";
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Combination, Player } from "@/lib/game/gameEngine";
@@ -649,6 +649,7 @@ function SeatWho({
   focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
+  const lit = isActive || mark?.lit === true;
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
   const labelLeft =
     anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
@@ -672,12 +673,13 @@ function SeatWho({
         >
           <TableText
             testID="seat-name"
+            {...({ dataSet: { lit: String(lit) } } as TextProps)}
             style={[
               seatStyles.oppName,
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
               { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
-              (isActive || mark?.lit) && seatStyles.oppNameActive,
+              lit && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
           >
@@ -850,8 +852,8 @@ const seatStyles = StyleSheet.create({
   whoLabelLeft: { alignItems: "flex-start" },
   whoLabelRight: { alignItems: "flex-end" },
 
-  // The same glass as the HUD chips. The lamp can stand directly over any seat,
-  // and on the felt's lit band the label alone does not clear AA.
+  // Bare on the felt, as the mockup's `.nm`: its ink is held to 4.5:1 over the
+  // felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.textMuted,
@@ -859,13 +861,6 @@ const seatStyles = StyleSheet.create({
     textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
-    backgroundColor: Colors.chipFill,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Spacing.xs,
-    // No `overflow: hidden`. The plate is this element's own background and
-    // has no children to clip, so the only thing it ever cut off was the
-    // label's own glyphs once the OS text setting grew them past the line box
-    // this element was sized for.
   },
   oppNameActive: { color: Colors.goldLit },
 

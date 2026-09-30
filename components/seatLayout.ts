@@ -226,7 +226,9 @@ const SEAT_NAME_LINE = 17;
  * the gap under it and the badge row, all four of `whoLabel`'s own lengths
  * (components/table/seats.tsx). A side seat's label runs inward rather than
  * upward and does not need this, but the top seat's does — drawn off the top
- * of the screen otherwise.
+ * of the screen otherwise. The badge row keeps a HUD chip's height though its
+ * marks are the shorter `.passo`: shrinking it would lift the top ring, which
+ * the mockup specs measure.
  */
 export const SEAT_LABEL_GAP = Spacing.xxs;
 export const SEAT_LABEL_PAD = Spacing.xs;

@@ -49,6 +49,8 @@ const ctx = (showTable: BenchContext['showTable'] = () => advance(0)): BenchCont
   frames: () => {},
   armFrames: async () => {},
   feltSample: () => Promise.reject(new Error('seatAnchors samples no felt')),
+  gallery: {},
+  showNotice: () => {},
 });
 
 describe('the seatAnchors scenario, the ring probe and the gate', () => {

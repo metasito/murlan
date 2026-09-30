@@ -9,3 +9,4 @@ import "./landingSync";
 import "./seatAnchors";
 import "./lampVariants";
 import "./threadLoad";
+import "./noticeGallery";

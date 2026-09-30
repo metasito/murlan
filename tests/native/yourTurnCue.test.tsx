@@ -1,8 +1,9 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import { act, render, renderHook, within } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { makeMutable } from "react-native-reanimated";
 import { NO_LANDING } from "@/components/table/useFlightClock";
-import { Hold } from "@/lib/tokens";
+import { Colors, Hold } from "@/lib/tokens";
 import type { Combination } from "@/lib/game/gameEngine";
 import { bootFeedback, ctxAt, haptics, sounds, startsOf } from "./helpers/feedback";
 import { card, farthest, frameOfFirst, PAIR, tableAfter, throwPair, useFeedbackOnTimeline } from "./helpers/landing";
@@ -93,6 +94,9 @@ describe("the turn-arrival cue", () => {
     const { frame, drawn } = await frameOfFirst(view, topLit);
     expect(drawn[0]).toBeGreaterThan(1);
     expect(drawn[frame]).toBe(0);
+    const name = (seat: string) => within(view.getByTestId(seat)).getByTestId("seat-name").props;
+    expect([name("top-seat").dataSet?.lit, StyleSheet.flatten(name("top-seat").style).color]).toEqual(["true", Colors.goldLit]);
+    expect(name("side-seat-left").dataSet?.lit).toBe("false");
     await view.unmount();
   });
 });

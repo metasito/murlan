@@ -55,9 +55,12 @@ export function TurnChip({
   chipText,
   spokenSeat,
   connection: carried = null,
+  frozen = false,
 }: {
   seconds: number;
   active: boolean;
+  /** Shows `seconds` without counting down or sounding: the notice gallery's clocks. */
+  frozen?: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
   resetKey: string;
   onExpire?: () => void;
@@ -91,7 +94,7 @@ export function TurnChip({
   }
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || frozen) return;
     let remaining = seconds;
     let sounding = false;
     const stop = () => {
@@ -115,7 +118,7 @@ export function TurnChip({
       clearInterval(id);
       stop();
     };
-  }, [active, resetKey, seconds]);
+  }, [active, frozen, resetKey, seconds]);
 
   const threshold = urgentThresholdSeconds(seconds);
   const ember = lit && active && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;

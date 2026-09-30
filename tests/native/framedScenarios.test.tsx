@@ -26,6 +26,8 @@ const table: BenchContext = {
   feltSample: async () => {
     throw new Error('unused');
   },
+  gallery: {},
+  showNotice: () => {},
 };
 
 beforeEach(() => {

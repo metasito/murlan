@@ -187,6 +187,16 @@ describe('the turn pill', () => {
     });
   }
 
+  it("the gallery's clocks stand still, so its last-seconds pill stays ember however long the bench shows it", async () => {
+    for (const fixture of fixtures('turn')) {
+      const r = await render(fixture.render(S));
+      await tick(CLOCK_RUNNING_OUT_SECONDS + 1);
+      const [plate] = screen.getAllByTestId('notice-turn', { includeHiddenElements: true });
+      expect([fixture.name, StyleSheet.flatten(plate.props.style).borderColor]).toEqual([fixture.name, edgeOf('turn', fixture.tone)]);
+      await r.unmount();
+    }
+  });
+
   it("turns ember in the lit pill's last CLOCK_RUNNING_OUT_SECONDS, with #1265's colours and glow", async () => {
     const r = await render(pill(true));
     await tick(30 - CLOCK_RUNNING_OUT_SECONDS);

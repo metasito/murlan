@@ -24,6 +24,11 @@ export interface DiagRows {
   lampLegibility: { side: LampSide; ratio: number };
   throw: Record<never, never>;
   half: { name: "frozen" | "swaying" | "on" | "off"; pair: number };
+  notice: { kind: string; shape: string; phase: "enter" | "exit" | "still"; ms: number; dt: number; src?: "gallery" };
+  blink: { kind: string; period: number };
+  dot: { kind: string; opacity: number };
+  gallery: { kinds: number; fixtures: number };
+  shown: { kind: string; fixture: number; reduced: boolean };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];

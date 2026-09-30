@@ -324,9 +324,56 @@ function feltOpaque(rows) {
   return { pass: outcome !== null, metrics: { outcome, wins, recorded, medianHz: medianHz(rows), on: brief(0), off: brief(1) } };
 }
 
+// D2: a pill or panel enters in 160 ms. Q1: a mark (chip) or float in 100, the net dot blinks every 900.
+const NOTICE_ENTER_MS = { pill: 160, panel: 160, chip: 100, float: 100 };
+const NET_BLINK_MS = 900;
+const GALLERY_ROUNDS = 5;
+// An entrance ends on the first frame at or past its length, so it may overrun by that frame's own interval.
+const ENTER_SLACK_MS = 1;
+// The calm dot is sampled every 100 ms of its 2 s showing (TableNotice's DOT_SAMPLE_MS): half of those is a floor.
+const DOT_SAMPLES_MIN = 10;
+
+function noticeGallery(rows) {
+  const plan = rows.find((r) => r.k === "gallery");
+  const shows = rows.filter((r) => r.k === "shown").sort((a, b) => a.t - b.t);
+  const calmFrom = shows.find((s) => s.reduced)?.t ?? Infinity;
+  const notices = rows.filter((r) => r.k === "notice");
+  const unseen = shows.filter((s, i) =>
+    !notices.some((n) => n.src === "gallery" && n.kind === s.kind && (n.phase === "enter" || n.phase === "still") && n.t >= s.t && n.t < (shows[i + 1]?.t ?? Infinity))
+  ).length;
+  const frameMs = Math.min(1000 / medianHz(rows), 1000 / 60);
+  const enter = Object.fromEntries(
+    Object.entries(NOTICE_ENTER_MS).map(([shape, ms]) => {
+      const entrances = notices.filter((n) => n.phase === "enter" && n.shape === shape);
+      const off = entrances.map((n) => (n.ms < ms ? ms - n.ms : Math.max(0, n.ms - ms - (n.dt ?? 0))));
+      return [shape, { p90: p90(entrances.map((n) => n.ms)), off: p90(off) }];
+    })
+  );
+  const periods = rows.filter((r) => r.k === "blink" && r.t < calmFrom).map((r) => r.period);
+  const calmBlinks = rows.filter((r) => r.k === "blink" && r.t >= calmFrom).length;
+  const calmDots = rows.filter((r) => r.k === "dot" && r.t >= calmFrom).map((r) => r.opacity);
+  const dotRuns = shows
+    .map((s, i) => rows.filter((r) => r.k === "dot" && r.t >= s.t && r.t < (shows[i + 1]?.t ?? Infinity)).length)
+    .filter((n, i) => shows[i].reduced && n > 0);
+  const periodOff = Math.abs(median(periods) - NET_BLINK_MS);
+  const b = burstStalls(rows);
+  const moving = shows.filter((s) => !s.reduced).length;
+  const calm = shows.length - moving;
+  const pass =
+    plan !== undefined && plan.fixtures > 0 && moving === GALLERY_ROUNDS * plan.fixtures && calm === plan.fixtures &&
+    new Set(shows.map((s) => s.kind)).size === plan.kinds && unseen === 0 &&
+    Object.values(enter).every((e) => e.off <= ENTER_SLACK_MS) &&
+    periods.length >= GALLERY_ROUNDS && periodOff <= frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) && dotRuns.every((n) => n >= DOT_SAMPLES_MIN) &&
+    b.frames > 0 && b.jsTicks > 0 && b.stalls === 0;
+  return {
+    pass,
+    metrics: { shows: shows.length, moving, calm, unseen, frameMs, enter, periods: periods.length, periodMs: median(periods), calmBlinks, calmDots: calmDots.length, stalls: b.stalls, frames: b.frames, jsTicks: b.jsTicks },
+  };
+}
+
 export const GATES = {
   pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
-  throwStalls, restCost, feltOpaque,
+  throwStalls, restCost, feltOpaque, noticeGallery,
 };
 
 function bracket(rows, scenario) {

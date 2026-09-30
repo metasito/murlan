@@ -45,6 +45,8 @@ function litTable(lift: number): BenchContext {
       const lit = onMove;
       return Object.fromEntries(LAMP_SIDES.map((s) => [s, s === lit ? lift : 1])) as Record<LampSide, number>;
     },
+    gallery: {},
+    showNotice: () => {},
   };
 }
 

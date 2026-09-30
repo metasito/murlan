@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useKeepAwake } from "expo-keep-awake";
 import { GameTable } from "@/components/GameTable";
+import { NOTICE_GALLERY, type NoticeFixture } from "@/components/table/notices/gallery";
+import type { NoticeKind } from "@/components/table/noticeModel";
+import { NoticeSource } from "@/components/table/TableNotice";
 import type { GameState } from "@/lib/game/gameEngine";
-import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
+import { Colors, FontSize, Layer, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { feltOnly, legibilityRing } from "@/components/table/legibilityRing";
 import { benchHandles, diag } from "@/lib/diagnostics";
 import { LAMP_SIDES, annulusLuminance, type LampSide } from "@/lib/diagnostics/lampLegibility";
 import { recorder } from "@/lib/diagnostics/recorder";
-import { benchScenarios, type BenchContext } from "@/lib/diagnostics/bench";
+import { benchScenarios, type BenchContext, type NoticeShot } from "@/lib/diagnostics/bench";
 import { benchBuild } from "@/lib/diagnostics/build";
 import { FrameProbe, armFrames, recordFrames } from "@/lib/diagnostics/FrameProbe";
 import { startJsLag } from "@/lib/diagnostics/jsLag";
@@ -28,6 +31,21 @@ async function feltSample(): Promise<Record<LampSide, number>> {
   return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
 }
 
+const GALLERY = Object.fromEntries(Object.entries(NOTICE_GALLERY).map(([kind, fixtures]) => [kind, fixtures.map((f) => f.name)]));
+
+/** Its own state, so a fixture shown or hidden renders the fixture alone and never the table beneath. */
+function GalleryStage({ bind }: { bind: (show: (shot: NoticeShot | null) => void) => void }) {
+  const [shot, setShot] = useState<NoticeShot | null>(null);
+  useEffect(() => bind(setShot), [bind]);
+  if (!shot) return null;
+  const fixture = (NOTICE_GALLERY[shot.kind as NoticeKind] as NoticeFixture[])[shot.fixture];
+  return (
+    <View pointerEvents="none" style={styles.stage}>
+      <NoticeSource.Provider value="gallery">{fixture.render(1)}</NoticeSource.Provider>
+    </View>
+  );
+}
+
 const collectorHost = (param: string | undefined) =>
   param ?? (process.env.EXPO_PUBLIC_DOMAIN ? new URL(process.env.EXPO_PUBLIC_DOMAIN).hostname : "127.0.0.1");
 
@@ -40,6 +58,10 @@ export function BenchScreen() {
   const running = useRef(false);
   const autoRan = useRef(false);
   const stopJs = useRef<(() => void) | null>(null);
+  const showNotice = useRef<(shot: NoticeShot | null) => void>(() => {});
+  const bindStage = useCallback((show: (shot: NoticeShot | null) => void) => {
+    showNotice.current = show;
+  }, []);
 
   const run = useCallback(
     async (only?: string[]) => {
@@ -64,6 +86,8 @@ export function BenchScreen() {
         },
         armFrames,
         feltSample,
+        gallery: GALLERY,
+        showNotice: (shot) => showNotice.current(shot),
       };
       for (const [name, scenario] of benchScenarios()) {
         if (only && !only.includes(name)) continue;
@@ -112,12 +136,14 @@ export function BenchScreen() {
           </Text>
         </ScrollView>
       )}
+      <GalleryStage bind={bindStage} />
     </>
   );
 }
 
 const styles = StyleSheet.create({
   page: { padding: Spacing.lg, gap: Spacing.md, backgroundColor: Colors.bg },
+  stage: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center", zIndex: Layer.alert },
   button: { minWidth: TOUCH_TARGET_MIN, minHeight: TOUCH_TARGET_MIN, padding: Spacing.md, backgroundColor: Colors.bgSurface },
   text: { ...Type.bodyStrong, fontSize: FontSize.sm },
 });

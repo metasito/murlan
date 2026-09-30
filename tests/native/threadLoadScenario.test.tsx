@@ -36,6 +36,8 @@ const table: BenchContext = {
   feltSample: async () => {
     throw new Error('unused');
   },
+  gallery: {},
+  showNotice: () => {},
 };
 
 const cardsInHand = (s: GameState) => s.players.reduce((n, p) => n + p.hand.length, 0);

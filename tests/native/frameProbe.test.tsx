@@ -100,6 +100,8 @@ describe('the frame loop runs only while armed or recording', () => {
         feltSample: async () => {
           throw new Error('unused');
         },
+        gallery: {},
+        showNotice: () => {},
       })
     );
     const dts = mockRows.flatMap((r) => (r.k === 'frame' ? [r.dt] : []));

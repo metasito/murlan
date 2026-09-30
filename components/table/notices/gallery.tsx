@@ -24,6 +24,7 @@ const turn = (scale: number, lit: boolean, seconds: number) => ({
   lit,
   seconds,
   active: true,
+  frozen: true,
   resetKey: "gallery",
   chipText: lit ? "Your turn" : "Turn of Besnik",
   spokenSeat: "",
