@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { makeShadow, NoticePalette } from "@/lib/theme";
@@ -44,13 +44,7 @@ export function TableNotice<K extends NoticeKind>({
   const shape: NoticeShape = NOTICES[kind].shape;
   const paint = (NoticePalette[shape] as Record<string, Paint>)[tone];
   const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
-  const [pulse, setPulse] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setPulse((p) => 1 - p), 200);
-    return () => clearInterval(id);
-  }, []);
-  const still = noticeGlow(kind, tone, scale);
-  const glow = { ...still, plate: still.plate + pulse * 4 };
+  const glow = noticeGlow(kind, tone, scale);
   const reduceMotion = usePrefersReducedMotion();
   const { enter, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
