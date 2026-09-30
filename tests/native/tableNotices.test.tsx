@@ -131,8 +131,12 @@ describe('the turn pill', () => {
       const r = await render(pill(today.lit));
       let d = drawn();
       expect(d.plate).toMatchObject({ height: CHIP_H(S), paddingHorizontal: 11 * S, gap: 7 * S, borderColor: today.edge });
-      expect(d.plate).toMatchObject(today.glow ?? {});
-      expect(d.dot).toMatchObject({ width: 6 * S, height: 6 * S, backgroundColor: today.dot, ...(today.dotGlow ?? {}) });
+      const glowKeys = (style: object) => Object.keys(style).filter((k) => /shadow|elevation/i.test(k));
+      if (today.glow) expect(d.plate).toMatchObject(today.glow);
+      else expect(glowKeys(d.plate)).toEqual([]);
+      if (today.dotGlow) expect(d.dot).toMatchObject(today.dotGlow);
+      else expect(glowKeys(d.dot)).toEqual([]);
+      expect(d.dot).toMatchObject({ width: 6 * S, height: 6 * S, backgroundColor: today.dot });
       expect(d.label).toBe(today.label);
       expect(d.count(30)).toBe(Colors.gold);
       await tick(30 - urgentThresholdSeconds(30));
