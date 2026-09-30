@@ -44,6 +44,16 @@ describe('every notice kind paints one plate, in its tone', () => {
   }
 });
 
+// G1's `.tile` type is a fixed 13 px: a 22x30 face cannot take the OS text scale.
+describe('the who-starts tile', () => {
+  it('keeps its rank at the mockup size whatever the text setting', async () => {
+    const r = await render(NOTICE_GALLERY.whoStarts[0].render(1));
+    const rank = within(screen.getByTestId('notice-tile')).getByText('3');
+    expect(rank.props.allowFontScaling).toBe(false);
+    await r.unmount();
+  });
+});
+
 const card = (id: string, rank: Card['rank'], suit: Card['suit']): Card => ({ id, rank, suit, isJoker: false });
 const seat = (i: number, name: string): Player => ({
   id: `player_${i}`,

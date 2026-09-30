@@ -101,7 +101,7 @@ export function panelLine(line: PanelLine, scale: number): { fontSize: number; t
   return { fontSize: tableFontSize(at(px.font, 1), scale), tracking: at(px.tracking, scale), bold: px.weight === 700 };
 }
 
-const PANEL_PARTS = { rowX: 7.5, subY: 2, tileW: 22, tileH: 30, tileRadius: 3, tileFont: 13, tileSuit: 11, disc: 24, discFont: 10 } as const;
+const PANEL_PARTS = { rowX: 7.5, subY: 2, tileW: 22, tileH: 30, tileRadius: 3, tileLip: 1.5, tileFont: 13, tileSuit: 11, disc: 24, discFont: 10 } as const;
 
 export function panelParts(scale: number) {
   const p = PANEL_PARTS;
@@ -109,6 +109,7 @@ export function panelParts(scale: number) {
     rowGap: at(p.rowX, scale),
     subGap: at(p.subY, scale),
     tile: { width: at(p.tileW, scale), height: at(p.tileH, scale), radius: at(p.tileRadius, scale) },
+    tileLip: at(p.tileLip, scale),
     tileFont: tableFontSize(at(p.tileFont, 1), scale),
     tileSuit: at(p.tileSuit, scale),
     disc: at(p.disc, scale),

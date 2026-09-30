@@ -146,10 +146,11 @@ describe("the lamp rig", () => {
   test("the start announcement's light is over the table's middle, where its panel centres, under every inset", () => {
     for (const { name: phone, width, height } of PHONES) {
       for (const [insets, edges] of Object.entries(INSETS)) {
-        const anchors = anchorPoints(phoneTable(width, height, edges));
-        const [x, y] = lampPools(anchors, width, height).centre;
+        const table = phoneTable(width, height, edges);
+        const [x, y] = lampPools(anchorPoints(table), width, height).centre;
         const { sx, sy } = designScale(width, height);
-        assert.ok(Math.abs(x * sx - anchors.top.x) < 1e-9, `${phone} at ${insets}: the light's x ${x * sx}, the table's middle ${anchors.top.x}`);
+        const middle = (table.tableLeft + width - table.tableRight) / 2;
+        assert.ok(Math.abs(x * sx - middle) < 1e-9, `${phone} at ${insets}: the light's x ${x * sx}, the table's middle ${middle}`);
         assert.ok(Math.abs(y * sy - height / 2) < 1e-9, `${phone} at ${insets}: the light's y ${y * sy}, the window's middle ${height / 2}`);
       }
     }

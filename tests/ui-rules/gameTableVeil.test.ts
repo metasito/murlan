@@ -27,10 +27,6 @@ const SOURCE = path.join(repoRoot, "components", "GameTable.tsx");
  */
 const REACHABLE_ON_PURPOSE: Record<string, string> = {
   GameSettingsSheet: "is the sheet",
-  WhoStartsPanel:
-    "is the layer holding the table rather than something behind it — its own " +
-    "words reach a reader through an A11yStatus sibling, and the gate itself is " +
-    "a11yHidden",
   ExchangeLegs: "is a pointer-transparent layer with nothing to reach",
   RotateOverlay: "replaces the table rather than sitting over it",
   Sweep: "is a decoration with nothing to reach",
@@ -48,6 +44,13 @@ const VEILED_ON_ITS_OWN_TERMS: Record<string, { spelling: RegExp; why: string }>
       "carries the turn countdown, and answers to everything that takes the table away except " +
       "the opening gate — online that clock is the server's and keeps running under the hold, " +
       "so a reader losing it would be charged for time it could not hear",
+  },
+  WhoStartsPanel: {
+    spelling: /veiled=\{settingsOpen\}/,
+    why:
+      "answers to the settings sheet only once its gate has lifted — while gated it is the layer " +
+      "holding the table, its gate a11yHidden and its words on an A11yStatus of their own; after " +
+      "that it stays until the first play, and the sheet opened over it must hide its sentence",
   },
   ControlRail: {
     spelling: /veiled=\{behindCoverOnly\}/,

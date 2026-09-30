@@ -55,27 +55,40 @@ function readPlate(page: Page, sel: { stage: string; plate: string; dim: string;
       if (!el) throw new Error(`nothing matches ${css}`);
       return el as HTMLElement;
     };
-    const stage = q(s.stage).getBoundingClientRect();
+    const stageEl = q(s.stage);
+    const stage = stageEl.getBoundingClientRect();
+    // Boxes come back transformed, computed lengths in the stage's own untransformed px.
     const k = stage.width / 874;
+    const css = stageEl.offsetWidth / 874;
     const plate = q(s.plate);
     const r = plate.getBoundingClientRect();
     const cs = getComputedStyle(plate);
     const dim = q(s.dim);
     const dimCs = getComputedStyle(dim);
-    const tile = q(s.tile).getBoundingClientRect();
+    const tileEl = q(s.tile);
+    const tile = tileEl.getBoundingClientRect();
+    const layers = (shadow: string) =>
+      shadow.split(/,(?![^(]*\))/).map((layer) => {
+        const colour = /rgba?\([^)]*\)/.exec(layer)?.[0] ?? "";
+        const [, y, blur] = (layer.replace(colour, "").match(/-?[\d.]+px/g) ?? []).map(parseFloat);
+        return { colour, y: y / css, blur, inset: layer.includes("inset") };
+      });
+    const hairline = layers(cs.boxShadow).find((l) => l.inset);
+    const lip = layers(getComputedStyle(tileEl).boxShadow).find((l) => !l.inset && l.blur === 0);
     return {
       plate: {
         x: (r.x - stage.x + r.width / 2) / k,
         y: (r.y - stage.y + r.height / 2) / k,
         w: r.width / k,
         h: r.height / k,
-        pad: parseFloat(cs.paddingTop) / k,
-        gap: parseFloat(cs.rowGap) / k,
-        radius: parseFloat(cs.borderTopLeftRadius) / k,
+        pad: parseFloat(cs.paddingTop) / css,
+        gap: parseFloat(cs.rowGap) / css,
+        radius: parseFloat(cs.borderTopLeftRadius) / css,
         edge: cs.borderTopColor,
         dim: dimCs.opacity === "1" ? dimCs.backgroundColor : `${dimCs.backgroundColor}@${dimCs.opacity}`,
       } satisfies Plate,
-      tile: { w: tile.width / k, h: tile.height / k },
+      hairline: hairline && { colour: hairline.colour, y: hairline.y },
+      tile: { w: tile.width / k, h: tile.height / k, lip: lip && { colour: lip.colour, y: lip.y } },
     };
   }, sel);
 }
@@ -114,6 +127,14 @@ test("panel: who starts is the G1 panel, at its size, place, plate and dim", asy
   expect(alphaOf(app.plate.dim), `the dim: app ${app.plate.dim}, mockup ${mockup.plate.dim}`).toBeCloseTo(alphaOf(mockup.plate.dim), 2);
   expect(Math.abs(app.tile.w - mockup.tile.w)).toBeLessThanOrEqual(NEAREST);
   expect(Math.abs(app.tile.h - mockup.tile.h)).toBeLessThanOrEqual(NEAREST);
+  for (const [name, a, m] of [
+    ["the plate's top hairline", app.hairline, mockup.hairline],
+    ["the tile's paper lip", app.tile.lip, mockup.tile.lip],
+  ] as const) {
+    expect(m, `the mockup has no ${name}`).toBeDefined();
+    expect(a?.colour, name).toBe(m!.colour);
+    expect(Math.abs(a!.y - m!.y), `${name}'s offset`).toBeLessThanOrEqual(NEAREST);
+  }
 
   const scaled = await page.evaluate((factor) => {
     const plateEl = document.querySelector('[data-testid="notice-whoStarts"]') as HTMLElement;

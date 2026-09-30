@@ -33,6 +33,7 @@ type Paint = {
   glow?: { color: string; opacity: number };
   top?: string;
   quiet?: string;
+  hairline?: string;
 };
 
 const CARD_FACE = [Colors.cardPaper, Colors.cardPaperMid, Colors.cardPaperEdge] as const;
@@ -42,6 +43,7 @@ const PLATE_SHADOW = withAlpha(Colors.shadow, PILL_SHADOW.alpha);
 const DISC_EDGE = withAlpha(Colors.goldLit, 0.7);
 const DISC_GLOW = 10;
 const TILE_SHADOW = 3;
+const TILE_CAST = withAlpha(Colors.shadow, 0.5);
 const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
 
@@ -107,7 +109,7 @@ export function TableNotice<K extends NoticeKind>({
         paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(tone, scale), 0),
         panel && {
           width: box.width,
-          boxShadow: `0px ${offsetY * unit}px ${blur * unit}px ${PILL_SHADOW.spread * unit}px ${PLATE_SHADOW}`,
+          boxShadow: `${paint.hairline ? `inset 0px ${unit}px 0px ${paint.hairline}, ` : ""}0px ${offsetY * unit}px ${blur * unit}px ${PILL_SHADOW.spread * unit}px ${PLATE_SHADOW}`,
         },
         motion,
       ]}
@@ -159,6 +161,7 @@ export function NoticeName({ children }: { children: ReactNode }) {
 export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
   const { scale } = usePanelInk();
   const part = panelParts(scale);
+  const unit = mockupPx(1, scale);
   const ink = SUIT_COLORS[suit];
   return (
     <LinearGradient
@@ -170,10 +173,12 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
       style={[
         styles.tile,
         { width: part.tile.width, height: part.tile.height, borderRadius: part.tile.radius },
-        makeShadow(Colors.shadow, 0, mockupPx(1, scale), 0.5, mockupPx(TILE_SHADOW, scale), 0),
+        { boxShadow: `0px ${part.tileLip}px 0px ${Colors.cardLip}, 0px ${unit}px ${TILE_SHADOW * unit}px ${TILE_CAST}` },
       ]}
     >
-      <TableText style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>{rank}</TableText>
+      <TableText allowFontScaling={false} style={[styles.bold, { color: ink, fontSize: part.tileFont }]}>
+        {rank}
+      </TableText>
       <Svg width={part.tileSuit} height={part.tileSuit} viewBox={SUIT_BOX}>
         <SuitShape suit={suit} color={ink} />
       </Svg>

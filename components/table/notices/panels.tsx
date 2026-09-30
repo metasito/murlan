@@ -69,6 +69,7 @@ export function WhoStartsCard({ gated, scale, ...who }: WhoStarts & { gated: boo
  */
 export function WhoStartsPanel({
   gated,
+  veiled,
   onDone,
   scale,
   tableLeft,
@@ -76,6 +77,8 @@ export function WhoStartsPanel({
   ...who
 }: WhoStarts & {
   gated: boolean;
+  /** Withdraws the sentence once the gate has lifted; the gate itself answers to nothing. */
+  veiled: boolean;
   /** Told once, when the gate opens — by the clock or by the player. */
   onDone: () => void;
   scale: number;
@@ -95,7 +98,7 @@ export function WhoStartsPanel({
 
   return (
     <>
-      <A11yStatus label={whoStartsWords(t, who).spoken} role="alert" live="assertive" />
+      <A11yStatus label={whoStartsWords(t, who).spoken} role="alert" live="assertive" veiled={veiled && !gated} />
       {gated && (
         <Pressable
           testID="start-reason-gate"

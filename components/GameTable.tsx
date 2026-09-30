@@ -1108,15 +1108,16 @@ export function GameTable({
           </View>
         )}
 
-        {/* Over the whole table rather than inside the mid band: it holds the
-            table as well as saying something, so the first tap is spent clearing
-            it instead of playing a card. */}
+        {/* Over the whole table rather than inside the mid band: while gated it holds
+            the table as well as saying something, so the first tap is spent clearing
+            it instead of playing a card; then it stays, holding nothing, until the first play. */}
         {(startGated || startCardDue) && whoStarts && (
           <WhoStartsPanel
             reason={whoStarts}
             starterName={players[whoStarts.playerIdx]?.name ?? ""}
             starterIsViewer={viewerOwnsSeat(whoStarts.playerIdx, viewerSeat, spectating)}
             gated={startGated}
+            veiled={settingsOpen}
             onDone={() => setOpeningSpent(true)}
             scale={scale}
             tableLeft={frame.tableLeft}

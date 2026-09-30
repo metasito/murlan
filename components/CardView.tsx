@@ -754,10 +754,6 @@ function CardViewBase({
 }
 
 // ─── Card stock ───────────────────────────────────────────────────────────────
-//
-// A local one-off rather than a design token (lib/tokens.ts): the lip is the
-// paper ramp's own shade seen edge-on, and has no second use to name a token for.
-const STOCK_LIP_COLOR = "#D6D0BC";
 
 /**
  * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
@@ -774,7 +770,7 @@ const STOCK_LIP_COLOR = "#D6D0BC";
 function cardStockShadow(lipHeight: number): Record<string, any> {
   const base = Shadow.card as Record<string, any>;
   if (typeof base.boxShadow !== "string") return base;
-  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${STOCK_LIP_COLOR}, ${base.boxShadow}` };
+  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${Colors.cardLip}, ${base.boxShadow}` };
 }
 
 // ─── TopLight ─────────────────────────────────────────────────────────────────
