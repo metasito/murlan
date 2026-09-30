@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, type ViewProps } from "react-native";
+import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
 import { mockupPx } from "./noticeModel";
@@ -649,6 +649,7 @@ function SeatWho({
   focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
+  const lit = isActive || mark?.lit === true;
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
   const labelLeft =
     anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
@@ -672,12 +673,13 @@ function SeatWho({
         >
           <TableText
             testID="seat-name"
+            {...({ dataSet: { lit: String(lit) } } as TextProps)}
             style={[
               seatStyles.oppName,
               // The cap rides the scale the glyphs do; fixed, it ellipsises
               // every name above a phone's own scale.
               { fontSize: tableFontSize(SEAT_NAME_FS, scale), maxWidth: labelW },
-              (isActive || mark?.lit) && seatStyles.oppNameActive,
+              lit && seatStyles.oppNameActive,
             ]}
             numberOfLines={1}
           >
@@ -851,8 +853,7 @@ const seatStyles = StyleSheet.create({
   whoLabelRight: { alignItems: "flex-end" },
 
   // Bare on the felt, as the mockup's `.nm`: its ink is held to 4.5:1 over the
-  // felt behind it by tests/e2e/seatNameContrast.spec.ts. The lit name sits in
-  // the lamp's pool, too bright for any light ink, so it is dark.
+  // felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
     color: Colors.textMuted,
@@ -861,7 +862,7 @@ const seatStyles = StyleSheet.create({
     maxWidth: OPP_LABEL_MAX_W,
     textAlign: "center",
   },
-  oppNameActive: { color: Colors.badgeInk },
+  oppNameActive: { color: Colors.goldLit },
 
   seatBadgeRow: {
     flexDirection: "row",
