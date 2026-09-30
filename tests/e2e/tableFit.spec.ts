@@ -10,6 +10,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
+import { openOnlineTable } from "./helpers/onlineTable";
 import { buildCombination } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL, YOUR_TURN_PREFIX } from "./helpers/labels";
 import { HAND_ZONE, TABLE_SCREEN, TABLE_STATE } from "./helpers/selectors.ts";
@@ -288,31 +289,31 @@ const OFFLINE_CLOCK_MS = 30_000;
  */
 async function waitForAnswerableTurn(page: Page): Promise<void> {
   const table = page.locator('[data-testid="game-table"]');
-  const gioca = page.locator('[data-testid="btn-gioca"]');
 
   await expect(async () => {
     const desc = (await table.getAttribute(TABLE_STATE)) ?? "";
     if (desc.startsWith(YOUR_TURN_PREFIX) && desc.includes(OPPONENT_PLAYED)) return;
-
-    if (desc.startsWith(YOUR_TURN_PREFIX)) {
-      const cards = page.locator(`${HAND_ZONE} [role="button"]`);
-      const labels = await cards.evaluateAll((els) =>
-        els.map((el) => el.getAttribute("aria-label") ?? "")
-      );
-      for (const label of labels) {
-        const card = page.locator(
-          `${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`
-        );
-        await tap(page, card).catch(() => {});
-        if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
-          await tap(page, gioca).catch(() => {});
-          break;
-        }
-        await tap(page, card).catch(() => {});
-      }
-    }
+    if (desc.startsWith(YOUR_TURN_PREFIX)) await playFirstLegalCard(page);
     throw new Error("never reached a turn with a combination to answer");
   }).toPass({ timeout: 120_000, intervals: [200] });
+}
+
+/** Plays the first single GIOCA accepts, and reports whether one was played. */
+async function playFirstLegalCard(page: Page): Promise<boolean> {
+  const gioca = page.locator('[data-testid="btn-gioca"]');
+  const labels = await page
+    .locator(`${HAND_ZONE} [role="button"]`)
+    .evaluateAll((els) => els.map((el) => el.getAttribute("aria-label") ?? ""));
+  for (const label of labels) {
+    const card = page.locator(`${HAND_ZONE} [aria-label="${label.replace(/"/g, '\\"')}"]`);
+    await tap(page, card).catch(() => {});
+    if ((await gioca.getAttribute("aria-label")) === GIOCA_VALID_LABEL) {
+      await tap(page, gioca).catch(() => {});
+      return true;
+    }
+    await tap(page, card).catch(() => {});
+  }
+  return false;
 }
 
 test.describe("the offline clock running out", () => {
@@ -330,5 +331,69 @@ test.describe("the offline clock running out", () => {
     });
     // The banner never unmounts; empty, it names nothing.
     await expect(page.locator('[data-testid="notification-banner"]')).not.toContainText(AUTO_PASS_TITLE);
+  });
+});
+
+// ─── The banner over the table ────────────────────────────────────────────────
+//
+// The notification banner is a sibling of the whole navigator, above the table's
+// top bar, so it can cover the turn pill and the countdown at the moment it is
+// explaining them. Online another seat's AFK pass still raises it over the table.
+// A property of two laid-out boxes, which only a browser can measure.
+
+/** locales/it.ts `server.PLAYER_AFK_AUTO_PASS`, another seat's. */
+const OTHER_SEAT_AFK = "non risponde";
+/** playwright.config.ts `MURLAN_AFK_TIMEOUT_MS`. */
+const SERVER_AFK_MS = 30_000;
+const BANNER = '[data-testid="notification-banner"]';
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** The element's box once two samples agree: the banner slides in from off the top. */
+async function settledBox(page: Page, selector: string): Promise<Box> {
+  const locator = page.locator(selector);
+  let previous = null as Box | null;
+  let box = null as Box | null;
+  await expect
+    .poll(
+      async () => {
+        [previous, box] = [box, await locator.boundingBox()];
+        return !!box && !!previous && box.y === previous.y && box.height === previous.height;
+      },
+      { message: `${selector} never settled into a stable position`, timeout: 10_000, intervals: [100] }
+    )
+    .toBe(true);
+  return box!;
+}
+
+test.describe("the notification banner over a live table", () => {
+  test("sits below the top bar it is explaining", async ({ browser, baseURL }) => {
+    test.setTimeout(240_000);
+    const table = await openOnlineTable(browser, baseURL!, {
+      playerCount: 2,
+      gameMode: "free_for_all",
+      viewport: { width: 844, height: 390 },
+    });
+    try {
+      const { page } = table;
+      // The viewer leads; the other seat, which nobody drives, idles into the server's AFK move.
+      expect(await playFirstLegalCard(page), "no single card led").toBe(true);
+      await expect(page.locator(BANNER)).toContainText(OTHER_SEAT_AFK, { timeout: SERVER_AFK_MS + 20_000 });
+
+      const bannerBox = await settledBox(page, BANNER);
+      const topBarBox = await settledBox(page, '[data-testid="game-top-bar"]');
+      expect(
+        bannerBox.y,
+        `the banner (${bannerBox.y}…${bannerBox.y + bannerBox.height}) overlaps the table's top bar ` +
+          `(${topBarBox.y}…${topBarBox.y + topBarBox.height}), which carries the turn pill and the countdown`
+      ).toBeGreaterThanOrEqual(topBarBox.y + topBarBox.height);
+    } finally {
+      await table.close();
+    }
   });
 });
