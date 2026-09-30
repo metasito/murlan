@@ -28,7 +28,7 @@ export const Colors = {
   // currently the table's own subject — the seat on move, the turn chip, GIOCA.
   goldLit:      '#F3E0A6',
   goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
-  goldDark:    '#A8832B',
+  goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
   goldGhost:  'rgba(201,168,76,0.06)', // wash behind large areas
@@ -186,10 +186,10 @@ export const Dust = {
 } as const;
 
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
-// its one reader). Edges map the mockup's onto the gold scale (#1259 Q4).
+// its one reader). Edges map the mockup's onto the gold scale (#1259 Q4); the lit edge is `goldLitEdge`.
 export const NoticePalette = {
   pill: {
-    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold, warn: Colors.dangerDim, dot: { color: Colors.textMuted } },
+    neutral: { fill: Colors.chipFill, edge: Colors.goldBorder, ink: Colors.textMuted, strong: Colors.gold, warn: Colors.dangerDim, dot: { color: Colors.gold } },
     lit: {
       fill: Colors.chipFill,
       edge: Colors.goldLitEdge,

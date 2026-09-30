@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Colors, NoticePalette } from "../../lib/tokens.ts";
 import { CHIP_H } from "../../components/seatLayout.ts";
-import { NOTICES, noticeBox, noticeRise, noticeTiming, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
+import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
 
 const STAGE = 402 / 390;
 const at = (px: number, scale: number) => (px / STAGE) * scale;
@@ -54,13 +54,26 @@ test("every selector's box is the mockup's", () => {
   }
 });
 
-test("the lit and urgent pills glow as #turn.lit and #turn.urgent do", () => {
+test("the lit and urgent pills glow as #turn.lit and #turn.urgent do, and no other selector glows", () => {
   for (const s of SCALES) {
-    near(selectorGlow("lit", s), at(20.6, s), `lit glow at ${s}`);
-    near(selectorGlow("urgent", s), at(18, s), `urgent glow at ${s}`);
-    assert.equal(selectorGlow("neutral", s), 0);
+    near(selectorGlow("#turn", "lit", s).plate, at(20.6, s), `lit glow at ${s}`);
+    near(selectorGlow("#turn", "lit", s).dot, at(6, s), `#turn.lit .dot glow at ${s}`);
+    near(selectorGlow("#turn", "urgent", s).plate, at(18, s), `urgent glow at ${s}`);
+    assert.deepEqual(selectorGlow("#turn", "neutral", s), { plate: 0, dot: 0 });
     near(selectorBox("#turn", s).dot, at(6, s), `#turn .dot at ${s}`);
-    near(selectorBox("#turn", s).dotGlow, at(6, s), `#turn.lit .dot glow at ${s}`);
+    for (const selector of [".chip", ".floatchip", ".passo", ".cchip", "#score"] as const) {
+      assert.deepEqual(selectorGlow(selector, "lit", s), { plate: 0, dot: 0 }, `${selector} lit`);
+      assert.deepEqual(selectorGlow(selector, "urgent", s), { plate: 0, dot: 0 }, `${selector} urgent`);
+    }
+  }
+});
+
+// #1265's ember (the turn chip on main before plan 5): the dot glowing 9 pt, the plate 18 pt.
+test("the ember pill keeps #1265's glow at every scale", () => {
+  for (const s of [...SCALES, 1.07]) {
+    near(noticeGlow("turn", "urgent", s).plate, 18 * s, `ember glow at ${s}`);
+    near(noticeGlow("turn", "urgent", s).dot, 9 * s, `ember dot glow at ${s}`);
+    assert.deepEqual(noticeGlow("turn", "lit", s), selectorGlow("#turn", "lit", s));
   }
 });
 
@@ -117,6 +130,7 @@ test("every kind's tones are paintable by its shape", () => {
 
 test("the gold edges map onto the five-step scale (Q4), and nothing paints the power red (Q5)", () => {
   assert.equal(NoticePalette.pill.neutral.edge, Colors.goldBorder);
+  assert.equal(NoticePalette.pill.neutral.dot.color, Colors.gold, "#turn .dot's .8");
   assert.equal(NoticePalette.chip.neutral.edge, Colors.goldBorder);
   assert.equal(NoticePalette.chip.lit.edge, Colors.goldStrong);
   assert.equal(NoticePalette.panel.neutral.edge, Colors.goldStrong);

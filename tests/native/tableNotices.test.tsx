@@ -87,8 +87,8 @@ describe('the HUD combination pill', () => {
 describe('the turn pill', () => {
   const S = 1.2;
   const at = (px: number) => (px / (402 / 390)) * S;
-  const TODAY = {
-    neutral: { lit: false, edge: Colors.goldBorder, label: Colors.textMuted, dot: Colors.textMuted, count: Colors.gold, glow: null, dotGlow: null },
+  const TURN = {
+    neutral: { lit: false, edge: Colors.goldBorder, label: Colors.textMuted, dot: Colors.gold, count: Colors.gold, glow: null, dotGlow: null },
     lit: {
       lit: true,
       edge: 'rgba(243,224,166,0.8)',
@@ -130,37 +130,37 @@ describe('the turn pill', () => {
     jest.useRealTimers();
   });
 
-  for (const [tone, today] of Object.entries(TODAY)) {
+  for (const [tone, want] of Object.entries(TURN)) {
     it(`paints the ${tone} pill as #turn, its count in its ink until the urgent threshold and dim red after`, async () => {
-      const r = await render(pill(today.lit));
+      const r = await render(pill(want.lit));
       let d = drawn();
-      expect(d.plate).toMatchObject({ height: CHIP_H(S), borderColor: today.edge });
+      expect(d.plate).toMatchObject({ height: CHIP_H(S), borderColor: want.edge });
       expect(d.plate.paddingHorizontal).toBeCloseTo(at(13));
       expect(d.plate.gap).toBeCloseTo(at(7));
       expect(d.labelSize).toBeCloseTo(at(10));
       expect(d.countSize(30)).toBeCloseTo(at(12));
       const glowKeys = (style: object) => Object.keys(style).filter((k) => /shadow|elevation/i.test(k));
-      if (today.glow) expect(d.plate).toMatchObject(today.glow);
+      if (want.glow) expect(d.plate).toMatchObject(want.glow);
       else expect(glowKeys(d.plate)).toEqual([]);
-      if (today.dotGlow) expect(d.dot).toMatchObject(today.dotGlow);
+      if (want.dotGlow) expect(d.dot).toMatchObject(want.dotGlow);
       else expect(glowKeys(d.dot)).toEqual([]);
-      expect(d.dot).toMatchObject({ width: at(6), height: at(6), backgroundColor: today.dot });
-      expect(d.label).toBe(today.label);
-      expect(d.count(30)).toBe(today.count);
+      expect(d.dot).toMatchObject({ width: at(6), height: at(6), backgroundColor: want.dot });
+      expect(d.label).toBe(want.label);
+      expect(d.count(30)).toBe(want.count);
       await tick(30 - urgentThresholdSeconds(30));
       d = drawn();
       expect(d.count(urgentThresholdSeconds(30))).toBe(Colors.dangerDim);
-      expect(d.plate.borderColor).toBe(today.edge);
+      expect(d.plate.borderColor).toBe(want.edge);
       await r.unmount();
     });
   }
 
-  it("turns ember in the lit pill's last CLOCK_RUNNING_OUT_SECONDS, with #1265's colours", async () => {
+  it("turns ember in the lit pill's last CLOCK_RUNNING_OUT_SECONDS, with #1265's colours and glow", async () => {
     const r = await render(pill(true));
     await tick(30 - CLOCK_RUNNING_OUT_SECONDS);
     const d = drawn();
-    expect(d.plate).toMatchObject({ borderColor: Colors.ember, ...makeShadow(Colors.emberGlow, 0, 0, 0.5, at(18), 0) });
-    expect(d.dot).toMatchObject({ backgroundColor: Colors.emberDot, ...makeShadow(Colors.emberDot, 0, 0, 1, at(6), 0) });
+    expect(d.plate).toMatchObject({ borderColor: Colors.ember, ...makeShadow(Colors.emberGlow, 0, 0, 0.5, 18 * S, 0) });
+    expect(d.dot).toMatchObject({ backgroundColor: Colors.emberDot, ...makeShadow(Colors.emberDot, 0, 0, 1, 9 * S, 0) });
     expect(d.label).toBe(Colors.emberLabel);
     expect(d.count(CLOCK_RUNNING_OUT_SECONDS)).toBe(Colors.emberCount);
     await r.unmount();

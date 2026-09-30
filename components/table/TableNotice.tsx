@@ -7,9 +7,9 @@ import { TableText } from "./TableText";
 import {
   NOTICES,
   noticeBox,
+  noticeGlow,
   noticeRise,
   noticeTiming,
-  selectorGlow,
   type KindTone,
   type NoticeBox,
   type NoticeKind,
@@ -26,7 +26,7 @@ type Paint = {
   dot?: { color: string; glow?: number };
 };
 
-const Ink = createContext<{ paint: Paint; box: NoticeBox; scale: number } | null>(null);
+const Ink = createContext<{ paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
 export function TableNotice<K extends NoticeKind>({
   kind,
@@ -44,6 +44,7 @@ export function TableNotice<K extends NoticeKind>({
   const shape: NoticeShape = NOTICES[kind].shape;
   const paint = (NoticePalette[shape] as Record<string, Paint>)[tone];
   const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
+  const glow = noticeGlow(kind, tone, scale);
   const reduceMotion = usePrefersReducedMotion();
   const { enter, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
@@ -66,7 +67,7 @@ export function TableNotice<K extends NoticeKind>({
     transform: [{ translateY: (1 - risen.value) * rise }],
   }));
 
-  const ink = useMemo(() => ({ paint, box, scale }), [paint, box, scale]);
+  const ink = useMemo(() => ({ paint, box, dotGlow: glow.dot, scale }), [paint, box, glow.dot, scale]);
   return (
     <Animated.View
       testID={`notice-${kind}`}
@@ -81,7 +82,7 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
-        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, selectorGlow(tone, scale), 0),
+        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, glow.plate, 0),
         motion,
       ]}
     >
@@ -97,7 +98,7 @@ function useInk(what: string) {
 }
 
 export function NoticeDot({ testID }: { testID?: string }) {
-  const { paint, box } = useInk("NoticeDot");
+  const { paint, box, dotGlow } = useInk("NoticeDot");
   const dot = paint.dot;
   if (!dot) throw new Error("this notice's tone paints no dot");
   return (
@@ -105,7 +106,7 @@ export function NoticeDot({ testID }: { testID?: string }) {
       testID={testID}
       style={[
         { width: box.dot, height: box.dot, borderRadius: box.dot / 2, backgroundColor: dot.color },
-        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, box.dotGlow, 0),
+        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, dotGlow, 0),
       ]}
     />
   );

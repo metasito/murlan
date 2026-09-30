@@ -32,12 +32,13 @@ type Spec<S extends NoticeShape> = {
   selector: NoticeSelector;
   tones: readonly ToneOf<S>[];
   tableChip?: true;
+  keepsEmber?: true;
 };
 export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
-  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"] },
+  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
@@ -55,7 +56,6 @@ export type NoticeBox = {
   tracking: number;
   strongTracking: number;
   dot: number;
-  dotGlow: number;
 };
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
@@ -72,7 +72,6 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
     tracking: at(px.tracking, scale),
     strongTracking: at(px.tracking, scale),
     dot: at(DOT, scale),
-    dotGlow: at(DOT, scale),
   };
 }
 
@@ -91,10 +90,22 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
   };
 }
 
-const GLOW = { lit: 20.6, urgent: 18 } as const;
+type Glow = { plate: number; dot: number };
+const GLOW: Partial<Record<NoticeSelector, Partial<Record<NoticeTone, Glow>>>> = {
+  "#turn": { lit: { plate: 20.6, dot: DOT }, urgent: { plate: 18, dot: DOT } },
+};
+/** #1265's ember, in points at scale 1: plan 5 changes no ember value, so it stands over `#turn.urgent`'s. */
+const EMBER: Glow = { plate: 18, dot: 9 };
 
-export function selectorGlow(tone: NoticeTone, scale: number): number {
-  return tone in GLOW ? at(GLOW[tone as keyof typeof GLOW], scale) : 0;
+export function selectorGlow(selector: NoticeSelector, tone: NoticeTone, scale: number): Glow {
+  const px = GLOW[selector]?.[tone];
+  return px ? { plate: at(px.plate, scale), dot: at(px.dot, scale) } : { plate: 0, dot: 0 };
+}
+
+export function noticeGlow(kind: NoticeKind, tone: NoticeTone, scale: number): Glow {
+  const spec: NoticeSpec = NOTICES[kind];
+  if (spec.keepsEmber && tone === "urgent") return { plate: EMBER.plate * scale, dot: EMBER.dot * scale };
+  return selectorGlow(spec.selector, tone, scale);
 }
 
 export function noticeRise(scale: number, reduceMotion: boolean): number {
