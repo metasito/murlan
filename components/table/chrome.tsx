@@ -1,6 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { View, StyleSheet, Pressable, type AccessibilityProps, type ViewProps } from "react-native";
-import { TableText } from "./TableText";
 import {
   Easing,
   useAnimatedStyle,
@@ -11,183 +10,20 @@ import {
 import {
   Colors,
   FontSize,
-  makeShadow,
   Motion,
-  Radius,
   Scrim,
   Spacing,
   Layer,
 } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { a11yState } from "@/lib/a11y";
-import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
-import { tableFontSize } from "@/components/cardFaceModel";
+import { SIDE_SECTION_W } from "@/components/seatLayout";
 
 /**
  * A sentence for the browser harness, as `data-<key>` (`tests/e2e/helpers/selectors.ts`). Not a
  * label: a container that cannot be `accessible` names no reader. The cast is for web-only `dataSet`.
  */
 export const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
-
-// ─── HUD chips ────────────────────────────────────────────────────────────────
-//
-// The table's chrome is two chips over the felt, not a bar across the top: the
-// combination on the felt at the head of the play area, and whose turn it is at
-// the far corner. Nothing is ever drawn over the middle of the felt, which is
-// where cards land.
-
-/**
- * One chip. `lit` is the turn chip on the viewer's own turn — the only piece of
- * chrome the lamp reaches, and the reason it can be read at a glance.
- */
-export function TableChip({
-  scale,
-  lit = false,
-  ember = false,
-  children,
-}: {
-  scale: number;
-  lit?: boolean;
-  /** The last seconds of the viewer's own clock; outranks `lit`. */
-  ember?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <View
-      style={[
-        chipStyles.chip,
-        {
-          height: CHIP_H(scale),
-          paddingHorizontal: CHIP_PAD_H * scale,
-          gap: CHIP_GAP * scale,
-        },
-        lit && !ember && chipStyles.chipLit,
-        lit && !ember && makeShadow(Colors.goldLit, 0, 0, 0.32, CHIP_GLOW * scale, 0),
-        ember && chipStyles.chipEmber,
-        ember && makeShadow(Colors.emberGlow, 0, 0, 0.5, EMBER_GLOW * scale, 0),
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-/** A chip's own text: uppercase, letterspaced, dim. `strong` is the gold half. */
-export function ChipText({
-  scale,
-  strong = false,
-  lit = false,
-  urgent = false,
-  ember = false,
-  maxWidth,
-  testID,
-  children,
-}: {
-  scale: number;
-  strong?: boolean;
-  lit?: boolean;
-  urgent?: boolean;
-  ember?: boolean;
-  /** Caps this run so an unbounded value (a username) ellipsizes instead of widening the chip. */
-  maxWidth?: number;
-  testID?: string;
-  children: ReactNode;
-  // Nothing accessibility-shaped: what a chip should say goes on the
-  // `A11yStatus` beside it, which changes when there is something to say rather
-  // than whenever the drawn value does.
-}) {
-  return (
-    <TableText
-      numberOfLines={1}
-      testID={testID}
-      style={[
-        chipStyles.chipLabel,
-        {
-          fontSize: tableFontSize(FontSize.xxs, scale),
-          // Tracking is `em` in the prototype, so it grows with the type it is
-          // set in — a fixed px value is a different letterspacing per handset.
-          letterSpacing: (strong ? CHIP_TRACKING_STRONG : CHIP_TRACKING) * scale,
-        },
-        strong && chipStyles.chipLabelStrong,
-        lit && chipStyles.chipLabelLit,
-        urgent && chipStyles.chipLabelUrgent,
-        ember && (strong ? chipStyles.chipCountEmber : chipStyles.chipLabelEmber),
-        maxWidth !== undefined && { maxWidth: maxWidth * scale },
-      ]}
-    >
-      {children}
-    </TableText>
-  );
-}
-
-/** The lit dot beside the turn chip's label. */
-export function ChipDot({
-  scale,
-  lit,
-  ember = false,
-  testID,
-}: {
-  scale: number;
-  lit: boolean;
-  ember?: boolean;
-  testID?: string;
-}) {
-  const size = CHIP_DOT * scale;
-  return (
-    <View
-      testID={testID}
-      style={[
-        chipStyles.chipDot,
-        { width: size, height: size, borderRadius: size / 2 },
-        lit && !ember && chipStyles.chipDotLit,
-        lit && !ember && makeShadow(Colors.goldLit, 0, 0, 0.7, CHIP_DOT_GLOW * scale, 0),
-        ember && chipStyles.chipDotEmber,
-        ember && makeShadow(Colors.emberDot, 0, 0, 1, CHIP_DOT_GLOW * scale, 0),
-      ]}
-    />
-  );
-}
-
-const CHIP_PAD_H = 11;
-const CHIP_GAP = 7;
-const CHIP_DOT = 6;
-const CHIP_GLOW = 20;
-const CHIP_DOT_GLOW = 9;
-const EMBER_GLOW = 18;
-// `.15em` and `.06em` of the chip's own `10 * s` type.
-const CHIP_TRACKING = 1.5;
-const CHIP_TRACKING_STRONG = 0.6;
-
-const chipStyles = StyleSheet.create({
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.goldBorder,
-    backgroundColor: Colors.chipFill,
-  },
-  chipLit: { borderColor: Colors.goldStrong },
-  chipLabel: {
-    fontFamily: "Rajdhani_600SemiBold",
-    color: Colors.textMuted,
-    textTransform: "uppercase",
-  },
-  chipLabelStrong: {
-    fontFamily: "Rajdhani_700Bold",
-    color: Colors.gold,
-    fontVariant: ["tabular-nums"],
-  },
-  chipLabelLit: { color: Colors.goldLit },
-  // FontSize.xxs, so tests/ui-rules/tokenRoles.test.ts bars Colors.danger here.
-  chipLabelUrgent: { color: Colors.dangerDim },
-  chipDot: { backgroundColor: Colors.textMuted },
-  chipDotLit: { backgroundColor: Colors.goldLit },
-  chipEmber: { borderColor: Colors.ember },
-  chipLabelEmber: { color: Colors.emberLabel },
-  chipCountEmber: { color: Colors.emberCount },
-  chipDotEmber: { backgroundColor: Colors.emberDot },
-});
 
 // ─── Control rail ─────────────────────────────────────────────────────────────
 
