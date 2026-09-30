@@ -194,7 +194,7 @@ export const NoticePalette = {
       fill: Colors.chipFill,
       edge: Colors.goldLitEdge,
       ink: Colors.goldLit,
-      strong: Colors.goldLit,
+      strong: Colors.gold,
       warn: Colors.dangerDim,
       glow: { color: Colors.goldLit, opacity: 0.28 },
       dot: { color: Colors.goldLit, glow: 1 },
