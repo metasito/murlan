@@ -5,7 +5,7 @@ description: >
 
 inputs:
   lookup-only:
-    description: "true: only look the key up, and build and save on a miss."
+    description: "true: only look the key up, and build and save on a miss. false: restore, and fail on a miss."
     required: false
     default: "false"
 
@@ -35,6 +35,7 @@ runs:
         path: ${{ runner.temp }}/ios-app
         key: ${{ steps.native.outputs.key }}
         lookup-only: ${{ inputs.lookup-only }}
+        fail-on-cache-miss: ${{ inputs.lookup-only != 'true' }}
 
     # Why a build of this app and no host client: the header of
     # tests/tooling/realAppNotExpoGo.test.ts (#627).

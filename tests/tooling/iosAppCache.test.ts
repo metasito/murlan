@@ -41,6 +41,7 @@ test("a save run is green only on a real hit, or once the build it saved is in t
   const restore = step(ACTION, "id: cached");
   assert.match(restore, /key: \$\{\{ steps\.native\.outputs\.key \}\}/);
   assert.match(restore, /lookup-only: \$\{\{ inputs\.lookup-only \}\}/);
+  assert.match(restore, /fail-on-cache-miss: \$\{\{ inputs\.lookup-only != 'true' \}\}/, "ios.yml's shards would each build on a miss");
   assert.doesNotMatch(ACTION, /restore-keys|continue-on-error|\|\| true/);
   for (const marker of ["name: Build the app", "actions/cache/save@"]) {
     assert.match(step(ACTION, marker), /if: steps\.cached\.outputs\.cache-hit != 'true'\n/, marker);
@@ -49,6 +50,18 @@ test("a save run is green only on a real hit, or once the build it saved is in t
   assert.match(check, /if: inputs\.lookup-only == 'true' && steps\.cached\.outputs\.cache-hit != 'true'\n/);
   assert.match(check, /key: \$\{\{ steps\.native\.outputs\.key \}\}/);
   assert.match(check, /fail-on-cache-miss: true/);
+});
+
+test("every build checks ios.yml's rebundling against Xcode's bundle, through the same stand-in .app", () => {
+  const STAND_IN = /rebundle-ios-app\.sh .*"\$products\/js\.app"/;
+  assert.match(code(".github/workflows/ios.yml"), STAND_IN);
+  const cache = code(".github/workflows/ios-app-cache.yml");
+  const at = cache.indexOf("- name: The rebundled JS is the bundle Xcode built");
+  assert.notEqual(at, -1, "no build checks the rebundle");
+  const check = cache.slice(at).split("\n      - ")[0];
+  assert.match(check, /if: steps\.native\.outputs\.cache-hit != 'true'\n/);
+  assert.match(check, STAND_IN);
+  assert.match(check, /cmp "\$RUNNER_TEMP\/xcode\.jsbundle" "\$products\/js\.app\/main\.jsbundle"/);
 });
 
 test("the key follows the action's own text, not the workflows calling it", () => {

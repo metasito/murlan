@@ -32,6 +32,20 @@ jobs:
         run: npm ci
 
       - name: Build and save the app, unless the cache has it
+        id: native
         uses: ./.github/actions/ios-app
         with:
           lookup-only: "true"
+
+      # What makes the app ios.yml restores trustworthy: its rebundling, into the same stand-in .app,
+      # reproduces Xcode's own bundle byte for byte.
+      - name: The rebundled JS is the bundle Xcode built
+        if: steps.native.outputs.cache-hit != 'true'
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          mkdir -p "$products/js.app"
+          tools/ci/rebundle-ios-app.sh "$products/js.app"
+          cmp "$RUNNER_TEMP/xcode.jsbundle" "$products/js.app/main.jsbundle"
+          node scripts/e2eBuildMark.mjs --present "$products/js.app"

@@ -57,6 +57,28 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # In the background, like the bundling below; `Maestro is installed` waits for it.
+      - name: Start installing Maestro
+        run: |
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          (
+            status=0
+            {
+              # This is the tool that decides what "the app rendered" means, and
+              # unpinned it was the only thing in either job that could change
+              # between two runs of the same commit. Raise it deliberately, and
+              # read the changelog when you do (#701).
+              export MAESTRO_VERSION=2.10.0
+              curl -Ls "https://get.maestro.mobile.dev" | bash
+              # Checked rather than echoed. A tag that does not resolve leaves the
+              # installer's own `exit` returning the status of the echo before it,
+              # which is 0 with nothing installed - so the pin has to be read back
+              # off the binary that arrived.
+              "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+            } > "$RUNNER_TEMP/maestro.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/maestro.status"
+          ) > /dev/null 2>&1 &
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
@@ -105,12 +127,22 @@ jobs:
           products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
           echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
           mkdir -p "$products/js.app"
-          nohup bash -c 'tools/ci/rebundle-ios-app.sh "$1" > "$RUNNER_TEMP/bundle.log" 2>&1; echo $? > "$RUNNER_TEMP/bundle.status"' \
-            _ "$products/js.app" > /dev/null 2>&1 &
+          (
+            status=0
+            tools/ci/rebundle-ios-app.sh "$products/js.app" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/bundle.status"
+          ) > /dev/null 2>&1 &
 
       - name: Restore the app
         id: native
         uses: ./.github/actions/ios-app
+
+      - name: Say how to fill the cache
+        if: failure() && steps.native.outcome == 'failure'
+        run: |
+          echo "::error::No native build for this branch's fingerprint is in the cache, and a shard never builds one." \
+            "Dispatch ios-app-cache.yml on this branch, then this workflow again."
+          exit 1
 
       - name: Bundle the JS into the app
         run: |
@@ -138,11 +170,6 @@ jobs:
           echo "APP_ID=$id" >> "$GITHUB_ENV"
           echo "Built $app ($id)"
 
-      # What makes a restored app trustworthy: rebundling reproduces Xcode's own bundle byte for byte.
-      - name: The rebundled JS is the bundle Xcode built
-        if: steps.native.outputs.cache-hit != 'true'
-        run: cmp "$RUNNER_TEMP/xcode.jsbundle" "$APP_BUNDLE/main.jsbundle"
-
       - name: The bundle carries the test-only flag
         run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
 
@@ -152,20 +179,14 @@ jobs:
       - name: Install the app on the simulator
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
 
-      - name: Install Maestro
+      - name: Maestro is installed
         run: |
-          # This is the tool that decides what "the app rendered" means, and
-          # unpinned it was the only thing in either job that could change
-          # between two runs of the same commit. Raise it deliberately, and
-          # read the changelog when you do (#701).
-          export MAESTRO_VERSION=2.10.0
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-          # Checked rather than echoed. A tag that does not resolve leaves the
-          # installer's own `exit` returning the status of the echo before it,
-          # which is 0 with nothing installed - so the pin has to be read back
-          # off the binary that arrived.
-          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+          for _ in $(seq 1 150); do
+            [ -s "$RUNNER_TEMP/maestro.status" ] && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/maestro.log"
+          [ "$(cat "$RUNNER_TEMP/maestro.status" 2>/dev/null)" = 0 ] || { echo "::error::Installing Maestro failed or never finished."; exit 1; }
 
       # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
       - name: Run the flows
@@ -240,6 +261,7 @@ jobs:
     # `always()`, so a skipped or cancelled shard reaches the check below and turns it red.
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 

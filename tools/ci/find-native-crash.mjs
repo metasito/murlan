@@ -66,7 +66,7 @@ const PLATFORMS = {
     reads: (file) => /\.(ips|crash)$/i.test(file),
     find: iosCrash,
     describe: (c) => `${c.process} died of ${c.signal}`,
-    after: "The report is in the crash-reports-ios artifact.",
+    after: "The report is in this shard's crash-reports-ios-<shard> artifact.",
   },
 };
 
