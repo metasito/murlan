@@ -1,5 +1,5 @@
 import { describe, it, expect, jest, afterEach } from "@jest/globals";
-import { act, render, screen, within } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, within } from "@testing-library/react-native";
 import { StyleSheet } from "react-native";
 import type { TestInstance } from "test-renderer";
 import { getAnimatedStyle } from "react-native-reanimated";
@@ -18,6 +18,7 @@ const MARK_ENTER_MS = 100;
 const RISE_PX = 6;
 
 const mark = () => screen.getByTestId("notice-combo");
+const sweepOnPile = () => within(screen.getByTestId("pile-area")).queryByTestId("sweep", { includeHiddenElements: true });
 
 function markStyle() {
   return getAnimatedStyle(mark()) as { opacity?: number; transform?: Record<string, number>[] };
@@ -48,8 +49,9 @@ async function drawnAt(scale: number) {
 
 async function paintOf(combo: Combination) {
   const r = await render(pile(combo));
+  await fireEvent(screen.getByTestId("combo-chip"), "layout", { nativeEvent: { layout: { width: 80, height: 20 } } });
   const text = within(mark()).getByText(/./);
-  const drawn = { plate: flat(mark()), ink: flat(text).color, words: text.props.children, sheen: screen.queryByTestId("combo-chip-sheen") };
+  const drawn = { plate: flat(mark()), ink: flat(text).color, words: text.props.children, sheen: sweepOnPile() };
   await r.unmount();
   return drawn;
 }
@@ -107,7 +109,7 @@ describe("the combination mark enters as the mockup's .cchip, the same for every
     setMotionPreference("on");
     const r = await render(pile(BOMB));
     expect(riseOf(markStyle())).toBe(0);
-    expect(screen.queryByTestId("combo-chip-sheen")).toBeNull();
+    expect(sweepOnPile()).toBeNull();
     await r.unmount();
   });
 });

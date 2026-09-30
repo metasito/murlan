@@ -28,6 +28,7 @@ import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrow
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./notices/pileNotices";
+import { noticeTiming } from "./noticeModel";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
 import { AT_REST, flightSpec, inBackground, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
@@ -400,7 +401,7 @@ export function PileLayer(props: PileLayerProps) {
   return (
     <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
       {roundWinner && !hidden ? (
-        <Animated.View exiting={reduceMotion ? undefined : FadeOut.duration(Motion.mark.exit)} style={pileStyles.winnerAt}>
+        <Animated.View exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit)} style={pileStyles.winnerAt}>
           <RoundWinnerMark name={roundWinner} scale={scale} />
         </Animated.View>
       ) : null}
@@ -795,6 +796,6 @@ const pileStyles = StyleSheet.create({
   // Out of the flow and hung off the centre: in it, the chip's arrival would lift the cards the
   // flight has just set down.
   comboLabel: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
-  // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note wraps a word a line.
+  // The field's width, not the pile's: an empty pile is as narrow as its minimum, and the note is cut.
   noteLabel: { position: "absolute", top: "50%", left: "50%", alignItems: "center" },
 });
