@@ -8,3 +8,4 @@ import "./soak";
 import "./landingSync";
 import "./seatAnchors";
 import "./lampVariants";
+import "./threadLoad";

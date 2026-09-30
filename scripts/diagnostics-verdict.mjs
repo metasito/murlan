@@ -75,6 +75,23 @@ const p90 = (xs) => {
   return s.length ? s[Math.ceil(s.length * 0.9) - 1] : NaN;
 };
 
+const midMedian = (xs) => {
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length / 2;
+  return s.length === 0 ? NaN : s.length % 2 ? s[Math.floor(m)] : (s[m - 1] + s[m]) / 2;
+};
+
+export function medianHz(rows) {
+  const perSecond = new Map();
+  for (const r of rows) {
+    if (r.k !== "frame" || !(r.dt > 0)) continue;
+    const s = Math.floor(r.t / 1000);
+    if (!perSecond.has(s)) perSecond.set(s, []);
+    perSecond.get(s).push(1000 / r.dt);
+  }
+  return midMedian([...perSecond.values()].map(midMedian));
+}
+
 const times = (rows, k, name) => rows.filter((r) => r.k === k && (name === undefined || r.name === name)).map((r) => r.t);
 const firstIn = (times, from, to) => times.filter((t) => t >= from && t <= to).sort((a, b) => a - b)[0];
 const onsetsOf = (rows, source) => rows.filter((r) => r.k === "onset" && r.source === source).map((r) => r.t);
@@ -98,7 +115,7 @@ function matchOnsets(starts, onsets, windowMs) {
 }
 
 export function burstStalls(rows) {
-  const frames = rows.filter((r) => r.k === "frame");
+  const frames = rows.filter((r) => r.k === "frame" && r.dt > 0);
   const spans = [...frames, ...rows.filter((r) => r.k === "jsLag")]
     .filter((r) => r.dt >= 34)
     .map((r) => [r.t - r.dt, r.t])
@@ -258,7 +275,59 @@ function lampVariants(rows) {
   };
 }
 
-export const GATES = { pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants };
+function throwStalls(rows) {
+  const throws = times(rows, "throw");
+  const spans = rows.filter((r) => r.k === "frame" || r.k === "jsLag");
+  const windows = throws.map((t) => spans.filter((r) => r.t >= t && r.t - r.dt <= t + 600));
+  const stalls = windows.reduce((n, w) => n + burstStalls(w).stalls, 0);
+  const covered = (w, t) =>
+    w.filter((r) => r.k === "frame").reduce((ms, r) => ms + Math.max(0, Math.min(r.t, t + 600) - Math.max(r.t - r.dt, t)), 0);
+  const framed = throws.length ? windows.filter((w, i) => covered(w, throws[i]) >= 480).length / throws.length : 0;
+  const { jsTicks } = burstStalls(rows);
+  return {
+    pass: throws.length >= 10 && framed === 1 && jsTicks > 0 && stalls === 0,
+    metrics: { throws: throws.length, stalls, framed, jsTicks, medianHz: medianHz(rows) },
+  };
+}
+
+function halves(rows) {
+  const marks = rows.filter((r) => r.k === "half").sort((a, b) => a.t - b.t);
+  return marks.map((h, i) => {
+    const own = rows.filter((r) => r.t >= h.t && r.t < (marks[i + 1]?.t ?? Infinity));
+    const p95 = own.filter((r) => r.k === "frame" && r.dt > 0).map((r) => r.dt).sort((a, b) => a - b);
+    return { name: h.name, pair: h.pair, hz: medianHz(own), p95: p95.length ? p95[Math.ceil(p95.length * 0.95) - 1] : NaN, ...burstStalls(own) };
+  });
+}
+
+function restCost(rows) {
+  const all = halves(rows);
+  const frozen = all.filter((h) => h.name === "frozen");
+  const swaying = all.filter((h) => h.name === "swaying");
+  const brief = (hs) => hs.map(({ hz, stalls }) => ({ hz, stalls }));
+  return {
+    pass:
+      frozen.length === 4 && swaying.length === 4 && frozen.every((h) => h.frames > 0) &&
+      swaying.every((h) => h.frames > 0 && h.hz >= 115 && h.stalls === 0),
+    metrics: { medianHz: medianHz(rows), frozen: brief(frozen), swaying: brief(swaying) },
+  };
+}
+
+function feltOpaque(rows) {
+  const all = halves(rows);
+  const pairs = [0, 1, 2, 3].map((p) => ["on", "off"].map((name) => all.find((h) => h.name === name && h.pair === p && h.frames > 0)));
+  const whole = pairs.filter(([on, off]) => on && off);
+  const recorded = whole.length;
+  const wins = whole.filter(([on, off]) => on.p95 < off.p95).length;
+  const noWorse = whole.every(([on, off]) => on.stalls <= off.stalls);
+  const outcome = recorded === 4 ? (noWorse && wins >= 3 ? "keep" : "drop") : null;
+  const brief = (i) => pairs.map((pair) => (pair[i] ? { hz: pair[i].hz, p95: pair[i].p95, stalls: pair[i].stalls } : null));
+  return { pass: outcome !== null, metrics: { outcome, wins, recorded, medianHz: medianHz(rows), on: brief(0), off: brief(1) } };
+}
+
+export const GATES = {
+  pulseCost, idle, tapBurst, scheduledOnset, hapticOnset, musicSwitch, smoke, soak, landingSync, seatAnchors, lampVariants,
+  throwStalls, restCost, feltOpaque,
+};
 
 function bracket(rows, scenario) {
   const start = rows.findLastIndex((r) => r.k === "scenario" && r.name === scenario && r.phase === "start");

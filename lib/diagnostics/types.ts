@@ -22,6 +22,8 @@ export interface DiagRows {
   ring: { name: string; x: number; y: number };
   seatState: { id: string; of: number; hold: number };
   lampLegibility: { side: LampSide; ratio: number };
+  throw: Record<never, never>;
+  half: { name: "frozen" | "swaying" | "on" | "off"; pair: number };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];
