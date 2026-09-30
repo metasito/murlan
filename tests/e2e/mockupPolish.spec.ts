@@ -70,7 +70,7 @@ for (const phone of STAGES) {
     const mockup = await mockupAt(browser, "bomb", 100);
     const [wantTurn] = await mockup.boxes("#turn");
     const mockupGap = Math.min(
-      ...(await Promise.all(["#combo", "#score", ".nm", ".ring"].map((s) => mockup.boxes(s)))).flat().map((b) => gap(wantTurn, b))
+      ...(await Promise.all(["#combo", "#score", ".nm", ".ring"].map((s) => mockup.boxes(s, s === ".nm")))).flat().map((b) => gap(wantTurn, b))
     );
     await mockup.close();
     expect(mockupGap, "the mockup's #turn clears its neighbours").toBeGreaterThan(0);
@@ -80,7 +80,7 @@ for (const phone of STAGES) {
     const pill = (await shown(app, TURN)).box;
     const named = { hudCombo: '[data-testid="notice-hudCombo"]', score: '[data-testid="score-pill"]', name: '[data-testid="seat-name"]', ring: '[data-testid="seat-ring"]' };
     const neighbours = (
-      await Promise.all(Object.entries(named).map(async ([what, s]) => (await app.boxes(s)).map((b) => ({ what, b }))))
+      await Promise.all(Object.entries(named).map(async ([what, s]) => (await app.boxes(s, what === "name")).map((b) => ({ what, b }))))
     ).flat();
     const clipped = await app.page.evaluate(
       (sel) => [...document.querySelector(sel)!.querySelectorAll("*")].some((n) => n.scrollWidth > n.clientWidth + 1),

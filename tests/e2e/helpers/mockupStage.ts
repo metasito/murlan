@@ -26,23 +26,30 @@ export interface PlatePaint {
 export interface Stage {
   page: Page;
   plate: (selector: string, run?: string) => Promise<PlatePaint | null>;
-  boxes: (selector: string) => Promise<Rect[]>;
+  /** `text`: each element's text as laid out, whatever its line height, where a name's line box differs by side. */
+  boxes: (selector: string, text?: boolean) => Promise<Rect[]>;
   close: () => Promise<void>;
 }
 
 const stage = (page: Page, origin: string | null): Stage => ({
   page,
   plate: (selector, run) => readPlate(page, selector, run ?? null, origin),
-  boxes: (selector) =>
+  boxes: (selector, text = false) =>
     page.evaluate(
-      ([selector, origin]) => {
+      ([selector, origin, text]) => {
         const at = origin ? document.querySelector(origin)!.getBoundingClientRect() : { left: 0, top: 0 };
+        const rectOf = (el: Element) => {
+          if (!text) return el.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          return range.getBoundingClientRect();
+        };
         return [...document.querySelectorAll(selector)]
-          .map((el) => el.getBoundingClientRect())
+          .map(rectOf)
           .filter((r) => r.width > 0 && r.height > 0)
           .map((r) => ({ x: r.left - at.left, y: r.top - at.top, w: r.width, h: r.height }));
       },
-      [selector, origin] as const
+      [selector, origin, text] as const
     ),
   close: () => page.context().close(),
 });
