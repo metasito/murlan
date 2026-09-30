@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
+import { setDeviceOffline } from "./helpers/deviceNetwork";
 
 const PILL = '[data-testid="notice-offline"]';
 const TEXT = '[data-testid="offline-banner-text"]';
@@ -67,10 +68,10 @@ for (const viewport of VIEWPORTS) {
       const page = await context.newPage();
       try {
         await openApp(page, baseURL!);
-        await context.setOffline(true);
+        await setDeviceOffline(context, page, true);
         await fullyShown(page, PILL);
         const m = await measure(page, TABLE_FONT_SCALE_MAX);
-        await context.setOffline(false);
+        await setDeviceOffline(context, page, false);
 
         const box: Box = m.box;
         expect(m.controls, "the screen has controls to keep clear of").toBeGreaterThan(0);
@@ -105,10 +106,10 @@ test("the offline pill sits where G2's #n-offline does, and is as tall", async (
   const page = await context.newPage();
   try {
     await openApp(page, baseURL!);
-    await context.setOffline(true);
+    await setDeviceOffline(context, page, true);
     await fullyShown(page, PILL);
     const got = (await measure(page, 1)).box;
-    await context.setOffline(false);
+    await setDeviceOffline(context, page, false);
     expect(Math.abs(got.y - want.y), `the pill's top: app ${got.y}, mockup ${want.y}`).toBeLessThanOrEqual(HALF_PT);
     expect(Math.abs(got.h - want.h), `the pill's height: app ${got.h}, mockup ${want.h}`).toBeLessThanOrEqual(HALF_PT);
   } finally {

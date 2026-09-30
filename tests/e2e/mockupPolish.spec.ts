@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { appAt, mockupAt, type PlatePaint, type Rect, type Stage } from "./helpers/mockupStage";
 import { resumeSaved } from "./helpers/offlineSeed";
+import { setDeviceOffline } from "./helpers/deviceNetwork";
 import { captureStateById, type CaptureState } from "../../lib/captureStates";
 import { cardScale } from "../../components/cardFaceModel";
 import { RANK_SLOTS } from "../../lib/game/gameEngine";
@@ -70,7 +71,7 @@ test("offline: on the table the turn pill is #turn.bad, and the pill off the tab
   const mockup = await mockupAt(browser, "reconnect", 8000);
   const app = await appAt(browser, baseURL!, LIT_WITH_COUNT);
   await expect(app.page.locator(COUNT), "the lit pill's count").toBeVisible({ timeout: 30_000 });
-  await app.page.context().setOffline(true);
+  await setDeviceOffline(app.page.context(), app.page, true);
   await expect(app.page.locator(COUNT), "the count gives way to the connection").toHaveCount(0, { timeout: 15_000 });
   const want = await shown(mockup, "#turn.bad");
   const got = await shown(app, TURN);
@@ -78,7 +79,7 @@ test("offline: on the table the turn pill is #turn.bad, and the pill off the tab
   const wantDot = await dotOf(mockup, "#turn.bad .dot");
   const gotDot = await dotOf(app, '[data-testid="turn-chip-dot"]');
   const offTable = await app.plate('[data-testid="notice-offline"]');
-  await app.page.context().setOffline(false);
+  await setDeviceOffline(app.page.context(), app.page, false);
   await Promise.all([mockup.close(), app.close()]);
 
   expect.soft(got.edge, "the edge").toBe(want.edge);

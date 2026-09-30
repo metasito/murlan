@@ -60,7 +60,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     // The whole point: a disconnect is a speed bump, not a cliff. The
     // player is told, and the table stays on screen rather than being replaced
     // by an error or left silently frozen.
-    await expect(page.getByText(RECONNECTING)).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByTestId("notice-turn").getByText(RECONNECTING)).toBeVisible({ timeout: 45_000 });
     await expect(table).toBeVisible();
 
     await context.setOffline(false);
@@ -68,7 +68,7 @@ test("online — a dropped connection says so, and the table comes back", async 
 
     // Back inside the server's grace window, so the seat was never vacated:
     // the notice clears itself and the same table is still there.
-    await expect(page.getByText(RECONNECTING)).toBeHidden({ timeout: 60_000 });
+    await expect(page.getByTestId("notice-turn").getByText(RECONNECTING)).toBeHidden({ timeout: 60_000 });
     await expect(table).toBeVisible();
 
     expect(errors, "no console errors/warnings outside the offline window").toEqual([]);
