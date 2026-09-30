@@ -49,7 +49,7 @@ const TILE_CAST = withAlpha(Colors.shadow, 0.5);
 const SUIT_BOX = "-5.2 -5.2 10.4 10.4";
 const DIM_Z = Layer.hint;
 
-const Ink = createContext<{ paint: Paint; box: NoticeBox; scale: number } | null>(null);
+const Ink = createContext<{ paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
 export function TableNotice<K extends NoticeKind>({
   kind,
@@ -67,6 +67,7 @@ export function TableNotice<K extends NoticeKind>({
   const shape: NoticeShape = NOTICES[kind].shape;
   const paint = (NoticePalette[shape] as Record<string, Paint>)[tone];
   const box = useMemo(() => noticeBox(kind, scale), [kind, scale]);
+  const glow = noticeGlow(kind, tone, scale);
   const reduceMotion = usePrefersReducedMotion();
   const { enter, exit } = noticeTiming(shape, reduceMotion);
   const rise = noticeRise(scale, reduceMotion);
@@ -89,7 +90,7 @@ export function TableNotice<K extends NoticeKind>({
     transform: [{ translateY: (1 - risen.value) * rise }],
   }));
 
-  const ink = useMemo(() => ({ paint, box, scale }), [paint, box, scale]);
+  const ink = useMemo(() => ({ paint, box, dotGlow: glow.dot, scale }), [paint, box, glow.dot, scale]);
   const panel = shape === "panel";
   const unit = mockupPx(1, scale);
   const { offsetY, blur } = PILL_SHADOW.lifted;
@@ -108,7 +109,7 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
-        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(kind, tone, scale), 0),
+        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, glow.plate, 0),
         panel && {
           width: box.width,
           boxShadow: `${paint.hairline ? `inset 0px ${unit}px 0px ${paint.hairline}, ` : ""}0px ${offsetY * unit}px ${blur * unit}px ${PILL_SHADOW.spread * unit}px ${PLATE_SHADOW}`,
@@ -139,7 +140,7 @@ function useInk(what: string) {
 }
 
 export function NoticeDot({ testID }: { testID?: string }) {
-  const { paint, box } = useInk("NoticeDot");
+  const { paint, box, dotGlow } = useInk("NoticeDot");
   const dot = paint.dot;
   if (!dot) throw new Error("this notice's tone paints no dot");
   return (
@@ -147,7 +148,7 @@ export function NoticeDot({ testID }: { testID?: string }) {
       testID={testID}
       style={[
         { width: box.dot, height: box.dot, borderRadius: box.dot / 2, backgroundColor: dot.color },
-        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, box.dotGlow, 0),
+        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, dotGlow, 0),
       ]}
     />
   );
@@ -245,7 +246,7 @@ export function NoticeText({
         strong && styles.strong,
         {
           color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
-          fontSize: box.fontSize,
+          fontSize: strong ? box.strongFontSize : box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
         },
         maxWidth !== undefined && { maxWidth: maxWidth * scale },

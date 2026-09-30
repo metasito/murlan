@@ -27,7 +27,7 @@ import {
 import { regionBrightness, regionsFor, TABLE, type Region, type SideLayout } from "./parityRegions";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
 
-const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
+export const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
 const SEED = 1255;
 const STRIP_STEPS = 2;
@@ -262,11 +262,24 @@ async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<numb
   return boxes;
 }
 
+export const sideContext = (browser: Browser, baseURL?: string) =>
+  browser.newContext({ viewport: TABLE, deviceScaleFactor: DPR, locale: "it-IT", baseURL });
+
 export async function newSidePage(browser: Browser, baseURL?: string): Promise<Page> {
-  const context = await browser.newContext({ viewport: TABLE, deviceScaleFactor: DPR, locale: "it-IT", baseURL });
-  const page = await context.newPage();
+  const page = await (await sideContext(browser, baseURL)).newPage();
   await installVirtualClock(page, SEED);
   return page;
+}
+
+/** Widens the viewport until the mockup's `#frame` is the table's size; returns the frame's box. */
+export async function fitFrame(page: Page) {
+  const frameBox = async () => (await page.locator("#frame").boundingBox())!;
+  const off = TABLE.width - (await frameBox()).width;
+  if (off !== 0) await page.setViewportSize({ width: TABLE.width + off, height: TABLE.height });
+  await page.setViewportSize({ width: TABLE.width + off, height: Math.ceil((await frameBox()).y + TABLE.height) });
+  const box = await frameBox();
+  expect(box.width).toBe(TABLE.width);
+  return box;
 }
 
 /** The same bytes `page.screenshot` yields, in about 60% of its time (#1285). */
@@ -331,13 +344,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.evaluate("paused = true");
-  const frameBox = async () => (await page.locator("#frame").boundingBox())!;
-  const off = TABLE.width - (await frameBox()).width;
-  if (off !== 0) await page.setViewportSize({ width: TABLE.width + off, height: TABLE.height });
-  await page.setViewportSize({ width: TABLE.width + off, height: Math.ceil((await frameBox()).y + TABLE.height) });
+  const box = await fitFrame(page);
   await takeOver(page);
-  const box = await frameBox();
-  expect(box.width).toBe(TABLE.width);
   // The onset frame steps the scene by 0: rAF fires on the clock's 16 ms grid, and the real time
   // that leaks in before `pauseAt` puts the page's own `last` off that grid by a varying amount.
   await page.evaluate(`(() => {

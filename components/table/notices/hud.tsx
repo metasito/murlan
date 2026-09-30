@@ -130,7 +130,7 @@ export function TurnChip({
             <NoticeDot testID="turn-chip-dot" />
             <NoticeText>{chipText}</NoticeText>
             {active && (
-              <NoticeText strong warn={timeLeft <= threshold}>
+              <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
                 {timeLeft}
               </NoticeText>
             )}

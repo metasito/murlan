@@ -12,7 +12,7 @@ const CHIP = { height: FULL, padX: 12, gapX: 6, radius: FULL, font: 10, weight: 
 
 const MOCKUP = {
   ".chip": CHIP,
-  "#turn": { ...CHIP, padX: 13, gapX: 7 },
+  "#turn": { ...CHIP, padX: 13, gapX: 7, strongFont: 12 },
   ".floatchip": CHIP,
   ".passo": { height: 15, padX: 7, gapX: 0, radius: 8, font: 8, weight: 700, tracking: 1.28 },
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
@@ -22,7 +22,7 @@ const MOCKUP = {
 export type NoticeSelector = keyof typeof MOCKUP;
 
 /** Today's `TableChip`, in points at scale 1: a pill keeps it until its task moves it to the mockup. */
-const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6, dot: 6, dotGlow: 9, glow: { lit: 20, urgent: 18 } } as const;
+const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6 } as const;
 
 const MOCKUP_STAGE_H = 402;
 const RISE = 6;
@@ -33,12 +33,13 @@ type Spec<S extends NoticeShape> = {
   selector: NoticeSelector;
   tones: readonly ToneOf<S>[];
   tableChip?: true;
+  keepsEmber?: true;
 };
 export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
-  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], tableChip: true },
+  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
@@ -55,11 +56,11 @@ export type NoticeBox = {
   gap: number;
   radius: number;
   fontSize: number;
+  strongFontSize: number;
   bold: boolean;
   tracking: number;
   strongTracking: number;
   dot: number;
-  dotGlow: number;
 };
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
@@ -73,11 +74,11 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
     gap: at(px.gapX, scale),
     radius: px.radius === FULL ? Radius.full : at(px.radius, scale),
     fontSize: tableFontSize(at(px.font, 1), scale),
+    strongFontSize: tableFontSize(at("strongFont" in px ? px.strongFont : px.font, 1), scale),
     bold: px.weight === 700,
     tracking: at(px.tracking, scale),
     strongTracking: at(px.tracking, scale),
     dot: at(DOT, scale),
-    dotGlow: at(DOT, scale),
   };
 }
 
@@ -90,10 +91,9 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
     padX: TABLE_CHIP.padX * scale,
     gap: TABLE_CHIP.gapX * scale,
     fontSize: tableFontSize(TABLE_CHIP.font, scale),
+    strongFontSize: tableFontSize(TABLE_CHIP.font, scale),
     tracking: TABLE_CHIP.tracking * scale,
     strongTracking: TABLE_CHIP.strongTracking * scale,
-    dot: TABLE_CHIP.dot * scale,
-    dotGlow: TABLE_CHIP.dotGlow * scale,
   };
 }
 
@@ -125,16 +125,22 @@ export function panelParts(scale: number) {
   };
 }
 
-const GLOW = { lit: 20.6, urgent: 18 } as const;
+type Glow = { plate: number; dot: number };
+const GLOW: Partial<Record<NoticeSelector, Partial<Record<NoticeTone, Glow>>>> = {
+  "#turn": { lit: { plate: 20.6, dot: DOT }, urgent: { plate: 18, dot: DOT } },
+};
+/** #1265's ember, in points at scale 1: plan 5 changes no ember value, so it stands over `#turn.urgent`'s. */
+const EMBER: Glow = { plate: 18, dot: 9 };
 
-export function selectorGlow(tone: NoticeTone, scale: number): number {
-  return tone in GLOW ? at(GLOW[tone as keyof typeof GLOW], scale) : 0;
+export function selectorGlow(selector: NoticeSelector, tone: NoticeTone, scale: number): Glow {
+  const px = GLOW[selector]?.[tone];
+  return px ? { plate: at(px.plate, scale), dot: at(px.dot, scale) } : { plate: 0, dot: 0 };
 }
 
-export function noticeGlow(kind: NoticeKind, tone: NoticeTone, scale: number): number {
+export function noticeGlow(kind: NoticeKind, tone: NoticeTone, scale: number): Glow {
   const spec: NoticeSpec = NOTICES[kind];
-  if (!spec.tableChip) return selectorGlow(tone, scale);
-  return tone in TABLE_CHIP.glow ? TABLE_CHIP.glow[tone as keyof typeof TABLE_CHIP.glow] * scale : 0;
+  if (spec.keepsEmber && tone === "urgent") return { plate: EMBER.plate * scale, dot: EMBER.dot * scale };
+  return selectorGlow(spec.selector, tone, scale);
 }
 
 export function noticeRise(scale: number, reduceMotion: boolean): number {
