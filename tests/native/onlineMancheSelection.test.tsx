@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
@@ -103,7 +104,7 @@ const cardNode = (c: Card) => screen.getByLabelText(cardSpokenName(c, t));
 const selected = (c: Card) => cardNode(c).props.accessibilityState?.selected === true;
 const tap = async (c: Card) => {
   await act(async () => {
-    fireEvent.press(cardNode(c));
+    await activate(cardNode(c));
   });
 };
 const serverSends = async (r: Awaited<ReturnType<typeof render>>, next: GameState) => {

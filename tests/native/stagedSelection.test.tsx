@@ -12,6 +12,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
+import { activate } from './tapHelpers';
 import { GameTable } from '@/components/GameTable';
 import { GameProvider } from '@/context/GameContext';
 import { useLocalSession, useLocalTable } from '@/context/gameHooks';
@@ -80,7 +81,7 @@ const table = (opts: {
 
 const pressCard = async (c: Card) => {
   await act(async () => {
-    fireEvent.press(screen.getByLabelText(cardSpokenName(c, t)));
+    await activate(screen.getByLabelText(cardSpokenName(c, t)));
   });
 };
 const selected = (c: Card) =>
@@ -245,7 +246,7 @@ describe('an AI taking its turn offline', () => {
     const held = JSON.parse(screen.getByTestId('held').props.children as string) as Card;
     const heldNode = () => screen.getByLabelText(cardSpokenName(held, t), { includeHiddenElements: true });
     await act(async () => {
-      fireEvent.press(heldNode());
+      await activate(heldNode());
     });
 
     await tapTestId('ai');

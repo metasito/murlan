@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -45,7 +46,7 @@ describe('a card press', () => {
     const contexts = api().contexts.length;
     api().log.length = 0;
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(cardSpokenName(SEVEN_H, t)));
+      await activate(screen.getByLabelText(cardSpokenName(SEVEN_H, t)));
     });
     await settle();
     expect(sounds().slice(before)).toEqual(['select']);

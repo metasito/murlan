@@ -98,8 +98,10 @@ import {
   NO_SELECTION,
   press,
   settle,
+  type Selection,
   type SelectionMode,
 } from "@/components/table/selection";
+import { useSelection } from "@/components/table/useSelection";
 import { TurnChip } from "@/components/table/turnChip";
 import { GiocaButton, PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
@@ -849,16 +851,23 @@ export function GameTable({
   // works, and it is what stops the turn clock starting from a blank hand.
   // Only the *submission* is gated on the turn: `staged.playable` already
   // requires it, so GIOCA lights on its own the moment the turn arrives.
-  const handleCardPress = useCallback(
-    (id: string) => {
-      if (isFinished || spectating || (exchangeIsWinners && !exchangeIsMine)) return;
-      const next = press(settle(selection.get(), heldIds, selectionMode), id);
+  const tapsReach = !(isFinished || spectating || (exchangeIsWinners && !exchangeIsMine));
+  const announceTap = useCallback(
+    (next: Selection, id: string) => {
       event([{ kind: next.ids.includes(id) ? "select" : "deselect" }]);
       selection.set(next);
     },
-    [isFinished, spectating, exchangeIsMine, exchangeIsWinners, selection, heldIds, selectionMode]
+    [selection]
   );
-  useBenchHandle("cardPress", handleCardPress);
+  const handleCardPress = useCallback(
+    (id: string) => {
+      if (!tapsReach) return;
+      announceTap(press(settle(selection.get(), heldIds, selectionMode), id), id);
+    },
+    [tapsReach, announceTap, selection, heldIds, selectionMode]
+  );
+  const uiSelection = useSelection(selection, heldIds, selectionMode, tapsReach, announceTap);
+  useBenchHandle("cardPress", uiSelection.tapFromJs);
   // The button stays pressable while it is unavailable so a refusal has a
   // channel: a rigid haptic, a shake, and the reason in words. It keeps
   // reporting itself as disabled to assistive tech.
@@ -1383,7 +1392,8 @@ export function GameTable({
                     faceDown={spectating}
                     cards={handOnTable}
                     selectedIds={handSelection}
-                    onPress={handleCardPress}
+                    selection={uiSelection}
+                    onActivate={handleCardPress}
                     disabled={isFinished || spectating}
                     giveableIds={giveableIds}
                     giveHint={t("exchange.cardA11yHint")}

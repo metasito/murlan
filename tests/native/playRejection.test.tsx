@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { bootFeedback, haptics, sounds } from './helpers/feedback';
@@ -75,7 +76,7 @@ const mount = async (gameState: GameState, picked: Card[], onPlay?: (ids: string
   const r = await render(table(gameState, onPlay));
   for (const c of picked) {
     await act(async () => {
-      fireEvent.press(screen.getByLabelText(cardSpokenName(c, t)));
+      await activate(screen.getByLabelText(cardSpokenName(c, t)));
     });
   }
   return r;

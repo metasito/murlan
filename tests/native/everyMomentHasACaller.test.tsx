@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { TurnChip } from '@/components/table/turnChip';
@@ -43,6 +44,7 @@ const table = (s: GameState, x: Extra = {}) => (
 
 const heardIds = (from = 0) => sounds().slice(from).flatMap((s) => (s ? [s] : []));
 const press = async (node: Parameters<typeof fireEvent.press>[0]) => act(async () => { fireEvent.press(node); });
+const pick = (node: Parameters<typeof fireEvent.press>[0]) => activate(node);
 const seven = () => screen.getAllByLabelText(cardSpokenName(SEVEN_H, t))[0];
 
 async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<typeof render>>) => Promise<void>): Promise<string[]> {
@@ -82,10 +84,10 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   roundStart: { sounds: ['round_start'], run: botSounds },
   deal: { sounds: ['deal'], run: botSounds },
   turn: { sounds: ['turn'], run: () => heard(table(human(1)), async (r) => { await act(async () => r.rerender(table(human(0)))); }) },
-  select: { sounds: ['select'], run: () => heard(table(human(0)), () => press(seven())) },
-  deselect: { sounds: ['deselect'], run: () => heard(table(human(0)), async () => { await press(seven()); await press(seven()); }) },
+  select: { sounds: ['select'], run: () => heard(table(human(0)), () => pick(seven())) },
+  deselect: { sounds: ['deselect'], run: () => heard(table(human(0)), async () => { await pick(seven()); await pick(seven()); }) },
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
-  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await press(seven()); await press(screen.getByTestId('btn-gioca')); }) },
+  give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await pick(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
   mancheOver: { sounds: ['mancheWon', 'mancheLost', 'mancheNeutral'], run: () => mancheEnd(() => ({})) },
   partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },

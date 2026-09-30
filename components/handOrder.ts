@@ -57,17 +57,11 @@ export function moveCard(ids: readonly string[], id: string, to: number): string
   return rest;
 }
 
-/**
- * Which card a finger at `x` has landed on, given every card's left edge, or
- * null for a finger past the ends of the row.
- *
- * The last one whose box contains `x`, because a fan is drawn left to right
- * and each card covers the one before it: the card a finger is touching is the
- * one on top, not the first one whose box it happens to be inside.
- */
-export function cardAt(cardXs: readonly number[], cardW: number, x: number): number | null {
-  for (let i = cardXs.length - 1; i >= 0; i--) {
-    if (x >= cardXs[i] && x <= cardXs[i] + cardW) return i;
+/** Which card's tap strip holds `x`, given each strip's left edge and width, or null for none. */
+export function stripAt(lefts: readonly number[], widths: readonly number[], x: number): number | null {
+  'worklet';
+  for (let i = lefts.length - 1; i >= 0; i--) {
+    if (x >= lefts[i] && x < lefts[i] + widths[i]) return i;
   }
   return null;
 }
