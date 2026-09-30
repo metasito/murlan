@@ -550,6 +550,11 @@ export function GameTable({
     if (error) floatNow = raised(floatNow, "toast", error);
     else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
   }
+  const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
+  if (withdrawnSeen !== tableWithdrawn) {
+    setWithdrawnSeen(tableWithdrawn);
+    if (tableWithdrawn && floatNow?.live) floatNow = { ...floatNow, live: false };
+  }
   if (floatNow !== float) setFloat(floatNow);
 
   // ── The exchange, on the table ──────────────────────────────────────────────
