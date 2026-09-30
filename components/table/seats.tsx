@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
-import { ChipText, TableChip } from "./chrome";
+import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
@@ -40,7 +40,6 @@ import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/theme";
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useTranslation } from "@/lib/i18n";
 import type { Combination, Player } from "@/lib/game/gameEngine";
 import { useRingProbe } from "@/lib/diagnostics";
 
@@ -507,102 +506,26 @@ function SeatRing({
 
 // ─── SeatBadges ───────────────────────────────────────────────────────────────
 
-// A pass leaves no trace on the felt, so this chip is the only thing that says
-// a seat is out of the current round. It stands until somebody plays, which is
-// when `passedSeats` (flightPhysics.ts) stops returning that seat. Deliberately
-// quieter than the gold bot badge and the gold turn ring: a seat that has
-// withdrawn from the round must not out-shout whose turn it is.
-function PassedChip({ scale }: { scale: number }) {
-  const { t } = useTranslation();
-  return (
-    <TableChip scale={scale}>
-      <ChipText scale={scale}>{t("gameShared.passedLabel")}</ChipText>
-    </TableChip>
-  );
-}
-
-/**
- * A seat's own disconnect countdown, for the whole grace (docs/GAME-RULES.md
- * § Decisions) — not the ten-second banner it replaces. Ticks locally off the
- * server's own `seconds`, restarted by `resetKey` the same way `TurnChip`
- * is; there is no clock of its own to invent.
- */
-function ReconnectingChip({
-  seconds,
-  resetKey,
-  scale,
-}: {
-  seconds: number;
-  resetKey: string;
-  scale: number;
-}) {
-  const { t } = useTranslation();
-  const [left, setLeft] = useState(seconds);
-
-  // A new grace window puts the countdown back to full in the same render, so
-  // its first frame is never the previous one's remainder.
-  const graceWindow = `${resetKey}|${seconds}`;
-  const [shownWindow, setShownWindow] = useState(graceWindow);
-  if (graceWindow !== shownWindow) {
-    setShownWindow(graceWindow);
-    setLeft(seconds);
-  }
-
-  useEffect(() => {
-    let remaining = seconds;
-    const id = setInterval(() => {
-      remaining -= 1;
-      setLeft(Math.max(0, remaining));
-      if (remaining <= 0) clearInterval(id);
-    }, 1000);
-    return () => clearInterval(id);
-  }, [resetKey, seconds]);
-
-  return (
-    <TableChip scale={scale}>
-      <ChipText scale={scale} testID="seat-reconnect-chip">
-        {t("gameTable.seatReconnecting", { seconds: left })}
-      </ChipText>
-    </TableChip>
-  );
-}
-
-function VacatedChip({ username, scale }: { username: string; scale: number }) {
-  const { t } = useTranslation();
-  return (
-    <TableChip scale={scale}>
-      <ChipText scale={scale} testID="seat-vacated-chip">
-        {t("game.seatLeft", { username })}
-      </ChipText>
-    </TableChip>
-  );
-}
-
-// Every marker shares one wrapping row. A seat carrying more than one would
-// otherwise stand a badge height taller than one carrying none.
 function SeatBadges({
-  passed,
   vacated,
   reconnecting,
   name,
   scale,
   maxW,
 }: {
-  passed: boolean;
   vacated: boolean;
   reconnecting?: { seconds: number; resetKey: string };
   name: string;
   scale: number;
   maxW: number;
 }) {
-  if (!passed && !vacated && !reconnecting) return null;
+  if (!vacated && !reconnecting) return null;
   return (
     <View style={[seatStyles.seatBadgeRow, { maxWidth: maxW }]}>
       {reconnecting && (
-        <ReconnectingChip seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
+        <ReconnectingMark seconds={reconnecting.seconds} resetKey={reconnecting.resetKey} scale={scale} />
       )}
-      {!reconnecting && vacated && <VacatedChip username={name} scale={scale} />}
-      {passed && <PassedChip scale={scale} />}
+      {!reconnecting && vacated && <VacatedMark username={name} scale={scale} />}
     </View>
   );
 }
@@ -753,7 +676,6 @@ function SeatWho({
             {name}
           </TableText>
           <SeatBadges
-            passed={passed}
             vacated={vacated}
             reconnecting={reconnecting}
             name={name}
@@ -772,6 +694,7 @@ function SeatWho({
         focusMode={focusMode}
         mark={mark}
       />
+      {passed && !focusMode && <PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} scale={scale} />}
     </View>
   );
 }

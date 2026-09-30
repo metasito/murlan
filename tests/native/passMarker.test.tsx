@@ -72,16 +72,18 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
 const noop = () => {};
 
 /**
- * The seats whose slot carries the chip, named. Cardinality alone would pass
- * with the chip on the wrong opponent, which is the one thing the marker must
- * never get wrong. Both slots lay the name and the badge row out in a single
- * column (components/table/seats.tsx), so the name's parent is the seat.
+ * The seats whose slot carries the mark, named. Cardinality alone would pass
+ * with the mark on the wrong opponent, which is the one thing it must never get wrong.
  */
+const SLOTS = ['top-seat', 'side-seat-left', 'side-seat-right'];
 const markedSeatNames = (): string[] =>
-  NAMES.filter((name) => {
-    const column = screen.queryByText(name)?.parent;
-    return !!column && within(column).queryAllByText(PASSED).length > 0;
-  });
+  SLOTS.flatMap((id) => {
+    const slot = screen.queryByTestId(id);
+    const mark = slot && within(slot).queryByTestId('notice-passed');
+    if (!slot || !mark) return [];
+    expect(within(mark).getByText(PASSED)).toBeTruthy();
+    return [String(within(slot).getByTestId('seat-name').props.children)];
+  }).sort();
 
 const table = (gameState: GameState, onPass: () => void = noop) => (
   <SafeAreaProvider initialMetrics={METRICS}>
@@ -133,7 +135,7 @@ describe('the per-seat pass marker', () => {
         })
       )
     );
-    expect(screen.queryAllByText(PASSED)).toHaveLength(0);
+    expect(screen.queryAllByTestId('notice-passed')).toHaveLength(0);
     await r.unmount();
   });
 
@@ -179,7 +181,7 @@ describe('the per-seat pass marker', () => {
         )
       );
     });
-    expect(screen.queryAllByText(PASSED)).toHaveLength(0);
+    expect(screen.queryAllByTestId('notice-passed')).toHaveLength(0);
     await r.unmount();
   });
 
@@ -187,13 +189,13 @@ describe('the per-seat pass marker', () => {
     const top = await render(
       withSafeArea(<TopOppSlot player={seat(1, 'Besi')} isActive={false} cardCount={5} passed />)
     );
-    expect(top.queryByText(PASSED)).toBeTruthy();
+    expect(top.queryByTestId('notice-passed')).toBeTruthy();
     await top.unmount();
 
     const topClear = await render(
       withSafeArea(<TopOppSlot player={seat(1, 'Besi')} isActive={false} cardCount={5} />)
     );
-    expect(topClear.queryByText(PASSED)).toBeNull();
+    expect(topClear.queryByTestId('notice-passed')).toBeNull();
     await topClear.unmount();
 
     const side = await render(
@@ -201,7 +203,7 @@ describe('the per-seat pass marker', () => {
         <SideOppSlot player={seat(2, 'Cimi')} isActive={false} side="left" cardCount={5} passed />
       )
     );
-    expect(side.queryByText(PASSED)).toBeTruthy();
+    expect(side.queryByTestId('notice-passed')).toBeTruthy();
     await side.unmount();
 
     const sideClear = await render(
@@ -209,7 +211,7 @@ describe('the per-seat pass marker', () => {
         <SideOppSlot player={seat(2, 'Cimi')} isActive={false} side="right" cardCount={5} />
       )
     );
-    expect(sideClear.queryByText(PASSED)).toBeNull();
+    expect(sideClear.queryByTestId('notice-passed')).toBeNull();
     await sideClear.unmount();
   });
 });

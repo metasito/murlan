@@ -128,6 +128,60 @@ for (const phone of STAGES) {
   });
 }
 
+const MARK = '[data-testid="notice-passed"]';
+const rgb = (colour: string) => colour.replace(/rgba?\(([^,]+),([^,]+),([^,)]+).*/, "$1,$2,$3").replace(/\s/g, "");
+
+/** Each seat's mark as its centre x and top edge, off that seat's disc centre. */
+const markOffsets = (stage: Stage, seats: Record<string, string>, disc: string, mark: string) =>
+  stage.page.evaluate(
+    ([seats, disc, mark]) =>
+      Object.fromEntries(
+        Object.entries(seats).map(([side, seat]) => {
+          const el = document.querySelector(seat);
+          const d = el?.querySelector(disc)?.getBoundingClientRect();
+          const m = el?.querySelector(mark)?.getBoundingClientRect();
+          return [side, d && m ? { x: m.left + m.width / 2 - (d.left + d.width / 2), y: m.top - (d.top + d.height / 2) } : null];
+        })
+      ),
+    [seats, disc, mark] as const
+  );
+
+test("PASSO: another seat's pass is the mockup's .passo, beside the top disc and under a side disc", async ({ browser, baseURL }) => {
+  test.setTimeout(120_000);
+  const mockup = await mockupAt(browser, "trick", 4400);
+  const want = (await mockup.plate('.seat[data-side="top"] .passo'))!;
+  const wantAt = await markOffsets(mockup, { top: '.seat[data-side="top"]', side: '.seat[data-side="side"]' }, ".disc", ".passo");
+  await mockup.close();
+  expect(want.opacity, "Besnik's PASSO is up in the mockup").toBe(1);
+
+  const app = await appAt(browser, baseURL!, captureStateById("passed")!);
+  await expect
+    .poll(() => app.page.evaluate((sel) => [...document.querySelectorAll(sel)].map((el) => getComputedStyle(el).opacity), MARK), {
+      message: "two marks, each risen and faded in",
+      timeout: 30_000,
+    })
+    .toEqual(["1", "1"]);
+  const got = (await app.plate(`[data-testid="top-seat"] ${MARK}`))!;
+  const gotAt = await markOffsets(app, { top: '[data-testid="top-seat"]', side: '[data-testid="side-seat-right"]' }, '[data-testid="seat-ring"]', MARK);
+  await app.close();
+
+  expect.soft(got.fill, "the fill").toBe(want.fill);
+  expect.soft(got.edge, "the edge, the mockup's .35 on goldBorder (Q4)").toBe("rgba(201, 168, 76, 0.3)");
+  expect.soft(rgb(got.edge), "the edge's colour").toBe(rgb(want.edge));
+  expect.soft(rgb(got.ink), "the ink's colour").toBe(rgb(want.ink));
+  expect.soft(got.ink, `the ink, the mockup's ${want.ink} on textSecondary`).toBe("rgba(240, 234, 214, 0.75)");
+  expect.soft(got.fontSize, "the text, at the table's floor (Q3)").toBe(10);
+  expect.soft(Math.abs(got.box.h - want.box.h), `the height, ${got.box.h} against the mockup's ${want.box.h}`).toBeLessThanOrEqual(HALF_PT);
+  expect.soft(Math.abs(got.radius - want.radius), `the radius, ${got.radius} against ${want.radius}`).toBeLessThanOrEqual(HALF_PT);
+  for (const side of ["top", "side"] as const) {
+    const [g, w] = [gotAt[side], wantAt[side]];
+    expect(w, `the mockup's ${side} mark`).not.toBeNull();
+    expect(g, `the app's ${side} mark`).not.toBeNull();
+    expect.soft(Math.abs(g!.x - w!.x), `the ${side} mark's x off the disc, ${g!.x} against ${w!.x}`).toBeLessThanOrEqual(ONE_PT);
+    expect.soft(Math.abs(g!.y - w!.y), `the ${side} mark's top off the disc, ${g!.y} against ${w!.y}`).toBeLessThanOrEqual(ONE_PT);
+  }
+});
+
 const PANEL_FIXTURE = pathToFileURL(path.resolve(__dirname, "fixtures", "notice-panel", "index.html")).href;
 const DESIGN = { width: 874, height: 402 };
 const NEAREST = 0.5;
