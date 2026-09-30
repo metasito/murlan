@@ -220,7 +220,6 @@ const SELF = "self";
 const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
 const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
 const SHEET = sourceArray("SHEET_GRADIENT");
-const CHIP = { plate: "chipStyles.chip" };
 const REMATCH = { plate: "styles.rematchPanel" };
 const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
 const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
@@ -232,12 +231,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   // PASSA's dim fill is a sibling of its label, not an ancestor; both buttons draw the same one.
   "table/actions.tsx:styles.btnDimLabel": { plate: "styles.btnDimFace" },
   "table/actions.tsx:styles.passBtnLabel": { gradient: PASSA },
-  "table/chrome.tsx:chipStyles.chipLabel": CHIP,
-  "table/chrome.tsx:chipStyles.chipLabelStrong": CHIP,
-  "table/chrome.tsx:chipStyles.chipLabelLit": CHIP,
-  "table/chrome.tsx:chipStyles.chipLabelUrgent": CHIP,
-  "table/chrome.tsx:chipStyles.chipLabelEmber": CHIP,
-  "table/chrome.tsx:chipStyles.chipCountEmber": CHIP,
   "table/scorePill.tsx:styles.you": SCORE_PILL,
   "table/scorePill.tsx:styles.total": SCORE_PILL,
   "table/scorePill.tsx:styles.of": SCORE_PILL,

@@ -49,8 +49,8 @@ term's meaning, and useless anywhere the term is not.
   mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`) its shape
   must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
   `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill, the turn
-  pill, who starts and the pile's marks (the combination, the round winner, the exchange label)
-  have; the seat marks (`TableChip`) and the rest move in #1259
+  pill, who starts, the seat marks and the pile's marks (the combination, the round winner, the
+  exchange label) have; the rest move in #1259
   plan 5's later tasks. Its kinds, their geometry in mockup pixels and their timings
   are `components/table/noticeModel.ts`, and each kind's gallery is
   `components/table/notices/gallery.tsx`. Not a notice: the banners over the app

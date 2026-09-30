@@ -14,14 +14,15 @@ const MOCKUP = {
   ".chip": CHIP,
   "#turn": { ...CHIP, padX: 13, gapX: 7, strongFont: 12 },
   ".floatchip": CHIP,
-  ".passo": { height: 15, padX: 7, gapX: 0, radius: 8, font: 8, weight: 700, tracking: 1.28 },
+  // content-box: 15 px and its two 1 px edges
+  ".passo": { height: 17, padX: 7, gapX: 0, radius: 8, font: 8, weight: 700, tracking: 1.28 },
   ".cchip": { height: 15, padX: 9, gapX: 0, radius: FULL, font: 9, weight: 700, tracking: 1.5 },
   "#score": { padX: 10, gapX: 6, radius: 12, font: 9.5, weight: 700, tracking: 2 },
   "#panel": { padX: 10, padY: 10, gapX: 6, radius: 12, font: 15, weight: 700, tracking: 0.3, width: 280 },
 } as const;
 export type NoticeSelector = keyof typeof MOCKUP;
 
-/** Today's `TableChip`, in points at scale 1: a pill keeps it until its task moves it to the mockup. */
+/** The HUD combination pill's box before plan 5, in points at scale 1, until its task moves it to the mockup. */
 const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6 } as const;
 
 const MOCKUP_STAGE_H = 402;
@@ -41,6 +42,9 @@ export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
   turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], keepsEmber: true },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
+  passed: { shape: "chip", selector: ".passo", tones: ["neutral"] },
+  reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
+  vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
@@ -98,6 +102,13 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
     tracking: TABLE_CHIP.tracking * scale,
     strongTracking: TABLE_CHIP.strongTracking * scale,
   };
+}
+
+const MARK_AT = { top: { x: -60, y: -8 }, side: { x: 0, y: 27 } } as const;
+
+/** `.seat[data-side] .passo`: the mark's centre x and top edge, off the disc's centre. */
+export function markAt(side: keyof typeof MARK_AT, scale: number): { x: number; y: number } {
+  return { x: at(MARK_AT[side].x, scale), y: at(MARK_AT[side].y, scale) };
 }
 
 const PANEL_LINES = {
