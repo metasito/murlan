@@ -246,6 +246,32 @@ jobs:
             .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
             .maestro/rematch-prompt.yaml
 
+      # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
+      - name: Photograph the felt
+        if: ${{ !cancelled() }}
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/felt-opaque.yaml
+
+      - name: The felt shows no black band and no black frame
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/felt"
+          for shot in felt-first felt-settled; do
+            found=$(find "$HOME/.maestro/tests" -path "*/felt-opaque/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
+            [ -n "$found" ] || { echo "::error::The felt flow wrote no $shot.png."; exit 1; }
+            cp "$found" "$RUNNER_TEMP/felt/$shot.png"
+          done
+          node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
+
+      - name: Upload the felt screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: felt-ios
+          path: ${{ runner.temp }}/felt/
+          if-no-files-found: ignore
+
       # A simulator app's crash report lands in the host's own DiagnosticReports. Not gated on
       # failure: an app that died mid-flow can still pass the flows (see maestro.yml's crash step).
       - name: Fail if the app died of a native crash

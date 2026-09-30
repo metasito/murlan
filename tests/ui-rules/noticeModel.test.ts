@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Colors, NoticePalette } from "../../lib/tokens.ts";
 import { CHIP_H } from "../../components/seatLayout.ts";
-import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, type NoticeKind } from "../../components/table/noticeModel.ts";
+import { NOTICES, noticeBox, noticeGlow, noticeRise, noticeTiming, panelLine, selectorBox, selectorGlow, type NoticeKind } from "../../components/table/noticeModel.ts";
 
 const STAGE = 402 / 390;
 const at = (px: number, scale: number) => (px / STAGE) * scale;
@@ -69,10 +69,26 @@ test("the who-starts panel takes G1's numbers, and its lines keep the table's fl
 
 test("the lit and urgent pills glow as #turn.lit and #turn.urgent do", () => {
   for (const s of SCALES) {
-    near(noticeGlow("lit", s), at(20.6, s), `lit glow at ${s}`);
-    near(noticeGlow("urgent", s), at(18, s), `urgent glow at ${s}`);
-    assert.equal(noticeGlow("neutral", s), 0);
+    near(selectorGlow("lit", s), at(20.6, s), `lit glow at ${s}`);
+    near(selectorGlow("urgent", s), at(18, s), `urgent glow at ${s}`);
+    assert.equal(selectorGlow("neutral", s), 0);
+    near(selectorBox("#turn", s).dot, at(6, s), `#turn .dot at ${s}`);
+    near(selectorBox("#turn", s).dotGlow, at(6, s), `#turn.lit .dot glow at ${s}`);
   }
+});
+
+// Today's turn chip (#1265): the HUD pill's box, a 6 pt dot glowing 9, the plate glowing 20 lit and 18 ember.
+test("the turn pill keeps today's box, dot and glow at every scale", () => {
+  for (const s of [...SCALES, 1.07]) {
+    const box = noticeBox("turn", s);
+    assert.deepEqual(box, noticeBox("hudCombo", s));
+    near(box.dot, 6 * s, `dot at ${s}`);
+    near(box.dotGlow, 9 * s, `dot glow at ${s}`);
+    near(noticeGlow("turn", "lit", s), 20 * s, `lit glow at ${s}`);
+    near(noticeGlow("turn", "urgent", s), 18 * s, `ember glow at ${s}`);
+    assert.equal(noticeGlow("turn", "neutral", s), 0);
+  }
+  assert.deepEqual([...NOTICES.turn.tones].sort(), ["lit", "neutral", "urgent"]);
 });
 
 test("a notice rises 6 mockup px, and not at all under reduced motion", () => {

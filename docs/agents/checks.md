@@ -105,6 +105,14 @@ CI compiles the Android and iOS projects on a pull request that changes `package
 a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
 native=true`, then wait on it with `await-run.mjs`.
 
+`ios.yml` also runs `.maestro/felt-opaque.yaml`: the felt's Metal layer is opaque only through
+`patches/@shopify+react-native-skia+2.12.0.patch`, and an opaque layer whose drawable misses its
+bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the table as it appears and
+settled, both after the landscape lock resized the felt) on a black band along an edge or over 5 %
+black; they upload as `felt-ios`. They show no black, not that the layer is opaque: the bench's
+`feltOpaque` gate is that proof.
+`ci.yml`'s `ios-build` fails when the patch did not apply.
+
 A device job proves the flows still run and the app renders *something* — it does not replace
 looking at the device (rule 36); a green Chromium run closed #602 while the owner still saw the
 same broken screen.

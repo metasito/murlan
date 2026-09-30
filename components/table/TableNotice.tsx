@@ -30,7 +30,9 @@ type Paint = {
   edge: string;
   ink: string;
   strong: string;
+  warn?: string;
   glow?: { color: string; opacity: number };
+  dot?: { color: string; glow?: number };
   top?: string;
   quiet?: string;
   hairline?: string;
@@ -106,7 +108,7 @@ export function TableNotice<K extends NoticeKind>({
           backgroundColor: paint.fill,
           borderColor: paint.edge,
         },
-        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(tone, scale), 0),
+        paint.glow && makeShadow(paint.glow.color, 0, 0, paint.glow.opacity, noticeGlow(kind, tone, scale), 0),
         panel && {
           width: box.width,
           boxShadow: `${paint.hairline ? `inset 0px ${unit}px 0px ${paint.hairline}, ` : ""}0px ${offsetY * unit}px ${blur * unit}px ${PILL_SHADOW.spread * unit}px ${PLATE_SHADOW}`,
@@ -130,14 +132,29 @@ export function NoticeDim() {
   return <View pointerEvents="none" style={styles.dim} />;
 }
 
-function usePanelInk() {
+function useInk(what: string) {
   const ink = useContext(Ink);
-  if (!ink) throw new Error("a panel's parts are drawn inside a TableNotice");
+  if (!ink) throw new Error(`${what} is drawn inside a TableNotice`);
   return ink;
 }
 
+export function NoticeDot({ testID }: { testID?: string }) {
+  const { paint, box } = useInk("NoticeDot");
+  const dot = paint.dot;
+  if (!dot) throw new Error("this notice's tone paints no dot");
+  return (
+    <View
+      testID={testID}
+      style={[
+        { width: box.dot, height: box.dot, borderRadius: box.dot / 2, backgroundColor: dot.color },
+        dot.glow !== undefined && makeShadow(dot.color, 0, 0, dot.glow, box.dotGlow, 0),
+      ]}
+    />
+  );
+}
+
 export function NoticeLine({ line, children }: { line: PanelLine; children: ReactNode }) {
-  const { paint, scale } = usePanelInk();
+  const { paint, scale } = useInk("a panel part");
   const type = panelLine(line, scale);
   return (
     <TableText
@@ -154,12 +171,12 @@ export function NoticeLine({ line, children }: { line: PanelLine; children: Reac
 }
 
 export function NoticeName({ children }: { children: ReactNode }) {
-  const { paint } = usePanelInk();
+  const { paint } = useInk("a panel part");
   return <TableText style={[styles.bold, { color: paint.strong }]}>{children}</TableText>;
 }
 
 export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
-  const { scale } = usePanelInk();
+  const { scale } = useInk("a panel part");
   const part = panelParts(scale);
   const unit = mockupPx(1, scale);
   const ink = SUIT_COLORS[suit];
@@ -185,7 +202,7 @@ export function NoticeTile({ rank, suit }: { rank: string; suit: Suit }) {
 }
 
 export function NoticeDisc({ children }: { children: ReactNode }) {
-  const { paint, scale } = usePanelInk();
+  const { paint, scale } = useInk("a panel part");
   const part = panelParts(scale);
   return (
     <LinearGradient
@@ -206,18 +223,18 @@ export function NoticeDisc({ children }: { children: ReactNode }) {
 
 export function NoticeText({
   strong = false,
+  warn = false,
   maxWidth,
   testID,
   children,
 }: {
   strong?: boolean;
+  warn?: boolean;
   maxWidth?: number;
   testID?: string;
   children: ReactNode;
 }) {
-  const ink = useContext(Ink);
-  if (!ink) throw new Error("NoticeText is drawn inside a TableNotice");
-  const { paint, box, scale } = ink;
+  const { paint, box, scale } = useInk("NoticeText");
   return (
     <TableText
       numberOfLines={1}
@@ -227,7 +244,7 @@ export function NoticeText({
         (strong || box.bold) && styles.bold,
         strong && styles.strong,
         {
-          color: strong ? paint.strong : paint.ink,
+          color: warn ? (paint.warn ?? paint.strong) : strong ? paint.strong : paint.ink,
           fontSize: box.fontSize,
           letterSpacing: strong ? box.strongTracking : box.tracking,
         },

@@ -22,10 +22,11 @@ const MOCKUP = {
 export type NoticeSelector = keyof typeof MOCKUP;
 
 /** Today's `TableChip`, in points at scale 1: a pill keeps it until its task moves it to the mockup. */
-const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6 } as const;
+const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6, dot: 6, dotGlow: 9, glow: { lit: 20, urgent: 18 } } as const;
 
 const MOCKUP_STAGE_H = 402;
 const RISE = 6;
+const DOT = 6;
 
 type Spec<S extends NoticeShape> = {
   shape: S;
@@ -37,6 +38,7 @@ export type NoticeSpec = { [S in NoticeShape]: Spec<S> }[NoticeShape];
 
 export const NOTICES = {
   hudCombo: { shape: "pill", selector: ".chip", tones: ["neutral"], tableChip: true },
+  turn: { shape: "pill", selector: "#turn", tones: ["neutral", "lit", "urgent"], tableChip: true },
   whoStarts: { shape: "panel", selector: "#panel", tones: ["neutral"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
@@ -56,6 +58,8 @@ export type NoticeBox = {
   bold: boolean;
   tracking: number;
   strongTracking: number;
+  dot: number;
+  dotGlow: number;
 };
 
 export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox {
@@ -72,6 +76,8 @@ export function selectorBox(selector: NoticeSelector, scale: number): NoticeBox 
     bold: px.weight === 700,
     tracking: at(px.tracking, scale),
     strongTracking: at(px.tracking, scale),
+    dot: at(DOT, scale),
+    dotGlow: at(DOT, scale),
   };
 }
 
@@ -86,6 +92,8 @@ export function noticeBox(kind: NoticeKind, scale: number): NoticeBox {
     fontSize: tableFontSize(TABLE_CHIP.font, scale),
     tracking: TABLE_CHIP.tracking * scale,
     strongTracking: TABLE_CHIP.strongTracking * scale,
+    dot: TABLE_CHIP.dot * scale,
+    dotGlow: TABLE_CHIP.dotGlow * scale,
   };
 }
 
@@ -119,8 +127,14 @@ export function panelParts(scale: number) {
 
 const GLOW = { lit: 20.6, urgent: 18 } as const;
 
-export function noticeGlow(tone: NoticeTone, scale: number): number {
+export function selectorGlow(tone: NoticeTone, scale: number): number {
   return tone in GLOW ? at(GLOW[tone as keyof typeof GLOW], scale) : 0;
+}
+
+export function noticeGlow(kind: NoticeKind, tone: NoticeTone, scale: number): number {
+  const spec: NoticeSpec = NOTICES[kind];
+  if (!spec.tableChip) return selectorGlow(tone, scale);
+  return tone in TABLE_CHIP.glow ? TABLE_CHIP.glow[tone as keyof typeof TABLE_CHIP.glow] * scale : 0;
 }
 
 export function noticeRise(scale: number, reduceMotion: boolean): number {
