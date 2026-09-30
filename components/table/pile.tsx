@@ -18,7 +18,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CardView } from "@/components/CardView";
-import { Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, Colors, FontSize, Motion, motionMs, Radius, Scrim, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -82,12 +82,9 @@ const CATCH_MS = 620;
 const CATCH_LIFT = -9;
 const CATCH_EASING = Easing.out(Easing.cubic);
 
-// The beaten group's resting pose, folded into the group's own worklet — the
-// flinch (#764) and the sweep ride the same one, so a second `transform` array
-// cannot clobber it (React Native replaces a style's `transform` wholesale).
-const PILE_PREV_ROTATE_DEG = -7;
-const PILE_PREV_Y = 9;
-const PILE_PREV_OPACITY = 0.3;
+const BEATEN_EASING = Easing.bezier(0, 0, 0.58, 1);
+// Over the card, never a `filter` on the group: on iOS that darkens the felt beneath.
+const SHADE_Z = Layer.table + 1;
 
 const ROLE_RANK: Record<PlayRole, number> = { buried: 0, beaten: 1, top: 2 };
 // Over the moments, as the sweep and the throw were before they shared the pile's list.
@@ -100,7 +97,7 @@ const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signal, bombClock, report, cardScale, roomW }: {
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinchBy, signal, bombClock, report, cardScale, roomW }: {
   play: TrickPlay;
   /** Non-null while the play is in the air; a group mounted without one never flies. */
   flight: Flight | null;
@@ -110,6 +107,8 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
   /** Out of sight at rest; a play still moving is drawn regardless. */
   hidden: boolean;
   flinchY: SharedValue<number>;
+  /** The play whose contact set off the flinch. */
+  flinchBy: SharedValue<string>;
   signal: SharedValue<LandingSignal>;
   bombClock?: SharedValue<BombClock>;
   report: Report;
@@ -124,7 +123,8 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
   const clock = useFlightClock(signal, report.start, report.touch, report.end, armed === null);
   const flying = flight !== null;
   // Read live, not from the spec: a toggle mid-flight brings the cards to rest on the next frame (#786).
-  const still = usePrefersReducedMotion() || spec.reduced;
+  const reduced = usePrefersReducedMotion();
+  const still = reduced || spec.reduced;
   useEffect(() => {
     if (!armed) return;
     report.clock(armed.key, clock);
@@ -168,21 +168,37 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
     return { transform: [{ scale: s }, { rotate: `${rotate}deg` }] };
   });
 
-  const beaten = role === "beaten" && !flying;
+  const beaten = role === "beaten";
+  const buried = role === "buried";
+  const turned = useSharedValue(beaten ? 1 : 0);
+  useEffect(() => {
+    // Buried in the air, it is still drawn until it lands: a turn under way finishes rather than turning back.
+    if (buried) return;
+    const to = beaten ? 1 : 0;
+    const ms = motionMs("beaten", reduced);
+    turned.set(ms === 0 ? to : withTiming(to, { duration: ms, easing: BEATEN_EASING }));
+  }, [beaten, buried, reduced, turned]);
+  useEffect(() => () => cancelAnimation(turned), [turned]);
+  const key = play.key;
+  // The beaten pose rides this one worklet with the flinch (#764) and the sweep: React Native
+  // replaces a style's `transform` wholesale. A play is knocked only by a later play's contact.
   const pose = useAnimatedStyle(() => {
     const transform: ({ translateX: number } | { translateY: number } | { scale: number } | { rotate: string })[] = [];
-    let opacity = beaten ? PILE_PREV_OPACITY : 1;
+    let opacity = 1;
     if (sweep) {
       const t = sweep.travel.value;
       transform.push({ translateX: t * sweep.to.dx }, { translateY: t * sweep.to.dy }, { scale: 1 - t * sweep.fade.value * (1 - SWEEP_SCALE) });
       opacity *= 1 - sweep.fade.value;
     }
-    if (beaten) transform.push({ rotate: `${PILE_PREV_ROTATE_DEG}deg` }, { translateY: PILE_PREV_Y + flinchY.value });
+    const k = turned.value;
+    let drop = k * Beaten.drop;
+    if (beaten) drop += flinchBy.value === key ? 0 : flinchY.value;
+    transform.push({ translateY: drop }, { rotate: `${k * Beaten.rotateDeg}deg` });
     return { opacity, transform };
   });
 
   const { slots, w, h } = fieldSlots(cards, cardScale, roomW);
-  const testID = beaten && !sweep ? "pile-prev-layer" : sweepTop ? "sweep-cards" : undefined;
+  const testID = sweep ? (sweepTop ? "sweep-cards" : undefined) : beaten ? "pile-prev-layer" : role === "buried" ? "pile-buried-layer" : undefined;
   const zIndex = flying ? FLYING_Z : (sweep ? SWEPT_Z : Layer.table) + ROLE_RANK[role];
   const out = !flying && (role === "buried" || (hidden && !sweep));
   return (
@@ -198,7 +214,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} cardScale={cardScale} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} />
             </Fragment>
           );
         })}
@@ -207,7 +223,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, signa
   );
 }
 
-function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardScale }: {
+function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale }: {
   card: Card;
   i: number;
   spec: FlightSpec;
@@ -217,6 +233,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardSc
   flying: boolean;
   /** Null for a play that empties no hand: it never catches. */
   catching: SharedValue<number> | null;
+  turned: SharedValue<number>;
   cardScale: number;
 }) {
   const from = spec.from[i];
@@ -233,6 +250,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardSc
   // Opacity only, on a childless sibling behind the card — the same
   // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
+  const shade = useAnimatedStyle(() => ({ opacity: turned.value }));
   return (
     <Animated.View testID={flying ? "flying-card" : undefined} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
@@ -240,6 +258,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, cardSc
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} light="flat" />
         </View>
+        <Animated.View testID="beaten-shade" pointerEvents="none" style={[pileStyles.beatenShade, { borderRadius: cardRadius(CARD_W(cardScale)) }, shade]} />
       </Animated.View>
     </Animated.View>
   );
@@ -393,8 +412,10 @@ export function PileLayer(props: PileLayerProps) {
   // `flinchFor` already reads it and answers 0. `* scale` because a knock is a
   // fraction of the table, not a fixed pixel count.
   const flinchY = useSharedValue(0);
+  const flinchBy = useSharedValue("");
   useLandingReaction(signal, (l) => {
     "worklet";
+    flinchBy.set(l.key);
     const distance = flinchFor(l.tier, reduceMotion) * scale;
     if (distance === 0) return;
     flinchY.set(withSequence(withTiming(distance, { duration: Motion.duration.flash }), withSpring(0, Motion.spring.land)));
@@ -460,6 +481,7 @@ export function PileLayer(props: PileLayerProps) {
             sweepTop={sweepTop}
             hidden={hidden}
             flinchY={flinchY}
+            flinchBy={flinchBy}
             signal={signal}
             bombClock={bombClock}
             report={report}
@@ -830,6 +852,7 @@ const pileStyles = StyleSheet.create({
     ...Shadow.goldSoft,
   },
   caughtCard: { zIndex: Layer.table },
+  beatenShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: SHADE_Z, backgroundColor: Beaten.shade },
   // A dark plate, not a gold wash: gold on gold over the felt clears AA at no
   // stop of any felt. The border is where the chip's identity lives.
   winnerTag: {

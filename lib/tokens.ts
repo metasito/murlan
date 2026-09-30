@@ -187,6 +187,13 @@ export const Dust = {
   puff: 'rgba(230,215,180,0.1)',
 } as const;
 
+// The beaten play under the new one: the lantern mockup's `.grp.prev`; `shade` over each card is its `brightness(.6)` (D4 #5).
+export const Beaten = {
+  rotateDeg: -7,
+  drop: 9,
+  shade: 'rgba(0,0,0,0.4)',
+} as const;
+
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
 // its one reader). Edges map the mockup's onto the gold scale (#1259 Q4); the lit edge is `goldLitEdge`.
 export const NoticePalette = {
@@ -471,6 +478,8 @@ export const Motion = {
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900 },
   /** A notice's mark or float, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
   mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
+  /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
+  beaten: 280,
 } as const;
 
 /**
@@ -478,12 +487,14 @@ export const Motion = {
  *
  * A `null` reduced form is a step with nothing to shorten — a flash is over
  * before it registers as movement, and a loop gives up its repeat rather than
- * its duration — so the step's own length stands. Everything else takes the
- * answer `Motion.reduced` already wrote down, which is the point: a call site
+ * its duration — so the step's own length stands. Every other ladder step takes
+ * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
- * screen and an instant jump in the next.
+ * screen and an instant jump in the next. `beaten`, the one step off the ladder,
+ * has its reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
  */
-export function motionMs(step: keyof typeof Motion.duration, reduceMotion: boolean): number {
+export function motionMs(step: keyof typeof Motion.duration | "beaten", reduceMotion: boolean): number {
+  if (step === "beaten") return reduceMotion ? 0 : Motion.beaten;
   if (!reduceMotion) return Motion.duration[step];
   return Motion.reduced[step] ?? Motion.duration[step];
 }

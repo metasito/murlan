@@ -104,6 +104,14 @@ test("motionMs answers with the step, or with the reduced form the step states",
   }
 });
 
+// Off the ladder: 280 sits within a quarter of travel's 260.
+test("the beaten play turns over the lantern mockup's .grp transition, and at once under reduced motion", () => {
+  assert.equal(Motion.beaten, 280);
+  assert.ok(!("beaten" in Motion.duration), "280 on the ladder would be a rounding of travel");
+  assert.equal(motionMs("beaten", false), 280);
+  assert.equal(motionMs("beaten", true), 0);
+});
+
 // Reading time is set by how many words there are, not by how the table moves,
 // and the whole point of the separate group is that a later sweep cannot quietly
 // fold a 4-second read back onto a step. Every budget sits clear of the longest
