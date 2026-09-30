@@ -3,6 +3,7 @@
 import { fireEvent } from '@testing-library/react-native';
 import { makeMutable } from 'react-native-reanimated';
 import type { HandSelection } from '@/components/table/useSelection';
+import { createSelectionStore, type SelectionStore } from '@/components/table/selection';
 
 export async function activate(node: Parameters<typeof fireEvent>[0]): Promise<void> {
   await fireEvent(node, 'accessibilityAction', { nativeEvent: { actionName: 'activate' } });
@@ -12,6 +13,9 @@ export async function activate(node: Parameters<typeof fireEvent>[0]): Promise<v
 export function stillSelection(ids: string[] = []): HandSelection {
   return { shown: makeMutable(ids), tap: () => {} };
 }
+
+/** A selection store holding `ids`, for a hand rendered on its own. */
+export const storeOf = (ids: string[] = []): SelectionStore => createSelectionStore({ mode: 'play', ids, held: [] });
 
 type Handler = (e: unknown) => void;
 export interface Captured {

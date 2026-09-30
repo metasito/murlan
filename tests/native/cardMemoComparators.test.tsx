@@ -33,7 +33,7 @@ const noop = () => {};
 const VALUES: Record<string, [unknown, unknown]> = {
   card: [CARD_A, CARD_B],
   selected: [false, true],
-  isSelected: [false, true],
+  store: [{ get: noop }, { get: noop }],
   onPress: [noop, () => {}],
   onActivate: [noop, () => {}],
   shown: [{ value: [] }, { value: [] }],
