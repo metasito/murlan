@@ -54,7 +54,7 @@ export interface CaptureState {
 /**
  * Four lamp positions and one pile, which is the smallest set that has ever
  * caught anything. The turn is half of a state: the felt's pool, each seat's
- * ring, the other seats dimming and both action buttons all key off it, and
+ * ring and name and both action buttons all key off it, and
  * every capture taken before #205 was of the viewer's own turn — so the lamp
  * was only ever photographed at the bottom edge.
  */

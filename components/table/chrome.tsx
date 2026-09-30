@@ -221,7 +221,7 @@ const HAND_LIFT_MS = 500;
 /**
  * The hand rises off the bottom edge on the viewer's own turn — the fourth of
  * the table's signals about whose turn it is, after the lamp, the seat's ring
- * and the other seats dimming.
+ * and its name lit gold.
  *
  * A lift, not a wash: a lit band behind the hand is a gold hairline drawn the
  * full width of the table, which reads as chrome across the felt rather than

@@ -61,7 +61,7 @@ haptic choreography, every cue timed to the card's landing (the flight's contact
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
 | Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own side; quick match fills what is left, seating each arrival on the side that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
-| The hand's two sizes | The change between them is a cut, not a transition. The turn is already signalled continuously by the lamp, the seat's ring, the other seats dimming and the hand's own eased lift — the size is the fifth signal, and the one the platform will not let us ease. See below. |
+| The hand's two sizes | The change between them is a cut, not a transition. The turn is already signalled continuously by the lamp, the seat's ring, its name lit gold and the hand's own eased lift — the size is the fifth signal, and the one the platform will not let us ease. See below. |
 
 ### 3.1 Rule decisions
 

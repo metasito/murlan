@@ -194,6 +194,14 @@ export const Beaten = {
   shade: 'rgba(0,0,0,0.4)',
 } as const;
 
+// A seat down to its last card: the lantern mockup's `.badge.last` (#1259 D4 #4).
+export const LastCard = {
+  fill: '#9E1F26',
+  edge: '#FFB3A0',
+  ink:  '#FFFFFF',
+  glow: '#FF5A46',
+} as const;
+
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
 // its one reader). Edges map the mockup's onto the gold scale (#1259 Q4); the lit edge is `goldLitEdge`.
 export const NoticePalette = {

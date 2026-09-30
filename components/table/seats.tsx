@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { View, StyleSheet, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
+import { mockupPx } from "./noticeModel";
 import {
   FAN_DRAWN_CARDS,
   SEAT_DISC,
@@ -37,7 +38,7 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
-import { Colors, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/theme";
+import { Colors, LastCard, makeShadow, Motion, motionMs, Radius, Spacing } from "@/lib/theme";
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Combination, Player } from "@/lib/game/gameEngine";
@@ -483,6 +484,7 @@ function SeatRing({
               bottom: -RING_GAP * scale,
               right: -RING_GAP * scale,
             },
+            lastCard && makeShadow(LastCard.glow, 0, 0, LAST_CARD_GLOW.opacity, mockupPx(LAST_CARD_GLOW.blur, scale) * LAST_CARD_BADGE, 0),
           ]}
         >
           {finishPos !== undefined ? (
@@ -573,7 +575,6 @@ export function TopOppSlot({
       style={[
         seatStyles.topOppSlot,
         { paddingTop: seatLabelH(scale), gap: seatGap(scale) },
-        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -746,7 +747,6 @@ export function SideOppSlot({
         seatStyles.sideOppSlot,
         { gap: seatGap(scale) },
         isLeft ? seatStyles.sideLeft : seatStyles.sideRight,
-        !lit && seatStyles.seatDim,
         !!reconnecting && seatStyles.seatDim,
       ]}
     >
@@ -790,12 +790,14 @@ const OPP_LABEL_MAX_W = 104 + Spacing.xs * 2;
  * bound — while the floor above is real: at 80 this ellipsises "Besnik".
  */
 const SIDE_LABEL_MAX_W = 114;
-/** How far a seat recedes while another one is on move. */
+/** How far a seat recedes while its player is reconnecting. */
 const SEAT_DIM_OPACITY = 0.62;
 /** The count badge's own diameter, and the digit inside it, at scale 1. */
 const SEAT_BADGE = 18;
 const SEAT_BADGE_FS = 10;
 const LAST_CARD_BADGE = 1.25;
+/** `.badge.last`'s glow in mockup px, before the badge's own growth. */
+const LAST_CARD_GLOW = { blur: 10, opacity: 0.6 } as const;
 const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
@@ -817,9 +819,8 @@ const seatStyles = StyleSheet.create({
   sideOppSlot: { alignItems: "center", justifyContent: "center" },
   sideLeft: { flexDirection: "row" },
   sideRight: { flexDirection: "row-reverse" },
-  // A seat that is not on move recedes, which is one of the four signals the
-  // table gives about whose turn it is. Not far enough to cost the card count
-  // its legibility — that is the most important thing on the seat.
+  // Not far enough to cost the card count its legibility — that is the most
+  // important thing on the seat.
   seatDim: { opacity: SEAT_DIM_OPACITY },
 
   who: { alignItems: "center", justifyContent: "center" },
@@ -903,9 +904,10 @@ const seatStyles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   countBubbleLast: {
-    borderColor: Colors.goldLit,
+    backgroundColor: LastCard.fill,
+    borderColor: LastCard.edge,
   },
   countBubbleTextLast: {
-    color: Colors.goldLit,
+    color: LastCard.ink,
   },
 });
