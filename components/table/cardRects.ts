@@ -7,8 +7,14 @@ import { CARD_BACK_H, CARD_BACK_W } from "../cardFaceModel.ts";
 import { FAN_TURN, fanCounts, seatFanArc } from "../fanGeometry.ts";
 import { FAN_DRAWN_CARDS, type OpponentSide } from "../seatLayout.ts";
 
-/** Centre and size in the felt's design space (874 × 402); rot in degrees; lift and glow 0 to 1. */
-export interface CardRect { x: number; y: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number }
+/**
+ * `x`/`y`: the centre in the felt's design space (874 × 402), window point / `Felt.sx` and `/ Felt.sy`.
+ * `w`/`h`: the card's own width and height, along its own axes, over the table's one card scale
+ * `Felt.s` — the same factor on both, so a turned card keeps its shape; window points are `w × s`.
+ * `rot` in degrees, clockwise on screen. `lift`, `glow` and `seen` run 0 to 1; `seen` is the share
+ * of the card's width inside the window that clips it (a scrolled hand), 1 everywhere else.
+ */
+export interface CardRect { x: number; y: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number; seen: number }
 
 /** Keyed `<scope>:<card>`: one entry per card drawn this frame. */
 export type CardRects = Record<string, CardRect>;
@@ -18,16 +24,15 @@ export type CardScope = (typeof CARD_SCOPES)[number];
 
 export interface Point { x: number; y: number }
 
-/** Window points to design points, per axis: the felt stretches to the window. */
-export interface Felt { sx: number; sy: number }
+/** The window's map onto the felt, and the two points the table's own motion turns about. */
+export interface Felt { sx: number; sy: number; s: number; kickAt: Point; shakeAt: Point }
 
-/** A card as drawn, in window points: its centre, its box after every scale, its turn. */
-export interface DrawnCard { cx: number; cy: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number }
+/** The kick (translate, then scale about `kickAt`) and inside it the shake (translate, then rotate about `shakeAt`). */
+export interface TableMotion { kx: number; ky: number; ks: number; shx: number; shy: number; shr: number }
+export const TABLE_AT_REST: TableMotion = { kx: 0, ky: 0, ks: 1, shx: 0, shy: 0, shr: 0 };
 
-export function designRect(d: DrawnCard, felt: Felt): CardRect {
-  "worklet";
-  return { x: d.cx / felt.sx, y: d.cy / felt.sy, w: d.w / felt.sx, h: d.h / felt.sy, rot: d.rot, back: d.back, lift: d.lift, glow: d.glow };
-}
+/** A card as laid out inside the shaken table, in window points: its centre, its box after every scale, its turn. */
+export interface DrawnCard { cx: number; cy: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number; seen?: number }
 
 function turned(x: number, y: number, deg: number): Point {
   "worklet";
@@ -40,27 +45,55 @@ const unit = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-/** A hand card: its box `left`/`bottom` in the row, moved by its own transform, the row by the pan and the zone's lift. */
-export function handCardRect(
-  row: Point & Felt,
+export function designRect(d: DrawnCard, felt: Felt, m: TableMotion): CardRect {
+  "worklet";
+  const shaken = turned(d.cx - felt.shakeAt.x, d.cy - felt.shakeAt.y, m.shr);
+  const x = felt.kickAt.x + m.kx + m.ks * (felt.shakeAt.x + m.shx + shaken.x - felt.kickAt.x);
+  const y = felt.kickAt.y + m.ky + m.ks * (felt.shakeAt.y + m.shy + shaken.y - felt.kickAt.y);
+  const k = m.ks / felt.s;
+  return {
+    x: x / felt.sx,
+    y: y / felt.sy,
+    w: d.w * k,
+    h: d.h * k,
+    rot: d.rot + m.shr,
+    back: d.back,
+    lift: unit(d.lift),
+    glow: unit(d.glow),
+    seen: unit(d.seen ?? 1),
+  };
+}
+
+/** The row's pan as drawn: a pan past the overhang moves nothing. */
+export function panShown(pan: number, limit: number): number {
+  "worklet";
+  return Math.min(Math.max(pan, -limit), limit);
+}
+
+/** Where a hand row sits, in window points at rest, and the window a scrolled row shows through (`clipHalf` 0: none). */
+export interface HandPlace { x: number; y: number; clipX: number; clipHalf: number }
+
+export function handCard(
+  row: HandPlace,
   card: { left: number; bottom: number; w: number; h: number; tx: number; ty: number; rot: number; scale: number; back: boolean; lift: number; glow: number },
   pan: number,
   zoneLift: number
-): CardRect {
+): DrawnCard {
   "worklet";
-  return designRect(
-    {
-      cx: row.x + card.left + card.w / 2 + card.tx - pan,
-      cy: row.y + zoneLift - card.bottom - card.h / 2 + card.ty,
-      w: card.w * card.scale,
-      h: card.h * card.scale,
-      rot: card.rot,
-      back: card.back,
-      lift: unit(card.lift),
-      glow: unit(card.glow),
-    },
-    row
-  );
+  const cx = row.x + card.left + card.w / 2 + card.tx - pan;
+  const w = card.w * card.scale;
+  const seen = row.clipHalf > 0 ? (Math.min(cx + w / 2, row.clipX + row.clipHalf) - Math.max(cx - w / 2, row.clipX - row.clipHalf)) / w : 1;
+  return {
+    cx,
+    cy: row.y + zoneLift - card.bottom - card.h / 2 + card.ty,
+    w,
+    h: card.h * card.scale,
+    rot: card.rot,
+    back: card.back,
+    lift: card.lift,
+    glow: card.glow,
+    seen,
+  };
 }
 
 /** The group's transform list `translate, scale, translateY(drop), rotate`, about the pile's centre. */
@@ -68,64 +101,45 @@ export interface GroupPose { tx: number; ty: number; scale: number; drop: number
 /** The wobble's `scale, rotate`, about the same point. */
 export interface WobblePose { scale: number; rot: number }
 
-/** A played card: its flight pose from its slot, the catch's lift in its own frame, the wobble and the group about the pile. */
-export function pileCardRect(
+export function pileCard(
   pile: Point,
-  felt: Felt,
   group: GroupPose,
   wobble: WobblePose,
   card: { slotX: number; slotY: number; x: number; y: number; rot: number; scale: number; liftY: number; w: number; h: number; lift: number; glow: number }
-): CardRect {
+): DrawnCard {
   "worklet";
   const up = turned(0, card.liftY * card.scale, card.rot);
   const own = turned(card.slotX + card.x + up.x, card.slotY + card.y + up.y, wobble.rot);
   const inGroup = turned(own.x * wobble.scale, own.y * wobble.scale, group.rot);
   const k = group.scale * wobble.scale * card.scale;
-  return designRect(
-    {
-      cx: pile.x + group.tx + group.scale * inGroup.x,
-      cy: pile.y + group.ty + group.scale * (group.drop + inGroup.y),
-      w: card.w * k,
-      h: card.h * k,
-      rot: group.rot + wobble.rot + card.rot,
-      back: false,
-      lift: unit(card.lift),
-      glow: unit(card.glow),
-    },
-    felt
-  );
+  return {
+    cx: pile.x + group.tx + group.scale * inGroup.x,
+    cy: pile.y + group.ty + group.scale * (group.drop + inGroup.y),
+    w: card.w * k,
+    h: card.h * k,
+    rot: group.rot + wobble.rot + card.rot,
+    back: false,
+    lift: card.lift,
+    glow: card.glow,
+  };
 }
 
-/** A dealt back in the air: from the pile toward its seat, spun. */
-export function dealBackRect(pile: Point, felt: Felt, at: { dx: number; dy: number; rot: number }, w: number, h: number): CardRect {
+export function dealBack(pile: Point, at: { dx: number; dy: number; rot: number }, w: number, h: number): DrawnCard {
   "worklet";
-  return designRect({ cx: pile.x + at.dx, cy: pile.y + at.dy, w, h, rot: at.rot, back: true, lift: 0, glow: 0 }, felt);
+  return { cx: pile.x + at.dx, cy: pile.y + at.dy, w, h, rot: at.rot, back: true, lift: 0, glow: 0 };
 }
 
-/** A traded card's flier, from the pile; `w`/`h` are whichever side it shows. */
-export function legCardRect(
-  pile: Point,
-  felt: Felt,
-  pose: { x: number; y: number; rot: number; scale: number; flip: number; face: boolean },
-  w: number,
-  h: number
-): CardRect {
+/** `w`/`h` are whichever side the flier shows. */
+export function legCard(pile: Point, pose: { x: number; y: number; rot: number; scale: number; flip: number; face: boolean }, w: number, h: number): DrawnCard {
   "worklet";
-  return designRect(
-    { cx: pile.x + pose.x, cy: pile.y + pose.y, w: w * pose.scale * Math.abs(pose.flip), h: h * pose.scale, rot: pose.rot, back: !pose.face, lift: 0, glow: 0 },
-    felt
-  );
+  return { cx: pile.x + pose.x, cy: pile.y + pose.y, w: w * pose.scale * Math.abs(pose.flip), h: h * pose.scale, rot: pose.rot, back: !pose.face, lift: 0, glow: 0 };
 }
 
 /**
  * A seat's fan of backs, each turned in the fan's box and the box leaned back under its perspective
  * (`CardFan`, seats.tsx): the centre is projected exactly, the size foreshortened at it.
  */
-export function fanBackRects(
-  centre: Point,
-  felt: Felt,
-  fan: { side: OpponentSide; count: number; backScale: number; leanDeg: number; perspective: number }
-): CardRect[] {
+export function fanBacks(centre: Point, fan: { side: OpponentSide; count: number; backScale: number; leanDeg: number; perspective: number }): DrawnCard[] {
   const { cards, box, bounds } = seatFanArc(fanCounts(fan.count, FAN_DRAWN_CARDS[fan.side]), fan.backScale);
   const w = CARD_BACK_W(fan.backScale);
   const h = CARD_BACK_H(fan.backScale);
@@ -135,14 +149,10 @@ export function fanBackRects(
   return cards.map((at) => {
     const qx = box.w / 2 + at.x + w / 2 - bounds.cx;
     const qy = at.y + h / 2 - bounds.cy;
-    const z = qy * Math.sin(lean);
-    const f = depth / (depth - z);
+    const f = depth / (depth - qy * Math.sin(lean));
     const on = turned(qx, qy * Math.cos(lean), turn);
     const r = (at.rot * Math.PI) / 180;
-    const seen = (Math.atan2(Math.sin(r) * Math.cos(lean), Math.cos(r)) * 180) / Math.PI;
-    return designRect(
-      { cx: centre.x + on.x * f, cy: centre.y + on.y * f, w: w * f, h: h * Math.cos(lean) * f, rot: turn + seen, back: true, lift: 0, glow: 0 },
-      felt
-    );
+    const leaned = (Math.atan2(Math.sin(r) * Math.cos(lean), Math.cos(r)) * 180) / Math.PI;
+    return { cx: centre.x + on.x * f, cy: centre.y + on.y * f, w: w * f, h: h * Math.cos(lean) * f, rot: turn + leaned, back: true, lift: 0, glow: 0 };
   });
 }

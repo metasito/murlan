@@ -734,6 +734,7 @@ export function GameTable({
     flushTrigger,
     celebrateFlush,
     shakeStyle,
+    tableMotion,
   } = useTableFeedback({
     isMyTurn,
     isFinished,
@@ -806,8 +807,19 @@ export function GameTable({
     landing: landingSignal,
   });
   const cardTable = useCardTableValue(
-    { pile: anchors.pile, hand: anchors.bottom, seats: { top: anchors.top, left: anchors.left, right: anchors.right } },
-    { sx: rig.sx, sy: rig.sy },
+    {
+      pile: anchors.pile,
+      hand: anchors.bottom,
+      seats: { top: anchors.top, left: anchors.left, right: anchors.right },
+      felt: {
+        sx: rig.sx,
+        sy: rig.sy,
+        s: scale,
+        kickAt: { x: W / 2, y: H / 2 },
+        shakeAt: { x: (frame.tableLeft + W - frame.tableRight) / 2, y: (frame.tableTop + H - frame.surplus) / 2 },
+      },
+    },
+    tableMotion,
     handLift
   );
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));

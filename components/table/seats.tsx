@@ -12,7 +12,7 @@ import {
   seatLabelH,
 } from "@/components/seatLayout";
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
-import { fanBackRects } from "./cardRects";
+import { fanBacks } from "./cardRects";
 import { useCardTable, useStaticCardRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
@@ -88,7 +88,8 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ at, boxW, backScale, isActive, zIndex }: {
+function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
+  id: string;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -98,6 +99,7 @@ function FanBack({ at, boxW, backScale, isActive, zIndex }: {
   return (
     <View
       testID="seat-back"
+      nativeID={`card-${id}`}
       style={{
         position: "absolute",
         zIndex,
@@ -132,7 +134,7 @@ function CardFan({
   const drawn = useMemo(
     () =>
       table && count > 0
-        ? fanBackRects(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), table.felt, {
+        ? fanBacks(fanPoint({ dx: table.seats[side].x, dy: table.seats[side].y }, side, scale, count), {
             side,
             count,
             backScale: scale * BACK_SCALE,
@@ -175,7 +177,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
         ))}
       </View>
     </View>

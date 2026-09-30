@@ -18,7 +18,7 @@ import type { SeatGeometry } from "@/components/flightPhysics";
 import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "@/lib/game/dealTimeline";
 import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
 import { dealFlight, dealPose } from "@/components/table/dealPose";
-import { dealBackRect } from "@/components/table/cardRects";
+import { dealBack, designRect } from "@/components/table/cardRects";
 import { useCardRect, useCardTable } from "@/components/table/useCardRects";
 
 /** When each of a seat's cards lands, on the deal's own clock. */
@@ -104,18 +104,19 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
   const h = CARD_BACK_H(scale * BACK_SCALE);
   const pile = table?.pile;
   const felt = table?.felt;
+  const motion = table?.motion;
   useCardRect(
     table,
     `deal:${legs[0].key}`,
+    true,
     () => {
       "worklet";
       const f = dealFlight(legAt(legs, clock.value), clock.value);
-      return pile && felt && f.inAir ? dealBackRect(pile, felt, f, w, h) : null;
-    },
-    [pile, felt, legs, clock, w, h]
+      return pile && felt && motion && f.inAir ? designRect(dealBack(pile, f, w, h), felt, motion.value) : null;
+    }
   );
   return (
-    <Animated.View testID="dealt-back" style={[dealStyles.back, style]}>
+    <Animated.View testID="dealt-back" nativeID={`card-deal:${legs[0].key}`} style={[dealStyles.back, style]}>
       <CardView card={{ id: "bk", suit: null, rank: "3", isJoker: false }} faceDown scale={scale * BACK_SCALE} />
     </Animated.View>
   );

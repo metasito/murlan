@@ -818,14 +818,19 @@ describe("the beaten pile's flinch (#764)", () => {
     const src = blankComments(
       readFileSync(path.join(repoRoot, "components", "table", "pile.tsx"), "utf8")
     );
-    const pose = src.match(/const pose = useAnimatedStyle\(\(\) => \{[\s\S]*?\n {2}\}\);/);
-    assert.ok(pose, "expected the play group's own pose worklet");
+    const helper = src.match(/function groupPose\([\s\S]*?\n\}/);
+    assert.ok(helper, "expected the one group pose both the style and the card's rectangle read");
     assert.match(src, /const beaten = role === "beaten"/, "expected the pose's beaten flag to read the play's role");
     assert.deepEqual(
-      pose![0].split("\n").filter((l) => /flinchY/.test(l)).map((l) => /\bbeaten && flinchBy\.value !== key \? flinchY\.value : 0\b/.test(l)),
+      helper![0].split("\n").filter((l) => /flinchY/.test(l)).map((l) => /\bg\.beaten && g\.flinchBy\.value !== g\.key \? g\.flinchY\.value : 0\b/.test(l)),
       [true],
       "the flinch must never reach the landing combination — displacing the beaten play is the whole point of #764"
     );
+    const reads = src.split("\n").filter((l) => /flinchY\.value|groupPose\(/.test(l) && !/function groupPose/.test(l));
+    assert.equal(reads.length, 3, "the helper's gate, the group's style and the card's rectangle");
+    assert.equal(reads.filter((l) => /groupPose\(group, turned\.value\)/.test(l)).length, 2, "both read the pose through the helper, never a copy of the gate");
+    assert.match(src, /catchLift\(catching\?\.value \?\? 0, cardScale\)/);
+    assert.match(src, /liftY: catchLift\(c, cardScale\)/);
   });
 
   // A blind critique's own measurement: shipped at a fixed 2px/6px, the

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { View, StyleSheet } from "react-native";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Platform, View, StyleSheet } from "react-native";
 import {
   GestureDetector,
   GestureStateManager,
@@ -50,7 +50,7 @@ import type { CardFrom } from "@/components/flightPose";
 import { readHandArrival, type TradeStages } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
-import { handCardRect, type Felt, type Point } from "./cardRects";
+import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";
 import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
 
 /**
@@ -244,7 +244,6 @@ interface CardItemProps {
   received?: boolean;
   /** Ids drawn by an exchange flier instead, set on the UI thread on the frame it shows. */
   hidden?: SharedValue<string[]>;
-  /** Where the row sits on the table, for the card's rectangle. */
   rects?: HandRow;
 }
 
@@ -253,8 +252,7 @@ interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shi
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
 interface HandRow {
   table: CardTable;
-  /** The row's left edge and baseline in window points at rest, and what moves it. */
-  place: Point & Felt & { pan: SharedValue<number>; panLimit: number; lift: SharedValue<number> };
+  place: HandPlace & { felt: Felt; pan: SharedValue<number>; panLimit: number; lift: SharedValue<number>; motion: SharedValue<TableMotion> };
 }
 
 function CardItemBase({
@@ -393,12 +391,18 @@ function CardItemBase({
     onDrawn?.(card.id, { liftY, tilt, shift });
   }, [onDrawn, card.id, liftY, tilt, shift]);
 
+  // A shared value set in the commit, not a captured prop: a restyled worklet reaches the view only after
+  // paint, so a re-arced card would draw its old turn for a frame beside its new place.
+  const arcTilt = useSharedValue(arcRot);
+  useLayoutEffect(() => {
+    arcTilt.set(arcRot);
+  }, [arcTilt, arcRot]);
   // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
-  const pose = (d: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean) => {
+  const pose = (d: number, arc: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean) => {
     "worklet";
     // The deal starts upright (0deg) and rotates into the card's own resting
     // tilt as it lands, rather than overshooting past it.
-    const restRot = arcRot + tiltNow + pressNow * PRESS_TILT;
+    const restRot = arc + tiltNow + pressNow * PRESS_TILT;
     return {
       opacity: gone ? 0 : dealFade ? 1 - d : 1,
       tx: dealFromX * d + shiftNow,
@@ -407,7 +411,7 @@ function CardItemBase({
     };
   };
   const aStyle = useAnimatedStyle(() => {
-    const p = pose(dealing.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
+    const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
     return {
       opacity: p.opacity,
       transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }],
@@ -417,14 +421,14 @@ function CardItemBase({
   useCardRect(
     rects?.table ?? null,
     `hand:${cardId}`,
+    true,
     () => {
       "worklet";
-      const p = pose(dealing.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
+      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
       if (!place || p.opacity <= 0) return null;
       const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: 1, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
-      return handCardRect(place, card, Math.min(Math.max(place.pan.value, -place.panLimit), place.panLimit), place.lift.value);
-    },
-    [place, cardId, left, bottom, cardW, cardH, faceDown, selectLift, arcRot, dealFade, dealFromX, dealRise, hidden]
+      return designRect(handCard(place, card, panShown(place.pan.value, place.panLimit), place.lift.value), place.felt, place.motion.value);
+    }
   );
 
   const giveableStyle = useAnimatedStyle(() => ({
@@ -754,7 +758,7 @@ export function StraightHand({
   const panLimit = overhang / 2;
   const rowShiftStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: -(panLimit + Math.min(Math.max(pan.value, -panLimit), panLimit)) },
+      { translateX: -(panLimit + panShown(pan.value, panLimit)) },
     ],
   }));
 
@@ -981,25 +985,26 @@ export function StraightHand({
   const rowBase = rowCentreY + visibleH / 2;
   const handRow = useMemo(() => {
     if (!cardTable) return undefined;
-    const { felt, hand, handLift } = cardTable;
-    return { table: cardTable, place: { ...felt, x: hand.x - rowMid, y: hand.y + rowBase, pan, panLimit, lift: handLift } };
-  }, [cardTable, rowMid, rowBase, pan, panLimit]);
+    const { felt, hand, handLift, motion } = cardTable;
+    const clipHalf = scrollable ? availW / 2 : 0;
+    return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, lift: handLift, motion } };
+  }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
   const heldPlace = handRow?.place;
   useCardRect(
     cardTable,
     `hand:${heldId ?? ""}`,
+    heldId !== null,
     () => {
       "worklet";
       if (!heldPlace || heldId === null) return null;
       const h = heldAt.value;
-      const card = { left: 0, bottom: 0, w: cardW, h: cardH, tx: h.tx, ty: h.ty, rot: h.rot, scale: h.scale, back: faceDown, lift: 1 - h.p, glow: 0 };
-      return handCardRect(heldPlace, card, Math.min(Math.max(heldPlace.pan.value, -panLimit), panLimit), heldPlace.lift.value);
-    },
-    [heldPlace, heldId, cardW, cardH, faceDown, heldAt, panLimit]
+      const card = { left: 0, bottom: 0, w: cardW, h: cardH, tx: h.tx, ty: h.ty, rot: h.rot, scale: h.scale, back: faceDown, lift: 1 - h.p, glow: heldSelected ? 1 : 0 };
+      return designRect(handCard(heldPlace, card, panShown(heldPlace.pan.value, panLimit), heldPlace.lift.value), heldPlace.felt, heldPlace.motion.value);
+    }
   );
   useEffect(() => {
     if (!onOrigins) return;
-    const panShown = () => Math.min(Math.max(pan.get(), -panLimit), panLimit);
+    const panNow = () => panShown(pan.get(), panLimit);
     const origins = new Map<string, CardFrom>();
     rest.forEach((card, i) => {
       const at = arc[slotOf(i)] ?? arc[arc.length - 1];
@@ -1011,7 +1016,7 @@ export function StraightHand({
       origins.set(
         card.id,
         liveFrom(
-          () => home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panShown(),
+          () => home.x + (d ? d.shift.get() : shiftTo) + cardW / 2 - panNow(),
           () => y0 + (d ? d.liftY.get() : selected() ? -handRowHeadroom(cardH) : 0),
           () => home.rot + (d ? d.tilt.get() : selected() ? SELECT_TILT : 0),
           cardW / fieldW
@@ -1296,6 +1301,7 @@ export function StraightHand({
       })}
       {heldCard !== null && (
         <Animated.View
+          nativeID={`card-hand:${heldCard.id}`}
           pointerEvents="none"
           style={[
             handStyles.handCardWrap,
@@ -1345,7 +1351,8 @@ export function StraightHand({
               marginBottom: -(crop + tiltOverhang),
               height: topClearance + visibleH + crop + tiltOverhang,
               paddingTop: topClearance,
-              overflow: "hidden",
+              // `clip` on web: a focused card would otherwise scroll a `hidden` box, sliding the row off the pan it is drawn and hit-tested by.
+              overflow: Platform.OS === "web" ? ("clip" as "hidden") : "hidden",
             }}
           >
             <Animated.View style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>

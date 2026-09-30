@@ -22,7 +22,7 @@ import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { inBackground } from "./useFlightClock";
-import { legCardRect } from "./cardRects";
+import { designRect, legCard } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
 
 export interface RingFlash { seq: number; seat: number }
@@ -125,21 +125,22 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
   const backH = CARD_BACK_H(backScale);
   const pile = table?.pile;
   const felt = table?.felt;
+  const motion = table?.motion;
   useCardRect(
     table,
     `leg:${testID}`,
+    true,
     () => {
       "worklet";
       const p = pose.value;
-      if (!pile || !felt || !p.visible) return null;
-      return legCardRect(pile, felt, p, p.face ? w : backW, p.face ? h : backH);
-    },
-    [pile, felt, pose, w, h, backW, backH]
+      if (!pile || !felt || !motion || !p.visible) return null;
+      return designRect(legCard(pile, p, p.face ? w : backW, p.face ? h : backH), felt, motion.value);
+    }
   );
   const face = useAnimatedStyle(() => ({ opacity: pose.value.face ? 1 : 0 }));
   const back = useAnimatedStyle(() => ({ opacity: pose.value.face ? 0 : 1 }));
   return (
-    <Animated.View testID={testID} pointerEvents="none" style={[styles.box, { width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2 }, style]}>
+    <Animated.View testID={testID} nativeID={`card-leg:${testID}`} pointerEvents="none" style={[styles.box, { width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2 }, style]}>
       <Animated.View style={[StyleSheet.absoluteFill, face]}>
         <CardView card={card} scale={scale * FIELD_SCALE} noLift decorative light="flat" />
       </Animated.View>

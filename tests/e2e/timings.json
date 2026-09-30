@@ -4,7 +4,7 @@
   "ariaTwins.spec.ts": 1.7,
   "bannerDisplaces.spec.ts": 7.7,
   "bombShakeBounds.spec.ts": 11.4,
-  "cardRects.spec.ts": 34,
+  "cardRects.spec.ts": 62,
   "cardScale.spec.ts": 5.9,
   "controlRail.spec.ts": 10.4,
   "copyRoomCode.spec.ts": 1.2,
