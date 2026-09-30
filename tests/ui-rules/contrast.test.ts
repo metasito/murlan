@@ -275,6 +275,11 @@ test("every inked <TableText> style says what it is painted over", () => {
   assert.deepEqual(stale, [], "no <TableText> names these any more");
 });
 
+test("only the seat name's two inks are left to the device to measure", () => {
+  const measured = Object.keys(ON_TABLE).filter((id) => ON_TABLE[id].measuredBy !== undefined);
+  assert.deepEqual(measured, ["table/seats.tsx:seatStyles.oppName", "table/seats.tsx:seatStyles.oppNameActive"]);
+});
+
 test("no <TableText> style paints its own plate: table text sits on the felt or inside a notice", () => {
   const plated = TABLE_TEXT.filter(([file, ref]) => styleFill(file, ref) !== null).map(([file, ref]) => `${file}:${ref}`);
   assert.deepEqual(plated, []);
