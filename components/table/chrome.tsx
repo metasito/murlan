@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
-import { View, StyleSheet, Pressable, type AccessibilityProps } from "react-native";
+import { View, StyleSheet, Pressable, type AccessibilityProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import {
   Easing,
@@ -22,6 +22,12 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { a11yState } from "@/lib/a11y";
 import { CHIP_H, SIDE_SECTION_W } from "@/components/seatLayout";
 import { tableFontSize } from "@/components/cardFaceModel";
+
+/**
+ * A sentence for the browser harness, as `data-<key>` (`tests/e2e/helpers/selectors.ts`). Not a
+ * label: a container that cannot be `accessible` names no reader. The cast is for web-only `dataSet`.
+ */
+export const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
 
 // ─── HUD chips ────────────────────────────────────────────────────────────────
 //

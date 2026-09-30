@@ -81,6 +81,7 @@ import {
   useHandLift,
   RailKnob,
   sharedTableStyles,
+  harnessState,
 } from "@/components/table/chrome";
 import { WhoStartsPanel } from "@/components/table/notices/panels";
 import {
@@ -98,7 +99,7 @@ import {
   type SelectionMode,
 } from "@/components/table/selection";
 import { useSelection } from "@/components/table/useSelection";
-import { GiocaControl, HandStatus, harnessState, settledSelection } from "@/components/table/selectionLeaves";
+import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
@@ -795,12 +796,12 @@ export function GameTable({
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  // These three reach the memoized hand as props, so they are stabilized by
-  // hand: a fresh arrow per render defeats every card's memo comparator.
+  // The tap handlers reach the memoized hand as props, so they are stabilized
+  // by hand: a fresh arrow per render defeats every card's memo comparator.
   // Staging a play while an opponent thinks is how every game in this family
   // works, and it is what stops the turn clock starting from a blank hand.
-  // Only the *submission* is gated on the turn: `staged.playable` already
-  // requires it, so GIOCA lights on its own the moment the turn arrives.
+  // Only the *submission* is gated on the turn, by `GiocaControl`'s staged
+  // play, so GIOCA lights on its own the moment the turn arrives.
   const tapsReach = !(isFinished || spectating || (exchangeIsWinners && !exchangeIsMine));
   const announceTap = useCallback(
     (next: Selection, id: string) => {
@@ -1301,9 +1302,6 @@ export function GameTable({
                   <TableText style={styles.finishedText}>{t("gameTable.waitingOthers")}</TableText>
                 </View>
               ) : (
-                // The harness's hook, for the same reason as the table's above: no
-                // `accessible` here — it would hide every card's own label behind one
-                // leaf — so a name on this wrapper would reach nobody.
                 <HandStatus store={shownSelection} cardCount={handOnTable.length}>
                   {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                   <StraightHand

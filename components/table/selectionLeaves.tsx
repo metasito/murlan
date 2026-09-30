@@ -1,5 +1,5 @@
 import React, { useMemo, useSyncExternalStore } from "react";
-import { View, type ViewProps } from "react-native";
+import { View } from "react-native";
 import type { SharedValue } from "react-native-reanimated";
 import type { Card, Combination, GameState } from "@/lib/game/gameEngine";
 import { useTranslation } from "@/lib/i18n";
@@ -7,19 +7,10 @@ import { A11yStatus } from "@/lib/a11y";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useGiocaCues } from "@/components/useTableFeedback";
 import { GiocaButton } from "./actions";
+import { harnessState } from "./chrome";
 import { handLabel, playRefusalLabel } from "./spokenLabels";
 import { readStagedPlay } from "./stagedPlay";
 import { NO_SELECTION, settle, type Selection, type SelectionMode, type SelectionStore } from "./selection";
-
-/**
- * A sentence the browser harness reads, as `data-<hyphenated key>`. `dataSet` is
- * react-native-web's own escape hatch and reaches the DOM; React Native has no such
- * prop and no types for it, which is what the cast is for. It is deliberately not an
- * `accessibilityLabel`: these containers cannot be `accessible` without collapsing
- * their controls into one leaf, so a name on them would reach no reader at all.
- * `tests/e2e/helpers/selectors.ts` holds the other end.
- */
-export const harnessState = (state: Record<string, string>) => ({ dataSet: state }) as ViewProps;
 
 /** The selection as it applies to one hand and mode, which is what every leaf subscribes to. */
 export type SettledSelection = Pick<SelectionStore, "get" | "subscribe">;
@@ -58,6 +49,7 @@ export function HandStatus({
   const count = useSyncExternalStore(store.subscribe, () => stagedCount(store.get()));
   const label = handLabel(cardCount, count, tn);
   return (
+    // No `accessible` here: it would hide every card's own label behind one leaf.
     <View {...harnessState({ handState: label })}>
       <A11yStatus label={label} />
       {children}

@@ -6,7 +6,9 @@ import { StyleSheet } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { cardSpokenName } from '@/lib/cardNames';
-import { t } from '@/lib/i18n';
+import { t, tn } from '@/lib/i18n';
+import { handLabel } from '@/components/table/spokenLabels';
+import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import * as engine from '@/lib/game/gameEngine';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { GameProvider } from '@/context/GameContext';
@@ -14,7 +16,36 @@ import { useLocalSession } from '@/context/gameHooks';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { activate, gesturesOf, type Captured } from './tapHelpers';
 
-const mockCount = { card: 0, seat: 0, pile: 0, table: 0, home: 0 };
+const ZERO = { card: 0, hand: 0, seat: 0, pile: 0, table: 0, home: 0, writes: 0 };
+const mockCount = { ...ZERO };
+
+jest.mock('@/components/table/hand', () => {
+  const actual = jest.requireActual('@/components/table/hand') as typeof import('@/components/table/hand');
+  return {
+    ...actual,
+    StraightHand: (p: Parameters<typeof actual.StraightHand>[0]) => {
+      mockCount.hand += 1;
+      return actual.StraightHand(p);
+    },
+  };
+});
+
+jest.mock('@/components/table/selection', () => {
+  const actual = jest.requireActual('@/components/table/selection') as typeof import('@/components/table/selection');
+  return {
+    ...actual,
+    createSelectionStore: (...a: Parameters<typeof actual.createSelectionStore>) => {
+      const store = actual.createSelectionStore(...a);
+      return {
+        ...store,
+        set: (next: Parameters<typeof store.set>[0]) => {
+          mockCount.writes += 1;
+          store.set(next);
+        },
+      };
+    },
+  };
+});
 
 jest.mock('@/lib/cosmetics', () => {
   const actual = jest.requireActual('@/lib/cosmetics') as typeof import('@/lib/cosmetics');
@@ -123,14 +154,25 @@ function Home({ onRender }: { onRender: () => void }) {
   return null;
 }
 
+const FIVE = card('5', 'hearts');
+const NINE = card('9', 'hearts');
+const exchange: GameState = {
+  ...state,
+  players: [seat('player_0', [FIVE, NINE, card('K', 'diamonds'), card('A', 'spades')]), ...state.players.slice(1)],
+  lastPlayedCombination: null,
+  lastPlayedBy: -1,
+  firstPlayMade: false,
+  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+};
+
 const commits = { n: 0 };
-const table = () => (
+const table = (s = state) => (
   <Profiler id="table" onRender={() => void (commits.n += 1)}>
     <SafeAreaProvider initialMetrics={METRICS}>
       <NotificationProvider>
         <GameProvider>
           <Home onRender={countHome} />
-          <GameTable gameState={state} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+          <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
         </GameProvider>
       </NotificationProvider>
     </SafeAreaProvider>
@@ -148,21 +190,25 @@ const onStrip = (c: Card) => {
   return { x: b.left + 2, y: rowH - b.bottom - 1 };
 };
 
+const spokenHand = (cards: number, staged: number) => screen.getByLabelText(handLabel(cards, staged, tn));
+const gioca = () => screen.getByTestId('btn-gioca').props.accessibilityLabel as string;
+
 /** What one tap costs: every counter zeroed, the tap run, then the counters read. */
 async function measure(tap: () => Promise<void>) {
-  Object.assign(mockCount, { card: 0, seat: 0, pile: 0, table: 0, home: 0 });
+  Object.assign(mockCount, ZERO);
   commits.n = 0;
   legalPlays.mockClear();
   await tap();
   return { commits: commits.n, ...mockCount, legalPlays: legalPlays.mock.calls.length };
 }
 
-const ONE_CARD = { commits: 1, card: 1, seat: 0, pile: 0, table: 0, home: 0, legalPlays: 0 };
+// The hand row renders 0 times: no prop of it changes, and its one subscription (the held card) is false with nothing held.
+const ONE_CARD = { ...ZERO, commits: 1, card: 1, writes: 1, legalPlays: 0 };
 
 describe('one tap on a hand card', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    Object.assign(mockCount, { card: 0, seat: 0, pile: 0, table: 0, home: 0 });
+    Object.assign(mockCount, ZERO);
     commits.n = 0;
     mockHeld.on = false;
     mockHeld.queue.length = 0;
@@ -175,7 +221,11 @@ describe('one tap on a hand card', () => {
     const view = await render(table());
     await step(3000);
     expect(selected(SEVEN)).toBe(false);
-    expect(Math.min(commits.n, mockCount.card, mockCount.seat, mockCount.pile, mockCount.table, mockCount.home)).toBeGreaterThan(0);
+    const { writes, ...rendered } = mockCount;
+    expect(writes).toBe(0);
+    expect(Math.min(commits.n, ...Object.values(rendered))).toBeGreaterThan(0);
+    expect(spokenHand(3, 0)).toBeTruthy();
+    expect(gioca()).not.toBe(t('gameTable.playA11yValid'));
     const at = onStrip(SEVEN);
     const cost = await measure(async () => {
       mockHeld.on = true;
@@ -190,6 +240,8 @@ describe('one tap on a hand card', () => {
     });
     expect(cost).toEqual(ONE_CARD);
     expect(selected(SEVEN)).toBe(true);
+    expect(spokenHand(3, 1)).toBeTruthy();
+    expect(gioca()).toBe(t('gameTable.playA11yValid'));
     await view.unmount();
   });
 
@@ -203,6 +255,28 @@ describe('one tap on a hand card', () => {
     });
     expect(cost).toEqual(ONE_CARD);
     expect(selected(SEVEN)).toBe(true);
+    expect(spokenHand(3, 1)).toBeTruthy();
+    expect(gioca()).toBe(t('gameTable.playA11yValid'));
+    await view.unmount();
+  });
+
+  it("in the exchange, costs the picked card and, on a change of pick, the one it replaces", async () => {
+    const view = await render(table(exchange));
+    await step(choiceOpensAt(false) + 3000);
+    const pick = (c: Card) =>
+      measure(async () => {
+        await act(async () => {
+          await activate(screen.getAllByLabelText(cardSpokenName(c, t))[0]);
+        });
+      });
+    const ready = (c: Card) => t('exchange.confirmA11yReady', { card: cardSpokenName(c, t), name: 'player_1' });
+
+    expect(await pick(FIVE)).toEqual(ONE_CARD);
+    expect(gioca()).toBe(ready(FIVE));
+    expect(await pick(NINE)).toEqual({ ...ONE_CARD, card: 2 });
+    expect(gioca()).toBe(ready(NINE));
+    expect(selected(FIVE)).toBe(false);
+    expect(spokenHand(4, 0)).toBeTruthy();
     await view.unmount();
   });
 });

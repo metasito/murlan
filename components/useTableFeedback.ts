@@ -409,7 +409,9 @@ export function useGiocaCues(playable: boolean, selectedCount: number, onMove: b
     };
   }, [playable, reduceMotion, glow]);
 
-  const prevSelectedLen = useRef(0);
+  // Seeded with the count it mounts over: GIOCA remounts when the seat stops spectating, and a
+  // staging that was already there is no change to flash for.
+  const prevSelectedLen = useRef(selectedCount);
   useEffect(() => {
     if (selectedCount > 0 && onMove && prevSelectedLen.current !== selectedCount && !reduceMotion) {
       flash.value = withSequence(
