@@ -487,7 +487,7 @@ reconnecting one still has the dim, found by value), `tests/native/seatLowCount.
 **Tests:** new *tests/e2e/seatNameContrast.spec.ts* (hides only the text, samples the real felt
 behind it, attaches every candidate ink's ratio per state, with and without the shadow, so one
 CI run decides the ink); edited
-`tests/ui-rules/contrast.test.ts` (the ban, red today on four self-plated rows).
+`tests/ui-rules/contrast.test.ts` (the ban, red on the one self-plated row task 7 left, `oppName`).
 
 ### Task 14: The notice gallery on the bench (D8, then G3)
 

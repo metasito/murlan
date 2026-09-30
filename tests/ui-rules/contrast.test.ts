@@ -215,8 +215,8 @@ const ANY_STOP = [0, 1, 2, 3, 4];
  * `plate` is a style whose fill sits between it and the felt; `gradient` is a
  * fill given as `colors`, which no style can name. Neither means bare felt.
  */
-type Backdrop = { plate?: string | string[]; gradient?: readonly string[]; stops?: number[] };
-const SELF = "self";
+type Backdrop = { plate?: string | string[]; gradient?: readonly string[]; stops?: number[]; measuredBy?: string };
+const MEASURED = { measuredBy: "tests/e2e/seatNameContrast.spec.ts" };
 const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
 const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
 const SHEET = sourceArray("SHEET_GRADIENT");
@@ -253,8 +253,8 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/seats.tsx:seatStyles.discInitials": { stops: [3, 4] },
   "table/seats.tsx:seatStyles.countBubbleText": { plate: "seatStyles.countBubble" },
   "table/seats.tsx:seatStyles.countBubbleTextLast": { plate: "seatStyles.countBubbleLast" },
-  "table/seats.tsx:seatStyles.oppName": { plate: SELF },
-  "table/seats.tsx:seatStyles.oppNameActive": { plate: "seatStyles.oppName" },
+  "table/seats.tsx:seatStyles.oppName": MEASURED,
+  "table/seats.tsx:seatStyles.oppNameActive": MEASURED,
   "table/settingsSheet.tsx:sheetStyles.rowLabel": { gradient: SHEET },
   "table/settingsSheet.tsx:sheetStyles.rowHint": { gradient: SHEET },
   "table/settingsSheet.tsx:sheetStyles.header": { gradient: SHEET },
@@ -285,11 +285,18 @@ for (const [file, ref] of TABLE_TEXT) {
   const backdrop = ON_TABLE[id];
   if (!backdrop) continue;
   const min = DISABLED.has(id) ? LARGE_MIN : BODY_MIN;
+  const spec = backdrop.measuredBy;
+  if (spec) {
+    test(`the table's ${ref} is measured over the real felt by ${spec}`, () => {
+      assert.match(readFileSync(path.join(repoRoot, spec), "utf8"), /seat-name[\s\S]*toBeGreaterThanOrEqual\(BODY_MIN\)/);
+    });
+    continue;
+  }
   test(`the table's ${ref} clears ${min}:1 on every felt stop`, () => {
     const ink = styleInk(file, ref);
     assert.ok(ink, `${id} has no color`);
     const fills = [backdrop.plate ?? []].flat().map((plate) => {
-      const fill = styleFill(file, plate === SELF ? ref : plate);
+      const fill = styleFill(file, plate);
       assert.ok(fill, `${plate} no longer paints a background`);
       return fill;
     });
