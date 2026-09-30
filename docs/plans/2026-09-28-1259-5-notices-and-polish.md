@@ -178,7 +178,7 @@ const NOTICE_GALLERY = { /* kind: fixtures */ } satisfies { [K in NoticeKind]: N
 
 ### Task 2: The turn pill paints through *TableNotice* (no visible change)
 
-**Scope:** `components/table/turnChip.tsx` (deleted; its component moves to
+**Scope:** the turn chip's own module under `components/table/` (deleted; its component moves to
 *components/table/notices/hud.tsx*), *components/table/noticeModel.ts*,
 *components/table/notices/gallery.tsx*, `components/GameTable.tsx`, `app/tutorial.tsx`,
 `tests/native/turnChipLabel.test.tsx`, `tests/native/turnTimerAnnouncement.test.tsx`,

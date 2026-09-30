@@ -327,12 +327,13 @@ test("the notice palette holds every shape, each with a tone", () => {
 });
 
 for (const [shape, tones] of Object.entries(NoticePalette)) {
-  for (const [tone, paint] of Object.entries(tones as Record<string, { fill: string; ink: string; strong: string }>)) {
-    test(`a ${tone} notice ${shape}'s ink and strong ink clear body contrast on every felt stop`, () => {
+  for (const [tone, paint] of Object.entries(tones as Record<string, { fill: string; ink: string; strong: string; warn?: string }>)) {
+    test(`a ${tone} notice ${shape}'s every ink clears body contrast on every felt stop`, () => {
+      const inks = Object.entries({ ink: paint.ink, strong: paint.strong, warn: paint.warn }).filter(([, ink]) => ink !== undefined);
       for (const [felt, gradient] of Object.entries(FeltGradients)) {
         for (const stop of gradient) {
           const surface = resolve(paint.fill, stop);
-          for (const [which, ink] of [["ink", paint.ink], ["strong", paint.strong]]) {
+          for (const [which, ink] of inks as [string, string][]) {
             const ratio = contrastRatio(resolve(ink, surface), surface);
             assert.ok(ratio >= BODY_MIN, `${shape}.${tone}.${which} over ${felt} ${stop} is only ${ratio.toFixed(2)}:1`);
           }
