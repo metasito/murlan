@@ -61,6 +61,8 @@ function ring(d: number): SkRRect {
 const OUTER = ring(0);
 const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
+// A point into the rail: the cloth's antialiased edge lets the lit rail through, and the name must not stand on it.
+const NAME_EDGE = ring(RAIL_BAND - 1);
 /** The name shade's soft edge, in design points; it reaches three of them past the label box. */
 const NAME_SOFT = 6;
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
@@ -202,7 +204,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
             <Shader source={CLOTH} uniforms={uniforms} />
           </Rect>
         )}
-        <Group clip={FELT_EDGE}>
+        <Group clip={NAME_EDGE}>
           {names.map((n, i) => (
             <Rect key={i} x={n.x / sx - 3 * NAME_SOFT} y={n.y / sy - 3 * NAME_SOFT} width={n.w / sx + 6 * NAME_SOFT} height={n.h / sy + 6 * NAME_SOFT} color={nameInk} blendMode="darken">
               <BlurMask blur={NAME_SOFT} style="normal" />
