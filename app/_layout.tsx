@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { ReducedMotionConfig, ReduceMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
@@ -23,6 +24,7 @@ import { backgroundMusic, startFeedback } from "@/lib/device/feedback";
 import type { TrackId } from "@/lib/device/musicTracks";
 import { UpdateRequired } from "@/components/UpdateRequired";
 import { DIAGNOSTICS } from "@/lib/diagnostics";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import "@/lib/e2eBuildMark";
 
 SplashScreen.preventAutoHideAsync();
@@ -44,6 +46,7 @@ function trackForRoute(pathname: string): TrackId {
 export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useNotification();
   const pathname = usePathname();
+  const reduceMotion = usePrefersReducedMotion();
 
   // The reporter is a plain module, so the route reaches it by being pushed
   // rather than read — a crash in a timer has no hook to call.
@@ -61,6 +64,8 @@ export function RootLayoutNav() {
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Reanimated reads only the OS flag for every animation left at ReduceMotion.System. */}
+      <ReducedMotionConfig mode={reduceMotion ? ReduceMotion.Always : ReduceMotion.Never} />
       <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="lobby" />
