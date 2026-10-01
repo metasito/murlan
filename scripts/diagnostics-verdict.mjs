@@ -391,8 +391,9 @@ function unrun(build) {
   return !build.scriptURL || /^https?:/i.test(build.scriptURL) ? "not an embedded Release bundle" : null;
 }
 
-export function verdict(rows, scenario) {
-  const gate = GATES[scenario];
+/** @param {Record<string, (rows: any[]) => { pass: boolean | null; metrics: Record<string, any> }>} [gates] */
+export function verdict(rows, scenario, gates = GATES) {
+  const gate = gates[scenario];
   const part = gate && bracket(rows, scenario);
   if (!part) return null;
   const v = gate(part.rows);

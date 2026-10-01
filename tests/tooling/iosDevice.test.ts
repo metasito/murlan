@@ -27,6 +27,19 @@ test("the LAN address skips virtual adapters and public addresses", () => {
   assert.equal(lanAddress({ "vEthernet (Default Switch)": [v4("172.30.0.1")] }), null);
 });
 
+test("the LAN address skips a VPN's tunnel, which the phone cannot reach", () => {
+  const v4 = (address: string) => ({ address, family: "IPv4", internal: false });
+  assert.equal(
+    lanAddress({
+      "vEthernet (WSL (Hyper-V firewall))": [v4("172.27.176.1")],
+      NordLynx: [v4("10.5.0.2")],
+      "Wi-Fi": [v4("192.168.100.88")],
+      "OpenVPN Data Channel Offload for NordVPN": [v4("10.100.0.2")],
+    }),
+    "192.168.100.88",
+  );
+});
+
 test("usbmuxd's device list yields each UDID, USB before Wi-Fi", () => {
   const device = (type: string, id: number, udid: string) =>
     `<dict><key>DeviceID</key><integer>${id}</integer><key>MessageType</key><string>Attached</string><key>Properties</key><dict><key>ConnectionType</key><string>${type}</string><key>DeviceID</key><integer>${id}</integer><key>LocationID</key><integer>0</integer><key>SerialNumber</key><string>${udid}</string></dict></dict>`;

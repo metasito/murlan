@@ -2,6 +2,7 @@ import type { LampSide } from "./lampLegibility";
 
 export interface DiagRows {
   scenario: { name: string; phase: "start" | "end"; error?: string | null };
+  run: { phase: "start" | "end"; names: string[] };
   build: { dev: boolean; scriptURL: string | null };
   arm: { name: "on" | "off"; phase: "start" | "end" };
   latency: { outputMs: number | null; ioMs: number | null; inputMs: number | null };
