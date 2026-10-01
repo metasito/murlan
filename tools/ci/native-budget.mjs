@@ -11,11 +11,15 @@ export const BUDGET_S = 15;
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
 
-/** A file past `BUDGET_S` by design, keyed `project:path`: its ceiling, about twice run 36817916976's 34.0 s and 17.7 s, and why. */
+/** A file past `BUDGET_S` by design, keyed `project:path`: its ceiling, about twice what run 36817916976 measured, and why. */
 export const EXCEPTIONS = {
   "ios:tests/native/oneSoundPerMoment.test.tsx": {
     seconds: 60,
     why: "Plays a whole bot manche, every move held as long as an offline bot thinks: its claim is about every state change of one, and a prefix would be a weaker claim.",
+  },
+  "ios:tests/native/everyMomentHasACaller.test.tsx": {
+    seconds: 30,
+    why: "Plays a bot manche until a trick has closed and the next one opened, which a random deal reaches in a varying number of moves: 11.4 s and 13.2 s on one tree.",
   },
   "ios:tests/native/pileMountsOnceFull.test.tsx": {
     seconds: 35,
