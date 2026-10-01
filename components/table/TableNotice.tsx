@@ -64,6 +64,9 @@ const DIM_Z = Layer.hint;
 const BADGE = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
 // A one-off: how often diagnostics read the calm dot, not a motion the player sees.
 const DOT_SAMPLE_MS = 100;
+// `noticeTiming` already answers the app's preference. Left to the root's ReduceMotion.Always, a
+// sequence skips every leg but its last, and a float never shows at all.
+const ANSWERED = ReduceMotion.Never;
 
 const Ink = createContext<{ kind: NoticeKind; paint: Paint; box: NoticeBox; dotGlow: number; scale: number } | null>(null);
 
@@ -116,11 +119,11 @@ export function TableNotice<K extends NoticeKind>({
       if (DIAGNOSTICS && arriving) diag({ k: "notice", t: performance.now(), ...probe, phase: "still", ms: 0, dt: 0 });
       return;
     }
-    const fadeIn = withTiming(1, { duration: enter });
+    const fadeIn = withTiming(1, { duration: enter, reduceMotion: ANSWERED });
     const entrance = arriving ? probed(fadeIn, probe, "enter") : fadeIn;
-    const out = withTiming(0, { duration: exit });
+    const out = withTiming(0, { duration: exit, reduceMotion: ANSWERED });
     life.value = held !== null && shown
-      ? withSequence(entrance, withTiming(1, { duration: held }), probed(out, probe, "exit"))
+      ? withSequence(ANSWERED, entrance, withTiming(1, { duration: held, reduceMotion: ANSWERED }), probed(out, probe, "exit"))
       : shown ? entrance : leaving ? probed(out, probe, "exit") : out;
     if (shown) {
       risen.value = 0;

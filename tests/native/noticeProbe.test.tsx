@@ -49,6 +49,25 @@ describe('a diagnostics build times every notice in UI frames', () => {
     }
   });
 
+  it("under the app's reduced motion every notice fades in place: a pill in 160 ms, a float in 100, held a second, then out", async () => {
+    const { ReducedMotionConfig, ReduceMotion } = require('react-native-reanimated') as typeof import('react-native-reanimated');
+    setMotionPreference('on');
+    for (const [kind, fixture, want] of [
+      ['passFloat', gallery.passFloat[0], [['enter', 100], ['exit', 100]]],
+      ['hudCombo', gallery.hudCombo[0], [['enter', 160]]],
+    ] as const) {
+      mockRows.length = 0;
+      const view = await render(<><ReducedMotionConfig mode={ReduceMotion.Always} />{fixture.render(1)}</>);
+      await advance(600);
+      expect((getAnimatedStyle(screen.getByTestId(`notice-${kind}`)) as { opacity: number }).opacity).toBe(1);
+      await advance(1400);
+      const got = rows('notice');
+      expect(got.map((r) => r.phase)).toEqual(want.map(([phase]) => phase));
+      got.forEach((r, i) => expect(r.ms).toBeGreaterThanOrEqual(want[i][1]));
+      await view.unmount();
+    }
+  });
+
   it('a pill already showing records no second entrance when its effect re-runs for another prop', async () => {
     const { TableNotice, NoticeText } = require('@/components/table/TableNotice') as typeof import('@/components/table/TableNotice');
     const pill = (still: boolean) => (
