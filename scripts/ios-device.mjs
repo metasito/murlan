@@ -38,7 +38,7 @@ export function needsInstall(state, { fingerprint, now }) {
 /** The first private IPv4 address on a physical adapter: the one the phone on the same Wi-Fi reaches. */
 export function lanAddress(interfaces) {
   const candidates = Object.entries(interfaces)
-    .filter(([name]) => !/vEthernet|WSL|Docker|VirtualBox|VMware|Hyper-V|Loopback|Tailscale|ZeroTier/i.test(name))
+    .filter(([name]) => !/vEthernet|WSL|Docker|VirtualBox|VMware|Hyper-V|Loopback|Tailscale|ZeroTier|VPN|NordLynx|WireGuard|Wintun|TAP-|Mullvad/i.test(name))
     .flatMap(([, addrs]) => addrs ?? [])
     .filter((a) => a.family === "IPv4" && !a.internal)
     .map((a) => a.address);
