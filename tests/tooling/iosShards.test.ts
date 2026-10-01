@@ -45,8 +45,17 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
 
 test("each shard runs its own flows, and exactly one photographs the felt", () => {
   assert.ok(shards.length > 1);
-  assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \.maestro\/_warmup\.yaml \$FLOWS\n/);
+  assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \$FLOWS\n/);
   assert.ok(!shards.some((s) => s.flows.includes(WARMUP)), "the warm-up runs first in every shard, never as a shard's own flow");
+});
+
+test("the warm-up runs before the flows, at most twice, and red when both attempts fail", () => {
+  const warm = step(IOS, "Warm up the simulator's input");
+  assert.ok(IOS.indexOf("- name: Warm up the simulator's input") < IOS.indexOf("- name: Run the flows"));
+  assert.match(warm, new RegExp(`for attempt in 1 2; do\\n\\s+maestro .*test -e MAESTRO_APP_ID="\\$APP_ID" ${WARMUP} && exit 0\\n`));
+  assert.match(warm, /simctl bootstatus "\$SIMULATOR_UDID" -b\n\s+done\n\s+echo "::error::.*"\n\s+exit 1\s*$/);
+  assert.doesNotMatch(step(IOS, "Run the flows"), /for |retry|\|\|/);
+  assert.doesNotMatch(job("flows"), /continue-on-error/);
   assert.equal(shards.filter((s) => s.felt).length, 1);
   assert.match(step(IOS, "Install the app on the simulator"), /\n {8}id: install\n/);
   for (const name of ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"]) {
