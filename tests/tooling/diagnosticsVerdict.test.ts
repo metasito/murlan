@@ -203,7 +203,7 @@ test("hapticOnset passes 30 shakes 20 ms after their pulses, and fails a missing
   assert.equal(verdict(rows((i) => (i < 5 ? 80 : 20)), "hapticOnset")?.pass, false);
 });
 
-type Gallery = { enterMs?: (shape: string) => number; stallAt?: number; period?: number; calmBlink?: boolean; calmOpacity?: number; skip?: number; tableRowAt?: number; hz?: number; enterDt?: number; dotSamples?: number; rounds?: boolean[]; blinkRounds?: number };
+type Gallery = { enterMs?: (shape: string) => number; calmEnterMs?: number; tableCalmMs?: number; periods?: number[]; stallAt?: number; period?: number; calmBlink?: boolean; calmOpacity?: number; skip?: number; tableRowAt?: number; hz?: number; enterDt?: number; dotSamples?: number; rounds?: boolean[]; blinkRounds?: number };
 
 function gallery(o: Gallery = {}): object[] {
   const fixtures = [["turn", "pill"], ["whoStarts", "panel"], ["passed", "chip"], ["passFloat", "float"]] as const;
@@ -213,11 +213,13 @@ function gallery(o: Gallery = {}): object[] {
   for (const [round, reduced] of (o.rounds ?? [false, false, false, false, false, true]).entries()) {
     for (const [kind, shape] of fixtures) {
       rows.push({ k: "shown", t, kind, fixture: 0, reduced });
-      const entrance = { k: "notice", t: t + 170, kind, shape, phase: "enter", ms: o.enterMs?.(shape) ?? (shape === "pill" || shape === "panel" ? 163 : 104), dt: o.enterDt ?? 1000 / (o.hz ?? 120) };
+      const ms = reduced && o.calmEnterMs !== undefined ? o.calmEnterMs : o.enterMs?.(shape) ?? (shape === "pill" || shape === "panel" ? 163 : 104);
+      const entrance = { k: "notice", t: t + 170, kind, shape, phase: "enter", ms, dt: ms === 0 ? 0 : o.enterDt ?? 1000 / (o.hz ?? 120) };
       if (n === o.tableRowAt) rows.push(entrance);
+      if (reduced && o.tableCalmMs !== undefined) rows.push({ ...entrance, t: t + 900, kind: "passed", shape: "chip", ms: o.tableCalmMs, dt: 0 });
       if (n++ !== o.skip) rows.push({ ...entrance, src: "gallery" });
       for (let f = t; f < t + 1800; f += 1000 / (o.hz ?? 120)) rows.push({ k: "frame", t: f, dt: 1000 / (o.hz ?? 120) });
-      if (kind === "turn" && !reduced && round < (o.blinkRounds ?? Infinity)) rows.push({ k: "blink", t: t + 1000, kind, period: o.period ?? 906 }, { k: "blink", t: t + 1900, kind, period: o.period ?? 906 });
+      if (kind === "turn" && !reduced && round < (o.blinkRounds ?? Infinity)) rows.push(...(o.periods?.slice(round * 2, round * 2 + 2) ?? [o.period ?? 906, o.period ?? 906]).map((period, i) => ({ k: "blink", t: t + 1000 + i * 900, kind, period })));
       if (kind === "turn" && reduced) {
         const samples = o.dotSamples ?? 19;
         for (let i = 0; i < samples; i++) rows.push({ k: "dot", t: t + 1850 - i * 100, kind, opacity: i === 9 ? o.calmOpacity ?? 1 : 1 });
@@ -278,6 +280,25 @@ test("noticeGallery counts only a gallery fixture's own entrance: the table's no
   const v = verdict(gallery({ skip: 6, tableRowAt: 6 }), "noticeGallery");
   assert.equal(v?.metrics.unseen, 1);
   assert.equal(v?.pass, false);
+});
+
+test("noticeGallery judges entrances on the gallery's own rows: a table chip shown at once under reduced motion is not one", () => {
+  const v = verdict(gallery({ tableCalmMs: 0 }), "noticeGallery");
+  assert.equal(v?.pass, true, JSON.stringify(v?.metrics));
+});
+
+test("noticeGallery fails the phone's calm round, where every gallery entrance landed whole on its first frame instead of fading in", () => {
+  const v = verdict(gallery({ calmEnterMs: 0 }), "noticeGallery");
+  assert.equal(v?.metrics.enter.pill.off, 160);
+  assert.equal(v?.metrics.enter.chip.off, 100);
+  assert.equal(v?.pass, false);
+});
+
+test("noticeGallery holds a blink to a frame per leg: the phone's ten periods at 74 Hz pass, a 30 ms slow median does not", () => {
+  const phone = [902, 917, 917, 908, 909, 930, 922, 900, 923, 919];
+  const at74 = (periods: number[]) => verdict(gallery({ hz: 1000 / 13.454, periods }), "noticeGallery");
+  assert.equal(at74(phone)?.pass, true, JSON.stringify(at74(phone)?.metrics));
+  assert.equal(at74(phone.map((p) => p + 14))?.pass, false);
 });
 
 test("musicSwitch passes steady music, and fails a 300 ms gap, a 2 s death, or music too quiet to judge", () => {
