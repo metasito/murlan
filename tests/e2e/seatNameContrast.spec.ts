@@ -1,8 +1,7 @@
 // tests/e2e/seatNameContrast.spec.ts — every bare seat name clears 4.5:1 over the brightest and the
 // darkest felt behind its glyphs, in every capture state at every phone (#1259 plan 5 task 13, Q9). The felt is
 // read alone: every other element hidden (the seat's ring, arc and glow with it, and the drifting motes), the rail masked by
-// `feltOnly`, under the glyphs grown by a pixel. The attachment carries every candidate ink's ratio,
-// bare and under each dark text shadow.
+// `feltOnly`, under the glyphs grown by a pixel. The attachment carries every candidate ink's ratio.
 import { test, expect, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
@@ -16,10 +15,7 @@ const BODY_MIN = 4.5;
 const LAMP_UP = 1 - 1 / 512;
 const NAME = '[data-testid="seat-name"]';
 const CANDIDATES = { textMuted: Colors.textMuted, textSecondary: Colors.textSecondary, text: Colors.text, textPrimary: Colors.textPrimary, goldLit: Colors.goldLit };
-const BLURS = [1, 2, 3];
-const ALPHAS = [0.5, 0.6, 0.7, 0.8, 0.9, 1];
-const SHADOWS = BLURS.flatMap((blur) => ALPHAS.map((alpha) => ({ key: `${blur}px ${alpha}`, css: `0 0 ${blur}px rgba(0,0,0,${alpha})` })));
-const PAD = Math.max(...BLURS) * 2 + 2;
+const PAD = 8;
 
 type Rgba = [number, number, number, number];
 type Rect = { x: number; y: number; w: number; h: number };
@@ -146,12 +142,11 @@ function clothIn(clip: Rect, felt: Rect, perPt: number): number[] {
 
 type Judged = { state: string; lit: boolean; pixels: number; ratios: { what: string; ratio: number }[] };
 
-/** Every capture state's names on `phone`, each judged over the brightest and the darkest felt; `sweep` adds the shadow candidates to the report. */
-async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[number], sweep: boolean): Promise<{ judged: Judged[]; report: object[] }> {
+/** Every capture state's names on `phone`, each judged over the brightest and the darkest felt. */
+async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[number]): Promise<{ judged: Judged[]; report: object[] }> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: phone.width, height: phone.height });
   await skiaOnSoftware(page);
-  const shadows = sweep ? SHADOWS : [];
   const report: object[] = [];
   const judged: Judged[] = [];
   for (const state of CAPTURE_STATES) {
@@ -180,15 +175,11 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
     }, NAME);
     await paint(page, "visibility: visible !important; color: transparent !important; text-shadow: none !important;");
     await grab(page, "bare", clip);
-    for (const s of shadows) {
-      await paint(page, `visibility: visible !important; color: transparent !important; text-shadow: ${s.css} !important;`);
-      await grab(page, s.key, clip);
-    }
     await paint(page, "visibility: visible !important; color: transparent !important;");
     await grab(page, "own", clip);
 
     const perPt = (await page.evaluate(() => (window as unknown as { shots: Record<string, ImageData> }).shots.clear.width)) / clip.w;
-    const keys = ["bare", "own", ...shadows.map((s) => s.key)];
+    const keys = ["bare", "own"];
     const measured = await feltUnderGlyphs(page, clip, all, clothIn(clip, { x: feltBox.x, y: feltBox.y, w: feltBox.width, h: feltBox.height }, perPt), keys);
 
     shown.forEach((name, i) => {
@@ -200,7 +191,6 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
         lit: name.lit,
         bare: brightest.bare,
         plain: Object.fromEntries(inks.map(([t, c]) => [t, +ratio(parse(c), brightest.bare).toFixed(2)])),
-        shadowed: Object.fromEntries(shadows.map((s) => [s.key, Object.fromEntries(inks.map(([t, c]) => [t, +ratio(parse(c), brightest[s.key]).toFixed(2)]))])),
       });
       const key = name.shadow === "none" ? "bare" : "own";
       judged.push({
@@ -217,10 +207,17 @@ async function measure(page: Page, baseURL: string, phone: (typeof PHONES)[numbe
   return { judged, report };
 }
 
-for (const phone of PHONES) {
+const byPhone = new Map<string, Judged[]>();
+
+for (const phone of PHONES) test.describe(phone.name, () => {
+  // One measurement serves both tests: serial, so the lit test runs only after the first passed,
+  // in the same worker, and a retry measures again from the first.
+  test.describe.configure({ mode: "serial" });
+
   test(`${phone.name}: every unlit seat name clears 4.5:1 over the felt behind it, and each lamp state's lit name is measured`, async ({ page, baseURL }, info) => {
     test.setTimeout(300_000);
-    const { judged, report } = await measure(page, baseURL!, phone, true);
+    const { judged, report } = await measure(page, baseURL!, phone);
+    byPhone.set(phone.name, judged);
     await info.attach(`seat-name-contrast-${phone.width}x${phone.height}.json`, { body: JSON.stringify(report, null, 1), contentType: "application/json" });
     console.log(`${phone.name} seat-name-contrast ${JSON.stringify(report)}`);
     for (const name of judged) expect(name.pixels, `${name.state}: ${name.ratios[0].what} has felt under its glyphs`).toBeGreaterThan(0);
@@ -233,9 +230,7 @@ for (const phone of PHONES) {
     for (const { what, ratio } of unlit) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
 
-  test(`${phone.name}: the lit seat name clears 4.5:1 over the lamp's pool`, async ({ page, baseURL }) => {
-    test.setTimeout(300_000);
-    const { judged } = await measure(page, baseURL!, phone, false);
-    for (const { what, ratio } of judged.filter((n) => n.lit).flatMap((n) => n.ratios)) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
+  test(`${phone.name}: the lit seat name clears 4.5:1 over the lamp's pool`, () => {
+    for (const { what, ratio } of byPhone.get(phone.name)!.filter((n) => n.lit).flatMap((n) => n.ratios)) expect.soft(ratio, what).toBeGreaterThanOrEqual(BODY_MIN);
   });
-}
+});
