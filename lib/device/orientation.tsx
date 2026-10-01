@@ -11,12 +11,12 @@ const portraitOf = (o: ScreenOrientation.Orientation) =>
       : null;
 
 /**
- * On iOS, UIKit's own interface orientation: a layout can be held back by what
- * it lays out, and the table's rotate cover once held back the very measurement
- * that would have lifted it (#1378). `onPortrait` runs on every UIKit report of
- * portrait, a repeat included. Elsewhere, the measured window.
+ * Portrait only while the measured window is portrait and, on iOS, UIKit has
+ * not reported landscape. Either source can go stale (#1378): the measurement
+ * behind a presented modal, and expo-screen-orientation's report, which is
+ * cached from rotation-completion callbacks that interrupted rotations reorder.
  */
-export function usePortraitInterface(onPortrait: () => void): boolean {
+export function usePortraitInterface(): boolean {
   const { width, height } = useOrientedWindow();
   const [reported, setReported] = useState<boolean | null>(null);
   useEffect(() => {
@@ -24,9 +24,7 @@ export function usePortraitInterface(onPortrait: () => void): boolean {
     let heard = false;
     const report = (o: ScreenOrientation.Orientation) => {
       const portrait = portraitOf(o);
-      if (portrait === null) return;
-      setReported(portrait);
-      if (portrait) onPortrait();
+      if (portrait !== null) setReported(portrait);
     };
     ScreenOrientation.getOrientationAsync().then((o) => heard || report(o), () => {});
     const sub = ScreenOrientation.addOrientationChangeListener((e) => {
@@ -34,8 +32,8 @@ export function usePortraitInterface(onPortrait: () => void): boolean {
       report(e.orientationInfo.orientation);
     });
     return () => sub.remove();
-  }, [onPortrait]);
-  return reported ?? width < height;
+  }, []);
+  return width < height && reported !== false;
 }
 
 type WindowSize = { width: number; height: number };

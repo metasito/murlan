@@ -363,7 +363,7 @@ export function GameTable({
   const insets = useSafeAreaInsets();
   const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
   const { width: W, height: H } = useOrientedWindow();
-  const portrait = usePortraitInterface(lockLandscape);
+  const portrait = usePortraitInterface();
   // The window's own short edge, so a phone and a browser at the same size draw the same
   // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
   // carries the home indicator — and taking it off here instead shrinks the cards on device
@@ -841,8 +841,15 @@ export function GameTable({
       ScreenOrientation.unlockAsync().catch(() => {});
     };
   }, []);
-  // Every flip re-asks: a stray portrait lock from UIKit can land after ours.
-  useEffect(() => lockLandscape(), [portrait]);
+  // A portrait-only lock from UIKit can land after ours with no rotation to report
+  // it, so an upright window keeps re-asking until it turns (#1378).
+  const upright = W < H;
+  useEffect(() => {
+    lockLandscape();
+    if (!upright) return;
+    const relock = setInterval(lockLandscape, 1000);
+    return () => clearInterval(relock);
+  }, [upright]);
   const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
   // Under reduced motion no deal flies to start the cue, and sound is not motion.
   useEffect(() => {
