@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedReaction,
@@ -14,7 +14,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { CardView } from "@/components/CardView";
+import { CardView, FallbackGlow } from "@/components/CardView";
 import { Beaten, CardGlow, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
@@ -36,7 +36,6 @@ import { useLandingReaction } from "./useLandingReaction";
 import type { TableTimeline } from "./tableTimeline";
 import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
-import { CardCastContext } from "./feltReady";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -306,13 +305,12 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
   // at render, so resizing the table cannot read as a fresh catch.
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catchLift(catching?.value ?? 0, cardScale) }] }));
-  const feltGlows = useContext(CardCastContext) === "felt";
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
   const shade = useAnimatedStyle(() => ({ opacity: turned.value }));
   return (
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
-        {catching && !feltGlows && <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
+        {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} light="flat" />
         </View>

@@ -470,6 +470,14 @@ function OrnateCardBack({
   );
 }
 
+/**
+ * The gold glow under a selected or catching card, until the felt draws it. Its own component: a
+ * card that read the cast would re-render as the lamp moves and restart its rectangle's mapper.
+ */
+export function FallbackGlow({ style }: { style: React.ComponentProps<typeof Animated.View>["style"] }) {
+  return useContext(CardCastContext) === "felt" ? null : <Animated.View pointerEvents="none" style={style} />;
+}
+
 // ─── CardView ─────────────────────────────────────────────────────────────────
 
 /** The finger-down acknowledgement: how far a pressed card rises, in points, and tips, in degrees. */
