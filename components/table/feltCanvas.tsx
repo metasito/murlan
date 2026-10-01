@@ -6,6 +6,7 @@ import { PixelRatio, Platform, StyleSheet } from "react-native";
 import {
   AlphaType,
   BlurMask,
+  BlurStyle,
   Canvas,
   ColorType,
   type CanvasRef,
@@ -14,6 +15,7 @@ import {
   Image,
   PaintStyle,
   Path,
+  Picture,
   RadialGradient,
   Rect,
   RoundedRect,
@@ -21,17 +23,18 @@ import {
   Skia,
   type SkImage,
   type SkPath,
+  type SkPicture,
   type SkRRect,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
-import { Colors, withAlpha } from "@/lib/theme";
+import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms, rgb } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildShadow, SHADOW_PATHS, shadowFall, shadowPaint, shadowTransform, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, SHADOW_PATHS, shadowFall, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { FeltProps } from "./feltReady";
 import { feltLight, nameCeiling, nameDim } from "./legibilityRing";
@@ -99,6 +102,68 @@ function useShadowPath(kind: ShadowPath, rects: SharedValue<CardRects>, felt: Ca
       builder.dispose();
     },
     [builder, drawn]
+  );
+  return drawn;
+}
+
+function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPicture> {
+  const recorder = useMemo(() => Skia.PictureRecorder(), []);
+  const builder = useMemo(() => Skia.PathBuilder.Make(), []);
+  const [paint, blur] = useMemo(() => {
+    const p = Skia.Paint();
+    const b = Skia.MaskFilter.MakeBlur(BlurStyle.Normal, (CardGlow.blur / 2) * felt.s, true);
+    p.setAntiAlias(true);
+    p.setColor(Skia.Color(CardGlow.color));
+    p.setMaskFilter(b);
+    return [p, b] as const;
+  }, [felt.s]);
+  useEffect(
+    () => () => {
+      if (!DISPOSE_PATHS) return;
+      paint.dispose();
+      blur.dispose();
+    },
+    [paint, blur]
+  );
+  const empty = useMemo(() => {
+    recorder.beginRecording();
+    return recorder.finishRecordingAsPicture();
+  }, [recorder]);
+  const drawn = useSharedValue<SkPicture>(empty);
+  useAnimatedReaction(
+    () => rects.value,
+    (all) => {
+      const canvas = recorder.beginRecording();
+      builder.reset();
+      const sink: GlowSink = {
+        moveTo: (x, y) => builder.moveTo(x, y),
+        lineTo: (x, y) => builder.lineTo(x, y),
+        conicTo: (x1, y1, x2, y2, w) => builder.conicTo(x1, y1, x2, y2, w),
+        close: () => builder.close(),
+        fill: (alpha) => {
+          const path = builder.build();
+          builder.reset();
+          paint.setAlphaf(alpha);
+          canvas.drawPath(path, paint);
+          if (DISPOSE_PATHS) path.dispose();
+        },
+      };
+      buildGlow(sink, all, felt, midX);
+      const last = drawn.value;
+      drawn.value = recorder.finishRecordingAsPicture();
+      if (E2E) countBuild();
+      if (DISPOSE_PATHS) last.dispose();
+    },
+    [recorder, builder, paint, felt, midX]
+  );
+  useEffect(
+    () => () => {
+      if (!DISPOSE_PATHS) return;
+      drawn.value.dispose();
+      builder.dispose();
+      recorder.dispose();
+    },
+    [recorder, builder, drawn]
   );
   return drawn;
 }
@@ -197,17 +262,23 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
     back: useShadowPath("back", rects, felt, cards.hand.x),
     fan: useShadowPath("fan", rects, felt, cards.hand.x),
   };
+  const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: lamp.value.lx, y: lamp.value.ly }), felt));
   const contact = shadowTransform(shadowFall("face", pile, pile), felt);
+  const flat = shadowTransform({ x: 0, y: 0 }, felt);
   const shadows = useSharedValue(1);
+  // State, not a group's opacity: a picture is drawn without the group's paint.
+  const [glows, setGlows] = useState(true);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanNameShade?: () => FeltProps["names"] };
+    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanCardGlow?: (on: boolean) => void; murlanNameShade?: () => FeltProps["names"] };
     e2e.murlanCardShadows = (on) => (shadows.value = on ? 1 : 0);
+    e2e.murlanCardGlow = setGlows;
     e2e.murlanNameShade = () => names;
     return () => {
       delete e2e.murlanCardShadows;
+      delete e2e.murlanCardGlow;
       delete e2e.murlanNameShade;
     };
   }, [shadows, names]);
@@ -248,6 +319,11 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
             <NameDim key={i} box={{ x: n.x / sx, y: n.y / sy, w: n.w / sx, h: n.h / sy }} ceiling={n.lit ? ceilings.lit : ceilings.unlit} cloth={cloth} lamp={lamp} />
           ))}
         </Group>
+        {glows && (
+          <Group transform={flat}>
+            <Picture picture={glow} />
+          </Group>
+        )}
         <Group opacity={shadows}>
           <Group transform={fall}>
             <ShadowLayer path={paths.cast} kind="cast" s={s} />

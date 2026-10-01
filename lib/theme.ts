@@ -2,7 +2,7 @@
 // platform-aware Shadow.
 import { Platform } from "react-native";
 
-import { Colors } from "./tokens";
+import { CardGlow, Colors } from "./tokens";
 
 export * from "./tokens";
 
@@ -114,7 +114,7 @@ export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y
 export const Shadow = {
   gold: makeShadow(Colors.gold, 0, 0, 0.6, 12, 10),
   dark: makeShadow('#000000', 0, 4, 0.5, 8, 8),
-  goldSoft: makeShadow(Colors.gold, 0, 0, 0.55, 14, 8),
+  cardGlow: makeShadow(CardGlow.color, 0, 0, CardGlow.alpha, CardGlow.blur, 0),
   raised: makeShadow('#000000', 0, 2, 0.4, 8, 10),
   overlay: makeShadow('#000000', 0, 8, 0.5, 32, 20),
   card: cardShadow("face"),

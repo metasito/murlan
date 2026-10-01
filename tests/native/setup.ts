@@ -89,8 +89,8 @@ jest.mock('@shopify/react-native-skia', () => {
 });
 
 // Under Jest reanimated runs every mapper on each shared-value write, not once a frame, so the felt
-// rebuilt its shadow paths per card per tick; with nothing to draw them into, they are not built.
-jest.mock('@/components/table/cardShadows', () => ({ ...jest.requireActual<object>('@/components/table/cardShadows'), buildShadow: () => {} }));
+// rebuilt its shadow paths and its glow per card per tick; with nothing to draw them into, they are not built.
+jest.mock('@/components/table/cardShadows', () => ({ ...jest.requireActual<object>('@/components/table/cardShadows'), buildShadow: () => {}, buildGlow: () => {} }));
 
 // expo/fetch extends a native Response that does not exist here, so `import`ing
 // it throws at module load — before any test runs — for every file that reaches

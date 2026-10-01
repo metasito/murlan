@@ -6,13 +6,12 @@ import { test, expect, type Page } from "@playwright/test";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { feltPixels, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { feltPixels, rgbaOf, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import type { CardRect, CardRects, Felt } from "../../components/table/cardRects";
 import { CAPTURE_STATES } from "../../lib/captureStates";
-import { Colors } from "../../lib/tokens";
 import type { TraceFrame } from "../../lib/e2eTrace";
 
 const PILE_STATE = CAPTURE_STATES.find((s) => s.id === "pile-right")!;
@@ -64,20 +63,8 @@ function taken(on: Shot, off: Shot, p: Point): number {
 async function pixelsOf(page: Page, selector: string): Promise<Shot> {
   const el = page.locator(selector);
   const box = (await el.boundingBox())!;
-  const png = (await el.screenshot({ type: "png" })).toString("base64");
-  const raw = await page.evaluate(async (png) => {
-    const img = new Image();
-    img.src = `data:image/png;base64,${png}`;
-    await img.decode();
-    const canvas = Object.assign(document.createElement("canvas"), { width: img.width, height: img.height });
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(img, 0, 0);
-    const bytes = ctx.getImageData(0, 0, img.width, img.height).data;
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { width: img.width, height: img.height, b64: btoa(bin) };
-  }, png);
-  return { width: raw.width, height: raw.height, data: Buffer.from(raw.b64, "base64"), perPt: raw.width / box.width, origin: { x: 0, y: 0 } };
+  const raw = await rgbaOf(page, await el.screenshot({ type: "png" }));
+  return { ...raw, perPt: raw.width / box.width, origin: { x: 0, y: 0 } };
 }
 
 const twoFrames = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -118,14 +105,13 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await held.click();
   await expect.poll(rebuiltOverASecond, { message: "shadow paths rebuilt over a second once the cards rest again" }).toBe(0);
 
-  const shadowed = await page.evaluate((glow) => {
+  const shadowed = await page.evaluate(() => {
     const scopes = document.querySelectorAll('[id^="card-"], [data-testid^="hand-card-"]');
     const views = new Set([...scopes].flatMap((r) => [r, ...r.querySelectorAll("*")]));
-    const cast = [...views].map((v) => getComputedStyle(v).boxShadow).filter((s) => s !== "none");
-    return { scopes: scopes.length, views: views.size, glows: cast.filter((s) => s.startsWith(glow)).length, cast: cast.filter((s) => !s.startsWith(glow)) };
-  }, `rgba(${[1, 3, 5].map((i) => parseInt(Colors.gold.slice(i, i + 2), 16)).join(", ")}`);
+    return { scopes: scopes.length, views: views.size, cast: [...views].map((v) => getComputedStyle(v).boxShadow).filter((s) => s !== "none") };
+  });
   expect(shadowed.scopes).toBeGreaterThan(0);
-  expect(shadowed.cast, `platform shadows among the ${shadowed.views} views of the table's cards, the ${shadowed.glows} gold glows aside (task 13's)`).toEqual([]);
+  expect(shadowed.cast, `platform shadows and glows among the ${shadowed.views} views of the table's cards`).toEqual([]);
 
   const [rects, felt, anchor] = await page.evaluate(() => {
     const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt; murlanCardPile: () => Point };

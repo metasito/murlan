@@ -3,12 +3,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
-import { addOutline, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowTransform, SHADOW_PATHS, type PathSink } from "../../components/table/cardShadows.ts";
+import fs from "node:fs";
+import path from "node:path";
+import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { feltLight, NAME_CONTRAST, nameCeiling, nameDim } from "../../components/table/legibilityRing.ts";
 import { CLOTH_BODY } from "../../components/table/feltShader.ts";
-import { CardShadow, Colors, FeltGradients } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Colors, FeltGradients, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
 
 type Layer = { x: string; y: string; blur: number; rgba: number[] | null; hex: string | null; inset: boolean };
@@ -126,6 +128,25 @@ describe("the shadow paths", () => {
     const felt = { sx: 2, sy: 1.5, s: 1.25 };
     const o = castOffset({ x: 457, y: 222 }, { x: 300, y: 300 - LIGHT_ABOVE });
     assert.deepEqual(restingCast({ x: 914, y: 333 }, [300, 300, 1], felt), { x: o.x * 1.25, y: o.y * 1.25 });
+  });
+});
+
+describe("the felt's gold glow", () => {
+  const rect = (over: Partial<CardRect> = {}): CardRect => ({ x: 100, y: 50, w: 64, h: 90, rot: 0, back: false, lift: 0, glow: 0, seen: 1, ...over });
+
+  test("is G1's, as its fixture's defaults", () => {
+    const fixture = fs.readFileSync(path.resolve(import.meta.dirname, "..", "e2e", "fixtures", "card-glow", "index.html"), "utf8");
+    const g0 = vm.runInNewContext(`(${/^const G0=(\{.*?\});$/m.exec(fixture)![1]})`) as Record<string, unknown>;
+    assert.deepEqual({ ...g0 }, { color: CardGlow.color, opacity: CardGlow.alpha, blur: CardGlow.blur, spread: 0, fade: Motion.duration.tap, follow: false });
+  });
+
+  test("fills each glowing card's own outline once, at its own strength", () => {
+    const fills: [number, number][] = [];
+    let moves = 0;
+    const sink: GlowSink = { moveTo: () => moves++, lineTo: () => {}, conicTo: () => {}, close: () => {}, fill: (a) => fills.push([moves, a]) };
+    const rects = { "hand:a": rect({ glow: 1 }), "hand:b": rect(), "pile:c": rect({ glow: 0.5 }), "hand:d": rect({ glow: 1, seen: 0 }) };
+    buildGlow(sink, rects, { sx: 1, sy: 1, s: 1 }, 0);
+    assert.deepEqual(fills, [[1, CardGlow.alpha], [2, CardGlow.alpha / 2]]);
   });
 });
 

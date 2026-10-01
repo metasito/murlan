@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Platform, View, StyleSheet } from "react-native";
 import {
   GestureDetector,
@@ -25,7 +25,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
-import { Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
@@ -52,6 +52,7 @@ import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";
 import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
+import { CardCastContext } from "./feltReady";
 
 /**
  * The viewer's hand as the table draws it while a traded card is on its way in or out.
@@ -435,9 +436,8 @@ function CardItemBase({
     opacity: Math.max(0, exchangeState.value),
   }));
 
-  // A textless sibling behind the card carries the selection bloom, so the
-  // glow can be animated with opacity alone and never touches the card's own
-  // rasterised rank characters.
+  // Until the felt draws: from then on it glows under the card, from the rectangle's `glow`.
+  const feltGlows = useContext(CardCastContext) === "felt";
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   const veilStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, -exchangeState.value) }));
@@ -462,10 +462,12 @@ function CardItemBase({
         giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]}
-      />
+      {!feltGlows && (
+        <Animated.View
+          pointerEvents="none"
+          style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]}
+        />
+      )}
       {giveable === true && (
         <Animated.View
           pointerEvents="none"
@@ -1395,10 +1397,10 @@ const handStyles = StyleSheet.create({
   // (#209) and two of these resolve opposite ways around the card.
   cardGlow: {
     position: "absolute",
-    top: 2, left: 2, right: 2, bottom: 2,
+    top: 0, left: 0, right: 0, bottom: 0,
     zIndex: Layer.felt,
-    backgroundColor: Colors.gold,
-    ...Shadow.goldSoft,
+    backgroundColor: CardGlow.color,
+    ...Shadow.cardGlow,
   },
   cardLayer: { zIndex: Layer.table },
   handRow: {
