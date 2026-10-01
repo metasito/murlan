@@ -4,6 +4,7 @@
 import { readFileSync } from "node:fs";
 import { isInvokedDirectly } from "./lib/entry.mjs";
 import { LAMP_FLOOR, LAMP_SIDES, LAMP_SWAY, LAMP_SYMMETRY, evenness } from "../lib/diagnostics/lampLegibility.ts";
+import { noticeBlink } from "../components/table/noticeModel.ts";
 
 function slopePerMinute(points) {
   const n = points.length;
@@ -327,6 +328,8 @@ function feltOpaque(rows) {
 // D2: a pill or panel enters in 160 ms. Q1: a mark (chip) or float in 100, the net dot blinks every 900.
 const NOTICE_ENTER_MS = { pill: 160, panel: 160, chip: 100, float: 100 };
 const NET_BLINK_MS = 900;
+// A blink period is several legs, and each leg ends on its own first frame past its length.
+const BLINK_LEGS = NET_BLINK_MS / noticeBlink(false).half;
 const GALLERY_ROUNDS = 5;
 // An entrance ends on the first frame at or past its length, so it may overrun by that frame's own interval.
 const ENTER_SLACK_MS = 1;
@@ -344,7 +347,7 @@ function noticeGallery(rows) {
   const frameMs = Math.min(1000 / medianHz(rows), 1000 / 60);
   const enter = Object.fromEntries(
     Object.entries(NOTICE_ENTER_MS).map(([shape, ms]) => {
-      const entrances = notices.filter((n) => n.phase === "enter" && n.shape === shape);
+      const entrances = notices.filter((n) => n.src === "gallery" && n.phase === "enter" && n.shape === shape);
       const off = entrances.map((n) => (n.ms < ms ? ms - n.ms : Math.max(0, n.ms - ms - (n.dt ?? 0))));
       return [shape, { p90: p90(entrances.map((n) => n.ms)), off: p90(off) }];
     })
@@ -363,7 +366,7 @@ function noticeGallery(rows) {
     plan !== undefined && plan.fixtures > 0 && moving === GALLERY_ROUNDS * plan.fixtures && calm === plan.fixtures &&
     new Set(shows.map((s) => s.kind)).size === plan.kinds && unseen === 0 &&
     Object.values(enter).every((e) => e.off <= ENTER_SLACK_MS) &&
-    periods.length >= GALLERY_ROUNDS && periodOff <= frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) && dotRuns.every((n) => n >= DOT_SAMPLES_MIN) &&
+    periods.length >= GALLERY_ROUNDS && periodOff <= BLINK_LEGS * frameMs && calmBlinks === 0 && calmDots.length > 0 && calmDots.every((o) => o === 1) && dotRuns.every((n) => n >= DOT_SAMPLES_MIN) &&
     b.frames > 0 && b.jsTicks > 0 && b.stalls === 0;
   return {
     pass,
