@@ -1,6 +1,6 @@
 // The hands-free device bench's end: wait for the run, then one pass/fail table (docs/agents/checks.md).
 import { existsSync, readFileSync } from "node:fs";
-import { verdict } from "./diagnostics-verdict.mjs";
+import { GATES, verdict } from "./diagnostics-verdict.mjs";
 
 export function readRows(file) {
   if (!existsSync(file)) return [];
@@ -32,10 +32,10 @@ function keyNumbers(metrics) {
     .slice(0, 140);
 }
 
-export function gateTable(rows, names) {
+export function gateTable(rows, names, timedOut = false) {
   const lines = ["| Scenario | Result | Key numbers |", "| --- | --- | --- |"];
-  let pass = names.length > 0;
-  for (const name of names) {
+  let pass = names.length > 0 && !timedOut;
+  for (const name of new Set([...Object.keys(GATES), ...names])) {
     const v = verdict(rows, name);
     const result = !v ? "missing" : v.pass === true ? "pass" : v.pass === null ? "unrun" : "fail";
     if (result !== "pass") pass = false;

@@ -49,13 +49,15 @@ function GalleryStage({ bind }: { bind: (show: (shot: NoticeShot | null) => void
 const collectorHost = (param: string | undefined) =>
   param ?? (process.env.EXPO_PUBLIC_DOMAIN ? new URL(process.env.EXPO_PUBLIC_DOMAIN).hostname : "127.0.0.1");
 
+/** Module-wide: a second screen instance, e.g. the link opened over an icon-started run, must not start a second run. */
+let benchRunning = false;
+
 export function BenchScreen() {
   useKeepAwake();
   const params = useLocalSearchParams<Record<string, string>>();
   const [table, setTable] = useState<{ state: GameState | null }>({ state: null });
   const [results, setResults] = useState<Record<string, string>>({});
   const shown = useRef<() => void>(() => {});
-  const running = useRef(false);
   const autoRan = useRef(false);
   const stopJs = useRef<(() => void) | null>(null);
   const showNotice = useRef<(shot: NoticeShot | null) => void>(() => {});
@@ -65,8 +67,8 @@ export function BenchScreen() {
 
   const run = useCallback(
     async (only?: string[]) => {
-      if (running.current) return;
-      running.current = true;
+      if (benchRunning) return;
+      benchRunning = true;
       recorder.postTo(collectorHost(params.host));
       const capturing = params.capture !== "0" && probe.canCapture() && (await probe.startCapture(true).catch(() => false));
       const drain = setInterval(() => probe.drain(), 1000);
@@ -103,7 +105,7 @@ export function BenchScreen() {
       probe.drain();
       if (capturing) await probe.stopCapture().catch(() => false);
       diag({ k: "run", t: performance.now(), phase: "end", names });
-      running.current = false;
+      benchRunning = false;
     },
     [params]
   );

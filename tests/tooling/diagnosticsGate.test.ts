@@ -48,5 +48,9 @@ test("the gate is exercised, not merely unviolated", () => {
     .filter((e) => e.via === "require" && e.gated)
     .map((e) => `${e.from} -> ${e.to}`)
     .sort();
-  assert.deepEqual(gated, ["app/bench.tsx -> components/BenchScreen", "lib/diagnostics/index.ts -> lib/diagnostics/recorder"]);
+  assert.deepEqual(gated, [
+    "app/_layout.tsx -> lib/diagnostics/BenchAutostart",
+    "app/bench.tsx -> components/BenchScreen",
+    "lib/diagnostics/index.ts -> lib/diagnostics/recorder",
+  ]);
 });

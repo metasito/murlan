@@ -17,9 +17,11 @@ export const recorder = {
     outbox.push(row);
   },
   postTo(host: string): void {
+    if (target === null) {
+      outbox = [];
+      dropped = 0;
+    }
     target = `http://${host}:5099/log`;
-    outbox = [];
-    dropped = 0;
   },
 };
 

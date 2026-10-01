@@ -1,8 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { Stack, router, usePathname, useRootNavigationState } from "expo-router";
-import Constants from "expo-constants";
+import { Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ReducedMotionConfig, ReduceMotion } from "react-native-reanimated";
@@ -25,7 +24,6 @@ import { backgroundMusic, startFeedback } from "@/lib/device/feedback";
 import type { TrackId } from "@/lib/device/musicTracks";
 import { UpdateRequired } from "@/components/UpdateRequired";
 import { DIAGNOSTICS } from "@/lib/diagnostics";
-import { benchLaunchHref } from "@/lib/diagnostics/benchLaunch";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import "@/lib/e2eBuildMark";
 
@@ -45,19 +43,9 @@ function trackForRoute(pathname: string): TrackId {
   return "menu";
 }
 
-/** A bench install carrying the PC's address starts the run on a plain icon tap (`npm run ios:device -- --gates`). */
-function BenchLaunch() {
-  const ready = !!useRootNavigationState()?.key;
-  const pathname = usePathname();
-  const launched = useRef(false);
-  useEffect(() => {
-    const href = benchLaunchHref(Constants.expoConfig?.extra);
-    if (!ready || !href || launched.current) return;
-    launched.current = true;
-    if (pathname !== "/bench") router.replace(href);
-  }, [ready, pathname]);
-  return null;
-}
+const BenchAutostart: () => null =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the bench
+  process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("@/lib/diagnostics/BenchAutostart").BenchAutostart : () => null;
 
 export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useNotification();
@@ -115,7 +103,7 @@ export function RootLayoutNav() {
       />
       <OfflineBanner />
       <UpdateRequired />
-      {DIAGNOSTICS && <BenchLaunch />}
+      <BenchAutostart />
     </View>
   );
 }

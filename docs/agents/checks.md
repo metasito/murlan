@@ -191,10 +191,14 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
 - Running them (about 57 minutes of the phone, untouched): an agent runs
   `npm run ios:device -- --ref <branch> --gates`, which writes the PC's LAN address into the
   IPA's `EXConstants.bundle/app.config` before signing, so the bench build opens the bench on a
-  plain icon tap (`lib/diagnostics/benchLaunch.ts`); the `murlan://bench?host=…` link still works.
-  It waits for the run's `run`/`end` row, prints one table (a scenario with no verdict is
-  `missing`, never a pass), writes it to `diagnostics/<stamp>.md`, and prints the
-  `gh issue comment 1259 --body-file …` command without running it. The owner:
+  plain icon tap (`lib/diagnostics/BenchAutostart.tsx`); the `murlan://bench?host=…` link is an
+  alternative to the icon, never both. It waits for the run's `run`/`end` row, prints one table
+  of every gate (one with no verdict is `missing`, never a pass), writes it to
+  `diagnostics/<stamp>.md`, and prints the `gh issue comment 1259 --body-file …` command without
+  running it. The phone must be on the PC's Wi-Fi. The first install, and an expired Apple ID
+  session, need the owner at the keyboard (sign-in, Trust, Developer Mode). Until
+  `npm run ios:device` reinstalls the dev build, every cold launch of the bench build starts a
+  full run. The owner:
   1. Plugs the iPhone into the PC, unlocks it, and leaves it face up (volume about half, ringer
      on; allow the microphone and screen-recording prompts the first time).
   2. Taps the Murlan icon and leaves it until the PC prints the table.
