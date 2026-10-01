@@ -218,6 +218,22 @@ jobs:
       - name: Wait for the simulator to finish booting
         run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 
+      # On a hosted runner the simulator's apsd gets no push certificate and reconnects about ten
+      # times a second; its log volume alone keeps diagnosticd near half a core of three, and a tap
+      # synthesized while the runner is that starved is lost (#1378 B). The flows send no push.
+      - name: Stop the simulator's push daemon
+        run: |
+          pgrep -lf 'simruntime/.*/apsd$' || { echo "::error::No simulator apsd found to stop."; exit 1; }
+          xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable system/com.apple.apsd
+          xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout system/com.apple.apsd || :
+          for _ in $(seq 1 15); do
+            pgrep -f 'simruntime/.*/apsd$' > /dev/null || exit 0
+            sleep 1
+          done
+          pgrep -lf 'simruntime/.*/apsd$'
+          echo "::error::The simulator's apsd is still running."
+          exit 1
+
       - name: Install the app on the simulator
         id: install
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"

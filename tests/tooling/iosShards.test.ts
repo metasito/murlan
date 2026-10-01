@@ -83,3 +83,11 @@ test("a shard needs the app job, which restores, and downloads the app it upload
   assert.match(job("flows"), new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
   assert.doesNotMatch(job("flows"), /actions\/install|npm ci|actions\/ios-app|gh api/);
 });
+
+test("the simulator's push daemon is found, disabled and gone before the app is installed", () => {
+  const stop = step(IOS, "Stop the simulator's push daemon");
+  assert.ok(IOS.indexOf("- name: Stop the simulator's push daemon") < IOS.indexOf("- name: Install the app on the simulator"));
+  assert.match(stop, /pgrep -lf '(.+)' \|\| \{ echo "::error::.*"; exit 1; \}\n/);
+  assert.match(stop, /launchctl disable system\/com\.apple\.apsd\n/);
+  assert.match(stop, /pgrep -f '.+' > \/dev\/null \|\| exit 0\n[\s\S]*echo "::error::.*"\n\s+exit 1\s*$/);
+});
