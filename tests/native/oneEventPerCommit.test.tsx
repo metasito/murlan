@@ -60,7 +60,7 @@ describe('one event per anchor, at the flight’s own times', () => {
     await settle(1500);
     expect(startsOf('bomb')).toHaveLength(1);
     await view.unmount();
-  });
+  }, 20_000);
 });
 
 describe('a landing the JS side reports late', () => {

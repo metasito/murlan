@@ -28,7 +28,7 @@ const SOURCE = path.join(repoRoot, "components", "GameTable.tsx");
 const REACHABLE_ON_PURPOSE: Record<string, string> = {
   GameSettingsSheet: "is the sheet",
   ExchangeLegs: "is a pointer-transparent layer with nothing to reach",
-  RotateOverlay: "is the cover itself, an untrapped layer listed in blockingOverlays.test.ts",
+  RotateOverlay: "is the cover itself, and the table behind it is veiled while it shows",
   Sweep: "is a decoration with nothing to reach",
 };
 

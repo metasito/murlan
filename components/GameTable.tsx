@@ -411,22 +411,23 @@ export function GameTable({
 
   // A reader must not be left able to play through a gate a finger cannot get
   // past, so the hold sits beside the other two reasons the table is unusable.
-  const tableWithdrawn = settingsOpen || tableCovered || holdingForStart;
+  const covered = tableCovered || portrait;
+  const tableWithdrawn = settingsOpen || covered || holdingForStart;
   const behindVeil = a11yVeiled(tableWithdrawn);
   // The sheet hangs off the rail, outside the overlays slot, so the slot goes
   // behind its veil. A cover inside the slot does not: `app/(online)/game.tsx`
   // spreads this onto the one wrapper holding the cover, which would withdraw
   // the cover's own message along with the table it is explaining.
-  const behindSheetOnly = a11yVeiled(settingsOpen);
+  const behindSheetOnly = a11yVeiled(settingsOpen || portrait);
   // The rail is the one child that answers to a cover but not to the sheet: the sheet is
   // closed by the knob the rail carries, so veiling it there shuts the reader inside.
   // The opening gate covers the rail too, and the sheet its menu knob opens
   // would come up above the gate carrying an exit.
-  const behindCoverOnly = a11yVeiled((tableCovered || holdingForStart) && !settingsOpen);
+  const behindCoverOnly = a11yVeiled((covered || holdingForStart) && !settingsOpen);
   // The turn chip answers to everything that takes the table away except the
   // opening gate: it names no control, and the countdown it carries is the one
   // thing a hold may not hide from a reader either.
-  const clockVeil = a11yVeiled(settingsOpen || tableCovered);
+  const clockVeil = a11yVeiled(settingsOpen || covered);
   const [focusMode, setFocusMode] = useState(false);
   const [playOnLeft, setPlayOnLeft] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
