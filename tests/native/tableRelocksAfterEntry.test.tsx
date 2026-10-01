@@ -1,6 +1,6 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContext } from 'expo-router/react-navigation';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -10,7 +10,14 @@ jest.mock('expo-screen-orientation', () => ({
   lockAsync: jest.fn(async () => {}),
   unlockAsync: jest.fn(async () => {}),
 }));
+// The bridge's window size, frozen in portrait: after the blip it never re-emits.
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 390, height: 844, scale: 3, fontScale: 1 }),
+}));
 
+import { OrientationProvider } from '@/lib/device/orientation';
+import { en as locale } from '@/locales/en';
 import { GameTable } from '@/components/GameTable';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
@@ -100,6 +107,34 @@ describe('the table re-asserts landscape once its entry transition ends (#1211)'
   it('still locks on mount outside a navigator', async () => {
     const view = await render(table(undefined));
     expect(landscapeLocks()).toBe(1);
+    await view.unmount();
+  });
+});
+
+describe("a portrait lock that lands after the table's own (#1378)", () => {
+  beforeEach(() => {
+    jest.mocked(ScreenOrientation.lockAsync).mockClear();
+  });
+
+  const measure = (width: number, height: number) =>
+    fireEvent(screen.getByTestId('orientation-root'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+  const covered = () => screen.queryAllByLabelText(locale['gameTable.rotateA11yLabel']).length > 0;
+
+  it('asks for landscape again, and drops the cover once the window measures landscape', async () => {
+    const nav = fakeScreen();
+    const view = await render(<OrientationProvider>{table(nav.navigation)}</OrientationProvider>);
+    await measure(844, 390);
+    const settled = landscapeLocks();
+
+    await measure(390, 844);
+    expect(landscapeLocks()).toBe(settled + 1);
+    expect(covered()).toBe(true);
+
+    await nav.emit('transitionEnd', false);
+    await measure(844, 390);
+    expect(covered()).toBe(false);
     await view.unmount();
   });
 });
