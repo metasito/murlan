@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dirname, "..", "..");
 const code = (rel: string) => readFileSync(path.join(root, rel), "utf8").replace(/[ \t]*#.*$/gm, "");
 const IOS = code(".github/workflows/ios.yml");
 const FELT = ".maestro/felt-opaque.yaml";
+const WARMUP = ".maestro/_warmup.yaml";
 const OWN_WORKFLOW: Record<string, string> = { "audio-soak.yaml": ".github/workflows/audio-soak.yml" };
 
 const job = (id: string) => {
@@ -36,6 +37,7 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
   const expected = readdirSync(path.join(root, ".maestro"))
     .filter((f) => f.endsWith(".yaml") && !(f in OWN_WORKFLOW))
     .map((f) => `.maestro/${f}`)
+    .filter((f) => f !== WARMUP)
     .sort();
   assert.deepEqual(run, expected);
   for (const [flow, workflow] of Object.entries(OWN_WORKFLOW)) assert.match(code(workflow), new RegExp(`\\.maestro/${flow}`));
@@ -43,7 +45,8 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
 
 test("each shard runs its own flows, and exactly one photographs the felt", () => {
   assert.ok(shards.length > 1);
-  assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \$FLOWS/);
+  assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \.maestro\/_warmup\.yaml \$FLOWS\n/);
+  assert.ok(!shards.some((s) => s.flows.includes(WARMUP)), "the warm-up runs first in every shard, never as a shard's own flow");
   assert.equal(shards.filter((s) => s.felt).length, 1);
   assert.match(step(IOS, "Install the app on the simulator"), /\n {8}id: install\n/);
   for (const name of ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"]) {
