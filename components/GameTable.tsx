@@ -141,7 +141,8 @@ import {
 } from "@/lib/theme";
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
-import { useBenchHandle } from "@/lib/diagnostics";
+import { useBenchHandle, useOrientationRows } from "@/lib/diagnostics";
+import nativeOrientation from "@/modules/murlan-orientation";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
 // text labels, and React Native rasterises text before transforming it, so a
@@ -194,6 +195,7 @@ const roundStart = () => event([{ kind: "roundStart" }]);
 
 const lockLandscape = () => {
   ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
+  nativeOrientation?.holdLandscape().catch(() => {});
 };
 
 export interface TurnTimerConfig {
@@ -839,8 +841,10 @@ export function GameTable({
     warmCourtArt();
     return () => {
       ScreenOrientation.unlockAsync().catch(() => {});
+      nativeOrientation?.release().catch(() => {});
     };
   }, []);
+  useOrientationRows(W, H);
   // A portrait-only lock from UIKit can land after ours with no rotation to report
   // it, so an upright window keeps re-asking until it turns (#1378).
   const upright = W < H;
