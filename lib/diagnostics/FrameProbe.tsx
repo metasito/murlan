@@ -28,11 +28,12 @@ export function sampleFrame(frame: FrameInfo): void {
   if (!recording.value) return;
   const dt = frame.timeSincePreviousFrame ?? NaN;
   const now = Date.now();
+  // Forced: an unforced write of the same array never marks it dirty, so JS reads its stale copy.
   samples.modify((a) => {
     "worklet";
     a.push(now, dt);
     return a;
-  }, false);
+  }, true);
   if (now >= closeAtWall.value) recording.value = false;
 }
 
