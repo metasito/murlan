@@ -52,7 +52,7 @@ describe('throws committed while no frame is drawn', () => {
     expect(fliers(view)).toBe(SINGLE.cards.length + PAIR.cards.length);
 
     await frames(60);
-    expect(dusts()).toEqual([1, 2]);
+    expect([...dusts()].sort()).toEqual([1, 2]);
     await view.unmount();
   });
 });

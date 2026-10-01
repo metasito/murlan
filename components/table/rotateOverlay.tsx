@@ -1,6 +1,6 @@
-// The portrait cover on the game table. A Modal, not a scrim: covering the
-// pixels would leave every control beneath it in the tab order. Rotating back
-// is the only way out, so onRequestClose is inert.
+// The portrait cover on the game table. Not a Modal: a presented modal held back
+// the very layout that would have lifted it (#1378). The table veils itself behind
+// the cover, and on iOS the cover hides its siblings from VoiceOver.
 
 import { useEffect } from "react";
 import { View } from "react-native";
@@ -23,7 +23,6 @@ import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { Colors, Motion } from "@/lib/theme";
-import { AppModal } from "../AppModal";
 
 const GLYPH_SIZE = 56;
 const TURN_MS = Motion.duration.reveal;
@@ -64,26 +63,18 @@ export function RotateOverlay() {
   }));
 
   return (
-    <AppModal onRequestClose={() => {}}>
-      <View style={portraitOverlayStyles.overlay}>
-        {/* The label lives here rather than on the Modal: a Modal's own host
-            view is not an accessibility element on iOS, so a label on it is
-            read by nothing. */}
-        <View
-          style={portraitOverlayStyles.card}
-          {...a11yGroup(t("gameTable.rotateA11yLabel"))}
-        >
-          <Animated.View style={glyphStyle} {...a11yHidden()}>
-            <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
-          </Animated.View>
-          <TableText style={portraitOverlayStyles.title} {...a11yHidden()}>
-            {t("gameTable.rotateTitle")}
-          </TableText>
-          <TableText style={portraitOverlayStyles.sub} {...a11yHidden()}>
-            {t("gameTable.rotateBody")}
-          </TableText>
-        </View>
+    <View style={portraitOverlayStyles.overlay} accessibilityViewIsModal>
+      <View style={portraitOverlayStyles.card} {...a11yGroup(t("gameTable.rotateA11yLabel"))}>
+        <Animated.View style={glyphStyle} {...a11yHidden()}>
+          <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
+        </Animated.View>
+        <TableText style={portraitOverlayStyles.title} {...a11yHidden()}>
+          {t("gameTable.rotateTitle")}
+        </TableText>
+        <TableText style={portraitOverlayStyles.sub} {...a11yHidden()}>
+          {t("gameTable.rotateBody")}
+        </TableText>
       </View>
-    </AppModal>
+    </View>
   );
 }

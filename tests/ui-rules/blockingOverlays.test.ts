@@ -32,8 +32,6 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/SessionReplacedNotice.tsx", "styles.overlay"],
   ["app/(online)/index.tsx", "StyleSheet.absoluteFill"],
   ["app/profile.tsx", "StyleSheet.absoluteFill"],
-  // The portrait cover, which is the whole screen.
-  ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
 
 /**
@@ -58,6 +56,17 @@ const NOT_A_BLOCKER: [string, number, string][] = [
  * actually withdraws is `tests/native/tableCoveredVeil.test.tsx`'s job.
  */
 const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][] = [
+  [
+    "components/table/rotateOverlay.tsx",
+    1,
+    "portraitOverlayStyles.overlay",
+    "a presented Modal held back the layout that would have lifted it, and the table stayed covered (#1378); " +
+      "the table veils itself behind the cover (`tests/native/tableRelocksAfterEntry.test.tsx`)",
+    [
+      ["hides its siblings from VoiceOver", /portraitOverlayStyles\.overlay\} accessibilityViewIsModal/],
+      ["names itself", /a11yGroup\(t\(/],
+    ],
+  ],
   [
     "components/table/settingsSheet.tsx",
     1,
