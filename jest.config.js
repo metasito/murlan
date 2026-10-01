@@ -15,11 +15,25 @@
 // jest reports a clean "no tests found" instead of a failure.
 const rootDir = __dirname.replace(/\\/g, '/');
 
+const PILE_ON_ONE_PLATFORM =
+  'Counts pile-card mounts and flight clocks; trick.ts, the pile, useFlightClock and CardView branch only on web, never on ios against android.';
+const IOS_ONLY = {
+  'everyMomentHasACaller.test.tsx':
+    'Asks which moment each table change raises; nothing from GameTable to lib/device/feedback branches on ios against android.',
+  'oneSoundPerMoment.test.tsx':
+    'Times the effects a bot manche starts in the mocked audio graph; nothing from GameTable to lib/device/feedback branches on ios against android.',
+  'pileMountsOnceFull.test.tsx': PILE_ON_ONE_PLATFORM,
+  'pileMountsOnceReduced.test.tsx': PILE_ON_ONE_PLATFORM,
+};
+
 const project = (platform) => ({
   preset: `jest-expo/${platform}`,
   displayName: platform,
   rootDir,
-  testMatch: [`${rootDir}/tests/native/**/*.test.tsx`],
+  testMatch: [
+    `${rootDir}/tests/native/**/*.test.tsx`,
+    ...(platform === 'ios' ? [] : Object.keys(IOS_ONLY).map((file) => `!${rootDir}/tests/native/${file}`)),
+  ],
   setupFilesAfterEnv: [`${rootDir}/tests/native/setup.ts`],
   // react-native-worklets ships `.native.ts` files that call into a real
   // native module `setUpTests()` cannot stand in for under Jest. Its own
@@ -33,6 +47,7 @@ const project = (platform) => ({
 
 module.exports = {
   projects: [project('ios'), project('android')],
+  reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
   // A worker holds a whole React Native module graph, and jest's default is one
   // per core — enough of them to exhaust a developer machine's memory.

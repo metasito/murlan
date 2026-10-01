@@ -363,7 +363,7 @@ export default function RoomScreen() {
 
   useEffect(() => {
     if (error) {
-      showNotification({ type: "game_error", title: t("common.error"), message: error });
+      showNotification({ type: "game_error", title: t("common.error"), message: error.text });
       clearError();
     }
   }, [error, clearError, showNotification, t]);

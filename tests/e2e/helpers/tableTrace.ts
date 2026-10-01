@@ -74,7 +74,12 @@ export async function feltPixels(page: Page): Promise<{ pixels: { width: number;
     }
   });
   const box = (await felt.boundingBox())!;
-  const png = (await felt.screenshot({ type: "png" })).toString("base64");
+  const pixels = await rgbaOf(page, await felt.screenshot({ type: "png" }));
+  return { pixels, perPt: pixels.width / box.width, origin: { x: box.x, y: box.y } };
+}
+
+/** A PNG as RGBA, decoded by the page's own canvas. */
+export async function rgbaOf(page: Page, png: Buffer): Promise<{ width: number; height: number; data: Buffer }> {
   const raw = await page.evaluate(async (png) => {
     const img = new Image();
     img.src = `data:image/png;base64,${png}`;
@@ -87,12 +92,8 @@ export async function feltPixels(page: Page): Promise<{ pixels: { width: number;
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
     return { width: img.width, height: img.height, b64: btoa(bin) };
-  }, png);
-  return {
-    pixels: { width: raw.width, height: raw.height, data: Buffer.from(raw.b64, "base64") },
-    perPt: raw.width / box.width,
-    origin: { x: box.x, y: box.y },
-  };
+  }, png.toString("base64"));
+  return { width: raw.width, height: raw.height, data: Buffer.from(raw.b64, "base64") };
 }
 
 /** The lamp as the trace's latest frame drew it, in the felt box's own points. */

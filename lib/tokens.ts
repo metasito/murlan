@@ -211,6 +211,18 @@ export const LastCard = {
   glow: '#FF5A46',
 } as const;
 
+// The felt's card shadows: the lantern mockup's `.card`, `.card.bkc`, `.bk` and `--shx`/`--shy`, in its
+// points at card scale 1, blurs as CSS states them (tests/ui-rules/cardShadows.test.ts parses the mockup).
+export const CardShadow = {
+  cast: { blur: 10, alpha: 0.5 },
+  contact: { y: 1, blur: 2 },
+  alpha: { face: 0.3, back: 0.4, fan: 0.5 },
+  fall: { x: 26, y: 30, drop: 3 },
+} as const;
+
+// Design gate G1 (#1259 plan 4), tests/e2e/fixtures/card-glow: under a selected hand card and the flush catch.
+export const CardGlow = { color: '#FFD27A', alpha: 0.7, blur: 18 } as const;
+
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,
 // its one reader). Edges map the mockup's onto the gold scale (#1259 Q4); the lit edge is `goldLitEdge`.
 export const NoticePalette = {
@@ -532,8 +544,6 @@ export const Reading = {
   notice: 4000,
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
-  /** A transient in-game error, cleared rather than left to stack. */
-  toast: 3000,
 } as const;
 
 /**

@@ -35,7 +35,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
   useOnlineConnection: () => ({
     connected: true,
-    error: ERROR,
+    error: { text: ERROR, seq: 1 },
     reconnectNotice: null,
     playerLeft: false,
     rejoinFailed: false,
@@ -65,8 +65,8 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { error?: string | null; overlays?: (v: object) => React.ReactNode }) => {
-      mockTable(props.error);
+    GameTable: (props: { error?: { text: string } | null; overlays?: (v: object) => React.ReactNode }) => {
+      mockTable(props.error?.text);
       return react.createElement(rn.View, null, props.overlays ? props.overlays({}) : null);
     },
   };

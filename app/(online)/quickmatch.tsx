@@ -263,7 +263,7 @@ export default function QuickmatchScreen() {
 
           {error ? (
             <>
-              <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorText}>{error.text}</Text>
               <MenuButton label={t("common.retry")} onPress={handleRetry} />
             </>
           ) : (
