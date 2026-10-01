@@ -25,7 +25,7 @@ instead of sitting unguarded in prose.
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |
 | An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and run the whole `mockupParity` set exactly once, before pushing — never all of it for a single tweak; `node scripts/mockupParityPage.mjs <report> <out>` builds the side-by-side page, and CI publishes it as the `mockup-parity` artifact | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness (`tests/e2e/helpers/traceDiff.ts`) | Docker + a built web bundle | ~2.5 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
-| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
+| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~17 min warm; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
@@ -80,7 +80,7 @@ emulator; `ios.yml` runs them as parallel shards, one macOS job each, and its `D
 real iOS simulator` job is green only when every shard ran and passed
 (`tests/tooling/iosShards.test.ts`). A shard never builds: when no native build for the branch's
 fingerprint is cached (a native change), it fails saying so, and `gh workflow run
-ios-app-cache.yml --ref <branch>` builds one (~50 min) before `ios.yml` is dispatched again. A ticket dispatches them from its own branch when its work needs a device run
+ios-app-cache.yml --ref <branch>` builds one (~21 min) before `ios.yml` is dispatched again. A ticket dispatches them from its own branch when its work needs a device run
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch
 can read only its own cache and main's, so a branch's first run restores main's native build
 instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
