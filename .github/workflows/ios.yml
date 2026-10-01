@@ -28,29 +28,133 @@ concurrency:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  ios:
-    name: Drive the app on a real iOS simulator
+  app:
+    name: Restore the app and bundle its JS
     runs-on: macos-latest
-    # Generous on purpose, and the same as maestro.yml's: this job compiles the
-    # app before it drives it, and then runs smoke.yaml, offline-game.yaml,
-    # exchange-phase.yaml and rematch-prompt.yaml — offline-game alone is a
-    # full hand, 16 minutes on a developer machine. A measured run of just
-    # smoke + offline-game is 23; exchange-phase and rematch-prompt add
-    # another ~8.5 (run 33899179508: 3m36s + 4m55s). Hitting the cap
-    # cancels the job, and a cancelled job skips every `if: failure()` step
-    # below, so an overrun costs the artefacts that would say what happened.
-    timeout-minutes: 100
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install dependencies
+        uses: ./.github/actions/install
+        with:
+          node-version: 24
+
+      # Started in the background, so it runs beside the fingerprint and restore below. The .app it
+      # writes into is a stand-in: hermesc embeds only its input's directory, which stays Xcode's.
+      - name: Start bundling the JS
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
+          mkdir -p "$products/js.app"
+          (
+            status=0
+            tools/ci/rebundle-ios-app.sh "$products/js.app" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/bundle.status"
+          ) > /dev/null 2>&1 &
+
+      - name: Restore the app
+        id: native
+        uses: ./.github/actions/ios-app
+
+      - name: Say how to fill the cache
+        if: failure() && steps.native.outputs.key != '' && steps.native.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.native.outputs.key }}
+        run: |
+          echo "::error::No native build for $KEY is in the cache, and this workflow never builds one." \
+            "Dispatch ios-app-cache.yml on this branch, then this workflow again."
+          exit 1
+
+      - name: Bundle the JS into the app
+        run: |
+          for _ in $(seq 1 300); do
+            [ -s "$RUNNER_TEMP/bundle.status" ] && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/bundle.log"
+          [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
+          cached=""
+          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
+            [ -d "$candidate" ] && { cached="$candidate"; break; }
+          done
+          [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
+          app="$(dirname "$JS_BUNDLE")/$(basename "$cached")"
+          rm -rf "$app"
+          cp -R "$cached" "$app"
+          cp -R "$JS_BUNDLE/." "$app/"
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+
+      - name: The bundle carries the test-only flag
+        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
+
+      # Tarred, because an artifact keeps neither the executable bit nor the symlinks an .app has.
+      - name: Pack the app
+        run: tar -czf "$RUNNER_TEMP/app.tgz" -C "$(dirname "$APP_BUNDLE")" "$(basename "$APP_BUNDLE")"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-app
+          path: ${{ runner.temp }}/app.tgz
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+
+  flows:
+    name: Drive the app on a real iOS simulator (${{ matrix.shard }})
+    needs: app
+    runs-on: macos-latest
+    # A cancelled job skips every `if: failure()` step below, so an overrun costs the artefacts
+    # that would say what happened.
+    timeout-minutes: 45
+    strategy:
+      # Each shard's flows are diagnosed from its own artefacts; one red shard must not cancel the rest.
+      fail-fast: false
+      # Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
+      matrix:
+        include:
+          - shard: rematch-prompt
+            flows: .maestro/rematch-prompt.yaml
+          - shard: offline-game
+            flows: .maestro/offline-game.yaml
+          - shard: exchange-phase
+            flows: .maestro/exchange-phase.yaml
+          - shard: smoke-and-felt
+            flows: .maestro/smoke.yaml
+            felt: true
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # In the background; `Maestro is installed` waits for it.
+      - name: Start installing Maestro
+        run: |
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          (
+            status=0
+            {
+              # This is the tool that decides what "the app rendered" means, and
+              # unpinned it was the only thing in either job that could change
+              # between two runs of the same commit. Raise it deliberately, and
+              # read the changelog when you do (#701).
+              export MAESTRO_VERSION=2.10.0
+              curl -Ls "https://get.maestro.mobile.dev" | bash
+              # Checked rather than echoed. A tag that does not resolve leaves the
+              # installer's own `exit` returning the status of the echo before it,
+              # which is 0 with nothing installed - so the pin has to be read back
+              # off the binary that arrived.
+              "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+            } > "$RUNNER_TEMP/maestro.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/maestro.status"
+          ) > /dev/null 2>&1 &
+
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-          cache: npm
 
       # `macos-latest` ships a fixed set of pre-created simulators rather
       # than a fresh AVD per run, so the device to drive has to be found
@@ -82,29 +186,30 @@ jobs:
           done
           xcrun simctl boot "$udid"
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build the app, or restore it
-        id: native
-        uses: ./.github/actions/ios-app
-
-      - name: Bundle the JS into the app
-        env:
-          EXPO_PUBLIC_E2E_FAST: "1"
+      - name: Sample the runner's load
         run: |
-          cached=""
-          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
-            [ -d "$candidate" ] && { cached="$candidate"; break; }
+          mkdir -p "$HOME/.maestro/tests"
+          sysctl hw.ncpu hw.memsize > "$HOME/.maestro/tests/runner-top.log"
+          nohup top -l 0 -s 5 -n 15 -o cpu -stats pid,command,cpu,rsize,state >> "$HOME/.maestro/tests/runner-top.log" 2>&1 &
+          nohup top -l 0 -s 30 -n 15 -o rsize -stats pid,command,cpu,rsize,state > "$HOME/.maestro/tests/runner-mem.log" 2>&1 &
+
+      - name: Turn off the runner's Spotlight indexing
+        run: sudo mdutil -a -i off
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ios-app
+          path: ${{ runner.temp }}/packed
+
+      - name: Unpack the app
+        run: |
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xzf "$RUNNER_TEMP/packed/app.tgz" -C "$RUNNER_TEMP/app"
+          app=""
+          for candidate in "$RUNNER_TEMP"/app/*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
           done
-          [ -n "$cached" ] || { echo "::error::No .app was built or restored."; exit 1; }
-          # Where Xcode built it: hermesc writes its input's path into the bytecode.
-          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
-          app="$products/$(basename "$cached")"
-          mkdir -p "$products"
-          rm -rf "$app"
-          cp -R "$cached" "$app"
-          tools/ci/rebundle-ios-app.sh "$app"
+          [ -n "$app" ] || { echo "::error::The app job's artifact holds no .app."; exit 1; }
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
           # not from app.json: a prebuild that renamed the bundle would
@@ -112,42 +217,93 @@ jobs:
           # not there, which reads as "the app never launched".
           id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
           echo "APP_ID=$id" >> "$GITHUB_ENV"
-          echo "Built $app ($id)"
-
-      # What makes a restored app trustworthy: rebundling reproduces Xcode's own bundle byte for byte.
-      - name: The rebundled JS is the bundle Xcode built
-        if: steps.native.outputs.cache-hit != 'true'
-        run: cmp "$RUNNER_TEMP/xcode.jsbundle" "$APP_BUNDLE/main.jsbundle"
-
-      - name: The bundle carries the test-only flag
-        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
+          echo "Driving $app ($id)"
 
       - name: Wait for the simulator to finish booting
-        run: xcrun simctl bootstatus "$SIMULATOR_UDID"
+        run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+
+      # A booted simulator's widget and poster extensions alone hold about 7 GB of a 7 GB runner, so
+      # the flows page, and a tap synthesized while the runner is that starved is lost (#1378 B).
+      # No flow uses any of these. A daemon may be idle now, so it need only be known to launchd;
+      # every one, and every extension running now, must be gone before the app is installed.
+      - name: Stop the simulator services no flow needs
+        env:
+          SERVICES: >-
+            com.apple.apsd com.apple.chronod com.apple.PosterBoard com.apple.siriactionsd
+            com.apple.mediaanalysisd com.apple.photoanalysisd com.apple.healthd com.apple.healthappd
+            com.apple.intelligenceplatformd com.apple.mobileassetd com.apple.fitnessintelligenced
+            com.apple.fitnesscoachingd com.apple.amsengagementd com.apple.suggestd com.apple.email.maild
+            com.apple.icloudmailagent com.apple.remindd com.apple.nanotimekitcompaniond com.apple.homed
+            com.apple.weatherd com.apple.ScreenTimeAgent com.apple.siriinferenced
+          EXTENSIONS: 'simruntime/.*\.appex/'
+        run: |
+          pid_of() { printf '%s\n' "$listed" | awk -v label="$1" '$3 == label && $1 != "-" { print $1 }'; }
+          listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
+          pids=""
+          for label in $SERVICES; do
+            printf '%s\n' "$listed" | awk -v label="$label" '$3 == label { found = 1 } END { exit !found }' ||
+              { echo "::error::The simulator has no $label to stop."; exit 1; }
+            pids="$pids $(pid_of "$label")"
+          done
+          extensions=$(pgrep -f "$EXTENSIONS" | tr '\n' ' ')
+          [ -n "$extensions" ] || { echo "::error::The simulator runs no app extension to stop."; exit 1; }
+          pids="$pids $extensions"
+          for label in $SERVICES; do
+            xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable "system/$label"
+            xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" || :
+          done
+          pkill -f "$EXTENSIONS" || :
+          for _ in $(seq 1 30); do
+            alive=""
+            for pid in $pids; do kill -0 "$pid" 2> /dev/null && alive="$alive $pid"; done
+            listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
+            for label in $SERVICES; do [ -z "$(pid_of "$label")" ] || alive="$alive $label"; done
+            [ -z "$alive" ] && { echo "Stopped$pids."; exit 0; }
+            sleep 1
+          done
+          for pid in $alive; do ps -o pid=,command= -p "$pid" 2> /dev/null || :; done
+          echo "::error::Still running after being stopped:$alive"
+          exit 1
+
+      - name: List the simulator's services
+        run: |
+          xcrun simctl spawn "$SIMULATOR_UDID" launchctl list > "$HOME/.maestro/tests/sim-launchctl.txt" 2>&1 || :
+          ps -axo pid,rss,pcpu,command | grep -F simruntime > "$HOME/.maestro/tests/sim-ps.txt" || :
 
       - name: Install the app on the simulator
+        id: install
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
 
-      - name: Install Maestro
+      - name: Maestro is installed
         run: |
-          # This is the tool that decides what "the app rendered" means, and
-          # unpinned it was the only thing in either job that could change
-          # between two runs of the same commit. Raise it deliberately, and
-          # read the changelog when you do (#701).
-          export MAESTRO_VERSION=2.10.0
-          curl -Ls "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-          # Checked rather than echoed. A tag that does not resolve leaves the
-          # installer's own `exit` returning the status of the echo before it,
-          # which is 0 with nothing installed - so the pin has to be read back
-          # off the binary that arrived.
-          "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
+          for _ in $(seq 1 150); do
+            [ -s "$RUNNER_TEMP/maestro.status" ] && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/maestro.log"
+          [ "$(cat "$RUNNER_TEMP/maestro.status" 2>/dev/null)" = 0 ] || { echo "::error::Installing Maestro failed or never finished."; exit 1; }
 
-      # Both flows, named rather than globbed: the order is the thing being
-      # relied on. `clearState` makes each start from the same place, so either
-      # order has to work — but a directory glob would also pick up a flow added
-      # later and run it here without anyone deciding to.
-      #
+      # The warm-up drives only XCTest's input path on a fresh simulator (#1378 B), so a second
+      # attempt on a rebooted one, with a fresh driver, hides nothing in the app. The flows get none.
+      - name: Warm up the simulator's input
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        run: |
+          for attempt in 1 2; do
+            maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/_warmup.yaml && exit 0
+            [ "$attempt" = 2 ] && break
+            echo "::warning::Warm-up attempt $attempt failed; rebooting the simulator for a fresh driver."
+            pkill -f "xcodebuild.*maestro-driver" || :
+            xcrun simctl shutdown "$SIMULATOR_UDID"
+            for _ in $(seq 1 30); do
+              xcrun simctl list devices | grep "$SIMULATOR_UDID" | grep -q "Shutting Down" || break
+              sleep 2
+            done
+            xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          done
+          echo "::error::The warm-up failed twice."
+          exit 1
+
       # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
       - name: Run the flows
         env:
@@ -157,22 +313,20 @@ jobs:
           # 2026-08-31, one of them burning the full five minutes below, which
           # is what says it was never coming up rather than coming up late.
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+          FLOWS: ${{ matrix.flows }}
         # Named rather than left to Maestro to resolve: run 33428373840 was the
         # first with `--device` and the first with no "iOS driver not ready in time".
-        run: |
-          maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" \
-            .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml \
-            .maestro/rematch-prompt.yaml
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" $FLOWS
 
       # takeScreenshot writes to ~/.maestro/tests/<run>/felt-opaque/takeScreenshot/.
       - name: Photograph the felt
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         env:
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
         run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/felt-opaque.yaml
 
       - name: The felt shows no black band and no black frame
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/felt"
           for shot in felt-first felt-settled; do
@@ -183,7 +337,7 @@ jobs:
           node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
       - name: Upload the felt screenshots
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: felt-ios
@@ -203,7 +357,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: crash-reports-ios
+          name: crash-reports-ios-${{ matrix.shard }}
           path: ${{ runner.temp }}/crash-reports/
           if-no-files-found: ignore
 
@@ -213,11 +367,31 @@ jobs:
         if: failure() || inputs.force-upload-debug
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: maestro-debug-ios
+          name: maestro-debug-ios-${{ matrix.shard }}
           path: ~/.maestro/tests/
           if-no-files-found: ignore
 
-      # `cancelled()` is the timeout: it skips every `failure()` step.
+  ios:
+    name: Drive the app on a real iOS simulator
+    needs: [app, flows]
+    # `always()`, so a skipped or cancelled job reaches the check below and turns it red.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Every shard ran and passed
+        env:
+          RESULTS: ${{ needs.app.result }} ${{ needs.flows.result }}
+        run: |
+          echo "The app job's and the shards' results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
+
+      # `cancelled()` is a cancelled run: it skips every `failure()` step.
       - name: Report a red scheduled run to the tracker
         if: (failure() || cancelled()) && github.event_name == 'schedule'
         env:

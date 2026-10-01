@@ -1,0 +1,18 @@
+# A fresh simulator drops the first synthesized touch and can time out the first rotation
+# (#1378 B); this spends both before the real flows, and fails the shard if it cannot.
+appId: "${MAESTRO_APP_ID}"
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- extendedWaitUntil:
+    visible: "Salta il tutorial"
+    timeout: 180000
+- tapOn:
+    point: "50%,80%"
+    waitToSettleTimeoutMs: 500
+- setOrientation: LANDSCAPE_LEFT
+- setOrientation: PORTRAIT
+- assertVisible: "Salta il tutorial"

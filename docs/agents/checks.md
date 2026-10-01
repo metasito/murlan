@@ -26,7 +26,7 @@ instead of sitting unguarded in prose.
 | An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and run the whole `mockupParity` set exactly once, before pushing — never all of it for a single tweak; `node scripts/mockupParityPage.mjs <report> <out>` builds the side-by-side page, and CI publishes it as the `mockup-parity` artifact | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness (`tests/e2e/helpers/traceDiff.ts`) | Docker + a built web bundle | ~2.5 min |
 | A table card's shadow | `tests/ui-rules/cardShadows.test.ts`, `tests/native/tableCardShadows.test.tsx`, then `tests/e2e/cardShadowParity.spec.ts` alone | the mockup's numbers; any card view carrying its own shadow; the felt's shadow against the mockup's `.card` under the same light | Docker + a built web bundle for the spec | ~1s / ~70s / ~1 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
-| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~23 min warm, ~28–46 min cold |
+| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~17 min warm; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
@@ -75,9 +75,13 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 
 ## Device runs
 
-`.github/workflows/ios.yml` builds a release `.app`; `maestro.yml` compiles a release APK. Both
-drive `smoke` → `offline-game` → `exchange-phase` → `rematch-prompt` on a real simulator or
-emulator. A ticket dispatches them from its own branch when its work needs a device run
+`.github/workflows/ios.yml` restores a release `.app`; `maestro.yml` compiles a release APK. Both
+drive `smoke`, `offline-game`, `exchange-phase` and `rematch-prompt` on a real simulator or
+emulator; `ios.yml` runs them as parallel shards, one macOS job each, and its `Drive the app on a
+real iOS simulator` job is green only when every shard ran and passed
+(`tests/tooling/iosShards.test.ts`). A shard never builds: when no native build for the branch's
+fingerprint is cached (a native change), it fails saying so, and `gh workflow run
+ios-app-cache.yml --ref <branch>` builds one (~21 min) before `ios.yml` is dispatched again. A ticket dispatches them from its own branch when its work needs a device run
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch
 can read only its own cache and main's, so a branch's first run restores main's native build
 instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
@@ -108,7 +112,7 @@ CI compiles the Android and iOS projects on a pull request that changes `package
 a native build otherwise, request one: `gh workflow run ci.yml --ref agent/<n>-<slug> -f
 native=true`, then wait on it with `await-run.mjs`.
 
-`ios.yml` also runs `.maestro/felt-opaque.yaml`: the felt's Metal layer is opaque only through
+One `ios.yml` shard also runs `.maestro/felt-opaque.yaml`: the felt's Metal layer is opaque only through
 `patches/@shopify+react-native-skia+2.12.0.patch`, and an opaque layer whose drawable misses its
 bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the table as it appears and
 settled, both after the landscape lock resized the felt) on a black band along an edge or over 5 %
@@ -142,7 +146,7 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   died of a native crash — a tombstone in the logcat, a report in the simulator host's
   DiagnosticReports (`tools/ci/find-native-crash.mjs`, #629, #1293). `node tools/ci/analyze-maestro-run.mjs
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
-  per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios` artefact.
+  per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios-<shard>` artefact.
 
 ### Device bench (diagnostics builds)
 

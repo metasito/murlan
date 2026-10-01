@@ -56,7 +56,9 @@ for (const [name, platform] of [
     const report = step(source, "Report a red scheduled run to the tracker");
     assert.match(report, /if: \(failure\(\) \|\| cancelled\(\)\) && github\.event_name == 'schedule'\n/);
     assert.match(report, new RegExp(`run: bash tools/ci/report-device-run\\.sh ${name.replace(".", "\\.")}\n?$`));
-    assert.match(source, /^permissions:\n(?: {2}.*\n)* {2}issues: write$/m);
+    const grant = [...source.matchAll(/^( {4})?permissions:\n((?:\1 {2}.*\n)*)/gm)].at(-1);
+    assert.match(grant?.[2] ?? "", /issues: write/);
+    if (grant?.[1]) assert.doesNotMatch(source.slice(grant.index, source.indexOf(report)), /\n {2}[\w-]+:\n/, "the grant is on another job");
     assert.equal(source.trimEnd().endsWith(report.trimEnd()), true, "a step after the report can fail without being reported");
   });
 }
