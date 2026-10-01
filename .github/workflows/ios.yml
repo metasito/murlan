@@ -186,6 +186,12 @@ jobs:
           done
           xcrun simctl boot "$udid"
 
+      - name: Sample the runner's load
+        run: |
+          mkdir -p "$HOME/.maestro/tests"
+          sysctl hw.ncpu hw.memsize > "$HOME/.maestro/tests/runner-top.log"
+          nohup top -l 0 -s 5 -n 15 -o cpu -stats pid,command,cpu,rsize,state >> "$HOME/.maestro/tests/runner-top.log" 2>&1 &
+
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ios-app
