@@ -1,0 +1,45 @@
+##
+# The owner's failing path (#1378): the table mounts with the phone upright, then the phone is
+# turned. The table's lock must turn it landscape under an upright phone, and the turn must leave
+# it there; a cover still up at either point is the bug. offline-game.yaml says why each launch
+# and menu step is shaped as it is.
+appId: "${MAESTRO_APP_ID}"
+---
+- setOrientation: PORTRAIT
+- launchApp:
+    clearState: true
+    arguments:
+      AppleLanguages: "(it-IT)"
+      AppleLocale: "it_IT"
+- runFlow:
+    commands:
+      - extendedWaitUntil:
+          visible: "Salta il tutorial"
+          timeout: 180000
+      - tapOn: "Salta il tutorial"
+      - extendedWaitUntil:
+          notVisible: "Salta il tutorial"
+          timeout: 30000
+- assertVisible: "Offline"
+- tapOn: "Offline"
+- assertVisible: "Manche secca.*"
+- tapOn: "Manche secca.*"
+- assertVisible: "Inizia Partita"
+- tapOn:
+    text: "Inizia Partita"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 90000
+- extendedWaitUntil:
+    notVisible: "Gira il dispositivo di lato.*"
+    timeout: 15000
+- takeScreenshot: rotate-1-upright
+- setOrientation: LANDSCAPE_LEFT
+- extendedWaitUntil:
+    visible:
+      id: "btn-passa"
+    timeout: 60000
+- assertNotVisible: "Gira il dispositivo di lato.*"
+- takeScreenshot: rotate-2-turned

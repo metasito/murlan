@@ -30,6 +30,7 @@ export interface DiagRows {
   dot: { kind: string; opacity: number };
   gallery: { kinds: number; fixtures: number };
   shown: { kind: string; fixture: number; reduced: boolean };
+  orientation: { rn: { w: number; h: number }; native: Record<string, unknown> | null; error?: string };
 }
 
 export type DiagRow = { [K in keyof DiagRows]: { k: K; t: number } & DiagRows[K] }[keyof DiagRows];

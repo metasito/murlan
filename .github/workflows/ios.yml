@@ -124,7 +124,7 @@ jobs:
           - shard: exchange-phase
             flows: .maestro/exchange-phase.yaml
           - shard: smoke-and-felt
-            flows: .maestro/smoke.yaml
+            flows: .maestro/smoke.yaml .maestro/rotate-after-cover.yaml
             felt: true
 
     steps:

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 import type { View } from "react-native";
+import orientation from "@/modules/murlan-orientation";
 import type { DiagRow } from "./types";
 import type { LampSide, Pixels } from "./lampLegibility";
 
@@ -47,6 +48,25 @@ export function useBenchHandle<K extends keyof BenchHandles>(name: K, fn: NonNul
       if (benchHandles[name] === fn) delete benchHandles[name];
     };
   }, [name, fn]);
+}
+
+export const ORIENTATION_ROW_MS = 1000;
+
+export function useOrientationRows(w: number, h: number): void {
+  const rn = useRef({ w, h });
+  useEffect(() => {
+    rn.current = { w, h };
+  }, [w, h]);
+  useEffect(() => {
+    if (!DIAGNOSTICS) return;
+    const id = setInterval(() => {
+      const row = (native: Record<string, unknown> | null, error?: string) =>
+        diag({ k: "orientation", t: performance.now(), rn: rn.current, native, ...(error ? { error } : {}) });
+      if (!orientation) return row(null);
+      orientation.snapshot().then((s) => row(s), (e: unknown) => row(null, String(e)));
+    }, ORIENTATION_ROW_MS);
+    return () => clearInterval(id);
+  }, []);
 }
 
 export const RING_PROBE_MS = 250;

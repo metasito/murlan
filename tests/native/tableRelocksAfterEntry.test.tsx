@@ -18,6 +18,11 @@ jest.mock('expo-screen-orientation', () => ({
     return { remove: () => mockUikit.delete(listener) };
   },
 }));
+const mockNative = { holdLandscape: jest.fn(async () => {}), release: jest.fn(async () => {}) };
+jest.mock('@/modules/murlan-orientation', () => ({
+  __esModule: true,
+  default: { holdLandscape: () => mockNative.holdLandscape(), release: () => mockNative.release() },
+}));
 // The bridge's window size, frozen in portrait: after the blip it never re-emits.
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
@@ -120,6 +125,19 @@ describe('the table re-asserts landscape once its entry transition ends (#1211)'
     const view = await render(table(undefined));
     expect(landscapeLocks()).toBe(1);
     await view.unmount();
+  });
+
+  it("asks the app's own module for landscape beside every lock, and releases it on leaving", async () => {
+    mockNative.holdLandscape.mockClear();
+    mockNative.release.mockClear();
+    const screen = fakeScreen();
+    const view = await render(table(screen.navigation));
+    await screen.emit('transitionEnd', false);
+    expect(landscapeLocks()).toBe(2);
+    expect(mockNative.holdLandscape).toHaveBeenCalledTimes(2);
+    expect(mockNative.release).not.toHaveBeenCalled();
+    await view.unmount();
+    expect(mockNative.release).toHaveBeenCalledTimes(1);
   });
 });
 
