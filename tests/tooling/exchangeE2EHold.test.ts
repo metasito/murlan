@@ -72,7 +72,6 @@ describe("the offline exchange overlay's E2E hold", () => {
       setters,
       [
         ".github/actions/ios-app/action.yml",
-        ".github/workflows/ios-app-cache.yml",
         ".github/workflows/ios.yml",
         ".github/workflows/maestro.yml",
         "scripts/e2e-server.mjs",

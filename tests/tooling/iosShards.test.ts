@@ -64,9 +64,10 @@ test("the run is green only when every shard ran and passed", () => {
   assert.doesNotMatch(IOS, /continue-on-error/);
 });
 
-test("a shard waits on the app job by its own name, and that job is the one that restores", () => {
-  const name = /\n {4}name: (.+)\n/.exec(job("app"))![1];
+test("a shard needs the app job, which restores, and downloads the app it uploaded", () => {
   assert.match(job("app"), /uses: \.\/\.github\/actions\/ios-app\n/);
-  assert.ok(step(IOS, "Wait for the app").includes(`select(.name == "${name}")`), name);
-  assert.doesNotMatch(job("flows"), /actions\/install|npm ci|ios-app\n/);
+  assert.match(job("flows"), /\n {4}needs: app\n/);
+  const uploaded = /upload-artifact@.*\n {8}with:\n {10}name: (.+)\n/.exec(job("app"))![1];
+  assert.match(job("flows"), new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
+  assert.doesNotMatch(job("flows"), /actions\/install|npm ci|actions\/ios-app|gh api/);
 });

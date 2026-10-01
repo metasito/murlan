@@ -27,9 +27,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
-  actions: read
   contents: read
-  issues: write
 
 jobs:
   app:
@@ -64,9 +62,11 @@ jobs:
         uses: ./.github/actions/ios-app
 
       - name: Say how to fill the cache
-        if: failure() && steps.native.outcome == 'failure'
+        if: failure() && steps.native.outputs.key != '' && steps.native.outputs.cache-hit != 'true'
+        env:
+          KEY: ${{ steps.native.outputs.key }}
         run: |
-          echo "::error::No native build for this branch's fingerprint is in the cache, and this workflow never builds one." \
+          echo "::error::No native build for $KEY is in the cache, and this workflow never builds one." \
             "Dispatch ios-app-cache.yml on this branch, then this workflow again."
           exit 1
 
@@ -98,13 +98,15 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ios-app-attempt-${{ github.run_attempt }}
+          name: ios-app
           path: ${{ runner.temp }}/app.tgz
           compression-level: 0
+          overwrite: true
           if-no-files-found: error
 
   flows:
     name: Drive the app on a real iOS simulator (${{ matrix.shard }})
+    needs: app
     runs-on: macos-latest
     # A cancelled job skips every `if: failure()` step below, so an overrun costs the artefacts
     # that would say what happened.
@@ -112,17 +114,16 @@ jobs:
     strategy:
       # Each shard's flows are diagnosed from its own artefacts; one red shard must not cancel the rest.
       fail-fast: false
-      # Balanced by run 36765362324's minutes per flow; each shard also pays ~2 of driver startup
-      # per maestro invocation. Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
+      # Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
       matrix:
         include:
-          - shard: rematch-prompt # 7.0
+          - shard: rematch-prompt
             flows: .maestro/rematch-prompt.yaml
-          - shard: offline-game # 6.5
+          - shard: offline-game
             flows: .maestro/offline-game.yaml
-          - shard: exchange-phase # 5.3
+          - shard: exchange-phase
             flows: .maestro/exchange-phase.yaml
-          - shard: smoke-and-felt # 2.4, then felt-opaque 1.7 in its own invocation
+          - shard: smoke-and-felt
             flows: .maestro/smoke.yaml
             felt: true
 
@@ -185,24 +186,13 @@ jobs:
           done
           xcrun simctl boot "$udid"
 
-      # Polled rather than `needs: app`, so the simulator boots while the app job runs; a red or
-      # cancelled app job ends the wait.
-      - name: Wait for the app
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT: ios-app-attempt-${{ github.run_attempt }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ios-app
+          path: ${{ runner.temp }}/packed
+
+      - name: Unpack the app
         run: |
-          runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          for _ in $(seq 1 120); do
-            gh api "$runs/artifacts" --jq '.artifacts[].name' | grep -qx "$ARTIFACT" && break
-            app=$(gh api "$runs/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=50" \
-              --jq '.jobs[] | select(.name == "Restore the app and bundle its JS") | .conclusion // ""')
-            case "$app" in
-              "" | success) sleep 5 ;;
-              *) echo "::error::The app job ended $app."; exit 1 ;;
-            esac
-          done
-          gh run download "$GITHUB_RUN_ID" -n "$ARTIFACT" -D "$RUNNER_TEMP/packed"
           mkdir -p "$RUNNER_TEMP/app"
           tar -xzf "$RUNNER_TEMP/packed/app.tgz" -C "$RUNNER_TEMP/app"
           app=""
@@ -309,6 +299,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -319,7 +312,7 @@ jobs:
           echo "The app job's and the shards' results: $RESULTS"
           [ "$RESULTS" = "success success" ]
 
-      # `cancelled()` is the timeout: it skips every `failure()` step.
+      # `cancelled()` is a cancelled run: it skips every `failure()` step.
       - name: Report a red scheduled run to the tracker
         if: (failure() || cancelled()) && github.event_name == 'schedule'
         env:

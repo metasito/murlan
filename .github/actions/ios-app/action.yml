@@ -12,6 +12,8 @@ inputs:
 outputs:
   cache-hit:
     value: ${{ steps.cached.outputs.cache-hit }}
+  key:
+    value: ${{ steps.native.outputs.key }}
 
 runs:
   using: composite
@@ -102,6 +104,20 @@ runs:
         cp "$app/main.jsbundle" "$RUNNER_TEMP/xcode.jsbundle"
         mkdir -p "$RUNNER_TEMP/ios-app"
         cp -R "$app" "$RUNNER_TEMP/ios-app/"
+
+    # Before the save: ios.yml rebundles every restored app into this same stand-in .app, so a
+    # build whose bundle it cannot reproduce byte for byte must never enter the cache.
+    - name: The rebundled JS is the bundle Xcode built
+      if: steps.cached.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        EXPO_PUBLIC_E2E_FAST: "1"
+      run: |
+        products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+        mkdir -p "$products/js.app"
+        tools/ci/rebundle-ios-app.sh "$products/js.app"
+        cmp "$RUNNER_TEMP/xcode.jsbundle" "$products/js.app/main.jsbundle"
+        node scripts/e2eBuildMark.mjs --present "$products/js.app"
 
     - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       if: steps.cached.outputs.cache-hit != 'true'
