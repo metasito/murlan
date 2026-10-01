@@ -238,6 +238,11 @@ jobs:
           echo "::error::The simulator's apsd is still running."
           exit 1
 
+      - name: List the simulator's services
+        run: |
+          xcrun simctl spawn "$SIMULATOR_UDID" launchctl list > "$HOME/.maestro/tests/sim-launchctl.txt" 2>&1 || :
+          ps -axo pid,rss,pcpu,command | grep -F simruntime > "$HOME/.maestro/tests/sim-ps.txt" || :
+
       - name: Install the app on the simulator
         id: install
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
