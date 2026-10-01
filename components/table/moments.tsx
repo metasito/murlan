@@ -24,6 +24,7 @@ import Animated, {
   withDelay,
   cancelAnimation,
   Easing,
+  ReduceMotion,
   type SharedValue,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -265,10 +266,11 @@ function Wave({
         withSequence(
           withTiming(0.95, { duration: durationMs * 0.08, easing: e }),
           withTiming(0, { duration: durationMs * 0.92, easing: e })
-        )
+        ),
+        ReduceMotion.System
       )
     );
-    scaleV.set(withDelay(delayMs, withTiming(6.5, { duration: durationMs, easing: e })));
+    scaleV.set(withDelay(delayMs, withTiming(6.5, { duration: durationMs, easing: e }), ReduceMotion.System));
   });
 
   useEffect(
@@ -335,10 +337,11 @@ function Spark({ index, landing, scale }: { index: number; landing: SharedValue<
         withSequence(
           withTiming(1, { duration: SPARK_MS * 0.1, easing: e }),
           withTiming(0, { duration: SPARK_MS * 0.9, easing: e })
-        )
+        ),
+        ReduceMotion.System
       )
     );
-    progress.set(withDelay(delay, withTiming(1, { duration: SPARK_MS, easing: e })));
+    progress.set(withDelay(delay, withTiming(1, { duration: SPARK_MS, easing: e }), ReduceMotion.System));
   });
 
   useEffect(

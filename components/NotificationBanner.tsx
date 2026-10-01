@@ -7,6 +7,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withDelay,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -67,9 +68,9 @@ const GLYPH = 20;
 const DEFAULT_VISIBLE_DURATION = Reading.notice;
 /**
  * Slack on the floor that ends a banner whose animation chain never reported
- * back. Under reduced motion every leg collapses to 0ms, so without it the
- * floor would land on the visible duration exactly — and it must never be the
- * thing that dismisses a banner that is behaving.
+ * back. Under reduced motion every slide collapses to 0ms but the hold does
+ * not, so without it the floor would land on the visible duration exactly —
+ * and it must never be the thing that dismisses a banner that is behaving.
  */
 const FLOOR_GRACE_MS = 1000;
 // Clearance between whatever the banner sits under and the banner itself, and
@@ -117,19 +118,22 @@ export default function NotificationBanner({ notification, onDismiss, onMeasure 
   useEffect(() => {
     if (notification) {
       const visibleDuration = notification.duration ?? DEFAULT_VISIBLE_DURATION;
-      // Slide in first, then after visibleDuration auto-dismiss via callback chain
+      // The hold is reading time, not motion: under the system's reduced motion
+      // Reanimated skips a delay not marked `Never`, and the banner flashes.
       translateY.value = withTiming(0, { duration: slideDur }, () => {
         translateY.value = withDelay(
           visibleDuration,
           withTiming(-120, { duration: slideDur }, (finished) => {
             if (finished) scheduleOnRN(onDismiss);
-          })
+          }),
+          ReduceMotion.Never
         );
       });
       opacity.value = withTiming(1, { duration: slideDur }, () => {
         opacity.value = withDelay(
           visibleDuration + slideDur * 0.5,
-          withTiming(0, { duration: slideDur })
+          withTiming(0, { duration: slideDur }),
+          ReduceMotion.Never
         );
       });
       // The floor under that chain. Every leg hands on through a `finished`

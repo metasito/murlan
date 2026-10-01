@@ -14,8 +14,8 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
-import { CardView } from "@/components/CardView";
-import { Beaten, Colors, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { CardView, FallbackGlow } from "@/components/CardView";
+import { Beaten, CardGlow, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -305,14 +305,12 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
   // at render, so resizing the table cannot read as a fresh catch.
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catchLift(catching?.value ?? 0, cardScale) }] }));
-  // Opacity only, on a childless sibling behind the card — the same
-  // compositor-safe substitute for an animated shadow hand.tsx's cardGlow uses.
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
   const shade = useAnimatedStyle(() => ({ opacity: turned.value }));
   return (
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
-        {catching && <Animated.View pointerEvents="none" style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
+        {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} light="flat" />
         </View>
@@ -834,16 +832,14 @@ const pileStyles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 80,
   },
-  // Behind a catching card, never on it — the same childless-sibling
-  // substitute for an animated shadow hand.tsx's cardGlow uses. Which of the
-  // two that is has to be stated, not written: the iOS renderer paints siblings
-  // in its own order (#209), and "behind" is the whole of this effect.
+  // Behind a catching card, never on it: the iOS renderer paints siblings in
+  // its own order (#209), and "behind" is the whole of this effect.
   catchGlow: {
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
-    backgroundColor: Colors.gold,
-    ...Shadow.goldSoft,
+    backgroundColor: CardGlow.color,
+    ...Shadow.cardGlow,
   },
   caughtCard: { zIndex: Layer.table },
   beatenShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: SHADE_Z, backgroundColor: Beaten.shade },

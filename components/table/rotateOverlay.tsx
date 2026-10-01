@@ -7,6 +7,7 @@ import { View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Animated, {
   Easing,
+  ReduceMotion,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
@@ -47,8 +48,8 @@ export function RotateOverlay() {
       leg(ROTATE_UPRIGHT),
       withRepeat(
         withSequence(
-          withDelay(HOLD_UPRIGHT, leg(ROTATE_SETTLED)),
-          withDelay(HOLD_SETTLED, leg(ROTATE_UPRIGHT))
+          withDelay(HOLD_UPRIGHT, leg(ROTATE_SETTLED), ReduceMotion.System),
+          withDelay(HOLD_SETTLED, leg(ROTATE_UPRIGHT), ReduceMotion.System)
         ),
         -1,
         false

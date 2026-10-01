@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import {
   Easing,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -21,12 +22,17 @@ export function useEntrance(step: number) {
 
   useEffect(() => {
     const delay = step * ENTRANCE_STEP_MS;
-    opacity.value = withDelay(delay, withTiming(1, { duration: motionMs("reveal", reduceMotion) }));
+    opacity.value = withDelay(
+      delay,
+      withTiming(1, { duration: motionMs("reveal", reduceMotion) }),
+      ReduceMotion.System
+    );
     translateY.value = reduceMotion
       ? 0
       : withDelay(
           delay,
-          withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) })
+          withTiming(0, { duration: Motion.duration.reveal, easing: Easing.out(Easing.cubic) }),
+          ReduceMotion.System
         );
   }, [opacity, reduceMotion, step, translateY]);
 

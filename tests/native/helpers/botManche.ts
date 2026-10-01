@@ -19,12 +19,13 @@ export function botManche(): GameState[] {
   return states;
 }
 
-/** Plays a whole bot manche onto one mounted table, the deal held as long as an offline bot thinks and every move STEP_MS; the caller unmounts. */
-export async function playBotManche(table: (s: GameState) => ReactElement) {
+/** Plays a bot manche onto one mounted table, the deal held as long as an offline bot thinks and every move STEP_MS, until `done` holds or the manche ends; the caller unmounts. */
+export async function playBotManche(table: (s: GameState) => ReactElement, done: () => boolean = () => false) {
   const [dealt, ...moves] = botManche();
   const r = await render(table(dealt));
   await settle(OFFLINE_BOT_DELAY_MS);
   for (const s of moves) {
+    if (done()) break;
     await act(async () => r.rerender(table(s)));
     await settle(STEP_MS);
   }

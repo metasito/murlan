@@ -28,7 +28,7 @@ async function feltSample(): Promise<Record<LampSide, number>> {
   const perPt = pixels.width / table.width;
   const felt = feltOnly(pixels, perPt);
   const ring = legibilityRing(table.width, table.height);
-  return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring)])) as Record<LampSide, number>;
+  return Object.fromEntries(LAMP_SIDES.map((side) => [side, annulusLuminance(felt, table.anchors[side], perPt, ring, table.names)])) as Record<LampSide, number>;
 }
 
 const GALLERY = Object.fromEntries(Object.entries(NOTICE_GALLERY).map(([kind, fixtures]) => [kind, fixtures.map((f) => f.name)]));
