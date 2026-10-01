@@ -198,7 +198,7 @@ export function withBenchHost(configJson, ip) {
 /** expo-constants serves this file as `Constants.expoConfig`; the app reads `extra.benchHost` at launch (lib/diagnostics/benchLaunch.ts). */
 export function patchBenchHost(ipa, ip) {
   const { zip, edited } = rewriteZipText(readFileSync(ipa), (name) => /^Payload\/[^/]+\.app\/EXConstants\.bundle\/app\.config$/.test(name), (text) => withBenchHost(text, ip));
-  if (edited.length !== 1) throw new Error(`${ipa} has ${edited.length} EXConstants.bundle/app.config entries to carry the PC's address, not 1.`);
+  if (edited.length !== 1) fail(`${ipa} has ${edited.length} EXConstants.bundle/app.config entries to carry the PC's address, not 1.`);
   writeFileSync(`${ipa}.part`, zip);
   renameSync(`${ipa}.part`, ipa);
 }

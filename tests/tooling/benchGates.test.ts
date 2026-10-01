@@ -28,13 +28,28 @@ test("the wait returns only once the bench's run-end row has landed", async () =
   assert.deepEqual(never, { names: ["idle"], timedOut: true });
 });
 
-test("a scenario the run named but no rows judge is missing, and fails the table", () => {
-  const rows = [{ session: "s", ...RELEASE }, ...ran("idle")];
-  const { pass, markdown } = gateTable(rows, ["idle", "noticeGallery"]);
+const PASSING = { g: () => ({ pass: true, metrics: { n: 1 } }) };
+const passingRun = [{ session: "s", ...RELEASE }, ...ran("g")];
+
+test("a finished run whose every gate passes is the only table that passes", () => {
+  assert.deepEqual(gateTable(passingRun, ["g"], false, PASSING), { pass: true, markdown: "| Scenario | Result | Key numbers |\n| --- | --- | --- |\n| g | pass | n=1 |" });
+  assert.equal(gateTable(passingRun, [], false, PASSING).pass, false);
+});
+
+test("a gate with no verdict is missing, and fails the table", () => {
+  const { pass, markdown } = gateTable(passingRun, ["g"], false, { ...PASSING, h: PASSING.g });
   assert.equal(pass, false);
-  assert.match(markdown, /\| noticeGallery \| missing \|/);
-  assert.match(markdown, /\| idle \| (fail|pass) \|/);
-  assert.equal(gateTable(rows, []).pass, false);
+  assert.match(markdown, /\| h \| missing \|/);
+});
+
+test("an unrun verdict, from a dev build, fails the table", () => {
+  const { pass, markdown } = gateTable([{ session: "s", ...RELEASE, dev: true }, ...ran("g")], ["g"], false, PASSING);
+  assert.equal(pass, false);
+  assert.match(markdown, /\| g \| unrun \|/);
+});
+
+test("a run that timed out fails the table, every gate passing or not", () => {
+  assert.equal(gateTable(passingRun, ["g"], true, PASSING).pass, false);
 });
 
 test("a bench build starts the run at launch only when the install carried the PC's address", () => {
@@ -51,12 +66,6 @@ test("the table judges every gate the PC knows, whatever subset the phone ran", 
   assert.equal(pass, false);
   for (const name of Object.keys(GATES)) assert.match(markdown, new RegExp(`\\| ${name} \\|`));
   assert.match(markdown, /\| noticeGallery \| missing \|/);
-});
-
-test("an unrun verdict, from a dev build, fails the table", () => {
-  const { pass, markdown } = gateTable([{ session: "s", ...RELEASE, dev: true }, ...ran("idle")], ["idle"]);
-  assert.equal(pass, false);
-  assert.match(markdown, /\| idle \| unrun \|/);
 });
 
 function storedZip(files: { name: string; text: string; mode: number }[]): Buffer {

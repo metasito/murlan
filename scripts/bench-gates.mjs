@@ -32,11 +32,12 @@ function keyNumbers(metrics) {
     .slice(0, 140);
 }
 
-export function gateTable(rows, names, timedOut = false) {
+/** @param {Record<string, (rows: any[]) => { pass: boolean | null; metrics: Record<string, any> }>} [gates] */
+export function gateTable(rows, names, timedOut = false, gates = GATES) {
   const lines = ["| Scenario | Result | Key numbers |", "| --- | --- | --- |"];
   let pass = names.length > 0 && !timedOut;
-  for (const name of new Set([...Object.keys(GATES), ...names])) {
-    const v = verdict(rows, name);
+  for (const name of new Set([...Object.keys(gates), ...names])) {
+    const v = verdict(rows, name, gates);
     const result = !v ? "missing" : v.pass === true ? "pass" : v.pass === null ? "unrun" : "fail";
     if (result !== "pass") pass = false;
     lines.push(`| ${name} | ${result} | ${v ? keyNumbers(v.metrics) : ""} |`);

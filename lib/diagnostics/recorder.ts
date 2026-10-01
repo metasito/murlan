@@ -25,10 +25,12 @@ export const recorder = {
   },
 };
 
-setInterval(() => {
+const flush = setInterval(() => {
   if (!target || (outbox.length === 0 && dropped === 0)) return;
   const body = JSON.stringify({ session, seq: seq++, rows: outbox, dropped, build: MARK });
   outbox = [];
   dropped = 0;
   fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body }).catch(() => {});
 }, 1000);
+// Only Node's timers have unref; there it lets a test that imports the recorder exit.
+(flush as unknown as { unref?: () => void }).unref?.();
