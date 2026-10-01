@@ -5,20 +5,20 @@
 
 import path from "node:path";
 
-/** Native tests run 36810983892 and 36802620558: past the four files of #1368, the slowest took 11.5 s cold. */
+/** Under twice the slowest file outside the exceptions, exchangeOnTable's 8.5 s in run 36817916976. */
 export const BUDGET_S = 15;
 
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
 
-/** A file past `BUDGET_S` by design, keyed `project:path`: its own ceiling, and why it costs that. */
+/** A file past `BUDGET_S` by design, keyed `project:path`: its ceiling, about twice run 36817916976's 34.0 s and 17.7 s, and why. */
 export const EXCEPTIONS = {
   "ios:tests/native/oneSoundPerMoment.test.tsx": {
     seconds: 60,
     why: "Plays a whole bot manche, every move held as long as an offline bot thinks: its claim is about every state change of one, and a prefix would be a weaker claim.",
   },
   "ios:tests/native/pileMountsOnceFull.test.tsx": {
-    seconds: 45,
+    seconds: 35,
     why: "Plays four tricks under full motion, each card's flight run frame by frame to its sweep, until three are in the air at once.",
   },
 };
