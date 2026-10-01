@@ -1,5 +1,42 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { View, StyleSheet, useWindowDimensions, type LayoutChangeEvent } from "react-native";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { Platform, View, StyleSheet, useWindowDimensions, type LayoutChangeEvent } from "react-native";
+import * as ScreenOrientation from "expo-screen-orientation";
+
+const { Orientation } = ScreenOrientation;
+const portraitOf = (o: ScreenOrientation.Orientation) =>
+  o === Orientation.PORTRAIT_UP || o === Orientation.PORTRAIT_DOWN
+    ? true
+    : o === Orientation.LANDSCAPE_LEFT || o === Orientation.LANDSCAPE_RIGHT
+      ? false
+      : null;
+
+/**
+ * On iOS, UIKit's own interface orientation: a layout can be held back by what
+ * it lays out, and the table's rotate cover once held back the very measurement
+ * that would have lifted it (#1378). `onPortrait` runs on every UIKit report of
+ * portrait, a repeat included. Elsewhere, the measured window.
+ */
+export function usePortraitInterface(onPortrait: () => void): boolean {
+  const { width, height } = useOrientedWindow();
+  const [reported, setReported] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    let heard = false;
+    const report = (o: ScreenOrientation.Orientation) => {
+      const portrait = portraitOf(o);
+      if (portrait === null) return;
+      setReported(portrait);
+      if (portrait) onPortrait();
+    };
+    ScreenOrientation.getOrientationAsync().then((o) => heard || report(o), () => {});
+    const sub = ScreenOrientation.addOrientationChangeListener((e) => {
+      heard = true;
+      report(e.orientationInfo.orientation);
+    });
+    return () => sub.remove();
+  }, [onPortrait]);
+  return reported ?? width < height;
+}
 
 type WindowSize = { width: number; height: number };
 
