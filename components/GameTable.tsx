@@ -11,7 +11,6 @@ import {
   View,
   StyleSheet,
   Platform,
-  useWindowDimensions,
   type AccessibilityProps,
   type GestureResponderEvent,
   type ViewStyle,
@@ -128,6 +127,7 @@ import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moment
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { event, uiFeedback } from "@/lib/device/feedback";
+import { useOrientedWindow } from "@/lib/device/orientation";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
@@ -359,7 +359,7 @@ export function GameTable({
   const { t, tn } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useContext(NavigationContext) as NativeStackNavigationProp<ParamListBase> | undefined;
-  const { width: W, height: H } = useWindowDimensions();
+  const { width: W, height: H } = useOrientedWindow();
   // The window's own short edge, so a phone and a browser at the same size draw the same
   // table. The safe area is the layout's job — the rail absorbs the cutout and the hand zone
   // carries the home indicator — and taking it off here instead shrinks the cards on device
@@ -830,12 +830,14 @@ export function GameTable({
   useEffect(() => {
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
-    lockLandscape();
     warmCourtArt();
     return () => {
       ScreenOrientation.unlockAsync().catch(() => {});
     };
   }, []);
+  // Every flip of the measured window re-asks: a stray portrait lock from UIKit can land after ours.
+  const portrait = W < H;
+  useEffect(() => lockLandscape(), [portrait]);
   const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
   // Under reduced motion no deal flies to start the cue, and sound is not motion.
   useEffect(() => {
@@ -1466,7 +1468,7 @@ export function GameTable({
 
         <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>
 
-        {W < H && <RotateOverlay />}
+        {portrait && <RotateOverlay />}
       </Animated.View>
     </View>
     </CardTableProvider>
