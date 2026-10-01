@@ -62,6 +62,7 @@ import {
   type TradeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import type { ServerError } from "@/context/OnlineGameContext";
 import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
@@ -303,7 +304,7 @@ export interface GameTableProps {
   /** Transient strips under the top bar (the replay's transport). */
   banners?: React.ReactNode;
   /** The server's refusal, floated while it stands (online only). */
-  error?: string | null;
+  error?: ServerError | null;
   /** How many times the viewer's turn was passed for them: each new count floats the pass under its own title. */
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
@@ -552,7 +553,7 @@ export function GameTable({
     players
   );
   const [passSeen, setPassSeen] = useState(gameState);
-  const [errorSeen, setErrorSeen] = useState<string | null>(null);
+  const [errorSeen, setErrorSeen] = useState<ServerError | null>(null);
   const [autoSeen, setAutoSeen] = useState(autoPassed);
   const [float, setFloat] = useState<Float | null>(null);
   let floatNow = float;
@@ -564,9 +565,9 @@ export function GameTable({
       floatNow = { ...floatNow, live: false };
     }
   }
-  if (errorSeen !== error) {
+  if (errorSeen?.seq !== error?.seq) {
     setErrorSeen(error);
-    if (error) floatNow = raised(floatNow, "toast", error, !tableWithdrawn);
+    if (error) floatNow = raised(floatNow, "toast", error.text, !tableWithdrawn);
     else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
   }
   if (autoSeen !== autoPassed) {

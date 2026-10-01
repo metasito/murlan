@@ -250,7 +250,7 @@ export default function OnlineLobbyScreen() {
               nowhere to scroll, so a long message would take its height out of
               the cards below. */}
           <Text style={styles.errorBannerText} numberOfLines={2}>
-            {error}
+            {error.text}
           </Text>
           {/* 16pt icon, so the slop lands on both edges to reach the floor: a declared
               box would take the banner from 32pt to 60 on a single-line message. */}
