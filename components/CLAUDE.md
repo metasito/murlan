@@ -10,7 +10,7 @@ Verify against source before changing any.
 **The table**
 
 - **A card is held once**, in `components/table/trick.ts`, one view from throw to sweep
-  (`tests/ui-rules/trick.test.ts`, `tests/native/pileMountsOnce.test.tsx`).
+  (`tests/ui-rules/trick.test.ts`, `tests/native/helpers/pileMounts.tsx`).
 - **`CARD_W`/`CARD_H` are declared once**, in `components/cardFaceModel.ts`; `handLayout.ts` takes
   a width parameter instead of importing it. A source scan pins this
   (`tests/ui-rules/layoutConstantsPinned.test.ts`), since pinning the value cannot find a copy

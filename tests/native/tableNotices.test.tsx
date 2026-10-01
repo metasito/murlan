@@ -1,3 +1,4 @@
+// Both jest projects, unlike jest.config.js's IOS_ONLY: it asserts painted plates, and lib/theme's shadows branch on android.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
