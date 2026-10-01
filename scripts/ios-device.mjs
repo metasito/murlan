@@ -6,7 +6,8 @@
  * none), signs and installs it with plumesign when the native fingerprint changed or the 7-day
  * certificate is near expiry, then serves the game on :5000 and Metro on the LAN address.
  * Flags: `--ref <branch>` builds from another branch, `--reinstall` forces a fresh install,
- * `--login` signs in to the Apple ID again, `--diagnostics` serves the diagnostics build and its collector (verdicts unrun), `--bench` installs the Release bench build that gates read.
+ * `--login` signs in to the Apple ID again, `--diagnostics` serves the diagnostics build and its collector (verdicts unrun), `--bench` installs the Release bench build that gates read,
+ * `--gates` (implies `--bench`) waits for the run a plain icon tap starts and writes its verdict table to diagnostics/.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -17,6 +18,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import readline from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { gateTable, readRows, waitForRunEnd } from "./bench-gates.mjs";
+import { rewriteZipText } from "./lib/zipEntry.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUMESIGN = {
@@ -187,6 +190,19 @@ export function artifactFor(bench) {
     : { workflow: "ios-device.yml", name: "murlan-ios-dev", ipa: "murlan-dev.ipa" };
 }
 
+export function withBenchHost(configJson, ip) {
+  const config = JSON.parse(configJson);
+  return JSON.stringify({ ...config, extra: { ...config.extra, benchHost: ip } });
+}
+
+/** expo-constants serves this file as `Constants.expoConfig`; the app reads `extra.benchHost` at launch (lib/diagnostics/benchLaunch.ts). */
+export function patchBenchHost(ipa, ip) {
+  const { zip, edited } = rewriteZipText(readFileSync(ipa), (name) => /^Payload\/[^/]+\.app\/EXConstants\.bundle\/app\.config$/.test(name), (text) => withBenchHost(text, ip));
+  if (edited.length !== 1) fail(`${ipa} has ${edited.length} EXConstants.bundle/app.config entries to carry the PC's address, not 1.`);
+  writeFileSync(`${ipa}.part`, zip);
+  renameSync(`${ipa}.part`, ipa);
+}
+
 export function benchUrl(ip) {
   return `murlan://bench?host=${ip}&scenario=all`;
 }
@@ -318,12 +334,30 @@ export function metroEnv(env, ip, diagnostics) {
   };
 }
 
-function benchServe() {
-  const ip = lanAddress(os.networkInterfaces());
-  if (!ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
-  const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs")], { cwd: ROOT, stdio: "inherit" });
+const RUN_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const COLLECTOR_PORT = 5099;
+
+async function benchServe(ip, gates) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const file = path.join(ROOT, "diagnostics", `${stamp}.ndjson`);
+  if (await portOpen(COLLECTOR_PORT)) fail(`Port ${COLLECTOR_PORT} is taken (a leftover collector?); stop it and rerun.`);
+  const collector = spawn(process.execPath, [path.join(ROOT, "scripts", "diagnostics-collector.mjs"), file], { cwd: ROOT, stdio: "inherit" });
   process.on("exit", () => killTree(collector));
-  console.log(`• Bench build installed. On the iPhone open ${benchUrl(ip)} and leave it face up; results land in diagnostics/.`);
+  if (gates) collector.on("exit", (code) => fail(`The diagnostics collector exited (${code}); no rows can land.`));
+  console.log(`• Bench build installed. Tap the Murlan icon on the iPhone (or open ${benchUrl(ip)}, not both) and leave it face up.`);
+  if (!gates) return;
+  console.log("• Waiting for the run to finish (about an hour)…");
+  const { names, timedOut } = await waitForRunEnd(() => readRows(file), { timeoutMs: RUN_TIMEOUT_MS });
+  const { pass, markdown } = gateTable(readRows(file), names, timedOut);
+  const head = !timedOut
+    ? ""
+    : names.length === 0
+      ? "No run reached the collector in 2 h: is the phone on this PC's Wi-Fi, and was the Murlan icon tapped?\n\n"
+      : "The run did not finish within 2 h; unfinished scenarios are missing.\n\n";
+  const out = path.join(ROOT, "diagnostics", `${stamp}.md`);
+  writeFileSync(out, `Device bench, ${pass ? "every gate passed" : "NOT every gate passed"} (${path.basename(file)}).\n\n${head}${markdown}\n`);
+  console.log(`\n${head}${markdown}\n\n• ${pass ? "Every gate passed." : "Not every gate passed."} To post it: gh issue comment 1259 --body-file ${path.relative(ROOT, out)}`);
+  process.exit(pass ? 0 : 1);
 }
 
 async function serve(home, diagnostics) {
@@ -381,16 +415,21 @@ async function main() {
   const home = path.join(process.env.LOCALAPPDATA ?? os.homedir(), "murlan-ios");
   mkdirSync(path.join(home, "builds"), { recursive: true });
 
-  const bench = args.includes("--bench");
+  const gates = args.includes("--gates");
+  const bench = gates || args.includes("--bench");
+  const ip = lanAddress(os.networkInterfaces());
+  if (bench && !ip) fail("No Wi-Fi/LAN address on this PC; the phone must share a network with it.");
   const [plumesign, build] = await Promise.all([ensurePlumesign(home), latestBuild(home, ref, bench)]);
   const statePath = path.join(home, "state.json");
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
+  if (bench) build.fingerprint += `@${ip}`;
   if (args.includes("--reinstall") || args.includes("--login") || needsInstall(state, { fingerprint: build.fingerprint, now: Date.now() })) {
+    if (bench) patchBenchHost(build.ipa, ip);
     await install(home, plumesign, build, args.includes("--login"));
   } else {
     console.log(`• The installed build is current (signed ${((Date.now() - state.installedAt) / 86400000).toFixed(1)} days ago).`);
   }
-  if (bench) benchServe();
+  if (bench) await benchServe(ip, gates);
   else await serve(home, args.includes("--diagnostics"));
 }
 

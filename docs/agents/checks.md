@@ -188,14 +188,21 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
   does (`tests/native/frameProbe.test.tsx`, `tests/native/framedScenarios.test.tsx`). The iOS build keeps the worklets frame-rate governor
   on, as these gates measured it; `tests/tooling/workletsGovernor.test.ts` fails a build that
   turns it off.
-- Running them (about 57 minutes of the phone, untouched):
-  1. On the PC: `npm run ios:device -- --ref <branch> --bench`, which prints the phone link.
-  2. On the phone: open `murlan://bench?host=<PC address>&scenario=all` in Safari and tap Open.
-  3. Allow the microphone and screen-recording prompts once each.
-  4. Lay the phone face up, plugged in, volume about half, ringer on, until the page lists every
-     scenario as done (`noticeGallery` is the last).
-  5. On the PC: `node scripts/diagnostics-verdict.mjs diagnostics/<newest>.ndjson all`; the output
-     goes in the PR.
+- Running them (about 57 minutes of the phone, untouched): an agent runs
+  `npm run ios:device -- --ref <branch> --gates`, which writes the PC's LAN address into the
+  IPA's `EXConstants.bundle/app.config` before signing, so the bench build opens the bench on a
+  plain icon tap (`lib/diagnostics/BenchAutostart.tsx`); the `murlan://bench?host=…` link is an
+  alternative to the icon, never both. It waits for the run's `run`/`end` row, prints one table
+  of every gate (one with no verdict is `missing`, never a pass), writes it to
+  `diagnostics/<stamp>.md`, and prints the `gh issue comment 1259 --body-file …` command without
+  running it. The phone must be on the PC's Wi-Fi. The first install, and an expired Apple ID
+  session, need the owner at the keyboard (sign-in, Trust, Developer Mode). Until
+  `npm run ios:device` reinstalls the dev build, every cold launch of the bench build starts a
+  full run. The owner:
+  1. Plugs the iPhone into the PC, unlocks it, and leaves it face up (volume about half, ringer
+     on; allow the microphone and screen-recording prompts the first time).
+  2. Taps the Murlan icon and leaves it until the PC prints the table.
+  3. Reads the table.
 
 ## What no automated layer here covers
 

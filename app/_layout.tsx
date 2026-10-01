@@ -43,6 +43,10 @@ function trackForRoute(pathname: string): TrackId {
   return "menu";
 }
 
+const BenchAutostart: () => null =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- a static import would ship the bench
+  process.env.EXPO_PUBLIC_DIAGNOSTICS === "1" ? require("@/lib/diagnostics/BenchAutostart").BenchAutostart : () => null;
+
 export function RootLayoutNav() {
   const { notification, dismissNotification, reportBannerBottom } = useNotification();
   const pathname = usePathname();
@@ -99,6 +103,7 @@ export function RootLayoutNav() {
       />
       <OfflineBanner />
       <UpdateRequired />
+      <BenchAutostart />
     </View>
   );
 }
