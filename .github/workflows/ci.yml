@@ -394,7 +394,6 @@ jobs:
       # and no restore-keys: a cache built under another dependency set would serve its old compiler output.
       # A cold cache spends ~30 s per worker re-transforming the table's module graph.
       - id: jest-cache
-        if: false
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/jest-cache

@@ -9,7 +9,7 @@ import path from "node:path";
 /** Under twice the slowest file outside the exceptions, exchangeOnTable's 8.5 s in run 36817916976. */
 export const BUDGET_S = 15;
 
-/** A file's time outside its cases (module load, describe bodies, beforeAll, afterAll) on a cold transform cache, run COLD_RUN. */
+/** Time outside a file's cases (module load, describe bodies, beforeAll, afterAll): cold run 36820944313 peaked at 17.6 s, and runners here differ 1.7x on one tree. */
 export const OUTSIDE_S = 45;
 
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
