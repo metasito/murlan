@@ -1,4 +1,4 @@
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { Platform } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
@@ -88,7 +88,11 @@ const landscapeLocks = () =>
 
 describe('the table re-asserts landscape once its entry transition ends (#1211)', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.mocked(ScreenOrientation.lockAsync).mockClear();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('locks again when the screen finishes appearing, not when it finishes leaving', async () => {
@@ -121,7 +125,11 @@ describe('the table re-asserts landscape once its entry transition ends (#1211)'
 
 describe("a portrait lock that lands after the table's own (#1378)", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.mocked(ScreenOrientation.lockAsync).mockClear();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   const measure = (width: number, height: number) =>
@@ -159,15 +167,41 @@ describe("a portrait lock that lands after the table's own (#1378)", () => {
       const view = await render(<OrientationProvider>{table(undefined)}</OrientationProvider>);
       await measure(390, 844);
       expect(covered()).toBe(true);
-      const settled = landscapeLocks();
 
       await report(Orientation.PORTRAIT_UP);
-      await report(Orientation.PORTRAIT_UP);
-      expect(landscapeLocks()).toBe(settled + 2);
-
       await report(Orientation.LANDSCAPE_RIGHT);
       expect(covered()).toBe(false);
       await view.unmount();
     }
   );
+
+  (Platform.OS === 'ios' ? it : it.skip)(
+    'on iOS a portrait report arriving after landscape cannot cover a landscape window',
+    async () => {
+      const view = await render(<OrientationProvider>{table(undefined)}</OrientationProvider>);
+      await measure(844, 390);
+      await report(Orientation.LANDSCAPE_RIGHT);
+      await report(Orientation.PORTRAIT_UP);
+      expect(covered()).toBe(false);
+      expect(tableReachable()).toBe(true);
+      await view.unmount();
+    }
+  );
+
+  it('keeps asking for landscape while the window stays portrait, and stops once it turns', async () => {
+    const nav = fakeScreen();
+    const view = await render(<OrientationProvider>{table(nav.navigation)}</OrientationProvider>);
+    await measure(390, 844);
+    await nav.emit('transitionEnd', false);
+    const settled = landscapeLocks();
+
+    await act(() => jest.advanceTimersByTime(5000));
+    expect(landscapeLocks()).toBeGreaterThan(settled + 1);
+
+    await measure(844, 390);
+    const turned = landscapeLocks();
+    await act(() => jest.advanceTimersByTime(5000));
+    expect(landscapeLocks()).toBe(turned);
+    await view.unmount();
+  });
 });
