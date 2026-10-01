@@ -532,8 +532,6 @@ export const Reading = {
   notice: 4000,
   /** An invitation, which is acted on rather than read, so it outlasts its own sentence. */
   invite: 6000,
-  /** A transient in-game error, cleared rather than left to stack. */
-  toast: 3000,
 } as const;
 
 /**

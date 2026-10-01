@@ -68,7 +68,6 @@ export default function OnlineGameScreen() {
     reconnectNotice,
     playerLeft,
     rejoinFailed,
-    clearError,
     clearPlayerLeft,
     clearRejoinFailed,
   } = useOnlineConnection();
@@ -104,12 +103,6 @@ export default function OnlineGameScreen() {
     },
     []
   );
-
-  useEffect(() => {
-    if (!error) return;
-    const t = setTimeout(clearError, Reading.toast);
-    return () => clearTimeout(t);
-  }, [error, clearError]);
 
   // The latch belongs to one game-over, so the game-over passing is what clears
   // it — online this screen is never unmounted between manches, and a latch left

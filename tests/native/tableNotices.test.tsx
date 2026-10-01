@@ -24,6 +24,26 @@ jest.mock('@react-native-community/netinfo', () => ({
   },
 }));
 
+const mockSocketListeners = new Map<string, Set<(payload: unknown) => void>>();
+jest.mock('@/context/SocketContext', () => {
+  const socket = {
+    connected: true,
+    on: (event: string, fn: (payload: unknown) => void) => {
+      if (!mockSocketListeners.has(event)) mockSocketListeners.set(event, new Set());
+      mockSocketListeners.get(event)!.add(fn);
+    },
+    off: (event: string, fn: (payload: unknown) => void) => mockSocketListeners.get(event)?.delete(fn),
+    once: () => {},
+    timeout: () => socket,
+    emit: () => {},
+  };
+  return { useSocket: () => ({ socket }) };
+});
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { OnlineGameProvider, type ServerError } from '@/context/OnlineGameContext';
+import { useOnlineConnection } from '@/context/onlineGameHooks';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { NOTICE_GALLERY, type NoticeFixture } from '@/components/table/notices/gallery';
 import { NOTICES, type NoticeKind } from '@/components/table/noticeModel';
 import { GameTable } from '@/components/GameTable';
@@ -310,11 +330,12 @@ describe("the table's refusals and lines", () => {
   const edge = (id: string) => StyleSheet.flatten(screen.getByTestId(id, hidden).props.style).borderColor;
   const said = (text: string) =>
     screen.getAllByRole('text', hidden).filter((n) => n.props.accessibilityLiveRegion === 'polite' && n.props.accessibilityLabel === text).length;
-  const at = (state: GameState, error: string | null = null, tableCovered = false) => (
+  const at = (state: GameState, error: ServerError | null = null, tableCovered = false) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable gameState={state} viewerSeat={0} error={error} tableCovered={tableCovered} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
+  const nope = (seq: number) => ({ text: 'Nope', seq });
   const withAna = (over: Partial<Player>) => ({ ...STATE, players: STATE.players.map((p, i) => (i === 0 ? { ...p, ...over } : p)) });
 
   it('a refused GIOCA floats its reason in the bad tone, and the slot reads it out', async () => {
@@ -364,12 +385,12 @@ describe("the table's refusals and lines", () => {
   });
 
   it('an error arrives as the toast float in the bad tone, and the same error again floats again', async () => {
-    const r = await render(at(STATE, 'Nope'));
+    const r = await render(at(STATE, nope(1)));
     expect(edge('notice-errorToast')).toBe(NoticePalette.float.bad.edge);
     expect(said('Nope')).toBe(1);
     await r.rerender(at(STATE, null));
     expect(said('Nope')).toBe(0);
-    await r.rerender(at(STATE, 'Nope'));
+    await r.rerender(at(STATE, nope(2)));
     expect(said('Nope')).toBe(1);
     expect(screen.getAllByTestId('notice-errorToast', hidden)).toHaveLength(1);
     await r.unmount();
@@ -377,12 +398,35 @@ describe("the table's refusals and lines", () => {
 
   it('an error arriving under a cover is not read out when the cover lifts', async () => {
     const r = await render(at(STATE, null, true));
-    await r.rerender(at(STATE, 'Nope', true));
-    await r.rerender(at(STATE, 'Nope'));
+    await r.rerender(at(STATE, nope(1), true));
+    await r.rerender(at(STATE, nope(1)));
     await act(async () => {
       await new Promise((done) => setTimeout(done, 20));
     });
     expect(said('Nope')).toBe(0);
+    await r.unmount();
+  });
+
+  it('the same server error arriving twice floats twice', async () => {
+    const OnlineTable = () => (
+      <GameTable gameState={STATE} viewerSeat={0} error={useOnlineConnection().error} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+    );
+    const r = await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <NotificationProvider>
+          <OnlineGameProvider userId="u1">
+            <SafeAreaProvider initialMetrics={METRICS}>
+              <OnlineTable />
+            </SafeAreaProvider>
+          </OnlineGameProvider>
+        </NotificationProvider>
+      </QueryClientProvider>
+    );
+    const refuse = () => act(async () => mockSocketListeners.get('game:error')?.forEach((fn) => fn({ message: 'Nope' })));
+    await refuse();
+    const first = screen.getByTestId('notice-errorToast', hidden);
+    await refuse();
+    expect(screen.getByTestId('notice-errorToast', hidden) === first).toBe(false);
     await r.unmount();
   });
 });
