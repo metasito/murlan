@@ -27,10 +27,82 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
+  actions: read
   contents: read
   issues: write
 
 jobs:
+  app:
+    name: Restore the app and bundle its JS
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install dependencies
+        uses: ./.github/actions/install
+        with:
+          node-version: 24
+
+      # Started in the background, so it runs beside the fingerprint and restore below. The .app it
+      # writes into is a stand-in: hermesc embeds only its input's directory, which stays Xcode's.
+      - name: Start bundling the JS
+        env:
+          EXPO_PUBLIC_E2E_FAST: "1"
+        run: |
+          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
+          echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
+          mkdir -p "$products/js.app"
+          (
+            status=0
+            tools/ci/rebundle-ios-app.sh "$products/js.app" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/bundle.status"
+          ) > /dev/null 2>&1 &
+
+      - name: Restore the app
+        id: native
+        uses: ./.github/actions/ios-app
+
+      - name: Say how to fill the cache
+        if: failure() && steps.native.outcome == 'failure'
+        run: |
+          echo "::error::No native build for this branch's fingerprint is in the cache, and this workflow never builds one." \
+            "Dispatch ios-app-cache.yml on this branch, then this workflow again."
+          exit 1
+
+      - name: Bundle the JS into the app
+        run: |
+          for _ in $(seq 1 300); do
+            [ -s "$RUNNER_TEMP/bundle.status" ] && break
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/bundle.log"
+          [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
+          cached=""
+          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
+            [ -d "$candidate" ] && { cached="$candidate"; break; }
+          done
+          [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
+          app="$(dirname "$JS_BUNDLE")/$(basename "$cached")"
+          rm -rf "$app"
+          cp -R "$cached" "$app"
+          cp -R "$JS_BUNDLE/." "$app/"
+          echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
+
+      - name: The bundle carries the test-only flag
+        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
+
+      # Tarred, because an artifact keeps neither the executable bit nor the symlinks an .app has.
+      - name: Pack the app
+        run: tar -czf "$RUNNER_TEMP/app.tgz" -C "$(dirname "$APP_BUNDLE")" "$(basename "$APP_BUNDLE")"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-app-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/app.tgz
+          compression-level: 0
+          if-no-files-found: error
+
   flows:
     name: Drive the app on a real iOS simulator (${{ matrix.shard }})
     runs-on: macos-latest
@@ -57,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # In the background, like the bundling below; `Maestro is installed` waits for it.
+      # In the background; `Maestro is installed` waits for it.
       - name: Start installing Maestro
         run: |
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
@@ -113,54 +185,31 @@ jobs:
           done
           xcrun simctl boot "$udid"
 
-      - name: Install dependencies
-        uses: ./.github/actions/install
-        with:
-          node-version: 24
-
-      # Started in the background, so it runs beside the fingerprint and restore below. The .app it
-      # writes into is a stand-in: hermesc embeds only its input's directory, which stays Xcode's.
-      - name: Start bundling the JS
+      # Polled rather than `needs: app`, so the simulator boots while the app job runs; a red or
+      # cancelled app job ends the wait.
+      - name: Wait for the app
         env:
-          EXPO_PUBLIC_E2E_FAST: "1"
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: ios-app-attempt-${{ github.run_attempt }}
         run: |
-          products="$RUNNER_TEMP/DerivedData/Build/Products/Release-iphonesimulator"
-          echo "JS_BUNDLE=$products/js.app" >> "$GITHUB_ENV"
-          mkdir -p "$products/js.app"
-          (
-            status=0
-            tools/ci/rebundle-ios-app.sh "$products/js.app" > "$RUNNER_TEMP/bundle.log" 2>&1 || status=$?
-            echo "$status" > "$RUNNER_TEMP/bundle.status"
-          ) > /dev/null 2>&1 &
-
-      - name: Restore the app
-        id: native
-        uses: ./.github/actions/ios-app
-
-      - name: Say how to fill the cache
-        if: failure() && steps.native.outcome == 'failure'
-        run: |
-          echo "::error::No native build for this branch's fingerprint is in the cache, and a shard never builds one." \
-            "Dispatch ios-app-cache.yml on this branch, then this workflow again."
-          exit 1
-
-      - name: Bundle the JS into the app
-        run: |
-          for _ in $(seq 1 300); do
-            [ -s "$RUNNER_TEMP/bundle.status" ] && break
-            sleep 2
+          runs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for _ in $(seq 1 120); do
+            gh api "$runs/artifacts" --jq '.artifacts[].name' | grep -qx "$ARTIFACT" && break
+            app=$(gh api "$runs/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=50" \
+              --jq '.jobs[] | select(.name == "Restore the app and bundle its JS") | .conclusion // ""')
+            case "$app" in
+              "" | success) sleep 5 ;;
+              *) echo "::error::The app job ended $app."; exit 1 ;;
+            esac
           done
-          cat "$RUNNER_TEMP/bundle.log"
-          [ "$(cat "$RUNNER_TEMP/bundle.status" 2>/dev/null)" = 0 ] || { echo "::error::Bundling the JS failed or never finished."; exit 1; }
-          cached=""
-          for candidate in "$RUNNER_TEMP"/ios-app/*.app; do
-            [ -d "$candidate" ] && { cached="$candidate"; break; }
+          gh run download "$GITHUB_RUN_ID" -n "$ARTIFACT" -D "$RUNNER_TEMP/packed"
+          mkdir -p "$RUNNER_TEMP/app"
+          tar -xzf "$RUNNER_TEMP/packed/app.tgz" -C "$RUNNER_TEMP/app"
+          app=""
+          for candidate in "$RUNNER_TEMP"/app/*.app; do
+            [ -d "$candidate" ] && { app="$candidate"; break; }
           done
-          [ -n "$cached" ] || { echo "::error::No .app was restored."; exit 1; }
-          app="$(dirname "$JS_BUNDLE")/$(basename "$cached")"
-          rm -rf "$app"
-          cp -R "$cached" "$app"
-          cp -R "$JS_BUNDLE/." "$app/"
+          [ -n "$app" ] || { echo "::error::The app job's artifact holds no .app."; exit 1; }
           echo "APP_BUNDLE=$app" >> "$GITHUB_ENV"
           # The id the flows are driven with comes from the built app itself,
           # not from app.json: a prebuild that renamed the bundle would
@@ -168,10 +217,7 @@ jobs:
           # not there, which reads as "the app never launched".
           id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
           echo "APP_ID=$id" >> "$GITHUB_ENV"
-          echo "Built $app ($id)"
-
-      - name: The bundle carries the test-only flag
-        run: node scripts/e2eBuildMark.mjs --present "$APP_BUNDLE"
+          echo "Driving $app ($id)"
 
       - name: Wait for the simulator to finish booting
         run: xcrun simctl bootstatus "$SIMULATOR_UDID"
@@ -258,8 +304,8 @@ jobs:
 
   ios:
     name: Drive the app on a real iOS simulator
-    needs: flows
-    # `always()`, so a skipped or cancelled shard reaches the check below and turns it red.
+    needs: [app, flows]
+    # `always()`, so a skipped or cancelled job reaches the check below and turns it red.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -268,10 +314,10 @@ jobs:
 
       - name: Every shard ran and passed
         env:
-          SHARDS: ${{ needs.flows.result }}
+          RESULTS: ${{ needs.app.result }} ${{ needs.flows.result }}
         run: |
-          echo "The shards' result: $SHARDS"
-          [ "$SHARDS" = success ]
+          echo "The app job's and the shards' results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
 
       # `cancelled()` is the timeout: it skips every `failure()` step.
       - name: Report a red scheduled run to the tracker

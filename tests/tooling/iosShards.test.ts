@@ -55,8 +55,18 @@ test("each shard runs its own flows, and exactly one photographs the felt", () =
 test("the run is green only when every shard ran and passed", () => {
   assert.match(job("flows"), /fail-fast: false\n/);
   const gate = job("ios");
-  assert.match(gate, /\n {4}needs: flows\n/);
+  const jobs = [...IOS.split(/^jobs:\n/m)[1].matchAll(/^ {2}([\w-]+):\n/gm)].map((m) => m[1]).filter((j) => j !== "ios");
+  assert.match(gate, new RegExp(`\\n {4}needs: \\[${jobs.join(", ")}\\]\\n`));
   assert.match(gate, /\n {4}if: always\(\)\n/);
-  assert.match(step(gate, "Every shard ran and passed"), /SHARDS: \$\{\{ needs\.flows\.result \}\}[\s\S]*\[ "\$SHARDS" = success \]\s*$/);
+  const results = jobs.map((j) => `\\$\\{\\{ needs\\.${j}\\.result \\}\\}`).join(" ");
+  const expected = jobs.map(() => "success").join(" ");
+  assert.match(step(gate, "Every shard ran and passed"), new RegExp(`RESULTS: ${results}\\n[\\s\\S]*\\[ "\\$RESULTS" = "${expected}" \\]\\s*$`));
   assert.doesNotMatch(IOS, /continue-on-error/);
+});
+
+test("a shard waits on the app job by its own name, and that job is the one that restores", () => {
+  const name = /\n {4}name: (.+)\n/.exec(job("app"))![1];
+  assert.match(job("app"), /uses: \.\/\.github\/actions\/ios-app\n/);
+  assert.ok(step(IOS, "Wait for the app").includes(`select(.name == "${name}")`), name);
+  assert.doesNotMatch(job("flows"), /actions\/install|npm ci|ios-app\n/);
 });
