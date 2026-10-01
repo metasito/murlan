@@ -32,8 +32,6 @@ const BLOCKING_OVERLAYS: [string, string][] = [
   ["components/SessionReplacedNotice.tsx", "styles.overlay"],
   ["app/(online)/index.tsx", "StyleSheet.absoluteFill"],
   ["app/profile.tsx", "StyleSheet.absoluteFill"],
-  // The portrait cover, which is the whole screen.
-  ["components/table/rotateOverlay.tsx", "portraitOverlayStyles.overlay"],
 ];
 
 /**
@@ -97,7 +95,14 @@ const NON_MODAL_OVERLAYS: [string, number, string, string, [string, RegExp][]][]
  * underneath. Adding to this list is how the debt stays visible — a new untrapped layer
  * cannot land without naming itself here. Empty is the goal, not the invariant.
  */
-const UNTRAPPED: [string, number, string][] = [];
+const UNTRAPPED: [string, number, string][] = [
+  [
+    "components/table/rotateOverlay.tsx",
+    1,
+    "#1378: not a Modal, because a presented one held back the layout that would have lifted it; " +
+      "any trap here hides the table from every native test, which all render it in a portrait window",
+  ],
+];
 
 /** Every full-bleed node that could cover something, by file. */
 export function candidatesByFile(files: string[], read: (rel: string) => string): Map<string, string[]> {

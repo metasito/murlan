@@ -1,14 +1,22 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
+import { Platform } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContext } from 'expo-router/react-navigation';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
+type OrientationListener = (e: { orientationInfo: { orientation: number } }) => void;
+const mockUikit = new Set<OrientationListener>();
 jest.mock('expo-screen-orientation', () => ({
   ...jest.requireActual<object>('expo-screen-orientation'),
   lockAsync: jest.fn(async () => {}),
   unlockAsync: jest.fn(async () => {}),
+  getOrientationAsync: jest.fn(() => new Promise(() => {})),
+  addOrientationChangeListener: (listener: OrientationListener) => {
+    mockUikit.add(listener);
+    return { remove: () => mockUikit.delete(listener) };
+  },
 }));
 // The bridge's window size, frozen in portrait: after the blip it never re-emits.
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -137,4 +145,26 @@ describe("a portrait lock that lands after the table's own (#1378)", () => {
     expect(covered()).toBe(false);
     await view.unmount();
   });
+
+  const { Orientation } = ScreenOrientation;
+  const report = (orientation: number) =>
+    act(() => mockUikit.forEach((l) => l({ orientationInfo: { orientation } })));
+
+  (Platform.OS === 'ios' ? it : it.skip)(
+    "on iOS follows UIKit, so a stale portrait measurement cannot hold the cover",
+    async () => {
+      const view = await render(<OrientationProvider>{table(undefined)}</OrientationProvider>);
+      await measure(390, 844);
+      expect(covered()).toBe(true);
+      const settled = landscapeLocks();
+
+      await report(Orientation.PORTRAIT_UP);
+      await report(Orientation.PORTRAIT_UP);
+      expect(landscapeLocks()).toBe(settled + 2);
+
+      await report(Orientation.LANDSCAPE_RIGHT);
+      expect(covered()).toBe(false);
+      await view.unmount();
+    }
+  );
 });

@@ -8,6 +8,12 @@ import { assertWholeNumbers } from './fabricIntProps';
 // render rather than reporting a real failure.
 require('react-native-reanimated').setUpTests?.();
 
+// jest-expo's stand-in answers addListener with a promise, where the real module returns a subscription.
+jest.mock('expo-screen-orientation', () => ({
+  ...jest.requireActual<object>('expo-screen-orientation'),
+  addOrientationChangeListener: () => ({ remove: () => {} }),
+}));
+
 // Each UI job here is its own setTimeout, so a test that swaps back to real timers drops a
 // frame callback's queued registration and then runs its unregistration against nothing.
 type FrameRegistry = {
