@@ -58,8 +58,9 @@ async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<t
   return out;
 }
 
-async function wholeManche(): Promise<string[]> {
-  const r = await playBotManche(table);
+async function botMancheSounds(): Promise<string[]> {
+  const fromBots = Object.values(PROBES).filter((p) => p.run === botSounds);
+  const r = await playBotManche(table, () => fromBots.every((p) => heardIds().some((s) => p.sounds.includes(s))));
   const out = heardIds();
   await r.unmount();
   return out;
@@ -75,7 +76,7 @@ async function mancheEnd(x: (last: GameState) => Extra): Promise<string[]> {
 }
 
 let manche: string[] | undefined;
-const botSounds = async () => (manche ??= await wholeManche());
+const botSounds = async () => (manche ??= await botMancheSounds());
 
 const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]> }> = {
   landing: { sounds: ['play', 'combo', 'bomb'], run: botSounds },
