@@ -222,20 +222,46 @@ jobs:
       - name: Wait for the simulator to finish booting
         run: xcrun simctl bootstatus "$SIMULATOR_UDID" -b
 
-      # On a hosted runner the simulator's apsd gets no push certificate and reconnects about ten
-      # times a second; its log volume alone keeps diagnosticd near half a core of three, and a tap
-      # synthesized while the runner is that starved is lost (#1378 B). The flows send no push.
-      - name: Stop the simulator's push daemon
+      # A booted simulator's widget and poster extensions alone hold about 7 GB of a 7 GB runner, so
+      # the flows page, and a tap synthesized while the runner is that starved is lost (#1378 B).
+      # No flow uses any of these; each must be running now and gone before the app is installed.
+      - name: Stop the simulator services no flow needs
+        env:
+          SERVICES: >-
+            com.apple.apsd com.apple.chronod com.apple.PosterBoard com.apple.siriactionsd
+            com.apple.mediaanalysisd com.apple.photoanalysisd com.apple.healthd com.apple.healthappd
+            com.apple.intelligenceplatformd com.apple.mobileassetd com.apple.fitnessintelligenced
+            com.apple.fitnesscoachingd com.apple.amsengagementd com.apple.suggestd com.apple.email.maild
+            com.apple.icloudmailagent com.apple.remindd com.apple.nanotimekitcompaniond com.apple.homed
+            com.apple.weatherd com.apple.ScreenTimeAgent com.apple.siriinferenced
+          EXTENSIONS: 'simruntime/.*\.appex/'
         run: |
-          pgrep -lf 'simruntime/.*/apsd$' || { echo "::error::No simulator apsd found to stop."; exit 1; }
-          xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable system/com.apple.apsd
-          xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout system/com.apple.apsd || :
-          for _ in $(seq 1 15); do
-            pgrep -f 'simruntime/.*/apsd$' > /dev/null || exit 0
+          pid_of() { printf '%s\n' "$listed" | awk -v label="$1" '$3 == label && $1 != "-" { print $1 }'; }
+          listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
+          pids=""
+          for label in $SERVICES; do
+            pid=$(pid_of "$label")
+            [ -n "$pid" ] || { echo "::error::$label is not running on the simulator."; exit 1; }
+            pids="$pids $pid"
+          done
+          extensions=$(pgrep -f "$EXTENSIONS" | wc -l)
+          [ "$extensions" -gt 0 ] || { echo "::error::The simulator runs no app extension to stop."; exit 1; }
+          for label in $SERVICES; do
+            xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable "system/$label"
+            xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" || :
+          done
+          pkill -f "$EXTENSIONS" || :
+          for _ in $(seq 1 30); do
+            alive=""
+            for pid in $pids; do kill -0 "$pid" 2> /dev/null && alive="$alive $pid"; done
+            listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
+            for label in $SERVICES; do [ -z "$(pid_of "$label")" ] || alive="$alive $label"; done
+            pgrep -f "$EXTENSIONS" > /dev/null && alive="$alive extensions"
+            [ -z "$alive" ] && { echo "Stopped$pids and $extensions extensions."; exit 0; }
             sleep 1
           done
-          pgrep -lf 'simruntime/.*/apsd$'
-          echo "::error::The simulator's apsd is still running."
+          pgrep -lf "$EXTENSIONS" || :
+          echo "::error::Still running after being stopped:$alive"
           exit 1
 
       - name: List the simulator's services
