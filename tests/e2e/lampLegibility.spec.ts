@@ -36,7 +36,7 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     })
     .toBeGreaterThan(LAMP_UP);
   const anchors = Object.fromEntries(await Promise.all(SEATS.map(async (s) => [s, await seatAnchor(page, s)] as const)));
-  // The bottom ring lies under the hand, whose shadow the felt now draws; before, it was the cards' own, off the felt.
+  // The felt draws the cards' shadows, and the bottom ring lies under the hand's: lifted, the ring reads the lamp alone.
   const names = await page.evaluate(() => {
     const e2e = globalThis as unknown as { murlanCardShadows: (on: boolean) => void; murlanNameShade: () => Box[] };
     e2e.murlanCardShadows(false);

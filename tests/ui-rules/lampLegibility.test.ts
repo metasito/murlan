@@ -5,6 +5,7 @@ import {
   LAMP_SYMMETRY,
   FELT_SHARE,
   RING_ON_IMAGE,
+  SKIP_SHARE,
   annulusLuminance,
   evenness,
   legibility,
@@ -83,10 +84,16 @@ describe("annulusLuminance", () => {
 
   test("a skipped box is a hole in the ring, neither light nor felt", () => {
     for (const { at } of SEATS) {
-      const above = { x: at.x - 100, y: at.y - 100, w: 200, h: 100 };
-      const half = paint(at, (w) => (w.pt < DISC || w.d > OUTER ? WHITE : w.dy < 0 ? BLACK : GREY));
-      near(annulusLuminance(half, at, PER_PT, RING, [above]), GREY_LINEAR, 0.001);
+      const corner = { x: at.x - 100, y: at.y - 100, w: 100, h: 100 };
+      const quarter = paint(at, (w) => (w.pt < DISC || w.d > OUTER ? WHITE : w.dy < 0 && w.dx < 0 ? BLACK : GREY));
+      near(annulusLuminance(quarter, at, PER_PT, RING, [corner]), GREY_LINEAR, 0.001);
     }
+  });
+
+  test(`boxes taking more than ${SKIP_SHARE * 100} % of the ring refuse to judge it`, () => {
+    const at = RIGHT;
+    const above = { x: at.x - 100, y: at.y - 100, w: 200, h: 100 };
+    assert.throws(() => annulusLuminance(paint(at, ring(WHITE, GREY, WHITE)), at, PER_PT, RING, [above]), /skipped boxes take 5\d %/);
   });
 
   test("the ring's radii are the x and y radii: an anisotropic phone reads all of its top and bottom", () => {

@@ -17,6 +17,9 @@ export const RING_ON_IMAGE = 0.95;
 /** Seats sit against the rail, so a ring is partly off felt by geometry; under this share it reads too little felt to judge. */
 export const FELT_SHARE = 0.4;
 
+/** The seat-name boxes took at most 31.6 % of a ring on every phone (2026-10-01); past this, a grown box is the cause. */
+export const SKIP_SHARE = 0.4;
+
 export const LAMP_SYMMETRY = 0.8;
 
 /** Q3's interim CI floor; Task 10 replaces it with the device's (plan 2026-09-28-1259-3 §5). */
@@ -53,6 +56,7 @@ export function annulusLuminance(
   const rx = ring.outerX * perPt;
   const ry = ring.outerY * perPt;
   let inRing = 0;
+  let skipped = 0;
   let onImage = 0;
   let onFelt = 0;
   let sum = 0;
@@ -63,7 +67,10 @@ export function annulusLuminance(
       if (Math.hypot(dx, dy) < ring.inner * perPt) continue;
       if (Math.hypot(dx / rx, dy / ry) > 1) continue;
       const [px, py] = [(x + 0.5) / perPt, (y + 0.5) / perPt];
-      if (skip.some((b) => px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h)) continue;
+      if (skip.some((b) => px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h)) {
+        skipped++;
+        continue;
+      }
       inRing++;
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
       onImage++;
@@ -74,6 +81,9 @@ export function annulusLuminance(
     }
   }
   const where = `the ring at (${at.x}, ${at.y}) pt`;
+  if (skipped > (inRing + skipped) * SKIP_SHARE) {
+    throw new Error(`the skipped boxes take ${percent(skipped / (inRing + skipped))} of the ring at (${at.x}, ${at.y}) pt, over ${percent(SKIP_SHARE)}`);
+  }
   if (onImage === 0) throw new Error(`${where} is off the screen (${width}×${height} px)`);
   if (onImage < inRing * RING_ON_IMAGE) {
     throw new Error(`${where} is partly off the screen: ${percent(onImage / inRing)} of it is on the image`);

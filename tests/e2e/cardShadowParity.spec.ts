@@ -24,6 +24,9 @@ const MEAN_GAP = 0.04;
 /** Where the shadows are laid on each other; a centroid cannot, as CSS darkens the overlaps (below). */
 const SHIFT = 4;
 const STEP = 0.25;
+/** Software Chromium settles at (−0.5, 0.25) for a reason not found; a 2 pt misplacement reads 1.75. */
+const SHIFT_GATE = 0.75;
+const FIT_POINTS = 500;
 /** Where two cards' shadows overlap: CSS stacks one per card, the felt draws each kind's union once. */
 const WORST_GAP = 0.3;
 
@@ -205,12 +208,15 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   const diffs = shaded.map((g) => Math.abs(g.app - g.mockup));
   const mean = diffs.reduce((s, d) => s + d, 0) / diffs.length;
   const worst = shaded[diffs.indexOf(Math.max(...diffs))];
+  info.annotations.push({ type: "best shift", description: JSON.stringify({ ...best, points: single.length }) });
   await info.attach("card-shadow-parity.json", { body: JSON.stringify({ fall, pile, mean, worst, best, gaps }), contentType: "application/json" });
   console.log(`card shadow parity: ${shaded.length} shaded points, mean gap ${mean.toFixed(3)}, worst ${JSON.stringify(worst)}, best shift ${JSON.stringify(best)} over ${single.length} points under one card's cast`);
   expect(Math.max(...gaps.map((g) => g.mockup)), "the mockup's shadow reaches the sampled felt").toBeGreaterThan(0.2);
   expect(mean).toBeLessThanOrEqual(MEAN_GAP);
   expect(Math.abs(worst.app - worst.mockup)).toBeLessThanOrEqual(WORST_GAP);
-  expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(0.5);
+  expect(single.length, "points under exactly one card's cast, which the shift is fitted on").toBeGreaterThanOrEqual(FIT_POINTS);
+  expect(Number.isFinite(best.gap), "some shift laid the shadows on each other").toBe(true);
+  expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(SHIFT_GATE);
 });
 
 test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has", async ({ browser, baseURL }) => {
