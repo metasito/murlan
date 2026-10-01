@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowShape, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { feltLight, NAME_CONTRAST, nameCeiling, nameDim } from "../../components/table/legibilityRing.ts";
@@ -81,6 +81,13 @@ describe("the shadow paths", () => {
       return n;
     };
     assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1, 1, 1]);
+  });
+
+  test("are rebuilt for a change of any field they read, and not for a lift or glow alone", () => {
+    const shape = (over: Partial<CardRect>, key = "hand:a") => shadowShape({ [key]: rect(over) });
+    assert.equal(shape({ lift: 1, glow: 0.5 }), shape({}));
+    const moved = [{ x: 101 }, { y: 51 }, { w: 65 }, { h: 91 }, { rot: 1 }, { back: true }, { seen: 0.5 }].map((o) => shape(o));
+    assert.equal(new Set([shape({}), shape({}, "fan:top:0"), ...moved]).size, moved.length + 2);
   });
 
   function bounds(r: CardRect, felt = { sx: 2, sy: 1.5, s: 1.25 }, midX = 0) {

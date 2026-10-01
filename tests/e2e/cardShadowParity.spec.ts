@@ -89,21 +89,28 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await openCaptureState(page, baseURL!, PILE_STATE);
   await untilSkiaFelt(page);
   await expect.poll(() => page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)?.lamp?.level ?? 0)).toBeGreaterThan(0.99);
-  const builds = () => page.evaluate(() => (globalThis as { murlanShadowBuilds?: number }).murlanShadowBuilds ?? 0);
+  const counts = () =>
+    page.evaluate(() => {
+      const e2e = globalThis as { murlanShadowBuilds?: number; murlanGlowBuilds?: number };
+      return { shadow: e2e.murlanShadowBuilds ?? 0, glow: e2e.murlanGlowBuilds ?? 0 };
+    });
+  const builds = async () => (await counts()).shadow;
   const rebuiltOverASecond = async () => {
-    const from = await builds();
+    const from = await counts();
     // fixed wait on purpose: a count staying flat at rest is a claim about elapsed time.
     await page.waitForTimeout(1000);
-    return (await builds()) - from;
+    const to = await counts();
+    return { shadow: to.shadow - from.shadow, glow: to.glow - from.glow };
   };
+  const still = { shadow: 0, glow: 0 };
   expect(await builds(), "every shadow path built for the seeded table").toBeGreaterThanOrEqual(SHADOW_PATHS.length);
-  expect(await rebuiltOverASecond(), "shadow paths rebuilt over a second at rest").toBe(0);
+  expect(await rebuiltOverASecond(), "shadow paths and glow rebuilt over a second at rest").toEqual(still);
   const resting = await builds();
   const held = page.locator('[data-testid^="hand-card-"]').filter({ visible: true }).last();
   await held.click();
   await expect.poll(builds, { message: "a card that moves rebuilds the shadow paths" }).toBeGreaterThan(resting);
   await held.click();
-  await expect.poll(rebuiltOverASecond, { message: "shadow paths rebuilt over a second once the cards rest again" }).toBe(0);
+  await expect.poll(rebuiltOverASecond, { message: "shadow paths and glow rebuilt over a second once the cards rest again" }).toEqual(still);
 
   const shadowed = await page.evaluate(() => {
     const scopes = document.querySelectorAll('[id^="card-"], [data-testid^="hand-card-"]');

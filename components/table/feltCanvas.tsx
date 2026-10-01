@@ -34,7 +34,7 @@ import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms, rgb } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildGlow, buildShadow, SHADOW_PATHS, shadowFall, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, SHADOW_PATHS, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { FeltProps } from "./feltReady";
 import { feltLight, nameCeiling, nameDim } from "./legibilityRing";
@@ -72,28 +72,45 @@ const NAME_SOFT = 6;
 const DISPOSE_PATHS = Platform.OS === "web";
 const E2E = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
-function countBuild() {
+function countBuild(counter: "murlanShadowBuilds" | "murlanGlowBuilds") {
   "worklet";
-  const e2e = globalThis as { murlanShadowBuilds?: number };
-  e2e.murlanShadowBuilds = (e2e.murlanShadowBuilds ?? 0) + 1;
+  const e2e = globalThis as { murlanShadowBuilds?: number; murlanGlowBuilds?: number };
+  e2e[counter] = (e2e[counter] ?? 0) + 1;
 }
 
-function useShadowPath(kind: ShadowPath, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPath> {
+/** Moves on when a card's outline does, and not when only its lift or glow does. */
+function useShadowShape(rects: SharedValue<CardRects>): SharedValue<number> {
+  const version = useSharedValue(0);
+  const last = useSharedValue("");
+  useAnimatedReaction(
+    () => rects.value,
+    (all) => {
+      const shape = shadowShape(all);
+      if (shape === last.value) return;
+      last.value = shape;
+      version.value += 1;
+    }
+  );
+  return version;
+}
+
+function useShadowPath(kind: ShadowPath, shape: SharedValue<number>, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPath> {
   const builder = useMemo(() => Skia.PathBuilder.Make(), []);
   const empty = useMemo(() => Skia.Path.Make(), []);
   const drawn = useSharedValue<SkPath>(empty);
   // A reaction, not a derived value: a mapper takes every shared value in its closure as an input, and one writing `drawn` re-ran each frame.
+  // `rects` is read in the handler, outside the inputs, so a glow-only change builds nothing.
   useAnimatedReaction(
-    () => rects.value,
-    (all) => {
+    () => shape.value,
+    () => {
       builder.reset();
-      buildShadow(builder, kind, all, felt, midX);
+      buildShadow(builder, kind, rects.value, felt, midX);
       const last = drawn.value;
       drawn.value = builder.build();
-      if (E2E) countBuild();
+      if (E2E) countBuild("murlanShadowBuilds");
       if (DISPOSE_PATHS) last.dispose();
     },
-    [builder, kind, felt, midX]
+    [builder, kind, rects, felt, midX]
   );
   useEffect(
     () => () => {
@@ -130,9 +147,20 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
     return recorder.finishRecordingAsPicture();
   }, [recorder]);
   const drawn = useSharedValue<SkPicture>(empty);
+  const lit = useSharedValue(false);
   useAnimatedReaction(
     () => rects.value,
     (all) => {
+      const any = Object.keys(all).some((k) => all[k].glow > 0);
+      if (!any && !lit.value) return;
+      lit.value = any;
+      const last = drawn.value;
+      if (!any) {
+        drawn.value = empty;
+        if (E2E) countBuild("murlanGlowBuilds");
+        if (DISPOSE_PATHS) last.dispose();
+        return;
+      }
       const canvas = recorder.beginRecording();
       builder.reset();
       const sink: GlowSink = {
@@ -149,21 +177,21 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
         },
       };
       buildGlow(sink, all, felt, midX);
-      const last = drawn.value;
       drawn.value = recorder.finishRecordingAsPicture();
-      if (E2E) countBuild();
-      if (DISPOSE_PATHS) last.dispose();
+      if (E2E) countBuild("murlanGlowBuilds");
+      if (DISPOSE_PATHS && last !== empty) last.dispose();
     },
-    [recorder, builder, paint, felt, midX]
+    [recorder, builder, paint, empty, felt, midX]
   );
   useEffect(
     () => () => {
       if (!DISPOSE_PATHS) return;
-      drawn.value.dispose();
+      if (drawn.value !== empty) drawn.value.dispose();
+      empty.dispose();
       builder.dispose();
       recorder.dispose();
     },
-    [recorder, builder, drawn]
+    [recorder, builder, drawn, empty]
   );
   return drawn;
 }
@@ -256,11 +284,12 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
 
   const { rects, felt } = cards;
   const s = felt.s;
+  const shape = useShadowShape(rects);
   const paths = {
-    cast: useShadowPath("cast", rects, felt, cards.hand.x),
-    face: useShadowPath("face", rects, felt, cards.hand.x),
-    back: useShadowPath("back", rects, felt, cards.hand.x),
-    fan: useShadowPath("fan", rects, felt, cards.hand.x),
+    cast: useShadowPath("cast", shape, rects, felt, cards.hand.x),
+    face: useShadowPath("face", shape, rects, felt, cards.hand.x),
+    back: useShadowPath("back", shape, rects, felt, cards.hand.x),
+    fan: useShadowPath("fan", shape, rects, felt, cards.hand.x),
   };
   const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };

@@ -94,6 +94,17 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
   sink.close();
 }
 
+/** Every field `buildShadow` reads, per card: equal for two registries whose shadow paths are equal. */
+export function shadowShape(rects: CardRects): string {
+  "worklet";
+  let shape = "";
+  for (const key of Object.keys(rects)) {
+    const r = rects[key];
+    shape += `${key}:${r.x},${r.y},${r.w},${r.h},${r.rot},${r.back},${r.seen};`;
+  }
+  return shape;
+}
+
 export interface GlowSink extends PathSink {
   /** Fills the outline added since the last fill. */
   fill(alpha: number): unknown;

@@ -1397,7 +1397,7 @@ const handStyles = StyleSheet.create({
   // (#209) and two of these resolve opposite ways around the card.
   cardGlow: {
     position: "absolute",
-    top: 0, left: 0, right: 0, bottom: 0,
+    top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
     backgroundColor: CardGlow.color,
     ...Shadow.cardGlow,

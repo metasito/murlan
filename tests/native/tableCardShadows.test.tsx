@@ -109,7 +109,9 @@ describe('a card view on the table', () => {
     const view = await render(table(base(hands.map((h, i) => seat(i, h)))));
     await frames(64);
     const { glows } = cardHosts();
+    const held = screen.queryAllByTestId(/^hand-card-/, { includeHiddenElements: true }).length;
     await view.unmount();
+    expect(held).toBe(hands[0].length);
     expect(glows.length).toBe(0);
   }, 120_000);
 
