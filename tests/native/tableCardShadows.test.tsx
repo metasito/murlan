@@ -30,7 +30,7 @@ function scopeOf(n: TestInstance): string | null {
 }
 
 const styleOf = (n: TestInstance) => (StyleSheet.flatten(n.props.style as StyleProp<ViewStyle>) ?? {}) as Record<string, unknown>;
-const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.goldSoft[p]);
+const isGlow = (n: TestInstance) => SHADOW_PROPS.every((p) => styleOf(n)[p] === Shadow.cardGlow[p]);
 
 /** Every view in every card's scope, and those carrying a platform shadow, the gold glows apart. */
 function cardHosts() {
@@ -104,13 +104,15 @@ describe('a card view on the table', () => {
     expect(counts).toEqual([0, 0]);
   }, 120_000);
 
-  it('still carries its gold glow, one per held card, until task 13 draws it on the felt and this reads 0', async () => {
+  it('carries no gold glow on a held card: the felt draws it', async () => {
     const hands = dealCards(4).hands;
     const view = await render(table(base(hands.map((h, i) => seat(i, h)))));
     await frames(64);
     const { glows } = cardHosts();
+    const held = screen.queryAllByTestId(/^hand-card-/, { includeHiddenElements: true }).length;
     await view.unmount();
-    expect(glows.length).toBe(hands[0].length);
+    expect(held).toBe(hands[0].length);
+    expect(glows.length).toBe(0);
   }, 120_000);
 
   it('carries none on a dealt back in the air', async () => {

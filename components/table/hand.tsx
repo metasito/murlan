@@ -24,8 +24,8 @@ import Animated, {
   type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
-import { CardView, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
-import { Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
+import { CardView, FallbackGlow, PRESS_RISE, PRESS_TILT } from "@/components/CardView";
+import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import type { Card } from "@/lib/game/gameEngine";
@@ -435,9 +435,6 @@ function CardItemBase({
     opacity: Math.max(0, exchangeState.value),
   }));
 
-  // A textless sibling behind the card carries the selection bloom, so the
-  // glow can be animated with opacity alone and never touches the card's own
-  // rasterised rank characters.
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   const veilStyle = useAnimatedStyle(() => ({ opacity: Math.max(0, -exchangeState.value) }));
@@ -462,10 +459,7 @@ function CardItemBase({
         giveable === false && UNGIVEABLE_FILTER,
       ]}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]}
-      />
+      <FallbackGlow style={[handStyles.cardGlow, { borderRadius: cardRadius(cardW) }, glowStyle]} />
       {giveable === true && (
         <Animated.View
           pointerEvents="none"
@@ -1397,8 +1391,8 @@ const handStyles = StyleSheet.create({
     position: "absolute",
     top: 2, left: 2, right: 2, bottom: 2,
     zIndex: Layer.felt,
-    backgroundColor: Colors.gold,
-    ...Shadow.goldSoft,
+    backgroundColor: CardGlow.color,
+    ...Shadow.cardGlow,
   },
   cardLayer: { zIndex: Layer.table },
   handRow: {

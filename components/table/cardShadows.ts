@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardShadow } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow } from "../../lib/tokens.ts";
 import { cardRadius } from "../cardFaceModel.ts";
 import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
@@ -92,6 +92,33 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
   sink.lineTo(X(-a, k - b), Y(-a, k - b));
   sink.conicTo(X(-a, -b), Y(-a, -b), X(k - a, -b), Y(k - a, -b), QUARTER);
   sink.close();
+}
+
+/** Every field `buildShadow` reads, per card: equal for two registries whose shadow paths are equal. */
+export function shadowShape(rects: CardRects): string {
+  "worklet";
+  let shape = "";
+  for (const key of Object.keys(rects)) {
+    const r = rects[key];
+    shape += `${key}:${r.x},${r.y},${r.w},${r.h},${r.rot},${r.back},${r.seen};`;
+  }
+  return shape;
+}
+
+export interface GlowSink extends PathSink {
+  /** Fills the outline added since the last fill. */
+  fill(alpha: number): unknown;
+}
+
+/** One fill per glowing card, at its own strength: one card fades while another stays lit. */
+export function buildGlow(sink: GlowSink, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): void {
+  "worklet";
+  for (const key of Object.keys(rects)) {
+    const r = rects[key];
+    if (r.glow <= 0 || r.seen <= 0) continue;
+    addOutline(sink, r, felt, midX);
+    sink.fill(CardGlow.alpha * r.glow);
+  }
 }
 
 export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): void {

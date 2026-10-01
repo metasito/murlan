@@ -10,7 +10,7 @@ import { GameTable } from '@/components/GameTable';
 import { CARD_SCOPES, type CardRects } from '@/components/table/cardRects';
 import { dealCards, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
 import { frames } from './helpers/exchangeLegs';
-import { throwPair } from './helpers/landing';
+import { PAIR, throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
 
 const HIDDEN = { includeHiddenElements: true };
@@ -117,5 +117,22 @@ describe('the table card registry', () => {
     });
     expect(flew).toBeGreaterThan(0);
     await view.unmount();
+  }, 120_000);
+
+  it("lights the pile's cards through a flush's catch, and not through a play that leaves cards in hand", async () => {
+    const hands = dealCards(4).hands;
+    const peak: number[] = [];
+    for (const emptied of [true, false]) {
+      const players = hands.map((h, i) => seat(i, i === 3 && emptied ? [] : h));
+      const view = await render(table({ ...base(players), lastPlayedCombination: PAIR, lastPlayedBy: 3 }));
+      let lit = 0;
+      await frames(3000, () => {
+        lit = Math.max(lit, ...scoped('pile').map((k) => registry()[k].glow));
+      });
+      peak.push(lit);
+      await view.unmount();
+    }
+    expect(peak[0]).toBeGreaterThan(0.5);
+    expect(peak[1]).toBe(0);
   }, 120_000);
 });
