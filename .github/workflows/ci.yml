@@ -400,7 +400,7 @@ jobs:
           restore-keys: native-jest-
       # The runner has four cores; jest.config.js's 50% is sized for a developer's machine.
       - run: npm run test:native -- --maxWorkers=4 --cacheDirectory="$RUNNER_TEMP/jest-cache"
-      - if: steps.jest-cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || steps.jest-cache.outputs.cache-matched-key == '')
+      - if: ${{ !cancelled() && steps.jest-cache.outputs.cache-hit != 'true' && (github.ref == 'refs/heads/main' || steps.jest-cache.outputs.cache-matched-key == '') }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/jest-cache

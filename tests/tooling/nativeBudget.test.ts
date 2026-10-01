@@ -40,21 +40,21 @@ test("a file whose cases outlast the budget is named; one within it, or within i
 });
 
 test("the reporter fails a green run with a file over budget, summing its cases, and names the file and project", () => {
-  const { error, out } = run({ "ios:tests/native/x.test.tsx": [ms(BUDGET_S), ms(1)], "android:tests/native/x.test.tsx": [ms(1)] });
+  const { error, out } = run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S), ms(1)], "android:tests/native/tableNotices.test.tsx": [ms(1)] });
   assert.ok(error instanceof Error);
-  assert.match(out, /::error::ios:tests\/native\/x\.test\.tsx took/);
+  assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx took/);
   assert.doesNotMatch(out, /::error::android:/);
 });
 
 test("the reporter passes a run within budget and leaves an already red run alone", () => {
-  assert.equal(run({ "ios:tests/native/x.test.tsx": [ms(1)] }).error, undefined);
-  assert.equal(run({ "ios:tests/native/x.test.tsx": [ms(BUDGET_S * 9)] }, 1).error, undefined);
+  assert.equal(run({ "ios:tests/native/tableNotices.test.tsx": [ms(1)] }).error, undefined);
+  assert.equal(run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S * 9)] }, 1).error, undefined);
 });
 
 test("a run that measured no file, or no time in any, is red, red run or not", () => {
   assert.ok(run({}).error instanceof Error);
   assert.ok(run({}, 1).error instanceof Error);
-  assert.ok(run({ "ios:tests/native/x.test.tsx": [0] }).error instanceof Error);
+  assert.ok(run({ "ios:tests/native/tableNotices.test.tsx": [0] }).error instanceof Error);
 });
 
 test("the budget cannot be loosened past what was measured, nor an exception past a minute", () => {
