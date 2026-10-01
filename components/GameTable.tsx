@@ -826,7 +826,6 @@ export function GameTable({
   );
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
-  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   useBenchHandle("lampFreeze", rig.freeze);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -1026,6 +1025,7 @@ export function GameTable({
           })
         )
   );
+  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors, names: nameBoxes }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
