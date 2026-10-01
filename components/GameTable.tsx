@@ -125,7 +125,7 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
+import { TopOppSlot, SideOppSlot, seatLit, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal } from "@/components/table/deal";
@@ -1013,6 +1013,7 @@ export function GameTable({
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const onMove = (seat: number) => !trade && seat === shownTurnIndex;
   const nameBoxes = seatNameBoxes(
     cardTable.seats,
     scale,
@@ -1021,7 +1022,7 @@ export function GameTable({
       : Object.fromEntries(
           (["top", "left", "right"] as const).flatMap((side) => {
             const o = opponents[side];
-            return o ? [[side, (!trade && o.seat === shownTurnIndex) || seatMark(o.seat).lit]] : [];
+            return o ? [[side, seatLit(onMove(o.seat), seatMark(o.seat))]] : [];
           })
         )
   );
@@ -1250,7 +1251,7 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={!trade && opponents.top.seat === shownTurnIndex}
+                  isActive={onMove(opponents.top.seat)}
                   cardCount={seatCount(opponents.top.seat, opponents.top.player)}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
@@ -1275,7 +1276,7 @@ export function GameTable({
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={!trade && opponents.left.seat === shownTurnIndex}
+                    isActive={onMove(opponents.left.seat)}
                     side="left"
                     cardCount={seatCount(opponents.left.seat, opponents.left.player)}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
@@ -1354,7 +1355,7 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={!trade && opponents.right.seat === shownTurnIndex}
+                    isActive={onMove(opponents.right.seat)}
                     side="right"
                     cardCount={seatCount(opponents.right.seat, opponents.right.player)}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}

@@ -22,6 +22,8 @@ const stateFor = (side: FlyDirection) => {
   return found;
 };
 
+type Box = { x: number; y: number; w: number; h: number };
+
 async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[number], onMove: FlyDirection): Promise<Record<FlyDirection, number>> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: phone.width, height: phone.height });
@@ -34,18 +36,19 @@ async function seatMeans(page: Page, baseURL: string, phone: (typeof PHONES)[num
     })
     .toBeGreaterThan(LAMP_UP);
   const anchors = Object.fromEntries(await Promise.all(SEATS.map(async (s) => [s, await seatAnchor(page, s)] as const)));
-  // The lamp's light alone: the bottom ring lies under the hand's shadow, a side's under its name's dim (seatNameContrast.spec.ts's).
-  await page.evaluate(() => {
-    const e2e = globalThis as unknown as { murlanCardShadows: (on: boolean) => void; murlanNameDims: (on: boolean) => void };
+  // The bottom ring lies under the hand, whose shadow the felt now draws; before, it was the cards' own, off the felt.
+  const names = await page.evaluate(() => {
+    const e2e = globalThis as unknown as { murlanCardShadows: (on: boolean) => void; murlanNameShade: () => Box[] };
     e2e.murlanCardShadows(false);
-    e2e.murlanNameDims(false);
-    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return new Promise<Box[]>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(e2e.murlanNameShade()))));
   });
   const { pixels: box, perPt, origin } = await feltPixels(page);
   const pixels = feltOnly(box, perPt);
   const ring = legibilityRing(pixels.width / perPt, pixels.height / perPt);
+  // The owner dimmed the felt under the names, not round the seat: the ring is judged without the name boxes (seatNameContrast.spec.ts judges them).
+  const holes = names.map((n) => ({ ...n, x: n.x - origin.x, y: n.y - origin.y }));
   return Object.fromEntries(
-    SEATS.map((s) => [s, annulusLuminance(pixels,{ x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring)])
+    SEATS.map((s) => [s, annulusLuminance(pixels, { x: anchors[s].x - origin.x, y: anchors[s].y - origin.y }, perPt, ring, holes)])
   ) as Record<FlyDirection, number>;
 }
 

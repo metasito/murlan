@@ -113,11 +113,11 @@ function ShadowLayer({ path, kind, s }: { path: SharedValue<SkPath>; kind: Shado
 }
 
 /** `box` in design points; dimmed by as much as the light at its point nearest the lamp needs. */
-function NameDim({ box, ceiling, cloth, lamp, on }: { box: { x: number; y: number; w: number; h: number }; ceiling: number; cloth: number[][]; lamp: SharedValue<Lamp>; on: SharedValue<number> }) {
+function NameDim({ box, ceiling, cloth, lamp }: { box: { x: number; y: number; w: number; h: number }; ceiling: number; cloth: number[][]; lamp: SharedValue<Lamp> }) {
   const grey = useDerivedValue(() => {
     const { lx, ly } = lamp.value;
     const near = { x: Math.min(Math.max(lx, box.x), box.x + box.w), y: Math.min(Math.max(ly, box.y), box.y + box.h) };
-    const g = on.value ? Math.round(255 * nameDim(feltLight(cloth, lamp.value, near), ceiling)) : 255;
+    const g = Math.round(255 * nameDim(feltLight(cloth, lamp.value, near), ceiling));
     return `rgb(${g},${g},${g})`;
   });
   return (
@@ -201,17 +201,16 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: lamp.value.lx, y: lamp.value.ly }), felt));
   const contact = shadowTransform(shadowFall("face", pile, pile), felt);
   const shadows = useSharedValue(1);
-  const dims = useSharedValue(1);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanNameDims?: (on: boolean) => void };
+    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanNameShade?: () => FeltProps["names"] };
     e2e.murlanCardShadows = (on) => (shadows.value = on ? 1 : 0);
-    e2e.murlanNameDims = (on) => (dims.value = on ? 1 : 0);
+    e2e.murlanNameShade = () => names;
     return () => {
       delete e2e.murlanCardShadows;
-      delete e2e.murlanNameDims;
+      delete e2e.murlanNameShade;
     };
-  }, [shadows, dims]);
+  }, [shadows, names]);
   const ceilings = useMemo(() => ({ lit: nameCeiling(stops, Colors.goldLit), unlit: nameCeiling(stops, Colors.textMuted) }), [stops]);
   const cloth = useMemo(() => stops.map(rgb), [stops]);
 
@@ -246,7 +245,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
         )}
         <Group clip={NAME_EDGE}>
           {names.map((n, i) => (
-            <NameDim key={i} box={{ x: n.x / sx, y: n.y / sy, w: n.w / sx, h: n.h / sy }} ceiling={n.lit ? ceilings.lit : ceilings.unlit} cloth={cloth} lamp={lamp} on={dims} />
+            <NameDim key={i} box={{ x: n.x / sx, y: n.y / sy, w: n.w / sx, h: n.h / sy }} ceiling={n.lit ? ceilings.lit : ceilings.unlit} cloth={cloth} lamp={lamp} />
           ))}
         </Group>
         <Group opacity={shadows}>

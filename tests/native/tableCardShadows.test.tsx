@@ -104,12 +104,13 @@ describe('a card view on the table', () => {
     expect(counts).toEqual([0, 0]);
   }, 120_000);
 
-  it.failing('carries no gold glow behind it either (task 13 draws the glow on the felt)', async () => {
-    const view = await render(table(base(dealCards(4).hands.map((h, i) => seat(i, h)))));
+  it('still carries its gold glow, one per held card, until task 13 draws it on the felt and this reads 0', async () => {
+    const hands = dealCards(4).hands;
+    const view = await render(table(base(hands.map((h, i) => seat(i, h)))));
     await frames(64);
     const { glows } = cardHosts();
     await view.unmount();
-    expect(glows.length).toBe(0);
+    expect(glows.length).toBe(hands[0].length);
   }, 120_000);
 
   it('carries none on a dealt back in the air', async () => {

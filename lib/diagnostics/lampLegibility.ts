@@ -39,11 +39,13 @@ function linear(channel: number): number {
 
 const percent = (share: number) => `${Math.round(share * 100)} %`;
 
+/** `skip`: boxes, in the pixels' points, that are no part of the ring, as if it had a hole there. */
 export function annulusLuminance(
   pixels: Pixels,
   at: { x: number; y: number },
   perPt: number,
   ring: Ring,
+  skip: readonly { x: number; y: number; w: number; h: number }[] = [],
 ): number {
   const { width, height, data } = pixels;
   const cx = at.x * perPt;
@@ -60,6 +62,8 @@ export function annulusLuminance(
       const dy = y + 0.5 - cy;
       if (Math.hypot(dx, dy) < ring.inner * perPt) continue;
       if (Math.hypot(dx / rx, dy / ry) > 1) continue;
+      const [px, py] = [(x + 0.5) / perPt, (y + 0.5) / perPt];
+      if (skip.some((b) => px >= b.x && px < b.x + b.w && py >= b.y && py < b.y + b.h)) continue;
       inRing++;
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
       onImage++;

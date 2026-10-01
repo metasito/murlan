@@ -81,6 +81,14 @@ describe("annulusLuminance", () => {
     }
   });
 
+  test("a skipped box is a hole in the ring, neither light nor felt", () => {
+    for (const { at } of SEATS) {
+      const above = { x: at.x - 100, y: at.y - 100, w: 200, h: 100 };
+      const half = paint(at, (w) => (w.pt < DISC || w.d > OUTER ? WHITE : w.dy < 0 ? BLACK : GREY));
+      near(annulusLuminance(half, at, PER_PT, RING, [above]), GREY_LINEAR, 0.001);
+    }
+  });
+
   test("the ring's radii are the x and y radii: an anisotropic phone reads all of its top and bottom", () => {
     assert.ok(SCALE.sy / SCALE.sx > 1.2, "the fixture is not anisotropic enough to tell rx from ry");
     const tip = (w: Where) => Math.abs(w.dy * SCALE.sy) > OUTER * SCALE.sx;

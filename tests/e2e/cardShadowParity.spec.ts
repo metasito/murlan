@@ -4,6 +4,7 @@
 // set from the app's lamp; each side's shadow is what turning it off gives back.
 import { test, expect, type Page } from "@playwright/test";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
+import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { feltPixels, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
@@ -22,6 +23,7 @@ const SHADED = 0.05;
 const MEAN_GAP = 0.04;
 /** Where the shadows are laid on each other; a centroid cannot, as CSS darkens the overlaps (below). */
 const SHIFT = 4;
+const STEP = 0.25;
 /** Where two cards' shadows overlap: CSS stacks one per card, the felt draws each kind's union once. */
 const WORST_GAP = 0.3;
 
@@ -98,10 +100,20 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await untilSkiaFelt(page);
   await expect.poll(() => page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)?.lamp?.level ?? 0)).toBeGreaterThan(0.99);
   const builds = () => page.evaluate(() => (globalThis as { murlanShadowBuilds?: number }).murlanShadowBuilds ?? 0);
-  const before = await builds();
-  // fixed wait on purpose: a count staying flat at rest is a claim about elapsed time.
-  await page.waitForTimeout(1000);
-  expect(await builds(), "shadow paths rebuilt over a second at rest").toBe(before);
+  const rebuiltOverASecond = async () => {
+    const from = await builds();
+    // fixed wait on purpose: a count staying flat at rest is a claim about elapsed time.
+    await page.waitForTimeout(1000);
+    return (await builds()) - from;
+  };
+  expect(await builds(), "every shadow path built for the seeded table").toBeGreaterThanOrEqual(SHADOW_PATHS.length);
+  expect(await rebuiltOverASecond(), "shadow paths rebuilt over a second at rest").toBe(0);
+  const resting = await builds();
+  const held = page.locator('[data-testid^="hand-card-"]').filter({ visible: true }).last();
+  await held.click();
+  await expect.poll(builds, { message: "a card that moves rebuilds the shadow paths" }).toBeGreaterThan(resting);
+  await held.click();
+  await expect.poll(rebuiltOverASecond, { message: "shadow paths rebuilt over a second once the cards rest again" }).toBe(0);
 
   const shadowed = await page.evaluate((glow) => {
     const scopes = document.querySelectorAll('[id^="card-"], [data-testid^="hand-card-"]');
@@ -112,15 +124,14 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   expect(shadowed.scopes).toBeGreaterThan(0);
   expect(shadowed.cast, `platform shadows among the ${shadowed.views} views of the table's cards, the ${shadowed.glows} gold glows aside (task 13's)`).toEqual([]);
 
-  const [rects, felt] = await page.evaluate(() => {
-    const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt };
-    return [e2e.murlanCardRects(), e2e.murlanCardFelt()] as const;
+  const [rects, felt, anchor] = await page.evaluate(() => {
+    const e2e = globalThis as unknown as { murlanCardRects: () => CardRects; murlanCardFelt: () => Felt; murlanCardPile: () => Point };
+    return [e2e.murlanCardRects(), e2e.murlanCardFelt(), e2e.murlanCardPile()] as const;
   });
   const pile = Object.entries(rects).filter(([k]) => k.startsWith("pile:")).map(([, r]) => r);
   expect(pile.length, "the seeded pile").toBeGreaterThan(0);
   const lamp = (await page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)!.lamp))!;
-  const anchor = await page.getByTestId("pile-area").boundingBox();
-  const fall = mockupFall({ x: (anchor!.x + anchor!.width / 2) / felt.sx, y: (anchor!.y + anchor!.height / 2) / felt.sy }, { x: lamp.x / felt.sx, y: lamp.y / felt.sy });
+  const fall = mockupFall({ x: anchor.x / felt.sx, y: anchor.y / felt.sy }, { x: lamp.x / felt.sx, y: lamp.y / felt.sy });
   const app = await appShadows(page);
   await page.context().close();
 
@@ -137,9 +148,9 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
     ([pile, felt]) => {
       for (const r of pile) {
         const d = document.createElement("div");
-        const [w, h] = [r.w * felt.s, r.h * felt.s];
+        const [w, h] = [r.w, r.h];
         d.className = "card probe";
-        Object.assign(d.style, { left: `${r.x * felt.sx - w / 2}px`, top: `${r.y * felt.sy - h / 2}px`, width: `${w}px`, height: `${h}px`, borderRadius: `${w * 0.05}px`, transform: `rotate(${r.rot}deg)` });
+        Object.assign(d.style, { left: `${r.x * felt.sx - w / 2}px`, top: `${r.y * felt.sy - h / 2}px`, width: `${w}px`, height: `${h}px`, borderRadius: `${w * 0.05}px`, transform: `rotate(${r.rot}deg) scale(${felt.s})` });
         document.getElementById("world")!.insertBefore(d, document.getElementById("shade"));
       }
     },
@@ -166,25 +177,40 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
       mockAt.set(`${i},${j}`, g.mockup);
     }
   }
+  const mockupNear = (x: number, y: number) => {
+    const [i, j] = [Math.floor(x), Math.floor(y)];
+    const [u, v] = [x - i, y - j];
+    const c = [mockAt.get(`${i},${j}`), mockAt.get(`${i + 1},${j}`), mockAt.get(`${i},${j + 1}`), mockAt.get(`${i + 1},${j + 1}`)];
+    if (c.some((m) => m === undefined)) return undefined;
+    const [a, b, d, e] = c as number[];
+    return (a * (1 - u) + b * u) * (1 - v) + (d * (1 - u) + e * u) * v;
+  };
+  const castsOver = (p: Point) => pile.filter((r) => inside({ x: p.x - fall.x * felt.s, y: p.y - fall.y * felt.s }, r, felt, REACH)).length;
+  const single = gaps.filter((g) => castsOver(g.at) === 1);
   const gapWhenShifted = (dx: number, dy: number) => {
-    const d = gaps.flatMap((g) => {
-      const m = mockAt.get(`${g.i + dx},${g.j + dy}`);
+    const d = single.flatMap((g) => {
+      const m = mockupNear(g.i + dx, g.j + dy);
       return m === undefined || Math.max(g.app, m) <= SHADED ? [] : [Math.abs(g.app - m)];
     });
     return d.reduce((s, v) => s + v, 0) / d.length;
   };
   let best = { dx: 0, dy: 0, gap: Infinity };
-  for (let dx = -SHIFT; dx <= SHIFT; dx++) for (let dy = -SHIFT; dy <= SHIFT; dy++) if (gapWhenShifted(dx, dy) < best.gap) best = { dx, dy, gap: gapWhenShifted(dx, dy) };
+  for (let dx = -SHIFT; dx <= SHIFT; dx += STEP) {
+    for (let dy = -SHIFT; dy <= SHIFT; dy += STEP) {
+      const gap = gapWhenShifted(dx, dy);
+      if (gap < best.gap) best = { dx, dy, gap };
+    }
+  }
   const shaded = gaps.filter((g) => Math.max(g.app, g.mockup) > SHADED);
   const diffs = shaded.map((g) => Math.abs(g.app - g.mockup));
   const mean = diffs.reduce((s, d) => s + d, 0) / diffs.length;
   const worst = shaded[diffs.indexOf(Math.max(...diffs))];
-  await info.attach("card-shadow-parity.json", { body: JSON.stringify({ fall, mean, worst, best, gaps }), contentType: "application/json" });
-  console.log(`card shadow parity: ${shaded.length} shaded points, mean gap ${mean.toFixed(3)}, worst ${JSON.stringify(worst)}, best shift ${JSON.stringify(best)}`);
+  await info.attach("card-shadow-parity.json", { body: JSON.stringify({ fall, pile, mean, worst, best, gaps }), contentType: "application/json" });
+  console.log(`card shadow parity: ${shaded.length} shaded points, mean gap ${mean.toFixed(3)}, worst ${JSON.stringify(worst)}, best shift ${JSON.stringify(best)} over ${single.length} points under one card's cast`);
   expect(Math.max(...gaps.map((g) => g.mockup)), "the mockup's shadow reaches the sampled felt").toBeGreaterThan(0.2);
   expect(mean).toBeLessThanOrEqual(MEAN_GAP);
   expect(Math.abs(worst.app - worst.mockup)).toBeLessThanOrEqual(WORST_GAP);
-  expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(1);
+  expect(Math.max(Math.abs(best.dx), Math.abs(best.dy)), "the shift that best lays the app's shadow on the mockup's, in points").toBeLessThanOrEqual(0.5);
 });
 
 test("before Skia has drawn, a card view keeps its own shadow, and drops it once Skia has", async ({ browser, baseURL }) => {

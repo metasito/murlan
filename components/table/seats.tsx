@@ -50,6 +50,9 @@ import { useRingProbe } from "@/lib/diagnostics";
 /** An exchange's marks on a seat: lit while its card is in the air, pinged as it leaves or rests. */
 export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
 
+/** A seat is lit while it is on move or the trade marks it: its ring, its glow and its name all read this. */
+export const seatLit = (isActive: boolean, mark?: Pick<SeatMark, "lit">) => isActive || mark?.lit === true;
+
 /**
  * Which seats have already answered the round on the table. Derived rather
  * than stored, so a new lead empties it on the same commit that lands the
@@ -398,7 +401,7 @@ function SeatRing({
       if (seq >= 0 && prev !== null && seq !== prev && !reduceMotion) ping();
     }
   );
-  const lit = isActive || mark?.lit === true;
+  const lit = seatLit(isActive, mark);
   const probe = useRingProbe(name);
 
   useEffect(
@@ -592,7 +595,7 @@ export function TopOppSlot({
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
-  const lit = isActive || mark?.lit === true;
+  const lit = seatLit(isActive, mark);
   return (
     <View
       testID="top-seat"
@@ -669,7 +672,7 @@ function SeatWho({
   focusMode?: boolean;
 }) {
   const disc = SEAT_DISC * scale;
-  const lit = isActive || mark?.lit === true;
+  const lit = seatLit(isActive, mark);
   const labelW = anchor === "centre" ? OPP_LABEL_MAX_W * scale : SIDE_LABEL_MAX_W;
   const labelLeft =
     anchor === "centre" ? (disc - labelW) / 2 : anchor === "left" ? 0 : disc - labelW;
@@ -770,7 +773,7 @@ export function SideOppSlot({
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
-  const lit = isActive || mark?.lit === true;
+  const lit = seatLit(isActive, mark);
   return (
     <View
       testID={`side-seat-${side}`}
