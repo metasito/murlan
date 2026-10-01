@@ -129,6 +129,7 @@ describe("a portrait lock that lands after the table's own (#1378)", () => {
       nativeEvent: { layout: { x: 0, y: 0, width, height } },
     });
   const covered = () => screen.queryAllByLabelText(locale['gameTable.rotateA11yLabel']).length > 0;
+  const tableReachable = () => screen.queryAllByText('Ana').length > 0;
 
   it('asks for landscape again, and drops the cover once the window measures landscape', async () => {
     const nav = fakeScreen();
@@ -139,10 +140,12 @@ describe("a portrait lock that lands after the table's own (#1378)", () => {
     await measure(390, 844);
     expect(landscapeLocks()).toBe(settled + 1);
     expect(covered()).toBe(true);
+    expect(tableReachable()).toBe(false);
 
     await nav.emit('transitionEnd', false);
     await measure(844, 390);
     expect(covered()).toBe(false);
+    expect(tableReachable()).toBe(true);
     await view.unmount();
   });
 

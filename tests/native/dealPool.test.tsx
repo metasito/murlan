@@ -66,8 +66,8 @@ describe('the deal flies on a pool of backs', () => {
 
   it.each([
     [2, 14, 7],
-    [3, 36, 12],
-    [4, 40, 17],
+    [3, 36, 9],
+    [4, 40, 16],
   ])('draws %i players’ %i legs with as many backs as are ever in the air at once, %i on the 844 × 390 table', async (seats, legCount, pool) => {
     const view = await render(table(freshDeal(seats)));
     const legs = slotted().calls.at(-1)![0];

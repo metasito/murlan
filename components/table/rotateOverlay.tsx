@@ -1,6 +1,6 @@
 // The portrait cover on the game table. Not a Modal: a presented modal held back
-// the very layout that would have lifted it (#1378). It traps no focus yet: see
-// UNTRAPPED in tests/ui-rules/blockingOverlays.test.ts.
+// the very layout that would have lifted it (#1378). The table veils itself behind
+// the cover, and on iOS the cover hides its siblings from VoiceOver.
 
 import { useEffect } from "react";
 import { View } from "react-native";
@@ -63,7 +63,7 @@ export function RotateOverlay() {
   }));
 
   return (
-    <View style={portraitOverlayStyles.overlay}>
+    <View style={portraitOverlayStyles.overlay} accessibilityViewIsModal>
       <View style={portraitOverlayStyles.card} {...a11yGroup(t("gameTable.rotateA11yLabel"))}>
         <Animated.View style={glyphStyle} {...a11yHidden()}>
           <Ionicons name="phone-landscape-outline" size={GLYPH_SIZE} color={Colors.gold} />
