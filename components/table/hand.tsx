@@ -21,6 +21,7 @@ import Animated, {
   withSequence,
   cancelAnimation,
   Easing,
+  ReduceMotion,
   type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
@@ -322,7 +323,8 @@ function CardItemBase({
     if (dealing.value === 0) return;
     dealing.value = withDelay(
       dealDelayRef.current,
-      withTiming(0, { duration: DEAL_DURATION_MS, easing: DEAL_EASING })
+      withTiming(0, { duration: DEAL_DURATION_MS, easing: DEAL_EASING }),
+      ReduceMotion.System
     );
   }, [dealing]);
 
