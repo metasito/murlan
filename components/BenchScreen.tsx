@@ -89,8 +89,10 @@ export function BenchScreen() {
         gallery: GALLERY,
         showNotice: (shot) => showNotice.current(shot),
       };
-      for (const [name, scenario] of benchScenarios()) {
-        if (only && !only.includes(name)) continue;
+      const queued = benchScenarios().filter(([name]) => !only || only.includes(name));
+      const names = queued.map(([name]) => name);
+      diag({ k: "run", t: performance.now(), phase: "start", names });
+      for (const [name, scenario] of queued) {
         diag({ k: "scenario", t: performance.now(), name, phase: "start" });
         diag({ k: "latency", t: performance.now(), outputMs: probe.outputLatencyMs(), ioMs: probe.ioBufferMs(), inputMs: probe.inputLatencyMs() });
         const error = await scenario(ctx).then(() => null, (e: unknown) => String(e));
@@ -100,6 +102,7 @@ export function BenchScreen() {
       clearInterval(drain);
       probe.drain();
       if (capturing) await probe.stopCapture().catch(() => false);
+      diag({ k: "run", t: performance.now(), phase: "end", names });
       running.current = false;
     },
     [params]
