@@ -125,7 +125,9 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { TopOppSlot, SideOppSlot, seatLit, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
+import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
+import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -822,7 +824,8 @@ export function GameTable({
     tableMotion,
     handLift
   );
-  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
+  const [feltReady, onFeltReady] = useFeltReady();
+  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -1009,6 +1012,20 @@ export function GameTable({
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const onMove = (seat: number) => !trade && seat === shownTurnIndex;
+  const nameBoxes = seatNameBoxes(
+    cardTable.seats,
+    scale,
+    focusMode
+      ? {}
+      : Object.fromEntries(
+          (["top", "left", "right"] as const).flatMap((side) => {
+            const o = opponents[side];
+            return o ? [[side, seatLit(onMove(o.seat), seatMark(o.seat))]] : [];
+          })
+        )
+  );
+  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors, names: nameBoxes }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
@@ -1016,6 +1033,7 @@ export function GameTable({
 
   return (
     <CardTableProvider value={cardTable}>
+    <CardCastContext.Provider value={cardCast}>
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
@@ -1025,7 +1043,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} />
+        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} names={nameBoxes} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
@@ -1233,7 +1251,7 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={!trade && opponents.top.seat === shownTurnIndex}
+                  isActive={onMove(opponents.top.seat)}
                   cardCount={seatCount(opponents.top.seat, opponents.top.player)}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
@@ -1258,7 +1276,7 @@ export function GameTable({
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={!trade && opponents.left.seat === shownTurnIndex}
+                    isActive={onMove(opponents.left.seat)}
                     side="left"
                     cardCount={seatCount(opponents.left.seat, opponents.left.player)}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
@@ -1337,7 +1355,7 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={!trade && opponents.right.seat === shownTurnIndex}
+                    isActive={onMove(opponents.right.seat)}
                     side="right"
                     cardCount={seatCount(opponents.right.seat, opponents.right.player)}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}
@@ -1469,6 +1487,7 @@ export function GameTable({
         {W < H && <RotateOverlay />}
       </Animated.View>
     </View>
+    </CardCastContext.Provider>
     </CardTableProvider>
   );
 }

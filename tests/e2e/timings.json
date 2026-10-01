@@ -6,6 +6,7 @@
   "bombShakeBounds.spec.ts": 9.7,
   "cardRects.spec.ts": 49.4,
   "cardScale.spec.ts": 6.2,
+  "cardShadowParity.spec.ts": 26.8,
   "controlRail.spec.ts": 10.5,
   "copyRoomCode.spec.ts": 1.4,
   "exchangeAnnounceNodes.spec.ts": 9.6,
