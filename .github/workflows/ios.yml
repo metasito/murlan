@@ -185,20 +185,6 @@ jobs:
           done
           xcrun simctl boot "$udid"
 
-      # Maestro's first start on a fresh simulator installs its XCUITest runner; started here, that
-      # overlaps the wait for the app instead of following it.
-      - name: Start warming Maestro's driver
-        env:
-          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
-        run: |
-          (
-            set +e
-            until [ -s "$RUNNER_TEMP/maestro.status" ]; do sleep 2; done
-            xcrun simctl bootstatus "$SIMULATOR_UDID" > /dev/null 2>&1
-            "$HOME/.maestro/bin/maestro" --device "$SIMULATOR_UDID" hierarchy > "$RUNNER_TEMP/warm.log" 2>&1
-            echo "$?" > "$RUNNER_TEMP/warm.status"
-          ) > /dev/null 2>&1 &
-
       # Polled rather than `needs: app`, so the simulator boots while the app job runs; a red or
       # cancelled app job ends the wait.
       - name: Wait for the app
@@ -248,13 +234,6 @@ jobs:
           done
           cat "$RUNNER_TEMP/maestro.log"
           [ "$(cat "$RUNNER_TEMP/maestro.status" 2>/dev/null)" = 0 ] || { echo "::error::Installing Maestro failed or never finished."; exit 1; }
-          # Two Maestro processes would fight over the one driver; the warm-up's own result is moot.
-          for _ in $(seq 1 180); do
-            [ -s "$RUNNER_TEMP/warm.status" ] && break
-            sleep 2
-          done
-          tail -n 20 "$RUNNER_TEMP/warm.log" 2>/dev/null
-          [ -s "$RUNNER_TEMP/warm.status" ] || { echo "The warm-up is still running; stopping it."; pkill -f " hierarchy$" || :; }
 
       # `MAESTRO_APP_ID` names the app the flows drive; they have no default.
       - name: Run the flows
