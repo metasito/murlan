@@ -5,7 +5,7 @@ import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { FeltFallback } from "./feltFallback";
-import { useFeltReady, type FeltProps } from "./feltReady";
+import type { FeltProps } from "./feltReady";
 import { levelShade } from "./rail";
 
 const SkiaFelt = lazy(() => import("./feltSkiaBoundary"));
@@ -38,9 +38,8 @@ export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed:
   }
 }
 
-export function Felt({ rig, stops, pool }: FeltProps) {
+export function Felt({ rig, stops, pool, ready, onReady, cards, names }: FeltProps) {
   const [skia, setSkia] = useState(false);
-  const [ready, onReady] = useFeltReady();
   const shadeStyle = useAnimatedStyle(() => ({ opacity: levelShade(rig.lamp.value.level) }));
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export function Felt({ rig, stops, pool }: FeltProps) {
       {skia && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
-            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} />
+            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} names={names} />
           </Suspense>
         </SkiaLoadFailed>
       )}

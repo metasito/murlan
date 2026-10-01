@@ -11,6 +11,7 @@ import { fireEvent, render } from "@testing-library/react-native";
 import { activate } from "./tapHelpers";
 
 import { CardView } from "@/components/CardView";
+import { CardCastContext } from "@/components/table/feltReady";
 import type { Card } from "@/lib/game/gameEngine";
 import { Colors, Shadow } from "@/lib/theme";
 
@@ -54,12 +55,22 @@ describe("a hand card's pressable", () => {
 
 // A per-card outline merges into one frame across a fanned run.
 describe("a selected card", () => {
-  it("is marked by the lifted shadow, not by a border", async () => {
-    const view = await render(<CardView card={CARD} onActivate={() => {}} selected />);
+  it("carries no platform shadow and no border of its own on the felt", async () => {
+    const view = await render(
+      <CardCastContext.Provider value="felt">
+        <CardView card={CARD} onActivate={() => {}} selected />
+      </CardCastContext.Provider>
+    );
     const style = StyleSheet.flatten(view.getByTestId("card-box").props.style);
-    expect(style.boxShadow).toBe(Shadow.cardLifted.boxShadow);
+    for (const prop of ["boxShadow", "shadowOpacity", "shadowRadius", "elevation"]) expect(style).not.toHaveProperty(prop);
     expect(style.borderColor).toBe(Colors.cardEdge);
     expect(style.borderWidth).toBe(1);
+    await view.unmount();
+  });
+
+  it("keeps the lifted shadow off the table", async () => {
+    const view = await render(<CardView card={CARD} onActivate={() => {}} selected />);
+    expect(StyleSheet.flatten(view.getByTestId("card-box").props.style).boxShadow).toBe(Shadow.cardLifted.boxShadow);
     await view.unmount();
   });
 });

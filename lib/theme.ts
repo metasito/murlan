@@ -2,7 +2,7 @@
 // platform-aware Shadow.
 import { Platform } from "react-native";
 
-import { Colors } from "./tokens";
+import { CardGlow, Colors } from "./tokens";
 
 export * from "./tokens";
 
@@ -82,37 +82,42 @@ export function makeLayeredShadow(layers: ShadowLayer[], elevation: number): Rec
   };
 }
 
+const CARD_LAYERS = {
+  /** A card resting on the felt. */
+  face: [
+    { color: '#000000', offsetY: 0.5, opacity: 0.62, radius: 0.75 },
+    { color: '#000000', offsetY: 2, opacity: 0.34, radius: 4.5 },
+  ],
+  /** A card held above the cloth. */
+  lifted: [
+    { color: '#000000', offsetY: 1, opacity: 0.34, radius: 3 },
+    { color: '#000000', offsetY: 6, opacity: 0.3, radius: 13 },
+  ],
+  /** A card back — an opponent's fan resting on the felt, same contact+cast split as the face. */
+  back: [
+    { color: '#000000', offsetY: 0.5, opacity: 0.7, radius: 1 },
+    { color: '#000000', offsetY: 3, opacity: 0.36, radius: 6.5 },
+  ],
+} as const;
+const CARD_ELEVATION = { face: 3, lifted: 14, back: 5 } as const;
+
+/** A card view's own contact+cast pair; a resting card's cast moved to `cast` where the table gives one. */
+export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null): Record<string, any> {
+  const [contact, fall] = CARD_LAYERS[kind];
+  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: cast.x, offsetY: cast.y } : fall;
+  return makeLayeredShadow([contact, moved], CARD_ELEVATION[kind]);
+}
+
 // Authored at scale 1, where the table's own shadows are quoted. The art
 // direction measures them at 2x, so every distance here is half the figure on
 // artboard A.
 export const Shadow = {
   gold: makeShadow(Colors.gold, 0, 0, 0.6, 12, 10),
   dark: makeShadow('#000000', 0, 4, 0.5, 8, 8),
-  goldSoft: makeShadow(Colors.gold, 0, 0, 0.55, 14, 8),
+  cardGlow: makeShadow(CardGlow.color, 0, 0, CardGlow.alpha, CardGlow.blur, 0),
   raised: makeShadow('#000000', 0, 2, 0.4, 8, 10),
   overlay: makeShadow('#000000', 0, 8, 0.5, 32, 20),
-  /** A card resting on the felt. */
-  card: makeLayeredShadow(
-    [
-      { color: '#000000', offsetY: 0.5, opacity: 0.62, radius: 0.75 },
-      { color: '#000000', offsetY: 2, opacity: 0.34, radius: 4.5 },
-    ],
-    3
-  ),
-  /** A card held above the cloth. */
-  cardLifted: makeLayeredShadow(
-    [
-      { color: '#000000', offsetY: 1, opacity: 0.34, radius: 3 },
-      { color: '#000000', offsetY: 6, opacity: 0.3, radius: 13 },
-    ],
-    14
-  ),
-  /** A card back — an opponent's fan resting on the felt, same contact+cast split as the face. */
-  cardBack: makeLayeredShadow(
-    [
-      { color: '#000000', offsetY: 0.5, opacity: 0.7, radius: 1 },
-      { color: '#000000', offsetY: 3, opacity: 0.36, radius: 6.5 },
-    ],
-    5
-  ),
+  card: cardShadow("face"),
+  cardLifted: cardShadow("lifted"),
+  cardBack: cardShadow("back"),
 };

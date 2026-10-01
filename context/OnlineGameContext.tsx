@@ -81,11 +81,14 @@ const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
 /** Another seat dropping (`back: false`) or returning, in the viewer's language. */
 export type ReconnectNotice = { text: string; back: boolean };
 
+/** A server refusal. `seq` is new per event, so the same words arriving twice are two changes. */
+export type ServerError = { text: string; seq: number };
+
 interface OnlineGameContextValue {
   room: RoomState | null;
   gameState: GameState | null;
   connected: boolean;
-  error: string | null;
+  error: ServerError | null;
   playerLeft: boolean;
   rejoinFailed: boolean;
   reconnectNotice: ReconnectNotice | null;
@@ -279,7 +282,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const qc = useQueryClient();
   const [room, setRoom] = useState<RoomState | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ServerError | null>(null);
+  const errorSeqRef = useRef(0);
   const [playerLeft, setPlayerLeft] = useState(false);
   const [entrySource, setEntrySource] = useState<"quickmatch" | "friends" | null>(null);
   const [rematchVoteState, setRematchVoteState] = useState<RematchVoteState | null>(null);
@@ -540,7 +544,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // send `room:unspectate` for the next table the player actually sits at,
       // which releases nothing — the seat stays occupied and keeps being dealt.
       setIsSpectator(false);
-      setError(translateServerPayload(payload));
+      setError({ text: translateServerPayload(payload), seq: ++errorSeqRef.current });
     };
 
     const onGameState = (
@@ -611,7 +615,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     };
 
     const onGameError = (payload: ServerPayload) => {
-      setError(translateServerPayload(payload));
+      setError({ text: translateServerPayload(payload), seq: ++errorSeqRef.current });
     };
 
     const onGameNotification = (
@@ -964,6 +968,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setCumulativeScores({});
     setPlayerLeft(false);
     setRejoinFailed(false);
+    // The lobby stays mounted under the table: a refusal about it would greet the player there.
+    setError(null);
     setReconnectNotice(null);
     if (reconnectNoticeTimerRef.current) clearTimeout(reconnectNoticeTimerRef.current);
     forgetRejoinAttempt();

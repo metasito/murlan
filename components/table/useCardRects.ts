@@ -33,14 +33,17 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
   const key = JSON.stringify(places);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardRects?: () => CardRects; murlanCardFelt?: () => Felt };
+    const e2e = globalThis as { murlanCardRects?: () => CardRects; murlanCardFelt?: () => Felt; murlanCardPile?: () => Places["pile"] };
     const read = () => ({ ...rects.get() });
     const felt = () => (JSON.parse(key) as Places).felt;
+    const pile = () => (JSON.parse(key) as Places).pile;
     e2e.murlanCardRects = read;
     e2e.murlanCardFelt = felt;
+    e2e.murlanCardPile = pile;
     return () => {
       if (e2e.murlanCardRects === read) delete e2e.murlanCardRects;
       if (e2e.murlanCardFelt === felt) delete e2e.murlanCardFelt;
+      if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
   return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift }), [key, rects, motion, handLift]);

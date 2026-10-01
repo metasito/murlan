@@ -17,6 +17,7 @@ import { Felt } from '@/components/table/feltSkia.web';
 import { TABLE_CENTRE, restingLamp } from '@/components/table/lampRig';
 import { SHADE_MAX } from '@/components/table/rail';
 import type { LampRig } from '@/components/table/useLampRig';
+import type { CardTable } from '@/components/table/useCardRects';
 import { FeltGradients } from '@/lib/tokens';
 
 const createElement = jest.fn(() => ({ getContext: () => null }));
@@ -36,7 +37,8 @@ describe('the web fallback felt', () => {
   it('stays where WebGL draws on the CPU, and darkens with the lamp level as the Skia felt does', async () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE, 0.75));
     const rig = { lamp, sx: 1, sy: 1 } as unknown as LampRig;
-    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} pool={TABLE_CENTRE} />);
+    const cards = {} as CardTable;
+    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} pool={TABLE_CENTRE} ready={false} onReady={() => {}} cards={cards} names={[]} />);
     await nextFrame();
 
     expect(createElement).toHaveBeenCalledWith('canvas');

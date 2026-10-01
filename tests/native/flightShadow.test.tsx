@@ -3,6 +3,7 @@
 import { describe, it, expect } from '@jest/globals';
 import { render, screen } from '@testing-library/react-native';
 import type { Card } from '@/lib/game/gameEngine';
+import { CardCastContext } from '@/components/table/feltReady';
 import { flightOf, pileOf } from './helpers/landing';
 
 const CARDS: Card[] = [
@@ -11,14 +12,14 @@ const CARDS: Card[] = [
 ];
 
 describe('a flying card', () => {
-  it('draws no lifted shadow', async () => {
+  it('draws no shadow on itself or on any view inside it', async () => {
     const flight = flightOf('k', CARDS, CARDS.map(() => ({ x: 0, y: -100, rot: 0, scale: 0.4 })));
-    const r = await render(pileOf({ plays: [flight], flights: [flight] }));
+    const r = await render(<CardCastContext.Provider value="felt">{pileOf({ plays: [flight], flights: [flight] })}</CardCastContext.Provider>);
 
     expect(screen.queryByTestId('flying-shadow-lifted')).toBeNull();
     const fliers = screen.getAllByTestId('flying-card', { includeHiddenElements: true });
     expect(fliers).toHaveLength(CARDS.length);
-    for (const node of fliers) {
+    for (const node of fliers.flatMap((f) => [f, ...f.queryAll(() => true)])) {
       const style = Object.assign({}, ...[node.props.style].flat(3).filter(Boolean));
       expect(style).not.toHaveProperty('shadowOpacity');
       expect(style).not.toHaveProperty('elevation');

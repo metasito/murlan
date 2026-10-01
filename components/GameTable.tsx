@@ -61,6 +61,7 @@ import {
   type TradeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import type { ServerError } from "@/context/OnlineGameContext";
 import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
@@ -124,7 +125,9 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { TopOppSlot, SideOppSlot, seatLit, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
+import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
+import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal } from "@/components/table/deal";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
@@ -301,7 +304,7 @@ export interface GameTableProps {
   /** Transient strips under the top bar (the replay's transport). */
   banners?: React.ReactNode;
   /** The server's refusal, floated while it stands (online only). */
-  error?: string | null;
+  error?: ServerError | null;
   /** How many times the viewer's turn was passed for them: each new count floats the pass under its own title. */
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
@@ -551,7 +554,7 @@ export function GameTable({
     players
   );
   const [passSeen, setPassSeen] = useState(gameState);
-  const [errorSeen, setErrorSeen] = useState<string | null>(null);
+  const [errorSeen, setErrorSeen] = useState<ServerError | null>(null);
   const [autoSeen, setAutoSeen] = useState(autoPassed);
   const [float, setFloat] = useState<Float | null>(null);
   let floatNow = float;
@@ -563,9 +566,9 @@ export function GameTable({
       floatNow = { ...floatNow, live: false };
     }
   }
-  if (errorSeen !== error) {
+  if (errorSeen?.seq !== error?.seq) {
     setErrorSeen(error);
-    if (error) floatNow = raised(floatNow, "toast", error, !tableWithdrawn);
+    if (error) floatNow = raised(floatNow, "toast", error.text, !tableWithdrawn);
     else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
   }
   if (autoSeen !== autoPassed) {
@@ -823,7 +826,8 @@ export function GameTable({
     tableMotion,
     handLift
   );
-  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
+  const [feltReady, onFeltReady] = useFeltReady();
+  const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -1011,6 +1015,20 @@ export function GameTable({
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const onMove = (seat: number) => !trade && seat === shownTurnIndex;
+  const nameBoxes = seatNameBoxes(
+    cardTable.seats,
+    scale,
+    focusMode
+      ? {}
+      : Object.fromEntries(
+          (["top", "left", "right"] as const).flatMap((side) => {
+            const o = opponents[side];
+            return o ? [[side, seatLit(onMove(o.seat), seatMark(o.seat))]] : [];
+          })
+        )
+  );
+  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors, names: nameBoxes }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
@@ -1018,6 +1036,7 @@ export function GameTable({
 
   return (
     <CardTableProvider value={cardTable}>
+    <CardCastContext.Provider value={cardCast}>
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
@@ -1027,7 +1046,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} />
+        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} names={nameBoxes} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
@@ -1235,7 +1254,7 @@ export function GameTable({
               {opponents.top ? (
                 <TopOppSlot
                   player={opponents.top.player}
-                  isActive={!trade && opponents.top.seat === shownTurnIndex}
+                  isActive={onMove(opponents.top.seat)}
                   cardCount={seatCount(opponents.top.seat, opponents.top.player)}
                   dealArrivals={deal.arrivalsFor(opponents.top.seat)}
                   passed={passed.includes(opponents.top.seat)}
@@ -1260,7 +1279,7 @@ export function GameTable({
                 {opponents.left && (
                   <SideOppSlot
                     player={opponents.left.player}
-                    isActive={!trade && opponents.left.seat === shownTurnIndex}
+                    isActive={onMove(opponents.left.seat)}
                     side="left"
                     cardCount={seatCount(opponents.left.seat, opponents.left.player)}
                     dealArrivals={deal.arrivalsFor(opponents.left.seat)}
@@ -1339,7 +1358,7 @@ export function GameTable({
                 {opponents.right && (
                   <SideOppSlot
                     player={opponents.right.player}
-                    isActive={!trade && opponents.right.seat === shownTurnIndex}
+                    isActive={onMove(opponents.right.seat)}
                     side="right"
                     cardCount={seatCount(opponents.right.seat, opponents.right.player)}
                     dealArrivals={deal.arrivalsFor(opponents.right.seat)}
@@ -1471,6 +1490,7 @@ export function GameTable({
         {portrait && <RotateOverlay />}
       </Animated.View>
     </View>
+    </CardCastContext.Provider>
     </CardTableProvider>
   );
 }

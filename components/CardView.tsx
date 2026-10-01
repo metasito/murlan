@@ -1,4 +1,4 @@
-import React, { useEffect, useId } from "react";
+import React, { useContext, useEffect, useId } from "react";
 import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import Animated, {
@@ -14,13 +14,15 @@ import Svg, { Path, Circle, G, Rect, Defs, Use } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
   CardFaceGradient,
+  cardShadow,
   Colors,
   FontSize,
   Lantern,
+  Layer,
   Motion,
-  Shadow,
   withAlpha,
 } from "@/lib/theme";
+import { CardCastContext } from "@/components/table/feltReady";
 import { getCardBack, useCardBack, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -468,6 +470,14 @@ function OrnateCardBack({
   );
 }
 
+/**
+ * The gold glow under a selected or catching card, until the felt draws it. Its own component: a
+ * card that read the cast would re-render as the lamp moves and restart its rectangle's mapper.
+ */
+export function FallbackGlow({ style }: { style: React.ComponentProps<typeof Animated.View>["style"] }) {
+  return useContext(CardCastContext) === "felt" ? null : <Animated.View pointerEvents="none" style={style} />;
+}
+
 // ─── CardView ─────────────────────────────────────────────────────────────────
 
 /** The finger-down acknowledgement: how far a pressed card rises, in points, and tips, in degrees. */
@@ -629,11 +639,14 @@ function CardViewBase({
 
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
+  const cast = useContext(CardCastContext);
+  const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast);
 
   if (faceDown) {
     const backStyle = {
       borderRadius: cardRadius(w),
       borderColor: withAlpha(back.ink, 0.32),
+      ...shadow,
     };
     return (
       <Animated.View style={[animStyle, style]}>
@@ -654,10 +667,8 @@ function CardViewBase({
     );
   }
 
-  const stockStyle = {
-    borderRadius: cardRadius(w),
-    ...cardStockShadow(stockLipHeight(h)),
-  };
+  const stockStyle = { borderRadius: cardRadius(w), ...shadow };
+  const lipStyle = { width: w, height: h, top: stockLipHeight(h), borderRadius: cardRadius(w) };
 
   const rankText = card.isJoker ? "JK" : getCardDisplayRank(card.rank);
   // "10" is the only two-glyph rank. At the single-glyph size it renders wider
@@ -723,6 +734,7 @@ function CardViewBase({
         // corners, and a strip narrower than the card would clip the art with it.
         style={{ width: hitWidth ?? w, height: h }}
       >
+        <View pointerEvents="none" style={[styles.lip, lipStyle]} />
         {/* Named because it is not the same box as the pressable around it: in
             a hand, that one is only the strip this card exposes. Anything
             measuring what the player *sees* has to measure this.
@@ -735,7 +747,7 @@ function CardViewBase({
         <View
           testID="card-box"
           pointerEvents="none"
-          style={[styles.card, { width: w, height: h }, stockStyle, selected && Shadow.cardLifted]}
+          style={[styles.card, styles.stock, { width: w, height: h }, stockStyle]}
         >
           {selectedHint.node}
           <LinearGradient
@@ -775,26 +787,6 @@ function CardViewBase({
       </Pressable>
     </Animated.View>
   );
-}
-
-// ─── Card stock ───────────────────────────────────────────────────────────────
-
-/**
- * `Shadow.card`'s contact+cast pair (lib/theme.ts) plus a solid, unblurred
- * lip along the bottom edge. Recombined here, not folded into `Shadow.card`
- * itself, because the lip scales with the card and `Shadow.card` does not.
- *
- * The lip goes first: a shadow list paints front to back, and the contact
- * layer sits at the same offset in near-opaque black, so a lip listed after it
- * is drawn under it and never appears.
- *
- * Old Android's (<28) shadow fallback carries no `boxShadow` to prepend to —
- * it keeps the cast shadow alone, same policy `makeLayeredShadow` uses.
- */
-function cardStockShadow(lipHeight: number): Record<string, any> {
-  const base = Shadow.card as Record<string, any>;
-  if (typeof base.boxShadow !== "string") return base;
-  return { ...base, boxShadow: `0px ${lipHeight}px 0px ${Colors.cardLip}, ${base.boxShadow}` };
 }
 
 // ─── TopLight ─────────────────────────────────────────────────────────────────
@@ -881,8 +873,10 @@ const styles = StyleSheet.create({
   cardBack: {
     backgroundColor: Colors.felt,
     borderWidth: 1,
-    ...Shadow.cardBack,
   },
+  // A solid view under the card rather than a shadow layer: nothing to mask, on the felt or off it.
+  lip: { position: "absolute", left: 0, zIndex: Layer.felt, backgroundColor: Colors.cardLip },
+  stock: { zIndex: Layer.table },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.
   courtArt: {
