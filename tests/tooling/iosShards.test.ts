@@ -84,17 +84,17 @@ test("a shard needs the app job, which restores, and downloads the app it upload
   assert.doesNotMatch(job("flows"), /actions\/install|npm ci|actions\/ios-app|gh api/);
 });
 
-test("the simulator services no flow needs are found running, disabled and gone before the app is installed", () => {
+test("the simulator services no flow needs are found, disabled and gone before the app is installed", () => {
   const name = "Stop the simulator services no flow needs";
   const stop = step(IOS, name);
   assert.ok(IOS.indexOf(`- name: ${name}`) < IOS.indexOf("- name: Install the app on the simulator"));
   const services = /SERVICES: >-\n((?: {12}.+\n)+)/.exec(stop)![1].trim().split(/\s+/);
   for (const host of ["com.apple.apsd", "com.apple.chronod", "com.apple.PosterBoard"]) assert.ok(services.includes(host), host);
-  assert.match(stop, /for label in \$SERVICES; do\n\s+pid=\$\(pid_of "\$label"\)\n\s+\[ -n "\$pid" \] \|\| \{ echo "::error::.*"; exit 1; \}\n/);
-  assert.match(stop, /\[ "\$extensions" -gt 0 \] \|\| \{ echo "::error::.*"; exit 1; \}\n/);
+  assert.match(stop, /for label in \$SERVICES; do\n.*'\$3 == label \{ found = 1 \} END \{ exit !found \}' \|\|\n\s+\{ echo "::error::.*"; exit 1; \}\n\s+pids="\$pids \$\(pid_of "\$label"\)"\n/);
+  assert.match(stop, /extensions=\$\(pgrep -f "\$EXTENSIONS".*\n.*\[ -n "\$extensions" \] \|\| \{ echo "::error::.*"; exit 1; \}\n\s+pids="\$pids \$extensions"\n/);
   assert.match(stop, /launchctl disable "system\/\$label"\n/);
   assert.match(stop, /pkill -f "\$EXTENSIONS"/);
-  assert.match(stop, /for pid in \$pids; do kill -0/);
-  assert.match(stop, /pgrep -f "\$EXTENSIONS" > \/dev\/null && alive=/);
+  assert.match(stop, /for pid in \$pids; do kill -0 "\$pid" 2> \/dev\/null && alive=/);
+  assert.match(stop, /for label in \$SERVICES; do \[ -z "\$\(pid_of "\$label"\)" \] \|\| alive=/);
   assert.match(stop, /\[ -z "\$alive" \] && \{ .*exit 0; \}\n[\s\S]*echo "::error::.*"\n\s+exit 1\s*$/);
 });

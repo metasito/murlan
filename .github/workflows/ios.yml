@@ -224,7 +224,8 @@ jobs:
 
       # A booted simulator's widget and poster extensions alone hold about 7 GB of a 7 GB runner, so
       # the flows page, and a tap synthesized while the runner is that starved is lost (#1378 B).
-      # No flow uses any of these; each must be running now and gone before the app is installed.
+      # No flow uses any of these. A daemon may be idle now, so it need only be known to launchd;
+      # every one, and every extension running now, must be gone before the app is installed.
       - name: Stop the simulator services no flow needs
         env:
           SERVICES: >-
@@ -240,12 +241,13 @@ jobs:
           listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
           pids=""
           for label in $SERVICES; do
-            pid=$(pid_of "$label")
-            [ -n "$pid" ] || { echo "::error::$label is not running on the simulator."; exit 1; }
-            pids="$pids $pid"
+            printf '%s\n' "$listed" | awk -v label="$label" '$3 == label { found = 1 } END { exit !found }' ||
+              { echo "::error::The simulator has no $label to stop."; exit 1; }
+            pids="$pids $(pid_of "$label")"
           done
-          extensions=$(pgrep -f "$EXTENSIONS" | wc -l)
-          [ "$extensions" -gt 0 ] || { echo "::error::The simulator runs no app extension to stop."; exit 1; }
+          extensions=$(pgrep -f "$EXTENSIONS" | tr '\n' ' ')
+          [ -n "$extensions" ] || { echo "::error::The simulator runs no app extension to stop."; exit 1; }
+          pids="$pids $extensions"
           for label in $SERVICES; do
             xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable "system/$label"
             xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" || :
@@ -256,11 +258,10 @@ jobs:
             for pid in $pids; do kill -0 "$pid" 2> /dev/null && alive="$alive $pid"; done
             listed=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list)
             for label in $SERVICES; do [ -z "$(pid_of "$label")" ] || alive="$alive $label"; done
-            pgrep -f "$EXTENSIONS" > /dev/null && alive="$alive extensions"
-            [ -z "$alive" ] && { echo "Stopped$pids and $extensions extensions."; exit 0; }
+            [ -z "$alive" ] && { echo "Stopped$pids."; exit 0; }
             sleep 1
           done
-          pgrep -lf "$EXTENSIONS" || :
+          for pid in $alive; do ps -o pid=,command= -p "$pid" 2> /dev/null || :; done
           echo "::error::Still running after being stopped:$alive"
           exit 1
 
