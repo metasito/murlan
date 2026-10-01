@@ -30,6 +30,7 @@ import Animated, {
   withSequence,
   withRepeat,
   Easing,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -117,15 +118,17 @@ function RankCard({
   useEffect(() => {
     opacity.value = withDelay(
       delay,
-      withTiming(1, { duration: motionMs("travel", reduceMotion) })
+      withTiming(1, { duration: motionMs("travel", reduceMotion) }),
+      ReduceMotion.System
     );
-    tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance));
+    tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance), ReduceMotion.System);
     const counting = delay + motionMs("travel", reduceMotion);
-    chip.value = withDelay(counting, withTiming(1, { duration: motionMs("shift", reduceMotion) }));
-    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, { duration: motionMs("shift", reduceMotion) }));
+    const shift = { duration: motionMs("shift", reduceMotion) };
+    chip.value = withDelay(counting, withTiming(1, shift), ReduceMotion.System);
+    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, shift), ReduceMotion.System);
     count.value = reduceMotion
       ? row.total
-      : withDelay(counting, withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }));
+      : withDelay(counting, withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }), ReduceMotion.System);
   }, [chip, chipY, count, delay, opacity, reduceMotion, row.total, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -214,13 +217,14 @@ function GoldFlake({ index, reach }: { index: number; reach: number }) {
   const flakeMs = motionMs("reveal", usePrefersReducedMotion()) * 2;
   useEffect(() => {
     const easing = Easing.out(Easing.cubic);
-    progress.value = withDelay(delay, withTiming(1, { duration: flakeMs, easing }));
+    progress.value = withDelay(delay, withTiming(1, { duration: flakeMs, easing }), ReduceMotion.System);
     opacity.value = withDelay(
       delay,
       withSequence(
         withTiming(1, { duration: flakeMs * 0.15 }),
         withTiming(0, { duration: flakeMs * 0.85, easing: Easing.in(Easing.quad) })
-      )
+      ),
+      ReduceMotion.System
     );
     return () => {
       cancelAnimation(progress);
