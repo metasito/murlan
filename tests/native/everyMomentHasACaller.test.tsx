@@ -11,7 +11,7 @@ import { t } from '@/lib/i18n';
 import { MOMENTS, type MomentKind } from '@/lib/device/moments';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
-import { bootFeedback, settle, sounds } from './helpers/feedback';
+import { bootFeedback, ctxTime, effects, settle, soundOf, sounds } from './helpers/feedback';
 import { botManche, playBotManche } from './helpers/botManche';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
@@ -60,7 +60,8 @@ async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<t
 
 async function botMancheSounds(): Promise<string[]> {
   const fromBots = Object.values(PROBES).filter((p) => p.run === botSounds);
-  const r = await playBotManche(table, () => fromBots.every((p) => heardIds().some((s) => p.sounds.includes(s))));
+  const started = () => effects().filter((n) => n.startedAt! <= ctxTime(performance.now())).map(soundOf);
+  const r = await playBotManche(table, () => fromBots.every((p) => started().some((s) => s !== undefined && p.sounds.includes(s))));
   const out = heardIds();
   await r.unmount();
   return out;

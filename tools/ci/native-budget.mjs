@@ -1,12 +1,16 @@
 // A jest reporter that fails a CI run of the native suite when one test file's cases, on one project,
-// take longer than its budget, read from the run's own results (what `--json` writes). The cases and
-// not the file's `PASS … (N s)`: that one also holds the module graph's transform, which a cold cache
-// makes 30 s on whichever file loads it first, so it would charge the file nothing in it chose.
+// take longer than its budget, read from the run's own results (what `--json` writes). The cases are
+// budgeted apart from the rest of `PASS … (N s)`, which also holds the module graph's transform that a
+// cold cache charges to whichever file loads it first; the rest gets a ceiling of its own, so work moved
+// into a beforeAll or a module body cannot leave the budget.
 
 import path from "node:path";
 
 /** Under twice the slowest file outside the exceptions, exchangeOnTable's 8.5 s in run 36817916976. */
 export const BUDGET_S = 15;
+
+/** A file's time outside its cases (module load, describe bodies, beforeAll, afterAll) on a cold transform cache, run COLD_RUN. */
+export const OUTSIDE_S = 45;
 
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
@@ -41,6 +45,8 @@ export function overBudget(measured, exceptions = EXCEPTIONS) {
 export default class NativeBudgetReporter {
   /** @type {Record<string, number>} */
   measured = {};
+  /** @type {Record<string, number>} */
+  outside = {};
   /** @type {Error | undefined} */
   error;
 
@@ -53,7 +59,9 @@ export default class NativeBudgetReporter {
   onTestResult(test, result) {
     const project = test.context.config.displayName?.name ?? "default";
     const file = path.relative(this.rootDir, result.testFilePath).split(path.sep).join("/");
-    this.measured[`${project}:${file}`] = result.testResults.reduce((sum, t) => sum + (t.duration ?? 0), 0) / 1000;
+    const cases = result.testResults.reduce((sum, t) => sum + (t.duration ?? 0), 0) / 1000;
+    this.measured[`${project}:${file}`] = cases;
+    this.outside[`${project}:${file}`] = Math.max(0, result.perfStats.runtime / 1000 - cases);
   }
 
   /** @param {unknown} _contexts @param {any} results */
@@ -65,10 +73,15 @@ export default class NativeBudgetReporter {
       return;
     } else {
       process.stdout.write(`Native budget, slowest cases per file:\n${slowest.slice(0, 12).map(([f, s]) => `  ${s.toFixed(1)}s ${f}`).join("\n")}\n`);
-      const over = overBudget(this.measured);
-      for (const { file, seconds, budget } of over) {
+      const outside = Object.entries(this.outside).sort(([, a], [, b]) => b - a);
+      process.stdout.write(`Native budget, most time outside the cases:\n${outside.slice(0, 6).map(([f, s]) => `  ${s.toFixed(1)}s ${f}`).join("\n")}\n`);
+      const over = [
+        ...overBudget(this.measured).map((o) => ({ ...o, what: "its cases" })),
+        ...outside.filter(([, s]) => s > OUTSIDE_S).map(([file, seconds]) => ({ file, seconds, budget: OUTSIDE_S, what: "outside its cases" })),
+      ];
+      for (const { file, seconds, budget, what } of over) {
         process.stdout.write(
-          `::error::${file} took ${seconds.toFixed(1)}s against a budget of ${budget}s (tools/ci/native-budget.mjs). ` +
+          `::error::${file} spent ${seconds.toFixed(1)}s ${what} against a budget of ${budget}s (tools/ci/native-budget.mjs). ` +
             `Find what made it slow; split it, or shrink what it plays to what it asserts.\n`
         );
       }

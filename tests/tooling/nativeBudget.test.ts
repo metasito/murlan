@@ -1,21 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import NativeBudgetReporter, { BUDGET_S, EXCEPTIONS, MAX_EXCEPTION_S, overBudget } from "../../tools/ci/native-budget.mjs";
+import NativeBudgetReporter, { BUDGET_S, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;
 
-function run(files: Record<string, number[]>, failedSuites = 0) {
+function run(files: Record<string, number[]>, failedSuites = 0, runtimeS: Record<string, number> = {}) {
   const reporter = new NativeBudgetReporter({ rootDir: repoRoot });
   for (const [key, durations] of Object.entries(files)) {
     const [project, file] = key.split(/:(.*)/s);
     reporter.onTestResult(
       { context: { config: { displayName: { name: project } } } },
-      { testFilePath: path.join(repoRoot, file), testResults: durations.map((duration) => ({ duration })) }
+      {
+        testFilePath: path.join(repoRoot, file),
+        testResults: durations.map((duration) => ({ duration })),
+        perfStats: { runtime: runtimeS[key] !== undefined ? runtimeS[key] * 1000 : durations.reduce((a, b) => a + b, 0) },
+      }
     );
   }
   const write = process.stdout.write;
@@ -42,7 +46,7 @@ test("a file whose cases outlast the budget is named; one within it, or within i
 test("the reporter fails a green run with a file over budget, summing its cases, and names the file and project", () => {
   const { error, out } = run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S), ms(1)], "android:tests/native/tableNotices.test.tsx": [ms(1)] });
   assert.ok(error instanceof Error);
-  assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx took/);
+  assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s its cases/);
   assert.doesNotMatch(out, /::error::android:/);
 });
 
@@ -57,9 +61,28 @@ test("a run that measured no file, or no time in any, is red, red run or not", (
   assert.ok(run({ "ios:tests/native/tableNotices.test.tsx": [0] }).error instanceof Error);
 });
 
-test("the budget cannot be loosened past what was measured, nor an exception past a minute", () => {
+test("work moved out of the cases, into a beforeAll or the module body, is caught by its own ceiling", () => {
+  const key = "ios:tests/native/tableNotices.test.tsx";
+  const { error, out } = run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S + 2 });
+  assert.ok(error instanceof Error);
+  assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s outside its cases/);
+  assert.equal(run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S }).error, undefined);
+});
+
+test("the budget cannot be loosened past what was measured, nor an exception past a minute, nor the exceptions multiplied", () => {
   assert.ok(BUDGET_S <= 15, `BUDGET_S ${BUDGET_S}`);
+  assert.ok(OUTSIDE_S <= 45, `OUTSIDE_S ${OUTSIDE_S}`);
   assert.ok(MAX_EXCEPTION_S <= 60, `MAX_EXCEPTION_S ${MAX_EXCEPTION_S}`);
+  assert.ok(Object.keys(exceptions).length <= 3, `${Object.keys(exceptions).length} exceptions`);
+});
+
+test("the native job restores its jest cache only under the exact dependency set it was built from", () => {
+  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+  const native = /^ {2}native:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
+  const restore = /- id: jest-cache\n([\s\S]*?)(?=\n\s*- )/.exec(native)?.[1] ?? "";
+  assert.match(restore, /actions\/cache\/restore@/);
+  assert.match(restore, /key: native-jest-\$\{\{ hashFiles\('package-lock\.json', 'patches\/\*\*', 'babel\.config\.js'/);
+  assert.doesNotMatch(native, /restore-keys/);
 });
 
 test("each exception names a native file and a project, says why, and grants more than the budget and no more than the cap", () => {
