@@ -34,8 +34,8 @@ const repo = {
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
   unmerged: (paths: string[]) => paths.length > 0 && paths.every((p) => p.includes("conflicted")),
-  top: (): string | null => "/r",
-  cwd: (): string => "/r",
+  top: (dir?: string | null): string | null => resolve("/r", dir?.startsWith(".worktrees") ? dir : "."),
+  cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
 };
 const device = () => "iOS UI (Maestro)";
 const guard = (cmd: string) => check(cmd, device, repo);
@@ -471,6 +471,8 @@ describe("loop sessions only", () => {
       `while ($true) { gh pr checks 12; Start-Sleep 30 }`,
       "gh pr checks 12 --watch",
       `bash -c 'while true; do gh run view 1; sleep 30; done'`,
+      `bash <<< 'while true; do gh run view 1; sleep 30; done'`,
+      `iex 'while ($true) { gh run view 1; Start-Sleep 30 }'`,
       "1..48 | % { gh run view 1; Start-Sleep 30 }",
     ]) {
       assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
@@ -493,6 +495,19 @@ describe("loop sessions only", () => {
   });
 });
 
+describe("a redirect under git -C is judged by the path git sees", () => {
+  test("a dirty file named from the shell's cwd is found relative to -C's directory", () => {
+    const seen: string[][] = [];
+    const spy = { ...repo, pathsClean: (p: string[]) => (seen.push(p), !p.includes("dirty.ts")) };
+    const cmd = "git -C .worktrees/agent-5 show HEAD:dirty.ts > .worktrees/agent-5/dirty.ts";
+    assert.match(String(check(cmd, device, spy)), DISCARD);
+    assert.deepEqual(seen, [["dirty.ts"]]);
+  });
+  test("a redirect after a cd is refused with the absolute-path way out", () => {
+    assert.match(String(guard("cd sub && git show HEAD:a.ts > a.ts")), /absolute path/);
+  });
+});
+
 describe("gitAt.unmerged, against a real conflict", () => {
   test("is true only when every path is itself conflicted", () => {
     const dir = mkdtempSync(join(tmpdir(), "guard-unmerged-"));
@@ -511,6 +526,7 @@ describe("gitAt.unmerged, against a real conflict", () => {
       const repo = gitAt(dir);
       assert.equal(repo.unmerged(["c.txt"], null), true);
       assert.equal(repo.unmerged(["./c.txt"], null), true);
+      assert.equal(repo.unmerged([".\\c.txt"], null), true);
       assert.equal(repo.unmerged(["."], null), false);
       assert.equal(repo.unmerged(["c.txt", "d.txt"], null), false);
       assert.equal(repo.unmerged([], null), false);

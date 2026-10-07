@@ -119,6 +119,15 @@ function segments(text, depth) {
   return out;
 }
 
+/** The command line a shell (or `iex`) is handed: its `-c` body, a here-string, or the rest of an `iex`. */
+function shellBodyOf(cmd, rest) {
+  const herestring = rest.indexOf("<<<");
+  const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
+  if (herestring >= 0) return rest[herestring + 1];
+  if (flag < 0) return rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null;
+  return /^(pwsh|powershell|cmd)$/.test(cmd) ? rest.slice(flag + 1).join(" ") : rest[flag + 1];
+}
+
 /**
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
@@ -148,16 +157,7 @@ function normalize(words, depth) {
   const rest = words.slice(i + 1);
 
   if (SHELL.test(cmd) && depth < MAX_DEPTH) {
-    const herestring = rest.indexOf("<<<");
-    const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
-    const body =
-      herestring >= 0
-        ? rest[herestring + 1]
-        : flag < 0
-          ? rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null
-          : /^(pwsh|powershell|cmd)$/.test(cmd)
-            ? rest.slice(flag + 1).join(" ")
-            : rest[flag + 1];
+    const body = shellBodyOf(cmd, rest);
     if (body) return commands(body, depth + 1).map((c) => ({ ...c, piped: c.piped || words.piped === true }));
   }
 
@@ -337,7 +337,7 @@ export function gitAt(base) {
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
     unmerged: (paths, dir) => {
       const conflicted = new Set((answer(["diff", "--name-only", "--relative", "--diff-filter=U"], dir) ?? "").split("\n").filter(Boolean));
-      return paths.length > 0 && paths.every((p) => conflicted.has(p.replace(/^\.\//, "").replaceAll("\\", "/")));
+      return paths.length > 0 && paths.every((p) => conflicted.has(p.replaceAll("\\", "/").replace(/^\.\//, "")));
     },
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
@@ -368,12 +368,11 @@ const loops = (text, depth = 0) =>
   segments(text, 0).some(
     (w) =>
       LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "") ||
-      (depth < MAX_DEPTH && loops(shellBody(w) ?? "", depth + 1)),
+      (depth < MAX_DEPTH && loops(shellBodyIn(w) ?? "", depth + 1)),
   );
-const shellBody = (w) => {
+const shellBodyIn = (w) => {
   const i = w.findIndex((x) => SHELL.test(commandName(x)));
-  const flag = i < 0 ? -1 : w.findIndex((x, j) => j > i && /^(-c|-command|\/c)$/i.test(x));
-  return flag < 0 ? null : w[flag + 1];
+  return i < 0 ? null : shellBodyOf(commandName(w[i]), w.slice(i + 1));
 };
 const pollsARun = (c) =>
   c.cmd === "gh" &&
@@ -544,6 +543,7 @@ const RULES = [
       "has cost real work four times.\n" +
       "Undoing a seeded defect? Reverse it with the Edit tool — the same replacement backwards.\n" +
       "Switching branch? `git switch <branch>` refuses rather than discarding.\n" +
+      "A redirect after a `cd` cannot be placed: name the target by absolute path, or `git -C <dir>` instead of the `cd`.\n" +
       "Resolving a merge or rebase conflict? `git checkout --ours|--theirs -- <path>` is allowed on a conflicted path.\n" +
       "Really want a file back from a commit? Commit your work first, then name the source:\n" +
       "  git checkout HEAD -- path/to/file\n" +
@@ -667,7 +667,7 @@ const RULES = [
     line: (parsed, runnable, { loop }) =>
       loop && loops(runnable) && parsed.some((c) => /^(sleep|start-sleep)$/i.test(c.cmd)) && parsed.some(pollsARun),
     message:
-      "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list or gh pr checks — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
+      "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
