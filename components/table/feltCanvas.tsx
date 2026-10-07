@@ -125,9 +125,11 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
     () => shape.value,
     () => {
       const all = rects.value;
+      const sets = kinds.map((kind, i) => shadowClusters(kind, all, felt, midX, paints[i].reach));
+      if (drawn.value === empty && sets.every((s) => s.length === 0)) return;
       const canvas = recorder.beginRecording();
       kinds.forEach((kind, i) => {
-        for (const keys of shadowClusters(kind, all, felt, midX, paints[i].reach)) {
+        for (const keys of sets[i]) {
           builder.reset();
           buildShadow(builder, kind, all, felt, midX, keys);
           const path = builder.build();
