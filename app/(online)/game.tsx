@@ -18,6 +18,8 @@ import {
   useOnlineTurnClock,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
+import { useSocket } from "@/context/SocketContext";
+import { useOwnLink } from "@/lib/useOwnLink";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import { vacatedOf } from "@/shared/protocol";
@@ -70,7 +72,9 @@ export default function OnlineGameScreen() {
     rejoinFailed,
     clearPlayerLeft,
     clearRejoinFailed,
+    retryConnection,
   } = useOnlineConnection();
+  const ownLink = useOwnLink(useSocket().socket);
   const {
     matchState,
     cumulativeScores,
@@ -268,15 +272,25 @@ export default function OnlineGameScreen() {
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       error={error}
+      ownLink={ownLink}
+      catchUp={ownLink === "back"}
       connection={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
         // an opponent taking their time.
-        !connected
-          ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
-          : reconnectNotice?.back
-            ? { state: "reconnected", text: reconnectNotice.text }
-            : null
+        ownLink === "lost"
+          ? {
+              state: "lost",
+              text: t("onlineGame.connectionLost"),
+              action: { label: t("common.retry"), onPress: retryConnection },
+            }
+          : ownLink === "back"
+            ? { state: "back", text: t("onlineGame.backOnline") }
+            : ownLink === "reconnecting" || (!connected && ownLink === "up")
+              ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
+              : connected && reconnectNotice?.back
+                ? { state: "reconnected", text: reconnectNotice.text }
+                : null
       }
       autoPassed={autoPassed}
       endMatchVote={

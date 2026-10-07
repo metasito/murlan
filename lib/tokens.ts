@@ -539,6 +539,7 @@ export const Reconnect = {
    */
   giveUp: 15_000,
   lamp: 0.55,
+  lampRate: 1,
 } as const;
 
 /**
