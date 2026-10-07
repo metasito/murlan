@@ -40,7 +40,7 @@ import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
-import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing } from "@/lib/theme";
+import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing, withAlpha } from "@/lib/theme";
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { Combination, Player } from "@/lib/game/gameEngine";
@@ -874,11 +874,11 @@ const seatStyles = StyleSheet.create({
   whoLabelLeft: { alignItems: "flex-start" },
   whoLabelRight: { alignItems: "flex-end" },
 
-  // Bare on the felt, as the mockup's `.nm`: its ink is held to 4.5:1 over the
-  // felt behind it by tests/e2e/seatNameContrast.spec.ts.
+  // Bare on the felt, as the mockup's `.nm`: unlit, its ink is held to 4.5:1 over
+  // the felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
-    color: "rgba(240,234,214,0.7)",
+    color: withAlpha(Colors.text, 0.7),
     letterSpacing: 1.5,
     textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,

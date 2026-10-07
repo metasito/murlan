@@ -78,7 +78,7 @@ export const CLOTH_GLSL = `precision highp float;\nuniform vec2 uRes,uPx;\n${UNI
 
 export type ClothUniforms = Record<string, number | number[]>;
 
-export function rgb(hex: string): number[] {
+function rgb(hex: string): number[] {
   "worklet";
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 }
