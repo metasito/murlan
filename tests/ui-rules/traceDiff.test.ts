@@ -26,6 +26,8 @@ function reference(): Trace {
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
       scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
       flight: 0,
+      motes: 12,
+      moth: null,
     });
   }
   const regions = CHECKPOINTS.map((t) => ({

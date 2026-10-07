@@ -3,6 +3,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { MOTES, createAir, moteAlpha, mothPose, moteAt, stepAir, type Air, type AirLight } from "../../components/table/air.ts";
+import { D, DRAW_STRIDE, SPRITE_R, layoutMotes } from "../../components/table/particleSprites.ts";
+import { rgba } from "../../components/table/particles.ts";
+import { RestAir } from "../../lib/tokens.ts";
 import { fixtureBlock, fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 import { mulberry32 } from "../engine/helpers.ts";
 
@@ -63,22 +66,27 @@ function mockup(seed: number) {
   };
 }
 
+/** What the draw layers draw: the motes through the sprite layout, the moth from its pose. */
 function appDraws(air: Air, light: AirLight): Ellipse[] {
   const out: Ellipse[] = [];
+  const draws = new Float32Array(MOTES * DRAW_STRIDE);
+  layoutMotes(air, light, draws, 0);
   for (let i = 0; i < MOTES; i++) {
-    const a = moteAlpha(air, i, light);
-    const m = moteAt(air, i);
-    if (a > 0) out.push({ fill: `rgba(255,228,170,${a.toFixed(3)})`, x: m.x, y: m.y, rx: m.r, ry: m.r, rot: 0 });
+    const d = i * DRAW_STRIDE;
+    const r = draws[d + D.scos] * SPRITE_R;
+    const [cr, cg, cb] = [D.r, D.g, D.b].map((k) => Math.round(draws[d + k] * 255));
+    const fill = `rgba(${cr},${cg},${cb},${draws[d + D.a].toFixed(3)})`;
+    if (draws[d + D.a] > 0) out.push({ fill, x: draws[d + D.tx] + r, y: draws[d + D.ty] + r, rx: r, ry: r, rot: 0 });
   }
   const moth = mothPose(air, light);
   if (moth) {
-    out.push({ fill: "rgba(0,0,0,.28)", x: moth.sx, y: moth.sy, rx: moth.shadowRx, ry: moth.shadowRy, rot: moth.shadowRot });
-    for (const side of [-1, 1]) out.push({ fill: "rgba(232,214,176,.9)", x: moth.mx + side * moth.wing, y: moth.my, rx: moth.wing, ry: moth.wingRy, rot: 0 });
+    out.push({ fill: RestAir.mothShadow, x: moth.sx, y: moth.sy, rx: moth.shadowRx, ry: moth.shadowRy, rot: moth.shadowRot });
+    for (const side of [-1, 1]) out.push({ fill: RestAir.moth, x: moth.mx + side * moth.wing, y: moth.my, rx: moth.wing, ry: moth.wingRy, rot: 0 });
   }
   return out;
 }
 
-const close = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < 1e-6, `${what}: ${a} against ${b}`);
+const close = (a: number, b: number, what: string, within = 1e-6) => assert.ok(Math.abs(a - b) < within, `${what}: ${a} against ${b}`);
 
 describe("the air at rest", () => {
   test("drifts, wraps, twinkles and sends the moth across as the mockup's lampStep and drawAir do", () => {
@@ -103,14 +111,13 @@ describe("the air at rest", () => {
       for (const [k, e] of expected.entries()) {
         const g = got[k];
         const what = `frame ${frame}, shape ${k}`;
-        if (e.fill.startsWith("rgba(255,228,170,")) {
-          lit++;
-          assert.ok(Math.abs(parseFloat(g.fill.slice(17)) - parseFloat(e.fill.slice(17))) <= 0.0011, `${what}: ${g.fill} against ${e.fill}`);
-        } else {
-          assert.equal(g.fill, e.fill, what);
-          mothFrames++;
+        const mote = e.rot === 0 && e.rx === e.ry;
+        if (mote) lit++;
+        else mothFrames++;
+        for (const [n, [gc, ec]] of rgba(g.fill).map((v, c) => [v, rgba(e.fill)[c]]).entries()) {
+          close(gc, ec, `${what}: ${g.fill} against ${e.fill}, channel ${n}`, 0.0011);
         }
-        for (const key of ["x", "y", "rx", "ry", "rot"] as const) close(g[key], e[key], `${what} ${key}`);
+        for (const key of ["x", "y", "rx", "ry", "rot"] as const) close(g[key], e[key], `${what} ${key}`, mote ? 1e-3 : 1e-6);
       }
     }
     assert.ok(onsets >= 3, `${onsets} moths in a minute`);

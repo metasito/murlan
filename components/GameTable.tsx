@@ -1048,7 +1048,7 @@ export function GameTable({
       >
         <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
-        <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
+        <ParticleLayer rig={rig} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
       </View>
 

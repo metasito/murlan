@@ -13,6 +13,7 @@ import {
   step,
   type Particles,
 } from "../../components/table/particles.ts";
+import { MOTES } from "../../components/table/air.ts";
 
 function mulberry32(seed: number): () => number {
   let a = seed;
@@ -109,16 +110,17 @@ describe("the particle module", () => {
     assert.ok(Math.abs(alpha(s.f, 0) - 0.1) < 1e-6);
   });
 
-  test("250 requested gives 200 live and 50 dropped, evicting nothing and never growing the pool", () => {
+  test("250 requested gives 160 live and 90 dropped beside the 40 motes, evicting nothing and never growing the pool", () => {
     const s = createParticles();
     const size = s.f.length;
     for (let i = 0; i < 250; i++) spawn(s, { x: i, y: 0, life: 1 });
     assert.equal(PARTICLE_BUDGET, 200);
-    assert.equal(s.live, 200);
-    assert.equal(s.dropped, 50);
+    assert.equal(MOTES, 40);
+    assert.equal(s.live + MOTES, PARTICLE_BUDGET);
+    assert.equal(s.dropped, 90);
     assert.equal(s.f.length, size);
     const xs = Array.from({ length: s.live }, (_, i) => s.f[i * STRIDE + P.x]).sort((a, b) => a - b);
-    assert.deepEqual(xs, Array.from({ length: 200 }, (_, i) => i), "the first 200 are the ones kept");
+    assert.deepEqual(xs, Array.from({ length: 160 }, (_, i) => i), "the first 160 are the ones kept");
   });
 
   test("the same seed gives the same trace, and another seed another", () => {
