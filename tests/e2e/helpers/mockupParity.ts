@@ -178,8 +178,6 @@ const MOMENTS: Moment[] = [
     onsetWindows: { "moment:moth": [6000, 10_000 + STEP_MS] },
     stripAt: [...Array.from({ length: 32 }, (_, i) => REST_AIR_FROM + i * 480), REST_AIR_TO],
     apart: [REST_AIR_FROM, REST_AIR_TO],
-    // On web the particle canvas is the same over either felt, and only Skia's costs CanvasKit every frame.
-    variants: ["fallback"],
   },
   {
     key: "trick",
