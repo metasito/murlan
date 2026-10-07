@@ -76,10 +76,11 @@ const OFFLINE_TIMER = { seconds: 30, includeNewRound: false };
 /** Online: the server arms its window on every turn, leads included. */
 const ONLINE_TIMER = { seconds: 30, includeNewRound: true };
 
-const table = (gameState: GameState, turnTimer: TurnTimerConfig, ownLink: OwnLink = 'up') => (
+const table = (gameState: GameState, turnTimer: TurnTimerConfig, ownLink: OwnLink = 'up', catchUp = false) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       ownLink={ownLink}
+      catchUp={catchUp}
       gameState={gameState}
       viewerSeat={0}
       onPlay={noop}
@@ -160,6 +161,30 @@ describe("a seat's turn clock", () => {
     expect(right()).toBeCloseTo(180, 0);
     expect(red()).toEqual([0, 0]);
     await view.unmount();
+  });
+
+  it('holds its sweep while a caught-up throw is in the air, and never for an ordinary one', async () => {
+    mockReduceMotion.on = false;
+    const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);
+    const sweptBy = async (catchUp: boolean, ...steps: number[]) => {
+      const view = await render(table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER, 'up', catchUp));
+      const seen: number[] = [];
+      for (const ms of steps) {
+        for (let f = 0; f < ms / 16; f++) {
+          await act(async () => {
+            jest.advanceTimersByTime(16);
+          });
+        }
+        seen.push(right());
+      }
+      await view.unmount();
+      return seen;
+    };
+    const [inAir, landed] = await sweptBy(true, 150, 3000);
+    expect(inAir).toBeCloseTo(0, 0);
+    expect(landed).toBeGreaterThan(10);
+    const [ordinary] = await sweptBy(false, 150);
+    expect(ordinary).toBeGreaterThan(1);
   });
 
   const opacity = (testID: string) =>
