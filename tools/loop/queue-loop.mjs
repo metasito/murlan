@@ -16,6 +16,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
@@ -681,6 +682,22 @@ export async function holdFor(
   return wake ? "woken" : "waited";
 }
 
+/** Keeps a held session's uncommitted work in `refs/loop/wip/<n>` without touching HEAD, the index or the branch. */
+export function snapshotWip(cwd, number, run = sh) {
+  if (!cwd || !run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return null;
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(os.tmpdir(), `loop-wip-${number}-${process.pid}`) };
+  try {
+    run("git", ["-C", cwd, "read-tree", "HEAD"], { env });
+    run("git", ["-C", cwd, "add", "-A", "--", "."], { env });
+    const tree = run("git", ["-C", cwd, "write-tree"], { env }).trim();
+    const sha = run("git", ["-C", cwd, "commit-tree", tree, "-p", "HEAD", "-m", `wip(#${number}): held`]).trim();
+    run("git", ["-C", cwd, "update-ref", `refs/loop/wip/${number}`, sha]);
+    return sha;
+  } finally {
+    fs.rmSync(env.GIT_INDEX_FILE, { force: true });
+  }
+}
+
 /**
  * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
  * issue, the worktree gone.
@@ -781,6 +798,11 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
   const removed = removeLandedTree(cwd, number, { run, write, say });
   if (removed === null || !branch) return removed;
+  try {
+    run("git", ["update-ref", "-d", `refs/loop/wip/${number}`], { cwd: ROOT });
+  } catch {
+    // no snapshot was ever taken
+  }
   try {
     run("git", ["branch", "-d", branch], { cwd: ROOT });
   } catch (err) {
@@ -2243,7 +2265,12 @@ export async function runOnce(io, pinned = null, at = null) {
     io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
     return { outcome: "stop", why: run.strayPlugin };
   }
+  const keepWip = () => {
+    const kept = io.snapshotWip?.(after?.cwd ?? null, route.number);
+    if (kept) io.log(`#${route.number}'s uncommitted work is kept at refs/loop/wip/${route.number} (${kept.slice(0, 7)})`, "session");
+  };
   if (run.accountError) {
+    keepWip();
     io.record({ number: route.number, outcome: "halted", why: run.accountError, run, counts: false });
     return { outcome: "stop", why: `the account cannot run sessions (${run.accountError}) — log in, then npm run queue:loop; #${route.number} resumes from its worktree` };
   }
@@ -2293,6 +2320,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // whose check never ran.
   const status = apiFailure(run);
   if (status) {
+    keepWip();
     const why = `the API answered ${status}`;
     io.record({ number: route.number, outcome: "overloaded", why, run, counts: false });
     return { outcome: "overloaded", ticket: route.number, why, run };
@@ -2302,6 +2330,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
   // stranded the branch and left the claim on.
   if (!pr && run.blocked) {
+    keepWip();
     // Recorded like any other session that ended. A refusal spends real money before it stops, and
     // adding that to the run's total anywhere but here is the third writer that made the ledger
     // need a flag to stop double-counting itself.
@@ -2493,6 +2522,7 @@ function realIo(book, screen) {
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
     loopMoved: () => loopMoved(started),
+    snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () => queuePreStreamed(),
     issueState: (n) => {

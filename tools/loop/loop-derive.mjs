@@ -479,8 +479,10 @@ export function derive({
   let commits = 0;
   let changed = [];
   let dirty = false;
+  let headSubject = "";
   try {
     head = run("git", ["rev-parse", "HEAD"], cwd);
+    headSubject = run("git", ["log", "-1", "--format=%s"], cwd);
     commits = Number(run("git", ["rev-list", "--count", `${base}..HEAD`], cwd));
     changed = run("git", ["diff", "--name-only", `${base}...HEAD`], cwd).split("\n").filter(Boolean);
     dirty = run("git", ["status", "--porcelain"], cwd).length > 0;
@@ -505,13 +507,16 @@ export function derive({
   // queue.md, `PHASE B` — which transposed every step row the board printed and billed the build
   // to B in `loop-cost`. Dirty is the discriminator: an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
-  let phase = scoping ? "B" : commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
+  const wipHead = commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject);
+  let phase = scoping ? "B" : commits === 0 || wipHead ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =
     commits === 0
       ? scoping
         ? "claimed, with nothing committed and nothing in the tree yet"
         : "nothing committed yet"
-      : !trackerReadable
+      : wipHead
+        ? "the head is a wip commit, so the build is unfinished"
+        : !trackerReadable
         ? "cannot reach the tracker to read the review"
         : !verdict
           ? `no review of ${head?.slice(0, 7)} on the issue`

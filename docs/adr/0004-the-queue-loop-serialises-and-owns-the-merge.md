@@ -56,7 +56,9 @@ ambiguous about, no slot to orphan, and no branch cut from a `main` that is abou
 Recovery is re-derivation. Restarting the loop after any failure is safe and is the
 supported repair — there is no state file to reconcile, and `.loop-stop` is read without
 being consumed so a scheduled restart sees it too. A merge touching `tools/loop/` or
-`scripts/lib/` restarts the supervisor between tickets (`run-loop.mjs`, exit 75).
+`scripts/lib/` restarts the supervisor between tickets (`run-loop.mjs`, exit 75). A held
+ticket's uncommitted work is at `refs/loop/wip/<n>`; restore with
+`git -C .worktrees/agent-<n> checkout refs/loop/wip/<n> -- .`.
 
 A mechanical failure no longer reaches the tracker. `settleOutcome` counts it toward the
 breaker and leaves the branch, the pull request and the labels intact for the next

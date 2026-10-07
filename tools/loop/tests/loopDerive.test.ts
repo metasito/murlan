@@ -22,7 +22,7 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody } from "../queue-loop.mjs";
+import { ciRedBody, snapshotWip } from "../queue-loop.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 /**
@@ -240,6 +240,50 @@ describe("fixDelta", () => {
     git("checkout", "-q", "work");
     git("merge", "-q", "--no-ff", "main", "-m", "update branch");
     assert.deepEqual(fixDelta(dir, land), { files: 1, lines: 1 });
+  });
+});
+
+describe("held work", () => {
+  let dir: string;
+  const priorScript = process.env.LOOP_GH_SCRIPT;
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "loop-wip-"));
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@t");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "1\n");
+    git("add", "-A");
+    git("commit", "-qm", "base");
+    git("checkout", "-qb", "agent/9-x");
+  });
+
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
+    else process.env.LOOP_GH_SCRIPT = priorScript;
+  });
+
+  test("a clean tree takes no snapshot", () => assert.equal(snapshotWip(dir, 9), null));
+
+  test("a snapshot keeps the dirty tree in a ref and moves nothing", () => {
+    writeFileSync(join(dir, "a.txt"), "edited\n");
+    writeFileSync(join(dir, "new.txt"), "untracked\n");
+    const status = git("status", "--porcelain");
+    const head = git("rev-parse", "HEAD");
+    assert.ok(snapshotWip(dir, 9));
+    assert.equal(git("status", "--porcelain"), status);
+    assert.equal(git("rev-parse", "HEAD"), head);
+    assert.equal(git("show", "refs/loop/wip/9:a.txt"), "edited\n");
+    assert.equal(git("show", "refs/loop/wip/9:new.txt"), "untracked\n");
+  });
+
+  test("a wip head with no verdict resumes the build, not the review", () => {
+    git("add", "-A");
+    git("commit", "-qm", "wip(#9): parked in phase C");
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
+    assert.equal(derive({ cwd: dir, base: "main" }).phase, "C");
   });
 });
 
