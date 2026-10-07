@@ -837,7 +837,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { greyStyle, frozen: linkHeld } = useLinkHold(ownLink, rig);
+  const { greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1107,7 +1107,7 @@ export function GameTable({
                 active={timerActive}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
-                frozen={linkHeld}
+                frozen={clockHeld}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>

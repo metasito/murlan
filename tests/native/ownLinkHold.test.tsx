@@ -81,4 +81,20 @@ describe('the table holding its breath', () => {
     expect(result.current.frozen).toBe(false);
     await unmount();
   });
+
+  it('holds the clock on the way back until the missed cards have landed', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const { result, rerender, unmount } = await renderHook(
+      ({ link, inFlight }: { link: OwnLink; inFlight: boolean }) => useLinkHold(link, rig, inFlight),
+      { initialProps: { link: 'reconnecting', inFlight: false } }
+    );
+    await rerender({ link: 'back', inFlight: true });
+    expect(rig.freeze).toHaveBeenLastCalledWith(0);
+    expect(result.current.frozen).toBe(true);
+    await rerender({ link: 'back', inFlight: false });
+    expect(result.current.frozen).toBe(false);
+    await rerender({ link: 'up', inFlight: true });
+    expect(result.current.frozen).toBe(false);
+    await unmount();
+  });
 });

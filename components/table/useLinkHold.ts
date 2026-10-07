@@ -18,7 +18,7 @@ export function greyFilter(g: number): string {
 }
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
-export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">) {
+export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, inFlight = false) {
   const reduceMotion = usePrefersReducedMotion();
   const held = HELD.has(link);
   const grey = useSharedValue(held ? Reconnect.grey : 0);
@@ -58,5 +58,5 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => ({ filter: greyFilter(grey.value) }));
-  return { greyStyle, frozen: held };
+  return { greyStyle, frozen: held || (link === "back" && inFlight) };
 }
