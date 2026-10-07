@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PixelRatio, Platform, StyleSheet } from "react-native";
 import {
   AlphaType,
-  BlurMask,
   BlurStyle,
   Canvas,
   ColorType,
@@ -14,7 +13,6 @@ import {
   Group,
   Image,
   PaintStyle,
-  Path,
   Picture,
   RadialGradient,
   Rect,
@@ -22,7 +20,6 @@ import {
   Shader,
   Skia,
   type SkImage,
-  type SkPath,
   type SkPicture,
   type SkRRect,
 } from "@shopify/react-native-skia";
@@ -34,7 +31,7 @@ import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildGlow, buildShadow, SHADOW_PATHS, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 
@@ -87,31 +84,75 @@ function useShadowShape(rects: SharedValue<CardRects>): SharedValue<number> {
   return version;
 }
 
-function useShadowPath(kind: ShadowPath, shape: SharedValue<number>, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPath> {
+const CAST: readonly ShadowPath[] = ["cast"];
+const CONTACT = SHADOW_PATHS.filter((k) => k !== "cast");
+
+function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<number>, rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: number): SharedValue<SkPicture> {
+  const recorder = useMemo(() => Skia.PictureRecorder(), []);
   const builder = useMemo(() => Skia.PathBuilder.Make(), []);
-  const empty = useMemo(() => Skia.Path.Make(), []);
-  const drawn = useSharedValue<SkPath>(empty);
+  const paints = useMemo(
+    () =>
+      kinds.map((kind) => {
+        const { sigma, alpha } = shadowPaint(kind, felt.s);
+        const paint = Skia.Paint();
+        const blur = Skia.MaskFilter.MakeBlur(BlurStyle.Normal, sigma, true);
+        paint.setAntiAlias(true);
+        paint.setColor(Skia.Color(withAlpha(Colors.shadow, alpha)));
+        paint.setMaskFilter(blur);
+        // Skia's kernel stops at three sigma; the point more covers a pixel's rounding.
+        return { paint, blur, reach: 3 * sigma + 1 };
+      }),
+    [kinds, felt.s]
+  );
+  useEffect(
+    () => () => {
+      if (!DISPOSE_PATHS) return;
+      for (const { paint, blur } of paints) {
+        paint.dispose();
+        blur.dispose();
+      }
+    },
+    [paints]
+  );
+  const empty = useMemo(() => {
+    recorder.beginRecording();
+    return recorder.finishRecordingAsPicture();
+  }, [recorder]);
+  const drawn = useSharedValue<SkPicture>(empty);
   // A reaction, not a derived value: a mapper takes every shared value in its closure as an input, and one writing `drawn` re-ran each frame.
   // `rects` is read in the handler, outside the inputs, so a glow-only change builds nothing.
   useAnimatedReaction(
     () => shape.value,
     () => {
-      builder.reset();
-      buildShadow(builder, kind, rects.value, felt, midX);
+      const all = rects.value;
+      const sets = kinds.map((kind, i) => shadowClusters(kind, all, felt, midX, paints[i].reach));
+      if (drawn.value === empty && sets.every((s) => s.length === 0)) return;
+      const canvas = recorder.beginRecording();
+      kinds.forEach((kind, i) => {
+        for (const keys of sets[i]) {
+          builder.reset();
+          buildShadow(builder, kind, all, felt, midX, keys);
+          const path = builder.build();
+          canvas.drawPath(path, paints[i].paint);
+          if (DISPOSE_PATHS) path.dispose();
+        }
+        if (E2E) countBuild("murlanShadowBuilds");
+      });
       const last = drawn.value;
-      drawn.value = builder.build();
-      if (E2E) countBuild("murlanShadowBuilds");
-      if (DISPOSE_PATHS) last.dispose();
+      drawn.value = recorder.finishRecordingAsPicture();
+      if (DISPOSE_PATHS && last !== empty) last.dispose();
     },
-    [builder, kind, rects, felt, midX]
+    [recorder, builder, paints, kinds, rects, felt, midX, empty]
   );
   useEffect(
     () => () => {
       if (!DISPOSE_PATHS) return;
-      drawn.value.dispose();
+      if (drawn.value !== empty) drawn.value.dispose();
+      empty.dispose();
       builder.dispose();
+      recorder.dispose();
     },
-    [builder, drawn]
+    [recorder, builder, drawn, empty]
   );
   return drawn;
 }
@@ -189,15 +230,6 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
   return drawn;
 }
 
-function ShadowLayer({ path, kind, s }: { path: SharedValue<SkPath>; kind: ShadowPath; s: number }) {
-  const { sigma, alpha } = shadowPaint(kind, s);
-  return (
-    <Path path={path} color={withAlpha(Colors.shadow, alpha)}>
-      <BlurMask blur={sigma} style="normal" />
-    </Path>
-  );
-}
-
 // A raster surface: on web an offscreen one is a WebGL context of its own per bake, read back
 // with a GPU stall.
 function bakeRail(k: number): SkImage | null {
@@ -261,32 +293,27 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards }: FeltCanvasPr
   const shade = useDerivedValue(() => levelShade(lamp.value.level));
 
   const { rects, felt } = cards;
-  const s = felt.s;
   const shape = useShadowShape(rects);
-  const paths = {
-    cast: useShadowPath("cast", shape, rects, felt, cards.hand.x),
-    face: useShadowPath("face", shape, rects, felt, cards.hand.x),
-    back: useShadowPath("back", shape, rects, felt, cards.hand.x),
-    fan: useShadowPath("fan", shape, rects, felt, cards.hand.x),
-  };
+  const cast = useShadowPicture(CAST, shape, rects, felt, cards.hand.x);
+  const contacts = useShadowPicture(CONTACT, shape, rects, felt, cards.hand.x);
   const glow = useGlow(rects, felt, cards.hand.x);
   const pile = { x: cards.pile.x / sx, y: cards.pile.y / sy };
   const fall = useDerivedValue(() => shadowTransform(shadowFall("cast", pile, { x: lamp.value.lx, y: lamp.value.ly }), felt));
   const contact = shadowTransform(shadowFall("face", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
-  const shadows = useSharedValue(1);
   // State, not a group's opacity: a picture is drawn without the group's paint.
+  const [shadows, setShadows] = useState(true);
   const [glows, setGlows] = useState(true);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
     const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanCardGlow?: (on: boolean) => void };
-    e2e.murlanCardShadows = (on) => (shadows.value = on ? 1 : 0);
+    e2e.murlanCardShadows = setShadows;
     e2e.murlanCardGlow = setGlows;
     return () => {
       delete e2e.murlanCardShadows;
       delete e2e.murlanCardGlow;
     };
-  }, [shadows]);
+  }, []);
 
   useEffect(() => {
     if (!onReady) return;
@@ -322,16 +349,16 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards }: FeltCanvasPr
             <Picture picture={glow} />
           </Group>
         )}
-        <Group opacity={shadows}>
-          <Group transform={fall}>
-            <ShadowLayer path={paths.cast} kind="cast" s={s} />
-          </Group>
-          <Group transform={contact}>
-            {SHADOW_PATHS.filter((k) => k !== "cast").map((k) => (
-              <ShadowLayer key={k} path={paths[k]} kind={k} s={s} />
-            ))}
-          </Group>
-        </Group>
+        {shadows && (
+          <>
+            <Group transform={fall}>
+              <Picture picture={cast} />
+            </Group>
+            <Group transform={contact}>
+              <Picture picture={contacts} />
+            </Group>
+          </>
+        )}
         <Rect x={0} y={0} width={width} height={height} color="black" opacity={shade} />
       </Group>
     </Canvas>

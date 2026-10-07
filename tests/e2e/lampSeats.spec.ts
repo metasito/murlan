@@ -21,13 +21,11 @@ const YOUR_TURN = "Il tuo turno";
 
 const stateById = (id: string) => CAPTURE_STATES.find((s) => s.id === id)!;
 
-/** Reduced motion: the light snaps to its pool and does not sway, so its point is exact. */
+/** Reduced motion: the light snaps to its pool and does not sway, so its point is exact, and there is no deal to wait out. */
 async function openStill(page: Page, baseURL: string, phone: Phone, state: CaptureState): Promise<void> {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: phone.width, height: phone.height });
   await openCaptureState(page, baseURL, state);
-  // Past the deal stagger: every card is at opacity 0 until its own leg of it runs.
-  await page.waitForTimeout(2_000);
 }
 
 async function lampOff(page: Page, side: CaptureState["side"]): Promise<{ x: number; y: number }> {
@@ -56,9 +54,7 @@ for (const phone of PHONES) {
         state.turn === CAPTURE_VIEWER_SEAT ? YOUR_TURN : turnOf(seededName)
       );
 
-      const off = await lampOff(page, state.side);
-      expect(Math.abs(off.x), `the lamp's x over the ${state.side} seat`).toBeLessThanOrEqual(NEAREST_PT);
-      expect(Math.abs(off.y), `the lamp's y over the ${state.side} seat`).toBeLessThanOrEqual(NEAREST_PT);
+      await expectLampOver(page, state.side, `${phone.name}, ${state.id}`);
 
       const boxes = await page.evaluate(() => {
         const rects = (sel: string) =>

@@ -121,9 +121,52 @@ export function buildGlow(sink: GlowSink, rects: CardRects, felt: Pick<Felt, "sx
   }
 }
 
-export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): void {
+interface Box { x0: number; y0: number; x1: number; y1: number }
+
+function outlineBox(r: CardRect, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): Box | null {
   "worklet";
+  let box: Box | null = null;
+  const at = (x: number, y: number) => {
+    box = box ? { x0: Math.min(box.x0, x), y0: Math.min(box.y0, y), x1: Math.max(box.x1, x), y1: Math.max(box.y1, y) } : { x0: x, y0: y, x1: x, y1: y };
+  };
+  addOutline({ moveTo: at, lineTo: at, conicTo: (x1, y1, x2, y2) => (at(x1, y1), at(x2, y2)), close: () => {} }, r, felt, midX);
+  return box;
+}
+
+function meet(a: Box, b: Box, reach: number): boolean {
+  "worklet";
+  return a.x0 - b.x1 < 2 * reach && b.x0 - a.x1 < 2 * reach && a.y0 - b.y1 < 2 * reach && b.y0 - a.y1 < 2 * reach;
+}
+
+/**
+ * The path's cards as sets whose blurs, `reach` window points round each outline, never meet: a blur costs its
+ * path's bounds, and one path round every seat blurs the whole felt. Apart, the sets draw what their union draws.
+ */
+export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, reach: number): string[][] {
+  "worklet";
+  let clusters: { keys: string[]; box: Box }[] = [];
   for (const key of Object.keys(rects)) {
+    const r = rects[key];
+    const box = inPath(path, shadowKind(key, r)) ? outlineBox(r, felt, midX) : null;
+    if (!box) continue;
+    let joined = { keys: [key], box };
+    for (let grew = true; grew; ) {
+      const met = clusters.filter((c) => meet(c.box, joined.box, reach));
+      grew = met.length > 0;
+      clusters = clusters.filter((c) => !met.includes(c));
+      for (const c of met) {
+        const b = joined.box;
+        joined = { keys: [...joined.keys, ...c.keys], box: { x0: Math.min(b.x0, c.box.x0), y0: Math.min(b.y0, c.box.y0), x1: Math.max(b.x1, c.box.x1), y1: Math.max(b.y1, c.box.y1) } };
+      }
+    }
+    clusters.push(joined);
+  }
+  return clusters.map((c) => c.keys);
+}
+
+export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[] = Object.keys(rects)): void {
+  "worklet";
+  for (const key of keys) {
     const r = rects[key];
     if (inPath(path, shadowKind(key, r))) addOutline(sink, r, felt, midX);
   }
