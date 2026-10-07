@@ -11,7 +11,7 @@ import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
-import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
+import { installVirtualClock, takeOver, step, stepThen, stepUntil } from "./virtualClock";
 import {
   diffParity,
   diffPillAtProgress,
@@ -416,10 +416,10 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
   const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
-  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
-    await step(page, ms);
-    return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
-  }, () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
+  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
+    t: 0,
+    ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE)),
+  }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
   await expectDeparted(page);
   await page.context().close();
   return capture;
@@ -429,11 +429,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
 export const recorded = (page: Page, from = 0) =>
   page.evaluate((from) => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.slice(from), from);
 
-const tracedAt = (page: Page, t: number) =>
-  page.evaluate(
-    ({ t, half }) => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.find((f) => Math.abs(f.t - t) < half) ?? null,
-    { t, half: STEP_MS / 2 }
-  );
+const TRACED_AT = (t: number) => `window.murlanTrace.frames.find((f) => Math.abs(f.t - ${t}) < ${STEP_MS / 2}) ?? null`;
 
 export async function traced(page: Page, accept: (f: TraceFrame) => boolean, what: string): Promise<number> {
   let seen = 0;
@@ -508,10 +504,8 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
   const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), async (t, ms) => {
-    if (t > preRollMs) await step(page, ms);
-    return tracedAt(page, onset + t - preRollMs);
-  }, async () => ({
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), (t, ms) =>
+    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs)), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
     handTop: await page.evaluate(() =>
