@@ -50,7 +50,7 @@ export function findMoments(input) {
 }
 
 /** The failure field each chart in the page's SERIES marks. */
-export const CHART_FIELDS = {
+const CHART_FIELDS = {
   live: "live", dropped: "dropped", motes: "air", "moth x": "moth", "lamp x": "lamp", "lamp y": "lamp",
   level: "level", flare: "flare", shake: "shake", scorePill: "scorePill",
 };
@@ -69,7 +69,7 @@ export function buildPage(moments, out) {
       sides[name] = { frames, trace: side.trace };
     }
     const span = Math.max(...Object.values(sides).flatMap((s) => [...s.frames, ...s.trace.frames].map((f) => f.t)));
-    return { moment: m.moment, mode: m.mode, checkpoints: m.checkpoints, failures: m.failures, sides, span };
+    return { moment: m.moment, mode: m.mode, stepMs: m.stepMs, checkpoints: m.checkpoints, failures: m.failures, sides, span };
   });
   const html = PAGE.replace("__DATA__", () => JSON.stringify(data).replace(/</g, "\\u003c")).replace(
     "__FIELDS__",
@@ -135,7 +135,7 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
     el.innerHTML = "<h2>" + m.moment + " <small>(" + m.mode + " mode, " + m.failures.length + " failing checks)</small></h2>" +
       '<div class="row"><figure><figcaption>mockup</figcaption><img class="a"></figure><figure><figcaption>app</figcaption><img class="b"></figure>' +
       '<figure><figcaption class="fc">flip: mockup</figcaption><img class="c"></figure></div>' +
-      '<div class="bar"><button class="play">Play</button><button class="flip">Flip</button><input type="range" min="0" max="' + span + '" step="' + (m.sides.mockup.frames[1]?.t ?? 16) + '" value="0"><span class="t">0 ms</span></div>' +
+      '<div class="bar"><button class="play">Play</button><button class="flip">Flip</button><input type="range" min="0" max="' + span + '" step="' + m.stepMs + '" value="0"><span class="t">0 ms</span></div>' +
       '<div class="ticks">' + failTimes.map((t) => '<i style="left:' + (t / span) * 100 + '%"></i>').join("") + "</div>" +
       '<div class="row">' + charts + "</div>" +
       "<details><summary>" + m.failures.length + " failing checks</summary>" + m.failures.map((f) => '<div class="fail" data-t="' + f.t + '">' + f.t + " ms · " + f.field + " · " + f.message + "</div>").join("") + "</details>";
@@ -151,7 +151,7 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
     el.querySelector(".play").onclick = () => {
       playing = !playing;
       t0 = performance.now() - +range.value;
-      const tick = (now) => { if (!playing) return; const t = Math.round((now - t0) % (span + 1)); show(t - (t % 16)); requestAnimationFrame(tick); };
+      const tick = (now) => { if (!playing) return; const t = Math.round((now - t0) % (span + 1)); show(t - (t % m.stepMs)); requestAnimationFrame(tick); };
       requestAnimationFrame(tick);
     };
     show(0);
