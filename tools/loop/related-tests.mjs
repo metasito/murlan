@@ -1,0 +1,42 @@
+/** The native jest files a change reaches first; ci.yml's native job runs the rest (RULES.md 3). */
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+
+const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
+const CODE = /\.(tsx?|m?js)$/;
+const stem = (f) =>
+  path.posix.basename(f).replace(/\.test\.tsx$/, "").replace(/(\.(web|native|ios|android))?\.(tsx?|m?js)$/, "");
+
+/** @param {{changed: string[], related: string[], source: (file: string) => string}} io */
+export function nearTests({ changed, related, source }) {
+  const modules = changed.filter((f) => CODE.test(f) && !NATIVE_TEST.test(f));
+  const specs = modules.map((m) => `@/${m.replace(CODE, "")}`);
+  const stems = new Set(modules.map(stem));
+  const near = related.filter(
+    (t) => stems.has(stem(t)) || specs.some((s) => source(t).includes(`'${s}'`) || source(t).includes(`"${s}"`)),
+  );
+  return [...new Set([...changed.filter((f) => NATIVE_TEST.test(f)), ...near])].sort();
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  const lines = (...a) => execFileSync("git", a, { encoding: "utf8" }).split("\n").filter(Boolean);
+  const changed = [
+    ...new Set([
+      ...lines("diff", "--name-only", "origin/main...HEAD"),
+      ...lines("diff", "--name-only", "HEAD"),
+      ...lines("ls-files", "--others", "--exclude-standard"),
+    ]),
+  ].filter((f) => existsSync(f));
+  const jest = path.join(path.dirname(createRequire(import.meta.url).resolve("jest/package.json")), "bin", "jest.js");
+  const code = changed.filter((f) => CODE.test(f));
+  const listed = code.length
+    ? execFileSync(process.execPath, [jest, "--listTests", "--findRelatedTests", ...code, "--selectProjects", "ios"], { encoding: "utf8" })
+    : "";
+  const related = listed.split(/\r?\n/).filter(Boolean).filter((f) => path.isAbsolute(f)).map((f) => path.relative(process.cwd(), f).replaceAll("\\", "/"));
+  const near = nearTests({ changed, related, source: (f) => readFileSync(f, "utf8") });
+  console.log(`native:related — ${near.length} near of ${related.length} reached; ci.yml's native job runs the rest`);
+  if (near.length) process.exit(spawnSync(process.execPath, [jest, ...near, "--selectProjects", "ios"], { stdio: "inherit" }).status ?? 1);
+}

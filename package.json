@@ -35,6 +35,7 @@
     "loop:test": "node --test --test-timeout=30000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tools/loop/tests/**/*.test.ts\"",
     "test": "node --import ./tests/helpers/fileDeadline.mjs --test --test-concurrency=8 --test-timeout=30000 --test-force-exit --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./tests/helpers/filesRunReporter.mjs --test-reporter-destination=stderr \"tests/**/*.test.ts\"",
     "test:native": "jest",
+    "test:native:related": "node tools/loop/related-tests.mjs",
     "perf:web": "playwright test --config tests/e2e/playwright.perf.config.ts --reporter=line",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",

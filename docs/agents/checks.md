@@ -54,6 +54,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
   e2e suite runs through `react-native-web`, which resolves a *different* module graph and takes
   the other side of every `Platform.OS` branch. Tests are named `.test.tsx` on purpose: `node
   --test` globs `tests/**/*.test.ts` and must not pick them up — see *Node's TypeScript loader*.
+  Give jest the path before `--selectProjects`: after it the path is read as a project name and the whole project runs.
 - **Integration** creates an empty Postgres schema and nothing else; every table comes from the
   app's own `ensureSchema()`, so each run also tests that boot-time schema creation works on a
   database that has never seen it. `tests/helpers/gameDriver.ts` is the shared "play a real hand
