@@ -139,6 +139,10 @@ export function readLine(line) {
   // One fact per message, not one per block. A turn ending in a text block and no tool call is the
   // final answer in print mode, so a marker that must be the whole of a message can end the
   // session on turn one — the marker and that phase's first command have to be able to share a turn.
+  if (e.type === "assistant" && typeof e.error === "string") {
+    const text = (e.message?.content ?? []).filter((b) => b.type === "text").map((b) => String(b.text ?? "")).join("\n");
+    return { kind: "api_error", code: e.error, text };
+  }
   if (e.type === "assistant") {
     const blocks = e.message?.content ?? [];
     const text = blocks

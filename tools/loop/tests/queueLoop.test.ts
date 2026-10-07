@@ -548,6 +548,13 @@ describe("runTicket", () => {
     assert.equal(apiFailure(run), 529);
   });
 
+  test("the night the login expired reaches the caller as an account error (#1261)", async () => {
+    const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "auth-expired.jsonl"), "utf8").trim().split("\n");
+    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    assert.match(String(run.accountError), /^authentication_failed: Failed to authenticate/);
+    assert.equal(apiFailure(run), null);
+  });
+
   test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {
     let seen: { args: string[]; env: Record<string, string> } | undefined;
     const capturing = (_cmd: string, args: string[], o: any) => {

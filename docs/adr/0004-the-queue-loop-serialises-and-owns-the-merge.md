@@ -59,7 +59,9 @@ being consumed so a scheduled restart sees it too.
 
 A mechanical failure no longer reaches the tracker. `settleOutcome` counts it toward the
 breaker and leaves the branch, the pull request and the labels intact for the next
-iteration to find. Only a decision a person has to make becomes `ready-for-human`.
+iteration to find. Only a decision a person has to make becomes `ready-for-human`. An account
+failure (expired login, billing, hold) stops the run and never reaches the tracker; the ticket
+resumes from its worktree after `npm run queue:loop`.
 
 The phase board that inferred progress by regexing the session's shell commands is gone
 (≈890 lines, and a `derive()` every twenty seconds at eight subprocesses a call). It missed

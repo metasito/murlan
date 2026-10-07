@@ -571,6 +571,29 @@ describe("runOnce", () => {
     assert.match(String(r.why), /ponytail/);
   });
 
+  test("an expired login stops the run, and neither diagnoses nor parks the ticket it met", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    let diagnoses = 0;
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 1, blocked: false, ms: 1, log: "l", phase: null, declared: null,
+            result: { isError: true, subtype: "success", terminalReason: "api_error", apiStatus: null },
+            accountError: "authentication_failed: Failed to authenticate: OAuth session expired and could not be refreshed",
+          }),
+          pushedPr: () => null,
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+          diagnose: async () => (diagnoses++, { ok: false, error: "x", run: { result: null, ms: 0, log: "l", phases: {} } }),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked, diagnoses, ledger.map((x) => x.outcome)], ["stop", [], 0, ["halted"]]);
+    assert.match(String(r.why), /log in/);
+  });
+
   test("the prune in queue-pre runs before the pick", async () => {
     const order: string[] = [];
     await runOnce(

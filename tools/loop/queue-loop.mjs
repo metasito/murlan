@@ -455,6 +455,9 @@ export function resumePhase(run, after, ticket) {
   return RESUMABLE.has(after.phase) ? after.phase : null;
 }
 
+/** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
+export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
+
 /**
  * The API status a session died on, when it is one that passes on its own — an overload, an outage,
  * a 429 — or null. Not a verdict on the ticket, so it is held and respawned, never parked.
@@ -1463,6 +1466,7 @@ export function runTicket(
     stalled: false,
     wrongModel: null,
     strayPlugin: null,
+    accountError: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1597,6 +1601,7 @@ export function runTicket(
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
     // across all of them reported a 144-turn session as one turn.
+    if (fact.kind === "api_error" && ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
     if (fact.kind === "result" && !fact.origin) state.result = fact;
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers
@@ -1659,6 +1664,7 @@ export function runTicket(
           version: state.version,
           wrongModel: state.wrongModel,
           strayPlugin: state.strayPlugin,
+          accountError: state.accountError,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -2219,6 +2225,10 @@ export async function runOnce(io, pinned = null, at = null) {
   if (run.strayPlugin) {
     io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
     return { outcome: "stop", why: run.strayPlugin };
+  }
+  if (run.accountError) {
+    io.record({ number: route.number, outcome: "halted", why: run.accountError, run, counts: false });
+    return { outcome: "stop", why: `the account cannot run sessions (${run.accountError}) — log in, then npm run queue:loop; #${route.number} resumes from its worktree` };
   }
   if (run.wrongModel) {
     return parkAndRecord(io, route.number, {
