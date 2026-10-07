@@ -2,11 +2,11 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  diffAir,
   diffApart,
   diffFlight,
   diffMoth,
   diffOnsetWindows,
+  diffParity,
   diffPillAtProgress,
   diffStillAir,
   diffTraces,
@@ -267,14 +267,20 @@ describe("the moth field", () => {
     assert.match(diffStillAir(withMoth(32))[0].message, /a moth at 32 ms/);
   });
 
-  test("a moment's air is held by the fields it names, and by the fallback's still light", () => {
-    const spec = { onsetWindows: { "moment:moth": [0, 480] as const }, apart: [0, 15000] as const, fallbackStill: true };
-    const held = (...fields: Field[]) => new Set<Field>(fields);
-    const fails = (h: Set<Field>, fallback: boolean, app: Trace) => diffAir(spec, h, fallback, withMoth(32), app, []).map((f) => f.message);
-    assert.deepEqual(fails(held(), false, reference()), []);
-    assert.deepEqual(fails(held("onset"), false, withMoth(32)), ["moment:moth never fired"]);
-    assert.ok(fails(held("moth"), false, reference()).some((m) => /one side/.test(m)));
-    assert.deepEqual(fails(held("air"), false, withMoth(32)), ["no particle layer sample at 0 ms"]);
-    assert.deepEqual(fails(held(), true, withMoth(32)), ["a moth at 32 ms"]);
+  test("a moment is held to the fields it names, and to the fallback's still air", () => {
+    const fails = (fields: Field[], fallback: boolean, app: Trace) =>
+      diffParity(
+        { mode: "parity", checkpoints: CHECKPOINTS, fields, onsetWindows: { "moment:moth": [0, 480] }, apart: [0, 15000], fallbackStill: true },
+        fallback,
+        withMoth(32),
+        app,
+        []
+      ).map((f) => f.message);
+    assert.deepEqual(fails([], false, planted((t) => (at(t, 160).live = 999))), []);
+    assert.ok(fails(["live"], false, planted((t) => (at(t, 160).live = 999))).length > 0);
+    assert.deepEqual(fails(["onset"], false, withMoth(32)), ["moment:moth never fired"]);
+    assert.ok(fails(["moth"], false, reference()).some((m) => /one side/.test(m)));
+    assert.deepEqual(fails(["air"], false, withMoth(32)), ["no particle layer sample at 0 ms"]);
+    assert.deepEqual(fails([], true, withMoth(32)), ["a moth at 32 ms"]);
   });
 });

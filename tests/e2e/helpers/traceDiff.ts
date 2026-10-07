@@ -311,18 +311,30 @@ export function diffStillAir(app: Trace): Failure[] {
   return out;
 }
 
-export interface AirSpec {
+export interface ParitySpec {
+  mode: "determinism" | "parity";
+  checkpoints: number[];
+  fields?: Field[];
+  onsets?: string[];
   onsetWindows?: Record<string, readonly [number, number]>;
   apart?: readonly [number, number];
   fallbackStill?: boolean;
 }
 
-export function diffAir(spec: AirSpec, held: ReadonlySet<Field>, fallback: boolean, mockup: Trace, app: Trace, layer: LayerSample[]): Failure[] {
+/** Every failure a moment's spec holds the two sides to, from their traces and the app's particle layer. */
+export function diffParity(m: ParitySpec, fallback: boolean, mockup: Trace, app: Trace, layer: LayerSample[]): Failure[] {
+  const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
+  const windowed = Object.keys(m.onsetWindows ?? {});
+  const kept = (o: string) => (!m.onsets || m.onsets.includes(o)) && !windowed.includes(o);
+  const heldOnsets = (t: Trace): Trace =>
+    m.onsets || windowed.length ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter(kept) })) } : t;
   return [
-    ...(held.has("onset") ? diffOnsetWindows(app, spec.onsetWindows ?? {}) : []),
+    ...diffTraces(heldOnsets(mockup), heldOnsets(app), m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field)),
+    ...(held.has("flight") ? diffFlight(mockup, app) : []),
+    ...(held.has("onset") ? diffOnsetWindows(app, m.onsetWindows ?? {}) : []),
     ...(held.has("moth") ? diffMoth(mockup, app) : []),
-    ...(held.has("air") && spec.apart ? diffApart(layer, spec.apart) : []),
-    ...(fallback && spec.fallbackStill ? diffStillAir(app) : []),
+    ...(held.has("air") && m.apart ? diffApart(layer, m.apart) : []),
+    ...(fallback && m.fallbackStill ? diffStillAir(app) : []),
   ];
 }
 

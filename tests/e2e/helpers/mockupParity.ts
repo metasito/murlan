@@ -13,10 +13,8 @@ import { offlineGameSave } from "./offlineSeed";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
-  diffAir,
-  diffFlight,
+  diffParity,
   diffPillAtProgress,
-  diffTraces,
   movingFields,
   STEP_MS,
   type Failure,
@@ -544,17 +542,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
       }),
     };
   }
-  const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
-  const windowed = Object.keys(m.onsetWindows ?? {});
-  const kept = (o: string) => (!m.onsets || m.onsets.includes(o)) && !windowed.includes(o);
-  const heldOnsets = (t: Trace): Trace =>
-    m.onsets || windowed.length ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter(kept) })) } : t;
-  const traced = diffTraces(heldOnsets(runs.mockup.trace), heldOnsets(runs.app.trace), m.checkpoints).filter(
-    (f) => m.mode === "determinism" || held.has(f.field)
-  );
-  const flown = held.has("flight") ? diffFlight(runs.mockup.trace, runs.app.trace) : [];
-  const air = diffAir(m, held, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer);
-  const failures = [...traced, ...flown, ...air, ...pillFailures];
+  const failures = [...diffParity(m, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer), ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
