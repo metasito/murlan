@@ -555,6 +555,24 @@ describe("runTicket", () => {
     assert.equal(apiFailure(run), null);
   });
 
+  for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
+    test(`a ${code} api_error is narrated, and is neither an account error nor a change to apiFailure`, async () => {
+      const text = `API Error: ${status} ${code} — the line the session printed`;
+      const apiError = JSON.stringify({ type: "assistant", error: code, message: { content: [{ type: "text", text }] } });
+      const end = result({ is_error: true, api_error_status: status });
+      const { screen } = sink();
+      const narrated: string[] = [];
+      const said = screen.said;
+      screen.said = (t: string) => (narrated.push(t), said(t));
+      const run = await runTicket(fakeSpawn([apiError, end], 1), opts({ screen }));
+      assert.deepEqual(narrated, [text]);
+      assert.equal(run.accountError, null);
+      const without = await runTicket(fakeSpawn([end], 1), opts());
+      assert.equal(apiFailure(run), status);
+      assert.equal(apiFailure(run), apiFailure(without));
+    });
+  }
+
   test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {
     let seen: { args: string[]; env: Record<string, string> } | undefined;
     const capturing = (_cmd: string, args: string[], o: any) => {
