@@ -475,6 +475,7 @@ describe("--build gates review on a cached local pass", () => {
       [check("- [x] chip enters — package.json:99999"), 1, /leaves open/],
       [check("no boxes at all"), 1, /ticks no box/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1\n- [X] sheen — package.json:3"), 0, /2 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2 · docs/probe.md:1 · red: AssertionError: expected 1 got 0"), 0, /1 box\(es\) ticked/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);

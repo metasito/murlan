@@ -209,7 +209,7 @@ Then leave through **Leaving C**.
 3. Then commit the last slice, and run `npm run agent:check`.
 4. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
-   `- [x] <box> — <path>:<line> · <test path>:<line>`. A box you cannot close stays `- [ ]` with why,
+   `- [x] <box> — <path>:<line> · <test path>:<line> · red: <the failure line it printed before the fix>`. A box you cannot close stays `- [ ]` with why,
    and then the ticket is not done: keep building, or park it (**Never stall**).
 5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 

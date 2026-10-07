@@ -56,12 +56,18 @@ const BODIES = {
     "caller of a changed function the diff did not update. Then list every name the diff removes " +
     "or renames — identifier, export, env var, file path, npm script, locale key, testID, CLI " +
     `flag, workflow or job name — run \`git -C ${worktree} grep -n -F <name>\` for each, and ` +
-    "report every remaining mention outside the diff's own deleted lines.",
-  standards: ({ worktree, base }) =>
+    "report every remaining mention outside the diff's own deleted lines." +
+    " Then, for every literal value the diff changes — a number, string or colour on a `-` line whose " +
+    `\`+\` line carries a new one — run \`git -C ${worktree} grep -n -F <old value> -- tests\` and ` +
+    "report each test still asserting the old value.",
+  standards: ({ n, worktree, base }) =>
     `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +
     "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
     "documented rule, by number, quoted. Skip what tooling enforces. A baseline smell alone is a " +
     "judgement call, never a hard violation.\n\n" +
+    "For every test the diff adds or changes, find in the newest `DOD-CHECK` on the issue (" + issue(n) + ") " +
+    "the failure it printed before the fix. A test with none, or whose quoted failure is a load or import " +
+    "error rather than the asserted behaviour, breaks rule 6.\n\n" +
     baseline(),
   spec: ({ n, worktree, base }) =>
     `Review the change ${diff(worktree, base)} against issue #${n} (${issue(n)}, body and ` +

@@ -30,7 +30,7 @@ describe("brief", () => {
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);
-      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+      if (["scope", "completeness", "standards", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
     }
   });
 
@@ -40,6 +40,18 @@ describe("brief", () => {
     assert.match(text, /git -C \S+ diff origin\/main\.\.\.HEAD/);
     for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(text.includes(kind), kind);
     assert.match(text, /git -C \S+ grep/);
+  });
+
+  test("the standards brief holds a new test to its observed red run (rule 6)", () => {
+    const text = brief("standards", { n: 1293, worktree: WT });
+    assert.match(text, /rule 6/);
+    assert.match(text, /load or import error/);
+    assert.match(text, /DOD-CHECK/);
+  });
+  test("the completeness brief sweeps the tests for a changed literal's old value", () => {
+    const text = brief("completeness", { n: 1256, worktree: WT });
+    assert.match(text, /literal value the diff changes/);
+    assert.match(text, /git -C \S+ grep -n -F <old value> -- tests/);
   });
 
   test("the standards brief carries the vendored baseline and points at RULES.md", () => {
