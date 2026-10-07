@@ -49,6 +49,12 @@ export function findMoments(input) {
   return moments;
 }
 
+/** The failure field each chart in the page's SERIES marks. */
+export const CHART_FIELDS = {
+  live: "live", dropped: "dropped", motes: "air", "moth x": "moth", "lamp x": "lamp", "lamp y": "lamp",
+  level: "level", flare: "flare", shake: "shake", scorePill: "scorePill",
+};
+
 export function buildPage(moments, out) {
   fs.mkdirSync(out, { recursive: true });
   const data = moments.map((m) => {
@@ -62,9 +68,13 @@ export function buildPage(moments, out) {
       });
       sides[name] = { frames, trace: side.trace };
     }
-    return { moment: m.moment, mode: m.mode, checkpoints: m.checkpoints, failures: m.failures, sides };
+    const span = Math.max(...Object.values(sides).flatMap((s) => [...s.frames, ...s.trace.frames].map((f) => f.t)));
+    return { moment: m.moment, mode: m.mode, checkpoints: m.checkpoints, failures: m.failures, sides, span };
   });
-  const html = PAGE.replace("__DATA__", () => JSON.stringify(data).replace(/</g, "\\u003c"));
+  const html = PAGE.replace("__DATA__", () => JSON.stringify(data).replace(/</g, "\\u003c")).replace(
+    "__FIELDS__",
+    () => JSON.stringify(CHART_FIELDS)
+  );
   fs.writeFileSync(path.join(out, "index.html"), html);
   return path.join(out, "index.html");
 }
@@ -85,6 +95,7 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
 <div id="root"></div>
 <script>
   const DATA = __DATA__;
+  const FIELDS = __FIELDS__;
   const SERIES = {
     live: (f) => f.live, dropped: (f) => f.dropped, motes: (f) => f.motes,
     "moth x": (f) => f.moth && f.lamp && f.moth.x - f.lamp.x,
@@ -109,12 +120,11 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
   }
   for (const m of DATA) {
     const el = document.createElement("section");
-    const span = Math.max(...m.sides.mockup.frames.map((f) => f.t));
+    const span = m.span;
     const failsFor = (field) => m.failures.filter((f) => f.field === field).map((f) => f.t);
     let charts = "";
     for (const [name, read] of Object.entries(SERIES)) {
-      const field = name.startsWith("lamp") ? "lamp" : name;
-      charts += chart(name, { mockup: m.sides.mockup.trace.frames, app: m.sides.app.trace.frames }, read, span, failsFor(field));
+      charts += chart(name, { mockup: m.sides.mockup.trace.frames, app: m.sides.app.trace.frames }, read, span, failsFor(FIELDS[name]));
     }
     for (const region of Object.keys(m.sides.mockup.trace.regions[0]?.regions ?? {})) {
       const rows = (s) => m.sides[s].trace.regions.map((r) => ({ t: r.t, v: r.regions[region] }));

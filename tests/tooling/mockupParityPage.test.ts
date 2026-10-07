@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { buildPage, findMoments } from "../../scripts/mockupParityPage.mjs";
+import { buildPage, CHART_FIELDS, findMoments } from "../../scripts/mockupParityPage.mjs";
 
 const JPEGS = { mockup: Buffer.from("mockup-frame"), app: Buffer.from("app-frame") };
 const sha1 = (b: Buffer) => createHash("sha1").update(b).digest("hex");
@@ -30,6 +30,22 @@ test("builds the page from a local run's bundle", () => {
   const page = fs.readFileSync(buildPage(findMoments(dir), out), "utf8");
   assert.match(page, /"moment":"rest"/);
   assert.deepEqual(fs.readFileSync(path.join(out, "rest", "app-00000.jpg")), JPEGS.app);
+});
+
+test("the page spans the longer side, and every chart marks the failures of its own field", () => {
+  const dir = scratch();
+  const m = parity();
+  m.sides.app.trace.frames.push({ t: 15968, onsets: [], live: 1, dropped: 0, lamp: null, shake: null });
+  fs.mkdirSync(path.join(dir, "rest", "frames"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "rest", "parity.json"), JSON.stringify(m));
+  for (const [name, jpeg] of Object.entries(JPEGS)) fs.writeFileSync(path.join(dir, "rest", "frames", `${name}-00000.jpg`), jpeg);
+  const page = fs.readFileSync(buildPage(findMoments(dir), path.join(dir, "out")), "utf8");
+  assert.match(page, /"span":15968/);
+  const series = page.match(/const SERIES = \{([\s\S]*?)\n {2}\};/)![1];
+  const charts = [...series.matchAll(/(?:"([^"]+)"|(\w+)): \(f\) =>/g)].map((c) => c[1] ?? c[2]);
+  assert.deepEqual(charts.sort(), Object.keys(CHART_FIELDS).sort());
+  assert.equal(CHART_FIELDS["moth x"], "moth");
+  assert.equal(CHART_FIELDS.motes, "air");
 });
 
 test("finds the frames of a Playwright report by their content", () => {
