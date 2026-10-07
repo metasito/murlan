@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
-import { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
@@ -22,15 +22,25 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   const reduceMotion = usePrefersReducedMotion();
   const held = HELD.has(link);
   const grey = useSharedValue(held ? Reconnect.grey : 0);
+  const ramp = useSharedValue({ to: held ? Reconnect.grey : 0, perMs: 0 });
   const was = useRef(link);
 
   useEffect(() => {
-    const target = held ? Reconnect.grey : 0;
-    grey.value = reduceMotion
-      ? target
-      : withTiming(target, { duration: held ? Reconnect.greyIn : Reconnect.greyOut, easing: Easing.linear });
+    const to = held ? Reconnect.grey : 0;
+    if (reduceMotion) grey.value = to;
+    ramp.value = { to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut) };
     rig.freeze(held ? 1 : 0);
-  }, [held, reduceMotion, grey, rig]);
+  }, [held, reduceMotion, grey, ramp, rig]);
+
+  const [step] = useState(() => (frame: FrameInfo) => {
+    "worklet";
+    const { to, perMs } = ramp.value;
+    const g = grey.value;
+    if (g === to) return;
+    const d = perMs * (frame.timeSincePreviousFrame ?? 0);
+    grey.value = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
+  });
+  useFrameCallback(step);
 
   useEffect(() => {
     const before = was.current;

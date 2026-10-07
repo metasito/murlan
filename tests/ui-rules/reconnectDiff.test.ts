@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { anchorsOf, diffReconnect, greyAt, onChapterClock, RECONNECT_SOUND } from "../e2e/helpers/reconnectDiff.ts";
 import type { TraceFrame } from "../e2e/helpers/traceDiff.ts";
 
-type Plant = { greyInMs?: number; pillAt?: number; soundAt?: number; swayWhileHeld?: boolean; stayFrozen?: boolean };
+type Plant = { greyInMs?: number; pillAt?: number; soundAt?: number; swayWhileHeld?: boolean; stayFrozen?: boolean; frameMs?: number };
 
 /** The mockup's chapter: drop at 700, the pill at +500, back at 3400 with the sound, grey 300 ms in and 400 out. */
 function side(start: number, sound: string, p: Plant = {}): TraceFrame[] {
@@ -12,13 +12,14 @@ function side(start: number, sound: string, p: Plant = {}): TraceFrame[] {
   const frames: TraceFrame[] = [];
   let ph = 0;
   let prev = start;
-  for (let t = start; t <= start + 4400; t += 1000 / 60) {
+  const frameMs = p.frameMs ?? 1000 / 60;
+  for (let t = start; t <= start + 4400; t += frameMs) {
     const held = t >= drop && t < back;
     if ((!held || p.swayWhileHeld) && !(p.stayFrozen && t >= back)) ph += ((t - prev) / 1000) * 0.84;
     prev = t;
     const grey = t < drop ? 0 : t < back ? Math.min(1, (t - drop) / greyIn) * 0.85 : Math.max(0, 1 - (t - back) / 400) * 0.85;
     const onsets: string[] = [];
-    const crossed = (at: number) => at <= t && at > t - 1000 / 60;
+    const crossed = (at: number) => at <= t && at > t - frameMs;
     if (crossed(drop)) onsets.push("moment:drop");
     if (crossed(drop + (p.pillAt ?? 500))) onsets.push("moment:net-net");
     if (crossed(back)) onsets.push("moment:net-ok");
@@ -41,6 +42,13 @@ test("each divergence is named for what diverged", () => {
   assert.ok(fields({ soundAt: 100 }).includes("onset: the recovery sound, in ms after the back"));
   assert.ok(fields({ swayWhileHeld: true }).includes("freeze: app: the lamp's phase stands still while held"));
   assert.ok(fields({ stayFrozen: true }).includes("freeze: app: the lamp's phase runs on once back"));
+});
+
+test("an onset a frame late on the app's grid against the mockup's virtual one passes, and two frames late fails", () => {
+  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
+  const pill = (pillAt: number) => diffReconnect({ mockup, app: side(52_345, RECONNECT_SOUND.app, { pillAt }) }).filter((f) => f.message.startsWith("the pill's"));
+  assert.deepEqual(pill(500 + 1000 / 60), []);
+  assert.equal(pill(500 + 2 * (1000 / 60) + 1).length, 1);
 });
 
 test("a side that never drops fails rather than comparing nothing", () => {

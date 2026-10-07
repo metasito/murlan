@@ -1,13 +1,15 @@
-// The `reconnect` moment beside the mockup's chapter, on real time: the socket's own timers stall
-// under the virtual clock (#1250), so neither side installs it. The app's socket goes through a
-// WebSocket route, which drops it at once and refuses it until let back.
+// The `reconnect` moment beside the mockup's chapter: the app on real time, since the socket's own
+// timers stall under the virtual clock (#1250); the mockup on it. A routed close drops the socket at
+// once; going offline refuses the retries, which must fail with an error: socket.io's Manager
+// ignores a close while opening and waits out its 20 s `timeout` instead.
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { openApp, registerNewAccount, uniqueUsername } from "./navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./online";
-import { CANVASKIT_ROUTE, FIXTURE, fitFrame, recorded, sideContext } from "./mockupParity";
+import { CANVASKIT_ROUTE, FIXTURE, fitFrame, newSidePage, recorded, sideContext } from "./mockupParity";
+import { step, takeOver } from "./virtualClock";
 import { anchorsOf, diffReconnect, onChapterClock } from "./reconnectDiff";
 import { STEP_MS, type TraceFrame } from "./traceDiff";
 
@@ -39,22 +41,29 @@ const MOCKUP_RECORDER = `(() => {
     });
     requestAnimationFrame(sample);
   };
+  paused = true;
+  requestAnimationFrame(() => { paused = false; });
   start(CH.findIndex((c) => c.key === "reconnect"));
   requestAnimationFrame(sample);
 })()`;
 
 async function captureMockup(browser: Browser): Promise<Side> {
-  const page = await (await sideContext(browser)).newPage();
+  const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await page.evaluate("paused = true");
   const box = await fitFrame(page);
+  await takeOver(page);
   await page.evaluate(MOCKUP_RECORDER);
+  const stepTo = async (t: number) => {
+    while (((await page.evaluate("sceneT")) as number) < t) await step(page);
+  };
   const shots: Side["shots"] = [];
   for (const t of SHOTS) {
-    await page.waitForFunction(`sceneT >= ${t}`);
+    await stepTo(t);
     shots.push({ t, jpeg: await page.screenshot({ type: "jpeg", quality: 80, clip: box }) });
   }
-  await page.waitForFunction(`sceneT >= ${UNTIL}`);
+  await stepTo(UNTIL);
   const frames = (await page.evaluate("window.__frames")) as TraceFrame[];
   await page.context().close();
   return { frames, shots };
@@ -68,12 +77,8 @@ async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
   const context = await sideContext(browser, baseURL);
   const page = await context.newPage();
   await page.route(CANVASKIT_ROUTE, () => undefined);
-  let refused = false;
   const live = new Set<WebSocketRoute>();
-  await page.routeWebSocket(/socket\.io/, (ws) => {
-    if (refused) return void ws.close();
-    live.add(ws).add(ws.connectToServer());
-  });
+  await page.routeWebSocket(/socket\.io/, (ws) => void live.add(ws.connectToServer()));
   await openApp(page, baseURL);
   await registerNewAccount(page, uniqueUsername("e2epar"));
   await goToOnlineLobby(page);
@@ -90,7 +95,7 @@ async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
   };
   await shoot(SHOTS[0]);
   await page.waitForFunction((at) => performance.now() >= at, t0 + CHAPTER.drop);
-  refused = true;
+  await context.setOffline(true);
   for (const ws of live) await ws.close();
   live.clear();
   const dropped = (f: TraceFrame) => f.onsets.includes("moment:drop");
@@ -99,7 +104,7 @@ async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
   await page.waitForFunction((at) => performance.now() >= at, drop + (SHOTS[1] - CHAPTER.drop));
   shots.push({ t: SHOTS[1], jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
   await page.waitForFunction((at) => performance.now() >= at, drop + (CHAPTER.back - CHAPTER.drop));
-  refused = false;
+  await context.setOffline(false);
   await untilTraced(page, (f) => anchorsOf(f) !== null, "the app comes back");
   const back = anchorsOf(await recorded(page))!.back;
   await page.waitForFunction((at) => performance.now() >= at, back + (SHOTS[2] - CHAPTER.back));

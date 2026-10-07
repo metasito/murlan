@@ -5,6 +5,8 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
 export const JITTER_MS = Math.ceil(1000 / 60);
+/** An onset's offset spans two of a side's frames: one frame of the app's real ones, and one of the mockup's virtual steps. */
+const ONSET_JITTER_MS = JITTER_MS + STEP_MS;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 export const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */
@@ -69,7 +71,7 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   ];
   for (const [what, anchor, names] of onsets) {
     const got = { mockup: offset("mockup", m[anchor], names.mockup), app: offset("app", a[anchor], names.app) };
-    if (got.mockup === null || got.app === null || Math.abs(got.app - got.mockup) > JITTER_MS) {
+    if (got.mockup === null || got.app === null || Math.abs(got.app - got.mockup) > ONSET_JITTER_MS) {
       fail("onset", m[anchor] + (got.mockup ?? 0), got.mockup, got.app, `${what}, in ms after the ${anchor}`);
     }
   }

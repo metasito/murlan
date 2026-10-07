@@ -17,7 +17,7 @@ import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigatio
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
 import { setDeviceOffline } from "./helpers/deviceNetwork";
 import { mockupAt, stage, type Stage } from "./helpers/mockupStage";
-import { Reconnect, TOUCH_TARGET_MIN } from "../../lib/theme";
+import { Reconnect, TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const RECONNECTING = "Riconnessione…";
 const LOST = "Connessione persa";
