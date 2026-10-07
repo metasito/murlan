@@ -8,7 +8,7 @@ jest.mock('@/components/table/particles', () => {
 });
 
 import { landDust } from '@/components/table/particles';
-import { frameOfFirst, throwPair } from './helpers/landing';
+import { farthest, frameOfFirst, throwPair } from './helpers/landing';
 
 describe('the card landing', () => {
   beforeEach(() => {
@@ -35,6 +35,16 @@ describe('the card landing', () => {
     expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(100);
     expect(Math.min(...xs)).toBeGreaterThan(300);
     expect(Math.max(...xs)).toBeLessThan(560);
+    await view.unmount();
+  });
+
+  it('throws none for a play caught up on after a reconnect', async () => {
+    const view = await throwPair(3, true);
+    await frameOfFirst(view, () => farthest(view) > 1);
+    const { frame, now } = await frameOfFirst(view, () => farthest(view) <= 1);
+    expect(now[frame] - now[0]).toBeLessThan(400);
+    for (let f = 0; f < 10; f++) await frameOfFirst(view, () => true);
+    expect(landDust).not.toHaveBeenCalled();
     await view.unmount();
   });
 });

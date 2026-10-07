@@ -2,7 +2,7 @@ import type { Bus } from "./audioEngine";
 import type { PulseStrength, TapHaptic } from "./hapticsEngine";
 import type { SoundId } from "./soundAssets";
 
-type Plain = "roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut";
+type Plain = "roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
@@ -94,6 +94,7 @@ export const MOMENTS = {
   },
   pass: { priority: 60, cue: () => sfx("pass") },
   exchange: { priority: 55, cue: () => sfx("exchange") },
+  reconnected: { priority: 52, cue: () => sfx("reconnected") },
   deal: { priority: 50, cue: () => sfx("deal") },
   roundStart: { priority: 45, cue: () => sfx("round_start") },
   turn: { priority: 40, cue: () => sfx("turn", tap("light")) },

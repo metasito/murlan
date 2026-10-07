@@ -9,6 +9,7 @@ import { CLOCK_RUNNING_OUT_SECONDS } from '@/components/turnTimerUi';
 import { cardSpokenName } from '@/lib/cardNames';
 import { t } from '@/lib/i18n';
 import { MOMENTS, type MomentKind } from '@/lib/device/moments';
+import type { OwnLink } from '@/lib/ownLink';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxTime, effects, settle, soundOf, sounds } from './helpers/feedback';
@@ -20,7 +21,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[] };
+type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; ownLink?: OwnLink };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -93,6 +94,10 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
   mancheOver: { sounds: ['mancheWon', 'mancheLost', 'mancheNeutral'], run: () => mancheEnd(() => ({})) },
   partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },
+  reconnected: {
+    sounds: ['reconnected'],
+    run: () => heard(table(human(1), { ownLink: 'reconnecting' }), async (r) => { await act(async () => r.rerender(table(human(1), { ownLink: 'back' }))); }),
+  },
   clockRunningOut: {
     sounds: ['clockRunningOut'],
     run: () => heard(<TurnChip seconds={CLOCK_RUNNING_OUT_SECONDS + 3} active resetKey="t" scale={1} lit chipText="" spokenSeat="" />, () => settle(2000)),

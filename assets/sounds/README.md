@@ -1,6 +1,6 @@
 # Sound effects
 
-The nineteen effects `lib/device/soundAssets.ts` names. Thirteen are the table's sound set, picked by ear
+The twenty effects `lib/device/soundAssets.ts` names. Fourteen are the table's sound set, picked by ear
 on #1237 and vendored as they were picked. Six are built by `node scripts/build-sounds.mjs`.
 
 ## The table's picks
@@ -8,7 +8,7 @@ on #1237 and vendored as they were picked. Six are built by `node scripts/build-
 Copied from `origin/research/lantern-assets:mockups/the-lantern-table/audio/`. They were
 loudness-matched per action before the listening: BS.1770 integrated loudness, a sample-peak cap of
 0.89, high-passed at 80 Hz (60 Hz for the boom). They carry their level in the file, so the engine
-plays them at unity. `manche_lost`, `partita_lost` and `select` are cut at an MP3
+plays them at unity. `manche_lost`, `partita_lost`, `reconnected` and `select` are cut at an MP3
 frame boundary (`ffmpeg -c:a copy -t`, no re-encode) where their tail falls 55 dB under their own
 peak.
 
@@ -27,8 +27,9 @@ peak.
 | `manche_lost.mp3` | Manche lost | `mlose-1` | ElevenLabs | "Short soft losing sound for a card game, gentle descending piano notes, not sad, clean" | free-tier prototype |
 | `partita_won.mp3` | Partita won | `pwin-3` | ElevenLabs | "Triumphant short orchestral win music with bells, mobile game victory, polished" | free-tier prototype |
 | `partita_lost.mp3` | Partita lost | `plose-1` | ElevenLabs | "Short game over sound for a card game, calm descending piano phrase, gentle, clean" | free-tier prototype |
+| `reconnected.mp3` | The viewer's own connection is back | `reconnect-1` | ElevenLabs | "Soft clean confirmation chime, connected, short, modern app sound" | free-tier prototype |
 
-**The eleven ElevenLabs files are free-tier prototypes.** Free-tier output is non-commercial: they
+**The twelve ElevenLabs files are free-tier prototypes.** Free-tier output is non-commercial: they
 are regenerated from these prompts on a paid plan and re-listened before the game ships (#1269).
 
 ## The built effects

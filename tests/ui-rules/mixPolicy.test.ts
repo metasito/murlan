@@ -4,7 +4,7 @@ import { LANDING_PULSES, MOMENTS, cueFor, isCombo, landingPulsesFor, mix, type M
 
 const KINDS: MomentKind[] = [
   "landing", "mancheOver", "partitaOver", "roundWon", "roundStart", "select", "deselect",
-  "reject", "give", "pass", "deal", "exchange", "turn", "clockRunningOut",
+  "reject", "give", "pass", "deal", "exchange", "turn", "clockRunningOut", "reconnected",
 ];
 const tapAt = (tap: string, atMs = 0) => ({ tap, atMs });
 const sound = (batch: Moment[], t = 0, played: ReturnType<typeof mix>["played"] = []) => mix(batch, t, played).sound?.id ?? null;
@@ -67,7 +67,7 @@ describe("every moment maps", () => {
     assert.deepEqual(cueFor({ kind: "reject" }), { sound: "reject", bus: "sfx", haptics: [tapAt("rigid")] });
     assert.deepEqual(cueFor({ kind: "give" }), { sound: "play", bus: "sfx", haptics: [tapAt("medium")] });
     assert.deepEqual(cueFor({ kind: "turn" }), { sound: "turn", bus: "sfx", haptics: [tapAt("light")] });
-    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", roundWon: "round_win", roundStart: "round_start" } as const;
+    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", roundWon: "round_win", roundStart: "round_start", reconnected: "reconnected" } as const;
     for (const [kind, id] of Object.entries(soundOnly)) {
       assert.deepEqual(cueFor({ kind } as Moment), { sound: id, bus: "sfx", haptics: [] });
     }

@@ -153,7 +153,7 @@ export function TurnChip({
       : spokenSeat;
   const tone = connection ? CONNECTION_TONE[connection.state] : ember ? "urgent" : lit ? "lit" : "neutral";
   const action = connection?.action;
-  const slop = Math.max(0, (TOUCH_TARGET_MIN - noticeBox("turn", scale).height) / 2);
+  const slop = Math.max(0, (TOUCH_TARGET_MIN - (noticeBox("turn", scale).height ?? 0)) / 2);
   // The plate draws the words the group's name, or the button's, already says.
   const plate = (
     <View {...a11yHidden()}>

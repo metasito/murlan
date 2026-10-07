@@ -49,12 +49,12 @@ const METRICS = {
 const noop = () => {};
 
 /** The viewer's four-seat table mounting on a pair just thrown by seat `by`, which flies on mount; seat 0 is on move. */
-export function throwPair(by = 3) {
-  return render(tableAfter({ by, combo: PAIR }));
+export function throwPair(by = 3, catchUp = false) {
+  return render(tableAfter({ by, combo: PAIR, catchUp }));
 }
 
 /** That table as an element, for `rerender`: `by` threw `combo` and seat `turn` is on move. */
-export function tableAfter({ by, combo, passCount = 0, turn = 0 }: { by: number; combo: Combination; passCount?: number; turn?: number }) {
+export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false }: { by: number; combo: Combination; passCount?: number; turn?: number; catchUp?: boolean }) {
   const state: GameState = {
     players: [0, 1, 2, 3].map(seat),
     currentTurnIndex: turn,
@@ -76,6 +76,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0 }: { by: number;
         onPass={noop}
         onQuit={noop}
         onExchangeGive={noop}
+        catchUp={catchUp}
       />
     </SafeAreaProvider>
   );

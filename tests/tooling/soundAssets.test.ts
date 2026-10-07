@@ -152,6 +152,7 @@ const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "partita_lost.mp3": { seconds: 1.255, lufs: -21.5 },
   "partita_won.mp3": { seconds: 2.415, lufs: -18.6 },
   "pass.mp3": { seconds: 0.232, lufs: -27.7 },
+  "reconnected.mp3": { seconds: 0.706, lufs: -24.9 },
   "play.mp3": { seconds: 0.235, lufs: -26.9 },
   "reject.mp3": { seconds: 0.209, lufs: -19.3 },
   "room_full.mp3": { seconds: 0.287, lufs: -18.6 },
@@ -190,7 +191,7 @@ describe("sound assets", () => {
     const onDisk = readdirSync(soundsDir).filter((f) => f.endsWith(".mp3")).sort();
     assert.ok(required.length > 0, "no require() calls found — the scan is broken");
     assert.deepEqual(onDisk, required, "assets/sounds and lib/device/soundAssets.ts disagree");
-    assert.equal(required.length, 19, "soundAssets.ts requires nineteen files");
+    assert.equal(required.length, 20, "soundAssets.ts requires twenty files");
     assert.deepEqual(Object.keys(EXPECTED).sort(), required, "EXPECTED does not cover exactly the shipped effects");
   });
 

@@ -136,7 +136,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   }, [reduced, still]);
   useLandingReaction(landing, (l) => {
     "worklet";
-    if (reduced) return;
+    if (reduced || l.catchUp) return;
     field.modify((v) => {
       "worklet";
       for (const p of landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, Math.random)) spawn(v.s, p);

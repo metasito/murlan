@@ -138,7 +138,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   const reduced = usePrefersReducedMotion();
   useLandingReaction(landing, (l) => {
     "worklet";
-    if (reduced) return;
+    if (reduced || l.catchUp) return;
     for (const p of landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, Math.random)) spawn(sim, p);
   });
 

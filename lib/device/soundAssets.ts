@@ -18,6 +18,7 @@ export const SOUND_FILES = {
   reject: () => require("../../assets/sounds/reject.mp3") as number,
   seat_fill: () => require("../../assets/sounds/seat_fill.mp3") as number,
   room_full: () => require("../../assets/sounds/room_full.mp3") as number,
+  reconnected: () => require("../../assets/sounds/reconnected.mp3") as number,
 } as const;
 
 export type SoundFile = keyof typeof SOUND_FILES;
@@ -50,6 +51,7 @@ const SPECS = {
   round_win: { file: "round_win", gain: 1 },
   seat_fill: { file: "seat_fill", gain: 0.8 },
   room_full: { file: "room_full", gain: 0.85 },
+  reconnected: { file: "reconnected", gain: 1 },
 } as const satisfies Record<string, SoundSpec>;
 
 export type SoundId = keyof typeof SPECS;
