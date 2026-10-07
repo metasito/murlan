@@ -311,6 +311,21 @@ export function diffStillAir(app: Trace): Failure[] {
   return out;
 }
 
+export interface AirSpec {
+  onsetWindows?: Record<string, readonly [number, number]>;
+  apart?: readonly [number, number];
+  fallbackStill?: boolean;
+}
+
+export function diffAir(spec: AirSpec, held: ReadonlySet<Field>, fallback: boolean, mockup: Trace, app: Trace, layer: LayerSample[]): Failure[] {
+  return [
+    ...(held.has("onset") ? diffOnsetWindows(app, spec.onsetWindows ?? {}) : []),
+    ...(held.has("moth") ? diffMoth(mockup, app) : []),
+    ...(held.has("air") && spec.apart ? diffApart(layer, spec.apart) : []),
+    ...(fallback && spec.fallbackStill ? diffStillAir(app) : []),
+  ];
+}
+
 /** The fields whose value changes somewhere in the window — a determinism entry's proof it recorded something. */
 export function movingFields(trace: Trace): Set<Field> {
   const moved = new Set<Field>();

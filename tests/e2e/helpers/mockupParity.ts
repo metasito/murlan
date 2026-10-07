@@ -13,12 +13,9 @@ import { offlineGameSave } from "./offlineSeed";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
-  diffApart,
+  diffAir,
   diffFlight,
-  diffMoth,
-  diffOnsetWindows,
   diffPillAtProgress,
-  diffStillAir,
   diffTraces,
   movingFields,
   STEP_MS,
@@ -556,12 +553,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
     (f) => m.mode === "determinism" || held.has(f.field)
   );
   const flown = held.has("flight") ? diffFlight(runs.mockup.trace, runs.app.trace) : [];
-  const air = [
-    ...(held.has("onset") ? diffOnsetWindows(runs.app.trace, m.onsetWindows ?? {}) : []),
-    ...(held.has("moth") ? diffMoth(runs.mockup.trace, runs.app.trace) : []),
-    ...(held.has("air") && m.apart ? diffApart(runs.app.layer, m.apart) : []),
-    ...(variant === "fallback" && m.fallbackStill ? diffStillAir(runs.app.trace) : []),
-  ];
+  const air = diffAir(m, held, variant === "fallback", runs.mockup.trace, runs.app.trace, runs.app.layer);
   const failures = [...traced, ...flown, ...air, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
