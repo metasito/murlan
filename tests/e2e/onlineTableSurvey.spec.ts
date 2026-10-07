@@ -409,9 +409,11 @@ test.describe("the online table, at the audit's viewports", () => {
       const { page } = table;
       try {
         const online = await stillMeasure(page, "ONLINE");
-        mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
+        if (UPDATING) mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
         await page.screenshot({
-          path: path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`),
+          path: UPDATING
+            ? path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`)
+            : test.info().outputPath(`online-table__${vp.name}.png`),
         });
 
         // Dealt the same number of cards the server just dealt, not the seed
