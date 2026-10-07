@@ -39,6 +39,8 @@ interface Cloth {
   amplitude: number;
   /** …and how much light is on the patch at all. */
   mean: number;
+  /** The standard deviation of the patch's luminance. */
+  sd: number;
 }
 
 /** `PATCH` out of a PNG of the table alone. */
@@ -70,7 +72,10 @@ async function sample(page: Page, png: Buffer, width: number): Promise<Cloth> {
         if (lum > hi) hi = lum;
         sum += lum;
       }
-      return { amplitude: hi - lo, mean: sum / (data.length / 4) };
+      const n = data.length / 4;
+      let sq = 0;
+      for (let i = 0; i < data.length; i += 4) sq += (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2] - sum / n) ** 2;
+      return { amplitude: hi - lo, mean: sum / n, sd: Math.sqrt(sq / n) };
     },
     { png: png.toString("base64"), patch: PATCH, width }
   );
@@ -115,8 +120,8 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
   return cloth;
 }
 
-/** The hatch as a fraction of the cloth it sits on. */
-const relief = (c: Cloth) => c.amplitude / Math.max(c.mean, 1);
+/** The hatch's spread as a fraction of the cloth it sits on: a range is one 8-bit step wide in the dark, a spread is not. */
+const relief = (c: Cloth) => c.sd / Math.max(c.mean, 1);
 
 test.describe("the cloth answers to the lamp as the mockup's does", () => {
   test("lit and unlit, the patch reads as the mockup's twill", async ({ page, baseURL, browser }) => {
@@ -131,7 +136,7 @@ test.describe("the cloth answers to the lamp as the mockup's does", () => {
     const mockDark = await mockupCloth(browser, dpr, "right");
     console.log(
       [lit, dark, mockLit, mockDark]
-        .map((c, i) => `${["app lit", "app dark", "mockup lit", "mockup dark"][i]}: amp ${c.amplitude.toFixed(1)} mean ${c.mean.toFixed(1)} relief ${relief(c).toFixed(3)}`)
+        .map((c, i) => `${["app lit", "app dark", "mockup lit", "mockup dark"][i]}: amp ${c.amplitude.toFixed(1)} mean ${c.mean.toFixed(1)} relief ${relief(c).toFixed(4)}`)
         .join("\n")
     );
 

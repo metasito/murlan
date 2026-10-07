@@ -134,13 +134,16 @@ test("under the device's insets the felt's light sits over the pile (D4 #9)", as
   await untilSkiaFelt(page);
 
   const pile = await seatAnchor(page, "pile");
+  // Only the pool: the vignette's tail runs to the table's far edge and pulls a whole-felt centroid towards the box's middle.
   const { pixels, perPt, origin } = await feltPixels(page);
+  const lums = Array.from({ length: pixels.data.length / 4 }, (_, p) => 0.2126 * pixels.data[p * 4] + 0.7152 * pixels.data[p * 4 + 1] + 0.0722 * pixels.data[p * 4 + 2]);
+  const pool = lums.reduce((a, b) => Math.max(a, b), 0) / 2;
   let [sum, weight] = [0, 0];
-  for (let i = 0; i < pixels.data.length; i += 4) {
-    const lum = 0.2126 * pixels.data[i] + 0.7152 * pixels.data[i + 1] + 0.0722 * pixels.data[i + 2];
-    sum += ((i / 4) % pixels.width) * lum * lum;
+  lums.forEach((lum, p) => {
+    if (lum < pool) return;
+    sum += (p % pixels.width) * lum * lum;
     weight += lum * lum;
-  }
+  });
   const centroid = { x: origin.x + (sum / weight + 0.5) / perPt, weight };
   console.log(`light centroid x ${centroid.x.toFixed(1)}, pile centre x ${pile.x.toFixed(1)}`);
   expect(centroid.weight, "the felt drew no light").toBeGreaterThan(0);
