@@ -10,8 +10,8 @@ import {
   landingDustCount,
   rgba,
   spawn,
+  landingDust,
   step,
-  throwsDust,
   type Particles,
 } from "../../components/table/particles.ts";
 import { MOTES } from "../../components/table/air.ts";
@@ -130,8 +130,10 @@ describe("the particle module", () => {
   });
 
   test("a landing throws its dust on either layer, except under reduced motion or for a card caught up on the way back", () => {
-    assert.equal(throwsDust({ catchUp: false }, false), true);
-    assert.equal(throwsDust({ catchUp: true }, false), false);
-    assert.equal(throwsDust({ catchUp: false }, true), false);
+    const at = (catchUp: boolean, reduced: boolean) => landingDust({ catchUp, cards: 2, x: 914, y: 444 }, reduced, 2, 2, mulberry32(3));
+    assert.deepEqual(at(false, false), landDust(2, landingDustCount(2), PILE[0], PILE[1], mulberry32(3)));
+    assert.equal(at(false, false).length, 16 + 5 * 2 + 3);
+    assert.deepEqual(at(true, false), []);
+    assert.deepEqual(at(false, true), []);
   });
 });

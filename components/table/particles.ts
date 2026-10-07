@@ -149,8 +149,9 @@ export function landDust(cards: number, count: number, x0: number, y0: number, r
   return out;
 }
 
-/** Whether a landing throws dust, on either platform's layer: not under reduced motion, nor for a card caught up on the way back. */
-export function throwsDust(l: Pick<LandingPayload, "catchUp">, reduced: boolean): boolean {
+/** The dust a landing throws on either platform's layer, scaled by `sx`/`sy`: none under reduced motion, nor for a card caught up on the way back. */
+export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | "y">, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
   "worklet";
-  return !reduced && !l.catchUp;
+  if (reduced || l.catchUp) return [];
+  return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
 }

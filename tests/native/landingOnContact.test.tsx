@@ -8,7 +8,7 @@ const mockMotion = { reduced: false };
 
 jest.mock('@/components/table/particles', () => {
   const actual = jest.requireActual<typeof import('@/components/table/particles')>('@/components/table/particles');
-  return { ...actual, landDust: jest.fn(actual.landDust) };
+  return { ...actual, landingDust: jest.fn(actual.landingDust) };
 });
 jest.mock('@/lib/e2eTrace', () => ({
   traceOnset: (...args: unknown[]) => mockTraceOnset(...args),
@@ -20,7 +20,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => (mockMotion.reduced ? 'on' : 'off'),
 }));
 
-import { landDust } from '@/components/table/particles';
+import { landingDust } from '@/components/table/particles';
 import { bootFeedback, haptics } from './helpers/feedback';
 import { frameOfFirst, throwPair } from './helpers/landing';
 
@@ -39,7 +39,7 @@ describe('the landing on the contact frame', () => {
 
   it('throws the dust on the first frame every card is within 1 pt of its slot, not before', async () => {
     const view = await throwPair();
-    const { frame, drawn } = await frameOfFirst(view, () => jest.mocked(landDust).mock.calls.length > 0);
+    const { frame, drawn } = await frameOfFirst(view, () => jest.mocked(landingDust).mock.calls.length > 0);
     expect(drawn[frame]).toBeLessThanOrEqual(1);
     expect(drawn[frame - 1]).toBeGreaterThan(1);
     await view.unmount();
@@ -61,7 +61,7 @@ describe('the landing on the contact frame', () => {
       jest.advanceTimersByTime(16);
     });
     expect(landings()).toHaveLength(1);
-    expect(landDust).not.toHaveBeenCalled();
+    expect(jest.mocked(landingDust).mock.results.map((r) => r.value)).toEqual([[]]);
     await view.unmount();
   });
 });

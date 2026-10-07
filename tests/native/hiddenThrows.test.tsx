@@ -4,10 +4,10 @@ import { AppState } from 'react-native';
 
 jest.mock('@/components/table/particles', () => {
   const actual = jest.requireActual<typeof import('@/components/table/particles')>('@/components/table/particles');
-  return { ...actual, landDust: jest.fn(actual.landDust) };
+  return { ...actual, landingDust: jest.fn(actual.landingDust) };
 });
 
-import { landDust } from '@/components/table/particles';
+import { landingDust } from '@/components/table/particles';
 import type { Combination } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { card, PAIR, tableAfter } from './helpers/landing';
@@ -15,7 +15,7 @@ import { card, PAIR, tableAfter } from './helpers/landing';
 const SINGLE: Combination = { type: 'single', cards: [card('c', '4', 'hearts')], strength: 4 };
 const frames = (n: number) => settle(16 * n);
 const fliers = (view: Awaited<ReturnType<typeof render>>) => view.queryAllByTestId('flying-card', { includeHiddenElements: true }).length;
-const dusts = () => jest.mocked(landDust).mock.calls.map(([cards]) => cards);
+const dusts = () => jest.mocked(landingDust).mock.calls.map(([l]) => l.cards);
 
 describe('throws committed while no frame is drawn', () => {
   let was: typeof AppState.currentState;

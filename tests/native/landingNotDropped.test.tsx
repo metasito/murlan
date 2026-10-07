@@ -5,10 +5,10 @@ import { act, render } from '@testing-library/react-native';
 
 jest.mock('@/components/table/particles', () => {
   const actual = jest.requireActual<typeof import('@/components/table/particles')>('@/components/table/particles');
-  return { ...actual, landDust: jest.fn(actual.landDust) };
+  return { ...actual, landingDust: jest.fn(actual.landingDust) };
 });
 
-import { landDust } from '@/components/table/particles';
+import { landingDust } from '@/components/table/particles';
 import type { Combination } from '@/lib/game/gameEngine';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 import { card, PAIR, tableAfter } from './helpers/landing';
@@ -32,7 +32,7 @@ describe('two plays in the air at once', () => {
     await act(async () => view.rerender(tableAfter({ by: 0, combo: PAIR })));
     await frames(60);
     expect(sounds()).toEqual(expect.arrayContaining(['play', 'combo']));
-    expect(jest.mocked(landDust).mock.calls.map(([cards]) => cards)).toEqual([1, 2]);
+    expect(jest.mocked(landingDust).mock.calls.map(([l]) => l.cards)).toEqual([1, 2]);
     await view.unmount();
   });
 
@@ -45,7 +45,7 @@ describe('two plays in the air at once', () => {
     await frames(5);
     await act(async () => view.rerender(tableAfter({ by: 1, combo: SINGLE })));
     await frames(60);
-    expect(jest.mocked(landDust).mock.calls.map(([cards]) => cards)).toEqual([2, 1, 2, 1]);
+    expect(jest.mocked(landingDust).mock.calls.map(([l]) => l.cards)).toEqual([2, 1, 2, 1]);
     await view.unmount();
   });
 });
