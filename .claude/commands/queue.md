@@ -191,6 +191,7 @@ Then leave through **Leaving C**.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
 - **Batch what does not depend on the last answer.**
+- **Scratch files go under `.loop-logs/`**, never outside the repo (rule 32).
 
 ### Leaving C
 

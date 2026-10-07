@@ -473,8 +473,8 @@ every hook):
   --watch` and a sleep loop over `gh run view|list` or `gh pr checks`, which § Device runs
   replaces with `await-run.mjs`.
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
-  the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
-  (rules 8 and 31).
+  the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
+  path outside the repo do not (rules 8, 31 and 32).
 - `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewers have
   run, or until `loop-gate --review-round` has said the cap is reached (rule 29).
 

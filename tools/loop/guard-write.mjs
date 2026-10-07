@@ -14,7 +14,10 @@ const inside = (child, parent) => {
 
 export function verdict(filePath, root, cwd = root) {
   const p = path.resolve(cwd, filePath);
-  if (!inside(p, root) || inside(p, path.join(root, ".worktrees")) || inside(p, path.join(root, ".loop-logs"))) return null;
+  if (inside(p, path.join(root, ".worktrees")) || inside(p, path.join(root, ".loop-logs"))) return null;
+  if (!inside(p, root)) {
+    return `This writes ${p}, outside the repo. A loop session's scratch goes under .loop-logs/ (rule 32), its work in .worktrees/agent-<n>/.`;
+  }
   return (
     `This writes ${path.relative(root, p)} in the shared checkout, where another session stands. ` +
     "Write it in your worktree (.worktrees/agent-<n>/), or under .loop-logs/ for a scratch file."
