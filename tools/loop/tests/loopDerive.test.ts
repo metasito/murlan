@@ -386,11 +386,18 @@ describe("derive()'s review-round count", () => {
     assert.equal(result.reviewRounds, 2);
   });
 
+  test("a HANDOFF naming the head is carried on the state", () => {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    process.env.LOOP_GH_SCRIPT = stubGh([{ body: `HANDOFF ${head.slice(0, 7)}\n- [ ] wire it` }]);
+    assert.deepEqual(derive({ cwd: dir, base: "main" }).handoff, { line: `HANDOFF ${head.slice(0, 7)}`, notes: ["- [ ] wire it"] });
+  });
+
   test("null, not zero, when the tracker cannot be read", () => {
     process.env.LOOP_GH_SCRIPT = join(dir, "does-not-exist.mjs");
     const result = derive({ cwd: dir, base: "main" });
     assert.equal(result.trackerReadable, false);
     assert.equal(result.reviewRounds, null);
+    assert.equal(result.handoff, null);
   });
 });
 

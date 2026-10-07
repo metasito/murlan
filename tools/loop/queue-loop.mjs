@@ -1601,7 +1601,10 @@ export function runTicket(
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
     // across all of them reported a 144-turn session as one turn.
-    if (fact.kind === "api_error" && ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
+    if (fact.kind === "api_error") {
+      screen.said(thought(fact.text));
+      if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
+    }
     if (fact.kind === "result" && !fact.origin) state.result = fact;
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers

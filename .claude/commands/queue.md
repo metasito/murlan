@@ -35,7 +35,8 @@ derives it from git and the tracker.
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds of it with nothing committed, commit what
   works and narrow the slice.
 - **On the context notice**, commit, then post on the issue `HANDOFF <sha>` (`git rev-parse --short HEAD`)
-  with each step left as `- [ ] …` and a `Read first:` line of `path:start-end` ranges, and declare
+  with each step left as `- [ ] …` and a `Read first:` line of file ranges (`app/x.tsx:10-20`)
+  (`gh issue comment <n> --body-file <file>`, first line `HANDOFF <sha>`), and declare
   `handoff` = your phase.
 - **A handoff's `"why"`** is the next process's brief, in one sentence.
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
