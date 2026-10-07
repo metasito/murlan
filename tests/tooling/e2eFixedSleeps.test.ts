@@ -34,7 +34,6 @@ const LEGACY: Record<string, number> = {
   "tests/e2e/helpers/mockupParity.ts": 1,
   "tests/e2e/helpers/settle.ts": 1,
   "tests/e2e/helpers/virtualClock.ts": 1,
-  "tests/e2e/lampSeats.spec.ts": 1,
   "tests/e2e/onlineTableSurvey.spec.ts": 2,
   "tests/e2e/playedHand.spec.ts": 2,
   "tests/e2e/profileSignedOut.spec.ts": 1,
