@@ -29,6 +29,7 @@ import { CardView, FallbackGlow, PRESS_RISE, PRESS_TILT } from "@/components/Car
 import { CardGlow, Colors, Layer, Motion, motionMs, Radius, Scrim, Shadow, Spacing } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
+import { useCardProbe } from "@/lib/diagnostics/cardProbe";
 import type { Card } from "@/lib/game/gameEngine";
 import { computeHandLayout, hitWidth, slotForCard } from "@/components/handLayout";
 import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
@@ -433,6 +434,16 @@ function CardItemBase({
     }
   );
 
+  const cardRef = useRef<View>(null);
+  useCardProbe("hand", { card: cardRef }, () => {
+    const p = pose(dealing.get(), arcTilt.get(), tilt.get(), press.get(), shift.get(), liftY.get(), !!hidden?.get().includes(cardId));
+    const drawn = place ? handCard(place, { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: 1, back: faceDown, lift: 0, glow: 0 }, panShown(place.pan.get(), place.panLimit), place.lift.get()) : null;
+    return {
+      card: cardId, left, bottom, w: cardW, h: cardH, applied: p, drawn,
+      rect: rects?.table.rects.get()[`hand:${cardId}`] ?? null, place: { x: place?.x, y: place?.y }, felt: place?.felt ?? null,
+    };
+  });
+
   const giveableStyle = useAnimatedStyle(() => ({
     opacity: Math.max(0, exchangeState.value),
   }));
@@ -449,6 +460,7 @@ function CardItemBase({
 
   return (
     <Animated.View
+      ref={cardRef}
       testID={`hand-card-${cardId}`}
       style={[
         handStyles.handCardWrap,
