@@ -457,6 +457,8 @@ describe("loop sessions only", () => {
       `until [ "$(gh run view 1 --json status -q .status)" = completed ]; do sleep 30; done`,
       `while ($true) { gh pr checks 12; Start-Sleep 30 }`,
       "gh pr checks 12 --watch",
+      `bash -c 'while true; do gh run view 1; sleep 30; done'`,
+      "1..48 | % { gh run view 1; Start-Sleep 30 }",
     ]) {
       assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
       assert.equal(check(cmd, () => null, repo, false), null, cmd);

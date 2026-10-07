@@ -607,6 +607,30 @@ describe("runOnce", () => {
     assert.match(String(r.why), /ponytail/);
   });
 
+  test("a snapshot that throws during an account error is logged, and the run still stops", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    const said: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 1, blocked: false, ms: 1, log: "l", phase: null, declared: null,
+            result: { isError: true, subtype: "success", terminalReason: "api_error", apiStatus: null },
+            accountError: "authentication_failed: expired",
+          }),
+          pushedPr: () => null,
+          snapshotWip: () => { throw new Error("index.lock exists"); },
+          log: (m: string) => said.push(m),
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked, ledger.map((x) => x.outcome)], ["stop", [], ["halted"]]);
+    assert.match(said.join("\n"), /index\.lock exists/);
+  });
+
   test("an expired login stops the run, and neither diagnoses nor parks the ticket it met", async () => {
     const parked: string[] = [];
     const ledger: any[] = [];

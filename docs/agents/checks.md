@@ -95,7 +95,7 @@ mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
 and 3 when some are still going: then run the same command again. It returns before the default
 Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
---watch` and sleep loop over `gh run view|list` or `gh pr checks` are refused because a device run
+--watch` and a sleep loop over `gh run view|list` or `gh pr checks` are refused because a device run
 outlasts any Bash timeout. `ios.yml` and `maestro.yml` run side by side,
 so dispatch both and wait on both run ids at once; a second dispatch of the same workflow on one
 branch cancels the first. **These two release builds are the only device path**: a release build carries its

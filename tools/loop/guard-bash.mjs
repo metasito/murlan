@@ -353,9 +353,13 @@ function addsInsideOwnWorktree(c, repo) {
 
 const has = (args, re) => args.some((a) => re.test(a));
 
-const LOOP_KEYWORD = /^(for|foreach|while|until)$/i;
-const loops = (text) =>
-  segments(text, 0).some((w) => LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? ""));
+const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
+const loops = (text, depth = 0) =>
+  segments(text, 0).some(
+    (w) =>
+      LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "") ||
+      (depth < MAX_DEPTH && w.some((x) => /\s/.test(x) && loops(x, depth + 1))),
+  );
 const pollsARun = (c) =>
   c.cmd === "gh" &&
   ((c.args[0] === "run" && /^(view|list)$/.test(c.args[1] ?? "")) ||

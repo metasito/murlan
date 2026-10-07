@@ -13,7 +13,7 @@ procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` spawns `/queue <n>` and
 starts the next process when this one exits. No run state is stored: `node tools/loop/loop-status.mjs`
 derives it from git and the tracker. A merge touching `tools/loop/` or `scripts/lib/` restarts the
-supervisor between tickets (`tools/loop/run-loop.mjs`).
+supervisor between passes (`tools/loop/run-loop.mjs`).
 
 ## In every phase
 
@@ -210,8 +210,8 @@ Then leave through **Leaving C**.
 3. Then commit the last slice, and run `npm run agent:check`.
 4. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
-   `- [x] <box> — <path>:<line> · <test path>:<line> · red: <the failure line it printed before the fix>`. A box you cannot close stays `- [ ]` with why,
-   and then the ticket is not done: keep building, or park it (**Never stall**).
+   `- [x] <box> — <path>:<line> · <test path>:<line> · red: <the failure line it printed before
+   the fix>`. A box you cannot close stays `- [ ]` with why, and then the ticket is not done: keep building, or park it (**Never stall**).
 5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
 Only then declare handoff D and exit. The supervisor re-gates it: failing returns to C; passing
@@ -290,8 +290,8 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
    or wrong Spec finding; a baseline smell alone is a note. Close evidence gaps (an unrun CI or
    device job, an open question; wait on a dispatched run with
-   `node tools/loop/await-run.mjs <run-id>…`) before the verdict; HOLD only for what needs a commit: a HOLD is
-   final for its head (`loop-derive.mjs` `verdictFor`). Never write a round's review yourself
+   `node tools/loop/await-run.mjs <run-id>…`) before the verdict; HOLD only for what needs a
+   commit: a HOLD is final for its head (`loop-derive.mjs` `verdictFor`). Never write a round's review yourself
    (rule 29); only the cap's LAND has no new review. Where you disagree with a finding, one line
    in the commit body.
 

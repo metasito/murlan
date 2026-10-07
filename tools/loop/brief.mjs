@@ -58,7 +58,7 @@ const BODIES = {
     `flag, workflow or job name — run \`git -C ${worktree} grep -n -F <name>\` for each, and ` +
     "report every remaining mention outside the diff's own deleted lines." +
     " Then, for every literal value the diff changes — a number, string or colour on a `-` line whose " +
-    `\`+\` line carries a new one — run \`git -C ${worktree} grep -n -F <old value> -- tests\` and ` +
+    `\`+\` line carries a new one — run \`git -C ${worktree} grep -n -F <old value> -- tests tools/loop/tests\` and ` +
     "report each test still asserting the old value.",
   standards: ({ n, worktree, base }) =>
     `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +

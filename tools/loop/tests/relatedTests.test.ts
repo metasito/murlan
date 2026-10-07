@@ -14,7 +14,7 @@ const near = (changed: string[], related = Object.keys(src)) => nearTests({ chan
 describe("the native tests a change reaches first", () => {
   test("#1265: named after the module, reached only through GameTable", () =>
     assert.deepEqual(near(["components/table/scorePill.tsx"]), [T("scorePill")]));
-  test("#1256: imports the module it is named after", () => assert.deepEqual(near(["lib/device/sounds.ts"]), [T("sounds")]));
+  test("#1256: named after the module, which its fixture does not import", () => assert.deepEqual(near(["lib/device/sounds.ts"]), [T("sounds")]));
   test("#1257: imports the changed platform file", () =>
     assert.deepEqual(near(["components/table/feltSkia.web.tsx"]), [T("feltFallbackShade")]));
   test("a name match jest's graph does not reach is dropped", () => assert.deepEqual(near(["lib/x/tableShake.ts"], [T("scorePill")]), []));

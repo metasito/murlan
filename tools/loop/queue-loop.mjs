@@ -11,7 +11,7 @@
  * It exits only when there is genuinely nothing to do. A spent usage window is a wait, not an end:
  * see `holdFor`.
  *
- * Usage: node tools/loop/queue-loop.mjs
+ * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -801,7 +801,7 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
   try {
     run("git", ["update-ref", "-d", `refs/loop/wip/${number}`], { cwd: ROOT });
   } catch {
-    // no snapshot was ever taken
+    // a failed cleanup must not undo the removal
   }
   try {
     run("git", ["branch", "-d", branch], { cwd: ROOT });
@@ -2266,8 +2266,12 @@ export async function runOnce(io, pinned = null, at = null) {
     return { outcome: "stop", why: run.strayPlugin };
   }
   const keepWip = () => {
-    const kept = io.snapshotWip?.(after?.cwd ?? null, route.number);
-    if (kept) io.log(`#${route.number}'s uncommitted work is kept at refs/loop/wip/${route.number} (${kept.slice(0, 7)})`, "session");
+    try {
+      const kept = io.snapshotWip?.(after?.cwd ?? null, route.number);
+      if (kept) io.log(`#${route.number}'s uncommitted work is kept at refs/loop/wip/${route.number} (${kept.slice(0, 7)})`, "session");
+    } catch (err) {
+      io.log(`#${route.number}'s uncommitted work could not be snapshotted — ${String(err.message).split("\n")[0]}`, "session");
+    }
   };
   if (run.accountError) {
     keepWip();
@@ -2456,7 +2460,7 @@ export async function runOnce(io, pinned = null, at = null) {
   const roundsUsed = Math.max(tally.retries, tally.ciRounds ?? 0);
   if (cost.recorded === "retry" && roundsUsed + 1 >= CI_ROUNDS) {
     return handBack(
-      `${roundsUsed + 1} CI rounds on the same branch did not go green — last:${settled.reason}`,
+      `${roundsUsed + 1} CI rounds on the same branch did not go green — last: ${settled.reason}`,
       "E",
       // The failed CI log, when there is one: it is what the owner needs and the session's own
       // stream log is not.
@@ -2803,14 +2807,15 @@ export async function main({
     const total = runTotal(book.totals);
     const t = screen.theme ?? PLAIN();
     if (why) {
-      if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
+      if (code === RESTART) screen.say(`restarting — ${why}`);
+      else if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
       else screen.notice("stopped", why);
     }
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
     book.close(runId, why ? `${total} · stopped: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
-    bell();
+    if (code !== RESTART) bell();
     return code;
   };
 
