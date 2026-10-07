@@ -35,6 +35,6 @@ describe("ensureEngine", () => {
     assert.deepEqual(t.launched, []);
   });
   test("LOCALAPPDATA's install is tried first", () => {
-    assert.match(dockerDesktopPaths({ LOCALAPPDATA: "L", ProgramFiles: "P" })[0], /^L\\Programs\\DockerDesktop\\Docker Desktop\.exe$/);
+    assert.match(dockerDesktopPaths({ LOCALAPPDATA: "L", ProgramFiles: "P" } as never)[0], /^L\\Programs\\DockerDesktop\\Docker Desktop\.exe$/);
   });
 });
