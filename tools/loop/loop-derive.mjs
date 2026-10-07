@@ -243,6 +243,19 @@ export function reviewFor(comments, head) {
 }
 
 const DOD_CHECK_RE = /^DOD-CHECK\s+([0-9a-f]{7,40})\b/m;
+const HANDOFF_RE = /^HANDOFF\s+([0-9a-f]{7,40})\b/;
+/** @param {{body: string}[]} comments @param {string} head */
+export function handoffFor(comments, head) {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = fenceStripped(comments[i].body).trimStart();
+    const m = HANDOFF_RE.exec(body);
+    if (m && covers(head, m[1])) {
+      return { line: m[0].trim(), notes: body.split("\n").slice(1).map((l) => l.trim()).filter(Boolean) };
+    }
+  }
+  return null;
+}
+
 const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
 const EVIDENCE_RE = /([\w./-]+\.\w+):(\d+)/g;
 
@@ -540,6 +553,7 @@ export function derive({
     reviewRounds: trackerReadable ? reviewRounds(comments) : null,
     trackerReadable,
     verdict,
+    handoff: trackerReadable ? handoffFor(comments, head) : null,
     review: trackerReadable ? reviewFor(comments, head) : null,
     ci: ciRead,
     fix,

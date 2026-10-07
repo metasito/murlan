@@ -24,6 +24,12 @@ test("a reason the supervisor handed is printed under the phase", () => {
   assert.match(out, /^ {2}resume at {2}C — Build\.[^\n]*\n {2}handed {5}phase E's agent:check was red$/m);
 });
 
+test("a HANDOFF on this head is printed, so the first command delivers it", () => {
+  const out = report({ ...live, handoff: { line: "HANDOFF abc1234", notes: ["Read first: app/game.tsx:140-175"] } }, undefined);
+  assert.match(out, /^ {2}handoff {4}HANDOFF abc1234$/m);
+  assert.match(out, /^ {13}Read first: app\/game\.tsx:140-175$/m);
+});
+
 test("only a loop process's startup hook is silent", () => {
   const script = fileURLToPath(new URL("../loop-status.mjs", import.meta.url));
   const loop = { LOOP_TURNS: "60" };

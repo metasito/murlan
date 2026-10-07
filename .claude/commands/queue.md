@@ -34,7 +34,9 @@ derives it from git and the tracker.
   Never ask the user a question while a run is live.
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds of it with nothing committed, commit what
   works and narrow the slice.
-- **On the context notice**, commit and declare `handoff` = your phase.
+- **On the context notice**, commit, then post on the issue `HANDOFF <sha>` (`git rev-parse --short HEAD`)
+  with each step left as `- [ ] …` and a `Read first:` line of `path:start-end` ranges, and declare
+  `handoff` = your phase.
 - **A handoff's `"why"`** is the next process's brief, in one sentence.
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
   than the check.
@@ -168,7 +170,7 @@ Then leave through **Leaving C**.
 
 ### How to work
 
-- **Read ranges, not files.** Read the ranges phase B named. A question spanning files ("where is
+- **Read ranges, not files.** Read the ranges phase B or the newest `HANDOFF` named. A question spanning files ("where is
   X used", "how does Y flow"), a long log or a file you will not edit goes to one `sonnet`
   subagent that answers in a few lines. A failing check: its summary first, then only the failure
   you are fixing.

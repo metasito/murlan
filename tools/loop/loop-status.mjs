@@ -63,6 +63,7 @@ export function report(s, reason = process.env.LOOP_REASON) {
     ...ci,
     `  resume at  ${next}`,
     ...(reason ? [`  handed     ${reason}`] : []),
+    ...(s.handoff ? [`  handoff    ${s.handoff.line}`, ...s.handoff.notes.map((l) => `             ${l}`)] : []),
     "",
     `Because: ${s.why}.` +
       (s.dirty

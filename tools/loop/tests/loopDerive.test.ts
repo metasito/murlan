@@ -11,6 +11,7 @@ import {
   ticketOf,
   verdictFor,
   reviewFor,
+  handoffFor,
   reviewRounds,
   ciRedRounds,
   ciRedPosted,
@@ -54,6 +55,14 @@ describe("whether a review covers the code being pushed", () => {
   test("a LAND naming this head clears it", () => {
     const v = verdictFor([{ body: "VERDICT: LAND abc1234" }], head);
     assert.equal(v?.decision, "LAND");
+  });
+
+  test("a HANDOFF naming this head is read back with its steps", () => {
+    const h = handoffFor([{ body: "HANDOFF abc1234\n- [ ] pass matchScore from app/game.tsx\nRead first: app/game.tsx:140-175" }], head);
+    assert.deepEqual(h, { line: "HANDOFF abc1234", notes: ["- [ ] pass matchScore from app/game.tsx", "Read first: app/game.tsx:140-175"] });
+  });
+  test("a HANDOFF naming an older head is not", () => {
+    assert.equal(handoffFor([{ body: "HANDOFF 9999999\n- [ ] x" }], head), null);
   });
 
   // The whole point of the binding: commit again after a review and it stops counting, so there is
