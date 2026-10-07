@@ -13,13 +13,17 @@ import { offlineGameSave } from "./offlineSeed";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepUntil } from "./virtualClock";
 import {
+  diffApart,
   diffFlight,
+  diffMoth,
+  diffOnsetWindows,
   diffPillAtProgress,
   diffTraces,
   movingFields,
   STEP_MS,
   type Failure,
   type Field,
+  type LayerSample,
   type PillBox,
   type Trace,
   type TraceFrame,
@@ -72,6 +76,12 @@ interface Moment {
   variants?: Variant[];
   /** With the fallback felt, both sides' light rests unswayed: the fallback bakes a still light (plan 3 § Decisions). */
   fallbackStill?: boolean;
+  /** Onsets held to a window of the app's time, not to the mockup's onset. */
+  onsetWindows?: Record<string, readonly [number, number]>;
+  /** The only times the strip keeps a frame, where every other step's would cost more than the page needs. */
+  stripAt?: number[];
+  /** Two times the app's particle layer must have drawn something, and something different. */
+  apart?: readonly [number, number];
 }
 
 const STILL_LIGHT = `const swaying = lampStep;
@@ -127,6 +137,10 @@ export const playLowest = (cards: number) => async (page: Page) => {
   await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
 };
 
+const REST_AIR_FROM = MAX_PRE_ROLL_MS;
+/** 15 s on, on the step grid. */
+const REST_AIR_TO = REST_AIR_FROM + Math.ceil(15_000 / STEP_MS) * STEP_MS;
+
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
 const MOCKUP_LANDINGS = [1584, 3040, 5792];
 
@@ -139,9 +153,29 @@ const MOMENTS: Moment[] = [
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["lamp", "level", "flare", "brightness", "scorePill"],
+    fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill"],
     fallbackStill: true,
+  },
+  {
+    // The motes and the moth over a whole crossing, and #1231's frames 15 s apart.
+    key: "rest-air",
+    chapter: "rest",
+    windowMs: REST_AIR_TO,
+    fromMs: REST_AIR_FROM,
+    checkpoints: [REST_AIR_FROM, 4000, 8000, 12000, REST_AIR_TO],
+    appTrigger: heldTurnTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "moth", "air"],
+    regions: [],
+    onsets: ["moment:moth"],
+    // The mockup's `rest` chapter sends its first moth at 2.5 s; the table's comes 6 to 10 s after it starts.
+    onsetWindows: { "moment:moth": [6000, 10_000 + STEP_MS] },
+    stripAt: [...Array.from({ length: 32 }, (_, i) => REST_AIR_FROM + i * 480), REST_AIR_TO],
+    apart: [REST_AIR_FROM, REST_AIR_TO],
+    // The particle canvas never touches CanvasKit.
+    variants: ["skia"],
   },
   {
     key: "trick",
@@ -172,7 +206,6 @@ const MOMENTS: Moment[] = [
     windowMs: 6992,
     checkpoints: [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
-      lamp.m.length = 0;
       ember = () => {};`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
@@ -214,7 +247,19 @@ const MOMENTS: Moment[] = [
 interface Capture {
   trace: Trace;
   frames: { t: number; jpeg: Buffer }[];
+  layer: LayerSample[];
 }
+
+/** The app's particle canvas alone: what it drew, and whether it drew anything. */
+const appLayer = async (page: Page): Promise<Omit<LayerSample, "t"> | null> => {
+  const drawn = await page.evaluate(() => {
+    const c = document.querySelector<HTMLCanvasElement>('[data-testid="particles"]');
+    if (!c) return null;
+    const px = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    return { url: c.toDataURL(), drawn: px.some((v, i) => i % 4 === 3 && v > 0) };
+  });
+  return drawn && { sha1: createHash("sha1").update(drawn.url).digest("hex"), drawn: drawn.drawn };
+};
 
 const PILL_BOX = `(() => {
   const s = scoreEl.style;
@@ -241,6 +286,13 @@ const MOCKUP_SAMPLE = `(() => {
       const v = t.slice(t.indexOf("(") + 1, -1).split(",").map(Number);
       return Math.hypot(v[4], v[5]);
     })),
+    motes: lamp.m.filter((m) =>
+      Math.max(0, 1 - Math.hypot(m.x - lamp.lx, (m.y - lamp.ly) * 1.3) / (300 + lamp.f * 200)) * (.5 + .5 * Math.sin(simT * 1.3 + m.ph)) * lamp.L >= .02
+    ).length,
+    moth: lamp.mothT >= 0 && lamp.freeze < 1 ? (() => {
+      const q = (simT - lamp.mothT) / 4;
+      return { x: lamp.lx - 130 + q * 270 + Math.sin(q * 30) * 14, y: lamp.ly - 50 + Math.cos(q * 23) * 18 };
+    })() : null,
   };
 })()`;
 
@@ -296,9 +348,11 @@ async function strip(
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
   stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
-  layout: () => Promise<SideLayout>
+  layout: () => Promise<SideLayout>,
+  particles: () => Promise<Omit<LayerSample, "t"> | null>
 ): Promise<Capture> {
   const frames: Capture["frames"] = [];
+  const layer: LayerSample[] = [];
   const traced: TraceFrame[] = [];
   const regions: Trace["regions"] = [];
   let shape: Record<string, Region> | undefined;
@@ -322,7 +376,11 @@ async function strip(
     const frame = await stepTo(t, STEP_MS - ran);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
-    const stripped = k % STRIP_STEPS === 0;
+    if (m.apart?.includes(t)) {
+      const sample = await particles();
+      if (sample) layer.push({ t, ...sample });
+    }
+    const stripped = m.stripAt ? m.stripAt.includes(t) : k % STRIP_STEPS === 0;
     const sampled = m.regionsAt ? m.regionsAt.includes(t) : stripped;
     if (!stripped && !sampled) continue;
     const jpeg = await jpegOf(cdp, { x: clip.x, y: clip.y });
@@ -336,7 +394,7 @@ async function strip(
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
   }
   await cdp.detach();
-  return { trace: { frames: traced, regions }, frames };
+  return { trace: { frames: traced, regions }, frames, layer };
 }
 
 async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean): Promise<Capture> {
@@ -363,7 +421,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
   const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
     await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
-  }, () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>);
+  }, () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
   await expectDeparted(page);
   await page.context().close();
   return capture;
@@ -461,7 +519,7 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
     handTop: await page.evaluate(() =>
       Math.min(...[...document.querySelectorAll('[data-hand-state] [data-testid="card-box"]')].map((c) => c.getBoundingClientRect().top))
     ),
-  }));
+  }), () => appLayer(page));
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
   await page.context().close();
@@ -487,13 +545,20 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
     };
   }
   const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
+  const windowed = Object.keys(m.onsetWindows ?? {});
+  const kept = (o: string) => (!m.onsets || m.onsets.includes(o)) && !windowed.includes(o);
   const heldOnsets = (t: Trace): Trace =>
-    m.onsets ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter((o) => m.onsets!.includes(o)) })) } : t;
+    m.onsets || windowed.length ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter(kept) })) } : t;
   const traced = diffTraces(heldOnsets(runs.mockup.trace), heldOnsets(runs.app.trace), m.checkpoints).filter(
     (f) => m.mode === "determinism" || held.has(f.field)
   );
   const flown = held.has("flight") ? diffFlight(runs.mockup.trace, runs.app.trace) : [];
-  const failures = [...traced, ...flown, ...pillFailures];
+  const air = [
+    ...(held.has("onset") ? diffOnsetWindows(runs.app.trace, m.onsetWindows ?? {}) : []),
+    ...(held.has("moth") ? diffMoth(runs.mockup.trace, runs.app.trace) : []),
+    ...(held.has("air") && m.apart ? diffApart(runs.app.layer, m.apart) : []),
+  ];
+  const failures = [...traced, ...flown, ...air, ...pillFailures];
   const moment = `${m.key}-${variant}`;
   const parity = { murlanParity: 1, moment, mode: m.mode, stepMs: STEP_MS, checkpoints: m.checkpoints, sides, failures };
   fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));

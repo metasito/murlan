@@ -44,6 +44,7 @@
   "menuFit.spec.ts": 6.2,
   "menuHeight.spec.ts": 20.3,
   "mockupParity.spec.ts": 93.9,
+  "mockupParityRestAirSkia.spec.ts": 250,
   "mockupParityScoreOpen.spec.ts": 38.8,
   "mockupParityTrickFallback.spec.ts": 49.3,
   "mockupParityTrickLandingsSkia.spec.ts": 140.3,
