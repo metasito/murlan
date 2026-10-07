@@ -40,6 +40,8 @@ import {
 } from "@/lib/game/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
+import { useOwnLink } from "@/lib/useOwnLink";
+import type { OwnLink } from "@/lib/ownLink";
 
 export type RoomState = WireRoomState;
 
@@ -156,6 +158,8 @@ interface OnlineGameContextValue {
   clearRejoinFailed: () => void;
   /** Drops whatever backoff the socket is in and connects now; the `connect` handler rejoins as on any reconnect. */
   retryConnection: () => void;
+  /** The viewer's own link as the table shows it (`lib/ownLink.ts`). */
+  ownLink: OwnLink;
 }
 
 /**
@@ -179,6 +183,7 @@ type ConnectionSlice = Pick<
   | "clearPlayerLeft"
   | "clearRejoinFailed"
   | "retryConnection"
+  | "ownLink"
 >;
 type RoomSlice = Pick<
   OnlineGameContextValue,
@@ -344,6 +349,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
   const { socket } = useSocket();
+  const ownLink = useOwnLink(socket);
 
   // Listeners attached to a socket that is already connected have no `connect`
   // left to hear, so anything holding this as its own state has to seed it by
@@ -1066,8 +1072,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearPlayerLeft,
       clearRejoinFailed,
       retryConnection,
+      ownLink,
     }),
-    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection]
+    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection, ownLink]
   );
 
   const roomValue = useMemo(

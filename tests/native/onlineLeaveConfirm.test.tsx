@@ -66,6 +66,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
     clearError: jest.fn(),
     clearPlayerLeft: jest.fn(),
     clearRejoinFailed: jest.fn(),
+    retryConnection: jest.fn(),
+    ownLink: 'up',
   }),
   useOnlineMatch: () => ({
     matchState: {

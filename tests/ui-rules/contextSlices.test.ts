@@ -58,7 +58,7 @@ function sliceRead(source: string, hookName: string): { via: string; fields: str
 const ONLINE: Record<string, string[]> = {
   useOnlineConnection: [
     "connected", "error", "reconnectNotice", "playerLeft", "rejoinFailed",
-    "clearError", "clearPlayerLeft", "clearRejoinFailed", "retryConnection",
+    "clearError", "clearPlayerLeft", "clearRejoinFailed", "retryConnection", "ownLink",
   ],
   useOnlineRoom: [
     "room", "entrySource", "isSpectator", "createRoom", "joinRoom",

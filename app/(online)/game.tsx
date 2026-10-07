@@ -18,8 +18,6 @@ import {
   useOnlineTurnClock,
 } from "@/context/onlineGameHooks";
 import { useAuth } from "@/context/AuthContext";
-import { useSocket } from "@/context/SocketContext";
-import { useOwnLink } from "@/lib/useOwnLink";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import { vacatedOf } from "@/shared/protocol";
@@ -73,8 +71,8 @@ export default function OnlineGameScreen() {
     clearPlayerLeft,
     clearRejoinFailed,
     retryConnection,
+    ownLink,
   } = useOnlineConnection();
-  const ownLink = useOwnLink(useSocket().socket);
   const {
     matchState,
     cumulativeScores,

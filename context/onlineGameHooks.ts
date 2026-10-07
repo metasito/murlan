@@ -42,6 +42,7 @@ export function useOnlineConnection() {
     clearPlayerLeft,
     clearRejoinFailed,
     retryConnection,
+    ownLink,
   } = useConnectionSlice();
   return useMemo(
     () => ({
@@ -54,6 +55,7 @@ export function useOnlineConnection() {
       clearPlayerLeft,
       clearRejoinFailed,
       retryConnection,
+      ownLink,
     }),
     [
       connected,
@@ -65,6 +67,7 @@ export function useOnlineConnection() {
       clearPlayerLeft,
       clearRejoinFailed,
       retryConnection,
+      ownLink,
     ]
   );
 }
