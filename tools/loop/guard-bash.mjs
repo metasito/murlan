@@ -122,8 +122,8 @@ function segments(text, depth) {
 /**
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
- * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `piped`
- * means its output feeds a `|`.
+ * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
+ * its stdout redirect targets; `piped` means its output feeds a `|`.
  */
 function normalize(words, depth) {
   const env = {};
@@ -162,10 +162,16 @@ function normalize(words, depth) {
   }
 
   const args = [];
+  const out = [];
   for (let j = 0; j < rest.length; j++) {
     const redirect = REDIRECT.exec(rest[j]);
-    if (redirect) j += redirect[1] ? 0 : 1;
-    else args.push(rest[j]);
+    if (!redirect) {
+      args.push(rest[j]);
+      continue;
+    }
+    const target = redirect[1] || rest[j + 1] || "";
+    if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
+    j += redirect[1] ? 0 : 1;
   }
   let dir = null;
   const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
@@ -174,7 +180,7 @@ function normalize(words, depth) {
     if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
     args.splice(0, takes ? 2 : 1);
   }
-  return [{ cmd, env, dir, args, piped: words.piped === true }];
+  return [{ cmd, env, dir, args, out, piped: words.piped === true }];
 }
 
 export function commands(text, depth = 0) {
@@ -329,6 +335,7 @@ export function gitAt(base) {
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
+    unmerged: (paths, dir) => (answer(["diff", "--name-only", "--diff-filter=U", "--", ...paths], dir)?.length ?? 0) > 0,
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
   };
@@ -387,6 +394,7 @@ function checkoutDiscards(rest, c, repo) {
       operands.push(before[i]);
     }
   }
+  if (paths.length && has(before, /^--(ours|theirs)$/) && repo.unmerged(paths, c.dir)) return false;
   if (paths.length) return !operands.length || !repo.pathsClean(paths, c.dir);
   return !branching && operands.some((a) => !repo.isRef(a, c.dir));
 }
@@ -408,6 +416,23 @@ function restoreDiscards(rest, c, repo) {
     }
   }
   return !source || !paths.length || !repo.pathsClean(paths, c.dir);
+}
+
+/** `git show <rev>:<path> > <path>` over a tracked file with uncommitted work: the same discard as a checkout. */
+function redirectRestores(c, repo) {
+  const blob =
+    c.cmd === "git" &&
+    (c.args[0] === "show" || (c.args[0] === "cat-file" && has(c.args, /^(blob|-p)$/))) &&
+    c.args.find((a) => /^[^-][^:]*:./.test(a));
+  if (!blob || !c.out?.length) return false;
+  const source = blob.slice(blob.indexOf(":") + 1);
+  return c.out.some((raw) => {
+    const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? m);
+    if (target.includes("$")) return raw === source;
+    const top = repo.top(c.dir);
+    const rel = top && relative(resolve(top), resolve(repo.cwd(c.dir), target));
+    return Boolean(rel) && !rel.startsWith("..") && !isAbsolute(rel) && !repo.unmerged([target], c.dir) && !repo.pathsClean([target], c.dir);
+  });
 }
 
 function discards(c, repo) {
@@ -498,7 +523,7 @@ const RULES = [
       "Check what you are about to stage with `git status --short` first.",
   },
   {
-    test: (c, { repo }) => discards(c, repo),
+    test: (c, { repo }) => discards(c, repo) || redirectRestores(c, repo),
     message:
       "This git command is blocked: checkout of a path, restore, reset --hard, clean -f, " +
       "switch --discard-changes and stash drop/clear all throw away uncommitted or stashed work — " +

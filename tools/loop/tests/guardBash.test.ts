@@ -33,8 +33,9 @@ const repo = {
   pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
-  top: (): string | null => null,
-  cwd: (): string => "",
+  unmerged: (paths: string[]) => paths.some((p) => p.includes("conflicted")),
+  top: (): string | null => "/r",
+  cwd: (): string => "/r",
 };
 const device = () => "iOS UI (Maestro)";
 const guard = (cmd: string) => check(cmd, device, repo);
@@ -89,6 +90,9 @@ const BLOCKED: [string, RegExp][] = [
   ["git switch --discard-changes main", DISCARD],
   ["git stash drop", DISCARD],
   ["git stash clear", DISCARD],
+  ["for v in a; do p=x/$v.png; git cat-file blob HEAD:$p > $p; done", DISCARD],
+  ["git show HEAD:dirty.ts > dirty.ts", DISCARD],
+  ["git checkout --theirs -- dirty.ts", DISCARD],
   ["git worktree remove .worktrees/w589 --force", FORCE_DELETE],
   ["git worktree remove --force .worktrees/w589", FORCE_DELETE],
   ["git worktree remove -f .worktrees/w589", FORCE_DELETE],
@@ -230,6 +234,10 @@ describe("the bash guard allows correct usage", () => {
     "git reset --soft HEAD~1",
     "git clean -nd",
     "git stash list",
+    "git show HEAD:a.ts > /tmp/a.ts",
+    'D=/tmp/x && git show HEAD:package.json > "$D/package.json"',
+    "git show HEAD:clean.ts > clean.ts",
+    "git checkout --theirs -- conflicted.ts",
     "git worktree remove .worktrees/w589",
     "git worktree list",
     "git worktree prune",
