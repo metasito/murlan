@@ -344,7 +344,7 @@ async function strip(
   m: Moment,
   startMs: number,
   act: (action: NonNullable<Moment["actions"]>[number]) => Promise<unknown> | undefined,
-  stepTo: (t: number, ms: number) => Promise<TraceFrame | null>,
+  stepTo: (t: number, ms: number, acted: boolean) => Promise<TraceFrame | null>,
   layout: () => Promise<SideLayout>,
   particles: () => Promise<Omit<LayerSample, "t"> | null>
 ): Promise<Capture> {
@@ -363,14 +363,16 @@ async function strip(
     const t = startMs + k * STEP_MS;
     // Each side is at t - STEP_MS here, so an action is taken at its own atMs, not up to a frame before it.
     let ran = 0;
+    let acted = false;
     while (due.length && due[0].atMs <= t) {
       const action = due.shift()!;
       const lead = k > 0 ? action.atMs - (t - STEP_MS) - ran : 0;
       if (lead > 0) await step(page, lead);
       ran += Math.max(0, lead);
       await act(action);
+      acted = true;
     }
-    const frame = await stepTo(t, STEP_MS - ran);
+    const frame = await stepTo(t, STEP_MS - ran, acted);
     if (t < (m.fromMs ?? 0)) continue;
     if (frame) traced.push({ ...frame, t });
     if (m.apart?.includes(t)) {
@@ -416,9 +418,9 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
   const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
-  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => ({
+  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms, acted) => ({
     t: 0,
-    ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE)),
+    ...(await stepThen<Omit<TraceFrame, "t">>(page, ms, MOCKUP_SAMPLE, acted)),
   }), () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);
   await expectDeparted(page);
   await page.context().close();
@@ -498,14 +500,13 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   await m.appTrigger(page, baseURL);
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
-  const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
-  return { page, onset, preRollMs, onsetMs: Date.now() - started };
+  const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;  return { page, onset, preRollMs, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
   const { page, onset, preRollMs } = side;
-  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), (t, ms) =>
-    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs)), async () => ({
+  const capture = await strip(page, { x: 0, y: 0 }, decoder, m, preRollMs, (a) => a.app?.(page), (t, ms, acted) =>
+    stepThen<TraceFrame | null>(page, t > preRollMs ? ms : null, TRACED_AT(onset + t - preRollMs), acted), async () => ({
     pile: await seatAnchor(page, "pile"),
     light: await settledLight(page, "bottom"),
     handTop: await page.evaluate(() =>
