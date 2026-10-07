@@ -11,11 +11,8 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
 3. **Before you push, run every test your change adds or edits, and the ones covering the code it changed**: `npx jest tests/native/a.test.tsx …`, and each browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. CI is the second run, never the first: a test you push unrun is named in the PR body with the reason (e.g. the memory preflight refused).
-4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
-   `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's
-   red-then-green is watched; everything wider rides CI.
-5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
-   `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
+4. **While iterating, run one file:** `node --test tests/x.test.ts`, or `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's red-then-green is watched; everything wider rides CI.
+5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.
 6. **A new test must fail before your fix, and a scan must fail on a planted defect** — and it
    must fail *for the reason you claim*. Read the message, not the exit code: a check that goes
    red for the wrong reason goes green for the wrong reason too. Assert the intermediate state as
@@ -31,8 +28,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
 8. **Never change the shared checkout's branch.** Another session is standing in it.
 9. **Find an installed package with `node -e "console.log(require.resolve('<pkg>'))"`.** The
    worktree has no `node_modules` of its own. Never search the filesystem for one.
-10. **The install lives at `dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`.**
-    `--show-toplevel` returns the worktree's own root and will not find it.
+10. **The install lives at `dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`.** `--show-toplevel` returns the worktree's own root and will not find it.
 
 ## Git
 
@@ -116,3 +112,7 @@ Another agent is working in this repository, on this machine, right now.
 43. **A change that moves, renames or deletes a file updates every doc that names it, and a change to behaviour is not complete until every document describing it is updated in the same change.** Docs are part of the diff, not a follow-up — `tests/tooling/docReferences.test.ts` fails on the path a rename left behind.
 44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, `guard-comments.mjs` among them, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.
 45. **One plan task, one pull request.** A plan of several tasks lands task by task, each its own PR against `main`, merged before a task that builds on it starts; a PR spanning several tasks is split before review.
+
+## The CI run
+
+46. **The whole CI run stays under 5 minutes, first job to last: `TARGET_RUN_SECONDS` in `tools/ci/e2e-shard.mjs` is 300.** The owner's ruling (2026-10-07), and only the owner changes it. When the suite outgrows the shards, make specs faster or split them; never raise the target to turn a check green.

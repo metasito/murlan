@@ -12,6 +12,7 @@ import {
   readTimings,
   shardsNeeded,
   specFilesIn,
+  TARGET_RUN_SECONDS,
   UNMEASURED_SECONDS,
 } from "../../tools/ci/e2e-shard.mjs";
 
@@ -155,6 +156,15 @@ describe("the split is stable and even", () => {
     const over = files.filter((f) => seconds(f) > fair).map((f) => `${f} ${seconds(f)}s`);
 
     assert.deepEqual(over, [], `over the ${fair.toFixed(0)}s each of ${SHARDS} shards gets; split them`);
+  });
+
+  test("the target is the owner's five minutes, as rule 46 states it", () => {
+    const rules = readFileSync(path.join(repoRoot, "docs", "agents", "RULES.md"), "utf8");
+    const rule = /^46\. \*\*The whole CI run stays under 5 minutes[^\n]*`TARGET_RUN_SECONDS`[^\n]* is (\d+)\.\*\*/m.exec(rules);
+
+    assert.ok(rule, "docs/agents/RULES.md no longer carries rule 46, the owner's CI target");
+    assert.equal(Number(rule[1]), 300, "rule 46 names a target other than the owner's 300 s");
+    assert.equal(TARGET_RUN_SECONDS, 300, "TARGET_RUN_SECONDS moved off rule 46's 300 s; only the owner changes it");
   });
 
   test("the suite fits the target within the shards a run may have", () => {

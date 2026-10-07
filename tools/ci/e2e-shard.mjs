@@ -24,8 +24,8 @@ const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
-/** The whole CI run's wall clock, first job to last (#1285; docs/research/2026-09-25-ci-speed.md § The target at the cap). */
-export const TARGET_RUN_SECONDS = 330;
+/** The whole CI run's wall clock, first job to last: the owner's, docs/agents/RULES.md rule 46. */
+export const TARGET_RUN_SECONDS = 300;
 /** What the run spends outside the shards on the path through them: the scope job before, the report after. Run 36126540767: 14 s and 37 s. */
 export const AROUND_SHARDS_SECONDS = 50;
 /** A shard's time outside its specs: install, the browser, the bundle, Postgres, the boot. Run 36126540767, warm caches: about 45 s. */
