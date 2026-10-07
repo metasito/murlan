@@ -67,7 +67,7 @@ vec4 cloth(vec2 p){
  col+=mix(uS0,vec3(1.,.88,.66),.4)*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;
  col*=1.+(h21(floor(p*uK))-.5)*uFuzz;
  col+=vec3(1.,.78,.45)*pow(1.-t,2.)*(.14+.35*uFlare);
- col*=1.-.72*smoothstep(uVigR*16./54.,uVigR,length(p-uLamp));
+ col*=1.-.45*smoothstep(uVigR*16./54.,uVigR,length(p-uLamp));
  return vec4(col*inside,inside);}`;
 
 /** Skia's: `xy` arrives in the table's design points, the felt canvas scales it there. */
@@ -78,7 +78,7 @@ export const CLOTH_GLSL = `precision highp float;\nuniform vec2 uRes,uPx;\n${UNI
 
 export type ClothUniforms = Record<string, number | number[]>;
 
-export function rgb(hex: string): number[] {
+function rgb(hex: string): number[] {
   "worklet";
   return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
 }

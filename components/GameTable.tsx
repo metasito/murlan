@@ -125,7 +125,7 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
 import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, seatLit, seatNameBoxes, usePassedSeats } from "@/components/table/seats";
+import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal } from "@/components/table/deal";
@@ -1028,19 +1028,7 @@ export function GameTable({
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
   const onMove = (seat: number) => !trade && seat === shownTurnIndex;
-  const nameBoxes = seatNameBoxes(
-    cardTable.seats,
-    scale,
-    focusMode
-      ? {}
-      : Object.fromEntries(
-          (["top", "left", "right"] as const).flatMap((side) => {
-            const o = opponents[side];
-            return o ? [[side, seatLit(onMove(o.seat), seatMark(o.seat))]] : [];
-          })
-        )
-  );
-  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors, names: nameBoxes }));
+  useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
@@ -1058,7 +1046,7 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} names={nameBoxes} />
+        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer sx={rig.sx} sy={rig.sy} landing={landingSignal} />
         <FeltScrim dim={feltDim} />

@@ -38,7 +38,7 @@ describe('the web fallback felt', () => {
     const lamp = makeMutable(restingLamp(TABLE_CENTRE, 0.75));
     const rig = { lamp, sx: 1, sy: 1 } as unknown as LampRig;
     const cards = {} as CardTable;
-    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} pool={TABLE_CENTRE} ready={false} onReady={() => {}} cards={cards} names={[]} />);
+    const view = await render(<Felt rig={rig} stops={FeltGradients.verde} pool={TABLE_CENTRE} ready={false} onReady={() => {}} cards={cards} />);
     await nextFrame();
 
     expect(createElement).toHaveBeenCalledWith('canvas');

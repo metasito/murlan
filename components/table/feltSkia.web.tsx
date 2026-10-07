@@ -38,7 +38,7 @@ export class SkiaLoadFailed extends Component<{ children: ReactNode }, { failed:
   }
 }
 
-export function Felt({ rig, stops, pool, ready, onReady, cards, names }: FeltProps) {
+export function Felt({ rig, stops, pool, ready, onReady, cards }: FeltProps) {
   const [skia, setSkia] = useState(false);
   const shadeStyle = useAnimatedStyle(() => ({ opacity: levelShade(rig.lamp.value.level) }));
 
@@ -54,7 +54,7 @@ export function Felt({ rig, stops, pool, ready, onReady, cards, names }: FeltPro
       {skia && (
         <SkiaLoadFailed>
           <Suspense fallback={null}>
-            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} names={names} />
+            <SkiaFelt lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} />
           </Suspense>
         </SkiaLoadFailed>
       )}
