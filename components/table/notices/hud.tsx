@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
+import { TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { event, silence } from "@/lib/device/feedback";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
-import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
+import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
+import { noticeBox } from "../noticeModel";
 
 /**
  * The name run, capped so a long username ellipsizes rather than pushing the
@@ -12,9 +14,16 @@ import { NoticeDot, NoticeText, TableNotice } from "../TableNotice";
  */
 const HUD_NAME_MAX_W = 88;
 
-/** The connection as the turn pill carries it (Q8): the lantern mockup's `renderTurn` with `S.net` set. */
-export type ConnectionNote = { state: "offline" | "reconnecting" | "reconnected"; text: string };
-const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok" } as const;
+/**
+ * The connection as the turn pill carries it (Q8): the lantern mockup's `renderTurn` with `S.net` set.
+ * `reconnected` is another seat back; `back` and `lost` are the viewer's own.
+ */
+export type ConnectionNote = {
+  state: "offline" | "reconnecting" | "reconnected" | "back" | "lost";
+  text: string;
+  action?: { label: string; onPress: () => void };
+};
+const CONNECTION_TONE = { offline: "bad", reconnecting: "neutral", reconnected: "ok", back: "ok", lost: "bad" } as const;
 
 export function OfflinePill({ scale, shown = true }: { scale: number; shown?: boolean }) {
   const { t } = useTranslation();
@@ -79,8 +88,10 @@ export function TurnChip({
   // Written after commit, never during render: the only reader is the interval
   // below, which fires a second later at the earliest.
   const onExpireRef = useRef(onExpire);
+  const timeLeftRef = useRef(timeLeft);
   useEffect(() => {
     onExpireRef.current = onExpire;
+    timeLeftRef.current = timeLeft;
   });
 
   // Which clock is on the table. Anything that names a different one puts the
@@ -95,7 +106,7 @@ export function TurnChip({
 
   useEffect(() => {
     if (!active || frozen) return;
-    let remaining = seconds;
+    let remaining = timeLeftRef.current;
     let sounding = false;
     const stop = () => {
       if (sounding) silence("clockRunningOut");
@@ -141,26 +152,46 @@ export function TurnChip({
       ? `${spokenSeat} ${tn("gameTable.a11ySecondsLeft", timeLeft)}`
       : spokenSeat;
   const tone = connection ? CONNECTION_TONE[connection.state] : ember ? "urgent" : lit ? "lit" : "neutral";
+  const action = connection?.action;
+  const slop = Math.max(0, (TOUCH_TARGET_MIN - noticeBox("turn", scale).height) / 2);
+  // The plate draws the words the group's name, or the button's, already says.
+  const plate = (
+    <View {...a11yHidden()}>
+      <TableNotice kind="turn" tone={tone} scale={scale}>
+        <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
+        <NoticeText>{connection ? connection.text : chipText}</NoticeText>
+        {action && <NoticeKey testID="turn-chip-retry">{action.label}</NoticeKey>}
+        {active && !connection && (
+          <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
+            {timeLeft}
+          </NoticeText>
+        )}
+      </TableNotice>
+    </View>
+  );
   return (
     <>
       {/* Its own node, and outside the group rather than under it: a live
           region announces rather than being landed on (CLAUDE.md), and
           `accessible` seals every descendant into one leaf on iOS. */}
       <A11yStatus label={announce} live={connection?.state === "offline" ? "assertive" : "polite"} />
-      <View {...a11yGroup(label)}>
-        {/* The chip draws the words the group's name already says. */}
-        <View {...a11yHidden()}>
-          <TableNotice kind="turn" tone={tone} scale={scale}>
-            <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
-            <NoticeText>{connection ? connection.text : chipText}</NoticeText>
-            {active && !connection && (
-              <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
-                {timeLeft}
-              </NoticeText>
-            )}
-          </TableNotice>
-        </View>
-      </View>
+      {action ? (
+        <Pressable
+          testID="turn-chip-action"
+          onPress={action.onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`${connection.text}, ${action.label}`}
+          style={[styles.target, { paddingVertical: slop, marginVertical: -slop }]}
+        >
+          {plate}
+        </Pressable>
+      ) : (
+        <View {...a11yGroup(label)}>{plate}</View>
+      )}
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  target: { minHeight: TOUCH_TARGET_MIN, justifyContent: "center" },
+});

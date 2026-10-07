@@ -154,6 +154,8 @@ interface OnlineGameContextValue {
    * played.
    */
   clearRejoinFailed: () => void;
+  /** Drops whatever backoff the socket is in and connects now; the `connect` handler rejoins as on any reconnect. */
+  retryConnection: () => void;
 }
 
 /**
@@ -176,6 +178,7 @@ type ConnectionSlice = Pick<
   | "clearError"
   | "clearPlayerLeft"
   | "clearRejoinFailed"
+  | "retryConnection"
 >;
 type RoomSlice = Pick<
   OnlineGameContextValue,
@@ -1044,6 +1047,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
+  const retryConnection = useCallback(() => {
+    socket?.disconnect().connect();
+  }, [socket]);
 
   // One memo per slice, each over only its own state. Two slices sharing a
   // memo, or a dep list reaching past its own slice, is a split that passes
@@ -1059,8 +1065,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearError,
       clearPlayerLeft,
       clearRejoinFailed,
+      retryConnection,
     }),
-    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed]
+    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection]
   );
 
   const roomValue = useMemo(

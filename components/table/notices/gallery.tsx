@@ -62,6 +62,13 @@ export const NOTICE_GALLERY = {
       tone: "bad",
       render: (scale) => <TurnChip {...turn(scale, true, 30)} connection={{ state: "offline", text: "No internet connection" }} />,
     },
+    {
+      name: "given up",
+      tone: "bad",
+      render: (scale) => (
+        <TurnChip {...turn(scale, true, 30)} connection={{ state: "lost", text: "Connection lost", action: { label: "Retry", onPress: () => {} } }} />
+      ),
+    },
   ],
   offline: [{ name: "off the table", tone: "solid", render: (scale) => <OfflinePill scale={scale} /> }],
   whoStarts: [

@@ -236,6 +236,8 @@ describe('the turn pill', () => {
     ['offline', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot, true],
     ['reconnected', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot, false],
     ['reconnecting', Colors.goldBorder, Colors.textMuted, Colors.gold, true],
+    ['back', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot, true],
+    ['lost', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot, true],
   ] as const) {
     it(`carries the connection, ${state}, in place of the seat and its count`, async () => {
       const r = await render(connected(state, active));
@@ -275,6 +277,37 @@ describe('the turn pill', () => {
     expect(screen.getByTestId('turn-chip-count', hidden)).toBeTruthy();
     expect(screen.queryByText('Note', hidden)).toBeNull();
     expect(StyleSheet.flatten(screen.getAllByTestId('notice-turn', hidden)[0].props.style).borderColor).toBe(Colors.ember);
+    await r.unmount();
+  });
+
+  it('offers Riprova on a lost connection as one button, the whole pill its target', async () => {
+    const retry = jest.fn();
+    const r = await render(
+      <TurnChip seconds={30} active resetKey="t" scale={S} lit chipText="Your turn" spokenSeat=""
+        connection={{ state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: retry } }} />
+    );
+    const button = screen.getByRole('button', { name: 'Connessione persa, Riprova' });
+    expect(screen.getByText('Riprova', { includeHiddenElements: true })).toBeTruthy();
+    expect(StyleSheet.flatten(button.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    await fireEvent.press(button);
+    expect(retry).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
+  it('holds a frozen clock at its count, and runs on from there', async () => {
+    const chip = (frozen: boolean) => (
+      <TurnChip seconds={30} active frozen={frozen} resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" />
+    );
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const r = await render(chip(false));
+    await tick(5);
+    expect(count()).toBe(25);
+    await r.rerender(chip(true));
+    await tick(10);
+    expect(count()).toBe(25);
+    await r.rerender(chip(false));
+    await tick(1);
+    expect(count()).toBe(24);
     await r.unmount();
   });
 
