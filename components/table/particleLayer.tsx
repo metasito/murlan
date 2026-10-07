@@ -85,13 +85,14 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
     const idle = !v.s.live && !v.shown;
     if (idle && v.due < AIR_TICK_S) return;
-    if (idle && still.value && !moth.value && !relit(v.light, l)) return;
+    if (idle && still.value && v.air.mothT < 0 && !relit(v.light, l)) return;
     const dt = Math.min(0.05, v.due);
     v.due = 0;
     step(v.s, dt);
     if (stepAir(v.air, dt, l.freeze, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
     v.lit = layoutMotes(v.air, l, v.d, v.s.live);
+    relit(v.light, l);
     v.shown = v.s.live;
     const p = mothPose(v.air, l);
     if (p || moth.value) moth.value = p;
