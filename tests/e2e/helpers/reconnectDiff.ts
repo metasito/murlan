@@ -89,6 +89,7 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   const onsets: [string, keyof Anchors, Record<Side, string>][] = [
     ["the pill's Riconnessione…", "drop", { mockup: "moment:net-net", app: "moment:net-net" }],
     ["the recovery sound", "back", RECONNECT_SOUND],
+    ["the pill's Di nuovo in linea clearing", "back", { mockup: "moment:net-", app: "moment:net-" }],
     ["the pill's Riconnessione… again", "again", { mockup: "moment:net-net", app: "moment:net-net" }],
   ];
   for (const [what, anchor, names] of onsets) {

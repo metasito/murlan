@@ -6,6 +6,7 @@ import type { TraceFrame } from "../e2e/helpers/traceDiff.ts";
 type Plant = {
   greyInMs?: number;
   pillAt?: number;
+  clearAt?: number;
   soundAt?: number;
   swayWhileHeld?: boolean;
   stayFrozen?: boolean;
@@ -35,6 +36,7 @@ function side(start: number, sound: string, p: Plant = {}): TraceFrame[] {
     if (crossed(drop) || crossed(again)) onsets.push("moment:drop");
     if (crossed(drop + (p.pillAt ?? 500)) || crossed(again + 500)) onsets.push("moment:net-net");
     if (crossed(back)) onsets.push("moment:net-ok");
+    if (crossed(back + (p.clearAt ?? 1300))) onsets.push("moment:net-");
     if (crossed(back + (p.soundAt ?? 0))) onsets.push(sound);
     if (crossed(lost)) onsets.push("moment:net-bad");
     frames.push({ t, onsets, live: 0, dropped: 0, lamp: { x: 0, y: 0, level, flare: 0, r: 1, ph }, shake: null, scorePill: null, flight: 0, motes: 0, moth: null, grey });
@@ -54,6 +56,7 @@ test("a faithful app passes, on a clock of its own", () => {
 test("each divergence is named for what diverged", () => {
   assert.ok(fields({ greyInMs: 600 }).some((m) => m.startsWith("grey: the grey") && m.endsWith("after the drop")));
   assert.ok(fields({ pillAt: 0 }).includes("onset: the pill's Riconnessione…, in ms after the drop"));
+  assert.ok(fields({ clearAt: 2000 }).includes("onset: the pill's Di nuovo in linea clearing, in ms after the back"));
   assert.ok(fields({ soundAt: 100 }).includes("onset: the recovery sound, in ms after the back"));
   assert.ok(fields({ swayWhileHeld: true }).includes("freeze: app: the lamp's phase stands still while held"));
   assert.ok(fields({ stayFrozen: true }).includes("freeze: app: the lamp's phase runs on once back"));
