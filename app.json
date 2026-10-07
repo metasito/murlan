@@ -12,6 +12,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.murlan.cardgame",
       "infoPlist": {
+        "UIViewEdgeAntialiasing": true,
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false,
           "NSExceptionDomains": {
