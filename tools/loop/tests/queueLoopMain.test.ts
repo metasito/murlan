@@ -1283,6 +1283,18 @@ describe("main", () => {
     assert.match(closed.join("\n"), /stopped: \.loop-stop/);
   });
 
+  test("a restart's run file says restarting, not stopped", async () => {
+    const closed: string[] = [];
+    await main({
+      io: { ...(io() as any), loopMoved: () => "abc1234" },
+      book: { ...book(), close: (_id: string, line: string) => closed.push(line) },
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.match(closed.join("\n"), /restarting: tools\/loop moved/);
+  });
+
   test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {
     let n = 0;
     const outcomes = [1, 0, 1, 0, 1, 0, 1];

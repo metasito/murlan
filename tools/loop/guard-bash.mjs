@@ -218,7 +218,7 @@ const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 /** `B=agent/12-x && … --ref $B`: literal assignments on the line, which `commands()` drops. */
 export function literalAssignments(text) {
   const vars = {};
-  for (const m of text.matchAll(/(?:^|[\s;&|(])([A-Za-z_]\w*)=(["']?)([^\s"'$`;&|()]+)\2(?=[\s;&|)]|$)/g)) vars[m[1]] = m[3];
+  for (const m of text.matchAll(/(?:^|[\s;&|('"])([A-Za-z_]\w*)=(["']?)([^\s"'$`;&|()]+)\2(?=[\s;&|)]|$)/g)) vars[m[1]] = m[3];
   return vars;
 }
 
@@ -335,7 +335,10 @@ export function gitAt(base) {
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
-    unmerged: (paths, dir) => (answer(["diff", "--name-only", "--diff-filter=U", "--", ...paths], dir)?.length ?? 0) > 0,
+    unmerged: (paths, dir) => {
+      const conflicted = new Set((answer(["diff", "--name-only", "--relative", "--diff-filter=U"], dir) ?? "").split("\n").filter(Boolean));
+      return paths.length > 0 && paths.every((p) => conflicted.has(p.replace(/^\.\//, "").replaceAll("\\", "/")));
+    },
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
   };
@@ -365,8 +368,13 @@ const loops = (text, depth = 0) =>
   segments(text, 0).some(
     (w) =>
       LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "") ||
-      (depth < MAX_DEPTH && w.some((x) => /\s/.test(x) && loops(x, depth + 1))),
+      (depth < MAX_DEPTH && loops(shellBody(w) ?? "", depth + 1)),
   );
+const shellBody = (w) => {
+  const i = w.findIndex((x) => SHELL.test(commandName(x)));
+  const flag = i < 0 ? -1 : w.findIndex((x, j) => j > i && /^(-c|-command|\/c)$/i.test(x));
+  return flag < 0 ? null : w[flag + 1];
+};
 const pollsARun = (c) =>
   c.cmd === "gh" &&
   ((c.args[0] === "run" && /^(view|list)$/.test(c.args[1] ?? "")) ||
@@ -419,7 +427,7 @@ function restoreDiscards(rest, c, repo) {
 }
 
 /** `git show <rev>:<path> > <path>` over a tracked file with uncommitted work: the same discard as a checkout. */
-function redirectRestores(c, repo) {
+function redirectRestores(c, repo, vars, moved) {
   const blob =
     c.cmd === "git" &&
     (c.args[0] === "show" || (c.args[0] === "cat-file" && has(c.args, /^(blob|-p)$/))) &&
@@ -427,11 +435,15 @@ function redirectRestores(c, repo) {
   if (!blob || !c.out?.length) return false;
   const source = blob.slice(blob.indexOf(":") + 1);
   return c.out.some((raw) => {
-    const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? m);
+    const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? vars[v] ?? m);
     if (target.includes("$")) return raw === source;
+    if (moved && !isAbsolute(target)) return true;
+    const abs = resolve(repo.cwd(null), target);
     const top = repo.top(c.dir);
-    const rel = top && relative(resolve(top), resolve(repo.cwd(c.dir), target));
-    return Boolean(rel) && !rel.startsWith("..") && !isAbsolute(rel) && !repo.unmerged([target], c.dir) && !repo.pathsClean([target], c.dir);
+    const rel = top && relative(resolve(top), abs);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
+    const inGit = relative(repo.cwd(c.dir), abs);
+    return !repo.unmerged([inGit], c.dir) && !repo.pathsClean([inGit], c.dir);
   });
 }
 
@@ -523,14 +535,16 @@ const RULES = [
       "Check what you are about to stage with `git status --short` first.",
   },
   {
-    test: (c, { repo }) => discards(c, repo) || redirectRestores(c, repo),
+    test: (c, { repo, vars, moved }) => discards(c, repo) || redirectRestores(c, repo, vars, moved),
     message:
       "This git command is blocked: checkout of a path, restore, reset --hard, clean -f, " +
+      "`git show <rev>:<path> > <path>` (the same restore by redirect), " +
       "switch --discard-changes and stash drop/clear all throw away uncommitted or stashed work — " +
       "including a fix you have not committed yet, or a peer's stash on the shared stack. This " +
       "has cost real work four times.\n" +
       "Undoing a seeded defect? Reverse it with the Edit tool — the same replacement backwards.\n" +
       "Switching branch? `git switch <branch>` refuses rather than discarding.\n" +
+      "Resolving a merge or rebase conflict? `git checkout --ours|--theirs -- <path>` is allowed on a conflicted path.\n" +
       "Really want a file back from a commit? Commit your work first, then name the source:\n" +
       "  git checkout HEAD -- path/to/file\n" +
       "Confirm with `git status --short` and `git diff` afterwards.",

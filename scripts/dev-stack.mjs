@@ -160,7 +160,7 @@ try {
     engineUp: () => run("docker", ["info"], { timeout: 15_000 }).status === 0,
     exists: existsSync,
     launch: (p) => spawn(p, [], { detached: true, stdio: "ignore" }).unref(),
-    sleep: (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+    sleep,
     paths: dockerDesktopPaths(),
   });
 

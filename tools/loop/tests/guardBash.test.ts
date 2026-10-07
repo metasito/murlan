@@ -1,12 +1,12 @@
 // tools/loop/tests/guardBash.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { check } from "../guard-bash.mjs";
+import { check, gitAt } from "../guard-bash.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -33,7 +33,7 @@ const repo = {
   pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
-  unmerged: (paths: string[]) => paths.some((p) => p.includes("conflicted")),
+  unmerged: (paths: string[]) => paths.length > 0 && paths.every((p) => p.includes("conflicted")),
   top: (): string | null => "/r",
   cwd: (): string => "/r",
 };
@@ -93,6 +93,11 @@ const BLOCKED: [string, RegExp][] = [
   ["for v in a; do p=x/$v.png; git cat-file blob HEAD:$p > $p; done", DISCARD],
   ["git show HEAD:dirty.ts > dirty.ts", DISCARD],
   ["git checkout --theirs -- dirty.ts", DISCARD],
+  ["git checkout --theirs -- .", DISCARD],
+  ["git checkout --theirs -- conflicted.ts dirty.ts", DISCARD],
+  ["git -C .worktrees/agent-5 show HEAD:dirty.ts > .worktrees/agent-5/dirty.ts", DISCARD],
+  ["p=dirty.ts; git show HEAD:dirty.ts > $p", DISCARD],
+  ["cd sub && git show HEAD:a.ts > a.ts", DISCARD],
   ["git worktree remove .worktrees/w589 --force", FORCE_DELETE],
   ["git worktree remove --force .worktrees/w589", FORCE_DELETE],
   ["git worktree remove -f .worktrees/w589", FORCE_DELETE],
@@ -475,6 +480,7 @@ describe("loop sessions only", () => {
       "gh workflow run ios.yml --ref agent/1-x && sleep 8 && gh run list --branch agent/1-x --limit 5",
       `for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 5; done`,
       "gh pr checks 12",
+      'gh pr comment 1 --body "while CI runs"; sleep 5; gh run view 1',
     ]) assert.equal(check(cmd, () => null, repo, true), null, cmd);
   });
   test("a timeout in front of a command does not hide it", () => {
@@ -483,6 +489,33 @@ describe("loop sessions only", () => {
     assert.equal(check("timeout 60 gh run view 123", () => null, repo, true), null);
     for (const opts of ["--signal KILL", "--kill-after 5", "--signal=KILL --kill-after=5"]) {
       assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, () => null, repo, false), null, opts);
+    }
+  });
+});
+
+describe("gitAt.unmerged, against a real conflict", () => {
+  test("is true only when every path is itself conflicted", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-unmerged-"));
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, stdio: "ignore" });
+    try {
+      git("init", "-q", "-b", "main");
+      writeFileSync(join(dir, "c.txt"), "a\n");
+      writeFileSync(join(dir, "d.txt"), "a\n");
+      git("add", "."); git("commit", "-qm", "base");
+      git("checkout", "-qb", "side");
+      writeFileSync(join(dir, "c.txt"), "side\n"); git("commit", "-qam", "side");
+      git("checkout", "-q", "main");
+      writeFileSync(join(dir, "c.txt"), "main\n"); git("commit", "-qam", "main");
+      try { git("merge", "side"); } catch { /* the conflict is the point */ }
+      writeFileSync(join(dir, "d.txt"), "dirty\n");
+      const repo = gitAt(dir);
+      assert.equal(repo.unmerged(["c.txt"], null), true);
+      assert.equal(repo.unmerged(["./c.txt"], null), true);
+      assert.equal(repo.unmerged(["."], null), false);
+      assert.equal(repo.unmerged(["c.txt", "d.txt"], null), false);
+      assert.equal(repo.unmerged([], null), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

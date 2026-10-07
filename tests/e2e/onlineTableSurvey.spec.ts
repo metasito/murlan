@@ -507,7 +507,7 @@ test.describe("the online table, at the audit's viewports", () => {
     // Only a whole survey is written down. A `--shard`ed or `-g`-filtered run
     // measures some of the four, and a partial file replacing the record reads
     // as the rest having stopped being true.
-    if (rows.length !== VIEWPORTS.length * 2) return;
+    if (!UPDATING || rows.length !== VIEWPORTS.length * 2) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
     // Merged into the existing file by key, never replacing it outright: this
     // run's rows hold whichever `cards` count each viewport's real deal

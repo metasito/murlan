@@ -95,7 +95,8 @@ mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
 and 3 when some are still going: then run the same command again. It returns before the default
 Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
---watch` and a sleep loop over `gh run view|list` or `gh pr checks` are refused because a device run
+--watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
+`…actions/runs|check-runs` are refused because a device run
 outlasts any Bash timeout. `ios.yml` and `maestro.yml` run side by side,
 so dispatch both and wait on both run ids at once; a second dispatch of the same workflow on one
 branch cancels the first. **These two release builds are the only device path**: a release build carries its
@@ -298,7 +299,7 @@ one that doesn't needs a device capture (above).
   refuses one.
 - **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
   (`globalTimeout`); narrow with one spec or `-g` rather than raising it.
-- **`dev-stack up` starts Docker Desktop and waits up to 3 min** when the engine is down; never
+- **`dev-stack up` starts Docker Desktop and waits for it** (`scripts/dockerEngine.mjs` holds the budget) when the engine is down; never
   improvise a start.
 - **A scan that has only ever been green has not been tested, it's been assumed** — rule 6; see
   *A scan needs a planted floor*, below. **A native `fireEvent` without `await` asserts against
@@ -470,7 +471,8 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 every hook):
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
-  --watch` and a sleep loop over `gh run view|list` or `gh pr checks`, which § Device runs
+  --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
+  `…actions/runs|check-runs`, which § Device runs
   replaces with `await-run.mjs`.
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every

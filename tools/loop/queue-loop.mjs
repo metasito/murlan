@@ -2813,7 +2813,7 @@ export async function main({
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, why ? `${total} · stopped: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
+    book.close(runId, why ? `${total} · ${code === RESTART ? "restarting" : "stopped"}: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
     if (code !== RESTART) bell();
     return code;
   };

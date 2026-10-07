@@ -40,6 +40,7 @@ supervisor between passes (`tools/loop/run-loop.mjs`).
   (`gh issue comment <n> --body-file <file>`, first line `HANDOFF <sha>`), and declare
   `handoff` = your phase.
 - **A handoff's `"why"`** is the next process's brief, in one sentence.
+- **Scratch files go under `.loop-logs/`**, never outside the repo (rule 32).
 - **Only an `agent:check` run passes the Bash tool its maximum `timeout`**: the default is shorter
   than the check.
 
@@ -191,7 +192,6 @@ Then leave through **Leaving C**.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
 - **Batch what does not depend on the last answer.**
-- **Scratch files go under `.loop-logs/`**, never outside the repo (rule 32).
 
 ### Leaving C
 

@@ -1,6 +1,7 @@
 /**
  * PreToolUse for Write|Edit|NotebookEdit in a loop session: the shared checkout is another
- * session's (RULES.md rules 8 and 31). Exit 0 always; stdout carries the deny, or nothing.
+ * session's (RULES.md rules 8 and 31), and nothing outside the repo is scratch (rule 32). Only
+ * `.worktrees/` and `.loop-logs/` are writable. Exit 0 always; stdout carries the deny, or nothing.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
