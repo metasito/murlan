@@ -152,6 +152,40 @@ describe('ParticleLayer', () => {
       await view.unmount();
     });
 
+    it('back under reduced motion lays the motes out again for a light that moved while it was off', async () => {
+      mockReduced = true;
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const landing = makeMutable(NO_LANDING);
+      const view = await render(<ParticleLayer rig={rig} landing={landing} />);
+      const frames = async (n: number) => {
+        const before = mockLaid;
+        for (let i = 0; i < n; i++) await act(async () => jest.advanceTimersByTime(16));
+        return mockLaid - before;
+      };
+      const home = rig.lamp.value.lx;
+      const shift = (dx: number) =>
+        rig.lamp.modify((l) => {
+          'worklet';
+          l.lx = home + dx;
+          return l;
+        }, true);
+      await frames(2);
+      expect(await frames(30)).toBe(0);
+
+      mockReduced = false;
+      await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
+      shift(40);
+      expect(await frames(30)).toBeGreaterThan(20);
+
+      shift(0);
+      mockReduced = true;
+      const relaid = mockLaid;
+      await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
+      expect(mockLaid - relaid + (await frames(2))).toBeGreaterThan(0);
+      expect(await frames(30)).toBe(0);
+      await view.unmount();
+    });
+
     it('under reduced motion holds the motes still and lit, and sends no moth', async () => {
       mockReduced = true;
       mockOnsets.length = 0;
