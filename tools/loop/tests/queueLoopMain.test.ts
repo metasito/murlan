@@ -22,6 +22,8 @@ import {
   removeLanded,
   removeWorktree,
   MAX_HANDOFFS,
+  RESTART,
+  loopMoved,
   USD_BY_SIZE,
   WAIT,
 } from "../queue-loop.mjs";
@@ -491,6 +493,20 @@ describe("runOnce", () => {
     const passed = await runOnce(io({ spawn: handingOff("C", "D"), publish: (...a: unknown[]) => published.push(a) }, []));
     assert.equal(passed.phase, "D");
     assert.deepEqual(published, [[42, "agent/42-x", ".worktrees/agent-42"]], "a head handed to review is pushed for CI");
+  });
+
+  test("a moved tools/loop restarts the supervisor before any ticket is picked", async () => {
+    const r = await runOnce(io({ loopMoved: () => "abc1234", pick: () => { throw new Error("picked"); } }));
+    assert.deepEqual([r.outcome, /abc1234/.test(String(r.why))], ["restart", true]);
+  });
+  test("loopMoved answers a diff, not an error", () => {
+    const fail = (status: number) => (...a: string[]) => {
+      if (a[0] === "diff") throw Object.assign(new Error("x"), { status });
+      return "abc1234\n";
+    };
+    assert.equal(loopMoved("s", fail(1)), "abc1234");
+    assert.equal(loopMoved("s", fail(128)), null);
+    assert.equal(loopMoved(null, fail(1)), null);
   });
 
   test("a handoff the supervisor makes for a cut-off session says why", async () => {
@@ -1204,6 +1220,18 @@ describe("main", () => {
       runId: "t",
     });
     assert.ok(said.some((m) => /#1094's phase D session .* killed after 12 min/.test(m)), said.join("\n"));
+  });
+
+  test("a moved tools/loop ends main with the restart code, before anything is picked", async () => {
+    let picked = 0;
+    const code = await main({
+      io: { ...(io() as any), loopMoved: () => "abc1234", pick: () => (picked += 1) as never },
+      book: book(),
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.deepEqual([code, picked], [RESTART, 0]);
   });
 
   test("a stop file ends the night cleanly, before anything is picked", async () => {

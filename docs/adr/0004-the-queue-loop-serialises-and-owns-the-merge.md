@@ -55,7 +55,8 @@ ambiguous about, no slot to orphan, and no branch cut from a `main` that is abou
 
 Recovery is re-derivation. Restarting the loop after any failure is safe and is the
 supported repair — there is no state file to reconcile, and `.loop-stop` is read without
-being consumed so a scheduled restart sees it too.
+being consumed so a scheduled restart sees it too. A merge touching `tools/loop/` or
+`scripts/lib/` restarts the supervisor between tickets (`run-loop.mjs`, exit 75).
 
 A mechanical failure no longer reaches the tracker. `settleOutcome` counts it toward the
 breaker and leaves the branch, the pull request and the labels intact for the next

@@ -12,7 +12,8 @@ procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
 One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` spawns `/queue <n>` and
 starts the next process when this one exits. No run state is stored: `node tools/loop/loop-status.mjs`
-derives it from git and the tracker.
+derives it from git and the tracker. A merge touching `tools/loop/` or `scripts/lib/` restarts the
+supervisor between tickets (`tools/loop/run-loop.mjs`).
 
 ## In every phase
 

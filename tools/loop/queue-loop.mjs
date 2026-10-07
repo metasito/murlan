@@ -1690,6 +1690,18 @@ const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 
+export const RESTART = 75;
+/** The supervisor's own code moved under it: `syncCheckout` updated the checkout, not the running process. */
+export function loopMoved(startSha, run = git) {
+  if (!startSha) return null;
+  try {
+    run("diff", "--quiet", startSha, "HEAD", "--", "tools/loop", "scripts/lib");
+    return null;
+  } catch (err) {
+    return err.status === 1 ? run("rev-parse", "--short", "HEAD").trim() : null;
+  }
+}
+
 /** The commit this supervisor runs, or null: two loop versions are otherwise one in the record. */
 export function loopSha(run = git) {
   try {
@@ -2148,13 +2160,15 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff",
+ * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff"|"restart",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
  *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
 export async function runOnce(io, pinned = null, at = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
   if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
+  const moved = io.loopMoved?.();
+  if (moved) return { outcome: "restart", why: `tools/loop moved on main (now ${moved})` };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = await io.queuePre();
@@ -2475,8 +2489,10 @@ function realIo(book, screen) {
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
   let picked = null;
+  const started = loopSha();
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
+    loopMoved: () => loopMoved(started),
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () => queuePreStreamed(),
     issueState: (n) => {
@@ -2812,6 +2828,7 @@ export async function main({
     }
 
     if (pass.outcome === "stop") return finish(0, pass.why);
+    if (pass.outcome === "restart") return finish(RESTART, pass.why);
 
     // Read only here, once the session has exited: a park is never a kill.
     if (pass.ticket != null && parkAsked(pass.ticket)) {
