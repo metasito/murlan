@@ -36,7 +36,6 @@ interface Field {
   d: Float32Array;
   air: Air;
   lit: number;
-  moth: MothPose | null;
 }
 
 function bakeSheet(): SkImage | null {
@@ -71,7 +70,8 @@ function bakeSheet(): SkImage | null {
   return surface.makeImageSnapshot();
 }
 
-function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: SharedValue<boolean>) {
+// `moth` is written only while one flies: `field` changes every frame, and shapes derived from it would rebuild with it.
+function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: SharedValue<boolean>, moth: SharedValue<MothPose | null>) {
   return (frame: FrameInfo) => {
     "worklet";
     const v = field.value;
@@ -81,7 +81,8 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     if (stepAir(v.air, dt, l.freeze, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
     v.lit = layoutMotes(v.air, l, v.d, v.s.live);
-    v.moth = mothPose(v.air, l);
+    const p = mothPose(v.air, l);
+    if (p || moth.value) moth.value = p;
     field.modify(undefined, true);
   };
 }
@@ -109,8 +110,8 @@ export function ParticleLayer({ ref, rig, landing }: {
     d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
     air: createAir(Math.random),
     lit: 0,
-    moth: null,
   });
+  const moth = useSharedValue<MothPose | null>(null);
   const reduced = usePrefersReducedMotion();
   const still = useSharedValue(reduced);
   useEffect(() => {
@@ -127,7 +128,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   });
 
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.
-  const [onFrame] = useState(() => stepper(field, lamp, still));
+  const [onFrame] = useState(() => stepper(field, lamp, still, moth));
   useFrameCallback(onFrame);
   useTraceSource("live", useCallback(() => field.value.s.live + MOTES, [field]));
   useTraceSource("dropped", useCallback(() => field.value.s.dropped, [field]));
@@ -135,9 +136,9 @@ export function ParticleLayer({ ref, rig, landing }: {
   useTraceSource(
     "moth",
     useCallback(() => {
-      const p = field.value.moth;
+      const p = moth.value;
       return p && { x: p.mx * sx, y: p.my * sy };
-    }, [field, sx, sy])
+    }, [moth, sx, sy])
   );
 
   useImperativeHandle(ref, () => ({
@@ -173,15 +174,15 @@ export function ParticleLayer({ ref, rig, landing }: {
     c[3] = i < s.live + MOTES ? d[o + D.a] : 0;
   });
   const shadow = useDerivedValue(() => {
-    const p = field.value.moth;
+    const p = moth.value;
     return p ? ovalOf(0, 0, p.shadowRx, p.shadowRy) : ovalOf(0, 0, 0, 0);
   });
   const shadowAt = useDerivedValue(() => {
-    const p = field.value.moth;
+    const p = moth.value;
     return p ? [{ translateX: p.sx }, { translateY: p.sy }, { rotate: p.shadowRot }] : [];
   });
-  const leftWing = useDerivedValue(() => wingOf(field.value.moth, -1));
-  const rightWing = useDerivedValue(() => wingOf(field.value.moth, 1));
+  const leftWing = useDerivedValue(() => wingOf(moth.value, -1));
+  const rightWing = useDerivedValue(() => wingOf(moth.value, 1));
 
   if (!sheet) return null;
   return (

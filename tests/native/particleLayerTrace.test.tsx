@@ -18,6 +18,17 @@ jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => mockReduced,
 }));
 
+const mockShapes = { built: 0 };
+jest.mock('@shopify/react-native-skia', () => {
+  const React = require('react') as typeof import('react');
+  const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
+  const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
+  const rect = () => (mockShapes.built++, call);
+  return new Proxy({ Skia: call, PaintStyle: {}, rect } as Record<string | symbol, unknown>, {
+    get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
+  });
+});
+
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
@@ -56,6 +67,7 @@ describe('ParticleLayer', () => {
     await view.unmount();
   });
 
+
   describe('at rest, frame by frame', () => {
     beforeEach(() => {
       jest.useFakeTimers();
@@ -73,6 +85,24 @@ describe('ParticleLayer', () => {
       expect(lit.size).toBeGreaterThan(1);
       expect(moths).toBeGreaterThan(0);
       expect(mockOnsets).toEqual(['moment:moth']);
+    });
+
+    it('builds the moth\'s shapes only on frames with a moth on the light', async () => {
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
+      let idle = 0;
+      let flying = 0;
+      for (let t = 0; t < 10_500; t += 16) {
+        const before = mockShapes.built;
+        const flew = mockSources.get('moth')?.();
+        await act(async () => jest.advanceTimersByTime(16));
+        if (mockSources.get('moth')?.()) flying += mockShapes.built - before;
+        else if (t > 0 && !flew) idle += mockShapes.built - before;
+      }
+      await view.unmount();
+
+      expect(flying).toBeGreaterThan(0);
+      expect(idle).toBe(0);
     });
 
     it('under reduced motion holds the motes still and lit, and sends no moth', async () => {
