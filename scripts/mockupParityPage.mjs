@@ -86,7 +86,8 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
 <script>
   const DATA = __DATA__;
   const SERIES = {
-    live: (f) => f.live, dropped: (f) => f.dropped,
+    live: (f) => f.live, dropped: (f) => f.dropped, motes: (f) => f.motes,
+    "moth x": (f) => f.moth && f.lamp && f.moth.x - f.lamp.x,
     "lamp x": (f) => f.lamp && f.lamp.x, "lamp y": (f) => f.lamp && f.lamp.y,
     level: (f) => f.lamp && f.lamp.level, flare: (f) => f.lamp && f.lamp.flare,
     shake: (f) => f.shake && Math.hypot(f.shake.x, f.shake.y),

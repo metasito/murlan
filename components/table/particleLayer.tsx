@@ -19,7 +19,8 @@ import {
   type SkImage,
 } from "@shopify/react-native-skia";
 import { useDerivedValue, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
-import { useTraceSource } from "@/lib/e2eTrace";
+import { scheduleOnRN } from "react-native-worklets";
+import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
 import { createAir, mothPose, MOTES, stepAir, type Air, type MothPose } from "./air";
@@ -77,7 +78,7 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const l = lamp.value;
     const dt = Math.min(0.05, (frame.timeSincePreviousFrame ?? 0) / 1000);
     step(v.s, dt);
-    stepAir(v.air, dt, l.freeze, still.value, Math.random);
+    if (stepAir(v.air, dt, l.freeze, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
     v.lit = layoutMotes(v.air, l, v.d, v.s.live);
     v.moth = mothPose(v.air, l);

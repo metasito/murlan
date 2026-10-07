@@ -299,6 +299,18 @@ export function diffApart(samples: LayerSample[], [from, to]: readonly [number, 
   return out;
 }
 
+/** Reduced motion's air: the twinkle stopped, so the same motes are lit every frame, and no moth flies. */
+export function diffStillAir(app: Trace): Failure[] {
+  const lit = app.frames[0]?.motes ?? 0;
+  const out: Failure[] = [];
+  if (lit === 0) out.push({ field: "air", t: app.frames[0]?.t ?? 0, mockup: null, app: lit, message: "the motes held still with none lit" });
+  const twinkled = app.frames.find((f) => f.motes !== lit);
+  if (twinkled) out.push({ field: "air", t: twinkled.t, mockup: lit, app: twinkled.motes, message: `${twinkled.motes} motes at ${twinkled.t} ms, ${lit} before` });
+  const moth = app.frames.find((f) => f.moth);
+  if (moth) out.push({ field: "air", t: moth.t, mockup: null, app: moth.moth, message: `a moth at ${moth.t} ms` });
+  return out;
+}
+
 /** The fields whose value changes somewhere in the window — a determinism entry's proof it recorded something. */
 export function movingFields(trace: Trace): Set<Field> {
   const moved = new Set<Field>();

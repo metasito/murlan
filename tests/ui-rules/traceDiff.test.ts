@@ -7,6 +7,7 @@ import {
   diffMoth,
   diffOnsetWindows,
   diffPillAtProgress,
+  diffStillAir,
   diffTraces,
   movingFields,
   STEP_MS,
@@ -255,5 +256,12 @@ describe("the moth field", () => {
     assert.match(diffApart([drawn(0, "a"), drawn(15000, "a")], [0, 15000])[0].message, /is the one at/);
     assert.match(diffApart([drawn(0, "a"), { t: 15000, sha1: "b", drawn: false }], [0, 15000])[0].message, /drew nothing/);
     assert.match(diffApart([drawn(0, "a")], [0, 15000])[0].message, /no particle layer sample/);
+  });
+
+  test("under reduced motion the air holds: the same motes lit every frame, and no moth", () => {
+    assert.deepEqual(diffStillAir(reference()), []);
+    assert.match(diffStillAir(planted((t) => (at(t, 160).motes = 13)))[0].message, /13 motes at 160 ms/);
+    assert.match(diffStillAir(planted((t) => t.frames.forEach((f) => (f.motes = 0))))[0].message, /none lit/);
+    assert.match(diffStillAir(withMoth(32))[0].message, /a moth at 32 ms/);
   });
 });

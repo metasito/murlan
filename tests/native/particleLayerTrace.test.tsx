@@ -8,7 +8,9 @@ import type { ParticleEmitter, ParticleSpawn } from '@/components/table/particle
 const mockSources = new Map<string, () => unknown>();
 jest.mock('@/lib/e2eTrace', () => ({
   useTraceSource: (field: string, read: () => unknown) => mockSources.set(field, read),
+  traceOnset: (...onset: string[]) => mockOnsets.push(onset.join(':')),
 }));
+const mockOnsets: string[] = [];
 
 let mockReduced = false;
 jest.mock('@/lib/accessibility', () => ({
@@ -55,27 +57,33 @@ describe('ParticleLayer', () => {
   });
 
   describe('at rest, frame by frame', () => {
-    beforeEach(() => jest.useFakeTimers());
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
     afterEach(() => {
       jest.useRealTimers();
       mockReduced = false;
     });
 
-    it('lights the motes, twinkling, and sends a moth across within 10 s', async () => {
+    it('lights the motes, twinkling, and sends a moth across within 10 s, its onset traced', async () => {
+      mockOnsets.length = 0;
       const { lit, moths } = await atRest(10_500);
 
       expect(Math.max(...(lit as Set<number>))).toBeGreaterThan(0);
       expect(lit.size).toBeGreaterThan(1);
       expect(moths).toBeGreaterThan(0);
+      expect(mockOnsets).toEqual(['moment:moth']);
     });
 
     it('under reduced motion holds the motes still and lit, and sends no moth', async () => {
       mockReduced = true;
+      mockOnsets.length = 0;
       const { lit, moths } = await atRest(10_500);
 
       expect(lit.size).toBe(1);
       expect([...lit][0]).toBeGreaterThan(0);
       expect(moths).toBe(0);
+      expect(mockOnsets).toEqual([]);
     });
   });
 });

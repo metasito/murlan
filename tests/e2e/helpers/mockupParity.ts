@@ -18,6 +18,7 @@ import {
   diffMoth,
   diffOnsetWindows,
   diffPillAtProgress,
+  diffStillAir,
   diffTraces,
   movingFields,
   STEP_MS,
@@ -561,6 +562,7 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
     ...(held.has("onset") ? diffOnsetWindows(runs.app.trace, m.onsetWindows ?? {}) : []),
     ...(held.has("moth") ? diffMoth(runs.mockup.trace, runs.app.trace) : []),
     ...(held.has("air") && m.apart ? diffApart(runs.app.layer, m.apart) : []),
+    ...(variant === "fallback" && m.fallbackStill ? diffStillAir(runs.app.trace) : []),
   ];
   const failures = [...traced, ...flown, ...air, ...pillFailures];
   const moment = `${m.key}-${variant}`;
