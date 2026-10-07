@@ -298,7 +298,8 @@ one that doesn't needs a device capture (above).
   hand races it for the port. A piped run exits with the pipe's code: `tools/loop/guard-bash.mjs`
   refuses one.
 - **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
-  (`globalTimeout`); narrow with one spec or `-g` rather than raising it.
+  (`globalTimeout`); narrow with one spec or `-g` rather than raising it. Outside a loop session
+  (`LOOP_TURNS` unset) an explicit `E2E_GLOBAL_TIMEOUT_MS` above that ceiling is honoured.
 - **`dev-stack up` starts Docker Desktop and waits for it** (`scripts/dockerEngine.mjs` holds the budget) when the engine is down; never
   improvise a start. A `docker info` that times out is a starved engine, not a down one: it is
   waited for with a longer probe and never launched again.
