@@ -59,15 +59,8 @@ export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
  * behind the frame the last step dirtied. It drives Playwright's in-page clock directly, which
  * leaves the step out of the log Playwright replays into a new document, so nothing may navigate
  * after it. `ms` null reads without stepping.
- *
- * An input's effects land on real-time tasks the virtual clock does not hold (React's scheduler),
- * so straight after one `afterInput` takes `step`'s round trips, which give them time to run.
  */
-export async function stepThen<T>(page: Page, ms: number | null, read: string, afterInput = false): Promise<T> {
-  if (afterInput) {
-    if (ms !== null) await step(page, ms);
-    return page.evaluate(read) as Promise<T>;
-  }
+export async function stepThen<T>(page: Page, ms: number | null, read: string): Promise<T> {
   return page.evaluate(`(async () => {
     const clock = globalThis.__pwClock?.controller;
     if (!clock) throw new Error("Playwright's in-page clock is not installed");

@@ -16,6 +16,7 @@ import {
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
 import { suspendAI } from "@/lib/e2eAiSuspend";
+import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/game/offlineBotDelay";
 import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
@@ -69,8 +70,10 @@ export default function GameScreen() {
   useEffect(() => {
     if (!AI_SUSPENDED) return;
     const e2e = globalThis as { murlanPass?: () => void; murlanBotMove?: () => void };
-    e2e.murlanPass = () => passTurnRef.current();
-    e2e.murlanBotMove = () => runAITurnRef.current();
+    // Committed before the call returns, as a click's would be: an evaluate is no discrete event, so
+    // React's scheduler would run it on a real-time task the spec's virtual clock does not hold.
+    e2e.murlanPass = () => flushSync(() => passTurnRef.current());
+    e2e.murlanBotMove = () => flushSync(() => runAITurnRef.current());
     return () => {
       delete e2e.murlanPass;
       delete e2e.murlanBotMove;
