@@ -40,8 +40,8 @@ import { ParticleLayer } from '@/components/table/particleLayer';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 
-const atRest = async (ms: number) => {
-  const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+const atRest = async (ms: number, freeze = 0) => {
+  const rig = { lamp: makeMutable({ ...restingLamp(TABLE_CENTRE), freeze }), sx: 1, sy: 1 };
   const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
   const lit = new Set<unknown>();
   let moths = 0;
@@ -91,6 +91,15 @@ describe('ParticleLayer', () => {
       expect(lit.size).toBeGreaterThan(1);
       expect(moths).toBeGreaterThan(0);
       expect(mockOnsets).toEqual(['moment:moth']);
+    });
+
+    it('under a frozen lamp sends no moth', async () => {
+      mockOnsets.length = 0;
+      const { lit, moths } = await atRest(10_500, 1);
+
+      expect(Math.max(...(lit as Set<number>))).toBeGreaterThan(0);
+      expect(moths).toBe(0);
+      expect(mockOnsets).toEqual([]);
     });
 
     it('builds the moth\'s shapes only on frames with a moth on the light', async () => {

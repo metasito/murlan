@@ -89,7 +89,7 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const dt = Math.min(0.05, v.due);
     v.due = 0;
     step(v.s, dt);
-    if (stepAir(v.air, dt, l.freeze, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
+    if (stepAir(v.air, dt, l, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
     v.lit = layoutMotes(v.air, l, v.d, v.s.live);
     relit(v.light, l);

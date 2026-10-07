@@ -48,7 +48,7 @@ export function createAir(rng: Rng): Air {
 }
 
 /** Steps the air `dt` seconds; true when a moth sets off. Under reduced motion nothing moves and no moth flies. */
-export function stepAir(a: Air, dt: number, freeze: number, reduced: boolean, rng: Rng): boolean {
+export function stepAir(a: Air, dt: number, { freeze }: Pick<AirLight, "freeze">, reduced: boolean, rng: Rng): boolean {
   "worklet";
   if (reduced) {
     a.mothT = -1;

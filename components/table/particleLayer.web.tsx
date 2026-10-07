@@ -99,7 +99,7 @@ function animate(
     const l = lamp.value;
     last = now;
     step(sim, dt);
-    if (stepAir(view.air, dt, l.freeze, reduced, Math.random)) traceOnset("moment", "moth");
+    if (stepAir(view.air, dt, l, reduced, Math.random)) traceOnset("moment", "moth");
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.clearRect(0, 0, cv.width, cv.height);
     layout(sim, draws);

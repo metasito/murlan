@@ -104,7 +104,7 @@ describe("the air at rest", () => {
       const before = air.m.slice();
       const expected = m.frame();
       const light = { lx: m.lamp.lx, ly: m.lamp.ly, level: m.lamp.L, f: m.lamp.f, r: 1, freeze: m.lamp.freeze };
-      if (stepAir(air, DT, light.freeze, false, rng)) onsets++;
+      if (stepAir(air, DT, light, false, rng)) onsets++;
       wrapped += air.m.filter((v, i) => Math.abs(v - before[i]) > 100).length;
       const got = appDraws(air, light);
       assert.equal(got.length, expected.length, `frame ${frame}: ${got.length} shapes against ${expected.length}`);
@@ -131,7 +131,7 @@ describe("the air at rest", () => {
       const rng = mulberry32(seed);
       const air = createAir(rng);
       const sets: number[] = [];
-      for (let frame = 0; frame < 60 * 60; frame++) if (stepAir(air, DT, 0, false, rng)) sets.push(air.t);
+      for (let frame = 0; frame < 60 * 60; frame++) if (stepAir(air, DT, { freeze: 0 }, false, rng)) sets.push(air.t);
       assert.ok(sets[0] >= 6 && sets[0] <= 10 + DT, `seed ${seed}: first moth at ${sets[0]} s`);
       for (let i = 1; i < sets.length; i++) {
         const gap = sets[i] - sets[i - 1];
@@ -155,7 +155,7 @@ describe("the air at rest", () => {
     const start = Array.from({ length: MOTES }, (_, i) => moteAt(air, i));
     const light = { lx: 437, ly: 161, level: 1, f: 0, r: 1, freeze: 0 };
     const alphas = start.map((_, i) => moteAlpha(air, i, light));
-    for (let frame = 0; frame < 30 * 60; frame++) assert.equal(stepAir(air, DT, 0, true, rng), false, "a moth set off");
+    for (let frame = 0; frame < 30 * 60; frame++) assert.equal(stepAir(air, DT, light, true, rng), false, "a moth set off");
     assert.equal(mothPose(air, light), null);
     for (let i = 0; i < MOTES; i++) {
       assert.deepEqual(moteAt(air, i), start[i], `mote ${i} moved`);
