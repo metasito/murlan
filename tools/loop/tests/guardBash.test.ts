@@ -451,6 +451,22 @@ describe("loop sessions only", () => {
     assert.equal(check("gh run watch 123", () => null, repo, false), null);
     assert.equal(check("gh run view 123 --json status", () => null, repo, true), null);
   });
+  test("a sleep loop polling a run, or gh pr checks --watch, is refused in the loop and nowhere else", () => {
+    for (const cmd of [
+      `for i in $(seq 1 48); do s=$(for r in 1 2; do gh run view $r --json status --jq .status; done | sort -u); [ "$s" = completed ] && break; sleep 30; done`,
+      `until [ "$(gh run view 1 --json status -q .status)" = completed ]; do sleep 30; done`,
+      `while ($true) { gh pr checks 12; Start-Sleep 30 }`,
+      "gh pr checks 12 --watch",
+    ]) {
+      assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
+      assert.equal(check(cmd, () => null, repo, false), null, cmd);
+    }
+    for (const cmd of [
+      "gh workflow run ios.yml --ref agent/1-x && sleep 8 && gh run list --branch agent/1-x --limit 5",
+      `for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 5; done`,
+      "gh pr checks 12",
+    ]) assert.equal(check(cmd, () => null, repo, true), null, cmd);
+  });
   test("a timeout in front of a command does not hide it", () => {
     assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", () => null, repo, true)), /await-run\.mjs/);
     assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", () => null, repo, false), null);

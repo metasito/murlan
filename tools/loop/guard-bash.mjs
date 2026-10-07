@@ -353,6 +353,15 @@ function addsInsideOwnWorktree(c, repo) {
 
 const has = (args, re) => args.some((a) => re.test(a));
 
+const LOOP_KEYWORD = /^(for|foreach|while|until)$/i;
+const loops = (text) =>
+  segments(text, 0).some((w) => LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? ""));
+const pollsARun = (c) =>
+  c.cmd === "gh" &&
+  ((c.args[0] === "run" && /^(view|list)$/.test(c.args[1] ?? "")) ||
+    (c.args[0] === "pr" && /^(checks|view|status)$/.test(c.args[1] ?? "")) ||
+    (c.args[0] === "api" && /actions\/runs|check-runs/.test(c.args.join(" "))));
+
 /**
  * `git checkout` discards when an operand is a path rather than a ref. Naming a source before
  * `--` is the documented way back, so it passes once those paths hold nothing uncommitted.
@@ -609,9 +618,13 @@ const RULES = [
       "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
   },
   {
-    test: (c, { loop }) => loop && c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "watch",
+    test: (c, { loop }) =>
+      loop && c.cmd === "gh" &&
+      ((c.args[0] === "run" && c.args[1] === "watch") || (c.args[0] === "pr" && c.args[1] === "checks" && has(c.args, /^--watch(=true)?$/))),
+    line: (parsed, runnable, { loop }) =>
+      loop && loops(runnable) && parsed.some((c) => /^(sleep|start-sleep)$/i.test(c.cmd)) && parsed.some(pollsARun),
     message:
-      "gh run watch blocks until the run ends, and a device run outlasts any Bash timeout: the call is killed and returns nothing.\n" +
+      "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list or gh pr checks — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
@@ -642,7 +655,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars, loop }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars, loop }))) return rule.message;
   }
   return null;
 }

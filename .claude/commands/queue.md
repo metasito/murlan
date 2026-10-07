@@ -288,7 +288,8 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
 
    or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
    or wrong Spec finding; a baseline smell alone is a note. Close evidence gaps (an unrun CI or
-   device job, an open question) before the verdict; HOLD only for what needs a commit: a HOLD is
+   device job, an open question; wait on a dispatched run with
+   `node tools/loop/await-run.mjs <run-id>…`) before the verdict; HOLD only for what needs a commit: a HOLD is
    final for its head (`loop-derive.mjs` `verdictFor`). Never write a round's review yourself
    (rule 29); only the cap's LAND has no new review. Where you disagree with a finding, one line
    in the commit body.
