@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowShape, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Motion } from "../../lib/tokens.ts";
@@ -79,6 +79,15 @@ describe("the shadow paths", () => {
       return n;
     };
     assert.deepEqual(SHADOW_PATHS.map(counted), [2, 1, 1, 1]);
+  });
+
+  test("split into the sets of cards whose blurs meet, each card in one of them", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const at = (x: number, y = 50) => rect({ x, y, back: true });
+    const rects = { "fan:right:0": at(800), "fan:left:0": at(100), "fan:top:0": at(400, 300), "fan:left:2": at(200), "fan:left:1": at(150), "pile:a": at(100, 300) };
+    assert.deepEqual(shadowClusters("fan", rects, felt, 0, 3), [["fan:right:0"], ["fan:top:0"], ["fan:left:1", "fan:left:0", "fan:left:2"]]);
+    const gap = (g: number) => shadowClusters("fan", { "fan:left:0": at(100), "fan:left:1": at(164 + g) }, felt, 0, 3).length;
+    assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
   });
 
   test("are rebuilt for a change of any field they read, and not for a lift or glow alone", () => {
