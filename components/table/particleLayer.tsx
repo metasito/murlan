@@ -118,7 +118,7 @@ export function ParticleLayer({ ref, rig, landing }: {
 }) {
   const { lamp, sx, sy } = rig;
   const [sheet] = useState(bakeSheet);
-  const field = useSharedValue<Field>({
+  const [initial] = useState<Field>(() => ({
     s: createParticles(),
     d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
     air: createAir(Math.random),
@@ -126,7 +126,8 @@ export function ParticleLayer({ ref, rig, landing }: {
     shown: 0,
     light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
     due: 0,
-  });
+  }));
+  const field = useSharedValue(initial);
   const moth = useSharedValue<MothPose | null>(null);
   const reduced = usePrefersReducedMotion();
   const still = useSharedValue(reduced);

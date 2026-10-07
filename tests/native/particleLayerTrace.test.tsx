@@ -35,6 +35,12 @@ jest.mock('@/components/table/particleSprites', () => {
   return { ...actual, layoutMotes: (...args: Parameters<typeof actual.layoutMotes>) => (mockLaid++, actual.layoutMotes(...args)) };
 });
 
+let mockAirs = 0;
+jest.mock('@/components/table/air', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/air')>('@/components/table/air');
+  return { ...actual, createAir: (...args: Parameters<typeof actual.createAir>) => (mockAirs++, actual.createAir(...args)) };
+});
+
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
@@ -73,6 +79,16 @@ describe('ParticleLayer', () => {
     await view.unmount();
   });
 
+
+  it('lays the air down once, not on every render', async () => {
+    const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+    const landing = makeMutable(NO_LANDING);
+    const before = mockAirs;
+    const view = await render(<ParticleLayer rig={rig} landing={landing} />);
+    for (let i = 0; i < 3; i++) await view.rerender(<ParticleLayer rig={{ ...rig }} landing={landing} />);
+    await view.unmount();
+    expect(mockAirs - before).toBe(1);
+  });
 
   describe('at rest, frame by frame', () => {
     beforeEach(() => {
