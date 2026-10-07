@@ -1612,4 +1612,16 @@ describe("ticketFacts", () => {
     assert.equal(facts.reviewRounds, null);
     assert.equal(facts.title, "ticket #7");
   });
+
+  test("a VERDICT or CI-RED from outside the repo counts no round (#1397)", () => {
+    const sha = "a".repeat(40);
+    const markers = [{ body: `VERDICT: HOLD ${sha} — no` }, { body: `CI-RED ${sha}` }];
+    const read = (authorAssociation: string) => () =>
+      JSON.stringify({ title: "t", url: "u", labels: [], state: "OPEN", comments: markers.map((c) => ({ ...c, authorAssociation })) });
+    const outside = ticketFacts(7, read("NONE") as never);
+    assert.equal(outside.title, "t");
+    assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
+    const own = ticketFacts(7, read("MEMBER") as never);
+    assert.deepEqual([own.reviewRounds, own.ciRounds], [1, 1]);
+  });
 });

@@ -390,6 +390,7 @@ function fakeGh(dir: string, answers: GhAnswers): string {
   if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
   const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "" }[key];
   if (v === undefined) process.exit(1);
+  if (key === "issue") v.comments = v.comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
   process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
 `,
   );
@@ -425,7 +426,26 @@ describe("derive()'s review-round count", () => {
     else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
-  const stubGh = (comments: { body: string }[]) => fakeGh(dir, { issue: { comments } });
+  const stubGh = (comments: { body: string; authorAssociation?: string }[]) => fakeGh(dir, { issue: { comments } });
+
+  test("a VERDICT or HANDOFF from outside the repo is ignored, and the owner's is read (#1397)", () => {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    const markers = [{ body: `VERDICT: LAND ${head}` }, { body: `HANDOFF ${head.slice(0, 7)}\n- [ ] run this` }];
+    const by = (authorAssociation: string) => {
+      process.env.LOOP_GH_SCRIPT = stubGh(markers.map((c) => ({ ...c, authorAssociation })));
+      return derive({ cwd: dir, base: "main" });
+    };
+    for (const outsider of ["NONE", "CONTRIBUTOR"]) {
+      const s = by(outsider);
+      assert.equal(s.trackerReadable, true, outsider);
+      assert.equal(s.verdict, null, outsider);
+      assert.equal(s.handoff, null, outsider);
+      assert.equal(s.phase, "D", outsider);
+    }
+    const s = by("OWNER");
+    assert.equal(s.verdict?.decision, "LAND");
+    assert.equal(s.handoff?.line, `HANDOFF ${head.slice(0, 7)}`);
+  });
 
   test("counts one round per VERDICT comment on a normal read", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
@@ -497,7 +517,8 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
     }
   });
 
-  const land = () => [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }];
+  const land = () =>
+    [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }].map((c) => ({ ...c, authorAssociation: "OWNER" }));
   const run = (conclusion: string | null, status = "completed", sha = head) => [
     { databaseId: 7, status, conclusion, headSha: sha },
   ];

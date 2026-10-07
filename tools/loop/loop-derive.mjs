@@ -353,14 +353,21 @@ function gh(args, cwd, timeout) {
   }).trim();
 }
 
+const TRUSTED_AUTHORS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+
+/** The repo is public: every marker parser reads only what this keeps. */
+export function trustedComments(comments) {
+  return comments.filter((c) => TRUSTED_AUTHORS.has(c.authorAssociation));
+}
+
 function readComments(ticket, cwd, exec) {
-  return exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
+  return trustedComments(JSON.parse(exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS)).comments);
 }
 
 /** @returns {{body: string}[] | null} null when the tracker cannot be read */
 export function ticketComments(ticket, cwd) {
   try {
-    return JSON.parse(readComments(ticket, cwd, gh)).comments;
+    return readComments(ticket, cwd, gh);
   } catch {
     return null;
   }
@@ -493,7 +500,7 @@ export function derive({
   let comments = [];
   let trackerReadable = true;
   try {
-    comments = JSON.parse(readComments(ticket, cwd, exec)).comments;
+    comments = readComments(ticket, cwd, exec);
   } catch {
     trackerReadable = false;
   }

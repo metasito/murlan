@@ -19,7 +19,7 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
+import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
 import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
@@ -1357,8 +1357,8 @@ export function ticketFacts(number, exec = execFileSync) {
       url: issue.url,
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
-      reviewRounds: reviewRounds(issue.comments ?? []),
-      ciRounds: ciRedRounds(issue.comments ?? []),
+      reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
+      ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
@@ -1910,9 +1910,9 @@ const CI_RED_TIMEOUT_MS = 30_000;
 /** Null when the tracker cannot be read, which is a reason to skip posting, never to post blind. */
 function readTicketComments(ticket, run, log) {
   try {
-    return JSON.parse(
-      run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS }),
-    ).comments;
+    return trustedComments(
+      JSON.parse(run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS })).comments,
+    );
   } catch (err) {
     log(`CI-RED: could not read the tracker — ${String(err.message).split("\n")[0]}`);
     return null;

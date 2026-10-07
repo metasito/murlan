@@ -63,7 +63,9 @@ function ghFake({
       return JSON.stringify({ headRefOid: SHA });
     }
     if (args[0] === "pr" && args[1] === "view") return JSON.stringify(pr);
-    if (args[0] === "issue" && args[1] === "view") return JSON.stringify({ comments: issueComments });
+    if (args[0] === "issue" && args[1] === "view") {
+      return JSON.stringify({ comments: issueComments.map((c) => ({ authorAssociation: "OWNER", ...c })) });
+    }
     if (args[0] === "issue" && args[1] === "comment") return "";
     if (args[0] === "run" && args[1] === "list") {
       const at = Math.min(listed++, script.length - 1);
