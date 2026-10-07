@@ -514,7 +514,8 @@ export function derive({
   // queue.md, `PHASE B` — which transposed every step row the board printed and billed the build
   // to B in `loop-cost`. Dirty is the discriminator: an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
-  const wipHead = commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject);
+  const wipHead =
+    commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject) && !dodCheckFor(comments, head, () => false);
   let phase = scoping ? "B" : commits === 0 || wipHead ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =
     commits === 0

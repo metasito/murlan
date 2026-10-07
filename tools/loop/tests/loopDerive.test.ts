@@ -285,6 +285,16 @@ describe("held work", () => {
     process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
     assert.equal(derive({ cwd: dir, base: "main" }).phase, "C");
   });
+
+  test("a wip head whose DOD-CHECK covers it was handed to review", () => {
+    const head = git("rev-parse", "HEAD").trim();
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: `DOD-CHECK ${head.slice(0, 7)}\n- [ ] a` }] } });
+    const s = derive({ cwd: dir, base: "main" });
+    assert.match(git("log", "-1", "--format=%s"), /^wip\(#9\):/);
+    assert.equal(s.phase, "D");
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: "DOD-CHECK 0000000\n- [ ] a" }] } });
+    assert.equal(derive({ cwd: dir, base: "main" }).phase, "C", "a DOD-CHECK of another head does not cover this one");
+  });
 });
 
 describe("ciRedRounds", () => {
