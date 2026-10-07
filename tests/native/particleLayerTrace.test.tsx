@@ -29,6 +29,12 @@ jest.mock('@shopify/react-native-skia', () => {
   });
 });
 
+let mockLaid = 0;
+jest.mock('@/components/table/particleSprites', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/particleSprites')>('@/components/table/particleSprites');
+  return { ...actual, layoutMotes: (...args: Parameters<typeof actual.layoutMotes>) => (mockLaid++, actual.layoutMotes(...args)) };
+});
+
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
 import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
@@ -103,6 +109,47 @@ describe('ParticleLayer', () => {
 
       expect(flying).toBeGreaterThan(0);
       expect(idle).toBe(0);
+    });
+
+    it('lays the air out at most 240 times a second, every frame while dust is live', async () => {
+      const ref = React.createRef<ParticleEmitter>();
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
+      const laidIn = async (ms: number) => {
+        const before = mockLaid;
+        await act(async () => jest.advanceTimersByTime(ms));
+        return mockLaid - before;
+      };
+      await laidIn(100);
+      const idle = await laidIn(1000);
+      expect(idle).toBeGreaterThan(120);
+      expect(idle).toBeLessThanOrEqual(241);
+
+      await act(async () => ref.current!.emit([{ ...DUST, life: 60 }]));
+      expect(await laidIn(1000)).toBeGreaterThan(900);
+      await view.unmount();
+    });
+
+    it('under reduced motion lays the motes out again only when the light moves', async () => {
+      mockReduced = true;
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
+      const frames = async (n: number) => {
+        const before = mockLaid;
+        for (let i = 0; i < n; i++) await act(async () => jest.advanceTimersByTime(16));
+        return mockLaid - before;
+      };
+      expect(await frames(2)).toBeGreaterThan(0);
+      expect(await frames(60)).toBe(0);
+
+      rig.lamp.modify((l) => {
+        'worklet';
+        l.lx += 40;
+        return l;
+      }, true);
+      expect(await frames(2)).toBeGreaterThan(0);
+      expect(await frames(60)).toBe(0);
+      await view.unmount();
     });
 
     it('under reduced motion holds the motes still and lit, and sends no moth', async () => {

@@ -23,7 +23,7 @@ import { scheduleOnRN } from "react-native-worklets";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { RestAir } from "@/lib/tokens";
-import { createAir, mothPose, MOTES, stepAir, type Air, type MothPose } from "./air";
+import { createAir, mothPose, MOTES, relit, stepAir, type Air, type MothPose, type MoteLight } from "./air";
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { createParticles, landDust, landingDustCount, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
@@ -36,7 +36,13 @@ interface Field {
   d: Float32Array;
   air: Air;
   lit: number;
+  shown: number;
+  light: MoteLight;
+  due: number;
 }
+
+// Above any display's refresh, so a device lays out every frame; jest's rAF ticks every millisecond.
+const AIR_TICK_S = 1 / 240;
 
 function bakeSheet(): SkImage | null {
   const surface = Skia.Surface.Make(SHEET.width, SHEET.height);
@@ -76,11 +82,17 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     "worklet";
     const v = field.value;
     const l = lamp.value;
-    const dt = Math.min(0.05, (frame.timeSincePreviousFrame ?? 0) / 1000);
+    v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
+    const idle = !v.s.live && !v.shown;
+    if (idle && v.due < AIR_TICK_S) return;
+    if (idle && still.value && !moth.value && !relit(v.light, l)) return;
+    const dt = Math.min(0.05, v.due);
+    v.due = 0;
     step(v.s, dt);
     if (stepAir(v.air, dt, l.freeze, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
     v.lit = layoutMotes(v.air, l, v.d, v.s.live);
+    v.shown = v.s.live;
     const p = mothPose(v.air, l);
     if (p || moth.value) moth.value = p;
     field.modify(undefined, true);
@@ -110,6 +122,9 @@ export function ParticleLayer({ ref, rig, landing }: {
     d: new Float32Array(PARTICLE_BUDGET * DRAW_STRIDE),
     air: createAir(Math.random),
     lit: 0,
+    shown: 0,
+    light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
+    due: 0,
   });
   const moth = useSharedValue<MothPose | null>(null);
   const reduced = usePrefersReducedMotion();

@@ -26,6 +26,19 @@ export interface Air {
 }
 
 export type AirLight = Pick<Lamp, "lx" | "ly" | "level" | "f" | "r" | "freeze">;
+export type MoteLight = Omit<AirLight, "freeze">;
+
+/** Whether `l` lights the motes otherwise than `seen` did; `seen` takes its values. */
+export function relit(seen: MoteLight, l: AirLight): boolean {
+  "worklet";
+  if (seen.lx === l.lx && seen.ly === l.ly && seen.level === l.level && seen.f === l.f && seen.r === l.r) return false;
+  seen.lx = l.lx;
+  seen.ly = l.ly;
+  seen.level = l.level;
+  seen.f = l.f;
+  seen.r = l.r;
+  return true;
+}
 
 export function createAir(rng: Rng): Air {
   const R = (a: number, b: number) => a + rng() * (b - a);
