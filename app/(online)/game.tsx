@@ -33,6 +33,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
+import { useCatchUp } from "@/lib/useOwnLink";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -96,6 +97,7 @@ export default function OnlineGameScreen() {
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catchUp = useCatchUp(ownLink, gameState);
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -271,7 +273,7 @@ export default function OnlineGameScreen() {
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       error={error}
       ownLink={ownLink}
-      catchUp={ownLink === "back"}
+      catchUp={catchUp}
       connection={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from

@@ -28,6 +28,7 @@ import type { TurnTimerConfig } from '@/components/GameTable';
 import { urgentThresholdSeconds } from '@/components/turnTimerUi';
 import { Reading } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
+import type { OwnLink } from '@/lib/ownLink';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 844, height: 390 },
@@ -75,9 +76,10 @@ const OFFLINE_TIMER = { seconds: 30, includeNewRound: false };
 /** Online: the server arms its window on every turn, leads included. */
 const ONLINE_TIMER = { seconds: 30, includeNewRound: true };
 
-const table = (gameState: GameState, turnTimer: TurnTimerConfig) => (
+const table = (gameState: GameState, turnTimer: TurnTimerConfig, ownLink: OwnLink = 'up') => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
+      ownLink={ownLink}
       gameState={gameState}
       viewerSeat={0}
       onPlay={noop}
@@ -136,6 +138,28 @@ describe("a seat's turn clock", () => {
     // Settling the mount runs its pending timers, which moves the clock a little further.
     expect(turn('seat-turn-clock-left')).toBeGreaterThan(80);
     expect(turn('seat-turn-clock-left')).toBeLessThan(120);
+  });
+
+  it("holds its sweep while the viewer's own link is down, and runs on from where it stood", async () => {
+    mockReduceMotion.on = false;
+    const ui = (ownLink: OwnLink) => table(state({ lastPlayedCombination: single(KING), lastPlayedBy: 0 }), OFFLINE_TIMER, ownLink);
+    const view = await render(ui('up'));
+    const right = () => parseFloat((getAnimatedStyle(screen.getByTestId('seat-turn-clock-right')) as { transform: { rotate: string }[] }).transform[0].rotate);
+    const advance = async (ms: number) => {
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+    };
+    await advance(OFFLINE_TIMER.seconds * 250);
+    const atDrop = right();
+    await view.rerender(ui('reconnecting'));
+    await advance(OFFLINE_TIMER.seconds * 500);
+    expect(right()).toBeCloseTo(atDrop, 0);
+    await view.rerender(ui('up'));
+    await advance(OFFLINE_TIMER.seconds * 250);
+    expect(right()).toBeCloseTo(180, 0);
+    expect(red()).toEqual([0, 0]);
+    await view.unmount();
   });
 
   const opacity = (testID: string) =>

@@ -11,6 +11,7 @@ import {
   rgba,
   spawn,
   step,
+  throwsDust,
   type Particles,
 } from "../../components/table/particles.ts";
 import { MOTES } from "../../components/table/air.ts";
@@ -126,5 +127,11 @@ describe("the particle module", () => {
   test("the same seed gives the same trace, and another seed another", () => {
     assert.deepEqual(trace(1258), trace(1258));
     assert.notDeepEqual(trace(1258), trace(1259));
+  });
+
+  test("a landing throws its dust on either layer, except under reduced motion or for a card caught up on the way back", () => {
+    assert.equal(throwsDust({ catchUp: false }, false), true);
+    assert.equal(throwsDust({ catchUp: true }, false), false);
+    assert.equal(throwsDust({ catchUp: false }, true), false);
   });
 });

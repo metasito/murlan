@@ -24,6 +24,21 @@ export function ownLinkAt(edges: LinkEdges, now: number): OwnLink {
   return edges.upAt !== null && now - edges.upAt < Reconnect.back ? "back" : "up";
 }
 
+/** The states that hold the table: the grey, the freeze, the stopped clock. */
+export const linkHeld = (link: OwnLink) => link === "dropped" || link === "reconnecting" || link === "lost";
+
+/** `seen` is the state the table held at the drop; `by` is the first one after it, which brought the missed cards. */
+export type CatchUp = { readonly waiting: boolean; readonly seen: unknown; readonly by: unknown };
+
+export const NO_CATCH_UP: CatchUp = { waiting: false, seen: undefined, by: undefined };
+
+export function observeCatchUp(c: CatchUp, link: OwnLink, state: unknown): CatchUp {
+  if (linkHeld(link)) return c.waiting ? c : { waiting: true, seen: state, by: undefined };
+  return c.waiting && state !== c.seen ? { waiting: false, seen: state, by: state } : c;
+}
+
+export const catchingUp = (c: CatchUp, state: unknown) => c.waiting || c.by === state;
+
 export function nextLinkChangeIn(edges: LinkEdges, now: number): number | null {
   if (edges.downAt !== null) {
     const down = now - edges.downAt;

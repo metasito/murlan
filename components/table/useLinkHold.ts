@@ -3,11 +3,10 @@ import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
-import type { OwnLink } from "@/lib/ownLink";
+import { linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
 import type { LampRig } from "./useLampRig";
 
-const HELD: ReadonlySet<OwnLink> = new Set(["dropped", "reconnecting", "lost"]);
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
 const GREY_VISIBLE = 0.01;
@@ -18,9 +17,9 @@ export function greyFilter(g: number): string {
 }
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
-export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, inFlight = false) {
+export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
   const reduceMotion = usePrefersReducedMotion();
-  const held = HELD.has(link);
+  const held = linkHeld(link);
   const grey = useSharedValue(held ? Reconnect.grey : 0);
   const ramp = useSharedValue({ to: held ? Reconnect.grey : 0, perMs: 0 });
   const was = useRef(link);
@@ -46,7 +45,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     const before = was.current;
     was.current = link;
     if (before === link) return;
-    if (HELD.has(link) && !HELD.has(before)) traceOnset("moment", "drop");
+    if (linkHeld(link) && !linkHeld(before)) traceOnset("moment", "drop");
     if (PILL_CLASS[before] !== PILL_CLASS[link]) traceOnset("moment", `net-${PILL_CLASS[link]}`);
     if (link === "lost") rig.setLevel(Reconnect.lamp, Reconnect.lampRate);
     else if (before === "lost") rig.setLevel(1, Reconnect.lampRate);
@@ -58,5 +57,5 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => ({ filter: greyFilter(grey.value) }));
-  return { greyStyle, frozen: held || (link === "back" && inFlight) };
+  return { greyStyle, frozen: held || missedInFlight };
 }

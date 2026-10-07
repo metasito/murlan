@@ -9,6 +9,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
 const mockOwnLink = { current: 'up' };
+const mockState: { current?: GameState } = {};
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
@@ -34,7 +35,7 @@ const mockMidHand: GameState = {
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineTable: () => ({
-    gameState: mockMidHand,
+    gameState: mockState.current ?? mockMidHand,
     mySeatIndex: 0,
     playCards: jest.fn(),
     pass: jest.fn(),
@@ -107,17 +108,30 @@ const lastTable = () => mockTableProps.mock.calls.at(-1)![0] as { ownLink: strin
 describe("the online table on the viewer's own link", () => {
   afterEach(() => {
     mockOwnLink.current = 'up';
+    mockState.current = undefined;
     mockTableProps.mockClear();
   });
 
-  it('catches up on the way back, under the back pill', async () => {
-    mockOwnLink.current = 'back';
-    const view = await render(
+  it('catches up from the drop through the first state after the way back, however late it lands', async () => {
+    const screen = () => (
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />
       </SafeAreaProvider>
     );
-    expect(lastTable()).toMatchObject({ ownLink: 'back', catchUp: true, connection: { state: 'back' } });
+    const view = await render(screen());
+    const at = async (link: string, state?: GameState) => {
+      mockOwnLink.current = link;
+      if (state) mockState.current = state;
+      await view.rerender(screen());
+      return lastTable().catchUp;
+    };
+    expect(lastTable().catchUp).toBe(false);
+    expect(await at('dropped')).toBe(true);
+    expect(await at('back')).toBe(true);
+    expect(lastTable()).toMatchObject({ ownLink: 'back', connection: { state: 'back' } });
+    expect(await at('up')).toBe(true);
+    expect(await at('up', { ...mockMidHand, currentTurnIndex: 1 })).toBe(true);
+    expect(await at('up', { ...mockMidHand })).toBe(false);
     await view.unmount();
   });
 
@@ -128,9 +142,8 @@ describe("the online table on the viewer's own link", () => {
         <OnlineGameScreen />
       </SafeAreaProvider>
     );
-    const { connection, catchUp } = lastTable();
+    const { connection } = lastTable();
     expect(connection?.state).toBe('lost');
-    expect(catchUp).toBe(false);
     connection?.action?.onPress();
     expect(mockRetry).toHaveBeenCalledTimes(1);
     await view.unmount();

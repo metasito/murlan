@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import { NO_LINK, nextLinkChangeIn, observeLink, ownLinkAt, type LinkEdges, type OwnLink } from "./ownLink";
+import {
+  NO_CATCH_UP,
+  NO_LINK,
+  catchingUp,
+  nextLinkChangeIn,
+  observeCatchUp,
+  observeLink,
+  ownLinkAt,
+  type LinkEdges,
+  type OwnLink,
+} from "./ownLink";
 
 type LinkSocket = {
   readonly connected: boolean;
@@ -43,4 +53,12 @@ export function useOwnLink(socket: LinkSocket | null): OwnLink {
   }, [edges, now]);
 
   return ownLinkAt(edges, Math.max(now, edges.downAt ?? edges.upAt ?? 0));
+}
+
+/** Whether `state` brings cards the viewer missed: from the drop through the first state after it (`observeCatchUp`). */
+export function useCatchUp(link: OwnLink, state: unknown): boolean {
+  const [held, setHeld] = useState(NO_CATCH_UP);
+  const next = observeCatchUp(held, link, state);
+  if (next !== held) setHeld(next);
+  return catchingUp(next, state);
 }

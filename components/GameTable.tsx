@@ -837,7 +837,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, timeline.inFlight);
+  const { greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -987,7 +987,7 @@ export function GameTable({
       includeNewRound: true,
       announcementHolds,
     })
-      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
+      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}`, held: clockHeld }
       : undefined;
 
   const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;

@@ -1,6 +1,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { NO_LINK, observeLink, ownLinkAt, nextLinkChangeIn, type LinkEdges } from "../../lib/ownLink.ts";
+import {
+  NO_CATCH_UP,
+  NO_LINK,
+  catchingUp,
+  observeCatchUp,
+  observeLink,
+  ownLinkAt,
+  nextLinkChangeIn,
+  type LinkEdges,
+  type OwnLink,
+} from "../../lib/ownLink.ts";
 
 const dropAt = (t: number): LinkEdges => observeLink(observeLink(NO_LINK, true, 0), false, t);
 
@@ -47,5 +57,35 @@ describe("the viewer's own connection, as the table holds it", () => {
     assert.equal(ownLinkAt(again, 3400), "dropped");
     assert.equal(ownLinkAt(again, 17_999), "reconnecting");
     assert.equal(ownLinkAt(again, 18_000), "lost");
+  });
+});
+
+describe("catching up on the way back", () => {
+  const walk = (steps: [OwnLink, object][]) => {
+    let c = NO_CATCH_UP;
+    return steps.map(([link, state]) => {
+      c = observeCatchUp(c, link, state);
+      return catchingUp(c, state);
+    });
+  };
+  const [before, missed, next] = [{}, {}, {}];
+
+  test("lasts from the drop through the first state after the link is back, however late it lands", () => {
+    assert.deepEqual(
+      walk([
+        ["up", before],
+        ["dropped", before],
+        ["back", before],
+        ["up", before],
+        ["up", missed],
+        ["up", missed],
+        ["up", next],
+      ]),
+      [false, true, true, true, true, true, false]
+    );
+  });
+
+  test("a state arriving while the link is up and never dropped is live", () => {
+    assert.deepEqual(walk([["up", before], ["up", next]]), [false, false]);
   });
 });

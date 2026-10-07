@@ -4,6 +4,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { Dust } from "../../lib/tokens.ts";
+import type { LandingPayload } from "./useFlightClock.ts";
 import { MOTES } from "./air.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
@@ -146,4 +147,10 @@ export function landDust(cards: number, count: number, x0: number, y0: number, r
     out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(0.7, 1.1), size: R(10, 18), col: Dust.puff, shape: "soft" });
   }
   return out;
+}
+
+/** Whether a landing throws dust, on either platform's layer: not under reduced motion, nor for a card caught up on the way back. */
+export function throwsDust(l: Pick<LandingPayload, "catchUp">, reduced: boolean): boolean {
+  "worklet";
+  return !reduced && !l.catchUp;
 }

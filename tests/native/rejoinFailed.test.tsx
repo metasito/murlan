@@ -35,6 +35,15 @@ const mockSocket = {
   emit(event: string, payload?: unknown) {
     emitted.push({ event, payload });
   },
+  disconnect() {
+    emitted.push({ event: 'socket:disconnect' });
+    return mockSocket;
+  },
+  connect() {
+    emitted.push({ event: 'socket:connect' });
+    for (const fn of listeners.get('connect') ?? []) fn();
+    return mockSocket;
+  },
 };
 
 jest.mock('@/context/SocketContext', () => ({
@@ -108,6 +117,19 @@ describe('game:rejoin_failed', () => {
     emitted.length = 0;
     listeners.clear();
     await AsyncStorage.clear();
+  });
+
+  it("Riprova cuts the socket, opens it again, and rejoins through the connect handler", async () => {
+    const { result, unmount } = await mountRejoining('R1');
+    emitted.length = 0;
+
+    await act(async () => result.current.game.retryConnection());
+
+    expect(emitted.map((e) => e.event).slice(0, 2)).toEqual(['socket:disconnect', 'socket:connect']);
+    await waitFor(() =>
+      expect(emitted).toContainEqual({ event: 'game:rejoin', payload: expect.objectContaining({ roomId: 'R1' }) })
+    );
+    await unmount();
   });
 
   it('ignores a reply for a room the player has already left behind', async () => {

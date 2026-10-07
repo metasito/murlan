@@ -8,7 +8,7 @@ import { RestAir } from "@/lib/tokens";
 import { createAir, mothPose, MOTES, stepAir, type Air, type MothPose } from "./air";
 import { DESIGN, type Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { createParticles, landDust, landingDustCount, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { createParticles, landDust, landingDustCount, throwsDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { useLandingReaction } from "./useLandingReaction";
 import type { LandingSignal } from "./useFlightClock";
 import { CELLS, D, DRAW_STRIDE, layout, layoutMotes, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
@@ -138,7 +138,7 @@ export function ParticleLayer({ ref, rig, landing }: {
   const reduced = usePrefersReducedMotion();
   useLandingReaction(landing, (l) => {
     "worklet";
-    if (reduced || l.catchUp) return;
+    if (!throwsDust(l, reduced)) return;
     for (const p of landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, Math.random)) spawn(sim, p);
   });
 
