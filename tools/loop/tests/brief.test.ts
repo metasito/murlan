@@ -47,6 +47,9 @@ describe("brief", () => {
     assert.match(text, /rule 6/);
     assert.match(text, /load or import error/);
     assert.match(text, /DOD-CHECK/);
+    assert.match(text, /every test the diff adds, and every test whose assertions it changes/);
+    assert.match(text, /rename or refactor of a test that keeps its assertions needs no red run/);
+    assert.doesNotMatch(text, /adds or changes/);
   });
   test("the completeness brief sweeps the tests for a changed literal's old value", () => {
     const text = brief("completeness", { n: 1256, worktree: WT });
