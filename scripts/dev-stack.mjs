@@ -14,7 +14,7 @@
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dockerDesktopPaths, ensureEngine } from "./dockerEngine.mjs";
+import { dockerDesktopPaths, dockerInfo, ensureEngine } from "./dockerEngine.mjs";
 import {
   hostPortOf,
   isPostgresReply,
@@ -157,7 +157,7 @@ try {
   }
 
   ensureEngine({
-    engineUp: () => run("docker", ["info"], { timeout: 15_000 }).status === 0,
+    engineUp: dockerInfo(run),
     exists: existsSync,
     launch: (p) => spawn(p, [], { detached: true, stdio: "ignore" }).unref(),
     sleep,

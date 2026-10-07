@@ -300,7 +300,8 @@ one that doesn't needs a device capture (above).
 - **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
   (`globalTimeout`); narrow with one spec or `-g` rather than raising it.
 - **`dev-stack up` starts Docker Desktop and waits for it** (`scripts/dockerEngine.mjs` holds the budget) when the engine is down; never
-  improvise a start.
+  improvise a start. A `docker info` that times out is a starved engine, not a down one: it is
+  waited for with a longer probe and never launched again.
 - **A scan that has only ever been green has not been tested, it's been assumed** — rule 6; see
   *A scan needs a planted floor*, below. **A native `fireEvent` without `await` asserts against
   the pre-press state** — see *The native harness is async*, below.
