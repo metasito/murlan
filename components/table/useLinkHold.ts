@@ -12,9 +12,9 @@ const HELD: ReadonlySet<OwnLink> = new Set(["dropped", "reconnecting", "lost"]);
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
 const GREY_VISIBLE = 0.01;
 
-export function greyFilter(g: number): string | undefined {
+export function greyFilter(g: number): string {
   "worklet";
-  return g > GREY_VISIBLE ? `grayscale(${g}) brightness(${1 - Reconnect.darken * g})` : undefined;
+  return g > GREY_VISIBLE ? `grayscale(${g}) brightness(${1 - Reconnect.darken * g})` : "none";
 }
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */

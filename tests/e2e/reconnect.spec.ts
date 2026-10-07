@@ -16,12 +16,25 @@ import { test, expect, isExpectedNoise } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
 import { setDeviceOffline } from "./helpers/deviceNetwork";
-import { mockupAt, stage } from "./helpers/mockupStage";
+import { mockupAt, stage, type Stage } from "./helpers/mockupStage";
+import { Reconnect, TOUCH_TARGET_MIN } from "../../lib/theme";
 
-const RECONNECTING = "Connessione persa — riconnessione…";
+const RECONNECTING = "Riconnessione…";
+const LOST = "Connessione persa";
+const RETRY = "Riprova";
+const BACK = "Di nuovo in linea";
 const OFFLINE = "Nessuna connessione Internet";
+const GREY = `grayscale(${Reconnect.grey}) brightness(${1 - Reconnect.darken * Reconnect.grey})`;
 const TURN = '[data-testid="notice-turn"]';
-const dotOf = (page: Page, sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(s)!).backgroundColor, sel);
+const dotOf = (page: Page, sel: string) => page.evaluate((s) => getComputedStyle(document.querySelector(`${s} [data-testid="turn-chip-dot"], ${s} .dot`)!).backgroundColor, sel);
+
+const plateAndDot = async (side: Stage, page: Page, sel: string) => ({ plate: (await side.plate(sel))!, dot: await dotOf(page, sel) });
+function expectPlate(got: Awaited<ReturnType<typeof plateAndDot>>, want: typeof got, name: string) {
+  expect.soft(got.plate.edge, `${name}'s edge`).toBe(want.plate.edge);
+  expect.soft(got.plate.ink, `${name}'s ink`).toBe(want.plate.ink);
+  expect.soft(got.dot, `${name}'s dot`).toBe(want.dot);
+  expect.soft(got.plate.glow, `${name} casts no glow`).toEqual(want.plate.glow);
+}
 
 test("online — a dropped connection says so, and the table comes back", async ({
   browser,
@@ -59,6 +72,9 @@ test("online — a dropped connection says so, and the table comes back", async 
     const table = page.locator('[data-testid="game-table"]');
     await expect(table).toBeVisible();
 
+    const greyOf = () => table.evaluate((el) => getComputedStyle(el).filter);
+    expect(await greyOf(), "a live table is not grey").toBe("none");
+
     networkDown = true;
     await context.setOffline(true);
 
@@ -67,6 +83,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     // by an error or left silently frozen.
     await expect(page.getByTestId("notice-turn").getByText(RECONNECTING)).toBeVisible({ timeout: 45_000 });
     await expect(table).toBeVisible();
+    expect(await greyOf(), "the table holds its breath, with no fade under reduced motion").toBe(GREY);
     const sampleDot = () =>
       page
         .getByTestId("notice-turn")
@@ -87,28 +104,35 @@ test("online — a dropped connection says so, and the table comes back", async 
     expect(Math.min(...blink), `the reconnecting dot blinks: ${blink}`).toBeLessThanOrEqual(0.4);
     expect(Math.max(...blink), `the reconnecting dot blinks: ${blink}`).toBeGreaterThanOrEqual(0.9);
 
+    const retry = page.getByRole("button", { name: `${LOST}, ${RETRY}` });
+    await expect(retry, "still down past the give-up, the pill offers Riprova").toBeVisible({ timeout: 30_000 });
+    expect(await greyOf(), "the table stays grey once it gives up").toBe(GREY);
+    const hit = (await retry.boundingBox())!;
+    expect(hit.height, "Riprova meets the 44 pt floor").toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
+    const app = stage(page, null);
+    const lost = await plateAndDot(app, page, TURN);
+    const mockup = await mockupAt(browser, "reconnect", 8000);
+    const wantLost = await plateAndDot(mockup, mockup.page, "#turn.bad");
+    expectPlate(lost, wantLost, "#turn.bad");
+
     await setDeviceOffline(context, page, true);
     await expect(page.getByTestId("notice-turn").getByText(OFFLINE), "the device offline outranks the reconnect").toBeVisible();
-    const app = stage(page, null);
-    const got = (await app.plate(TURN))!;
-    const gotDot = await dotOf(page, `${TURN} [data-testid="turn-chip-dot"]`);
     const offTable = await app.plate('[data-testid="notice-offline"]');
-    const mockup = await mockupAt(browser, "reconnect", 8000);
-    const want = (await mockup.plate("#turn.bad"))!;
-    const wantDot = await dotOf(mockup.page, "#turn.bad .dot");
-    await mockup.close();
-    expect.soft(got.edge, "#turn.bad's edge").toBe(want.edge);
-    expect.soft(got.ink, "#turn.bad's ink").toBe(want.ink);
-    expect.soft(gotDot, "#turn.bad's dot").toBe(wantDot);
-    expect.soft(got.glow, "#turn.bad casts no glow").toEqual(want.glow);
     expect(offTable?.opacity, "the pill off the table yields to the table").toBe(0);
-
     await setDeviceOffline(context, page, false);
     networkDown = false;
 
-    // Back inside the server's grace window, so the seat was never vacated:
-    // the notice clears itself and the same table is still there.
-    await expect(page.getByTestId("notice-turn").getByText(RECONNECTING)).toBeHidden({ timeout: 60_000 });
+    // Back inside the server's grace window, so the seat was never vacated: the
+    // table says so, lets go of the grey and is the same table.
+    await retry.click();
+    await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeVisible({ timeout: 30_000 });
+    const back = await plateAndDot(app, page, TURN);
+    const backMockup = await mockupAt(browser, "reconnect", 3600);
+    expectPlate(back, await plateAndDot(backMockup, backMockup.page, "#turn.ok"), "#turn.ok");
+    await backMockup.close();
+    await mockup.close();
+    await expect(page.getByTestId("notice-turn").getByText(BACK)).toBeHidden({ timeout: 10_000 });
+    expect(await greyOf(), "the colour comes back").toBe("none");
     await expect(table).toBeVisible();
 
     expect(errors, "no console errors/warnings outside the offline window").toEqual([]);
