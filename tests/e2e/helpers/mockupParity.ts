@@ -82,6 +82,8 @@ interface Moment {
   stripAt?: number[];
   /** Two times the app's particle layer must have drawn something, and something different. */
   apart?: readonly [number, number];
+  /** Where the mockup's side stops, short of `windowMs`; no checkpoint may lie past it. */
+  mockupWindowMs?: number;
 }
 
 const STILL_LIGHT = `const swaying = lampStep;
@@ -163,19 +165,20 @@ const MOMENTS: Moment[] = [
     chapter: "rest",
     windowMs: REST_AIR_TO,
     fromMs: REST_AIR_FROM,
-    checkpoints: [REST_AIR_FROM, 4000, 8000, 12000, REST_AIR_TO],
+    // The mockup's `rest` chapter sends its first moth at 2.5 s, over by 6.5 s; the table's comes 6 to 10 s after it starts.
+    mockupWindowMs: 7200,
+    checkpoints: [REST_AIR_FROM, 4000, 7200],
     appTrigger: heldTurnTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
     fields: ["onset", "live", "moth", "air"],
     regions: [],
     onsets: ["moment:moth"],
-    // The mockup's `rest` chapter sends its first moth at 2.5 s; the table's comes 6 to 10 s after it starts.
     onsetWindows: { "moment:moth": [6000, 10_000 + STEP_MS] },
     stripAt: [...Array.from({ length: 32 }, (_, i) => REST_AIR_FROM + i * 480), REST_AIR_TO],
     apart: [REST_AIR_FROM, REST_AIR_TO],
-    // The particle canvas never touches CanvasKit.
-    variants: ["skia"],
+    // On web the particle canvas is the same over either felt, and only Skia's costs CanvasKit every frame.
+    variants: ["fallback"],
   },
   {
     key: "trick",
@@ -418,7 +421,8 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
   })()`);
   for (let rolled = 0; rolled < preRollMs; rolled += STEP_MS) await step(page);
-  const capture = await strip(page, box, decoder, m, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
+  const own = { ...m, windowMs: m.mockupWindowMs ?? m.windowMs };
+  const capture = await strip(page, box, decoder, own, preRollMs, (a) => (a.mockup ? page.evaluate(a.mockup) : undefined), async (_t, ms) => {
     await step(page, ms);
     return { t: 0, ...((await page.evaluate(MOCKUP_SAMPLE)) as Omit<TraceFrame, "t">) };
   }, () => page.evaluate(MOCKUP_LAYOUT) as Promise<SideLayout>, async () => null);

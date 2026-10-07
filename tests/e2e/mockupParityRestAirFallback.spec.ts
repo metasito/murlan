@@ -1,4 +1,4 @@
 import { test } from "@playwright/test";
 import { parityTests } from "./helpers/mockupParity";
 
-test.describe("mockup parity", () => parityTests("rest-air", "skia"));
+test.describe("mockup parity", () => parityTests("rest-air", "fallback"));
