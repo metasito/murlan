@@ -315,6 +315,7 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ["docs are part of the diff, not a follow-up", 43, "docs are part of the diff, not a follow-up"],
   ["a rewrite script skips the Edit hooks", 44, "skips the `Write|Edit` hooks"],
   ["one plan task, one pull request", 45, "one plan task, one pull request"],
+  ["the CI run's five minutes", 46, "the whole ci run stays under 5 minutes"],
 ];
 
 // Every rule had a distinctive command, path or clause to anchor a phrase on —

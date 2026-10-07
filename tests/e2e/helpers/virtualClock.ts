@@ -55,6 +55,27 @@ export async function step(page: Page, ms: number = STEP_MS): Promise<void> {
 }
 
 /**
+ * `step`, then `read` evaluated in the page, in one round trip rather than three: each one waits
+ * behind the frame the last step dirtied. It drives Playwright's in-page clock directly, which
+ * leaves the step out of the log Playwright replays into a new document, so nothing may navigate
+ * after it. `ms` null reads without stepping.
+ */
+export async function stepThen<T>(page: Page, ms: number | null, read: string): Promise<T> {
+  return page.evaluate(`(async () => {
+    const clock = globalThis.__pwClock?.controller;
+    if (!clock) throw new Error("Playwright's in-page clock is not installed");
+    const ms = ${ms};
+    if (ms !== null) {
+      await clock.runFor(ms);
+      for (const a of document.getAnimations()) {
+        if (a.currentTime !== null) a.currentTime = Number(a.currentTime) + ms;
+      }
+    }
+    return ${read};
+  })()`) as Promise<T>;
+}
+
+/**
  * The app boots on real network events, so this advances virtual time in chunks while it polls,
  * against a real-time budget: a virtual one runs out before the bundle arrives.
  */
