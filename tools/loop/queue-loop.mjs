@@ -2189,7 +2189,7 @@ export async function runOnce(io, pinned = null, at = null) {
       });
     if (route.head && route.head !== tally.lastRedHead) {
       if (Math.max(tally.retries + 1, tally.ciRounds ?? 0) >= CI_ROUNDS) {
-        return parkFix(`${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`);
+        return parkFix(`${Math.max(tally.retries + 1, tally.ciRounds ?? 0)} CI rounds on the same branch did not go green — the last one while the loop was down`);
       }
       io.record({
         number: route.number,
@@ -2246,8 +2246,9 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  let handoff = handoffOf(run) ?? resumePhase(run, after, route.number);
-  let because = null;
+  const declaredHandoff = handoffOf(run);
+  let handoff = declaredHandoff ?? resumePhase(run, after, route.number);
+  let because = handoff && !declaredHandoff ? reasonFor(run, after, route.number).why : null;
   if (handoff === "D" && !io.buildPassed(after?.cwd ?? null, route.number)) {
     io.log(`#${route.number} handed off to review with no local pass or no full DOD-CHECK on HEAD — back to C`, "build");
     handoff = "C";
@@ -2412,7 +2413,7 @@ export async function runOnce(io, pinned = null, at = null) {
   const roundsUsed = Math.max(tally.retries, tally.ciRounds ?? 0);
   if (cost.recorded === "retry" && roundsUsed + 1 >= CI_ROUNDS) {
     return handBack(
-      `${CI_ROUNDS} CI rounds on the same branch did not go green — last: ${settled.reason}`,
+      `${roundsUsed + 1} CI rounds on the same branch did not go green — last:${settled.reason}`,
       "E",
       // The failed CI log, when there is one: it is what the owner needs and the session's own
       // stream log is not.

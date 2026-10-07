@@ -493,6 +493,26 @@ describe("runOnce", () => {
     assert.deepEqual(published, [[42, "agent/42-x", ".worktrees/agent-42"]], "a head handed to review is pushed for CI");
   });
 
+  test("a handoff the supervisor makes for a cut-off session says why", async () => {
+    const ledger: any[] = [];
+    await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 0, blocked: false, ms: 1, log: "l", phase: "C", declared: null,
+            result: { subtype: "error_max_turns", isError: true, cost: 1, turns: 9 },
+          }),
+          standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 1, changed: [], dirty: true, phase: "C" }),
+          pushedPr: () => null,
+        },
+        ledger,
+      ),
+    );
+    const h = ledger.find((r) => r.outcome === "handoff")?.handoff;
+    assert.ok(h, "a handoff row");
+    assert.equal(h.why, "the session ran out of turns");
+  });
+
   test("a HOLD fix handed back to D needs the local pass too, and is pushed only with it", async () => {
     for (const passes of [false, true]) {
       const published: unknown[] = [];

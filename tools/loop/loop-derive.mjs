@@ -58,7 +58,7 @@ const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
 /** The claim comment `claim.mjs` posts — its literal text is the only marker there is. */
 const CLAIM_RE = /^Claimed by `/m;
 
-const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/m;
+const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/;
 
 /**
  * How many CI rounds have gone red since the ticket was last claimed — the newest claim, not the
@@ -74,8 +74,8 @@ export function ciRedRounds(comments) {
   });
   const shas = new Set();
   for (let i = since; i < comments.length; i++) {
-    const m = CI_RED_RE.exec(fenceStripped(comments[i].body));
-    if (m) shas.add(m[1]);
+    const m = CI_RED_RE.exec(fenceStripped(comments[i].body).trimStart());
+    if (m) shas.add(m[1].slice(0, 7));
   }
   return shas.size;
 }
@@ -87,7 +87,7 @@ export function ciRedRounds(comments) {
  * @param {{body: string}[]} comments @param {string} sha
  */
 export function ciRedPosted(comments, sha) {
-  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body))?.[1] === sha);
+  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
 }
 
 /** @returns {string|null} */
@@ -292,7 +292,7 @@ export function dodCheckFor(comments, head, resolves) {
 export function reviewRounds(comments) {
   const bodies = comments.map((c) => fenceStripped(c.body));
   const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
-  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b));
+  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
   let rounds = 0;
   for (const body of bodies) {
     const v = VERDICT_RE.exec(body);

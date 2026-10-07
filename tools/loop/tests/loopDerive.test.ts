@@ -256,6 +256,15 @@ describe("ciRedRounds", () => {
     assert.equal(n, 1);
   });
 
+  test("a later comment quoting the red by its short sha is not a second round (#1257)", () => {
+    const n = ciRedRounds([
+      claim,
+      { body: "CI-RED 9afe0fae6b8873406aad658da1cafdf808665de8\nrun: x" },
+      { body: "FIX-NOTES 25268d85\n\nCI-RED 9afe0fa: 6 failing files" },
+    ]);
+    assert.equal(n, 1);
+  });
+
   test("a reclaim resets what counts, so only the newest claim's tail is read", () => {
     const n = ciRedRounds([{ body: "CI-RED aaaaaaa" }, claim, { body: "CI-RED bbbbbbb" }, claim, { body: "CI-RED ccccccc" }]);
     assert.equal(n, 1);
