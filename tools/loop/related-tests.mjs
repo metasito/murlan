@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-import { CODE, nearTests } from "./near-tests.mjs";
+import { capNear, CODE, listedTests, nearTests } from "./near-tests.mjs";
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const lines = (...a) => execFileSync("git", a, { encoding: "utf8" }).split("\n").filter(Boolean);
@@ -21,8 +21,10 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const listed = code.length
     ? execFileSync(process.execPath, [jest, "--listTests", "--findRelatedTests", ...code, "--selectProjects", "ios"], { encoding: "utf8" })
     : "";
-  const related = listed.split(/\r?\n/).filter(Boolean).filter((f) => path.isAbsolute(f)).map((f) => path.relative(process.cwd(), f).replaceAll("\\", "/"));
+  const related = listedTests(listed, process.cwd());
   const near = nearTests({ changed, related, source: (f) => readFileSync(f, "utf8") });
-  console.log(`native:related — ${near.length} near of ${related.length} reached; ci.yml's native job runs the rest`);
-  if (near.length) process.exit(spawnSync(process.execPath, [jest, ...near, "--selectProjects", "ios"], { stdio: "inherit" }).status ?? 1);
+  const { run, left } = capNear(near);
+  console.log(`native:related — ${run.length} near of ${related.length} reached; ci.yml's native job runs the rest`);
+  if (left) console.log(left);
+  if (run.length) process.exit(spawnSync(process.execPath, [jest, ...run, "--selectProjects", "ios"], { stdio: "inherit" }).status ?? 1);
 }
