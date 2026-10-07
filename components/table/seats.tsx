@@ -878,7 +878,7 @@ const seatStyles = StyleSheet.create({
   // felt behind it by tests/e2e/seatNameContrast.spec.ts.
   oppName: {
     fontFamily: "Rajdhani_600SemiBold",
-    color: "rgba(240,234,214,0.62)",
+    color: "rgba(240,234,214,0.7)",
     letterSpacing: 1.5,
     textTransform: "uppercase",
     maxWidth: OPP_LABEL_MAX_W,
