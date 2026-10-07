@@ -1115,7 +1115,7 @@ export function GameTable({
         </Animated.View>
 
         {pillStandings && matchScore && (
-          <Animated.View {...behindVeil} pointerEvents="box-none" style={[styles.pillLayer, greyStyle]}>
+          <Animated.View {...behindVeil} testID="score-pill-layer" pointerEvents="box-none" style={[styles.pillLayer, greyStyle]}>
             <ScorePill
               standings={pillStandings}
               target={matchScore.target}
@@ -1174,7 +1174,7 @@ export function GameTable({
         {/* The cutout's own column. A cutout can never sit on a card, but it sits
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
-        <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, greyStyle]}>
+        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, greyStyle]}>
         <ControlRail
           veiled={behindCoverOnly}
           width={frame.rail}

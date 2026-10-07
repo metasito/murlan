@@ -287,6 +287,8 @@ describe('the turn pill', () => {
         connection={{ state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: retry } }} />
     );
     const button = screen.getByRole('button', { name: 'Connessione persa, Riprova' });
+    const key = StyleSheet.flatten(screen.getByTestId('turn-chip-retry', { includeHiddenElements: true }).props.style);
+    expect(key).toMatchObject({ backgroundColor: Colors.gold, color: Colors.badgeInk });
     expect(screen.getByText('Riprova', { includeHiddenElements: true })).toBeTruthy();
     expect(StyleSheet.flatten(button.props.style).minHeight).toBeGreaterThanOrEqual(44);
     await fireEvent.press(button);

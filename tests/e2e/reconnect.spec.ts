@@ -72,7 +72,14 @@ test("online — a dropped connection says so, and the table comes back", async 
     const table = page.locator('[data-testid="game-table"]');
     await expect(table).toBeVisible();
 
-    const greyOf = () => table.evaluate((el) => getComputedStyle(el).filter);
+    const greyOf = () =>
+      page.evaluate((ids) => {
+        const seen = ids.map((id) => {
+          const el = document.querySelector(`[data-testid="${id}"]`);
+          return el ? getComputedStyle(el).filter : "missing";
+        });
+        return new Set(seen).size === 1 ? seen[0] : ids.map((id, i) => `${id}: ${seen[i]}`).join("; ");
+      }, ["table-felt", "game-top-bar", "score-pill-layer", "control-rail-layer", "game-table"]);
     expect(await greyOf(), "a live table is not grey").toBe("none");
 
     networkDown = true;

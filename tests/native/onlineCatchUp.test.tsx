@@ -9,6 +9,7 @@ import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
 const mockOwnLink = { current: 'up' };
+const mockConnected = { current: true };
 const mockState: { current?: GameState } = {};
 
 jest.mock('expo-router', () => ({
@@ -45,7 +46,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineTurnClock: () => ({}),
   useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
   useOnlineConnection: () => ({
-    connected: true,
+    connected: mockConnected.current,
     error: null,
     reconnectNotice: { text: 'Carl disconnected', back: false },
     playerLeft: false,
@@ -108,6 +109,7 @@ const lastTable = () => mockTableProps.mock.calls.at(-1)![0] as { ownLink: strin
 describe("the online table on the viewer's own link", () => {
   afterEach(() => {
     mockOwnLink.current = 'up';
+    mockConnected.current = true;
     mockState.current = undefined;
     mockTableProps.mockClear();
   });
@@ -146,6 +148,17 @@ describe("the online table on the viewer's own link", () => {
     expect(connection?.state).toBe('lost');
     connection?.action?.onPress();
     expect(mockRetry).toHaveBeenCalledTimes(1);
+    await view.unmount();
+  });
+
+  it('says it is reconnecting from the first frame for a socket that was never up', async () => {
+    mockConnected.current = false;
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OnlineGameScreen />
+      </SafeAreaProvider>
+    );
+    expect(lastTable()).toMatchObject({ ownLink: 'up', connection: { state: 'reconnecting' } });
     await view.unmount();
   });
 });
