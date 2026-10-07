@@ -39,7 +39,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { CardView } from "@/components/CardView";
 import type { ArcCard } from "@/components/tableArc";
 import type { OpponentSide } from "@/components/seatLayout";
-import type { SeatNameBox } from "./feltReady";
 import { BACK_SCALE, tableFontSize } from "@/components/cardFaceModel";
 import { Colors, LastCard, makeShadow, Motion, motionMs, Spacing } from "@/lib/theme";
 import { urgentThresholdSeconds } from "@/components/turnTimerUi";
@@ -51,7 +50,7 @@ import { useRingProbe } from "@/lib/diagnostics";
 export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingFlash> }
 
 /** A seat is lit while it is on move or the trade marks it: its ring, its glow and its name all read this. */
-export const seatLit = (isActive: boolean, mark?: Pick<SeatMark, "lit">) => isActive || mark?.lit === true;
+const seatLit = (isActive: boolean, mark?: Pick<SeatMark, "lit">) => isActive || mark?.lit === true;
 
 /**
  * Which seats have already answered the round on the table. Derived rather
@@ -804,21 +803,6 @@ export function SideOppSlot({
       )}
     </View>
   );
-}
-
-/** Each opponent's label box as `SeatWho` stands it over the disc, in window points, from the discs' centres. */
-/** `shown`: whether each seat whose name is shown has it lit; a seat absent from it shows none. */
-export function seatNameBoxes(seats: Record<OpponentSide, { x: number; y: number }>, scale: number, shown: Partial<Record<OpponentSide, boolean>>): SeatNameBox[] {
-  const disc = SEAT_DISC * scale;
-  const h = seatLabelH(scale);
-  return (["top", "left", "right"] as const).flatMap((side) => {
-    const lit = shown[side];
-    if (lit === undefined) return [];
-    const at = seats[side];
-    const y = at.y - disc / 2 - h;
-    if (side === "top") return [{ x: at.x - (OPP_LABEL_MAX_W * scale) / 2, y, w: OPP_LABEL_MAX_W * scale, h, lit }];
-    return [{ x: side === "left" ? at.x - disc / 2 : at.x + disc / 2 - SIDE_LABEL_MAX_W, y, w: SIDE_LABEL_MAX_W, h, lit }];
-  });
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

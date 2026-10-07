@@ -8,9 +8,7 @@ import path from "node:path";
 import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowFall, shadowKind, shadowPaint, shadowShape, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
-import { feltLight, NAME_CONTRAST, nameCeiling, nameDim } from "../../components/table/legibilityRing.ts";
-import { CLOTH_BODY } from "../../components/table/feltShader.ts";
-import { CardGlow, CardShadow, Colors, FeltGradients, Motion } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Colors, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
 
 type Layer = { x: string; y: string; blur: number; rgba: number[] | null; hex: string | null; inset: boolean };
@@ -154,42 +152,5 @@ describe("the felt's gold glow", () => {
     const rects = { "hand:a": rect({ glow: 1 }), "hand:b": rect(), "pile:c": rect({ glow: 0.5 }), "hand:d": rect({ glow: 1, seen: 0 }) };
     buildGlow(sink, rects, { sx: 1, sy: 1, s: 1 }, 0);
     assert.deepEqual(fills, [[1, CardGlow.alpha], [2, CardGlow.alpha / 2]]);
-  });
-});
-
-describe("the felt under a seat name", () => {
-  const channel = (c: number) => (c / 255 <= 0.04045 ? c / 255 / 12.92 : ((c / 255 + 0.055) / 1.055) ** 2.4);
-  const hex = (c: string) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
-  const lum = (c: number[]) => c.map(channel).reduce((s, v, i) => s + [0.2126, 0.7152, 0.0722][i] * v, 0);
-  const muted = Colors.textMuted.slice(5, -1).split(",").map(Number);
-
-  const lamp = { lx: 300, ly: 200, r: 1, f: 0 };
-
-  test("under the lamp, is dimmed until the name's ink reads, the gold when lit and the muted cream when not", () => {
-    for (const stops of Object.values(FeltGradients)) {
-      const light = feltLight(stops.map((s) => hex(s).map((c) => c / 255)), lamp, { x: lamp.lx, y: lamp.ly });
-      const dimmed = (ink: string) => light.map((c) => Math.round(255 * c * (Math.round(255 * nameDim(light, nameCeiling(stops, ink))) / 255)));
-      const lit = dimmed(Colors.goldLit);
-      const unlit = dimmed(Colors.textMuted);
-      const cream = unlit.map((u, i) => muted[i] * muted[3] + u * (1 - muted[3]));
-      const ratios = [(lum(hex(Colors.goldLit)) + 0.05) / (lum(lit) + 0.05), (lum(cream) + 0.05) / (lum(unlit) + 0.05)];
-      for (const ratio of ratios) assert.ok(ratio >= NAME_CONTRAST - 0.05 && ratio < NAME_CONTRAST + 0.25, `${stops[0]}: ${ratios}`);
-    }
-  });
-
-  test("out of the lamp's pool, is left as it is, weave and all", () => {
-    for (const stops of Object.values(FeltGradients)) {
-      const cloth = stops.map((s) => hex(s).map((c) => c / 255));
-      const far = feltLight(cloth, lamp, { x: lamp.lx + 600, y: lamp.ly });
-      assert.ok(far.every((c, i) => c <= cloth[4][i]), `${stops[0]}: the far felt is the last stop, vignetted`);
-      assert.equal(nameDim(far, nameCeiling(stops, Colors.textMuted)), 1, stops[0]);
-    }
-  });
-
-  test("the light under the lamp is the cloth shader's own: its first stop and the glow", () => {
-    const cloth = FeltGradients.verde.map((s) => hex(s).map((c) => c / 255));
-    const glow = [1, 0.78, 0.45].map((c) => c * 0.14);
-    assert.deepEqual(feltLight(cloth, lamp, { x: lamp.lx, y: lamp.ly }).map((c) => c.toFixed(6)), cloth[0].map((c, i) => Math.min(1, c + glow[i]).toFixed(6)));
-    assert.match(CLOTH_BODY, /col\+=vec3\(1\.,\.78,\.45\)\*pow\(1\.-t,2\.\)\*\(\.14\+\.35\*uFlare\);/);
   });
 });

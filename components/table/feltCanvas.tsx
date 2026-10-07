@@ -32,12 +32,10 @@ import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
-import { CLOTH_SKSL, clothUniforms, rgb } from "./feltShader";
+import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
-import type { FeltProps } from "./feltReady";
-import { feltLight, nameCeiling, nameDim } from "./legibilityRing";
 import type { CardTable } from "./useCardRects";
 
 export interface FeltCanvasProps {
@@ -48,7 +46,6 @@ export interface FeltCanvasProps {
   /** Called once the canvas has drawn its first frame. */
   onReady?: () => void;
   cards: CardTable;
-  names: FeltProps["names"];
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
@@ -64,10 +61,6 @@ function ring(d: number): SkRRect {
 const OUTER = ring(0);
 const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
-// A point into the rail: the cloth's antialiased edge lets the lit rail through, and the name must not stand on it.
-const NAME_EDGE = ring(RAIL_BAND - 1);
-/** The name shade's soft edge, in design points; it reaches three of them past the label box. */
-const NAME_SOFT = 6;
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
 const DISPOSE_PATHS = Platform.OS === "web";
 const E2E = process.env.EXPO_PUBLIC_E2E_FAST === "1";
@@ -205,21 +198,6 @@ function ShadowLayer({ path, kind, s }: { path: SharedValue<SkPath>; kind: Shado
   );
 }
 
-/** `box` in design points; dimmed by as much as the light at its point nearest the lamp needs. */
-function NameDim({ box, ceiling, cloth, lamp }: { box: { x: number; y: number; w: number; h: number }; ceiling: number; cloth: number[][]; lamp: SharedValue<Lamp> }) {
-  const grey = useDerivedValue(() => {
-    const { lx, ly } = lamp.value;
-    const near = { x: Math.min(Math.max(lx, box.x), box.x + box.w), y: Math.min(Math.max(ly, box.y), box.y + box.h) };
-    const g = Math.round(255 * nameDim(feltLight(cloth, lamp.value, near), ceiling));
-    return `rgb(${g},${g},${g})`;
-  });
-  return (
-    <Rect x={box.x - 3 * NAME_SOFT} y={box.y - 3 * NAME_SOFT} width={box.w + 6 * NAME_SOFT} height={box.h + 6 * NAME_SOFT} color={grey} blendMode="multiply">
-      <BlurMask blur={NAME_SOFT} style="normal" />
-    </Rect>
-  );
-}
-
 // A raster surface: on web an offscreen one is a WebGL context of its own per bake, read back
 // with a GPU stall.
 function bakeRail(k: number): SkImage | null {
@@ -258,7 +236,7 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltCanvasProps) {
+export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards }: FeltCanvasProps) {
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
   useBenchHandle("feltSnapshot", snapshot);
@@ -301,18 +279,14 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
   const [glows, setGlows] = useState(true);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanCardGlow?: (on: boolean) => void; murlanNameShade?: () => FeltProps["names"] };
+    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanCardGlow?: (on: boolean) => void };
     e2e.murlanCardShadows = (on) => (shadows.value = on ? 1 : 0);
     e2e.murlanCardGlow = setGlows;
-    e2e.murlanNameShade = () => names;
     return () => {
       delete e2e.murlanCardShadows;
       delete e2e.murlanCardGlow;
-      delete e2e.murlanNameShade;
     };
-  }, [shadows, names]);
-  const ceilings = useMemo(() => ({ lit: nameCeiling(stops, Colors.goldLit), unlit: nameCeiling(stops, Colors.textMuted) }), [stops]);
-  const cloth = useMemo(() => stops.map(rgb), [stops]);
+  }, [shadows]);
 
   useEffect(() => {
     if (!onReady) return;
@@ -343,11 +317,6 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, names }: FeltC
             <Shader source={CLOTH} uniforms={uniforms} />
           </Rect>
         )}
-        <Group clip={NAME_EDGE}>
-          {names.map((n, i) => (
-            <NameDim key={i} box={{ x: n.x / sx, y: n.y / sy, w: n.w / sx, h: n.h / sy }} ceiling={n.lit ? ceilings.lit : ceilings.unlit} cloth={cloth} lamp={lamp} />
-          ))}
-        </Group>
         {glows && (
           <Group transform={flat}>
             <Picture picture={glow} />

@@ -26,8 +26,6 @@ export interface TableAnchors {
   height: number;
   /** Each seat's anchor, in the felt box's points. */
   anchors: Readonly<Record<LampSide, { x: number; y: number }>>;
-  /** The seat-name boxes the felt dims, in the same points: holes in each ring. */
-  names: readonly { x: number; y: number; w: number; h: number }[];
 }
 
 export interface BenchHandles {
