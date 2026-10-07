@@ -4,6 +4,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { Dust } from "../../lib/tokens.ts";
+import { MOTES } from "./air.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
 export const SHAPES: readonly ParticleShape[] = ["dot", "spark", "soft"];
@@ -26,6 +27,7 @@ export interface ParticleSpawn {
 
 /** The 40 ambient motes included. */
 export const PARTICLE_BUDGET = 200;
+const TRANSIENTS = PARTICLE_BUDGET - MOTES;
 
 /** Offsets into one particle's `STRIDE` floats of `Particles.f`; `shape` indexes `SHAPES`, `r`…`a` are 0–1. */
 export const P = { x: 0, y: 1, vx: 2, vy: 3, g: 4, drag: 5, life: 6, max: 7, size: 8, glow: 9, shape: 10, r: 11, gr: 12, b: 13, a: 14 } as const;
@@ -45,7 +47,7 @@ export interface ParticleEmitter {
   emit(spawns: readonly ParticleSpawn[]): void;
 }
 
-export function createParticles(budget: number = PARTICLE_BUDGET): Particles {
+export function createParticles(budget: number = TRANSIENTS): Particles {
   return { live: 0, dropped: 0, f: new Float32Array(budget * STRIDE) };
 }
 

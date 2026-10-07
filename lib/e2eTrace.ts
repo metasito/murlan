@@ -14,11 +14,17 @@ export interface TraceFrame {
   /** The score pill's box and its open progress, which may overshoot 1. */
   scorePill: { x: number; y: number; w: number; h: number; open: number } | null;
   flight: number;
+  /** The motes the light draws this frame, of the 40 `live` counts. */
+  motes: number;
+  /** The moth's body, while one crosses the light. */
+  moth: { x: number; y: number } | null;
 }
 
 interface Sources {
   live: () => number;
   dropped: () => number;
+  motes: () => number;
+  moth: () => TraceFrame["moth"];
   lamp: () => NonNullable<TraceFrame["lamp"]>;
   shake: () => NonNullable<TraceFrame["shake"]>;
   felt: () => "skia" | "fallback";
@@ -35,6 +41,8 @@ export interface TraceRecorder {
 const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   live: new Set(),
   dropped: new Set(),
+  motes: new Set(),
+  moth: new Set(),
   lamp: new Set(),
   shake: new Set(),
   felt: new Set(),
@@ -70,6 +78,8 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       felt: last(sources.felt),
       scorePill: last(sources.scorePill),
       flight: Math.max(0, ...[...sources.flight].map((read) => read())),
+      motes: sum(sources.motes),
+      moth: last(sources.moth),
     });
     requestAnimationFrame(tick);
   };

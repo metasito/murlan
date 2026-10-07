@@ -8,7 +8,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import { DEPART_SCRIPT, MOCKUP_SEAT, expectDeparted } from "./helpers/lanternDepartures";
 import { CAPTURE_STATES } from "../../lib/captureStates";
 
@@ -87,7 +87,7 @@ async function appCloth(page: Page, baseURL: string, id: string): Promise<Cloth>
   await openCaptureState(page, baseURL, stateById(id));
   await page.waitForTimeout(DEALT_MS);
   await untilSkiaFelt(page);
-  return sample(page, await page.screenshot({ type: "png" }), VIEWPORT.width);
+  return sample(page, await page.screenshot({ type: "png", style: UNLIT_AIR }), VIEWPORT.width);
 }
 
 /** The mockup at rest with its lamp moved over `side`, aimed the app's way, as its `lampStep` would settle it. */
@@ -99,7 +99,7 @@ async function mockupCloth(browser: Browser, deviceScaleFactor: number, side: "l
   const frame = page.locator("#frame");
   const box = (await frame.boundingBox())!;
   await page.setViewportSize({ width: VIEWPORT.width * 2 - Math.round(box.width), height: VIEWPORT.height * 2 });
-  // Its motes sit wherever this load's `Math.random` put them, lit by the lamp, and ours has none.
+  // Each side's motes sit wherever its load's `Math.random` put them, so neither side's is sampled.
   const air = await page.evaluate(`(() => {
     ${DEPART_SCRIPT}
     T.go("rest", ${MOCKUP_REST_MS});

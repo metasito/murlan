@@ -98,6 +98,16 @@ export function handBuiltNodeModulesJoins(source: string, filename = "snippet.ts
   const sf = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const { objectNames, fnNames } = pathBindings(sf);
   const found: HandBuiltJoin[] = [];
+  const heldLiterals = new Set<string>();
+  const collect = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && isNodeModulesLiteral(node.initializer)) {
+      heldLiterals.add(node.name.text);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+  const namesNodeModules = (arg: ts.Node) =>
+    isNodeModulesLiteral(arg) || (ts.isIdentifier(arg) && heldLiterals.has(arg.text));
 
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
@@ -109,7 +119,7 @@ export function handBuiltNodeModulesJoins(source: string, filename = "snippet.ts
         (callee.name.text === "join" || callee.name.text === "resolve");
       const isNamedCall = ts.isIdentifier(callee) && fnNames.has(callee.text);
 
-      if ((isMethodCall || isNamedCall) && node.arguments.some(isNodeModulesLiteral)) {
+      if ((isMethodCall || isNamedCall) && node.arguments.some(namesNodeModules)) {
         found.push({
           line: sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1,
           text: node.getText(sf),
@@ -138,6 +148,11 @@ test("the scan matches a hand-built node_modules join, spread across lines, and 
     'import { join } from "node:path";\nconst x = join(cwd, "node_modules", "babel-preset-expo");\n'
   );
   assert.equal(namedImport.length, 1, "a named `join` import must be caught the same as `path.join`");
+
+  const throughConst = handBuiltNodeModulesJoins(
+    'import path from "node:path";\nconst ENGINE = "node_modules/pkg/ios/Engine.mm";\nconst x = path.join(repoRoot, ENGINE);\n'
+  );
+  assert.equal(throughConst.length, 1, "a node_modules literal held in a const and joined must be caught");
 
   const resolved = handBuiltNodeModulesJoins(
     'import path from "node:path";\nconst x = path.join(OUT_DIR, `${family}.ttf`);\n'

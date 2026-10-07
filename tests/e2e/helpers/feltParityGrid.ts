@@ -7,7 +7,7 @@
 // its weave louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { openCaptureState } from "./offlineSeed";
-import { settledLight, skiaOnSoftware, tracedLamp, untilSkiaFelt } from "./tableTrace";
+import { settledLight, skiaOnSoftware, tracedLamp, UNLIT_AIR, untilSkiaFelt } from "./tableTrace";
 import {
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
@@ -131,7 +131,7 @@ const relief = (c: Cloth) => c.amplitude / Math.max(c.mean, 1);
 async function clothRow(page: Page, table: Locator, patches: Patch[]): Promise<Row> {
   const box = await table.boundingBox();
   if (!box) throw new Error("nothing to sample: the table has no box");
-  const png = (await table.screenshot({ type: "png" })).toString("base64");
+  const png = (await table.screenshot({ type: "png", style: UNLIT_AIR })).toString("base64");
   return page.evaluate(
     async ({ png, patches, width, size }) => {
       const img = new Image();

@@ -891,6 +891,10 @@ jobs:
               echo "tests/e2e/timings.json already matches this run's measurements."
               exit 0
             fi
+            if ! node --test tests/tooling/e2eShardSplit.test.ts; then
+              echo "::error::The measured timings fail tests/tooling/e2eShardSplit.test.ts; committing them would red main and every pull request."
+              exit 1
+            fi
             git commit -q -m "Regenerate tests/e2e/timings.json from measured durations" -- tests/e2e/timings.json
             if git push; then exit 0; fi
             git fetch --force origin main:refs/remotes/origin/main

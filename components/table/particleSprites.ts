@@ -2,7 +2,9 @@
 // white sprite per shape and glow radius, tinted per particle, so nothing is blurred per frame.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { alpha, P, SHAPES, STRIDE, type ParticleShape, type Particles } from "./particles.ts";
+import { alpha, P, rgba, SHAPES, STRIDE, type ParticleShape, type Particles } from "./particles.ts";
+import { M, MOTE_STRIDE, MOTES, moteAlpha, type Air, type AirLight } from "./air.ts";
+import { RestAir } from "../../lib/tokens.ts";
 
 /** A dot's or a soft puff's radius on the sheet, and a spark's half-width. */
 export const SPRITE_R = 6;
@@ -90,4 +92,32 @@ export function layout(s: Particles, out: Float32Array): void {
     out[d + D.b] = f[o + P.b];
     out[d + D.a] = alpha(f, o);
   }
+}
+
+const MOTE_CELL = CELLS[SHAPES.indexOf("dot") * GLOWS.length];
+const [MOTE_R, MOTE_G, MOTE_B] = rgba(RestAir.mote);
+
+/** Writes the motes' draws into `out` from draw `from` on, and returns how many are lit: an unlit one draws at alpha 0. */
+export function layoutMotes(a: Air, l: AirLight, out: Float32Array, from: number): number {
+  "worklet";
+  let lit = 0;
+  for (let i = 0; i < MOTES; i++) {
+    const d = (from + i) * DRAW_STRIDE;
+    const o = i * MOTE_STRIDE;
+    const scale = a.m[o + M.r] / SPRITE_R;
+    out[d + D.x] = MOTE_CELL.x;
+    out[d + D.y] = MOTE_CELL.y;
+    out[d + D.w] = MOTE_CELL.w;
+    out[d + D.h] = MOTE_CELL.h;
+    out[d + D.scos] = scale;
+    out[d + D.ssin] = 0;
+    out[d + D.tx] = a.m[o + M.x] - scale * MOTE_CELL.cx;
+    out[d + D.ty] = a.m[o + M.y] - scale * MOTE_CELL.cy;
+    out[d + D.r] = MOTE_R;
+    out[d + D.g] = MOTE_G;
+    out[d + D.b] = MOTE_B;
+    out[d + D.a] = moteAlpha(a, i, l);
+    if (out[d + D.a] > 0) lit++;
+  }
+  return lit;
 }

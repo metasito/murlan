@@ -1,33 +1,225 @@
 // tests/native/particleLayerTrace.test.tsx — the native particle layer reports its live and
 // dropped counts to the trace, as the web layer does (#1258).
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import type { ParticleEmitter, ParticleSpawn } from '@/components/table/particles';
 
-const mockSources = new Map<string, () => number>();
+const mockSources = new Map<string, () => unknown>();
 jest.mock('@/lib/e2eTrace', () => ({
-  useTraceSource: (field: string, read: () => number) => mockSources.set(field, read),
+  useTraceSource: (field: string, read: () => unknown) => mockSources.set(field, read),
+  traceOnset: (...onset: string[]) => mockOnsets.push(onset.join(':')),
 }));
+const mockOnsets: string[] = [];
+
+let mockReduced = false;
+jest.mock('@/lib/accessibility', () => ({
+  ...jest.requireActual<object>('@/lib/accessibility'),
+  usePrefersReducedMotion: () => mockReduced,
+}));
+
+const mockShapes = { built: 0 };
+jest.mock('@shopify/react-native-skia', () => {
+  const React = require('react') as typeof import('react');
+  const call: object = new Proxy(function () {}, { get: (_, key) => (key === 'then' ? undefined : call), apply: () => call });
+  const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
+  const rect = () => (mockShapes.built++, call);
+  return new Proxy({ Skia: call, PaintStyle: {}, rect } as Record<string | symbol, unknown>, {
+    get: (known, key) => (key === '__esModule' ? true : key in known ? known[key] : element),
+  });
+});
+
+let mockLaid = 0;
+jest.mock('@/components/table/particleSprites', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/particleSprites')>('@/components/table/particleSprites');
+  return { ...actual, layoutMotes: (...args: Parameters<typeof actual.layoutMotes>) => (mockLaid++, actual.layoutMotes(...args)) };
+});
+
+let mockAirs = 0;
+jest.mock('@/components/table/air', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/air')>('@/components/table/air');
+  return { ...actual, createAir: (...args: Parameters<typeof actual.createAir>) => (mockAirs++, actual.createAir(...args)) };
+});
 
 import { makeMutable } from 'react-native-reanimated';
 import { ParticleLayer } from '@/components/table/particleLayer';
+import { restingLamp, TABLE_CENTRE } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
+
+const atRest = async (ms: number, freeze = 0) => {
+  const rig = { lamp: makeMutable({ ...restingLamp(TABLE_CENTRE), freeze }), sx: 1, sy: 1 };
+  const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
+  const lit = new Set<unknown>();
+  let moths = 0;
+  for (let t = 0; t < ms; t += 16) {
+    await act(async () => jest.advanceTimersByTime(16));
+    lit.add(mockSources.get('motes')?.());
+    if (mockSources.get('moth')?.()) moths++;
+  }
+  await view.unmount();
+  return { lit, moths };
+};
 
 const DUST: ParticleSpawn = {
   x: 0, y: 0, vx: 0, vy: 0, g: 0, drag: 1, life: 1, size: 1, col: '#ffffff', shape: 'dot', glow: 0,
 };
 
 describe('ParticleLayer', () => {
-  it('traces its live and dropped counts', async () => {
+  it('traces its live and dropped counts, the 40 motes inside the budget of 200', async () => {
     const ref = React.createRef<ParticleEmitter>();
-    const view = await render(<ParticleLayer ref={ref} sx={1} sy={1} landing={makeMutable(NO_LANDING)} />);
-    expect(mockSources.get('live')?.()).toBe(0);
+    const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+    const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
+    expect(mockSources.get('live')?.()).toBe(40);
+    expect(mockSources.get('moth')?.()).toBeNull();
 
     await act(async () => ref.current!.emit(Array.from({ length: 203 }, () => DUST)));
 
     expect(mockSources.get('live')?.()).toBe(200);
-    expect(mockSources.get('dropped')?.()).toBe(3);
+    expect(mockSources.get('dropped')?.()).toBe(43);
     await view.unmount();
+  });
+
+
+  it('lays the air down once, not on every render', async () => {
+    const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+    const landing = makeMutable(NO_LANDING);
+    const before = mockAirs;
+    const view = await render(<ParticleLayer rig={rig} landing={landing} />);
+    for (let i = 0; i < 3; i++) await view.rerender(<ParticleLayer rig={{ ...rig }} landing={landing} />);
+    await view.unmount();
+    expect(mockAirs - before).toBe(1);
+  });
+
+  describe('at rest, frame by frame', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+      mockReduced = false;
+    });
+
+    it('lights the motes, twinkling, and sends a moth across within 10 s, its onset traced', async () => {
+      mockOnsets.length = 0;
+      const { lit, moths } = await atRest(10_500);
+
+      expect(Math.max(...(lit as Set<number>))).toBeGreaterThan(0);
+      expect(lit.size).toBeGreaterThan(1);
+      expect(moths).toBeGreaterThan(0);
+      expect(mockOnsets).toEqual(['moment:moth']);
+    });
+
+    it('under a frozen lamp sends no moth', async () => {
+      mockOnsets.length = 0;
+      const { lit, moths } = await atRest(10_500, 1);
+
+      expect(Math.max(...(lit as Set<number>))).toBeGreaterThan(0);
+      expect(moths).toBe(0);
+      expect(mockOnsets).toEqual([]);
+    });
+
+    it('builds the moth\'s shapes only on frames with a moth on the light', async () => {
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
+      let idle = 0;
+      let flying = 0;
+      for (let t = 0; t < 10_500; t += 16) {
+        const before = mockShapes.built;
+        const flew = mockSources.get('moth')?.();
+        await act(async () => jest.advanceTimersByTime(16));
+        if (mockSources.get('moth')?.()) flying += mockShapes.built - before;
+        else if (t > 0 && !flew) idle += mockShapes.built - before;
+      }
+      await view.unmount();
+
+      expect(flying).toBeGreaterThan(0);
+      expect(idle).toBe(0);
+    });
+
+    it('lays the air out at most 240 times a second, every frame while dust is live', async () => {
+      const ref = React.createRef<ParticleEmitter>();
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
+      const laidIn = async (ms: number) => {
+        const before = mockLaid;
+        await act(async () => jest.advanceTimersByTime(ms));
+        return mockLaid - before;
+      };
+      await laidIn(100);
+      const idle = await laidIn(1000);
+      expect(idle).toBeGreaterThan(120);
+      expect(idle).toBeLessThanOrEqual(241);
+
+      await act(async () => ref.current!.emit([{ ...DUST, life: 60 }]));
+      expect(await laidIn(1000)).toBeGreaterThan(900);
+      await view.unmount();
+    });
+
+    it('under reduced motion lays the motes out again only when the light moves', async () => {
+      mockReduced = true;
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const view = await render(<ParticleLayer rig={rig} landing={makeMutable(NO_LANDING)} />);
+      const frames = async (n: number) => {
+        const before = mockLaid;
+        for (let i = 0; i < n; i++) await act(async () => jest.advanceTimersByTime(16));
+        return mockLaid - before;
+      };
+      expect(await frames(2)).toBeGreaterThan(0);
+      expect(await frames(60)).toBe(0);
+
+      rig.lamp.modify((l) => {
+        'worklet';
+        l.lx += 40;
+        return l;
+      }, true);
+      expect(await frames(2)).toBeGreaterThan(0);
+      expect(await frames(60)).toBe(0);
+      await view.unmount();
+    });
+
+    it('back under reduced motion lays the motes out again for a light that moved while it was off', async () => {
+      mockReduced = true;
+      const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+      const landing = makeMutable(NO_LANDING);
+      const view = await render(<ParticleLayer rig={rig} landing={landing} />);
+      const frames = async (n: number) => {
+        const before = mockLaid;
+        for (let i = 0; i < n; i++) await act(async () => jest.advanceTimersByTime(16));
+        return mockLaid - before;
+      };
+      const home = rig.lamp.value.lx;
+      const shift = (dx: number) =>
+        rig.lamp.modify((l) => {
+          'worklet';
+          l.lx = home + dx;
+          return l;
+        }, true);
+      await frames(2);
+      expect(await frames(30)).toBe(0);
+
+      mockReduced = false;
+      await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
+      shift(40);
+      expect(await frames(30)).toBeGreaterThan(20);
+
+      shift(0);
+      mockReduced = true;
+      const relaid = mockLaid;
+      await view.rerender(<ParticleLayer rig={rig} landing={landing} />);
+      expect(mockLaid - relaid + (await frames(2))).toBeGreaterThan(0);
+      expect(await frames(30)).toBe(0);
+      await view.unmount();
+    });
+
+    it('under reduced motion holds the motes still and lit, and sends no moth', async () => {
+      mockReduced = true;
+      mockOnsets.length = 0;
+      const { lit, moths } = await atRest(10_500);
+
+      expect(lit.size).toBe(1);
+      expect([...lit][0]).toBeGreaterThan(0);
+      expect(moths).toBe(0);
+      expect(mockOnsets).toEqual([]);
+    });
   });
 });
