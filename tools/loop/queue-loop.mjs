@@ -79,6 +79,7 @@ import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { CHECK_BASH_TIMEOUT_MS, STALL_MS } from "./limits.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -404,12 +405,10 @@ export function syncCheckout(
 /**
  * A session's own longest silence. Phase D's two review subagents emit nothing into the parent
  * stream while they read, and a large diff keeps them there past twenty minutes. Any ceiling at or
- * under that reads a working run as a stalled one.
+ * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
+ * ceiling, which `agent:check -- --also test:native` needs and a stall must outlast.
  */
-export const STALL_MS = 30 * 60_000;
-
-/** The session's Bash ceiling, which `agent:check -- --also test:native` needs and a stall must outlast. */
-export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
+export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 
 /** Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the ceiling. */
 export const BASH_DEFAULT_TIMEOUT_MS = 5 * 60_000;

@@ -296,6 +296,8 @@ one that doesn't needs a device capture (above).
   tests" (#211). `playwright.config.ts` owns its own `webServer` on `E2E_PORT`, so starting one by
   hand races it for the port. A piped run exits with the pipe's code: `tools/loop/guard-bash.mjs`
   refuses one.
+- **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
+  (`globalTimeout`); narrow with one spec or `-g` rather than raising it.
 - **`dev-stack up` starts Docker Desktop and waits up to 3 min** when the engine is down; never
   improvise a start.
 - **A scan that has only ever been green has not been tested, it's been assumed** — rule 6; see
