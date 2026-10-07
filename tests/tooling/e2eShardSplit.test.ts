@@ -55,6 +55,12 @@ describe("every browser spec reaches exactly one shard", () => {
     assert.match(ciYml, /if: \$\{\{ needs\.browser\.result == 'success' \}\}\n.*\n\s+with:\n\s+name: e2e-timings\n/);
   });
 
+  test("the weekly timings commit passes this file before it lands, as its bot push runs no CI", () => {
+    const step = /- name: Commit the regenerated timings[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
+
+    assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
+  });
+
   test("a spec in a subdirectory is placed, as Playwright would run it", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "e2e-shard-"));
     try {

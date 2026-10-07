@@ -196,6 +196,13 @@ export const Dust = {
   puff: 'rgba(230,215,180,0.1)',
 } as const;
 
+// The table at rest: the mockup's `drawAir` (#1261). A mote's alpha is its light's.
+export const RestAir = {
+  mote: '#FFE4AA',
+  moth: 'rgba(232,214,176,0.9)',
+  mothShadow: 'rgba(0,0,0,0.28)',
+} as const;
+
 // The beaten play under the new one: the lantern mockup's `.grp.prev`; `shade` over each card is its `brightness(.6)` (D4 #5).
 export const Beaten = {
   rotateDeg: -7,

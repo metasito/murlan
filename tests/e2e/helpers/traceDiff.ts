@@ -28,7 +28,9 @@ export type Field =
   | "shake"
   | "brightness"
   | "scorePill"
-  | "flight";
+  | "flight"
+  | "moth"
+  | "air";
 
 export interface Failure {
   field: Field;
@@ -230,6 +232,110 @@ export function diffFlight(mockup: Trace, app: Trace, tol: typeof TOLERANCES = T
     }
   }
   return out;
+}
+
+function crossing(trace: Trace): { t: number; ended: boolean; at: Map<number, { x: number; y: number }> } | null {
+  const i = trace.frames.findIndex((f) => f.moth);
+  if (i < 0) return null;
+  const t = trace.frames[i].t;
+  const at = new Map<number, { x: number; y: number }>();
+  for (const f of trace.frames.slice(i)) {
+    if (!f.moth || !f.lamp) break;
+    at.set(f.t - t, { x: f.moth.x - f.lamp.x, y: f.moth.y - f.lamp.y });
+  }
+  return { t, ended: i + at.size < trace.frames.length, at };
+}
+
+/** Each side's moth sets off at its own random time, so its first crossing is held from its own onset, against its own light. */
+export function diffMoth(mockup: Trace, app: Trace, tol: typeof TOLERANCES = TOLERANCES): Failure[] {
+  const m = crossing(mockup);
+  const a = crossing(app);
+  if (!m || !a) {
+    return m === a ? [] : [{ field: "moth", t: (m ?? a)!.t, mockup: m?.t ?? null, app: a?.t ?? null, message: "a moth on one side only" }];
+  }
+  const out: Failure[] = [];
+  if (m.ended && a.ended && Math.abs(m.at.size - a.at.size) > 1) {
+    out.push({ field: "moth", t: a.t, mockup: m.at.size, app: a.at.size, message: `the moth crosses in ${a.at.size} frames, the mockup's in ${m.at.size}` });
+  }
+  for (const [e, p] of a.at) {
+    const q = m.at.get(e);
+    if (!q) continue;
+    const d = Math.hypot(p.x - q.x, p.y - q.y);
+    if (d > tol.lampPt) {
+      out.push({ field: "moth", t: a.t + e, mockup: q, app: p, message: `the moth ${d.toFixed(1)} pt off the mockup's path, ${e} ms into its crossing` });
+    }
+  }
+  return out;
+}
+
+/** Onsets held to a window of the app's own time rather than to the mockup's onset. */
+export function diffOnsetWindows(app: Trace, windows: Record<string, readonly [number, number]>): Failure[] {
+  const on = onsetTimes(app);
+  return Object.entries(windows).flatMap(([key, [from, to]]): Failure[] => {
+    const t = on.get(`${key}#0`);
+    if (t === undefined) return [{ field: "onset", t: to, mockup: [from, to], app: null, message: `${key} never fired` }];
+    if (t < from || t > to) return [{ field: "onset", t, mockup: [from, to], app: t, message: `${key} at ${t} ms, outside ${from}–${to} ms` }];
+    return [];
+  });
+}
+
+export interface LayerSample {
+  t: number;
+  sha1: string;
+  drawn: boolean;
+}
+
+/** #1231's idle frames 15 s apart, as an assertion on the particle layer alone: the lamp's sway cannot pass it. */
+export function diffApart(samples: LayerSample[], [from, to]: readonly [number, number]): Failure[] {
+  const a = samples.find((s) => s.t === from);
+  const b = samples.find((s) => s.t === to);
+  if (!a || !b) {
+    const t = a ? to : from;
+    return [{ field: "air", t, mockup: null, app: null, message: `no particle layer sample at ${t} ms` }];
+  }
+  const out: Failure[] = [];
+  for (const s of [a, b]) if (!s.drawn) out.push({ field: "air", t: s.t, mockup: null, app: s.sha1, message: `the particle layer drew nothing at ${s.t} ms` });
+  if (a.sha1 === b.sha1) out.push({ field: "air", t: to, mockup: null, app: b.sha1, message: `the particle layer at ${to} ms is the one at ${from} ms` });
+  return out;
+}
+
+/** Reduced motion's air: the twinkle stopped, so the same motes are lit every frame, and no moth flies. */
+export function diffStillAir(app: Trace): Failure[] {
+  const lit = app.frames[0]?.motes ?? 0;
+  const out: Failure[] = [];
+  if (lit === 0) out.push({ field: "air", t: app.frames[0]?.t ?? 0, mockup: null, app: lit, message: "the motes held still with none lit" });
+  const twinkled = app.frames.find((f) => f.motes !== lit);
+  if (twinkled) out.push({ field: "air", t: twinkled.t, mockup: lit, app: twinkled.motes, message: `${twinkled.motes} motes at ${twinkled.t} ms, ${lit} before` });
+  const moth = app.frames.find((f) => f.moth);
+  if (moth) out.push({ field: "air", t: moth.t, mockup: null, app: moth.moth, message: `a moth at ${moth.t} ms` });
+  return out;
+}
+
+export interface ParitySpec {
+  mode: "determinism" | "parity";
+  checkpoints: number[];
+  fields?: Field[];
+  onsets?: string[];
+  onsetWindows?: Record<string, readonly [number, number]>;
+  apart?: readonly [number, number];
+  fallbackStill?: boolean;
+}
+
+/** Every failure a moment's spec holds the two sides to, from their traces and the app's particle layer. */
+export function diffParity(m: ParitySpec, fallback: boolean, mockup: Trace, app: Trace, layer: LayerSample[]): Failure[] {
+  const held = new Set<Field>(["frames", ...(m.fields ?? [])]);
+  const windowed = Object.keys(m.onsetWindows ?? {});
+  const kept = (o: string) => (!m.onsets || m.onsets.includes(o)) && !windowed.includes(o);
+  const heldOnsets = (t: Trace): Trace =>
+    m.onsets || windowed.length ? { ...t, frames: t.frames.map((f) => ({ ...f, onsets: f.onsets.filter(kept) })) } : t;
+  return [
+    ...diffTraces(heldOnsets(mockup), heldOnsets(app), m.checkpoints).filter((f) => m.mode === "determinism" || held.has(f.field)),
+    ...(held.has("flight") ? diffFlight(mockup, app) : []),
+    ...(held.has("onset") ? diffOnsetWindows(app, m.onsetWindows ?? {}) : []),
+    ...(held.has("moth") ? diffMoth(mockup, app) : []),
+    ...(held.has("air") && m.apart ? diffApart(layer, m.apart) : []),
+    ...(fallback && m.fallbackStill ? diffStillAir(app) : []),
+  ];
 }
 
 /** The fields whose value changes somewhere in the window — a determinism entry's proof it recorded something. */

@@ -2,12 +2,18 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  diffApart,
   diffFlight,
+  diffMoth,
+  diffOnsetWindows,
+  diffParity,
   diffPillAtProgress,
+  diffStillAir,
   diffTraces,
   movingFields,
   STEP_MS,
   TOLERANCES,
+  type Field,
   type Trace,
   type TraceFrame,
 } from "../e2e/helpers/traceDiff.ts";
@@ -26,6 +32,8 @@ function reference(): Trace {
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
       scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
       flight: 0,
+      motes: 12,
+      moth: null,
     });
   }
   const regions = CHECKPOINTS.map((t) => ({
@@ -208,5 +216,71 @@ describe("the flight field", () => {
     const none = reference();
     for (const f of none.frames) f.flight = 0;
     assert.ok(diffFlight(withFlight(32, 336), none).some((f) => /one side/.test(f.message)));
+  });
+});
+
+describe("the moth field", () => {
+  const withMoth = (from: number, until = 4000, sway = 0, off = 0): Trace => {
+    const t = reference();
+    for (const f of t.frames) {
+      const q = (f.t - from) / 4000;
+      if (q < 0 || f.t > from + until) continue;
+      f.lamp = { ...f.lamp!, x: f.lamp!.x + sway };
+      f.moth = { x: f.lamp.x - 130 + q * 270 + Math.sin(q * 30) * 14 + off, y: f.lamp.y - 50 + Math.cos(q * 23) * 18 };
+    }
+    return t;
+  };
+
+  test("the same crossing passes wherever each side's moth set off and wherever its light hung", () => {
+    assert.deepEqual(diffMoth(withMoth(32), withMoth(160, 4000, 30)), []);
+  });
+
+  test("a moth 6 pt off the mockup's path fails", () => {
+    const failures = diffMoth(withMoth(32), withMoth(160, 4000, 0, 6));
+    assert.ok(failures.length > 0 && failures.every((f) => f.field === "moth" && /off the mockup's path/.test(f.message)), JSON.stringify(failures));
+  });
+
+  test("a moth on one side only, or one gone after a frame, fails", () => {
+    assert.ok(diffMoth(withMoth(32), reference()).some((f) => /one side/.test(f.message)));
+    assert.ok(diffMoth(withMoth(32, 160), withMoth(32, 16)).some((f) => /frames/.test(f.message)));
+  });
+
+  test("an onset is held to its window, and one that never fires fails", () => {
+    const window = { "moment:bomb": [16, 48] as const };
+    assert.deepEqual(diffOnsetWindows(reference(), window), []);
+    assert.match(diffOnsetWindows(reference(), { "moment:bomb": [64, 128] })[0].message, /outside/);
+    assert.match(diffOnsetWindows(reference(), { "moment:moth": [0, 480] })[0].message, /never fired/);
+  });
+
+  test("two particle-layer frames apart must both draw and differ", () => {
+    const drawn = (t: number, sha1: string) => ({ t, sha1, drawn: true });
+    assert.deepEqual(diffApart([drawn(0, "a"), drawn(15000, "b")], [0, 15000]), []);
+    assert.match(diffApart([drawn(0, "a"), drawn(15000, "a")], [0, 15000])[0].message, /is the one at/);
+    assert.match(diffApart([drawn(0, "a"), { t: 15000, sha1: "b", drawn: false }], [0, 15000])[0].message, /drew nothing/);
+    assert.match(diffApart([drawn(0, "a")], [0, 15000])[0].message, /no particle layer sample/);
+  });
+
+  test("under reduced motion the air holds: the same motes lit every frame, and no moth", () => {
+    assert.deepEqual(diffStillAir(reference()), []);
+    assert.match(diffStillAir(planted((t) => (at(t, 160).motes = 13)))[0].message, /13 motes at 160 ms/);
+    assert.match(diffStillAir(planted((t) => t.frames.forEach((f) => (f.motes = 0))))[0].message, /none lit/);
+    assert.match(diffStillAir(withMoth(32))[0].message, /a moth at 32 ms/);
+  });
+
+  test("a moment is held to the fields it names, and to the fallback's still air", () => {
+    const fails = (fields: Field[], fallback: boolean, app: Trace) =>
+      diffParity(
+        { mode: "parity", checkpoints: CHECKPOINTS, fields, onsetWindows: { "moment:moth": [0, 480] }, apart: [0, 15000], fallbackStill: true },
+        fallback,
+        withMoth(32),
+        app,
+        []
+      ).map((f) => f.message);
+    assert.deepEqual(fails([], false, planted((t) => (at(t, 160).live = 999))), []);
+    assert.ok(fails(["live"], false, planted((t) => (at(t, 160).live = 999))).length > 0);
+    assert.deepEqual(fails(["onset"], false, withMoth(32)), ["moment:moth never fired"]);
+    assert.ok(fails(["moth"], false, reference()).some((m) => /one side/.test(m)));
+    assert.deepEqual(fails(["air"], false, withMoth(32)), ["no particle layer sample at 0 ms"]);
+    assert.deepEqual(fails([], true, withMoth(32)), ["a moth at 32 ms"]);
   });
 });
