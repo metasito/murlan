@@ -10,14 +10,15 @@ import { openApp, registerNewAccount, uniqueUsername } from "./navigation";
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./online";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, newSidePage, recorded, sideContext } from "./mockupParity";
 import { step, takeOver } from "./virtualClock";
-import { anchorsOf, diffReconnect, onChapterClock } from "./reconnectDiff";
+import { anchorsOf, diffReconnect, onChapterClock, type Anchors } from "./reconnectDiff";
 import { STEP_MS, type TraceFrame } from "./traceDiff";
+import { Reconnect } from "../../../lib/tokens";
 
-/** The mockup's chapter: the drop at 700, back at 3400 (`index.html`'s `reconnect`). */
-const CHAPTER = { drop: 700, back: 3400 };
-const UNTIL = 5200;
-/** Before the drop, held and lit, and back with the colour returned: kept as frames for the page. */
-const SHOTS = [500, 2200, 4400];
+/** The mockup's chapter (`index.html`'s `reconnect`); the app gives up `Reconnect.giveUp` after its second drop instead. */
+const CHAPTER: Anchors = { drop: 700, back: 3400, again: 5600, lost: 7800 };
+const UNTIL = 9400;
+/** Before the drop, held, back with the colour returned, and given up with the lamp low: kept as frames for the page. */
+const SHOTS = [500, 2200, 4400, 8400];
 
 interface Side {
   frames: TraceFrame[];
@@ -70,8 +71,8 @@ async function captureMockup(browser: Browser): Promise<Side> {
 }
 
 const appNow = (page: Page) => page.evaluate(() => performance.now());
-const untilTraced = async (page: Page, accept: (frames: TraceFrame[]) => boolean, what: string) =>
-  expect.poll(async () => accept(await recorded(page)), { message: what, timeout: 20_000, intervals: [50] }).toBe(true);
+const untilTraced = async (page: Page, accept: (frames: TraceFrame[]) => boolean, what: string, timeout = 20_000) =>
+  expect.poll(async () => accept(await recorded(page)), { message: what, timeout, intervals: [50] }).toBe(true);
 
 async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
   const context = await sideContext(browser, baseURL);
@@ -94,29 +95,39 @@ async function captureApp(browser: Browser, baseURL: string): Promise<Side> {
     shots.push({ t, jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
   };
   await shoot(SHOTS[0]);
+  const cut = async () => {
+    await context.setOffline(true);
+    for (const ws of live) await ws.close();
+    live.clear();
+  };
+  const dropsAfter = (from: number) => (frames: TraceFrame[]) => frames.find((f) => f.t > from && f.onsets.includes("moment:drop"))?.t;
   await page.waitForFunction((at) => performance.now() >= at, t0 + CHAPTER.drop);
-  await context.setOffline(true);
-  for (const ws of live) await ws.close();
-  live.clear();
-  const dropped = (f: TraceFrame) => f.onsets.includes("moment:drop");
-  await untilTraced(page, (f) => f.some(dropped), "the app drops");
-  const drop = (await recorded(page)).find(dropped)!.t;
+  await cut();
+  await untilTraced(page, (f) => dropsAfter(-Infinity)(f) !== undefined, "the app drops");
+  const drop = dropsAfter(-Infinity)(await recorded(page))!;
   await page.waitForFunction((at) => performance.now() >= at, drop + (SHOTS[1] - CHAPTER.drop));
   shots.push({ t: SHOTS[1], jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
   await page.waitForFunction((at) => performance.now() >= at, drop + (CHAPTER.back - CHAPTER.drop));
   await context.setOffline(false);
-  await untilTraced(page, (f) => anchorsOf(f) !== null, "the app comes back");
-  const back = anchorsOf(await recorded(page))!.back;
+  const backOf = (frames: TraceFrame[]) => frames.find((f) => f.t > drop && f.onsets.includes("moment:net-ok"))?.t;
+  await untilTraced(page, (f) => backOf(f) !== undefined, "the app comes back");
+  const back = backOf(await recorded(page))!;
   await page.waitForFunction((at) => performance.now() >= at, back + (SHOTS[2] - CHAPTER.back));
   shots.push({ t: SHOTS[2], jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
-  await page.waitForFunction((at) => performance.now() >= at, back + (UNTIL - CHAPTER.back));
+  await page.waitForFunction((at) => performance.now() >= at, back + (CHAPTER.again - CHAPTER.back));
+  await cut();
+  await untilTraced(page, (f) => anchorsOf(f) !== null, "the app drops again and gives up", Reconnect.giveUp + 10_000);
+  const lost = anchorsOf(await recorded(page))!.lost;
+  await page.waitForFunction((at) => performance.now() >= at, lost + (SHOTS[3] - CHAPTER.lost));
+  shots.push({ t: SHOTS[3], jpeg: await page.screenshot({ type: "jpeg", quality: 80 }) });
+  await page.waitForFunction((at) => performance.now() >= at, lost + (UNTIL - CHAPTER.lost));
   const frames = await recorded(page);
   await context.close();
   return { frames, shots };
 }
 
 export function reconnectParityTest() {
-  test("reconnect, on real time, aligned on the drop and the way back", async ({ browser, baseURL }) => {
+  test("reconnect, on real time, aligned on the drops, the way back and the give-up", async ({ browser, baseURL }) => {
     test.setTimeout(5 * 60_000);
     const mockup = await captureMockup(browser);
     const app = await captureApp(browser, baseURL!);
@@ -137,7 +148,7 @@ export function reconnectParityTest() {
         return [name, { trace: { frames: frames.filter((f) => f.t >= 0 && f.t <= UNTIL), regions: [] }, frames: shots }];
       })
     );
-    const parity = { murlanParity: 1, moment: "reconnect-realtime", mode: "parity", stepMs: STEP_MS, checkpoints: [CHAPTER.drop, CHAPTER.back], sides, failures };
+    const parity = { murlanParity: 1, moment: "reconnect-realtime", mode: "parity", stepMs: STEP_MS, checkpoints: Object.values(CHAPTER), sides, failures };
     fs.writeFileSync(path.join(dir, "parity.json"), JSON.stringify(parity));
     await test.info().attach("reconnect-realtime/parity.json", { path: path.join(dir, "parity.json"), contentType: "application/json" });
     for (const side of Object.values(sides)) {
