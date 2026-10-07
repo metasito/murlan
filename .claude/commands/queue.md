@@ -175,7 +175,7 @@ Then leave through **Leaving C**.
 - **Watch the check fail first, for the reason you claim** (rule 6).
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
-- **Scope grows to what you find in its area**: fix it in this diff, add a Definition-of-done box,
+- **Scope grows to what you find in its area** — not in a HOLD round (phase D): fix it in this diff, add a Definition-of-done box,
   name it in the PR body. File only what needs an owner decision, lives in an untouched subsystem,
   or would not fit the turn budget:
   `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>` —
@@ -298,7 +298,9 @@ rest, follow its printed guidance and say what you accepted in phase F's Definit
 comment. Park only for a decision only the owner can make.
 
 **A round is a process.** After a `HOLD`, say `PHASE C`, fix what it named, then leave through
-phase C's steps 1–5, and hand off:
+phase C's steps 1–5. A failure neither the review nor CI named, seen only in a local run,
+is not the round's to fix: rule it out (rule 37), file what survives with what you measured
+(rule 35), and name it in `FIX-NOTES`. Then hand off:
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}

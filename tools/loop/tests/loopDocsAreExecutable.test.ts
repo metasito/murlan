@@ -254,6 +254,13 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named, then leave through\s+phase C's steps 1–5/);
   });
 
+  test("a HOLD round fixes what was named, and files a failure only a local run showed", () => {
+    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
+    assert.match(d, /neither the review nor CI named[\s\S]{0,60}not the round's to fix/);
+    assert.match(d, /rule 37[\s\S]{0,80}rule 35/);
+    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only what its review or CI named/);
+  });
+
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
     assert.doesNotMatch(read(QUEUE), /gh pr ready/);
   });
