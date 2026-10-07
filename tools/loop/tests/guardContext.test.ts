@@ -49,7 +49,7 @@ describe("the context ceiling", () => {
     assert.equal(run(call(transcript([assistant(199_000)]))), "");
   });
 
-  const ceiling = "Context is past 200k. Commit what works and hand off to the phase of your last PHASE line.";
+  const ceiling = "Context is past 200k. Commit what works, post HANDOFF <sha> on the issue, and hand off to the phase of your last PHASE line.";
 
   test("over the ceiling says so once, pointing at the session's own phase, never the one it started in", () => {
     const out = JSON.parse(run(call(transcript([assistant(10_000), assistant(201_000)]))));

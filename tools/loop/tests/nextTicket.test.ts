@@ -3,6 +3,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
+import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 
 function issue(number: number, labelNames: string[], author_association = "OWNER") {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };
@@ -10,7 +11,7 @@ function issue(number: number, labelNames: string[], author_association = "OWNER
 
 describe("an issue opened from outside the repo", () => {
   test("never reaches an agent, whatever it is labelled", () => {
-    for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "MEMBER", undefined]) {
+    for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", undefined]) {
       for (const labels of [[], ["needs-triage"], ["ready-for-agent"], ["wayfinder:task"]]) {
         const stranger = { ...issue(1, labels), author_association: association };
         const b = classify([stranger]);
@@ -23,6 +24,11 @@ describe("an issue opened from outside the repo", () => {
   test("a collaborator's issue is routed as before", () => {
     assert.equal(routeOf(issue(1, [], "COLLABORATOR")), "triage");
     assert.equal(routeOf(issue(1, ["ready-for-agent"], "COLLABORATOR")), "implement");
+  });
+
+  test("the picker trusts exactly the authors the loop's marker reader trusts", () => {
+    assert.deepEqual(TRUSTED_AUTHORS, ["OWNER", "MEMBER", "COLLABORATOR"]);
+    for (const association of TRUSTED_AUTHORS) assert.equal(routeOf(issue(1, [], association)), "triage", association);
   });
 });
 

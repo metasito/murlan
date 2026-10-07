@@ -26,11 +26,14 @@ describe("brief", () => {
 
   test("every brief that names the issue reads its body and only trusted comments", () => {
     assert.match(readIssue(5), /^gh issue view 5 --json title,body,comments --jq '\.title, \.body, /);
-    assert.match(readIssue(5), /select\(\.authorAssociation=="OWNER" or \.authorAssociation=="COLLABORATOR"\)/);
+    assert.match(
+      readIssue(5),
+      /select\(\.authorAssociation=="OWNER" or \.authorAssociation=="MEMBER" or \.authorAssociation=="COLLABORATOR"\)/,
+    );
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);
-      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+      if (["scope", "completeness", "standards", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
     }
   });
 
@@ -40,6 +43,21 @@ describe("brief", () => {
     assert.match(text, /git -C \S+ diff origin\/main\.\.\.HEAD/);
     for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(text.includes(kind), kind);
     assert.match(text, /git -C \S+ grep/);
+  });
+
+  test("the standards brief holds a new test to its observed red run (rule 6)", () => {
+    const text = brief("standards", { n: 1293, worktree: WT });
+    assert.match(text, /rule 6/);
+    assert.match(text, /load or import error/);
+    assert.match(text, /DOD-CHECK/);
+    assert.match(text, /every test the diff adds, and every test whose assertions it changes/);
+    assert.match(text, /rename or refactor of a test that keeps its assertions needs no red run/);
+    assert.doesNotMatch(text, /adds or changes/);
+  });
+  test("the completeness brief sweeps the tests for a changed literal's old value", () => {
+    const text = brief("completeness", { n: 1256, worktree: WT });
+    assert.match(text, /literal value the diff changes/);
+    assert.match(text, /git -C \S+ grep -n -F <old value> -- tests/);
   });
 
   test("the standards brief carries the vendored baseline and points at RULES.md", () => {

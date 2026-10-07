@@ -53,7 +53,7 @@ function notices(payload) {
   const lines = text.split("\n");
   const said = [];
 
-  const ceiling = "Context is past 200k. Commit what works and hand off to the phase of your last PHASE line.";
+  const ceiling = "Context is past 200k. Commit what works, post HANDOFF <sha> on the issue, and hand off to the phase of your last PHASE line.";
   if (!text.includes(ceiling)) {
     const last = newest(lines, (r) => r.type === "assistant" && r.message?.usage);
     if (last && contextOf(last.message.usage) > CONTEXT_CEILING) said.push(ceiling);

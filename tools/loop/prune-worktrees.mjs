@@ -212,6 +212,29 @@ export const ghLabels = (ticket, exec = execFileSync) =>
     timeout: 30_000,
   });
 
+const git = (args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+const issueState = (ticket) =>
+  execFileSync("gh", ["issue", "view", String(ticket), "--json", "state", "--jq", ".state"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 30_000,
+  }).trim();
+
+/** An open ticket's `refs/loop/wip/<n>` is parked work; only a closed one's is residue. */
+export function dropWipRef(branch, { run = git, stateOf = issueState } = {}) {
+  const ticket = ticketOf(branch);
+  if (!ticket) return false;
+  const ref = `refs/loop/wip/${ticket}`;
+  try {
+    run(["rev-parse", "--verify", "--quiet", ref]);
+    if (stateOf(ticket) !== "CLOSED") return false;
+    run(["update-ref", "-d", ref]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function issueInProgress(branch, labelsOf = ghLabels) {
   const ticket = ticketOf(branch);
   // A branch no ticket names is nobody's claim to lapse, so its open pull request keeps it.
@@ -418,6 +441,7 @@ export function removeOneWorktree(targetPath, { force = false, dryRun = false } 
       unregistered = false;
     }
     if (!unregistered) throw err;
+    dropWipRef(match.branch);
     console.log(
       `unregistered ${match.path}, but its directory could not be deleted — a process is ` +
         `holding it open, most often a shell whose working directory it is. The worktree is ` +
@@ -425,6 +449,7 @@ export function removeOneWorktree(targetPath, { force = false, dryRun = false } 
     );
     return;
   }
+  dropWipRef(match.branch);
   console.log(`removed ${match.path}`);
 }
 
@@ -506,6 +531,7 @@ if (invokedDirectly && process.argv.includes("--remove")) {
           console.log(`  detached ${name} (a link, not its target)`);
         }
         execFileSync("git", ["worktree", "remove", entry.path], { stdio: "inherit" });
+        dropWipRef(entry.branch);
         console.log(`  removed ${entry.path}`);
         removed++;
       } catch (err) {

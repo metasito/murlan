@@ -12,6 +12,7 @@ import {
   classifyEntry,
   classifyOrSkip,
   classifyWorktree,
+  dropWipRef,
   issueInProgress,
   ghLabels,
   parseWorktreeList,
@@ -432,5 +433,55 @@ describe("the --if-found answer", () => {
 
   test("a removal is news", () => {
     assert.equal(newsCount({ removed: 1, orphansFound: 0 }), 1);
+  });
+});
+
+describe("dropWipRef: a removed worktree's held work goes only once its issue is closed", () => {
+  const fake = (state: string | Error, hasRef = true) => {
+    const calls: string[] = [];
+    const run = (args: string[]) => {
+      calls.push(args.join(" "));
+      if (args[0] === "rev-parse" && !hasRef) throw new Error("fatal: Needed a single revision");
+      return "";
+    };
+    const stateOf = (n: number) => {
+      calls.push(`state ${n}`);
+      if (state instanceof Error) throw state;
+      return state;
+    };
+    return { calls, opts: { run, stateOf } };
+  };
+
+  test("a closed issue's ref is deleted", () => {
+    const { calls, opts } = fake("CLOSED");
+    assert.equal(dropWipRef("agent/7-x", opts), true);
+    assert.ok(calls.includes("update-ref -d refs/loop/wip/7"), calls.join("\n"));
+  });
+  test("an open, parked ticket's ref is held work and is kept", () => {
+    const { calls, opts } = fake("OPEN");
+    assert.equal(dropWipRef("agent/7-x", opts), false);
+    assert.ok(calls.includes("state 7"));
+    assert.ok(!calls.some((c) => c.startsWith("update-ref")));
+  });
+  test("an unreadable issue keeps the ref", () => {
+    const { calls, opts } = fake(new Error("gh: connection reset"));
+    assert.equal(dropWipRef("agent/7-x", opts), false);
+    assert.ok(!calls.some((c) => c.startsWith("update-ref")));
+  });
+  test("no ref, or no ticket branch, asks nothing of the tracker", () => {
+    const none = fake("CLOSED", false);
+    assert.equal(dropWipRef("agent/7-x", none.opts), false);
+    assert.ok(!none.calls.includes("state 7"));
+    const side = fake("CLOSED");
+    assert.equal(dropWipRef("side", side.opts), false);
+    assert.deepEqual(side.calls, []);
+  });
+  test("both removal paths drop the ref", () => {
+    const src = fs.readFileSync(fileURLToPath(new URL("../prune-worktrees.mjs", import.meta.url)), "utf8");
+    assert.deepEqual(src.match(/dropWipRef\((match|entry)\.branch\)/g), [
+      "dropWipRef(match.branch)",
+      "dropWipRef(match.branch)",
+      "dropWipRef(entry.branch)",
+    ]);
   });
 });

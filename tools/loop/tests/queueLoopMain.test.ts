@@ -22,6 +22,8 @@ import {
   removeLanded,
   removeWorktree,
   MAX_HANDOFFS,
+  RESTART,
+  loopMoved,
   USD_BY_SIZE,
   WAIT,
 } from "../queue-loop.mjs";
@@ -493,6 +495,40 @@ describe("runOnce", () => {
     assert.deepEqual(published, [[42, "agent/42-x", ".worktrees/agent-42"]], "a head handed to review is pushed for CI");
   });
 
+  test("a moved tools/loop restarts the supervisor before any ticket is picked", async () => {
+    const r = await runOnce(io({ loopMoved: () => "abc1234", pick: () => { throw new Error("picked"); } }));
+    assert.deepEqual([r.outcome, /abc1234/.test(String(r.why))], ["restart", true]);
+  });
+  test("loopMoved answers a diff, not an error", () => {
+    const fail = (status: number) => (...a: string[]) => {
+      if (a[0] === "diff") throw Object.assign(new Error("x"), { status });
+      return "abc1234\n";
+    };
+    assert.equal(loopMoved("s", fail(1)), "abc1234");
+    assert.equal(loopMoved("s", fail(128)), null);
+    assert.equal(loopMoved(null, fail(1)), null);
+  });
+
+  test("a handoff the supervisor makes for a cut-off session says why", async () => {
+    const ledger: any[] = [];
+    await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 0, blocked: false, ms: 1, log: "l", phase: "C", declared: null,
+            result: { subtype: "error_max_turns", isError: true, cost: 1, turns: 9 },
+          }),
+          standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 1, changed: [], dirty: true, phase: "C" }),
+          pushedPr: () => null,
+        },
+        ledger,
+      ),
+    );
+    const h = ledger.find((r) => r.outcome === "handoff")?.handoff;
+    assert.ok(h, "a handoff row");
+    assert.equal(h.why, "the session ran out of turns");
+  });
+
   test("a HOLD fix handed back to D needs the local pass too, and is pushed only with it", async () => {
     for (const passes of [false, true]) {
       const published: unknown[] = [];
@@ -569,6 +605,53 @@ describe("runOnce", () => {
     );
     assert.deepEqual([r.outcome, parked], ["stop", []]);
     assert.match(String(r.why), /ponytail/);
+  });
+
+  test("a snapshot that throws during an account error is logged, and the run still stops", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    const said: string[] = [];
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 1, blocked: false, ms: 1, log: "l", phase: null, declared: null,
+            result: { isError: true, subtype: "success", terminalReason: "api_error", apiStatus: null },
+            accountError: "authentication_failed: expired",
+          }),
+          pushedPr: () => null,
+          snapshotWip: () => { throw new Error("index.lock exists"); },
+          log: (m: string) => said.push(m),
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked, ledger.map((x) => x.outcome)], ["stop", [], ["halted"]]);
+    assert.match(said.join("\n"), /index\.lock exists/);
+  });
+
+  test("an expired login stops the run, and neither diagnoses nor parks the ticket it met", async () => {
+    const parked: string[] = [];
+    const ledger: any[] = [];
+    let diagnoses = 0;
+    const r = await runOnce(
+      io(
+        {
+          spawn: async () => ({
+            status: 1, blocked: false, ms: 1, log: "l", phase: null, declared: null,
+            result: { isError: true, subtype: "success", terminalReason: "api_error", apiStatus: null },
+            accountError: "authentication_failed: Failed to authenticate: OAuth session expired and could not be refreshed",
+          }),
+          pushedPr: () => null,
+          park: (_n: number, c: { why: string }) => parked.push(c.why),
+          diagnose: async () => (diagnoses++, { ok: false, error: "x", run: { result: null, ms: 0, log: "l", phases: {} } }),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual([r.outcome, parked, diagnoses, ledger.map((x) => x.outcome)], ["stop", [], 0, ["halted"]]);
+    assert.match(String(r.why), /log in/);
   });
 
   test("the prune in queue-pre runs before the pick", async () => {
@@ -1163,6 +1246,18 @@ describe("main", () => {
     assert.ok(said.some((m) => /#1094's phase D session .* killed after 12 min/.test(m)), said.join("\n"));
   });
 
+  test("a moved tools/loop ends main with the restart code, before anything is picked", async () => {
+    let picked = 0;
+    const code = await main({
+      io: { ...(io() as any), loopMoved: () => "abc1234", pick: () => (picked += 1) as never },
+      book: book(),
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.deepEqual([code, picked], [RESTART, 0]);
+  });
+
   test("a stop file ends the night cleanly, before anything is picked", async () => {
     let picked = 0;
     const code = await main({
@@ -1186,6 +1281,18 @@ describe("main", () => {
       runId: "t",
     });
     assert.match(closed.join("\n"), /stopped: \.loop-stop/);
+  });
+
+  test("a restart's run file says restarting, not stopped", async () => {
+    const closed: string[] = [];
+    await main({
+      io: { ...(io() as any), loopMoved: () => "abc1234" },
+      book: { ...book(), close: (_id: string, line: string) => closed.push(line) },
+      screen: screen(),
+      install: () => {},
+      runId: "t",
+    });
+    assert.match(closed.join("\n"), /restarting: tools\/loop moved/);
   });
 
   test("a landing clears the breaker, so a bad ticket between good ones is not fatal", async () => {

@@ -12,7 +12,9 @@
  * The container is disposable and named distinctly so it can never be confused
  * with a real database.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { dockerDesktopPaths, dockerInfo, ensureEngine } from "./dockerEngine.mjs";
 import {
   hostPortOf,
   isPostgresReply,
@@ -153,6 +155,14 @@ try {
     console.log("stopped");
     process.exit(0);
   }
+
+  ensureEngine({
+    engineUp: dockerInfo(run),
+    exists: existsSync,
+    launch: (p) => spawn(p, [], { detached: true, stdio: "ignore" }).unref(),
+    sleep,
+    paths: dockerDesktopPaths(),
+  });
 
   let port = publishedPort();
   if (port !== null && requested !== undefined && port !== BASE_PORT) {

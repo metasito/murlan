@@ -29,6 +29,20 @@ describe("readLine", () => {
     assert.equal(readLine(""), null);
   });
 
+  test("an assistant line the CLI marks with an error is an api_error fact, not dropped", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      error: "authentication_failed",
+      is_api_error_message: true,
+      message: { model: "<synthetic>", content: [{ type: "text", text: "Failed to authenticate: OAuth session expired and could not be refreshed" }] },
+    });
+    assert.deepEqual(readLine(line), {
+      kind: "api_error",
+      code: "authentication_failed",
+      text: "Failed to authenticate: OAuth session expired and could not be refreshed",
+    });
+  });
+
   test("reads the session id, version and model off system/init", () => {
     const line = JSON.stringify({
       type: "system",

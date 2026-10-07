@@ -58,7 +58,7 @@ const fenceStripped = (body) => (body ?? "").replace(/```[\s\S]*?```/g, "");
 /** The claim comment `claim.mjs` posts — its literal text is the only marker there is. */
 const CLAIM_RE = /^Claimed by `/m;
 
-const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/m;
+const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/;
 
 /**
  * How many CI rounds have gone red since the ticket was last claimed — the newest claim, not the
@@ -74,8 +74,8 @@ export function ciRedRounds(comments) {
   });
   const shas = new Set();
   for (let i = since; i < comments.length; i++) {
-    const m = CI_RED_RE.exec(fenceStripped(comments[i].body));
-    if (m) shas.add(m[1]);
+    const m = CI_RED_RE.exec(fenceStripped(comments[i].body).trimStart());
+    if (m) shas.add(m[1].slice(0, 7));
   }
   return shas.size;
 }
@@ -87,7 +87,7 @@ export function ciRedRounds(comments) {
  * @param {{body: string}[]} comments @param {string} sha
  */
 export function ciRedPosted(comments, sha) {
-  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body))?.[1] === sha);
+  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
 }
 
 /** @returns {string|null} */
@@ -243,6 +243,19 @@ export function reviewFor(comments, head) {
 }
 
 const DOD_CHECK_RE = /^DOD-CHECK\s+([0-9a-f]{7,40})\b/m;
+const HANDOFF_RE = /^HANDOFF\s+([0-9a-f]{7,40})\b/;
+/** @param {{body: string}[]} comments @param {string} head */
+export function handoffFor(comments, head) {
+  for (let i = comments.length - 1; i >= 0; i--) {
+    const body = fenceStripped(comments[i].body).trimStart();
+    const m = HANDOFF_RE.exec(body);
+    if (m && covers(head, m[1])) {
+      return { line: m[0].trim(), notes: body.split("\n").slice(1).map((l) => l.trim()).filter(Boolean) };
+    }
+  }
+  return null;
+}
+
 const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
 const EVIDENCE_RE = /([\w./-]+\.\w+):(\d+)/g;
 
@@ -279,7 +292,7 @@ export function dodCheckFor(comments, head, resolves) {
 export function reviewRounds(comments) {
   const bodies = comments.map((c) => fenceStripped(c.body));
   const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
-  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b));
+  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
   let rounds = 0;
   for (const body of bodies) {
     const v = VERDICT_RE.exec(body);
@@ -340,14 +353,21 @@ function gh(args, cwd, timeout) {
   }).trim();
 }
 
+export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/** The repo is public: every marker parser reads only what this keeps. */
+export function trustedComments(comments) {
+  return comments.filter((c) => TRUSTED_AUTHORS.includes(c.authorAssociation));
+}
+
 function readComments(ticket, cwd, exec) {
-  return exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS);
+  return trustedComments(JSON.parse(exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS)).comments);
 }
 
 /** @returns {{body: string}[] | null} null when the tracker cannot be read */
 export function ticketComments(ticket, cwd) {
   try {
-    return JSON.parse(readComments(ticket, cwd, gh)).comments;
+    return readComments(ticket, cwd, gh);
   } catch {
     return null;
   }
@@ -466,8 +486,10 @@ export function derive({
   let commits = 0;
   let changed = [];
   let dirty = false;
+  let headSubject = "";
   try {
     head = run("git", ["rev-parse", "HEAD"], cwd);
+    headSubject = run("git", ["log", "-1", "--format=%s"], cwd);
     commits = Number(run("git", ["rev-list", "--count", `${base}..HEAD`], cwd));
     changed = run("git", ["diff", "--name-only", `${base}...HEAD`], cwd).split("\n").filter(Boolean);
     dirty = run("git", ["status", "--porcelain"], cwd).length > 0;
@@ -478,7 +500,7 @@ export function derive({
   let comments = [];
   let trackerReadable = true;
   try {
-    comments = JSON.parse(readComments(ticket, cwd, exec)).comments;
+    comments = readComments(ticket, cwd, exec);
   } catch {
     trackerReadable = false;
   }
@@ -492,13 +514,17 @@ export function derive({
   // queue.md, `PHASE B` — which transposed every step row the board printed and billed the build
   // to B in `loop-cost`. Dirty is the discriminator: an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
-  let phase = scoping ? "B" : commits === 0 ? "C" : !verdict ? "D" : land ? "E" : "C";
+  const wipHead =
+    commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject) && !dodCheckFor(comments, head, () => false);
+  let phase = scoping ? "B" : commits === 0 || wipHead ? "C" : !verdict ? "D" : land ? "E" : "C";
   let why =
     commits === 0
       ? scoping
         ? "claimed, with nothing committed and nothing in the tree yet"
         : "nothing committed yet"
-      : !trackerReadable
+      : wipHead
+        ? "the head is a wip commit, so the build is unfinished"
+        : !trackerReadable
         ? "cannot reach the tracker to read the review"
         : !verdict
           ? `no review of ${head?.slice(0, 7)} on the issue`
@@ -540,6 +566,7 @@ export function derive({
     reviewRounds: trackerReadable ? reviewRounds(comments) : null,
     trackerReadable,
     verdict,
+    handoff: trackerReadable ? handoffFor(comments, head) : null,
     review: trackerReadable ? reviewFor(comments, head) : null,
     ci: ciRead,
     fix,

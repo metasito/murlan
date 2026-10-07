@@ -1,14 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { readIssue } from "./brief.mjs";
-import { BRANCH, ticketOf, worktrees } from "./loop-derive.mjs";
+import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
-const TRUSTED_AUTHORS = new Set(["OWNER", "COLLABORATOR"]);
-
 function trusted(issueOrComment) {
-  return TRUSTED_AUTHORS.has(issueOrComment.author_association);
+  return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
 }
 
 function ghJson(args) {

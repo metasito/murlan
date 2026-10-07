@@ -11,6 +11,7 @@ import {
   ticketOf,
   verdictFor,
   reviewFor,
+  handoffFor,
   reviewRounds,
   ciRedRounds,
   ciRedPosted,
@@ -21,7 +22,7 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody } from "../queue-loop.mjs";
+import { ciRedBody, snapshotWip } from "../queue-loop.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 /**
@@ -54,6 +55,14 @@ describe("whether a review covers the code being pushed", () => {
   test("a LAND naming this head clears it", () => {
     const v = verdictFor([{ body: "VERDICT: LAND abc1234" }], head);
     assert.equal(v?.decision, "LAND");
+  });
+
+  test("a HANDOFF naming this head is read back with its steps", () => {
+    const h = handoffFor([{ body: "HANDOFF abc1234\n- [ ] pass matchScore from app/game.tsx\nRead first: app/game.tsx:140-175" }], head);
+    assert.deepEqual(h, { line: "HANDOFF abc1234", notes: ["- [ ] pass matchScore from app/game.tsx", "Read first: app/game.tsx:140-175"] });
+  });
+  test("a HANDOFF naming an older head is not", () => {
+    assert.equal(handoffFor([{ body: "HANDOFF 9999999\n- [ ] x" }], head), null);
   });
 
   // The whole point of the binding: commit again after a review and it stops counting, so there is
@@ -234,6 +243,60 @@ describe("fixDelta", () => {
   });
 });
 
+describe("held work", () => {
+  let dir: string;
+  const priorScript = process.env.LOOP_GH_SCRIPT;
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8" });
+
+  before(() => {
+    dir = mkdtempSync(join(tmpdir(), "loop-wip-"));
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@t");
+    git("config", "user.name", "t");
+    writeFileSync(join(dir, "a.txt"), "1\n");
+    git("add", "-A");
+    git("commit", "-qm", "base");
+    git("checkout", "-qb", "agent/9-x");
+  });
+
+  after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
+    else process.env.LOOP_GH_SCRIPT = priorScript;
+  });
+
+  test("a clean tree takes no snapshot", () => assert.equal(snapshotWip(dir, 9), null));
+
+  test("a snapshot keeps the dirty tree in a ref and moves nothing", () => {
+    writeFileSync(join(dir, "a.txt"), "edited\n");
+    writeFileSync(join(dir, "new.txt"), "untracked\n");
+    const status = git("status", "--porcelain");
+    const head = git("rev-parse", "HEAD");
+    assert.ok(snapshotWip(dir, 9));
+    assert.equal(git("status", "--porcelain"), status);
+    assert.equal(git("rev-parse", "HEAD"), head);
+    assert.equal(git("show", "refs/loop/wip/9:a.txt"), "edited\n");
+    assert.equal(git("show", "refs/loop/wip/9:new.txt"), "untracked\n");
+  });
+
+  test("a wip head with no verdict resumes the build, not the review", () => {
+    git("add", "-A");
+    git("commit", "-qm", "wip(#9): parked in phase C");
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
+    assert.equal(derive({ cwd: dir, base: "main" }).phase, "C");
+  });
+
+  test("a wip head whose DOD-CHECK covers it was handed to review", () => {
+    const head = git("rev-parse", "HEAD").trim();
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: `DOD-CHECK ${head.slice(0, 7)}\n- [ ] a` }] } });
+    const s = derive({ cwd: dir, base: "main" });
+    assert.match(git("log", "-1", "--format=%s"), /^wip\(#9\):/);
+    assert.equal(s.phase, "D");
+    process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [{ body: "DOD-CHECK 0000000\n- [ ] a" }] } });
+    assert.equal(derive({ cwd: dir, base: "main" }).phase, "C", "a DOD-CHECK of another head does not cover this one");
+  });
+});
+
 describe("ciRedRounds", () => {
   const claim = { body: "Claimed by `agent/9-x`." };
 
@@ -244,6 +307,15 @@ describe("ciRedRounds", () => {
 
   test("distinct shas, not distinct comments", () => {
     const n = ciRedRounds([claim, { body: "CI-RED aaaaaaa" }, { body: "CI-RED aaaaaaa" }]);
+    assert.equal(n, 1);
+  });
+
+  test("a later comment quoting the red by its short sha is not a second round (#1257)", () => {
+    const n = ciRedRounds([
+      claim,
+      { body: "CI-RED 9afe0fae6b8873406aad658da1cafdf808665de8\nrun: x" },
+      { body: "FIX-NOTES 25268d85\n\nCI-RED 9afe0fa: 6 failing files" },
+    ]);
     assert.equal(n, 1);
   });
 
@@ -328,6 +400,7 @@ function fakeGh(dir: string, answers: GhAnswers): string {
   if (key === "ref" && m.ref === undefined) { process.stderr.write("gh: Not Found (HTTP 404)\\n"); process.exit(1); }
   const v = m[key] ?? { prs: [], runs: [], jobs: [], log: "" }[key];
   if (v === undefined) process.exit(1);
+  if (key === "issue") v.comments = v.comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
   process.stdout.write(typeof v === "string" ? v : JSON.stringify(v));
 `,
   );
@@ -363,7 +436,26 @@ describe("derive()'s review-round count", () => {
     else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
-  const stubGh = (comments: { body: string }[]) => fakeGh(dir, { issue: { comments } });
+  const stubGh = (comments: { body: string; authorAssociation?: string }[]) => fakeGh(dir, { issue: { comments } });
+
+  test("a VERDICT or HANDOFF from outside the repo is ignored, and the owner's is read (#1397)", () => {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    const markers = [{ body: `VERDICT: LAND ${head}` }, { body: `HANDOFF ${head.slice(0, 7)}\n- [ ] run this` }];
+    const by = (authorAssociation: string) => {
+      process.env.LOOP_GH_SCRIPT = stubGh(markers.map((c) => ({ ...c, authorAssociation })));
+      return derive({ cwd: dir, base: "main" });
+    };
+    for (const outsider of ["NONE", "CONTRIBUTOR"]) {
+      const s = by(outsider);
+      assert.equal(s.trackerReadable, true, outsider);
+      assert.equal(s.verdict, null, outsider);
+      assert.equal(s.handoff, null, outsider);
+      assert.equal(s.phase, "D", outsider);
+    }
+    const s = by("OWNER");
+    assert.equal(s.verdict?.decision, "LAND");
+    assert.equal(s.handoff?.line, `HANDOFF ${head.slice(0, 7)}`);
+  });
 
   test("counts one round per VERDICT comment on a normal read", () => {
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
@@ -377,11 +469,18 @@ describe("derive()'s review-round count", () => {
     assert.equal(result.reviewRounds, 2);
   });
 
+  test("a HANDOFF naming the head is carried on the state", () => {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    process.env.LOOP_GH_SCRIPT = stubGh([{ body: `HANDOFF ${head.slice(0, 7)}\n- [ ] wire it` }]);
+    assert.deepEqual(derive({ cwd: dir, base: "main" }).handoff, { line: `HANDOFF ${head.slice(0, 7)}`, notes: ["- [ ] wire it"] });
+  });
+
   test("null, not zero, when the tracker cannot be read", () => {
     process.env.LOOP_GH_SCRIPT = join(dir, "does-not-exist.mjs");
     const result = derive({ cwd: dir, base: "main" });
     assert.equal(result.trackerReadable, false);
     assert.equal(result.reviewRounds, null);
+    assert.equal(result.handoff, null);
   });
 });
 
@@ -428,7 +527,8 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
     }
   });
 
-  const land = () => [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }];
+  const land = () =>
+    [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }].map((c) => ({ ...c, authorAssociation: "OWNER" }));
   const run = (conclusion: string | null, status = "completed", sha = head) => [
     { databaseId: 7, status, conclusion, headSha: sha },
   ];

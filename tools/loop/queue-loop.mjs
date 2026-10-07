@@ -11,14 +11,15 @@
  * It exits only when there is genuinely nothing to do. A spent usage window is a wait, not an end:
  * see `holdFor`.
  *
- * Usage: node tools/loop/queue-loop.mjs
+ * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, WORKTREE_DIR } from "./loop-derive.mjs";
+import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
 import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
@@ -78,6 +79,7 @@ import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { CHECK_BASH_TIMEOUT_MS, STALL_MS } from "./limits.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -403,12 +405,10 @@ export function syncCheckout(
 /**
  * A session's own longest silence. Phase D's two review subagents emit nothing into the parent
  * stream while they read, and a large diff keeps them there past twenty minutes. Any ceiling at or
- * under that reads a working run as a stalled one.
+ * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
+ * ceiling, which `agent:check -- --also test:native` needs and a stall must outlast.
  */
-export const STALL_MS = 30 * 60_000;
-
-/** The session's Bash ceiling, which `agent:check -- --also test:native` needs and a stall must outlast. */
-export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
+export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 
 /** Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the ceiling. */
 export const BASH_DEFAULT_TIMEOUT_MS = 5 * 60_000;
@@ -454,6 +454,9 @@ export function resumePhase(run, after, ticket) {
   if (!after?.cwd || after.ticket !== ticket) return null;
   return RESUMABLE.has(after.phase) ? after.phase : null;
 }
+
+/** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
+export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
 
 /**
  * The API status a session died on, when it is one that passes on its own — an overload, an outage,
@@ -678,6 +681,22 @@ export async function holdFor(
   return wake ? "woken" : "waited";
 }
 
+/** Keeps a held session's uncommitted work in `refs/loop/wip/<n>` without touching HEAD, the index or the branch. */
+export function snapshotWip(cwd, number, run = sh) {
+  if (!cwd || !run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return null;
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(os.tmpdir(), `loop-wip-${number}-${process.pid}`) };
+  try {
+    run("git", ["-C", cwd, "read-tree", "HEAD"], { env });
+    run("git", ["-C", cwd, "add", "-A", "--", "."], { env });
+    const tree = run("git", ["-C", cwd, "write-tree"], { env }).trim();
+    const sha = run("git", ["-C", cwd, "commit-tree", tree, "-p", "HEAD", "-m", `wip(#${number}): held`]).trim();
+    run("git", ["-C", cwd, "update-ref", `refs/loop/wip/${number}`, sha]);
+    return sha;
+  } finally {
+    fs.rmSync(env.GIT_INDEX_FILE, { force: true });
+  }
+}
+
 /**
  * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
  * issue, the worktree gone.
@@ -778,6 +797,11 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
   const removed = removeLandedTree(cwd, number, { run, write, say });
   if (removed === null || !branch) return removed;
+  try {
+    run("git", ["update-ref", "-d", `refs/loop/wip/${number}`], { cwd: ROOT });
+  } catch {
+    // a failed cleanup must not undo the removal
+  }
   try {
     run("git", ["branch", "-d", branch], { cwd: ROOT });
   } catch (err) {
@@ -1333,8 +1357,8 @@ export function ticketFacts(number, exec = execFileSync) {
       url: issue.url,
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
-      reviewRounds: reviewRounds(issue.comments ?? []),
-      ciRounds: ciRedRounds(issue.comments ?? []),
+      reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
+      ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
@@ -1463,6 +1487,7 @@ export function runTicket(
     stalled: false,
     wrongModel: null,
     strayPlugin: null,
+    accountError: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1597,6 +1622,10 @@ export function runTicket(
     // A session emits one result per turn, and a background task's wake-up is a turn. The real one
     // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
     // across all of them reported a 144-turn session as one turn.
+    if (fact.kind === "api_error") {
+      screen.said(thought(fact.text));
+      if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
+    }
     if (fact.kind === "result" && !fact.origin) state.result = fact;
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers
@@ -1659,6 +1688,7 @@ export function runTicket(
           version: state.version,
           wrongModel: state.wrongModel,
           strayPlugin: state.strayPlugin,
+          accountError: state.accountError,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -1680,6 +1710,18 @@ const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
  * midnight opened its second file with the first one's total under the wrong heading.
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+
+export const RESTART = 75;
+/** The supervisor's own code moved under it: `syncCheckout` updated the checkout, not the running process. */
+export function loopMoved(startSha, run = git) {
+  if (!startSha) return null;
+  try {
+    run("diff", "--quiet", startSha, "HEAD", "--", "tools/loop", "scripts/lib");
+    return null;
+  } catch (err) {
+    return err.status === 1 ? run("rev-parse", "--short", "HEAD").trim() : null;
+  }
+}
 
 /** The commit this supervisor runs, or null: two loop versions are otherwise one in the record. */
 export function loopSha(run = git) {
@@ -1868,9 +1910,9 @@ const CI_RED_TIMEOUT_MS = 30_000;
 /** Null when the tracker cannot be read, which is a reason to skip posting, never to post blind. */
 function readTicketComments(ticket, run, log) {
   try {
-    return JSON.parse(
-      run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS }),
-    ).comments;
+    return trustedComments(
+      JSON.parse(run("gh", ["issue", "view", String(ticket), "--json", "comments"], { timeout: CI_RED_TIMEOUT_MS })).comments,
+    );
   } catch (err) {
     log(`CI-RED: could not read the tracker — ${String(err.message).split("\n")[0]}`);
     return null;
@@ -2139,13 +2181,15 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
- * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff",
+ * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff"|"restart",
  *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
  *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
  */
 export async function runOnce(io, pinned = null, at = null) {
   if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
   if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
+  const moved = io.loopMoved?.();
+  if (moved) return { outcome: "restart", why: `tools/loop moved on main (now ${moved})` };
   // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
   // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
   const pre = await io.queuePre();
@@ -2180,7 +2224,7 @@ export async function runOnce(io, pinned = null, at = null) {
       });
     if (route.head && route.head !== tally.lastRedHead) {
       if (Math.max(tally.retries + 1, tally.ciRounds ?? 0) >= CI_ROUNDS) {
-        return parkFix(`${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`);
+        return parkFix(`${Math.max(tally.retries + 1, tally.ciRounds ?? 0)} CI rounds on the same branch did not go green — the last one while the loop was down`);
       }
       io.record({
         number: route.number,
@@ -2220,6 +2264,19 @@ export async function runOnce(io, pinned = null, at = null) {
     io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
     return { outcome: "stop", why: run.strayPlugin };
   }
+  const keepWip = () => {
+    try {
+      const kept = io.snapshotWip?.(after?.cwd ?? null, route.number);
+      if (kept) io.log(`#${route.number}'s uncommitted work is kept at refs/loop/wip/${route.number} (${kept.slice(0, 7)})`, "session");
+    } catch (err) {
+      io.log(`#${route.number}'s uncommitted work could not be snapshotted — ${String(err.message).split("\n")[0]}`, "session");
+    }
+  };
+  if (run.accountError) {
+    keepWip();
+    io.record({ number: route.number, outcome: "halted", why: run.accountError, run, counts: false });
+    return { outcome: "stop", why: `the account cannot run sessions (${run.accountError}) — log in, then npm run queue:loop; #${route.number} resumes from its worktree` };
+  }
   if (run.wrongModel) {
     return parkAndRecord(io, route.number, {
       phase: after?.phase ?? route.phase ?? "A",
@@ -2233,8 +2290,9 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   // Before the pull request is looked for: a session that handed off has not pushed and is not
   // finished, and every reading below is about a session that meant to be its ticket's last.
-  let handoff = handoffOf(run) ?? resumePhase(run, after, route.number);
-  let because = null;
+  const declaredHandoff = handoffOf(run);
+  let handoff = declaredHandoff ?? resumePhase(run, after, route.number);
+  let because = handoff && !declaredHandoff ? reasonFor(run, after, route.number).why : null;
   if (handoff === "D" && !io.buildPassed(after?.cwd ?? null, route.number)) {
     io.log(`#${route.number} handed off to review with no local pass or no full DOD-CHECK on HEAD — back to C`, "build");
     handoff = "C";
@@ -2265,6 +2323,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // whose check never ran.
   const status = apiFailure(run);
   if (status) {
+    keepWip();
     const why = `the API answered ${status}`;
     io.record({ number: route.number, outcome: "overloaded", why, run, counts: false });
     return { outcome: "overloaded", ticket: route.number, why, run };
@@ -2274,6 +2333,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // session refused mid-run that recovered and pushed has done its half, and reporting it refused
   // stranded the branch and left the claim on.
   if (!pr && run.blocked) {
+    keepWip();
     // Recorded like any other session that ended. A refusal spends real money before it stops, and
     // adding that to the run's total anywhere but here is the third writer that made the ledger
     // need a flag to stop double-counting itself.
@@ -2399,7 +2459,7 @@ export async function runOnce(io, pinned = null, at = null) {
   const roundsUsed = Math.max(tally.retries, tally.ciRounds ?? 0);
   if (cost.recorded === "retry" && roundsUsed + 1 >= CI_ROUNDS) {
     return handBack(
-      `${CI_ROUNDS} CI rounds on the same branch did not go green — last: ${settled.reason}`,
+      `${roundsUsed + 1} CI rounds on the same branch did not go green — last: ${settled.reason}`,
       "E",
       // The failed CI log, when there is one: it is what the owner needs and the session's own
       // stream log is not.
@@ -2461,8 +2521,11 @@ function realIo(book, screen) {
   // is the one reading that costs nothing — the next pick is being made anyway.
   let before = null;
   let picked = null;
+  const started = loopSha();
   return {
     stopFile: () => takeStopFile(fs, STOP_FILE),
+    loopMoved: () => loopMoved(started),
+    snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () => queuePreStreamed(),
     issueState: (n) => {
@@ -2743,14 +2806,15 @@ export async function main({
     const total = runTotal(book.totals);
     const t = screen.theme ?? PLAIN();
     if (why) {
-      if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
+      if (code === RESTART) screen.say(`restarting — ${why}`);
+      else if (code === 0) screen.say(stepRow({ label: "stopped", detail: why, state: "skipped" }, t));
       else screen.notice("stopped", why);
     }
     const rule = t.paint("faint", "─".repeat(t.width));
     const tickets = book.tickets.map((r) => reportRow(r, t));
     screen.say([rule, ...recapOf(t), rule, ...(tickets.length ? [...tickets, rule] : []), `   ${t.paint("text", `run total  ${total}`, true)}`].join("\n"));
-    book.close(runId, why ? `${total} · stopped: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
-    bell();
+    book.close(runId, why ? `${total} · ${code === RESTART ? "restarting" : "stopped"}: ${why}` : total, recapOf(PLAIN(), true).join("\n"));
+    if (code !== RESTART) bell();
     return code;
   };
 
@@ -2798,6 +2862,7 @@ export async function main({
     }
 
     if (pass.outcome === "stop") return finish(0, pass.why);
+    if (pass.outcome === "restart") return finish(RESTART, pass.why);
 
     // Read only here, once the session has exited: a park is never a kill.
     if (pass.ticket != null && parkAsked(pass.ticket)) {

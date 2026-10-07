@@ -34,7 +34,9 @@ throws across the felt is not mistaken for content hanging off the screen.
 
 Each is named `<screen>__<viewport>.png`. They are the evidence rows in the findings table
 on the issue point at, kept here rather than pasted into a comment so they can be measured
-again rather than re-described.
+again rather than re-described. The `online-table__*.png` ones are rewritten only under
+`AUDIT_UPDATE=1`, as is `online-table.txt`; otherwise the survey writes the captures to the test's
+output directory and leaves the record alone.
 
 | Capture | What it is evidence for |
 | --- | --- |
