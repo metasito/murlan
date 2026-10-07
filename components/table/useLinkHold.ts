@@ -36,6 +36,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     const before = was.current;
     was.current = link;
     if (before === link) return;
+    if (HELD.has(link) && !HELD.has(before)) traceOnset("moment", "drop");
     if (PILL_CLASS[before] !== PILL_CLASS[link]) traceOnset("moment", `net-${PILL_CLASS[link]}`);
     if (link === "lost") rig.setLevel(Reconnect.lamp, Reconnect.lampRate);
     else if (before === "lost") rig.setLevel(1, Reconnect.lampRate);

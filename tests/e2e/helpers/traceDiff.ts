@@ -30,7 +30,9 @@ export type Field =
   | "scorePill"
   | "flight"
   | "moth"
-  | "air";
+  | "air"
+  | "grey"
+  | "freeze";
 
 export interface Failure {
   field: Field;
