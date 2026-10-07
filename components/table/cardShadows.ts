@@ -133,7 +133,10 @@ function outlineBox(r: CardRect, felt: Pick<Felt, "sx" | "sy" | "s">, midX: numb
   return box;
 }
 
-const meet = (a: Box, b: Box, reach: number) => a.x0 - b.x1 < 2 * reach && b.x0 - a.x1 < 2 * reach && a.y0 - b.y1 < 2 * reach && b.y0 - a.y1 < 2 * reach;
+function meet(a: Box, b: Box, reach: number): boolean {
+  "worklet";
+  return a.x0 - b.x1 < 2 * reach && b.x0 - a.x1 < 2 * reach && a.y0 - b.y1 < 2 * reach && b.y0 - a.y1 < 2 * reach;
+}
 
 /**
  * The path's cards as sets whose blurs, `reach` window points round each outline, never meet: a blur costs its
