@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import os from "node:os";
 import { writeFileSync } from "node:fs";
+import { localGlobalTimeoutMs } from "../../tools/ci/e2eGlobalTimeout.mjs";
+import { CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/limits.mjs";
 
 // This is the one place that knows both `baseURL` and the `webServer` command, so it is the one
 // place that can hand a single port to the server, the health check and every spec at once.
@@ -50,6 +52,7 @@ export default defineConfig({
   // (larger player counts and multi-hand matches need more), since a real
   // played-to-completion game is genuinely slower with more seats.
   timeout: 10 * 60_000,
+  globalTimeout: localGlobalTimeoutMs(process.env, CHECK_BASH_TIMEOUT_MS),
   fullyParallel: false,
   // A retried-then-passed test is reported `flaky`, not `passed`, so the information survives.
   // Locally still 0: a flake you cannot see is one nobody fixes.

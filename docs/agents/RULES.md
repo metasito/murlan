@@ -10,7 +10,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
-3. **Before you push, run every test your change adds or edits, and the ones covering the code it changed**: `npx jest tests/native/a.test.tsx …`, and each browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. CI is the second run, never the first: a test you push unrun is named in the PR body with the reason (e.g. the memory preflight refused).
+3. **Before you push, run every test your change adds or edits, and the ones covering the code it changed** (`npm run agent:check` runs the nearest ten native ones `tools/loop/related-tests.mjs` finds, and names how many it left to `ci.yml`): `npx jest tests/native/a.test.tsx …`, and each browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. CI is the second run, never the first: a test you push unrun is named in the PR body with the reason (e.g. the memory preflight refused).
 4. **While iterating, run one file:** `node --test tests/x.test.ts`, or
    `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's
    red-then-green is watched; everything wider rides CI.
@@ -22,7 +22,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
    well as the outcome, because a helper that silently does nothing — an event nothing listens
    for, a pattern matching no file, a list nobody added the case to — passes. Undo a planted
    defect with the Edit tool, the same replacement backwards: `git checkout HEAD -- <path>` is
-   refused while that path differs from HEAD, which a planted defect always does.
+   refused while that path differs from HEAD, which a planted defect always does; so is `git show <rev>:<path> > <path>`, the same discard.
 
 ## The worktree
 
@@ -85,7 +85,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
 34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
-    worktree is yours to close, not to hand on. File an issue only for what you tried and could
+    worktree is yours to close, not to hand on — outside a review round, which fixes only what its review or CI named. File an issue only for what you tried and could
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.

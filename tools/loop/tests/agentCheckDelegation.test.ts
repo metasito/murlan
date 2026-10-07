@@ -62,6 +62,9 @@ describe("the verdict says what it stands for", () => {
   test("the verdict says how many suites it did not run", () => {
     assert.ok(DELEGATED.length > 0);
     assert.equal(byName("test:native")?.where, "ci");
+    assert.equal(byName("native:related")?.where, "local");
+    assert.equal(byName("native:related")?.after, true);
+    assert.equal(byName("native:related")?.job, "native");
     assert.equal(byName("test")?.where, "local");
     assert.equal(byName("lint")?.where, "local");
     assert.equal(byName("nope"), undefined);

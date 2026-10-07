@@ -1,12 +1,12 @@
 // tools/loop/tests/guardBash.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { check } from "../guard-bash.mjs";
+import { check, fromMsys, gitAt } from "../guard-bash.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -33,8 +33,9 @@ const repo = {
   pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
-  top: (): string | null => null,
-  cwd: (): string => "",
+  unmerged: (paths: string[]) => paths.length > 0 && paths.every((p) => p.includes("conflicted")),
+  top: (dir?: string | null): string | null => resolve("/r", dir?.startsWith(".worktrees") ? dir : "."),
+  cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
 };
 const device = () => "iOS UI (Maestro)";
 const guard = (cmd: string) => check(cmd, device, repo);
@@ -89,6 +90,14 @@ const BLOCKED: [string, RegExp][] = [
   ["git switch --discard-changes main", DISCARD],
   ["git stash drop", DISCARD],
   ["git stash clear", DISCARD],
+  ["for v in a; do p=x/$v.png; git cat-file blob HEAD:$p > $p; done", DISCARD],
+  ["git show HEAD:dirty.ts > dirty.ts", DISCARD],
+  ["git checkout --theirs -- dirty.ts", DISCARD],
+  ["git checkout --theirs -- .", DISCARD],
+  ["git checkout --theirs -- conflicted.ts dirty.ts", DISCARD],
+  ["git -C .worktrees/agent-5 show HEAD:dirty.ts > .worktrees/agent-5/dirty.ts", DISCARD],
+  ["p=dirty.ts; git show HEAD:dirty.ts > $p", DISCARD],
+  ["cd sub && git show HEAD:a.ts > a.ts", DISCARD],
   ["git worktree remove .worktrees/w589 --force", FORCE_DELETE],
   ["git worktree remove --force .worktrees/w589", FORCE_DELETE],
   ["git worktree remove -f .worktrees/w589", FORCE_DELETE],
@@ -230,6 +239,10 @@ describe("the bash guard allows correct usage", () => {
     "git reset --soft HEAD~1",
     "git clean -nd",
     "git stash list",
+    "git show HEAD:a.ts > /tmp/a.ts",
+    'D=/tmp/x && git show HEAD:package.json > "$D/package.json"',
+    "git show HEAD:clean.ts > clean.ts",
+    "git checkout --theirs -- conflicted.ts",
     "git worktree remove .worktrees/w589",
     "git worktree list",
     "git worktree prune",
@@ -436,6 +449,36 @@ describe("a dispatch ref through a variable", () => {
     assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
     assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
   });
+  test("only an assignment in command position is read, never one inside another command's quoted data", () => {
+    for (const cmd of [
+      'git commit -m "B=agent/12-x x"; gh workflow run ios.yml --ref $B',
+      "echo 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
+      "B=agent/12-x gh workflow run ios.yml --ref $B",
+      "bash -c 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
+      "B=agent/12-x bash -c 'echo'; gh workflow run ios.yml --ref $B",
+    ]) assert.match(String(check(cmd, () => null, repo, false)), DEVICE, cmd);
+    for (const cmd of [
+      "B=agent/12-x; gh workflow run ios.yml --ref $B",
+      "bash -c 'B=agent/12-x; gh workflow run ios.yml --ref $B'",
+      "B=agent/12-x bash -c 'gh workflow run ios.yml --ref $B'",
+    ]) assert.equal(check(cmd, () => null, repo, false), null, cmd);
+    assert.match(String(guard("bash -c 'p=dirty.ts; git show HEAD:dirty.ts > $p'")), DISCARD);
+  });
+});
+
+describe("an MSYS drive path is the Windows path it names", () => {
+  test("mapped on win32 only", () => {
+    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "win32"), "C:/Users/r/repo/a.ts");
+    assert.equal(fromMsys("/d", "win32"), "D:/");
+    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "linux"), "/c/Users/r/repo/a.ts");
+    assert.equal(fromMsys("/cd/a.ts", "win32"), "/cd/a.ts");
+    assert.equal(fromMsys("c/a.ts", "win32"), "c/a.ts");
+  });
+  test("a redirect to one restoring a dirty tracked file is refused", { skip: process.platform !== "win32" }, () => {
+    const msys = `/${resolve("/r")[0].toLowerCase()}/r/dirty.ts`;
+    assert.match(String(guard(`git show HEAD:dirty.ts > ${msys}`)), DISCARD);
+    assert.equal(guard(`git show HEAD:dirty.ts > /${resolve("/r")[0].toLowerCase()}/elsewhere/dirty.ts`), null);
+  });
 });
 
 describe("loop sessions only", () => {
@@ -451,12 +494,86 @@ describe("loop sessions only", () => {
     assert.equal(check("gh run watch 123", () => null, repo, false), null);
     assert.equal(check("gh run view 123 --json status", () => null, repo, true), null);
   });
+  test("a sleep loop polling a run, or gh pr checks --watch, is refused in the loop and nowhere else", () => {
+    for (const cmd of [
+      `for i in $(seq 1 48); do s=$(for r in 1 2; do gh run view $r --json status --jq .status; done | sort -u); [ "$s" = completed ] && break; sleep 30; done`,
+      `until [ "$(gh run view 1 --json status -q .status)" = completed ]; do sleep 30; done`,
+      `while ($true) { gh pr checks 12; Start-Sleep 30 }`,
+      "gh pr checks 12 --watch",
+      `bash -c 'while true; do gh run view 1; sleep 30; done'`,
+      `bash <<< 'while true; do gh run view 1; sleep 30; done'`,
+      `iex 'while ($true) { gh run view 1; Start-Sleep 30 }'`,
+      "1..48 | % { gh run view 1; Start-Sleep 30 }",
+      "do { gh run view 1; Start-Sleep 30 } while ($true)",
+      `pwsh -Command "foreach ($i in 1..9) { gh run list --limit 1; Start-Sleep 30 }"`,
+      "for i in {1..48}; do gh run view 1; sleep 30; done",
+      "for i in {1..48}; do gh pr checks 12; sleep 30; done",
+      "for i in {1..48}\ndo\n  gh run view 1\n  sleep 30\ndone",
+      "for f in a{1,2}; do gh run view 1; sleep 30; done",
+      "bash -c 'for i in {1..9}; do gh run view 1; sleep 30; done'",
+    ]) {
+      assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
+      assert.equal(check(cmd, () => null, repo, false), null, cmd);
+    }
+    for (const cmd of [
+      "gh workflow run ios.yml --ref agent/1-x && sleep 8 && gh run list --branch agent/1-x --limit 5",
+      `for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 5; done`,
+      "gh pr checks 12",
+      'gh pr comment 1 --body "while CI runs"; sleep 5; gh run view 1',
+      "gh pr view 12; for f in a b; do echo $f; done; sleep 1",
+      "while true; do gh run view 1 && break; done; sleep 30",
+      "for i in 1 2; do sleep 1; done; gh run view 1",
+      "1..2 | % { Start-Sleep 1 }; gh pr checks 12",
+      "bash -c 'for f in a; do echo $f; done; sleep 1; gh run view 1'",
+    ]) assert.equal(check(cmd, () => null, repo, true), null, cmd);
+  });
   test("a timeout in front of a command does not hide it", () => {
     assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", () => null, repo, true)), /await-run\.mjs/);
     assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", () => null, repo, false), null);
     assert.equal(check("timeout 60 gh run view 123", () => null, repo, true), null);
     for (const opts of ["--signal KILL", "--kill-after 5", "--signal=KILL --kill-after=5"]) {
       assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, () => null, repo, false), null, opts);
+    }
+  });
+});
+
+describe("a redirect under git -C is judged by the path git sees", () => {
+  test("a dirty file named from the shell's cwd is found relative to -C's directory", () => {
+    const seen: string[][] = [];
+    const spy = { ...repo, pathsClean: (p: string[]) => (seen.push(p), !p.includes("dirty.ts")) };
+    const cmd = "git -C .worktrees/agent-5 show HEAD:dirty.ts > .worktrees/agent-5/dirty.ts";
+    assert.match(String(check(cmd, device, spy)), DISCARD);
+    assert.deepEqual(seen, [["dirty.ts"]]);
+  });
+  test("a redirect after a cd is refused with the absolute-path way out", () => {
+    assert.match(String(guard("cd sub && git show HEAD:a.ts > a.ts")), /absolute path/);
+  });
+});
+
+describe("gitAt.unmerged, against a real conflict", () => {
+  test("is true only when every path is itself conflicted", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-unmerged-"));
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, stdio: "ignore" });
+    try {
+      git("init", "-q", "-b", "main");
+      writeFileSync(join(dir, "c.txt"), "a\n");
+      writeFileSync(join(dir, "d.txt"), "a\n");
+      git("add", "."); git("commit", "-qm", "base");
+      git("checkout", "-qb", "side");
+      writeFileSync(join(dir, "c.txt"), "side\n"); git("commit", "-qam", "side");
+      git("checkout", "-q", "main");
+      writeFileSync(join(dir, "c.txt"), "main\n"); git("commit", "-qam", "main");
+      try { git("merge", "side"); } catch { /* the conflict is the point */ }
+      writeFileSync(join(dir, "d.txt"), "dirty\n");
+      const repo = gitAt(dir);
+      assert.equal(repo.unmerged(["c.txt"], null), true);
+      assert.equal(repo.unmerged(["./c.txt"], null), true);
+      assert.equal(repo.unmerged([".\\c.txt"], null), true);
+      assert.equal(repo.unmerged(["."], null), false);
+      assert.equal(repo.unmerged(["c.txt", "d.txt"], null), false);
+      assert.equal(repo.unmerged([], null), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

@@ -16,7 +16,7 @@ after child** until the user says stop or the route stops being `wayfinder`; say
    Decisions-so-far / Fog structure and the refer-by-name rule. Tracker specifics are in
    `issue-tracker.md` → *Wayfinding operations*.
 4. **A `wayfinder:prototype` child's code is evidence, not a deliverable.** Build it in a scratch
-   directory outside the repo, run it with `node`, and delete it once the answer is on the issue. No branch, no pull
+   directory under `.loop-logs/`, run it with `node`, and delete it once the answer is on the issue. No branch, no pull
    request; an answer worth shipping becomes a new ticket for the queue.
 5. **Resolve** with a decision. If it is genuinely the owner's call, put the **option space** on
    the child — what each option costs and what it forecloses — label it `ready-for-human`, release

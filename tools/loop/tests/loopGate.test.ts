@@ -72,7 +72,8 @@ function commit(wt: string, file: string, body = "\n// probe\n") {
  */
 function stubGh(comments: { body: string }[]): string {
   const js = join(dir, `fake-gh-${Math.random().toString(36).slice(2)}.mjs`);
-  writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify({ comments })}));`);
+  const owned = comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
+  writeFileSync(js, `console.log(JSON.stringify(${JSON.stringify({ comments: owned })}));`);
   return js;
 }
 
@@ -359,7 +360,7 @@ describe("a LAND is only as good as the report behind it", () => {
     onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
     changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
     trackerReadable: true, reviewRounds: 1, why: "reviewed and cleared",
-    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, review: null,
+    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, handoff: null, review: null,
     ci: null, fix: false, ciRounds: 0, ...extra,
   });
 
@@ -475,6 +476,7 @@ describe("--build gates review on a cached local pass", () => {
       [check("- [x] chip enters — package.json:99999"), 1, /leaves open/],
       [check("no boxes at all"), 1, /ticks no box/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1\n- [X] sheen — package.json:3"), 0, /2 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2 · docs/probe.md:1 · red: AssertionError: expected 1 got 0"), 0, /1 box\(es\) ticked/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);

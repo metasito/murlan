@@ -54,6 +54,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
   e2e suite runs through `react-native-web`, which resolves a *different* module graph and takes
   the other side of every `Platform.OS` branch. Tests are named `.test.tsx` on purpose: `node
   --test` globs `tests/**/*.test.ts` and must not pick them up — see *Node's TypeScript loader*.
+  Give jest the path before `--selectProjects`: after it the path is read as a project name and the whole project runs.
 - **Integration** creates an empty Postgres schema and nothing else; every table comes from the
   app's own `ensureSchema()`, so each run also tests that boot-time schema creation works on a
   database that has never seen it. `tests/helpers/gameDriver.ts` is the shared "play a real hand
@@ -93,8 +94,10 @@ agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `-
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
 and 3 when some are still going: then run the same command again. It returns before the default
-Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch` is refused
-because a device run outlasts any Bash timeout. `ios.yml` and `maestro.yml` run side by side,
+Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
+--watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
+`…actions/runs|check-runs` are refused because a device run
+outlasts any Bash timeout. `ios.yml` and `maestro.yml` run side by side,
 so dispatch both and wait on both run ids at once; a second dispatch of the same workflow on one
 branch cancels the first. **These two release builds are the only device path**: a release build carries its
 own bundle, so no packager, dev server or `adb reverse` is involved, and the flows take the app id
@@ -294,6 +297,12 @@ one that doesn't needs a device capture (above).
   tests" (#211). `playwright.config.ts` owns its own `webServer` on `E2E_PORT`, so starting one by
   hand races it for the port. A piped run exits with the pipe's code: `tools/loop/guard-bash.mjs`
   refuses one.
+- **A local Playwright run stops two minutes under the session's Bash ceiling and still reports**
+  (`globalTimeout`); narrow with one spec or `-g` rather than raising it. Outside a loop session
+  (`LOOP_TURNS` unset) an explicit `E2E_GLOBAL_TIMEOUT_MS` above that ceiling is honoured.
+- **`dev-stack up` starts Docker Desktop and waits for it** (`scripts/dockerEngine.mjs` holds the budget) when the engine is down; never
+  improvise a start. A `docker info` that times out is a starved engine, not a down one: it is
+  waited for with a longer probe and never launched again.
 - **A scan that has only ever been green has not been tested, it's been assumed** — rule 6; see
   *A scan needs a planted floor*, below. **A native `fireEvent` without `await` asserts against
   the pre-press state** — see *The native harness is async*, below.
@@ -463,11 +472,13 @@ via `git diff`, so an uncommitted edit counts but an untracked file doesn't show
 **Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
 every hook):
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`
-  anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, which § Device runs
+  anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
+  --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
+  `…actions/runs|check-runs`, which § Device runs
   replaces with `await-run.mjs`.
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
-  the worktrees under `.worktrees/`, `.loop-logs/` and paths outside the repo stay writable
-  (rules 8 and 31).
+  the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
+  path outside the repo do not (rules 8, 31 and 32).
 - `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewers have
   run, or until `loop-gate --review-round` has said the cap is reached (rule 29).
 

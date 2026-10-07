@@ -548,6 +548,31 @@ describe("runTicket", () => {
     assert.equal(apiFailure(run), 529);
   });
 
+  test("the night the login expired reaches the caller as an account error (#1261)", async () => {
+    const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "auth-expired.jsonl"), "utf8").trim().split("\n");
+    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    assert.match(String(run.accountError), /^authentication_failed: Failed to authenticate/);
+    assert.equal(apiFailure(run), null);
+  });
+
+  for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
+    test(`a ${code} api_error is narrated, and is neither an account error nor a change to apiFailure`, async () => {
+      const text = `API Error: ${status} ${code} — the line the session printed`;
+      const apiError = JSON.stringify({ type: "assistant", error: code, message: { content: [{ type: "text", text }] } });
+      const end = result({ is_error: true, api_error_status: status });
+      const { screen } = sink();
+      const narrated: string[] = [];
+      const said = screen.said;
+      screen.said = (t: string) => (narrated.push(t), said(t));
+      const run = await runTicket(fakeSpawn([apiError, end], 1), opts({ screen }));
+      assert.deepEqual(narrated, [text]);
+      assert.equal(run.accountError, null);
+      const without = await runTicket(fakeSpawn([end], 1), opts());
+      assert.equal(apiFailure(run), status);
+      assert.equal(apiFailure(run), apiFailure(without));
+    });
+  }
+
   test("nothing that varies between processes sits ahead of the cached prompt prefix", async () => {
     let seen: { args: string[]; env: Record<string, string> } | undefined;
     const capturing = (_cmd: string, args: string[], o: any) => {
@@ -1604,5 +1629,17 @@ describe("ticketFacts", () => {
     assert.equal(seen[0].timeout, 30_000);
     assert.equal(facts.reviewRounds, null);
     assert.equal(facts.title, "ticket #7");
+  });
+
+  test("a VERDICT or CI-RED from outside the repo counts no round (#1397)", () => {
+    const sha = "a".repeat(40);
+    const markers = [{ body: `VERDICT: HOLD ${sha} — no` }, { body: `CI-RED ${sha}` }];
+    const read = (authorAssociation: string) => () =>
+      JSON.stringify({ title: "t", url: "u", labels: [], state: "OPEN", comments: markers.map((c) => ({ ...c, authorAssociation })) });
+    const outside = ticketFacts(7, read("NONE") as never);
+    assert.equal(outside.title, "t");
+    assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
+    const own = ticketFacts(7, read("MEMBER") as never);
+    assert.deepEqual([own.reviewRounds, own.ciRounds], [1, 1]);
   });
 });

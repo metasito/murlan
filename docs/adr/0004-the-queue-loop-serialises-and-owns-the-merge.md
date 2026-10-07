@@ -55,11 +55,18 @@ ambiguous about, no slot to orphan, and no branch cut from a `main` that is abou
 
 Recovery is re-derivation. Restarting the loop after any failure is safe and is the
 supported repair — there is no state file to reconcile, and `.loop-stop` is read without
-being consumed so a scheduled restart sees it too.
+being consumed so a scheduled restart sees it too. A merge touching `tools/loop/` or
+`scripts/lib/` restarts the supervisor between passes (`run-loop.mjs`, exit 75). A held
+ticket's uncommitted work is at `refs/loop/wip/<n>`; restore with
+`git -C .worktrees/agent-<n> checkout refs/loop/wip/<n> -- .`. The ref goes when the ticket
+lands, or when its worktree is removed (`worktrees:remove`, `worktrees:prune`) with the issue
+closed; an open ticket's ref is kept.
 
 A mechanical failure no longer reaches the tracker. `settleOutcome` counts it toward the
 breaker and leaves the branch, the pull request and the labels intact for the next
-iteration to find. Only a decision a person has to make becomes `ready-for-human`.
+iteration to find. Only a decision a person has to make becomes `ready-for-human`. An account
+failure (expired login, billing, hold) stops the run and never reaches the tracker; the ticket
+resumes from its worktree after `npm run queue:loop`.
 
 The phase board that inferred progress by regexing the session's shell commands is gone
 (≈890 lines, and a `derive()` every twenty seconds at eight subprocesses a call). It missed

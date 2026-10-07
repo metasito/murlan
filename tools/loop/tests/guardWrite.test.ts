@@ -16,9 +16,13 @@ test("a relative path resolves against the call's cwd, not the root", () => {
   assert.equal(verdict("components/x.tsx", root, path.join(root, ".worktrees", "agent-12")), null);
   assert.notEqual(verdict("components/x.tsx", root, root), null);
 });
-test("the worktree, .loop-logs and anything outside the repo are allowed", () => {
-  for (const p of [path.join(root, ".worktrees", "agent-12", "app", "x.ts"), path.join(root, ".loop-logs", "pr-12.md"), path.resolve("/tmp/pr.md")])
+test("the worktree and .loop-logs are allowed", () => {
+  for (const p of [path.join(root, ".worktrees", "agent-12", "app", "x.ts"), path.join(root, ".loop-logs", "pr-12.md")])
     assert.equal(verdict(p, root), null, p);
+});
+test("a path outside the repo is refused, so the owner's own folders are not scratch (#1261)", () => {
+  for (const p of [path.resolve("/Users/roton/murlan-plans/review-1261.md"), path.resolve("/tmp/pr.md")])
+    assert.match(String(verdict(p, root)), /\.loop-logs/, p);
 });
 test("the hook denies in a loop session and is silent outside one", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "guard-write-"));

@@ -409,9 +409,11 @@ test.describe("the online table, at the audit's viewports", () => {
       const { page } = table;
       try {
         const online = await stillMeasure(page, "ONLINE");
-        mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
+        if (UPDATING) mkdirSync(path.join(AUDIT_DIR, "captures"), { recursive: true });
         await page.screenshot({
-          path: path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`),
+          path: UPDATING
+            ? path.join(AUDIT_DIR, "captures", `online-table__${vp.name}.png`)
+            : test.info().outputPath(`online-table__${vp.name}.png`),
         });
 
         // Dealt the same number of cards the server just dealt, not the seed
@@ -505,7 +507,7 @@ test.describe("the online table, at the audit's viewports", () => {
     // Only a whole survey is written down. A `--shard`ed or `-g`-filtered run
     // measures some of the four, and a partial file replacing the record reads
     // as the rest having stopped being true.
-    if (rows.length !== VIEWPORTS.length * 2) return;
+    if (!UPDATING || rows.length !== VIEWPORTS.length * 2) return;
     mkdirSync(AUDIT_DIR, { recursive: true });
     // Merged into the existing file by key, never replacing it outright: this
     // run's rows hold whichever `cards` count each viewport's real deal

@@ -59,16 +59,20 @@ function segments(text, depth) {
   let words = [];
   let word = null;
   let quote = null;
+  let i = 0;
+  let from = 0;
   const endWord = () => {
     if (word !== null) words.push(word);
     word = null;
   };
   const endSegment = () => {
     endWord();
+    words.span = [from, i];
     if (words.length) out.push(words);
     words = [];
+    from = i + 1;
   };
-  for (let i = 0; i < text.length; i++) {
+  for (; i < text.length; i++) {
     const ch = text[i];
     if (quote === "'") {
       if (ch === "'") quote = null;
@@ -119,11 +123,20 @@ function segments(text, depth) {
   return out;
 }
 
+/** The command line a shell (or `iex`) is handed: its `-c` body, a here-string, or the rest of an `iex`. */
+function shellBodyOf(cmd, rest) {
+  const herestring = rest.indexOf("<<<");
+  const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
+  if (herestring >= 0) return rest[herestring + 1];
+  if (flag < 0) return rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null;
+  return /^(pwsh|powershell|cmd)$/.test(cmd) ? rest.slice(flag + 1).join(" ") : rest[flag + 1];
+}
+
 /**
  * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
  * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
- * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `piped`
- * means its output feeds a `|`.
+ * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
+ * its stdout redirect targets; `piped` means its output feeds a `|`.
  */
 function normalize(words, depth) {
   const env = {};
@@ -148,24 +161,24 @@ function normalize(words, depth) {
   const rest = words.slice(i + 1);
 
   if (SHELL.test(cmd) && depth < MAX_DEPTH) {
-    const herestring = rest.indexOf("<<<");
-    const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
-    const body =
-      herestring >= 0
-        ? rest[herestring + 1]
-        : flag < 0
-          ? rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null
-          : /^(pwsh|powershell|cmd)$/.test(cmd)
-            ? rest.slice(flag + 1).join(" ")
-            : rest[flag + 1];
-    if (body) return commands(body, depth + 1).map((c) => ({ ...c, piped: c.piped || words.piped === true }));
+    const body = shellBodyOf(cmd, rest);
+    if (body) {
+      const scope = { ...env, ...assignmentsIn(body) };
+      return commands(body, depth + 1).map((c) => ({ ...c, scope: { ...scope, ...c.scope }, piped: c.piped || words.piped === true }));
+    }
   }
 
   const args = [];
+  const out = [];
   for (let j = 0; j < rest.length; j++) {
     const redirect = REDIRECT.exec(rest[j]);
-    if (redirect) j += redirect[1] ? 0 : 1;
-    else args.push(rest[j]);
+    if (!redirect) {
+      args.push(rest[j]);
+      continue;
+    }
+    const target = redirect[1] || rest[j + 1] || "";
+    if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
+    j += redirect[1] ? 0 : 1;
   }
   let dir = null;
   const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
@@ -174,7 +187,7 @@ function normalize(words, depth) {
     if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
     args.splice(0, takes ? 2 : 1);
   }
-  return [{ cmd, env, dir, args, piped: words.piped === true }];
+  return [{ cmd, env, dir, args, out, piped: words.piped === true }];
 }
 
 export function commands(text, depth = 0) {
@@ -209,12 +222,25 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-/** `B=agent/12-x && … --ref $B`: literal assignments on the line, which `commands()` drops. */
-export function literalAssignments(text) {
+const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
+const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
+
+/** Each bare `X=…` statement's value, a later one replacing an earlier. */
+function assignmentsIn(text) {
   const vars = {};
-  for (const m of text.matchAll(/(?:^|[\s;&|(])([A-Za-z_]\w*)=(["']?)([^\s"'$`;&|()]+)\2(?=[\s;&|)]|$)/g)) vars[m[1]] = m[3];
+  for (const w of segments(text, MAX_DEPTH)) {
+    let i = 0;
+    while (/^(do|then|else|elif|!)$/.test(w[i] ?? "")) i += 1;
+    if (i < w.length && w.slice(i).every((x) => ASSIGN.test(x))) for (const x of w.slice(i)) vars[ASSIGN.exec(x)[1]] = ASSIGN.exec(x)[2];
+  }
   return vars;
 }
+
+/**
+ * `B=agent/12-x && … --ref $B`: literal assignments `commands()` drops. Only a bare `X=…` statement
+ * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
+ */
+export const literalAssignments = (text) => literal(assignmentsIn(text));
 
 /** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
 function dispatchesOnTicketBranch(c, vars = {}) {
@@ -329,6 +355,10 @@ export function gitAt(base) {
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
+    unmerged: (paths, dir) => {
+      const conflicted = new Set((answer(["diff", "--name-only", "--relative", "--diff-filter=U"], dir) ?? "").split("\n").filter(Boolean));
+      return paths.length > 0 && paths.every((p) => conflicted.has(p.replaceAll("\\", "/").replace(/^\.\//, "")));
+    },
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
   };
@@ -353,6 +383,85 @@ function addsInsideOwnWorktree(c, repo) {
 
 const has = (args, re) => args.some((a) => re.test(a));
 
+const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
+const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
+
+/**
+ * The block braces between each segment and the next, as `[char, position]`. `segments()` splits on
+ * every brace, so a bash brace expansion — `{1..48}`, `a{1,2}`: a pair with no space or separator
+ * inside — is dropped here, or it would read as a PowerShell block opening before the `do`.
+ */
+function blockBraces(text, segs) {
+  const gaps = segs.map((s, k) => {
+    const out = [];
+    for (let p = s.span[1]; p < (segs[k + 1]?.span[0] ?? text.length); p++) if (/[{}]/.test(text[p])) out.push([text[p], p]);
+    return out;
+  });
+  const expansion = new Set();
+  const open = [];
+  for (const [ch, p] of gaps.flat()) {
+    if (ch === "{") open.push(p);
+    else if (open.length) {
+      const o = open.pop();
+      if (!/[\s;|&]/.test(text.slice(o + 1, p))) expansion.add(o).add(p);
+    }
+  }
+  return gaps.map((g) => g.filter(([, p]) => !expansion.has(p)));
+}
+
+/** Where the loop opened by `segs[k]` ends: its matching `done`, or for PowerShell its matching `}`. */
+function loopEnd(text, segs, k, braces) {
+  let j = k;
+  while (j < segs.length && !braces[j].some(([ch]) => ch === "{") && !(j > k && segs[j][0] === "do")) j += 1;
+  if (j < segs.length && segs[j][0] === "do" && j > k) {
+    let open = 1;
+    for (; j < segs.length; j++) {
+      if (LOOP_KEYWORD.test(headOf(segs[j]))) open += 1;
+      if (segs[j][0] === "done" && --open === 0) return segs[j].span[1];
+    }
+    return text.length;
+  }
+  let depth = 0;
+  for (; j < segs.length; j++) {
+    for (const [ch, at] of braces[j]) {
+      if (ch === "{") depth += 1;
+      if (ch !== "}" || --depth > 0) continue;
+      const cond = segs[j + 1];
+      if (segs[k][0] !== "do" || !/^(while|until)$/i.test(cond?.[0] ?? "")) return at + 1;
+      const paren = text.indexOf("(", cond.span[0]);
+      return paren < 0 ? text.length : closing(text, paren) + 1;
+    }
+  }
+  return text.length;
+}
+
+/**
+ * Each loop's own text, keyword to end, in shell and `$( … )` bodies too. Spans come from a parse
+ * that keeps `$( … )` whole, so only separators lie between two segments' spans.
+ */
+function loopBodies(text, depth = 0) {
+  const segs = segments(text, MAX_DEPTH);
+  const braces = blockBraces(text, segs);
+  const bodies = [];
+  segs.forEach((w, k) => {
+    const psDo = w.length === 1 && w[0] === "do" && braces[k].some(([ch]) => ch === "{");
+    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
+    if (depth >= MAX_DEPTH) return;
+    const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
+    for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));
+  });
+  return bodies;
+}
+const shellBodyIn = (w) => {
+  const i = w.findIndex((x) => SHELL.test(commandName(x)));
+  return i < 0 ? null : shellBodyOf(commandName(w[i]), w.slice(i + 1));
+};
+const pollsARun = (c) =>
+  c.cmd === "gh" &&
+  ((c.args[0] === "run" && /^(view|list)$/.test(c.args[1] ?? "")) ||
+    (c.args[0] === "pr" && /^(checks|view|status)$/.test(c.args[1] ?? "")) ||
+    (c.args[0] === "api" && /actions\/runs|check-runs/.test(c.args.join(" "))));
+
 /**
  * `git checkout` discards when an operand is a path rather than a ref. Naming a source before
  * `--` is the documented way back, so it passes once those paths hold nothing uncommitted.
@@ -374,6 +483,7 @@ function checkoutDiscards(rest, c, repo) {
       operands.push(before[i]);
     }
   }
+  if (paths.length && has(before, /^--(ours|theirs)$/) && repo.unmerged(paths, c.dir)) return false;
   if (paths.length) return !operands.length || !repo.pathsClean(paths, c.dir);
   return !branching && operands.some((a) => !repo.isRef(a, c.dir));
 }
@@ -395,6 +505,31 @@ function restoreDiscards(rest, c, repo) {
     }
   }
   return !source || !paths.length || !repo.pathsClean(paths, c.dir);
+}
+
+/** Git Bash's `/c/…` is `C:/…`; `resolve` alone reads it as a path on the current drive. */
+export const fromMsys = (p, platform = process.platform) =>
+  platform === "win32" ? p.replace(/^\/([A-Za-z])(\/|$)/, (_, d) => `${d.toUpperCase()}:/`) : p;
+
+/** `git show <rev>:<path> > <path>` over a tracked file with uncommitted work: the same discard as a checkout. */
+function redirectRestores(c, repo, vars, moved) {
+  const blob =
+    c.cmd === "git" &&
+    (c.args[0] === "show" || (c.args[0] === "cat-file" && has(c.args, /^(blob|-p)$/))) &&
+    c.args.find((a) => /^[^-][^:]*:./.test(a));
+  if (!blob || !c.out?.length) return false;
+  const source = blob.slice(blob.indexOf(":") + 1);
+  return c.out.some((raw) => {
+    const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? vars[v] ?? m);
+    if (target.includes("$")) return raw === source;
+    if (moved && !isAbsolute(target)) return true;
+    const abs = resolve(repo.cwd(null), fromMsys(target));
+    const top = repo.top(c.dir);
+    const rel = top && relative(resolve(top), abs);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
+    const inGit = relative(repo.cwd(c.dir), abs);
+    return !repo.unmerged([inGit], c.dir) && !repo.pathsClean([inGit], c.dir);
+  });
 }
 
 function discards(c, repo) {
@@ -485,14 +620,17 @@ const RULES = [
       "Check what you are about to stage with `git status --short` first.",
   },
   {
-    test: (c, { repo }) => discards(c, repo),
+    test: (c, { repo, vars, moved }) => discards(c, repo) || redirectRestores(c, repo, vars, moved),
     message:
       "This git command is blocked: checkout of a path, restore, reset --hard, clean -f, " +
+      "`git show <rev>:<path> > <path>` (the same restore by redirect), " +
       "switch --discard-changes and stash drop/clear all throw away uncommitted or stashed work — " +
       "including a fix you have not committed yet, or a peer's stash on the shared stack. This " +
       "has cost real work four times.\n" +
       "Undoing a seeded defect? Reverse it with the Edit tool — the same replacement backwards.\n" +
       "Switching branch? `git switch <branch>` refuses rather than discarding.\n" +
+      "A redirect after a `cd` cannot be placed: name the target by absolute path, or `git -C <dir>` instead of the `cd`.\n" +
+      "Resolving a merge or rebase conflict? `git checkout --ours|--theirs -- <path>` is allowed on a conflicted path.\n" +
       "Really want a file back from a commit? Commit your work first, then name the source:\n" +
       "  git checkout HEAD -- path/to/file\n" +
       "Confirm with `git status --short` and `git diff` afterwards.",
@@ -609,9 +747,17 @@ const RULES = [
       "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
   },
   {
-    test: (c, { loop }) => loop && c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "watch",
+    test: (c, { loop }) =>
+      loop && c.cmd === "gh" &&
+      ((c.args[0] === "run" && c.args[1] === "watch") || (c.args[0] === "pr" && c.args[1] === "checks" && has(c.args, /^--watch(=true)?$/))),
+    line: (_parsed, runnable, { loop }) =>
+      loop &&
+      loopBodies(runnable).some((body) => {
+        const inLoop = commands(body);
+        return inLoop.some((c) => /^(sleep|start-sleep)$/i.test(c.cmd)) && inLoop.some(pollsARun);
+      }),
     message:
-      "gh run watch blocks until the run ends, and a device run outlasts any Bash timeout: the call is killed and returns nothing.\n" +
+      "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
@@ -642,7 +788,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars, loop }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop }))) return rule.message;
   }
   return null;
 }
