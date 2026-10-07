@@ -311,6 +311,24 @@ describe('the turn pill', () => {
     await r.unmount();
   });
 
+  it('a clock held once it has run out stays at zero and expires once', async () => {
+    const expire = jest.fn();
+    const chip = (frozen: boolean) => (
+      <TurnChip seconds={2} active frozen={frozen} resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" onExpire={expire} />
+    );
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const r = await render(chip(false));
+    await tick(2);
+    expect(count()).toBe(0);
+    expect(expire).toHaveBeenCalledTimes(1);
+    await r.rerender(chip(true));
+    await r.rerender(chip(false));
+    await tick(3);
+    expect(count()).toBe(0);
+    expect(expire).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
   it('keeps the offline table on its clock when the device goes offline', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>

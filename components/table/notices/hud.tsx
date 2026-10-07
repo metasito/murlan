@@ -105,7 +105,7 @@ export function TurnChip({
   }
 
   useEffect(() => {
-    if (!active || frozen) return;
+    if (!active || frozen || timeLeftRef.current <= 0) return;
     let remaining = timeLeftRef.current;
     let sounding = false;
     const stop = () => {
