@@ -68,7 +68,7 @@ export function TurnChip({
 }: {
   seconds: number;
   active: boolean;
-  /** Shows `seconds` without counting down or sounding: the notice gallery's clocks. */
+  /** Holds the count without counting down or sounding, and runs on from it once released. */
   frozen?: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
   resetKey: string;

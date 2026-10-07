@@ -5,6 +5,16 @@ import { useLinkHold } from '@/components/table/useLinkHold';
 import type { OwnLink } from '@/lib/ownLink';
 import { Reconnect } from '@/lib/theme';
 
+let mockReduceMotion = false;
+jest.mock('@/lib/accessibility', () => ({ usePrefersReducedMotion: () => mockReduceMotion }));
+const mockReaders: Record<string, () => number> = {};
+jest.mock('@/lib/e2eTrace', () => ({
+  ...jest.requireActual<object>('@/lib/e2eTrace'),
+  useTraceSource: (field: string, read: () => number) => {
+    mockReaders[field] = read;
+  },
+}));
+
 function fakeSocket(connected: boolean) {
   const listeners = new Map<string, Set<() => void>>();
   return {
@@ -96,5 +106,27 @@ describe('the table holding its breath', () => {
     await rerender({ link: 'up', inFlight: true });
     expect(result.current.frozen).toBe(false);
     await unmount();
+  });
+
+  const holdGrey = async (reduced: boolean) => {
+    mockReduceMotion = reduced;
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
+    const seen: number[] = [];
+    await view.rerender({ link: 'dropped' });
+    seen.push(mockReaders.grey());
+    await view.rerender({ link: 'back' });
+    seen.push(mockReaders.grey());
+    mockReduceMotion = false;
+    await view.unmount();
+    return seen;
+  };
+
+  it('fades the grey over frames, so none of it shows before the first one', async () => {
+    expect(await holdGrey(false)).toEqual([0, 0]);
+  });
+
+  it('applies and removes the grey at once under reduced motion', async () => {
+    expect(await holdGrey(true)).toEqual([Reconnect.grey, 0]);
   });
 });
