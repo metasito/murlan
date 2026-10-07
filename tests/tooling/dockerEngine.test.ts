@@ -27,7 +27,7 @@ describe("ensureEngine", () => {
   test("an engine that never comes up gives up at the budget, not later", () => {
     const t = base({ engineUp: () => false });
     assert.throws(() => ensureEngine(t.opts as never), /within 30s/);
-    assert.equal(t.slept(), 6);
+    assert.equal(t.slept(), 5, "a sixth sleep would leave no time for the probe after it");
   });
   test("off Windows it says to start the engine and launches nothing", () => {
     const t = base({ engineUp: () => false, platform: "linux" });
@@ -41,7 +41,7 @@ describe("ensureEngine", () => {
   };
   test("a slow probe is not a down engine: nothing is launched, and it is asked again for longer", () => {
     const a = answers("slow", true);
-    const t = base({ engineUp: a.engineUp });
+    const t = base({ engineUp: a.engineUp, budgetMs: 180_000 });
     assert.equal(ensureEngine(t.opts as never), "up");
     assert.deepEqual(t.launched, []);
     assert.equal(a.asked.length, 2);
@@ -54,8 +54,25 @@ describe("ensureEngine", () => {
     assert.deepEqual(t.launched, []);
     assert.ok(a.asked.length < 6, `asked ${a.asked.length} times`);
   });
+  test("sleeps and slow probes together never spend more than the budget", () => {
+    for (const budgetMs of [30_000, 100_000, 180_000, 181_000]) {
+      for (const said of [["slow"], [false], ["slow", false], [false, "slow"]]) {
+        const a = answers(...said);
+        let spent = 0;
+        const engineUp = (ms: number) => {
+          const up = a.engineUp(ms);
+          if (up === "slow") spent += ms;
+          return up;
+        };
+        const t = base({ engineUp, sleep: (ms: number) => (spent += ms), budgetMs });
+        assert.throws(() => ensureEngine(t.opts as never));
+        assert.ok(spent <= budgetMs, `${said} over ${budgetMs}: spent ${spent}`);
+        assert.ok(a.asked.every((ms) => ms > 0), `a probe with no time: ${a.asked}`);
+      }
+    }
+  });
   test("slow, then known down, launches once", () => {
-    const t = base({ engineUp: answers("slow", false, false, true).engineUp });
+    const t = base({ engineUp: answers("slow", false, false, true).engineUp, budgetMs: 180_000 });
     assert.equal(ensureEngine(t.opts as never), "started");
     assert.deepEqual(t.launched, ["A"]);
   });

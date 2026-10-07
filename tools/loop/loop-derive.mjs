@@ -353,11 +353,11 @@ function gh(args, cwd, timeout) {
   }).trim();
 }
 
-const TRUSTED_AUTHORS = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
+export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
 
 /** The repo is public: every marker parser reads only what this keeps. */
 export function trustedComments(comments) {
-  return comments.filter((c) => TRUSTED_AUTHORS.has(c.authorAssociation));
+  return comments.filter((c) => TRUSTED_AUTHORS.includes(c.authorAssociation));
 }
 
 function readComments(ticket, cwd, exec) {

@@ -454,6 +454,8 @@ describe("a dispatch ref through a variable", () => {
       'git commit -m "B=agent/12-x x"; gh workflow run ios.yml --ref $B',
       "echo 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
       "B=agent/12-x gh workflow run ios.yml --ref $B",
+      "bash -c 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
+      "B=agent/12-x bash -c 'echo'; gh workflow run ios.yml --ref $B",
     ]) assert.match(String(check(cmd, () => null, repo, false)), DEVICE, cmd);
     for (const cmd of [
       "B=agent/12-x; gh workflow run ios.yml --ref $B",
@@ -504,6 +506,11 @@ describe("loop sessions only", () => {
       "1..48 | % { gh run view 1; Start-Sleep 30 }",
       "do { gh run view 1; Start-Sleep 30 } while ($true)",
       `pwsh -Command "foreach ($i in 1..9) { gh run list --limit 1; Start-Sleep 30 }"`,
+      "for i in {1..48}; do gh run view 1; sleep 30; done",
+      "for i in {1..48}; do gh pr checks 12; sleep 30; done",
+      "for i in {1..48}\ndo\n  gh run view 1\n  sleep 30\ndone",
+      "for f in a{1,2}; do gh run view 1; sleep 30; done",
+      "bash -c 'for i in {1..9}; do gh run view 1; sleep 30; done'",
     ]) {
       assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
       assert.equal(check(cmd, () => null, repo, false), null, cmd);

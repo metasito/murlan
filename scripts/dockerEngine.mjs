@@ -32,16 +32,18 @@ export function ensureEngine({
     launch(exe);
     return exe;
   };
-  const first = engineUp(probeMs);
+  const firstMs = Math.min(probeMs, budgetMs);
+  const first = engineUp(firstMs);
   if (first === true) return "up";
   let exe = first === "slow" ? null : start();
-  let waited = first === "slow" ? probeMs : 0;
-  while (waited < budgetMs) {
+  let waited = first === "slow" ? firstMs : 0;
+  while (budgetMs - waited > stepMs) {
     sleep(stepMs);
     waited += stepMs;
-    const up = engineUp(slowProbeMs);
+    const ms = Math.min(slowProbeMs, budgetMs - waited);
+    const up = engineUp(ms);
     if (up === true) return exe ? "started" : "up";
-    if (up === "slow") waited += slowProbeMs;
+    if (up === "slow") waited += ms;
     else exe ??= start();
   }
   throw new Error(

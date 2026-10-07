@@ -162,7 +162,10 @@ function normalize(words, depth) {
 
   if (SHELL.test(cmd) && depth < MAX_DEPTH) {
     const body = shellBodyOf(cmd, rest);
-    if (body) return commands(body, depth + 1).map((c) => ({ ...c, piped: c.piped || words.piped === true }));
+    if (body) {
+      const scope = { ...env, ...assignmentsIn(body) };
+      return commands(body, depth + 1).map((c) => ({ ...c, scope: { ...scope, ...c.scope }, piped: c.piped || words.piped === true }));
+    }
   }
 
   const args = [];
@@ -219,24 +222,25 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-/**
- * `B=agent/12-x && … --ref $B`: literal assignments `commands()` drops. Only a bare `X=…` statement
- * sets one for the line; `X=… cmd` reaches only a shell's body, since `cmd`'s own `$X` expands first.
- */
-export function literalAssignments(text, depth = 0) {
+const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
+const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
+
+/** Each bare `X=…` statement's value, a later one replacing an earlier. */
+function assignmentsIn(text) {
   const vars = {};
   for (const w of segments(text, MAX_DEPTH)) {
     let i = 0;
     while (/^(do|then|else|elif|!)$/.test(w[i] ?? "")) i += 1;
-    const lead = {};
-    for (let m; i < w.length && (m = /^([A-Za-z_]\w*)=([\s\S]*)$/.exec(w[i])); i++) {
-      lead[m[1]] = /^[^\s$`]+$/.test(m[2]) ? m[2] : undefined;
-    }
-    const body = i < w.length && depth < MAX_DEPTH && SHELL.test(commandName(w[i])) && shellBodyOf(commandName(w[i]), w.slice(i + 1));
-    if (i === w.length || body) Object.assign(vars, lead, body ? literalAssignments(body, depth + 1) : {});
+    if (i < w.length && w.slice(i).every((x) => ASSIGN.test(x))) for (const x of w.slice(i)) vars[ASSIGN.exec(x)[1]] = ASSIGN.exec(x)[2];
   }
-  return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== undefined));
+  return vars;
 }
+
+/**
+ * `B=agent/12-x && … --ref $B`: literal assignments `commands()` drops. Only a bare `X=…` statement
+ * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
+ */
+export const literalAssignments = (text) => literal(assignmentsIn(text));
 
 /** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
 function dispatchesOnTicketBranch(c, vars = {}) {
@@ -382,10 +386,33 @@ const has = (args, re) => args.some((a) => re.test(a));
 const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
 const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
 
+/**
+ * The block braces between each segment and the next, as `[char, position]`. `segments()` splits on
+ * every brace, so a bash brace expansion — `{1..48}`, `a{1,2}`: a pair with no space or separator
+ * inside — is dropped here, or it would read as a PowerShell block opening before the `do`.
+ */
+function blockBraces(text, segs) {
+  const gaps = segs.map((s, k) => {
+    const out = [];
+    for (let p = s.span[1]; p < (segs[k + 1]?.span[0] ?? text.length); p++) if (/[{}]/.test(text[p])) out.push([text[p], p]);
+    return out;
+  });
+  const expansion = new Set();
+  const open = [];
+  for (const [ch, p] of gaps.flat()) {
+    if (ch === "{") open.push(p);
+    else if (open.length) {
+      const o = open.pop();
+      if (!/[\s;|&]/.test(text.slice(o + 1, p))) expansion.add(o).add(p);
+    }
+  }
+  return gaps.map((g) => g.filter(([, p]) => !expansion.has(p)));
+}
+
 /** Where the loop opened by `segs[k]` ends: its matching `done`, or for PowerShell its matching `}`. */
-function loopEnd(text, segs, k, gap) {
+function loopEnd(text, segs, k, braces) {
   let j = k;
-  while (j < segs.length && !gap(j).includes("{") && !(j > k && segs[j][0] === "do")) j += 1;
+  while (j < segs.length && !braces[j].some(([ch]) => ch === "{") && !(j > k && segs[j][0] === "do")) j += 1;
   if (j < segs.length && segs[j][0] === "do" && j > k) {
     let open = 1;
     for (; j < segs.length; j++) {
@@ -394,14 +421,13 @@ function loopEnd(text, segs, k, gap) {
     }
     return text.length;
   }
-  let braces = 0;
+  let depth = 0;
   for (; j < segs.length; j++) {
-    const at = segs[j].span[1];
-    for (const [n, ch] of [...gap(j)].entries()) {
-      if (ch === "{") braces += 1;
-      if (ch !== "}" || --braces > 0) continue;
+    for (const [ch, at] of braces[j]) {
+      if (ch === "{") depth += 1;
+      if (ch !== "}" || --depth > 0) continue;
       const cond = segs[j + 1];
-      if (segs[k][0] !== "do" || !/^(while|until)$/i.test(cond?.[0] ?? "")) return at + n + 1;
+      if (segs[k][0] !== "do" || !/^(while|until)$/i.test(cond?.[0] ?? "")) return at + 1;
       const paren = text.indexOf("(", cond.span[0]);
       return paren < 0 ? text.length : closing(text, paren) + 1;
     }
@@ -415,11 +441,11 @@ function loopEnd(text, segs, k, gap) {
  */
 function loopBodies(text, depth = 0) {
   const segs = segments(text, MAX_DEPTH);
-  const gap = (k) => text.slice(segs[k].span[1], segs[k + 1]?.span[0] ?? text.length);
+  const braces = blockBraces(text, segs);
   const bodies = [];
   segs.forEach((w, k) => {
-    const psDo = w.length === 1 && w[0] === "do" && gap(k).includes("{");
-    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, gap)));
+    const psDo = w.length === 1 && w[0] === "do" && braces[k].some(([ch]) => ch === "{");
+    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
     if (depth >= MAX_DEPTH) return;
     const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
     for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));
@@ -762,7 +788,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars, loop }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop }))) return rule.message;
   }
   return null;
 }

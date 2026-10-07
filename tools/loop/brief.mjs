@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { TRUSTED_AUTHORS } from "./loop-derive.mjs";
 
 export const KINDS = ["scope", "completeness", "standards", "spec", "refute", "fix"];
 
@@ -31,10 +32,10 @@ const TAIL =
   "are not reported.";
 
 const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
-/** Rule 25's read, keeping only owner and collaborator comments: a later comment overrides the body. */
+/** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
   `gh issue view ${n} --json title,body,comments ` +
-  `--jq '.title, .body, (.comments[]|select(.authorAssociation=="OWNER" or .authorAssociation=="COLLABORATOR")` +
+  `--jq '.title, .body, (.comments[]|select(${TRUSTED_AUTHORS.map((a) => `.authorAssociation=="${a}"`).join(" or ")})` +
   `|"--- "+.author.login+": "+.body)'`;
 const issue = (n) => `\`${readIssue(n)}\``;
 

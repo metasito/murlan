@@ -7,8 +7,9 @@ the vocabulary, the recipes, and how to write a ticket.
 ## Labels
 
 `tools/loop/next-ticket.mjs` routes on labels (`routeOf`, `classify`), and only issues opened by
-an `OWNER` or `COLLABORATOR`: anyone else's goes to the owner whatever it carries, and their
-comments are not shown to an agent.
+an `OWNER`, `MEMBER` or `COLLABORATOR` (`TRUSTED_AUTHORS` in `tools/loop/loop-derive.mjs`, which
+also decides whose comments carry a loop marker): anyone else's goes to the owner whatever it
+carries, and their comments are not shown to an agent.
 
 | Label | Means | Picker |
 |---|---|---|
