@@ -59,16 +59,20 @@ function segments(text, depth) {
   let words = [];
   let word = null;
   let quote = null;
+  let i = 0;
+  let from = 0;
   const endWord = () => {
     if (word !== null) words.push(word);
     word = null;
   };
   const endSegment = () => {
     endWord();
+    words.span = [from, i];
     if (words.length) out.push(words);
     words = [];
+    from = i + 1;
   };
-  for (let i = 0; i < text.length; i++) {
+  for (; i < text.length; i++) {
     const ch = text[i];
     if (quote === "'") {
       if (ch === "'") quote = null;
@@ -215,11 +219,23 @@ export function withoutQuotedBodies(command) {
 /** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
 const DEVICE_WORKFLOW = /maestro|\bios\b/i;
 
-/** `B=agent/12-x && … --ref $B`: literal assignments on the line, which `commands()` drops. */
-export function literalAssignments(text) {
+/**
+ * `B=agent/12-x && … --ref $B`: literal assignments `commands()` drops. Only a bare `X=…` statement
+ * sets one for the line; `X=… cmd` reaches only a shell's body, since `cmd`'s own `$X` expands first.
+ */
+export function literalAssignments(text, depth = 0) {
   const vars = {};
-  for (const m of text.matchAll(/(?:^|[\s;&|('"])([A-Za-z_]\w*)=(["']?)([^\s"'$`;&|()]+)\2(?=[\s;&|)]|$)/g)) vars[m[1]] = m[3];
-  return vars;
+  for (const w of segments(text, MAX_DEPTH)) {
+    let i = 0;
+    while (/^(do|then|else|elif|!)$/.test(w[i] ?? "")) i += 1;
+    const lead = {};
+    for (let m; i < w.length && (m = /^([A-Za-z_]\w*)=([\s\S]*)$/.exec(w[i])); i++) {
+      lead[m[1]] = /^[^\s$`]+$/.test(m[2]) ? m[2] : undefined;
+    }
+    const body = i < w.length && depth < MAX_DEPTH && SHELL.test(commandName(w[i])) && shellBodyOf(commandName(w[i]), w.slice(i + 1));
+    if (i === w.length || body) Object.assign(vars, lead, body ? literalAssignments(body, depth + 1) : {});
+  }
+  return Object.fromEntries(Object.entries(vars).filter(([, v]) => v !== undefined));
 }
 
 /** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
@@ -364,12 +380,52 @@ function addsInsideOwnWorktree(c, repo) {
 const has = (args, re) => args.some((a) => re.test(a));
 
 const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
-const loops = (text, depth = 0) =>
-  segments(text, 0).some(
-    (w) =>
-      LOOP_KEYWORD.test(w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "") ||
-      (depth < MAX_DEPTH && loops(shellBodyIn(w) ?? "", depth + 1)),
-  );
+const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
+
+/** Where the loop opened by `segs[k]` ends: its matching `done`, or for PowerShell its matching `}`. */
+function loopEnd(text, segs, k, gap) {
+  let j = k;
+  while (j < segs.length && !gap(j).includes("{") && !(j > k && segs[j][0] === "do")) j += 1;
+  if (j < segs.length && segs[j][0] === "do" && j > k) {
+    let open = 1;
+    for (; j < segs.length; j++) {
+      if (LOOP_KEYWORD.test(headOf(segs[j]))) open += 1;
+      if (segs[j][0] === "done" && --open === 0) return segs[j].span[1];
+    }
+    return text.length;
+  }
+  let braces = 0;
+  for (; j < segs.length; j++) {
+    const at = segs[j].span[1];
+    for (const [n, ch] of [...gap(j)].entries()) {
+      if (ch === "{") braces += 1;
+      if (ch !== "}" || --braces > 0) continue;
+      const cond = segs[j + 1];
+      if (segs[k][0] !== "do" || !/^(while|until)$/i.test(cond?.[0] ?? "")) return at + n + 1;
+      const paren = text.indexOf("(", cond.span[0]);
+      return paren < 0 ? text.length : closing(text, paren) + 1;
+    }
+  }
+  return text.length;
+}
+
+/**
+ * Each loop's own text, keyword to end, in shell and `$( … )` bodies too. Spans come from a parse
+ * that keeps `$( … )` whole, so only separators lie between two segments' spans.
+ */
+function loopBodies(text, depth = 0) {
+  const segs = segments(text, MAX_DEPTH);
+  const gap = (k) => text.slice(segs[k].span[1], segs[k + 1]?.span[0] ?? text.length);
+  const bodies = [];
+  segs.forEach((w, k) => {
+    const psDo = w.length === 1 && w[0] === "do" && gap(k).includes("{");
+    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, gap)));
+    if (depth >= MAX_DEPTH) return;
+    const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
+    for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));
+  });
+  return bodies;
+}
 const shellBodyIn = (w) => {
   const i = w.findIndex((x) => SHELL.test(commandName(x)));
   return i < 0 ? null : shellBodyOf(commandName(w[i]), w.slice(i + 1));
@@ -425,6 +481,10 @@ function restoreDiscards(rest, c, repo) {
   return !source || !paths.length || !repo.pathsClean(paths, c.dir);
 }
 
+/** Git Bash's `/c/…` is `C:/…`; `resolve` alone reads it as a path on the current drive. */
+export const fromMsys = (p, platform = process.platform) =>
+  platform === "win32" ? p.replace(/^\/([A-Za-z])(\/|$)/, (_, d) => `${d.toUpperCase()}:/`) : p;
+
 /** `git show <rev>:<path> > <path>` over a tracked file with uncommitted work: the same discard as a checkout. */
 function redirectRestores(c, repo, vars, moved) {
   const blob =
@@ -437,7 +497,7 @@ function redirectRestores(c, repo, vars, moved) {
     const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? vars[v] ?? m);
     if (target.includes("$")) return raw === source;
     if (moved && !isAbsolute(target)) return true;
-    const abs = resolve(repo.cwd(null), target);
+    const abs = resolve(repo.cwd(null), fromMsys(target));
     const top = repo.top(c.dir);
     const rel = top && relative(resolve(top), abs);
     if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
@@ -664,8 +724,12 @@ const RULES = [
     test: (c, { loop }) =>
       loop && c.cmd === "gh" &&
       ((c.args[0] === "run" && c.args[1] === "watch") || (c.args[0] === "pr" && c.args[1] === "checks" && has(c.args, /^--watch(=true)?$/))),
-    line: (parsed, runnable, { loop }) =>
-      loop && loops(runnable) && parsed.some((c) => /^(sleep|start-sleep)$/i.test(c.cmd)) && parsed.some(pollsARun),
+    line: (_parsed, runnable, { loop }) =>
+      loop &&
+      loopBodies(runnable).some((body) => {
+        const inLoop = commands(body);
+        return inLoop.some((c) => /^(sleep|start-sleep)$/i.test(c.cmd)) && inLoop.some(pollsARun);
+      }),
     message:
       "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
       "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",

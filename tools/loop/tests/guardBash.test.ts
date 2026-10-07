@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { check, gitAt } from "../guard-bash.mjs";
+import { check, fromMsys, gitAt } from "../guard-bash.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -449,6 +449,34 @@ describe("a dispatch ref through a variable", () => {
     assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
     assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
   });
+  test("only an assignment in command position is read, never one inside another command's quoted data", () => {
+    for (const cmd of [
+      'git commit -m "B=agent/12-x x"; gh workflow run ios.yml --ref $B',
+      "echo 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
+      "B=agent/12-x gh workflow run ios.yml --ref $B",
+    ]) assert.match(String(check(cmd, () => null, repo, false)), DEVICE, cmd);
+    for (const cmd of [
+      "B=agent/12-x; gh workflow run ios.yml --ref $B",
+      "bash -c 'B=agent/12-x; gh workflow run ios.yml --ref $B'",
+      "B=agent/12-x bash -c 'gh workflow run ios.yml --ref $B'",
+    ]) assert.equal(check(cmd, () => null, repo, false), null, cmd);
+    assert.match(String(guard("bash -c 'p=dirty.ts; git show HEAD:dirty.ts > $p'")), DISCARD);
+  });
+});
+
+describe("an MSYS drive path is the Windows path it names", () => {
+  test("mapped on win32 only", () => {
+    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "win32"), "C:/Users/r/repo/a.ts");
+    assert.equal(fromMsys("/d", "win32"), "D:/");
+    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "linux"), "/c/Users/r/repo/a.ts");
+    assert.equal(fromMsys("/cd/a.ts", "win32"), "/cd/a.ts");
+    assert.equal(fromMsys("c/a.ts", "win32"), "c/a.ts");
+  });
+  test("a redirect to one restoring a dirty tracked file is refused", { skip: process.platform !== "win32" }, () => {
+    const msys = `/${resolve("/r")[0].toLowerCase()}/r/dirty.ts`;
+    assert.match(String(guard(`git show HEAD:dirty.ts > ${msys}`)), DISCARD);
+    assert.equal(guard(`git show HEAD:dirty.ts > /${resolve("/r")[0].toLowerCase()}/elsewhere/dirty.ts`), null);
+  });
 });
 
 describe("loop sessions only", () => {
@@ -474,6 +502,8 @@ describe("loop sessions only", () => {
       `bash <<< 'while true; do gh run view 1; sleep 30; done'`,
       `iex 'while ($true) { gh run view 1; Start-Sleep 30 }'`,
       "1..48 | % { gh run view 1; Start-Sleep 30 }",
+      "do { gh run view 1; Start-Sleep 30 } while ($true)",
+      `pwsh -Command "foreach ($i in 1..9) { gh run list --limit 1; Start-Sleep 30 }"`,
     ]) {
       assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
       assert.equal(check(cmd, () => null, repo, false), null, cmd);
@@ -483,6 +513,11 @@ describe("loop sessions only", () => {
       `for i in $(seq 1 40); do docker info >/dev/null 2>&1 && break; sleep 5; done`,
       "gh pr checks 12",
       'gh pr comment 1 --body "while CI runs"; sleep 5; gh run view 1',
+      "gh pr view 12; for f in a b; do echo $f; done; sleep 1",
+      "while true; do gh run view 1 && break; done; sleep 30",
+      "for i in 1 2; do sleep 1; done; gh run view 1",
+      "1..2 | % { Start-Sleep 1 }; gh pr checks 12",
+      "bash -c 'for f in a; do echo $f; done; sleep 1; gh run view 1'",
     ]) assert.equal(check(cmd, () => null, repo, true), null, cmd);
   });
   test("a timeout in front of a command does not hide it", () => {
