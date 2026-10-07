@@ -24,16 +24,16 @@ describe("the native tests a change reaches first", () => {
   test("the command the loop runs uses this module", () =>
     assert.match(readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8"), /from "\.\/near-tests\.mjs"/));
   test("changed tests come first, then tests named after a changed module, then importers", () => {
-    const importer: Record<string, string> = { [T("alpha")]: "import { z } from '@/lib/zeta';" };
-    const got = nearTests({ changed: [T("omega"), "lib/zeta.ts"], related: [T("alpha"), T("zeta")], source: (f) => importer[f] ?? "" });
-    assert.deepEqual(got, [T("omega"), T("zeta"), T("alpha")]);
+    const importer: Record<string, string> = { [T("alpha")]: "import { z } from '@/lib/theme';" };
+    const got = nearTests({ changed: [T("omega"), "lib/theme.ts"], related: [T("alpha"), T("theme")], source: (f) => importer[f] ?? "" });
+    assert.deepEqual(got, [T("omega"), T("theme"), T("alpha")]);
   });
 });
 
 describe("what native:related runs and what it leaves to CI", () => {
   test("a widely imported module runs ten files, highest priority first, and names the rest", () => {
     const importers = Array.from({ length: 12 }, (_, i) => T(`imp${String(i).padStart(2, "0")}`));
-    const tests = nearTests({ changed: [T("own"), "lib/wide.ts"], related: importers, source: () => "from '@/lib/wide'" });
+    const tests = nearTests({ changed: [T("own"), "lib/device/fonts.ts"], related: importers, source: () => "from '@/lib/device/fonts'" });
     const { run, left } = capNear(tests);
     assert.equal(run.length, 10);
     assert.deepEqual(run.slice(0, 2), [T("own"), T("imp00")]);
