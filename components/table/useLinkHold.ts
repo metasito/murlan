@@ -34,7 +34,8 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   const [step] = useState(() => (frame: FrameInfo) => {
     "worklet";
     const { to, perMs, started } = ramp.value;
-    const g = grey.value;    if (g === to) return;
+    const g = grey.value;
+    if (g === to) return;
     // The first frame's interval began before the change, so it only starts the ramp.
     if (!started) {
       ramp.value = { to, perMs, started: true };

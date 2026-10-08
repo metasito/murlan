@@ -371,7 +371,8 @@ describe('the turn pill', () => {
     const table = (ownLink: 'up' | 'reconnecting') => (
       <SettingsProvider>
         <SafeAreaProvider initialMetrics={METRICS}>
-          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} ownLink={ownLink} connection={null} />
+          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} ownLink={ownLink}
+            connection={ownLink === 'reconnecting' ? { state: 'reconnecting', text: 'Riconnessione…' } : null} />
           <OfflineBanner />
         </SafeAreaProvider>
       </SettingsProvider>
@@ -392,11 +393,12 @@ describe('the turn pill', () => {
   it('brings the turn pill back through focus mode while the viewer is not online, so Riprova stays in reach', async () => {
     const hidden = { includeHiddenElements: true };
     const lost = { state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: noop } } as const;
-    const table = (ownLink: 'up' | 'dropped' | 'lost') => (
+    const neverUp = { state: 'reconnecting', text: 'Riconnessione…' } as const;
+    const table = (ownLink: 'up' | 'dropped' | 'lost', connection: typeof lost | typeof neverUp | null = ownLink === 'lost' ? lost : null) => (
       <SettingsProvider>
         <SafeAreaProvider initialMetrics={METRICS}>
           <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop}
-            ownLink={ownLink} connection={ownLink === 'lost' ? lost : null} />
+            ownLink={ownLink} connection={connection} />
         </SafeAreaProvider>
       </SettingsProvider>
     );
@@ -414,6 +416,8 @@ describe('the turn pill', () => {
     await r.rerender(table('dropped'));
     expect(await reach()).toEqual(['none', 0]);
     await r.rerender(table('lost'));
+    expect(await reach()).toEqual(['box-none', 1]);
+    await r.rerender(table('up', neverUp));
     expect(await reach()).toEqual(['box-none', 1]);
     await r.unmount();
   });
