@@ -34,7 +34,7 @@ export function readRunCosts(file = RUN_COSTS) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 /** A public repository's runners take 20 jobs at once, and six other jobs run beside the shards. */
-export const MAX_SHARDS = 14;
+export const MAX_SHARDS = 17;
 
 const CONFIG = path.join(E2E_DIR, "playwright.config.ts");
 
