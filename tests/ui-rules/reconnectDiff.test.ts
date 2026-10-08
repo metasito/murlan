@@ -70,6 +70,18 @@ test("an onset a frame late on the app's grid against the mockup's virtual one p
   assert.equal(pill(500 + 2 * (1000 / 60) + 1).length, 1);
 });
 
+test("an onset stamped on a long frame may lie anywhere in that frame, and no further", () => {
+  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
+  const longFrame = (frames: TraceFrame[]) => {
+    const at = frames.findIndex((f) => f.onsets.includes("moment:net-net"));
+    return frames.filter((_, i) => i !== at - 1);
+  };
+  const pill = (pillAt: number) =>
+    diffReconnect({ mockup, app: longFrame(side(52_345, RECONNECT_SOUND.app, { pillAt })) }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
+  assert.deepEqual(pill(500 + 2 * (1000 / 60)), []);
+  assert.equal(pill(500 + 4 * (1000 / 60)).length, 1);
+});
+
 test("a side that never drops fails rather than comparing nothing", () => {
   const app = side(0, RECONNECT_SOUND.app).map((f) => ({ ...f, onsets: f.onsets.filter((o) => o !== "moment:drop") }));
   assert.deepEqual(diffReconnect({ mockup: side(0, RECONNECT_SOUND.mockup), app }).map((f) => f.field), ["onset"]);
