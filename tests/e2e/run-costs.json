@@ -1,108 +1,114 @@
 {
-  "run": 37783551410,
-  "aroundShardsSeconds": 51,
-  "shardOverheadSeconds": 48,
-  "shardNoise": 1.39,
+  "run": 37792764075,
+  "aroundShardsSeconds": 39,
+  "shardOverheadSeconds": 52,
+  "shardNoise": 1.32,
   "peakConcurrency": {
-    "jobs": 24,
-    "run": 37783551410
+    "jobs": 25,
+    "run": 37792764075
   },
   "shards": [
     {
       "shard": 1,
-      "plannedSeconds": 147,
-      "specSeconds": 106,
-      "wallSeconds": 147
-    },
-    {
-      "shard": 2,
-      "plannedSeconds": 147,
-      "specSeconds": 98,
-      "wallSeconds": 147
-    },
-    {
-      "shard": 3,
-      "plannedSeconds": 146,
-      "specSeconds": 147,
-      "wallSeconds": 186
-    },
-    {
-      "shard": 4,
-      "plannedSeconds": 146,
-      "specSeconds": 146,
-      "wallSeconds": 198
-    },
-    {
-      "shard": 5,
-      "plannedSeconds": 146,
-      "specSeconds": 132,
-      "wallSeconds": 175
-    },
-    {
-      "shard": 6,
-      "plannedSeconds": 146,
-      "specSeconds": 149,
-      "wallSeconds": 202
-    },
-    {
-      "shard": 7,
-      "plannedSeconds": 146,
-      "specSeconds": 147,
-      "wallSeconds": 193
-    },
-    {
-      "shard": 8,
-      "plannedSeconds": 146,
-      "specSeconds": 148,
-      "wallSeconds": 199
-    },
-    {
-      "shard": 9,
-      "plannedSeconds": 146,
-      "specSeconds": 141,
-      "wallSeconds": 205
-    },
-    {
-      "shard": 10,
-      "plannedSeconds": 146,
-      "specSeconds": 127,
+      "plannedSeconds": 150,
+      "specSeconds": 118,
       "wallSeconds": 167
     },
     {
+      "shard": 2,
+      "plannedSeconds": 151,
+      "specSeconds": 133,
+      "wallSeconds": 174
+    },
+    {
+      "shard": 3,
+      "plannedSeconds": 151,
+      "specSeconds": 138,
+      "wallSeconds": 192
+    },
+    {
+      "shard": 4,
+      "plannedSeconds": 150,
+      "specSeconds": 125,
+      "wallSeconds": 169
+    },
+    {
+      "shard": 5,
+      "plannedSeconds": 151,
+      "specSeconds": 184,
+      "wallSeconds": 243
+    },
+    {
+      "shard": 6,
+      "plannedSeconds": 151,
+      "specSeconds": 147,
+      "wallSeconds": 203
+    },
+    {
+      "shard": 7,
+      "plannedSeconds": 150,
+      "specSeconds": 151,
+      "wallSeconds": 210
+    },
+    {
+      "shard": 8,
+      "plannedSeconds": 150,
+      "specSeconds": 111,
+      "wallSeconds": 159
+    },
+    {
+      "shard": 9,
+      "plannedSeconds": 150,
+      "specSeconds": 113,
+      "wallSeconds": 161
+    },
+    {
+      "shard": 10,
+      "plannedSeconds": 151,
+      "specSeconds": 132,
+      "wallSeconds": 190
+    },
+    {
       "shard": 11,
-      "plannedSeconds": 146,
-      "specSeconds": 153,
-      "wallSeconds": 200
+      "plannedSeconds": 150,
+      "specSeconds": 149,
+      "wallSeconds": 201
     },
     {
       "shard": 12,
-      "plannedSeconds": 146,
-      "specSeconds": 139,
-      "wallSeconds": 197
+      "plannedSeconds": 152,
+      "specSeconds": 161,
+      "wallSeconds": 211
     },
     {
       "shard": 13,
-      "plannedSeconds": 147,
+      "plannedSeconds": 150,
       "specSeconds": 174,
-      "wallSeconds": 232
+      "wallSeconds": 221
     },
     {
       "shard": 14,
-      "plannedSeconds": 146,
-      "specSeconds": 186,
-      "wallSeconds": 246
+      "plannedSeconds": 150,
+      "specSeconds": 162,
+      "wallSeconds": 220
     },
     {
       "shard": 15,
-      "plannedSeconds": 146,
-      "specSeconds": 135,
-      "wallSeconds": 182
+      "plannedSeconds": 151,
+      "specSeconds": 161,
+      "wallSeconds": 213
     },
     {
       "shard": 16,
-      "plannedSeconds": 147,
-      "specSeconds": 162,
-      "wallSeconds": 207
+      "plannedSeconds": 149,
+      "specSeconds": 164,
+      "wallSeconds": 215
+    },
+    {
+      "shard": 17,
+      "plannedSeconds": 150,
+      "specSeconds": 151,
+      "wallSeconds": 205
     }
   ],
   "criticalPath": [
@@ -110,29 +116,29 @@
       "job": "Does this change need the suite?",
       "steps": {
         "Set up job": 1,
-        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 3,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
         "Run # Merging a pull request runs the whole suite a second time on a tree": 0,
         "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 1,
-        "Run artifacts=$(gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100\" || echo '{\"artifacts\":[]}')": 2,
+        "Run artifacts=$(gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100\" || echo '{\"artifacts\":[]}')": 3,
         "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
         "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
         "Complete job": 0
       }
     },
     {
-      "job": "Browser tests 14/16",
+      "job": "Browser tests 5/17",
       "steps": {
         "Set up job": 1,
         "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
-        "Run ./.github/actions/install": 12,
+        "Run ./.github/actions/install": 11,
         "The split the scope job settled": 0,
-        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 3,
+        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 4,
         "Playwright version": 0,
-        "Install Playwright's browser": 3,
-        "Browser tests": 213,
+        "Install Playwright's browser": 1,
+        "Browser tests": 210,
         "Keep this shard's report": 2,
         "Keep the raw Playwright output when the suite goes red": 0,
-        "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
+        "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 1,
         "Post Run ./.github/actions/install": 0,
         "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
         "Complete job": 0
@@ -142,37 +148,31 @@
       "job": "Browser test report",
       "steps": {
         "Set up job": 1,
-        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
-        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 1,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 3,
+        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
         "Playwright's CLI": 0,
-        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 1,
+        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 2,
         "Run npm install --no-save --no-audit --no-fund --prefix \"$RUNNER_TEMP/pw\" \"$PW\"": 0,
-        "Collect every shard's report": 11,
+        "Collect every shard's report": 10,
         "Every shard reported": 0,
-        "Merge into one report": 6,
-        "Keep the Playwright report": 4,
-        "Build the mockup side-by-side page": 1,
-        "Keep the mockup side-by-side page": 4,
+        "Merge into one report": 2,
+        "Keep the Playwright report": 3,
+        "Build the mockup side-by-side page": 0,
+        "Keep the mockup side-by-side page": 3,
         "Name the tests that passed only on a retry": 0,
         "Regenerate tests/e2e/timings.json": 0,
-        "Price this run's time outside the specs": 1,
-        "Keep the timings for the next run": 2,
-        "Commit the regenerated timings, if main's copy is stale": 0,
-        "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
-        "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
-        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
-        "Complete job": 0
+        "Price this run's time outside the specs": 1
       }
     }
   ],
   "otherJobsEndSeconds": {
-    "Build and boot": 166,
-    "Lint": 81,
-    "Loop harness": 81,
-    "Loop harness on Windows": 48,
-    "Native tests 1/2": 205,
-    "Native tests 2/2": 210,
-    "Secret scan": 69,
-    "Typecheck and tests": 262
+    "Build and boot": 169,
+    "Lint": 112,
+    "Loop harness": 117,
+    "Loop harness on Windows": 35,
+    "Native tests 1/2": 192,
+    "Native tests 2/2": 160,
+    "Secret scan": 83,
+    "Typecheck and tests": 194
   }
 }
