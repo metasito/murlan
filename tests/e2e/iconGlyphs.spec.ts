@@ -60,6 +60,13 @@ test("online screens render every icon glyph, across the states reachable once s
   consoleErrors,
 }) => {
   test.setTimeout(2 * 60_000);
+  // Answered, quickmatch hands back a room at once and the searching screen is gone before a poll sees it.
+  await page.routeWebSocket(/socket\.io/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((message) => {
+      if (!String(message).includes('"room:quickmatch"')) server.send(message);
+    });
+  });
 
   await openApp(page, baseURL!);
   await registerNewAccount(page, uniqueUsername("glyphs"));
