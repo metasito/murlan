@@ -22,6 +22,13 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
 const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
+const besideShards = ciJobs
+  .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job))
+  .flatMap((job) => {
+    const name = /^ {4}name: (.*)$/m.exec(job)?.[1] ?? job.split("\n")[0];
+    const shards = /^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").map((s) => s.trim()) ?? [""];
+    return shards.map((s) => name.replace("${{ matrix.shard }}", s).replace("${{ strategy.job-total }}", String(shards.length)));
+  });
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
 const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
@@ -200,10 +207,8 @@ describe("the split is stable and even", () => {
   });
 
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
-    const beside = ciJobs.filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job));
-
-    assert.ok(beside.length >= 7, `found ${beside.length} jobs beside the shards; the split of ci.yml is wrong`);
-    assert.ok(MAX_SHARDS + beside.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${beside.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
+    assert.ok(besideShards.length >= 8, `found ${besideShards.length} jobs beside the shards; the split of ci.yml is wrong`);
+    assert.ok(MAX_SHARDS + besideShards.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
     const { jobs: peak, run } = readRunCosts().peakConcurrency;
     assert.ok(MAX_CONCURRENT_JOBS <= peak, `no priced run had more than ${peak} jobs at once (run ${run}), so ${MAX_CONCURRENT_JOBS} is unmeasured`);
   });
@@ -217,12 +222,17 @@ describe("the split is stable and even", () => {
 
   test("the measured run priced every job ci.yml starts beside the shards", () => {
     const { run, otherJobsEndSeconds } = readRunCosts();
-    const beside = ciJobs
-      .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job))
-      .map((job) => /^ {4}name: (.*)$/m.exec(job)?.[1]);
-    const unpriced = beside.filter((name) => !name || !(name in otherJobsEndSeconds));
+    const unpriced = besideShards.filter((name) => !(name in otherJobsEndSeconds));
 
     assert.deepEqual(unpriced, [], `run ${run} has no end for these jobs, so nothing holds them to the target`);
+  });
+
+  test("the native suite runs as jest shards, each keeping its own transform cache", () => {
+    const native = ciJobs.find((job) => job.startsWith("  native:")) ?? "";
+
+    assert.match(native, /^ {4}name: Native tests \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/m);
+    assert.match(native, /npm run test:native -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} /);
+    assert.match(native, /key: native-jest-\$\{\{ matrix\.shard \}\}-/);
   });
 
   test("timings.json describes specs that exist", () => {

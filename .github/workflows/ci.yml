@@ -385,11 +385,15 @@ jobs:
   # twice in parallel is cheaper in wall clock than either waiting for the
   # other.
   native:
-    name: Native tests
+    name: Native tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
@@ -403,8 +407,8 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/jest-cache
-          key: native-jest-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
-      - run: npm run test:native -- --cacheDirectory="$RUNNER_TEMP/jest-cache"
+          key: native-jest-${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
+      - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
       - if: ${{ !cancelled() && steps.jest-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -777,7 +781,7 @@ jobs:
     timeout-minutes: 10
     # For the `git push` below. A token is scoped per job, not per step, so this
     # job's pull request runs carry a write token they never reach a use for —
-    # the only step that commits is gated on `push`.
+    # the only step that commits is gated on the weekly cron.
     permissions:
       contents: write
       issues: read
@@ -799,12 +803,14 @@ jobs:
       - if: steps.pw-cli.outputs.cache-hit != 'true'
         run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" "$PW"
 
+      # Not actions/download-artifact: in run 37781391514 it finished all 17 downloads in 11 s, then held the step 175 s more.
       - name: Collect every shard's report
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          path: all-blob-reports
-          pattern: blob-report-*
-          merge-multiple: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --pattern 'blob-report-*' --dir "$RUNNER_TEMP/blobs"
+          mkdir -p all-blob-reports
+          mv "$RUNNER_TEMP"/blobs/*/* all-blob-reports/
 
       # A shard that died before writing its blob leaves a gap that the merged
       # report cannot show, so the count is checked against the matrix rather

@@ -10,8 +10,7 @@
 //
 //   gh run download <runId> --pattern 'blob-report-*' --dir blobs
 //   mv blobs/*/*.zip blobs/            # merge-reports takes one flat directory,
-//                                      # and does not descend; ci.yml gets the same
-//                                      # shape from download-artifact's merge-multiple
+//                                      # and does not descend; ci.yml does the same
 //   npx playwright merge-reports --reporter json blobs > merged.json
 //   node tools/ci/e2e-timings.mjs merged.json
 
