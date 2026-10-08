@@ -145,6 +145,19 @@ describe('the table holding its breath', () => {
     expect(await holdGrey(false)).toEqual([0, 0]);
   });
 
+  it('ramps the grey in over 300 ms and out over 400 ms', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
+    const greyAfter = async (ms: number) => (await wait(ms), mockReaders.grey());
+    await view.rerender({ link: 'dropped' });
+    expect(await greyAfter(Reconnect.greyIn / 2)).toBeCloseTo(Reconnect.grey / 2, 1);
+    expect(await greyAfter(Reconnect.greyIn)).toBe(Reconnect.grey);
+    await view.rerender({ link: 'back' });
+    expect(await greyAfter(Reconnect.greyOut / 2)).toBeCloseTo(Reconnect.grey / 2, 1);
+    expect(await greyAfter(Reconnect.greyOut)).toBe(0);
+    await view.unmount();
+  });
+
   it('applies and removes the grey at once under reduced motion', async () => {
     expect(await holdGrey(true)).toEqual([Reconnect.grey, 0]);
   });
