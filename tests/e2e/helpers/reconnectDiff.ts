@@ -5,8 +5,8 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
 export const JITTER_MS = Math.ceil(1000 / 60);
-/** An onset's offset spans two of a side's frames: the app's real one that stamped it, however long, and one of the mockup's virtual steps. */
-const onsetJitterMs = (appFrameMs: number) => Math.max(JITTER_MS, appFrameMs) + STEP_MS;
+/** An onset's offset spans two of a side's frames: the app's real one that stamped it, up to one dropped frame long, and one of the mockup's virtual steps. */
+const onsetJitterMs = (appFrameMs: number) => Math.min(Math.max(JITTER_MS, appFrameMs), 2 * JITTER_MS) + STEP_MS;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 export const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */

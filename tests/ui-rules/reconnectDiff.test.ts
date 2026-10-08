@@ -70,16 +70,17 @@ test("an onset a frame late on the app's grid against the mockup's virtual one p
   assert.equal(pill(500 + 2 * (1000 / 60) + 1).length, 1);
 });
 
-test("an onset stamped on a long frame may lie anywhere in that frame, and no further", () => {
+test("an onset stamped on a dropped frame may lie anywhere in it, and no further, and a stall fails", () => {
   const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
-  const longFrame = (frames: TraceFrame[]) => {
+  const longFrame = (frames: TraceFrame[], dropped: number) => {
     const at = frames.findIndex((f) => f.onsets.includes("moment:net-net"));
-    return frames.filter((_, i) => i !== at - 1);
+    return frames.filter((_, i) => i < at - dropped || i >= at);
   };
-  const pill = (pillAt: number) =>
-    diffReconnect({ mockup, app: longFrame(side(52_345, RECONNECT_SOUND.app, { pillAt })) }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
+  const pill = (pillAt: number, dropped = 1) =>
+    diffReconnect({ mockup, app: longFrame(side(52_345, RECONNECT_SOUND.app, { pillAt }), dropped) }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
   assert.deepEqual(pill(500 + 2 * (1000 / 60)), []);
   assert.equal(pill(500 + 4 * (1000 / 60)).length, 1);
+  assert.equal(pill(500 + 20 * (1000 / 60), 30).length, 1);
 });
 
 test("a side that never drops fails rather than comparing nothing", () => {
