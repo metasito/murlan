@@ -64,7 +64,8 @@ describe("every browser spec reaches exactly one shard", () => {
     const price = /- name: Price this run's time outside the specs[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
 
     assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
-    assert.match(price, /node tools\/ci\/ci-run-costs\.mjs [^\n]* tests\/e2e\/run-costs\.json\n/);
+    assert.match(price, /run: \|\n\s+rm tests\/e2e\/run-costs\.json\n/);
+    assert.match(price, /node tools\/ci\/ci-run-costs\.mjs [^\n]* tests\/e2e\/run-costs\.json\n\s+cp tests\/e2e\/run-costs\.json "\$RUNNER_TEMP\/run-costs\.json"\n/);
     assert.match(ciYml, /name: e2e-timings\n\s+path: \|\n\s+tests\/e2e\/timings\.json\n\s+tests\/e2e\/run-costs\.json\n/);
     assert.match(step, /git commit [^\n]*-- tests\/e2e\/timings\.json tests\/e2e\/run-costs\.json\n/);
     assert.match(step, /git reset --hard [^\n]*\n\s+node tools\/ci\/e2e-timings\.mjs [^\n]*\n\s+cp "\$RUNNER_TEMP\/run-costs\.json" tests\/e2e\/run-costs\.json\n/);
@@ -203,6 +204,8 @@ describe("the split is stable and even", () => {
 
     assert.ok(beside.length >= 7, `found ${beside.length} jobs beside the shards; the split of ci.yml is wrong`);
     assert.ok(MAX_SHARDS + beside.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${beside.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
+    const { run, peakConcurrentJobs } = readRunCosts();
+    assert.ok(MAX_CONCURRENT_JOBS <= peakConcurrentJobs, `run ${run} ran at most ${peakConcurrentJobs} jobs at once, so ${MAX_CONCURRENT_JOBS} is unmeasured`);
   });
 
   test("no job beside the shards outlasted the target in the measured run", () => {

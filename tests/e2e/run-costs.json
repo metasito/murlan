@@ -3,6 +3,7 @@
   "aroundShardsSeconds": 46,
   "shardOverheadSeconds": 48,
   "shardNoise": 1.37,
+  "peakConcurrentJobs": 24,
   "shards": [
     {
       "shard": 1,

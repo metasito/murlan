@@ -29,12 +29,12 @@ export const TARGET_RUN_SECONDS = 300;
 /** A measured run's own job timings, priced by `tools/ci/ci-run-costs.mjs`. */
 export const RUN_COSTS = path.join(E2E_DIR, "run-costs.json");
 
-/** @returns {{ run: number, aroundShardsSeconds: number, shardOverheadSeconds: number, shardNoise: number, otherJobsEndSeconds: Record<string, number | null> }} */
+/** @returns {{ run: number, aroundShardsSeconds: number, shardOverheadSeconds: number, shardNoise: number, peakConcurrentJobs: number, otherJobsEndSeconds: Record<string, number | null> }} */
 export function readRunCosts(file = RUN_COSTS) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-/** Measured, not the documented 20: run 37776369153 ran 24 jobs at once and none waited more than 4 s. */
+/** Not the documented 20: at most the `peakConcurrentJobs` a measured run reached, which `e2eShardSplit.test.ts` holds it to. */
 export const MAX_CONCURRENT_JOBS = 24;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;

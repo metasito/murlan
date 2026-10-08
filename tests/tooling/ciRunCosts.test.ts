@@ -34,6 +34,7 @@ test("prices a run from its own job timings", () => {
   assert.equal(costs.shardOverheadSeconds, 50);
   assert.equal(costs.shardNoise, 1.1);
   assert.deepEqual(costs.otherJobsEndSeconds, { "Native tests": 280, "Secret scan": 70 });
+  assert.equal(costs.peakConcurrentJobs, 4);
 });
 
 test("prices each step of the jobs on the critical path", () => {
@@ -78,7 +79,7 @@ test("refuses a run whose shards did not all pass", () => {
 test("refuses a re-run, whose carried-over jobs keep the first attempt's clock", () => {
   const rerun = jobs.map((j) => ({ ...j, run_attempt: j.name === "Browser test report" ? 2 : 1 }));
 
-  assert.throws(() => runCosts({ run: 7, jobs: rerun, split, measured, files }), /run 7 spans attempts 1, 2/);
+  assert.throws(() => runCosts({ run: 7, jobs: rerun, split, measured, files }), /run 7 spans attempts 1, 2.*Re-run all jobs/);
 });
 
 test("refuses a run missing a shard the matrix had", () => {

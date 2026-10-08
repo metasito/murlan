@@ -35,7 +35,7 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     return found;
   };
   const attempts = [...new Set(jobs.map((j) => j.run_attempt ?? 1))].sort();
-  if (attempts.length > 1) throw new Error(`run ${run} spans attempts ${attempts.join(", ")}; a re-run's clock is not one run's`);
+  if (attempts.length > 1) throw new Error(`run ${run} spans attempts ${attempts.join(", ")}; a re-run's clock is not one run's, so price it after Re-run all jobs`);
   const shardJobs = jobs.filter((j) => SHARD.test(j.name));
   const total = Number(SHARD.exec(shardJobs[0]?.name ?? "")?.[2] ?? 0);
   if (total === 0 || shardJobs.length !== total) {
@@ -69,7 +69,13 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
   // heavier prices would shrink by exactly the staleness.
   const meanSpecSeconds = shards.reduce((sum, s) => sum + s.specSeconds, 0) / total;
   const lastShard = shardJobs.reduce((a, b) => (seconds(b.completed_at) > seconds(a.completed_at) ? b : a));
-  const stepsOf = (/** @type {any} */ j) => ({
+  const edges = jobs
+    .filter((j) => j.conclusion !== "skipped")
+    .flatMap((j) => [[seconds(j.started_at), 1], [seconds(j.completed_at ?? now), -1]])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let running = 0;
+  const peakConcurrentJobs = Math.max(...edges.map(([, step]) => (running += step)));
+  const stepsOf =(/** @type {any} */ j) => ({
     job: j.name,
     steps: Object.fromEntries(
       (j.steps ?? []).filter((s) => s.started_at).map((s) => [s.name, Math.round(seconds(s.completed_at ?? now) - seconds(s.started_at))])
@@ -81,6 +87,7 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     aroundShardsSeconds: Math.round(scopeEnd - start + reportEnd - lastShardEnd),
     shardOverheadSeconds,
     shardNoise: up2((lastShardEnd - scopeEnd - shardOverheadSeconds) / meanSpecSeconds),
+    peakConcurrentJobs,
     shards,
     criticalPath: [byName(SCOPE), lastShard, report].map(stepsOf),
     otherJobsEndSeconds: Object.fromEntries(

@@ -871,6 +871,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SPLIT: ${{ needs.scope.outputs.timings }}
         run: |
+          rm tests/e2e/run-costs.json
           printf '%s' "$SPLIT" > "$RUNNER_TEMP/split.json"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
           node tools/ci/ci-run-costs.mjs "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/split.json" tests/e2e/timings.json tests/e2e/run-costs.json
