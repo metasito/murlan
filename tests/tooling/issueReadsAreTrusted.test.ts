@@ -31,6 +31,7 @@ test("every documented read of an issue's comments keeps only trusted authors'",
 
 test("the scan sees an unfiltered read, wrapped or not", () => {
   assert.equal(untrusted("gh issue view 5 --comments").length, 1);
-  assert.equal(untrusted("gh pr view 5 --json body,comments \\\n  --jq '.comments[]'").length, 1);
+  assert.equal(untrusted("gh pr view 5 \\\n  --json body,comments --jq '.comments[]'").length, 1);
   assert.equal(untrusted(readIssue(5)).length, 0);
+  assert.equal(untrusted(readIssue(5).replace(" --jq", " \\\n  --jq")).length, 0);
 });

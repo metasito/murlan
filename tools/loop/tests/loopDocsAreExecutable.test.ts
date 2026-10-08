@@ -245,15 +245,15 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   // #1261: twelve rounds of asking until it reported nothing were 19% of the ticket; phase D's spec review catches the rest.
   test("phase C asks the completeness check at most twice, then names what is left and goes on", () => {
     const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
-    assert.match(c, /completeness check[\s\S]*at most twice per process\.[^.]*still reports as `FIX-NOTES/);
+    assert.match(c, /completeness check[\s\S]*at most twice per process\.[^.]*still reports as `FIX-NOTES <sha>`\s+under `Completeness left:`/);
     assert.doesNotMatch(c, /until it reports nothing/);
   });
 
   // #1261: 94 minutes of local native re-runs steered by timings that only CI's reporter judges.
-  test("a fix round judges a native budget from CI's run, not from local re-runs", () => {
-    const fix = read(QUEUE).split("### A fix round")[1]?.split("### How to work")[0] ?? "";
-    assert.match(fix, /native timing budget is judged only from CI's run[^.]*at most once/);
-    assert.match(fix, /`CI-RED` and any `FIX-NOTES` comments first[^.]*rule 25's command/);
+  test("phase C judges a native budget from CI's run, not from local re-runs, and a fix round reads its thread by rule 25", () => {
+    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
+    assert.match(work, /native timing budget is judged only from CI's run[^.]*at most once/);
+    assert.match(read(QUEUE), /`CI-RED` and any `FIX-NOTES` comments first[^.]*rule 25's command/);
   });
 
   test("review dispatches its two reviewers together, and a LAND lands in the same process", () => {

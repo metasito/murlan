@@ -101,10 +101,10 @@ test("a local --json run reads each file's case time against its own budget, the
   const json = {
     testResults: [
       { name: path.join(repoRoot, file), assertionResults: [{ duration: ms(2) }, { duration: ms(1.5) }] },
-      { name: path.join(repoRoot, "tests/native/plain.test.tsx"), assertionResults: [{ duration: null }] },
+      { name: path.join(repoRoot, "tests/native/tableNotices.test.tsx"), assertionResults: [{ duration: null }] },
     ],
   };
-  assert.deepEqual(budgetLines(json, project, repoRoot), [`  3.5s of ${seconds}s ${excepted}`, `  0.0s of ${BUDGET_S}s ${project}:tests/native/plain.test.tsx`]);
+  assert.deepEqual(budgetLines(json, project, repoRoot), [`  3.5s of ${seconds}s ${excepted}`, `  0.0s of ${BUDGET_S}s ${project}:tests/native/tableNotices.test.tsx`]);
 });
 
 test("CI runs the budget over the native suite, and nothing else does", () => {

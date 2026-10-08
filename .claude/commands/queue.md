@@ -156,9 +156,6 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
    ```
 
-   A native timing budget is judged only from CI's run: time a file locally at most once, then
-   fix what CI names and push.
-
 5. Post what this round ruled out: each hypothesis on one line, with its evidence.
    `<sha>` is `git rev-parse --short HEAD`, taken after committing the fix:
 
@@ -174,6 +171,8 @@ Then leave through **Leaving C**.
   spanning files, a long log or a file you will not edit goes to one `sonnet` subagent that
   answers in a few lines. A failing check: its summary first, then only the failure you fix.
 - **Watch the check fail first, for the reason you claim** (rule 6).
+- **A native timing budget is judged only from CI's run**: time a file locally at most once, then
+  fix what CI names and push.
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
 - **Scope grows to what you find in its area** (not in a HOLD round): fix it in this diff, add a Definition-of-done box,
@@ -202,7 +201,7 @@ Then leave through **Leaving C**.
 
    Build what it reports partial or missing, failing test first, then ask once more on the new
    diff: at most twice per process. Post what the second answer still reports as `FIX-NOTES <sha>`
-   and go on. Where wrong, check the code, not memory.
+   under `Completeness left:`, and go on. Where wrong, check the code, not memory.
 2. Read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise.
    This does not replace phase D's review.
 3. Then commit the last slice, and run `npm run agent:check`.
