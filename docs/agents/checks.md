@@ -51,7 +51,8 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 ## Running each suite
 
 - **Native renderer** (`jest`, `jest-expo`) runs every suite twice, once with `Platform.OS ===
-  'ios'` and once `'android'` — the only layer that runs app code the way a phone does; the web
+  'ios'` and once `'android'`, except a `*.compiled.test.tsx`, which runs once, under the React
+  Compiler (the `compiled` project, which `related-tests.mjs` never selects) — the only layer that runs app code the way a phone does; the web
   e2e suite runs through `react-native-web`, which resolves a *different* module graph and takes
   the other side of every `Platform.OS` branch. Tests are named `.test.tsx` on purpose: `node
   --test` globs `tests/**/*.test.ts` and must not pick them up — see *Node's TypeScript loader*.
