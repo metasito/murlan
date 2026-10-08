@@ -64,6 +64,12 @@ describe("whether a review covers the code being pushed", () => {
   test("a HANDOFF naming an older head is not", () => {
     assert.equal(handoffFor([{ body: "HANDOFF 9999999\n- [ ] x" }], head), null);
   });
+  // #1268's sessions wrote the sha mid-line, and the strict form dropped the note without a word.
+  test("a HANDOFF naming this head anywhere on its first line is read back", () => {
+    const line = "HANDOFF C (context limit) at abc1234 — the reconnect test is left";
+    assert.deepEqual(handoffFor([{ body: `${line}\n- [ ] x` }], head), { line, notes: ["- [ ] x"] });
+    assert.equal(handoffFor([{ body: "HANDOFF C (context limit) at 9999999\nabc1234" }], head), null);
+  });
 
   // The whole point of the binding: commit again after a review and it stops counting, so there is
   // no way to land a diff the reviewer never saw.

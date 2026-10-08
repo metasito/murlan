@@ -243,14 +243,13 @@ export function reviewFor(comments, head) {
 }
 
 const DOD_CHECK_RE = /^DOD-CHECK\s+([0-9a-f]{7,40})\b/m;
-const HANDOFF_RE = /^HANDOFF\s+([0-9a-f]{7,40})\b/;
 /** @param {{body: string}[]} comments @param {string} head */
 export function handoffFor(comments, head) {
   for (let i = comments.length - 1; i >= 0; i--) {
-    const body = fenceStripped(comments[i].body).trimStart();
-    const m = HANDOFF_RE.exec(body);
-    if (m && covers(head, m[1])) {
-      return { line: m[0].trim(), notes: body.split("\n").slice(1).map((l) => l.trim()).filter(Boolean) };
+    const [first, ...rest] = fenceStripped(comments[i].body).trimStart().split("\n");
+    if (!/^HANDOFF\b/.test(first)) continue;
+    if ((first.match(/\b[0-9a-f]{7,40}\b/g) ?? []).some((sha) => covers(head, sha))) {
+      return { line: first.trim(), notes: rest.map((l) => l.trim()).filter(Boolean) };
     }
   }
   return null;
