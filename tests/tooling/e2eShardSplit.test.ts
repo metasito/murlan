@@ -208,6 +208,16 @@ describe("the split is stable and even", () => {
     assert.deepEqual(over, [], `run ${run}: these ended past ${TARGET_RUN_SECONDS}s, or were still running when it was priced`);
   });
 
+  test("the measured run priced every job ci.yml starts beside the shards", () => {
+    const { run, otherJobsEndSeconds } = readRunCosts();
+    const beside = ciJobs
+      .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job))
+      .map((job) => /^ {4}name: (.*)$/m.exec(job)?.[1]);
+    const unpriced = beside.filter((name) => !name || !(name in otherJobsEndSeconds));
+
+    assert.deepEqual(unpriced, [], `run ${run} has no end for these jobs, so nothing holds them to the target`);
+  });
+
   test("timings.json describes specs that exist", () => {
     const known = specFilesIn(E2E_DIR);
     const stale = Object.keys(readTimings()).filter((f) => !known.includes(f));
