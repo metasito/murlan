@@ -67,6 +67,10 @@ describe("every browser spec reaches exactly one shard", () => {
     assert.match(price, /node tools\/ci\/ci-run-costs\.mjs [^\n]* tests\/e2e\/run-costs\.json\n/);
     assert.match(ciYml, /name: e2e-timings\n\s+path: \|\n\s+tests\/e2e\/timings\.json\n\s+tests\/e2e\/run-costs\.json\n/);
     assert.match(step, /git commit [^\n]*-- tests\/e2e\/timings\.json tests\/e2e\/run-costs\.json\n/);
+    assert.match(step, /git reset --hard [^\n]*\n\s+node tools\/ci\/e2e-timings\.mjs [^\n]*\n\s+cp "\$RUNNER_TEMP\/run-costs\.json" tests\/e2e\/run-costs\.json\n/);
+    assert.ok(ciYml.indexOf(price) > ciYml.indexOf("- name: Regenerate tests/e2e/timings.json"), "the price step runs before this run's timings exist");
+    const commitCron = /github\.event\.schedule == '([^']+)'/.exec(step)?.[1];
+    assert.ok(price.includes(`continue-on-error: \${{ github.event.schedule != '${commitCron}' }}`), "a refused price must red the run that commits it, and only that run");
   });
 
   test("the weekly run that commits the record starts no job the record leaves out", () => {
@@ -298,6 +302,16 @@ describe("the plan prices each spec by its latest green run", () => {
     const guessed = planned({}).shards.length;
     assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
     assert.ok(guessed < light && light < heavy);
+  });
+
+  test("the count prices every measured cost, and refuses a record that leaves no time for specs", () => {
+    const nine = Array.from({ length: 9 }, (_, i) => `s${i}.spec.ts`);
+    const even100 = Object.fromEntries(nine.map((f) => [f, 100]));
+    const costs = { run: 1, aroundShardsSeconds: 40, shardOverheadSeconds: 50, shardNoise: 1.5, otherJobsEndSeconds: {} };
+
+    assert.equal(shardsNeeded(nine, even100, costs), 7);
+    assert.throws(() => shardsNeeded(nine, even100, { ...costs, aroundShardsSeconds: 252, shardOverheadSeconds: 48 }), /run 1 leaves no time/);
+    assert.throws(() => shardsNeeded(nine, even100, { ...costs, shardNoise: 0 }), /run 1 leaves no time/);
   });
 });
 

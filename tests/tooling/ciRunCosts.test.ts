@@ -75,6 +75,12 @@ test("refuses a run whose shards did not all pass", () => {
   assert.throws(() => runCosts({ run: 7, jobs: red, split, measured, files }), /Browser tests 2\/2 .*cancelled/);
 });
 
+test("refuses a re-run, whose carried-over jobs keep the first attempt's clock", () => {
+  const rerun = jobs.map((j) => ({ ...j, run_attempt: j.name === "Browser test report" ? 2 : 1 }));
+
+  assert.throws(() => runCosts({ run: 7, jobs: rerun, split, measured, files }), /run 7 spans attempts 1, 2/);
+});
+
 test("refuses a run missing a shard the matrix had", () => {
   const short = jobs.filter((j) => j.name !== "Browser tests 1/2");
 

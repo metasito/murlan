@@ -866,6 +866,7 @@ jobs:
       # Last but the uploads, because this job's own time up to here is part of what it prices.
       - name: Price this run's time outside the specs
         if: ${{ needs.browser.result == 'success' }}
+        continue-on-error: ${{ github.event.schedule != '17 3 * * 1' }}
         env:
           GH_TOKEN: ${{ github.token }}
           SPLIT: ${{ needs.scope.outputs.timings }}

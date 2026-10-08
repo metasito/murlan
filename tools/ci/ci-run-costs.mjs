@@ -34,6 +34,8 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     if (!found) throw new Error(`run ${run} has no "${name}" job`);
     return found;
   };
+  const attempts = [...new Set(jobs.map((j) => j.run_attempt ?? 1))].sort();
+  if (attempts.length > 1) throw new Error(`run ${run} spans attempts ${attempts.join(", ")}; a re-run's clock is not one run's`);
   const shardJobs = jobs.filter((j) => SHARD.test(j.name));
   const total = Number(SHARD.exec(shardJobs[0]?.name ?? "")?.[2] ?? 0);
   if (total === 0 || shardJobs.length !== total) {

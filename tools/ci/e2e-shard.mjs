@@ -135,6 +135,7 @@ export function medianTimings(runs) {
 export function shardsNeeded(files, timings, costs = readRunCosts()) {
   const total = files.reduce((sum, f) => sum + (timings[f] ?? UNMEASURED_SECONDS), 0);
   const budget = (TARGET_RUN_SECONDS - costs.aroundShardsSeconds - costs.shardOverheadSeconds) / costs.shardNoise;
+  if (!(budget > 0 && Number.isFinite(budget))) throw new Error(`run ${costs.run} leaves no time for specs inside ${TARGET_RUN_SECONDS}s`);
   return Math.max(2, Math.ceil(total / budget));
 }
 
