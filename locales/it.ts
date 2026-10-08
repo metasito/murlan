@@ -453,7 +453,9 @@ export const it: Record<keyof typeof en, string> = {
   "offlineGame.saveDiscardedBody": "Un aggiornamento ha cambiato il modo in cui le partite vengono salvate, quindi la tua partita offline in corso non può essere ripresa.",
 
   // -------------------------------------------------------------- onlineGame.*
-  "onlineGame.reconnecting": "Connessione persa — riconnessione…",
+  "onlineGame.reconnecting": "Riconnessione…",
+  "onlineGame.backOnline": "Di nuovo in linea",
+  "onlineGame.connectionLost": "Connessione persa",
   "onlineGame.connecting": "In attesa del tavolo…",
   "onlineGame.playerLeftTitle": "Partita interrotta",
   "onlineGame.playerLeftBody": "Un giocatore ha abbandonato la partita.",

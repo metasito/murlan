@@ -7,7 +7,7 @@ export interface TraceFrame {
   onsets: string[];
   live: number;
   dropped: number;
-  lamp: { x: number; y: number; level: number | null; flare: number | null; r: number } | null;
+  lamp: { x: number; y: number; level: number | null; flare: number | null; r: number; ph?: number; freeze?: number } | null;
   shake: { x: number; y: number; rotate: number } | null;
   /** Which felt is on screen: the web fallback until Skia has drawn its first frame. */
   felt?: "skia" | "fallback" | null;
@@ -18,6 +18,8 @@ export interface TraceFrame {
   motes: number;
   /** The moth's body, while one crosses the light. */
   moth: { x: number; y: number } | null;
+  /** The grey over the table while the viewer's own link is down, 0 to 1. */
+  grey?: number;
 }
 
 interface Sources {
@@ -30,6 +32,7 @@ interface Sources {
   felt: () => "skia" | "fallback";
   scorePill: () => NonNullable<TraceFrame["scorePill"]>;
   flight: () => number;
+  grey: () => number;
 }
 
 export interface TraceRecorder {
@@ -48,6 +51,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   felt: new Set(),
   scorePill: new Set(),
   flight: new Set(),
+  grey: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -80,6 +84,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       flight: Math.max(0, ...[...sources.flight].map((read) => read())),
       motes: sum(sources.motes),
       moth: last(sources.moth),
+      grey: last(sources.grey) ?? 0,
     });
     requestAnimationFrame(tick);
   };

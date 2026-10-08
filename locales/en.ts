@@ -457,7 +457,9 @@ export const en = {
   "offlineGame.saveDiscardedBody": "An update changed how matches are saved, so your unfinished offline match could not be picked up.",
 
   // -------------------------------------------------------------- onlineGame.*
-  "onlineGame.reconnecting": "Connection lost — reconnecting…",
+  "onlineGame.reconnecting": "Reconnecting…",
+  "onlineGame.backOnline": "Back online",
+  "onlineGame.connectionLost": "Connection lost",
   "onlineGame.connecting": "Waiting for the table…",
   "onlineGame.playerLeftTitle": "Game interrupted",
   "onlineGame.playerLeftBody": "A player has left the game.",

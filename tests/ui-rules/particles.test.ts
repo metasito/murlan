@@ -6,10 +6,9 @@ import {
   STRIDE,
   alpha,
   createParticles,
-  landDust,
-  landingDustCount,
   rgba,
   spawn,
+  landingDust,
   step,
   type Particles,
 } from "../../components/table/particles.ts";
@@ -28,8 +27,10 @@ function mulberry32(seed: number): () => number {
 const DT = 1 / 60;
 const PILE = [457, 222] as const;
 
+const atPile = (cards: number) => ({ catchUp: false, cards, x: PILE[0], y: PILE[1] });
+
 function land(s: Particles, cards: number, seed: number) {
-  const specs = landDust(cards, landingDustCount(cards), PILE[0], PILE[1], mulberry32(seed));
+  const specs = landingDust(atPile(cards), false, 1, 1, mulberry32(seed));
   for (const p of specs) spawn(s, p);
   return specs;
 }
@@ -59,7 +60,8 @@ describe("the particle module", () => {
   });
 
   test("the dust spreads over 30n + 40 around the pile, 70% of it from the pile's foot", () => {
-    const specs = landDust(4, 4000, PILE[0], PILE[1], mulberry32(7), 0);
+    const rng = mulberry32(7);
+    const specs = Array.from({ length: 120 }, () => landingDust(atPile(4), false, 1, 1, rng)).flat().filter((p) => p.shape !== "soft");
     const w = 4 * 30 + 40;
     for (const p of specs) assert.ok(Math.abs(p.x - PILE[0]) <= w / 2);
     const foot = specs.filter((p) => Math.abs(p.y - (PILE[1] + 46)) <= 3);
@@ -126,5 +128,13 @@ describe("the particle module", () => {
   test("the same seed gives the same trace, and another seed another", () => {
     assert.deepEqual(trace(1258), trace(1258));
     assert.notDeepEqual(trace(1258), trace(1259));
+  });
+
+  test("a landing throws its dust on either layer, except under reduced motion or for a card caught up on the way back", () => {
+    const at = (catchUp: boolean, reduced: boolean) => landingDust({ catchUp, cards: 2, x: 914, y: 444 }, reduced, 2, 2, mulberry32(3));
+    assert.deepEqual(at(false, false), landingDust(atPile(2), false, 1, 1, mulberry32(3)));
+    assert.equal(at(false, false).length, 16 + 5 * 2 + 3);
+    assert.deepEqual(at(true, false), []);
+    assert.deepEqual(at(false, true), []);
   });
 });

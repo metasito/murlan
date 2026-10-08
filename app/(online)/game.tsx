@@ -33,6 +33,8 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
+import { linkPill } from "@/lib/ownLink";
+import { useCatchUp } from "@/lib/useOwnLink";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -70,6 +72,8 @@ export default function OnlineGameScreen() {
     rejoinFailed,
     clearPlayerLeft,
     clearRejoinFailed,
+    retryConnection,
+    ownLink,
   } = useOnlineConnection();
   const {
     matchState,
@@ -94,6 +98,8 @@ export default function OnlineGameScreen() {
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catchUp = useCatchUp(ownLink, gameState);
+  const pill = linkPill(ownLink, connected, !!reconnectNotice?.back);
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -268,15 +274,25 @@ export default function OnlineGameScreen() {
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       error={error}
+      ownLink={ownLink}
+      catchUp={catchUp}
       connection={
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
         // an opponent taking their time.
-        !connected
-          ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
-          : reconnectNotice?.back
-            ? { state: "reconnected", text: reconnectNotice.text }
-            : null
+        pill === "lost"
+          ? {
+              state: "lost",
+              text: t("onlineGame.connectionLost"),
+              action: { label: t("common.retry"), onPress: retryConnection },
+            }
+          : pill === "back"
+            ? { state: "back", text: t("onlineGame.backOnline") }
+            : pill === "reconnecting"
+              ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
+              : pill === "reconnected" && reconnectNotice
+                ? { state: "reconnected", text: reconnectNotice.text }
+                : null
       }
       autoPassed={autoPassed}
       endMatchVote={

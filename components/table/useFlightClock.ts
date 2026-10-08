@@ -12,10 +12,10 @@ export interface FlightSpec {
   contact: number;
   end: number;
 }
-export interface LandingPayload { tier: ImpactTier; cards: number; x: number; y: number; flush: boolean; heavy: boolean; mine: boolean; pulses: readonly PulseStep[] }
+export interface LandingPayload { tier: ImpactTier; cards: number; x: number; y: number; flush: boolean; heavy: boolean; mine: boolean; catchUp: boolean; pulses: readonly PulseStep[] }
 /** `key`: the play whose contact this is. */
 export interface LandingSignal extends LandingPayload { key: string; seq: number; at: number }
-export const NO_LANDING: LandingSignal = { key: "", seq: 0, at: 0, tier: "ordinary", cards: 0, x: 0, y: 0, flush: false, heavy: false, mine: false, pulses: [] };
+export const NO_LANDING: LandingSignal = { key: "", seq: 0, at: 0, tier: "ordinary", cards: 0, x: 0, y: 0, flush: false, heavy: false, mine: false, catchUp: false, pulses: [] };
 
 export function flightSpec(key: string, from: CardFrom[], to: CardSlot[], catchUp: boolean, reduced: boolean): FlightSpec {
   const n = to.length;

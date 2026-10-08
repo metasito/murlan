@@ -4,6 +4,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { Dust } from "../../lib/tokens.ts";
+import type { LandingPayload } from "./useFlightClock.ts";
 import { MOTES } from "./air.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
@@ -116,7 +117,7 @@ export function alpha(f: Float32Array, o: number): number {
   return Math.min(1, (f[o + P.life] / f[o + P.max]) * 1.5) * f[o + P.a];
 }
 
-export function landingDustCount(cards: number): number {
+function landingDustCount(cards: number): number {
   "worklet";
   return 16 + 5 * cards;
 }
@@ -125,7 +126,7 @@ const TAU = Math.PI * 2;
 const PILE_FOOT = 46;
 
 /** A landing of `cards` around the pile's centre: 70% thrown outward along the felt from its foot, and soft puffs. */
-export function landDust(cards: number, count: number, x0: number, y0: number, rng: Rng, puffs = 3): ParticleSpawn[] {
+function landDust(cards: number, count: number, x0: number, y0: number, rng: Rng, puffs = 3): ParticleSpawn[] {
   "worklet";
   const R = (a: number, b: number) => a + rng() * (b - a);
   const w = cards * 30 + 40;
@@ -146,4 +147,11 @@ export function landDust(cards: number, count: number, x0: number, y0: number, r
     out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(0.7, 1.1), size: R(10, 18), col: Dust.puff, shape: "soft" });
   }
   return out;
+}
+
+/** The dust a landing throws on either platform's layer, scaled by `sx`/`sy`: none under reduced motion, nor for a card caught up on the way back. */
+export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | "y">, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
+  "worklet";
+  if (reduced || l.catchUp) return [];
+  return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
 }

@@ -4,6 +4,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { activate } from './tapHelpers';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -236,6 +237,8 @@ describe('the turn pill', () => {
     ['offline', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot, true],
     ['reconnected', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot, false],
     ['reconnecting', Colors.goldBorder, Colors.textMuted, Colors.gold, true],
+    ['back', Colors.onlineEdge, Colors.onlineInk, Colors.onlineDot, true],
+    ['lost', Colors.offlineEdge, Colors.offlineInk, Colors.offlineDot, true],
   ] as const) {
     it(`carries the connection, ${state}, in place of the seat and its count`, async () => {
       const r = await render(connected(state, active));
@@ -278,6 +281,57 @@ describe('the turn pill', () => {
     await r.unmount();
   });
 
+  it('offers Riprova on a lost connection as one button, the whole pill its target', async () => {
+    const retry = jest.fn();
+    const r = await render(
+      <TurnChip seconds={30} active resetKey="t" scale={S} lit chipText="Your turn" spokenSeat=""
+        connection={{ state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: retry } }} />
+    );
+    const button = screen.getByRole('button', { name: 'Connessione persa, Riprova' });
+    const key = StyleSheet.flatten(screen.getByTestId('turn-chip-retry', { includeHiddenElements: true }).props.style);
+    expect(key).toMatchObject({ backgroundColor: Colors.gold, color: Colors.badgeInk });
+    expect(screen.getByText('Riprova', { includeHiddenElements: true })).toBeTruthy();
+    expect(StyleSheet.flatten(button.props.style).minHeight).toBeGreaterThanOrEqual(44);
+    await fireEvent.press(button);
+    expect(retry).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
+  it('holds a frozen clock at its count, and runs on from there', async () => {
+    const chip = (frozen: boolean) => (
+      <TurnChip seconds={30} active frozen={frozen} resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" />
+    );
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const r = await render(chip(false));
+    await tick(5);
+    expect(count()).toBe(25);
+    await r.rerender(chip(true));
+    await tick(10);
+    expect(count()).toBe(25);
+    await r.rerender(chip(false));
+    await tick(1);
+    expect(count()).toBe(24);
+    await r.unmount();
+  });
+
+  it('a clock held once it has run out stays at zero and expires once', async () => {
+    const expire = jest.fn();
+    const chip = (frozen: boolean) => (
+      <TurnChip seconds={2} active frozen={frozen} resetKey="t" scale={S} lit chipText="Your turn" spokenSeat="" onExpire={expire} />
+    );
+    const count = () => screen.getByTestId('turn-chip-count', { includeHiddenElements: true }).props.children;
+    const r = await render(chip(false));
+    await tick(2);
+    expect(count()).toBe(0);
+    expect(expire).toHaveBeenCalledTimes(1);
+    await r.rerender(chip(true));
+    await r.rerender(chip(false));
+    await tick(3);
+    expect(count()).toBe(0);
+    expect(expire).toHaveBeenCalledTimes(1);
+    await r.unmount();
+  });
+
   it('keeps the offline table on its clock when the device goes offline', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
@@ -309,6 +363,62 @@ describe('the turn pill', () => {
     await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
     await act(async () => fireEvent.press(knob));
     expect(live()).toBe('assertive');
+    await r.unmount();
+  });
+
+  it('takes the offline note back from the pill off the table once its own turn pill returns through focus mode', async () => {
+    const hidden = { includeHiddenElements: true };
+    const table = (ownLink: 'up' | 'reconnecting') => (
+      <SettingsProvider>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} ownLink={ownLink}
+            connection={ownLink === 'reconnecting' ? { state: 'reconnecting', text: 'Riconnessione…' } : null} />
+          <OfflineBanner />
+        </SafeAreaProvider>
+      </SettingsProvider>
+    );
+    const r = await render(table('up'));
+    const live = () => screen.getAllByTestId('offline-banner', hidden).at(-1)!.props.accessibilityLiveRegion;
+    await act(async () => mockNetListeners.forEach((l) => l({ isConnected: false })));
+    const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
+    await act(async () => fireEvent.press(knob));
+    await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
+    await act(async () => fireEvent.press(knob));
+    expect(live()).toBe('assertive');
+    await r.rerender(table('reconnecting'));
+    expect(live()).toBe('none');
+    await r.unmount();
+  });
+
+  it('brings the turn pill back through focus mode while the viewer is not online, so Riprova stays in reach', async () => {
+    const hidden = { includeHiddenElements: true };
+    const lost = { state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: noop } } as const;
+    const neverUp = { state: 'reconnecting', text: 'Riconnessione…' } as const;
+    const table = (ownLink: 'up' | 'dropped' | 'lost', connection: typeof lost | typeof neverUp | null = ownLink === 'lost' ? lost : null) => (
+      <SettingsProvider>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop}
+            ownLink={ownLink} connection={connection} />
+        </SafeAreaProvider>
+      </SettingsProvider>
+    );
+    const r = await render(table('up'));
+    const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
+    await act(async () => fireEvent.press(knob));
+    await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
+    await act(async () => fireEvent.press(knob));
+    const stack = () => screen.getByTestId('game-hud-stack', hidden);
+    const reach = async () => {
+      await act(async () => jest.advanceTimersByTime(16));
+      return [stack().props.pointerEvents, (getAnimatedStyle(stack()) as { opacity: number }).opacity];
+    };
+    expect(await reach()).toEqual(['none', 0]);
+    await r.rerender(table('dropped'));
+    expect(await reach()).toEqual(['none', 0]);
+    await r.rerender(table('lost'));
+    expect(await reach()).toEqual(['box-none', 1]);
+    await r.rerender(table('up', neverUp));
+    expect(await reach()).toEqual(['box-none', 1]);
     await r.unmount();
   });
 

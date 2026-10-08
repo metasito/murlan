@@ -1,12 +1,12 @@
 # Bundle size report
 
-Generated: 2026-09-28
+Generated: 2026-10-07
 
 Regenerate with `node scripts/bundle-report.mjs > docs/BUNDLE.md` after adding/removing assets or dependencies.
 
 ## Assets (`assets/`)
 
-Total: **8.85 MB** across 48 files.
+Total: **8.86 MB** across 49 files.
 
 | File | Size |
 |---|---|
@@ -39,14 +39,15 @@ Total: **8.85 MB** across 48 files.
 | assets/images/cards/queen_of_spades.png | 18.2 KB |
 | assets/sounds/manche_lost.mp3 | 17.9 KB |
 | assets/images/cards/queen_of_diamonds.png | 16.4 KB |
+| assets/sounds/reconnected.mp3 | 14.8 KB |
 | assets/sounds/turn.mp3 | 14.8 KB |
 | assets/sounds/exchange.mp3 | 14.3 KB |
 | assets/sounds/combo.mp3 | 13.8 KB |
 | assets/sounds/round_start.mp3 | 9.5 KB |
 | assets/music/README.md | 6.7 KB |
 | assets/sounds/select.mp3 | 6.2 KB |
+| assets/sounds/README.md | 6.1 KB |
 | assets/images/android-icon-background.png | 6.1 KB |
-| assets/sounds/README.md | 5.9 KB |
 | assets/sounds/pass.mp3 | 5.7 KB |
 | assets/sounds/play.mp3 | 5.7 KB |
 | assets/sounds/round_win.mp3 | 4.6 KB |
@@ -111,7 +112,7 @@ Total: **121.31 MB** across 50 declared dependencies.
 | compression | 83.2 KB |
 | expo-system-ui | 82.0 KB |
 | express | 73.7 KB |
-| @socket.io/postgres-adapter | 61.8 KB |
+| @socket.io/postgres-adapter | 62.5 KB |
 | react-native-turbo-haptics | 59.4 KB |
 | expo-dev-client | 55.6 KB |
 | connect-pg-simple | 23.8 KB |

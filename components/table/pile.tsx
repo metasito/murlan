@@ -712,6 +712,7 @@ export function usePileFlight({
       flush: thrown.emptiedHand,
       heavy: thrown.heavy,
       mine: thrown.dir === "bottom",
+      catchUp,
       pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };

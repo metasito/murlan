@@ -111,6 +111,8 @@ import { PassaButton } from "@/components/table/actions";
 import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
+import { useLinkHold } from "@/components/table/useLinkHold";
+import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
@@ -175,6 +177,7 @@ const VOTE_BELOW_PILL = 7;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
+const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
  * The turn chip while the opening gate holds the table. Online the deadline is
  * the server's and keeps running under the hold, so the countdown rides over it
@@ -315,6 +318,8 @@ export interface GameTableProps {
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
   catchUp?: boolean;
+  /** The viewer's own link; anything but `up` holds the table (#1268). */
+  ownLink?: OwnLink;
   /**
    * Full-screen layers above the table (game over, error toasts, waiting states).
    *
@@ -358,6 +363,7 @@ export function GameTable({
   endMatchVote = null,
   connection,
   catchUp = false,
+  ownLink = "up",
   overlays,
   tableCovered = false,
 }: GameTableProps) {
@@ -435,7 +441,10 @@ export function GameTable({
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
-  useTableClaim(!focusMode && !tableCovered);
+  const ownPill = connection?.state === "reconnecting" || connection?.state === "lost" || connection?.state === "back";
+  const stackFocused = focusMode && !ownPill;
+  const stackFadeStyle = useFocusFade(stackFocused);
+  useTableClaim(!stackFocused && !tableCovered);
 
   // ── Derived view of the game ────────────────────────────────────────────────
 
@@ -832,6 +841,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
+  const { greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -981,7 +991,7 @@ export function GameTable({
       includeNewRound: true,
       announcementHolds,
     })
-      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}` }
+      ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}`, held: clockHeld }
       : undefined;
 
   const startCardDue = !gameState.firstPlayMade && !!gameState.startCard;
@@ -1040,9 +1050,9 @@ export function GameTable({
     <View style={[styles.root, WEB_CLIP]} onStartShouldSetResponderCapture={closeScoreElsewhere}>
       {/* Felt — decoration only: one canvas that never carries game
           information (#1244), lit by the one lamp rig. */}
-      <View
+      <Animated.View
         testID="table-felt"
-        style={[StyleSheet.absoluteFill, FELT_Z]}
+        style={[StyleSheet.absoluteFill, FELT_Z, greyStyle]}
         pointerEvents="none"
         {...a11yHidden()}
       >
@@ -1050,7 +1060,7 @@ export function GameTable({
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer rig={rig} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
-      </View>
+      </Animated.View>
 
       {/* The game, and everything a landing displaces. It clips at its own
           moving edge, so the strip the kick uncovers is the cloth behind it
@@ -1066,7 +1076,7 @@ export function GameTable({
           {...a11yGroup(topBarA11yLabel)}
           pointerEvents={focusMode ? "none" : undefined}
           {...behindVeil}
-          style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle]}
+          style={[styles.hudLeft, { left: frame.tableLeft + frame.pad, top: frame.tableTop }, focusFadeStyle, greyStyle]}
         >
           {/* The chip draws the words the group's label already says. */}
           <View {...a11yHidden()}>
@@ -1076,13 +1086,13 @@ export function GameTable({
 
         <Animated.View
           testID="game-hud-stack"
-          pointerEvents={focusMode ? "none" : "box-none"}
+          pointerEvents={stackFocused ? "none" : "box-none"}
           {...clockVeil}
           style={[
             styles.hudCentre,
             { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
             holdingForStart && HELD_CLOCK_Z,
-            focusFadeStyle,
+            stackFadeStyle,
           ]}
         >
           <A11yVeil veil={clockVeil}>
@@ -1101,6 +1111,7 @@ export function GameTable({
                 active={timerActive}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
+                frozen={clockHeld}
                 connection={choiceOpen && connectionNote?.state === "reconnected" ? null : connectionNote}
               />
             </View>
@@ -1108,7 +1119,7 @@ export function GameTable({
         </Animated.View>
 
         {pillStandings && matchScore && (
-          <View {...behindVeil} pointerEvents="box-none" style={styles.pillLayer}>
+          <Animated.View {...behindVeil} testID="score-pill-layer" pointerEvents="box-none" style={[styles.pillLayer, greyStyle]}>
             <ScorePill
               standings={pillStandings}
               target={matchScore.target}
@@ -1116,7 +1127,7 @@ export function GameTable({
               onPress={() => setScoreOpen((open) => !open)}
               anchor={pillAnchor}
             />
-          </View>
+          </Animated.View>
         )}
 
         {endMatchVote && !scoreOpen && (
@@ -1167,27 +1178,29 @@ export function GameTable({
         {/* The cutout's own column. A cutout can never sit on a card, but it sits
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
-        <ControlRail
-          veiled={behindCoverOnly}
-          width={frame.rail}
-          topPad={frame.tableTop}
-          bottomPad={frame.tableBottom}
-          top={
-            <RailKnob
-              onPress={() => setSettingsOpen((open) => !open)}
-              a11yLabel={t("gameTable.settingsA11yLabel")}
-              size={knobSize}
-              expanded={settingsOpen}
-            >
-              <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
-            </RailKnob>
-          }
-          bottom={
-            <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
-              {railExtra}
-            </Animated.View>
-          }
-        />
+        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, greyStyle]}>
+          <ControlRail
+            veiled={behindCoverOnly}
+            width={frame.rail}
+            topPad={frame.tableTop}
+            bottomPad={frame.tableBottom}
+            top={
+              <RailKnob
+                onPress={() => setSettingsOpen((open) => !open)}
+                a11yLabel={t("gameTable.settingsA11yLabel")}
+                size={knobSize}
+                expanded={settingsOpen}
+              >
+                <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
+              </RailKnob>
+            }
+            bottom={
+              <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
+                {railExtra}
+              </Animated.View>
+            }
+          />
+        </Animated.View>
 
         {settingsOpen && (
           <GameSettingsSheet
@@ -1228,7 +1241,7 @@ export function GameTable({
             platform. It cannot have `accessible` either — that would collapse the
             PASSA/GIOCA buttons and every card underneath into one unreachable leaf.
             Players get the same sentence from the A11yStatus node above. */}
-        <View
+        <Animated.View
           testID="game-table"
           {...harnessState({ tableState: tableA11yLabel, dealing: String(deal.dealing) })}
           {...behindVeil}
@@ -1246,6 +1259,7 @@ export function GameTable({
               // the drawn table stays centred rather than growing one gap.
               bottom: frame.surplus,
             },
+            greyStyle,
           ]}
         >
           <A11yVeil veil={behindVeil}>
@@ -1472,7 +1486,7 @@ export function GameTable({
             </Animated.View>
           </Animated.View>
           </A11yVeil>
-        </View>
+        </Animated.View>
 
 
         {rematchPrompt?.visible && (

@@ -523,6 +523,25 @@ export const Motion = {
   beaten: 280,
 } as const;
 
+/** The viewer's own drop: the lantern mockup's `reconnect` chapter, `grayTo` and `net()` (#1268). */
+export const Reconnect = {
+  grey: 0.85,
+  /** Brightness falls by this much of the grey: `brightness(1 − 0.25g)`. */
+  darken: 0.25,
+  greyIn: 300,
+  greyOut: 400,
+  pillAfter: 500,
+  back: 1300,
+  /**
+   * Still down this long, the table gives up and offers Riprova. A socket.io drop is noticed up to
+   * a ping timeout late, and the server holds the seat for 60 s (docs/DISCONNECT-POLICY.md), so a
+   * longer wait leaves Riprova only a seat already taken over.
+   */
+  giveUp: 15_000,
+  lamp: 0.55,
+  lampRate: 1,
+} as const;
+
 /**
  * How long `step` runs for this player.
  *

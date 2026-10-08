@@ -32,6 +32,9 @@ export type NoticeSelector = keyof typeof MOCKUP;
 /** The HUD combination pill's box before plan 5, in points at scale 1, until its task moves it to the mockup. */
 const TABLE_CHIP = { padX: 11, gapX: 7, font: 9, tracking: 1.5, strongTracking: 0.6 } as const;
 
+/** The turn pill's Riprova key, `#turn u` in the mockup's px. */
+export const NOTICE_KEY = { padX: 7, padY: 3, radius: 8, tracking: 1 } as const;
+
 const MOCKUP_STAGE_H = 402;
 const RISE = 6;
 const DOT = 6;

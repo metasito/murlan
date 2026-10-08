@@ -40,6 +40,8 @@ import {
 } from "@/lib/game/sharedGameFlow";
 import type { BotPersonalityId } from "@/lib/game/botPersonalities";
 import { LADDER_KEY } from "@/lib/ladderQuery";
+import { useOwnLink } from "@/lib/useOwnLink";
+import type { OwnLink } from "@/lib/ownLink";
 
 export type RoomState = WireRoomState;
 
@@ -154,6 +156,10 @@ interface OnlineGameContextValue {
    * played.
    */
   clearRejoinFailed: () => void;
+  /** Drops whatever backoff the socket is in and connects now; the `connect` handler rejoins as on any reconnect. */
+  retryConnection: () => void;
+  /** The viewer's own link as the table shows it (`lib/ownLink.ts`). */
+  ownLink: OwnLink;
 }
 
 /**
@@ -176,6 +182,8 @@ type ConnectionSlice = Pick<
   | "clearError"
   | "clearPlayerLeft"
   | "clearRejoinFailed"
+  | "retryConnection"
+  | "ownLink"
 >;
 type RoomSlice = Pick<
   OnlineGameContextValue,
@@ -341,6 +349,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [turnDeadline, setTurnDeadline] = useState<TurnDeadline>(NO_TURN_DEADLINE);
 
   const { socket } = useSocket();
+  const ownLink = useOwnLink(socket);
 
   // Listeners attached to a socket that is already connected have no `connect`
   // left to hear, so anything holding this as its own state has to seed it by
@@ -1044,6 +1053,9 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const clearError = useCallback(() => setError(null), []);
   const clearPlayerLeft = useCallback(() => setPlayerLeft(false), []);
   const clearRejoinFailed = useCallback(() => setRejoinFailed(false), []);
+  const retryConnection = useCallback(() => {
+    socket?.disconnect().connect();
+  }, [socket]);
 
   // One memo per slice, each over only its own state. Two slices sharing a
   // memo, or a dep list reaching past its own slice, is a split that passes
@@ -1059,8 +1071,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       clearError,
       clearPlayerLeft,
       clearRejoinFailed,
+      retryConnection,
+      ownLink,
     }),
-    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed]
+    [connected, error, reconnectNotice, playerLeft, rejoinFailed, clearError, clearPlayerLeft, clearRejoinFailed, retryConnection, ownLink]
   );
 
   const roomValue = useMemo(

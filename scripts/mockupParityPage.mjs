@@ -52,7 +52,7 @@ export function findMoments(input) {
 /** The failure field each chart in the page's SERIES marks. */
 const CHART_FIELDS = {
   live: "live", dropped: "dropped", motes: "air", "moth x": "moth", "lamp x": "lamp", "lamp y": "lamp",
-  level: "level", flare: "flare", shake: "shake", scorePill: "scorePill",
+  level: "level", flare: "flare", shake: "shake", scorePill: "scorePill", grey: "grey", "lamp phase": "freeze",
 };
 
 export function buildPage(moments, out) {
@@ -103,6 +103,7 @@ svg{background:#111814;border:1px solid #2a332e;margin:4px 8px 4px 0}svg text{fi
     level: (f) => f.lamp && f.lamp.level, flare: (f) => f.lamp && f.lamp.flare,
     shake: (f) => f.shake && Math.hypot(f.shake.x, f.shake.y),
     scorePill: (f) => f.scorePill && f.scorePill.w,
+    grey: (f) => f.grey, "lamp phase": (f) => f.lamp && f.lamp.ph,
   };
   function chart(name, sides, read, span, fails) {
     const W = 280, H = 90, pts = {};

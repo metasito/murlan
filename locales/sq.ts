@@ -460,7 +460,9 @@ export const sq: Record<keyof typeof en, string> = {
   "offlineGame.saveDiscardedBody": "Një përditësim ndryshoi mënyrën si ruhen ndeshjet, prandaj ndeshja jote offline e papërfunduar nuk mund të vazhdohet.",
 
   // -------------------------------------------------------------- onlineGame.*
-  "onlineGame.reconnecting": "Lidhja u humb — po rilidhet…",
+  "onlineGame.reconnecting": "Po rilidhet…",
+  "onlineGame.backOnline": "Sërish në linjë",
+  "onlineGame.connectionLost": "Lidhja u humb",
   "onlineGame.connecting": "Në pritje të tavolinës…",
   "onlineGame.playerLeftTitle": "Loja u ndërpre",
   "onlineGame.playerLeftBody": "Një lojtar u largua nga loja.",

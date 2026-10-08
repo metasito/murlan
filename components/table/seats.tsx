@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
@@ -231,6 +231,9 @@ const RING_PING_SCALE = 1.45;
 const RING_PULSE_MS = 1000;
 const RING_PULSE_LOW = 0.6;
 
+/** `held` stops the sweep where it stands, and it runs on from there once released. */
+export type SeatCountdown = { seconds: number; resetKey: string; held?: boolean };
+
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
  * the same window the viewer's own chip counts down, so it is armed by the
@@ -241,11 +244,13 @@ function CountdownRing({
   size,
   seconds,
   resetKey,
+  held = false,
   scale,
 }: {
   size: number;
   seconds: number;
   resetKey: string;
+  held?: boolean;
   scale: number;
 }) {
   const stroke = RING_STROKE * scale;
@@ -255,13 +260,21 @@ function CountdownRing({
   const urgent = useSharedValue(0);
   const pulse = useSharedValue(1);
   const reduceMotion = usePrefersReducedMotion();
+  const ran = useRef({ clock: "", ms: 0 });
 
   useEffect(() => {
-    swept.value = 0;
-    urgent.value = 0;
-    pulse.value = 1;
+    const clock = `${resetKey}|${seconds}`;
+    if (ran.current.clock !== clock) {
+      ran.current = { clock, ms: 0 };
+      swept.value = 0;
+      urgent.value = 0;
+      pulse.value = 1;
+    }
+    if (held) return;
+    const since = Date.now();
+    const leftMs = Math.max(seconds * 1000 - ran.current.ms, 0);
     const urgentFor = urgentThresholdSeconds(seconds);
-    const calmMs = Math.max(seconds - urgentFor, 0) * 1000;
+    const calmMs = Math.max(Math.max(seconds - urgentFor, 0) * 1000 - ran.current.ms, 0);
     // The delay is the clock itself, not motion: under the system's reduced
     // motion Reanimated would skip it and turn the ring red at once.
     urgent.value = withDelay(
@@ -270,20 +283,25 @@ function CountdownRing({
       ReduceMotion.Never
     );
     if (!reduceMotion) {
-      swept.value = withTiming(1, { duration: seconds * 1000, easing: Easing.linear });
+      swept.value = withTiming(1, { duration: leftMs, easing: Easing.linear });
       const dim = { duration: RING_PULSE_MS / 2, easing: Easing.inOut(Easing.sin) };
       pulse.value = withDelay(
         calmMs,
-        withRepeat(withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)), urgentFor),
+        withRepeat(
+          withSequence(withTiming(RING_PULSE_LOW, dim), withTiming(1, dim)),
+          Math.ceil(Math.min(urgentFor * 1000, leftMs) / RING_PULSE_MS)
+        ),
         ReduceMotion.Never
       );
     }
     return () => {
+      ran.current.ms += Date.now() - since;
       cancelAnimation(swept);
       cancelAnimation(urgent);
       cancelAnimation(pulse);
+      pulse.value = 1;
     };
-  }, [resetKey, seconds, reduceMotion, swept, urgent, pulse]);
+  }, [resetKey, seconds, held, reduceMotion, swept, urgent, pulse]);
 
   // Each half of the ring turns out of its own clip, clockwise from twelve
   // o'clock: a transform the compositor runs, where an animated stroke prop
@@ -370,7 +388,7 @@ function SeatRing({
   finishPos?: number;
   scale: number;
   /** The turn window, on the seat that is on move. Absent on every other seat. */
-  countdown?: { seconds: number; resetKey: string };
+  countdown?: SeatCountdown;
   /** The felt and this ring are what carry the turn — everything else on the seat is quiet. */
   focusMode?: boolean;
   mark?: SeatMark;
@@ -492,6 +510,7 @@ function SeatRing({
           size={size}
           seconds={countdown.seconds}
           resetKey={countdown.resetKey}
+          held={countdown.held}
           scale={scale}
         />
       )}
@@ -584,7 +603,7 @@ export function TopOppSlot({
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
-  countdown?: { seconds: number; resetKey: string };
+  countdown?: SeatCountdown;
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
@@ -661,7 +680,7 @@ function SeatWho({
   /** The seat's own disconnect countdown, for the whole grace. */
   reconnecting?: { seconds: number; resetKey: string };
   scale: number;
-  countdown?: { seconds: number; resetKey: string };
+  countdown?: SeatCountdown;
   /**
    * Which of the label's edges is pinned to the disc. The top seat has the
    * whole table to spread into and centres; a side seat sits flush against its
@@ -762,7 +781,7 @@ export function SideOppSlot({
   /** The table's own scale — the seat's fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
   /** The turn window, so the seat on move can sweep its own rim. */
-  countdown?: { seconds: number; resetKey: string };
+  countdown?: SeatCountdown;
   /** Cards only: the name, the badges and the card count fall away. */
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */

@@ -28,6 +28,7 @@ import {
   noticeRise,
   noticeTiming,
   mockupPx,
+  NOTICE_KEY,
   panelLine,
   panelParts,
   type KindTone,
@@ -341,6 +342,34 @@ export function NoticeText({
           textAlign: align,
         },
         maxWidth !== undefined && { maxWidth: maxWidth * scale },
+      ]}
+    >
+      {children}
+    </TableText>
+  );
+}
+
+/** A gold key inside the plate's run, naming the action a press on the plate takes. */
+export function NoticeKey({ testID, children }: { testID?: string; children: ReactNode }) {
+  const { box, scale } = useInk("NoticeKey");
+  return (
+    <TableText
+      numberOfLines={1}
+      testID={testID}
+      style={[
+        styles.text,
+        styles.bold,
+        {
+          color: Colors.badgeInk,
+          backgroundColor: Colors.gold,
+          fontSize: box.fontSize,
+          lineHeight: box.lineHeight,
+          letterSpacing: mockupPx(NOTICE_KEY.tracking, scale),
+          paddingHorizontal: mockupPx(NOTICE_KEY.padX, scale),
+          paddingVertical: mockupPx(NOTICE_KEY.padY, scale),
+          borderRadius: mockupPx(NOTICE_KEY.radius, scale),
+          overflow: "hidden",
+        },
       ]}
     >
       {children}
