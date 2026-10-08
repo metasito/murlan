@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import NativeBudgetReporter, { BUDGET_S, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
+import NativeBudgetReporter, { BUDGET_S, budgetLines, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;
@@ -93,6 +93,18 @@ test("each exception names a native file and a project, says why, and grants mor
     assert.ok(why.length > 20, `${key}: no reason`);
     assert.ok(seconds > BUDGET_S && seconds <= MAX_EXCEPTION_S, `${key}: ${seconds}s`);
   }
+});
+
+test("a local --json run reads each file's case time against its own budget, the reporter's way", () => {
+  const [excepted, { seconds }] = Object.entries(exceptions)[0]!;
+  const [project, file] = excepted.split(/:(.*)/s);
+  const json = {
+    testResults: [
+      { name: path.join(repoRoot, file), assertionResults: [{ duration: ms(2) }, { duration: ms(1.5) }] },
+      { name: path.join(repoRoot, "tests/native/plain.test.tsx"), assertionResults: [{ duration: null }] },
+    ],
+  };
+  assert.deepEqual(budgetLines(json, project, repoRoot), [`  3.5s of ${seconds}s ${excepted}`, `  0.0s of ${BUDGET_S}s ${project}:tests/native/plain.test.tsx`]);
 });
 
 test("CI runs the budget over the native suite, and nothing else does", () => {

@@ -1,9 +1,10 @@
 /** The native jest files a change reaches first; ci.yml's native job runs the rest (RULES.md 3). */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { budgetLines } from "../ci/native-budget.mjs";
 
 import { capNear, CODE, listedTests, nearTests } from "./near-tests.mjs";
 
@@ -26,5 +27,15 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const { run, left } = capNear(near);
   console.log(`native:related — ${run.length} near of ${related.length} reached; ci.yml's native job runs the rest`);
   if (left) console.log(left);
-  if (run.length) process.exit(spawnSync(process.execPath, [jest, ...run, "--selectProjects", "ios"], { stdio: "inherit" }).status ?? 1);
+  if (run.length) {
+    const out = path.join(".loop-logs", "native-related.json");
+    mkdirSync(".loop-logs", { recursive: true });
+    rmSync(out, { force: true });
+    const status = spawnSync(process.execPath, [jest, ...run, "--selectProjects", "ios", "--json", `--outputFile=${out}`], { stdio: "inherit" }).status;
+    if (existsSync(out)) {
+      console.log(`native budget — information only, CI's run judges (tools/ci/native-budget.mjs):`);
+      console.log(budgetLines(JSON.parse(readFileSync(out, "utf8")), "ios", process.cwd()).join("\n"));
+    }
+    process.exit(status ?? 1);
+  }
 }

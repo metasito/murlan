@@ -42,6 +42,22 @@ export function overBudget(measured, exceptions = EXCEPTIONS) {
     .filter(({ seconds, budget }) => seconds > budget);
 }
 
+/** @param {{ duration?: number | null }[]} cases */
+const caseSeconds = (cases) => cases.reduce((sum, t) => sum + (t.duration ?? 0), 0) / 1000;
+const keyOf = (project, rootDir, testFilePath) => `${project}:${path.relative(rootDir, testFilePath).split(path.sep).join("/")}`;
+
+/**
+ * The same reading from a local `jest --json` run, printed as information only: timings on a
+ * starved machine swing too far to judge by, so CI's run is the judge (queue.md's fix round).
+ * @param {{ testResults: { name: string, assertionResults: { duration?: number | null }[] }[] }} json
+ */
+export function budgetLines(json, project, rootDir) {
+  return json.testResults.map(({ name, assertionResults }) => {
+    const file = keyOf(project, rootDir, name);
+    return `  ${caseSeconds(assertionResults).toFixed(1)}s of ${EXCEPTIONS[file]?.seconds ?? BUDGET_S}s ${file}`;
+  });
+}
+
 export default class NativeBudgetReporter {
   /** @type {Record<string, number>} */
   measured = {};
@@ -57,11 +73,10 @@ export default class NativeBudgetReporter {
 
   /** @param {any} test @param {any} result */
   onTestResult(test, result) {
-    const project = test.context.config.displayName?.name ?? "default";
-    const file = path.relative(this.rootDir, result.testFilePath).split(path.sep).join("/");
-    const cases = result.testResults.reduce((sum, t) => sum + (t.duration ?? 0), 0) / 1000;
-    this.measured[`${project}:${file}`] = cases;
-    this.outside[`${project}:${file}`] = Math.max(0, result.perfStats.runtime / 1000 - cases);
+    const key = keyOf(test.context.config.displayName?.name ?? "default", this.rootDir, result.testFilePath);
+    const cases = caseSeconds(result.testResults);
+    this.measured[key] = cases;
+    this.outside[key] = Math.max(0, result.perfStats.runtime / 1000 - cases);
   }
 
   /** @param {unknown} _contexts @param {any} results */
