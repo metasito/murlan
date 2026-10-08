@@ -441,7 +441,7 @@ export function GameTable({
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
-  const stackFocused = focusMode && ownLink === "up";
+  const stackFocused = focusMode && (ownLink === "up" || ownLink === "dropped");
   const stackFadeStyle = useFocusFade(stackFocused);
   useTableClaim(!stackFocused && !tableCovered);
 

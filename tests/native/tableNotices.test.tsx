@@ -368,7 +368,7 @@ describe('the turn pill', () => {
 
   it('takes the offline note back from the pill off the table once its own turn pill returns through focus mode', async () => {
     const hidden = { includeHiddenElements: true };
-    const table = (ownLink: 'up' | 'dropped') => (
+    const table = (ownLink: 'up' | 'reconnecting') => (
       <SettingsProvider>
         <SafeAreaProvider initialMetrics={METRICS}>
           <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} ownLink={ownLink} connection={null} />
@@ -384,7 +384,7 @@ describe('the turn pill', () => {
     await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
     await act(async () => fireEvent.press(knob));
     expect(live()).toBe('assertive');
-    await r.rerender(table('dropped'));
+    await r.rerender(table('reconnecting'));
     expect(live()).toBe('none');
     await r.unmount();
   });
@@ -392,7 +392,7 @@ describe('the turn pill', () => {
   it('brings the turn pill back through focus mode while the viewer is not online, so Riprova stays in reach', async () => {
     const hidden = { includeHiddenElements: true };
     const lost = { state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: noop } } as const;
-    const table = (ownLink: 'up' | 'lost') => (
+    const table = (ownLink: 'up' | 'dropped' | 'lost') => (
       <SettingsProvider>
         <SafeAreaProvider initialMetrics={METRICS}>
           <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop}
@@ -410,6 +410,8 @@ describe('the turn pill', () => {
       await act(async () => jest.advanceTimersByTime(16));
       return [stack().props.pointerEvents, (getAnimatedStyle(stack()) as { opacity: number }).opacity];
     };
+    expect(await reach()).toEqual(['none', 0]);
+    await r.rerender(table('dropped'));
     expect(await reach()).toEqual(['none', 0]);
     await r.rerender(table('lost'));
     expect(await reach()).toEqual(['box-none', 1]);
