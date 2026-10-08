@@ -33,6 +33,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
+import { linkPill } from "@/lib/ownLink";
 import { useCatchUp } from "@/lib/useOwnLink";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
@@ -98,6 +99,7 @@ export default function OnlineGameScreen() {
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catchUp = useCatchUp(ownLink, gameState);
+  const pill = linkPill(ownLink, connected, !!reconnectNotice?.back);
 
   // Every hook must run unconditionally, before the `if (!gameState)` guard below.
 
@@ -278,17 +280,17 @@ export default function OnlineGameScreen() {
         // The viewer's own connection outranks another player's notice: a
         // table that has stopped updating is otherwise indistinguishable from
         // an opponent taking their time.
-        ownLink === "lost"
+        pill === "lost"
           ? {
               state: "lost",
               text: t("onlineGame.connectionLost"),
               action: { label: t("common.retry"), onPress: retryConnection },
             }
-          : ownLink === "back"
+          : pill === "back"
             ? { state: "back", text: t("onlineGame.backOnline") }
-            : ownLink === "reconnecting" || (!connected && ownLink === "up")
+            : pill === "reconnecting"
               ? { state: "reconnecting", text: t("onlineGame.reconnecting") }
-              : connected && reconnectNotice?.back
+              : pill === "reconnected" && reconnectNotice
                 ? { state: "reconnected", text: reconnectNotice.text }
                 : null
       }

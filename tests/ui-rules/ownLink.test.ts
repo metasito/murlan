@@ -4,6 +4,7 @@ import {
   NO_CATCH_UP,
   NO_LINK,
   catchingUp,
+  linkPill,
   observeCatchUp,
   observeLink,
   ownLinkAt,
@@ -87,5 +88,19 @@ describe("catching up on the way back", () => {
 
   test("a state arriving while the link is up and never dropped is live", () => {
     assert.deepEqual(walk([["up", before], ["up", next]]), [false, false]);
+  });
+});
+
+describe("the turn pill's connection state", () => {
+  const LINKS: OwnLink[] = ["up", "dropped", "reconnecting", "lost", "back"];
+  const row = (connected: boolean, otherBack: boolean) => LINKS.map((l) => linkPill(l, connected, otherBack));
+
+  test("the viewer's own link outranks another seat's return", () => {
+    assert.deepEqual(row(true, true), ["reconnected", "reconnected", "reconnecting", "lost", "back"]);
+    assert.deepEqual(row(true, false), [null, null, "reconnecting", "lost", "back"]);
+  });
+
+  test("a drop says nothing before the pill's 500 ms, and a socket never up still reads as reconnecting", () => {
+    assert.deepEqual(row(false, true), ["reconnecting", null, "reconnecting", "lost", "back"]);
   });
 });

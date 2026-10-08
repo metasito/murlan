@@ -27,6 +27,15 @@ export function ownLinkAt(edges: LinkEdges, now: number): OwnLink {
 /** The states that hold the table: the grey, the freeze, the stopped clock. */
 export const linkHeld = (link: OwnLink) => link === "dropped" || link === "reconnecting" || link === "lost";
 
+export type LinkPill = "lost" | "back" | "reconnecting" | "reconnected";
+
+/** `connected` is the socket's own flag, so a socket never up still reads as reconnecting; `otherBack` is another seat's return. */
+export function linkPill(link: OwnLink, connected: boolean, otherBack: boolean): LinkPill | null {
+  if (link === "lost" || link === "back" || link === "reconnecting") return link;
+  if (!connected && link === "up") return "reconnecting";
+  return connected && otherBack ? "reconnected" : null;
+}
+
 /** `seen` is the state the table held at the drop; `by` is the first one after it, which brought the missed cards. */
 export type CatchUp = { readonly waiting: boolean; readonly seen: unknown; readonly by: unknown };
 
