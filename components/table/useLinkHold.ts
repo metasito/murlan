@@ -21,21 +21,25 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   const reduceMotion = usePrefersReducedMotion();
   const held = linkHeld(link);
   const grey = useSharedValue(held ? Reconnect.grey : 0);
-  const ramp = useSharedValue({ to: held ? Reconnect.grey : 0, perMs: 0 });
+  const ramp = useSharedValue({ to: held ? Reconnect.grey : 0, perMs: 0, started: true });
   const was = useRef(link);
 
   useEffect(() => {
     const to = held ? Reconnect.grey : 0;
     if (reduceMotion) grey.value = to;
-    ramp.value = { to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut) };
+    ramp.value = { to, perMs: Reconnect.grey / (held ? Reconnect.greyIn : Reconnect.greyOut), started: false };
     rig.freeze(held ? 1 : 0);
   }, [held, reduceMotion, grey, ramp, rig]);
 
   const [step] = useState(() => (frame: FrameInfo) => {
     "worklet";
-    const { to, perMs } = ramp.value;
-    const g = grey.value;
-    if (g === to) return;
+    const { to, perMs, started } = ramp.value;
+    const g = grey.value;    if (g === to) return;
+    // The first frame's interval began before the change, so it only starts the ramp.
+    if (!started) {
+      ramp.value = { to, perMs, started: true };
+      return;
+    }
     const d = perMs * (frame.timeSincePreviousFrame ?? 0);
     grey.value = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
   });
