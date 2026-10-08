@@ -26,12 +26,15 @@ const IOS_ONLY = {
   'pileMountsOnceReduced.test.tsx': PILE_ON_ONE_PLATFORM,
 };
 
+const COMPILED = `${rootDir}/tests/native/**/*.compiled.test.tsx`;
+
 const project = (platform) => ({
   preset: `jest-expo/${platform}`,
   displayName: platform,
   rootDir,
   testMatch: [
     `${rootDir}/tests/native/**/*.test.tsx`,
+    `!${COMPILED}`,
     ...(platform === 'ios' ? [] : Object.keys(IOS_ONLY).map((file) => `!${rootDir}/tests/native/${file}`)),
   ],
   setupFilesAfterEnv: [`${rootDir}/tests/native/setup.ts`],
@@ -45,8 +48,24 @@ const project = (platform) => ({
   transform: { '^.+\\.flac$': require.resolve('jest-expo/src/preset/assetFileTransformer.js') },
 });
 
+// The app ships through the React Compiler and jest-expo's caller leaves it off, so a render count
+// taken in the two projects above is a tree the phone never runs. Asked of Metro's caller flag, as
+// scripts/reactCompilerOptions.mjs does, never configured beside it.
+const compiled = {
+  ...project('ios'),
+  displayName: 'compiled',
+  testMatch: [COMPILED],
+  transform: {
+    ...project('ios').transform,
+    '\\.[jt]sx?$': [
+      'babel-jest',
+      { caller: { name: 'metro', bundler: 'metro', platform: 'ios', isServer: false, isReactServer: false, supportsReactCompiler: true } },
+    ],
+  },
+};
+
 module.exports = {
-  projects: [project('ios'), project('android')],
+  projects: [project('ios'), project('android'), compiled],
   reporters: process.env.CI ? ['default', `${rootDir}/tools/ci/native-budget.mjs`] : ['default'],
   globalSetup: `${rootDir}/tools/ci/preflightMemory.mjs`,
   // A worker holds a whole React Native module graph, and jest's default is one

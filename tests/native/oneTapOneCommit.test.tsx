@@ -20,13 +20,15 @@ const ZERO = { card: 0, hand: 0, seat: 0, pile: 0, table: 0, home: 0, writes: 0 
 const mockCount = { ...ZERO };
 
 jest.mock('@/components/table/hand', () => {
+  const R = jest.requireActual('react') as typeof React;
   const actual = jest.requireActual('@/components/table/hand') as typeof import('@/components/table/hand');
+  const memo = actual.StraightHand as unknown as { type: (p: object) => React.ReactNode; compare?: (a: object, b: object) => boolean };
   return {
     ...actual,
-    StraightHand: (p: Parameters<typeof actual.StraightHand>[0]) => {
+    StraightHand: R.memo((p: object) => {
       mockCount.hand += 1;
-      return actual.StraightHand(p);
-    },
+      return memo.type(p);
+    }, memo.compare),
   };
 });
 
