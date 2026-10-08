@@ -47,10 +47,16 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     if (before === link) return;
     if (linkHeld(link) && !linkHeld(before)) traceOnset("moment", "drop");
     if (PILL_CLASS[before] !== PILL_CLASS[link]) traceOnset("moment", `net-${PILL_CLASS[link]}`);
-    if (link === "lost") rig.setLevel(Reconnect.lamp, Reconnect.lampRate);
-    else if (before === "lost") rig.setLevel(1, Reconnect.lampRate);
     if (link === "back") event([{ kind: "reconnected" }]);
   }, [link, rig]);
+
+  const lost = link === "lost";
+  const dimmed = useRef(false);
+  useEffect(() => {
+    if (dimmed.current === lost) return;
+    dimmed.current = lost;
+    rig.setLevel(lost ? Reconnect.lamp : 1, Reconnect.lampRate);
+  }, [lost, rig]);
 
   useTraceSource(
     "grey",

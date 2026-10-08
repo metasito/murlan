@@ -92,6 +92,25 @@ describe('the table holding its breath', () => {
     await unmount();
   });
 
+  it('dims a table that mounts already given up, and lets it go on the way back', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const { rerender, unmount } = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), {
+      initialProps: { link: 'lost' },
+    });
+    expect(rig.setLevel).toHaveBeenLastCalledWith(Reconnect.lamp, Reconnect.lampRate);
+    await rerender({ link: 'back' });
+    expect(rig.setLevel).toHaveBeenLastCalledWith(1, Reconnect.lampRate);
+    expect(rig.setLevel).toHaveBeenCalledTimes(2);
+    await unmount();
+  });
+
+  it('never touches the lamp level of a table that mounts with its link up', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const { unmount } = await renderHook(() => useLinkHold('up', rig));
+    expect(rig.setLevel).not.toHaveBeenCalled();
+    await unmount();
+  });
+
   it('holds the clock on the way back until the missed cards have landed, however late they come', async () => {
     const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
     const { result, rerender, unmount } = await renderHook(
