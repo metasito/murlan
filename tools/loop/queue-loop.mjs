@@ -1463,6 +1463,7 @@ export function runTicket(
     facts = ticketFacts,
     stallMs = STALL_MS,
     tick = 30_000,
+    killGraceMs = 10_000,
     // A test seam, and not an optional one: every fixture in the suite uses a live ticket number,
     // so a default that reaches `.loop-logs/` has the tests appending to — and deleting — the
     // loop's own record of its nights.
@@ -1659,12 +1660,30 @@ export function runTicket(
     const watchdog = setInterval(() => {
       if (Date.now() - state.lastFactAt <= stallMs) return;
       state.stalled = true;
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      clearInterval(watchdog);
+      // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
+      // `close` from ever firing: 92 min on #1389, 260 on #1268. So the tree, then a deadline.
+      if (process.platform === "win32" && child.pid) {
+        try {
+          execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+        } catch {
+          /* already gone */
+        }
+      } else child.kill("SIGTERM");
+      setTimeout(() => {
+        child.kill("SIGKILL");
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(null);
+      }, killGraceMs).unref();
     }, tick);
     watchdog.unref();
 
-    child.on("close", (status) => {
+    let finished = false;
+    child.on("close", (status) => finish(status));
+    function finish(status) {
+      if (finished) return;
+      finished = true;
       clearInterval(watchdog);
       closePhase();
       // The phase the session was in when it exited: closed here because the session emits no
@@ -1696,7 +1715,7 @@ export function runTicket(
           usage: readUsageSplit(logPath),
         }),
       );
-    });
+    }
   });
 }
 
