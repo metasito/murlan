@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   assignShards,
   filesForShard,
+  MAX_CONCURRENT_JOBS,
   MAX_SHARDS,
   plan,
   readRunCosts,
@@ -172,6 +173,14 @@ describe("the split is stable and even", () => {
     const needed = shardsNeeded(specFilesIn(E2E_DIR), readTimings());
 
     assert.ok(needed <= MAX_SHARDS, `${needed} shards to meet the target, over the ${MAX_SHARDS} allowed`);
+  });
+
+  test("the shards and every job started beside them fit the measured concurrency cap", () => {
+    const jobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
+    const beside = jobs.filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job));
+
+    assert.ok(beside.length >= 7, `found ${beside.length} jobs beside the shards; the split of ci.yml is wrong`);
+    assert.ok(MAX_SHARDS + beside.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${beside.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
   });
 
   test("no job beside the shards outlasted the target in the measured run", () => {

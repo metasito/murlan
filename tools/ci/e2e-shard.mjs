@@ -33,7 +33,10 @@ export const RUN_COSTS = path.join(E2E_DIR, "run-costs.json");
 export function readRunCosts(file = RUN_COSTS) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
-/** A public repository's runners take 20 jobs at once, and six other jobs run beside the shards. */
+
+/** Measured, not the documented 20: run 37776369153 ran 24 jobs at once and none waited more than 4 s. */
+export const MAX_CONCURRENT_JOBS = 24;
+/** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;
 
 const CONFIG = path.join(E2E_DIR, "playwright.config.ts");

@@ -1,101 +1,119 @@
 {
-  "run": 37695638432,
-  "aroundShardsSeconds": 63,
-  "shardOverheadSeconds": 55,
-  "shardNoise": 1.24,
+  "run": 37776369153,
+  "aroundShardsSeconds": 42,
+  "shardOverheadSeconds": 48,
+  "shardNoise": 1.37,
   "shards": [
     {
       "shard": 1,
-      "plannedSeconds": 193,
-      "specSeconds": 174,
-      "wallSeconds": 236
+      "plannedSeconds": 144,
+      "specSeconds": 142,
+      "wallSeconds": 195
     },
     {
       "shard": 2,
-      "plannedSeconds": 194,
-      "specSeconds": 196,
-      "wallSeconds": 249
+      "plannedSeconds": 144,
+      "specSeconds": 87,
+      "wallSeconds": 130
     },
     {
       "shard": 3,
-      "plannedSeconds": 193,
-      "specSeconds": 169,
-      "wallSeconds": 216
+      "plannedSeconds": 144,
+      "specSeconds": 86,
+      "wallSeconds": 125
     },
     {
       "shard": 4,
-      "plannedSeconds": 194,
-      "specSeconds": 175,
-      "wallSeconds": 234
+      "plannedSeconds": 144,
+      "specSeconds": 144,
+      "wallSeconds": 189
     },
     {
       "shard": 5,
-      "plannedSeconds": 194,
-      "specSeconds": 175,
-      "wallSeconds": 224
+      "plannedSeconds": 144,
+      "specSeconds": 154,
+      "wallSeconds": 204
     },
     {
       "shard": 6,
-      "plannedSeconds": 193,
-      "specSeconds": 155,
-      "wallSeconds": 215
+      "plannedSeconds": 144,
+      "specSeconds": 151,
+      "wallSeconds": 205
     },
     {
       "shard": 7,
-      "plannedSeconds": 193,
-      "specSeconds": 205,
-      "wallSeconds": 267
+      "plannedSeconds": 144,
+      "specSeconds": 149,
+      "wallSeconds": 197
     },
     {
       "shard": 8,
-      "plannedSeconds": 193,
-      "specSeconds": 167,
-      "wallSeconds": 218
+      "plannedSeconds": 144,
+      "specSeconds": 149,
+      "wallSeconds": 203
     },
     {
       "shard": 9,
-      "plannedSeconds": 193,
-      "specSeconds": 150,
-      "wallSeconds": 200
+      "plannedSeconds": 143,
+      "specSeconds": 194,
+      "wallSeconds": 247
     },
     {
       "shard": 10,
-      "plannedSeconds": 193,
-      "specSeconds": 199,
-      "wallSeconds": 256
+      "plannedSeconds": 144,
+      "specSeconds": 149,
+      "wallSeconds": 194
     },
     {
       "shard": 11,
-      "plannedSeconds": 194,
-      "specSeconds": 158,
-      "wallSeconds": 201
+      "plannedSeconds": 144,
+      "specSeconds": 191,
+      "wallSeconds": 232
     },
     {
       "shard": 12,
-      "plannedSeconds": 193,
-      "specSeconds": 111,
-      "wallSeconds": 155
+      "plannedSeconds": 144,
+      "specSeconds": 147,
+      "wallSeconds": 194
     },
     {
       "shard": 13,
-      "plannedSeconds": 193,
-      "specSeconds": 172,
-      "wallSeconds": 231
+      "plannedSeconds": 145,
+      "specSeconds": 134,
+      "wallSeconds": 173
     },
     {
       "shard": 14,
-      "plannedSeconds": 193,
-      "specSeconds": 193,
-      "wallSeconds": 256
+      "plannedSeconds": 144,
+      "specSeconds": 156,
+      "wallSeconds": 207
+    },
+    {
+      "shard": 15,
+      "plannedSeconds": 144,
+      "specSeconds": 144,
+      "wallSeconds": 196
+    },
+    {
+      "shard": 16,
+      "plannedSeconds": 144,
+      "specSeconds": 146,
+      "wallSeconds": 189
+    },
+    {
+      "shard": 17,
+      "plannedSeconds": 144,
+      "specSeconds": 157,
+      "wallSeconds": 219
     }
   ],
   "otherJobsEndSeconds": {
-    "Build and boot": 180,
-    "Lint": 104,
-    "Loop harness": 114,
-    "Loop harness on Windows": 50,
-    "Native tests": 275,
-    "Secret scan": 74,
-    "Typecheck and tests": 263
+    "Build and boot": 183,
+    "Lint": 77,
+    "Loop harness": 90,
+    "Loop harness on Windows": 46,
+    "Native tests": 184,
+    "Secret scan": 79,
+    "Typecheck and tests": 270
   }
 }
