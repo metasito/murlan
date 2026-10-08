@@ -310,7 +310,7 @@ describe("the plan prices each spec by its latest green run", () => {
   test("the count prices every measured cost, and refuses a record that leaves no time for specs", () => {
     const nine = Array.from({ length: 9 }, (_, i) => `s${i}.spec.ts`);
     const even100 = Object.fromEntries(nine.map((f) => [f, 100]));
-    const costs = { run: 1, aroundShardsSeconds: 40, shardOverheadSeconds: 50, shardNoise: 1.5, otherJobsEndSeconds: {} };
+    const costs = { run: 1, aroundShardsSeconds: 40, shardOverheadSeconds: 50, shardNoise: 1.5, peakConcurrentJobs: 24, otherJobsEndSeconds: {} };
 
     assert.equal(shardsNeeded(nine, even100, costs), 7);
     assert.throws(() => shardsNeeded(nine, even100, { ...costs, aroundShardsSeconds: 252, shardOverheadSeconds: 48 }), /run 1 leaves no time/);
