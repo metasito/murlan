@@ -60,6 +60,16 @@ test("online screens render every icon glyph, across the states reachable once s
   consoleErrors,
 }) => {
   test.setTimeout(2 * 60_000);
+  // Answered, quickmatch hands back a room at once and the searching screen is gone before a poll
+  // sees it; held past INTENT_ACK_TIMEOUT_MS, it raises an error banner with glyphs of its own.
+  let releaseQuickmatch = () => {};
+  await page.routeWebSocket(/socket\.io/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((message) => {
+      if (String(message).includes('"room:quickmatch"')) releaseQuickmatch = () => server.send(message);
+      else server.send(message);
+    });
+  });
 
   await openApp(page, baseURL!);
   await registerNewAccount(page, uniqueUsername("glyphs"));
@@ -77,7 +87,8 @@ test("online screens render every icon glyph, across the states reachable once s
   await assertAllGlyphsRender(page, "quickmatch — mode list, nothing selected", 5);
   await page.getByText("1 vs 1", { exact: true }).click();
   await expect(page.getByText("Cerco giocatori")).toBeVisible();
-  await assertAllGlyphsRender(page, "quickmatch — mode selected", 6);
+  await assertAllGlyphsRender(page, "quickmatch — mode selected", 2);
+  releaseQuickmatch();
   // Selecting a mode starts matchmaking immediately (quickmatch.tsx
   // handleSelectMode) rather than just toggling a display state, so a full
   // reload is the reliable way back to a known screen — an in-app "cancel"

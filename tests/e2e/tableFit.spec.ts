@@ -320,15 +320,15 @@ test.describe("the offline clock running out", () => {
   test("floats the pass under its own title, and raises no banner over the table", async ({ page, baseURL }) => {
     test.setTimeout(240_000);
     await page.setViewportSize({ width: 844, height: 390 });
+    await page.clock.install();
     await openApp(page, baseURL!);
     await startOfflineGame(page, { playerCount: 4, gameMode: "free_for_all" });
     await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
 
     await waitForAnswerableTurn(page);
+    for (let s = 0; s < OFFLINE_CLOCK_MS / 1000; s++) await page.clock.runFor(1000);
 
-    await expect(page.locator('[data-testid="notice-passFloat"]')).toContainText(AUTO_PASS_TITLE, {
-      timeout: OFFLINE_CLOCK_MS + 20_000,
-    });
+    await expect(page.locator('[data-testid="notice-passFloat"]')).toContainText(AUTO_PASS_TITLE, { timeout: 15_000 });
     // The banner never unmounts; empty, it names nothing.
     await expect(page.locator('[data-testid="notification-banner"]')).not.toContainText(AUTO_PASS_TITLE);
   });

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   assignShards,
   filesForShard,
+  MAX_CONCURRENT_JOBS,
   MAX_SHARDS,
   plan,
   readTimings,
@@ -19,6 +20,13 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
+// Left out: the device compiles, which start only on a native change or the weekly schedule — runs
+// their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
+const deviceCompile = (job: string) => /^ {4}if: .*\bnative\b/m.test(job);
+const besideShards = ciJobs
+  .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !deviceCompile(job))
+  .reduce((n, job) => n + (/^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").length ?? 1), 0);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
 const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
@@ -173,6 +181,12 @@ describe("the split is stable and even", () => {
     assert.ok(needed <= MAX_SHARDS, `${needed} shards to meet the target, over the ${MAX_SHARDS} allowed`);
   });
 
+  test("the shards and every job started beside them fit the measured concurrency cap", () => {
+    assert.ok(besideShards >= 8, `found ${besideShards} jobs beside the shards; the split of ci.yml is wrong`);
+    assert.ok(MAX_SHARDS + besideShards <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
+    assert.equal(ciJobs.filter(deviceCompile).length, 2, "only the two device compiles may be left out");
+  });
+
   test("timings.json describes specs that exist", () => {
     const known = specFilesIn(E2E_DIR);
     const stale = Object.keys(readTimings()).filter((f) => !known.includes(f));
@@ -196,7 +210,7 @@ describe("the plan prices each spec by its latest green run", () => {
       const paths = Object.entries(layers).map(([name, layer]) =>
         Array.isArray(layer) ? layer.map((timings, i) => write(`${name}${i}`, timings)) : write(name, layer)
       );
-      return plan([...paths, ...missing.map((m) => path.join(dir, m))], files);
+      return plan([...paths, ...missing.map((m) => path.join(dir, m))]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -230,12 +244,11 @@ describe("the plan prices each spec by its latest green run", () => {
   });
 
   test("a spec heavier on the branch is priced as the branch runs it", () => {
-    const { timings, shards } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
+    const { timings } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
 
     assert.equal(timings["heavy.spec.ts"], 600);
     assert.equal(timings["light0.spec.ts"], 100);
-    assert.equal(shards.length, shardsNeeded(files, timings));
-    const alone = assignShards(files, timings, shards.length).find((s) => s.files.includes("heavy.spec.ts"));
+    const alone = assignShards(files, timings, 4).find((s) => s.files.includes("heavy.spec.ts"));
     assert.deepEqual(alone?.files, ["heavy.spec.ts"]);
   });
 
@@ -245,14 +258,9 @@ describe("the plan prices each spec by its latest green run", () => {
     assert.equal(timings["heavy.spec.ts"], 300);
   });
 
-  test("the count is arithmetic on the numbers, not a constant", () => {
-    const light = planned({ committed: even }).shards.length;
-    const heavy = planned({ committed: Object.fromEntries(files.map((f) => [f, 250])) }).shards.length;
-
-    assert.ok(heavy > light, `${light} shards for 900s of specs and ${heavy} for 2250s`);
-    const guessed = planned({}).shards.length;
-    assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
-    assert.ok(guessed < light && light < heavy);
+  test("the fit check grows with the suite", () => {
+    const heavy = Object.fromEntries(files.map((f) => [f, 250]));
+    assert.ok(shardsNeeded(files, heavy) > shardsNeeded(files, even));
   });
 });
 

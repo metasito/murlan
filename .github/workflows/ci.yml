@@ -180,12 +180,16 @@ jobs:
             # Main's price is a median; a branch's is its latest run, so a spec it made heavier costs that on the next run.
             runs=$RUNS; [ "$branch" != main ] && runs=1
             group=()
-            for id in $(jq -r --arg b "$branch" --argjson RUNS "$runs" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
-              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | .[-$RUNS:] | .[].id' <<< "$artifacts"); do
-              if gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
-                && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"; then
-                group+=("$RUNNER_TEMP/timings-$id.json")
-              fi
+            ids=$(jq -r --arg b "$branch" --argjson RUNS "$runs" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | .[-$RUNS:] | .[].id' <<< "$artifacts")
+            for id in $ids; do
+              { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
+                && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json" \
+                || : > "$RUNNER_TEMP/timings-$id.json"; } &
+            done
+            wait
+            for id in $ids; do
+              [ -s "$RUNNER_TEMP/timings-$id.json" ] && group+=("$RUNNER_TEMP/timings-$id.json")
             done
             if [ ${#group[@]} -gt 0 ]; then
               layers+=("$(IFS=,; echo "${group[*]}")")
@@ -329,15 +333,6 @@ jobs:
       - name: Install postgresql-client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      # noUncheckedIndexedAccess, scoped to the areas already proven clean —
-      # rides this job rather than a new one, which would bill its own
-      # runner minute for one more `tsc` invocation.
-      - name: Typecheck — noUncheckedIndexedAccess ratchet
-        run: npm run typecheck:strict
-
       - name: Test
         shell: bash
         run: |
@@ -379,11 +374,15 @@ jobs:
   # twice in parallel is cheaper in wall clock than either waiting for the
   # other.
   native:
-    name: Native tests
+    name: Native tests ${{ matrix.shard }}/${{ strategy.job-total }}
     needs: scope
     if: needs.scope.outputs.app == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/install
@@ -397,8 +396,8 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ runner.temp }}/jest-cache
-          key: native-jest-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
-      - run: npm run test:native -- --cacheDirectory="$RUNNER_TEMP/jest-cache"
+          key: native-jest-${{ matrix.shard }}-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
+      - run: npm run test:native -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} --cacheDirectory="$RUNNER_TEMP/jest-cache"
       - if: ${{ !cancelled() && steps.jest-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -478,11 +477,15 @@ jobs:
         with:
           # check:comments diffs each changed file against the merge base.
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      # Here, not beside the tests: that job is the run's slowest without them.
+      - name: Typecheck
+        run: npm run typecheck
+      # noUncheckedIndexedAccess, scoped to the areas already proven clean.
+      - name: Typecheck — noUncheckedIndexedAccess ratchet
+        run: npm run typecheck:strict
       - run: npm run lint
       # Rides this job rather than a new one: it is a second-long file read, and
       # billing a runner minute for it is the whole reason it used to be local —
@@ -710,9 +713,10 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+          key: ${{ runner.os }}-playwright-shell-${{ steps.pw.outputs.version }}
+      # Headless runs launch chromium-headless-shell, never the full browser, which is most of the cache.
       - name: Install Playwright's browser
-        run: npx playwright install chromium
+        run: npx playwright install --only-shell chromium
 
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
@@ -770,10 +774,11 @@ jobs:
     timeout-minutes: 10
     # For the `git push` below. A token is scoped per job, not per step, so this
     # job's pull request runs carry a write token they never reach a use for —
-    # the only step that commits is gated on `push`.
+    # the only step that commits is gated on the weekly cron.
     permissions:
       contents: write
       issues: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -783,13 +788,28 @@ jobs:
       # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
       - name: Playwright's CLI
         run: echo "PW=@playwright/test@$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_ENV"
-
-      - name: Collect every shard's report
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - id: pw-cli
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: all-blob-reports
-          pattern: blob-report-*
-          merge-multiple: true
+          path: ${{ runner.temp }}/pw
+          key: playwright-cli-${{ env.PW }}
+      - if: steps.pw-cli.outputs.cache-hit != 'true'
+        run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" "$PW"
+
+      # Not actions/download-artifact: in run 37781391514 it finished all 17 downloads in 11 s, then held the step 175 s more.
+      - name: Collect every shard's report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Storage answers a burst with `503 Egress is over the account limit` (run 37784854605).
+        run: |
+          for wait in 5 10 20 0; do
+            rm -rf "$RUNNER_TEMP/blobs"
+            gh run download "$GITHUB_RUN_ID" --pattern 'blob-report-*' --dir "$RUNNER_TEMP/blobs" && break
+            [ "$wait" -gt 0 ] || exit 1
+            sleep "$wait"
+          done
+          mkdir -p all-blob-reports
+          mv "$RUNNER_TEMP"/blobs/*/* all-blob-reports/
 
       # A shard that died before writing its blob leaves a gap that the merged
       # report cannot show, so the count is checked against the matrix rather
@@ -807,8 +827,9 @@ jobs:
       - name: Merge into one report
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report.json
-        run: npx --yes -p "$PW" playwright merge-reports --reporter html,json ./all-blob-reports
+        run: $RUNNER_TEMP/pw/node_modules/.bin/playwright merge-reports --reporter html,json ./all-blob-reports
 
+      # Both pages are screenshots, videos and trace zips, which deflate barely shrinks.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -817,6 +838,7 @@ jobs:
           path: playwright-report/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
       - name: Build the mockup side-by-side page
         if: ${{ !cancelled() }}
@@ -830,6 +852,7 @@ jobs:
           path: mockup-parity/
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
 
       - name: Name the tests that passed only on a retry
         env:

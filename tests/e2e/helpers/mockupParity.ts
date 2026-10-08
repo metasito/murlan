@@ -141,6 +141,10 @@ const REST_AIR_TO = REST_AIR_FROM + Math.ceil(15_000 / STEP_MS) * STEP_MS;
 
 /** The mockup's three landings in `trick`, as its sampled frames carry them. */
 const MOCKUP_LANDINGS = [1584, 3040, 5792];
+const TRICK_CHECKPOINTS = [1040, 2496, 4000, 5296, 6704];
+const LANDING_CHECKPOINTS = [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])];
+/** For a moment whose strip no assertion reads, only the side-by-side page: a JPEG a step was most of its time. */
+const glance = (windowMs: number, checkpoints: number[]) => [...Array.from({ length: Math.floor(windowMs / 240) + 1 }, (_, i) => i * 240), ...checkpoints];
 
 const MOMENTS: Moment[] = [
   {
@@ -178,7 +182,8 @@ const MOMENTS: Moment[] = [
     key: "trick",
     windowMs: 6800,
     // Each 750 ms after a hand-off, where the lamp's glide covers under 2 pt a frame.
-    checkpoints: [1040, 2496, 4000, 5296, 6704],
+    checkpoints: TRICK_CHECKPOINTS,
+    stripAt: glance(6800, TRICK_CHECKPOINTS),
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       const hand = handoff;
@@ -201,7 +206,8 @@ const MOMENTS: Moment[] = [
     key: "trick-landings",
     chapter: "trick",
     windowMs: 6992,
-    checkpoints: [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t + 1200])],
+    checkpoints: LANDING_CHECKPOINTS,
+    stripAt: glance(6992, LANDING_CHECKPOINTS),
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       ember = () => {};`,
     appTrigger: pairsTable,
