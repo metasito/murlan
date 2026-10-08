@@ -242,6 +242,20 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
+  // #1261: twelve rounds of asking until it reported nothing were 19% of the ticket; phase D's spec review catches the rest.
+  test("phase C asks the completeness check at most twice, then names what is left and goes on", () => {
+    const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
+    assert.match(c, /completeness check[\s\S]*at most twice per process\.[^.]*still reports as `FIX-NOTES <sha>`\s+under `Completeness left:`/);
+    assert.doesNotMatch(c, /until it reports nothing/);
+  });
+
+  // #1261: 94 minutes of local native re-runs steered by timings that only CI's reporter judges.
+  test("phase C judges a native budget from CI's run, not from local re-runs, and a fix round reads its thread by rule 25", () => {
+    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
+    assert.match(work, /native timing budget is judged only from CI's run[^.]*at most once/);
+    assert.match(read(QUEUE), /`CI-RED` and any `FIX-NOTES` comments first[^.]*rule 25's command/);
+  });
+
   test("review dispatches its two reviewers together, and a LAND lands in the same process", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
     assert.match(d, /two fresh `sonnet` subagents[^.]*dispatched in one\s+message/);
@@ -292,10 +306,11 @@ describe("every subagent brief comes from brief.mjs", () => {
       assert.match(queue(), new RegExp(`brief\\.mjs ${kind}\\b`), kind);
     }
   });
-  test("phase B splits a size:L ticket with three or more independent feature groups", () => {
+  test("phase B splits a size:L ticket with three or more independent feature groups, or any past 10 files with two", () => {
     const b = queue().split("## B — Scope")[1]?.split("## C — Build")[0] ?? "";
     assert.match(b, /size:L/);
     assert.match(b, /three or more independent feature groups/);
+    assert.match(b.replace(/\s+/g, " "), /any ticket whose scope report names more than 10 files to change[^.]*two or more/);
     assert.match(b, /gh issue create/);
   });
 });

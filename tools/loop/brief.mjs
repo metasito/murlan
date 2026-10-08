@@ -32,11 +32,10 @@ const TAIL =
   "are not reported.";
 
 const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
+export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
-  `gh issue view ${n} --json title,body,comments ` +
-  `--jq '.title, .body, (.comments[]|select(${TRUSTED_AUTHORS.map((a) => `.authorAssociation=="${a}"`).join(" or ")})` +
-  `|"--- "+.author.login+": "+.body)'`;
+  `gh issue view ${n} --json title,body,comments --jq '.title, .body, (.comments[]|${TRUSTED_SELECT}|"--- "+.author.login+": "+.body)'`;
 const issue = (n) => `\`${readIssue(n)}\``;
 
 const BODIES = {

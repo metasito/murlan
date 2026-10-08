@@ -63,8 +63,8 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
     up and take the item that unblocks the rest.
 24. **Propose a design the owner can tweak**: Claude Design (`/design`), else `superdesign`.
 25. **Read an issue with one command, at pick-up and again before finishing:**
-    `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|"--- "+.author.login+": "+.body)'`.
-    `--comments` prints the thread *instead of* the body, and `--json body` drops the thread.
+    `gh issue view <n> --json title,body,comments --jq '.title, .body, (.comments[]|select(.authorAssociation|IN("OWNER","MEMBER","COLLABORATOR"))|"--- "+.author.login+": "+.body)'`.
+    `--comments` prints the thread *instead of* the body, outsiders' comments too; `--json body` drops it.
 26. **Release the claim whenever you stop without landing** — remove `in-progress`, say why.
 27. **A routed `implement` goes through `/queue`**; `triage` through `/triage`; `wayfinder`
     through `/wayfinder`.
