@@ -180,12 +180,16 @@ jobs:
             # Main's price is a median; a branch's is its latest run, so a spec it made heavier costs that on the next run.
             runs=$RUNS; [ "$branch" != main ] && runs=1
             group=()
-            for id in $(jq -r --arg b "$branch" --argjson RUNS "$runs" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
-              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | .[-$RUNS:] | .[].id' <<< "$artifacts"); do
-              if gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
-                && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json"; then
-                group+=("$RUNNER_TEMP/timings-$id.json")
-              fi
+            ids=$(jq -r --arg b "$branch" --argjson RUNS "$runs" '[.artifacts[] | select((.expired | not) and .workflow_run.head_branch == $b
+              and .workflow_run.head_repository_id == .workflow_run.repository_id)] | sort_by(.created_at) | .[-$RUNS:] | .[].id' <<< "$artifacts")
+            for id in $ids; do
+              { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/$id.zip" \
+                && unzip -p "$RUNNER_TEMP/$id.zip" timings.json > "$RUNNER_TEMP/timings-$id.json" \
+                || : > "$RUNNER_TEMP/timings-$id.json"; } &
+            done
+            wait
+            for id in $ids; do
+              [ -s "$RUNNER_TEMP/timings-$id.json" ] && group+=("$RUNNER_TEMP/timings-$id.json")
             done
             if [ ${#group[@]} -gt 0 ]; then
               layers+=("$(IFS=,; echo "${group[*]}")")
