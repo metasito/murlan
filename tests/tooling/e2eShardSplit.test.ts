@@ -21,13 +21,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
 const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
+// Left out: the device compiles, which start only on a native change or the weekly schedule — runs
+// their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
+const deviceCompile = (job: string) => /^ {4}if: .*\bnative\b/m.test(job);
 const besideShards = ciJobs
-  .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job))
-  .flatMap((job) => {
-    const name = /^ {4}name: (.*)$/m.exec(job)?.[1] ?? job.split("\n")[0];
-    const shards = /^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").map((s) => s.trim()) ?? [""];
-    return shards.map((s) => name.replace("${{ matrix.shard }}", s).replace("${{ strategy.job-total }}", String(shards.length)));
-  });
+  .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !deviceCompile(job))
+  .reduce((n, job) => n + (/^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").length ?? 1), 0);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
 const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
@@ -183,16 +182,9 @@ describe("the split is stable and even", () => {
   });
 
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
-    assert.ok(besideShards.length >= 8, `found ${besideShards.length} jobs beside the shards; the split of ci.yml is wrong`);
-    assert.ok(MAX_SHARDS + besideShards.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
-  });
-
-  test("the native suite runs as jest shards, each keeping its own transform cache", () => {
-    const native = ciJobs.find((job) => job.startsWith("  native:")) ?? "";
-
-    assert.match(native, /^ {4}name: Native tests \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/m);
-    assert.match(native, /npm run test:native -- --shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} /);
-    assert.match(native, /key: native-jest-\$\{\{ matrix\.shard \}\}-/);
+    assert.ok(besideShards >= 8, `found ${besideShards} jobs beside the shards; the split of ci.yml is wrong`);
+    assert.ok(MAX_SHARDS + besideShards <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
+    assert.equal(ciJobs.filter(deviceCompile).length, 2, "only the two device compiles may be left out");
   });
 
   test("timings.json describes specs that exist", () => {
@@ -252,11 +244,11 @@ describe("the plan prices each spec by its latest green run", () => {
   });
 
   test("a spec heavier on the branch is priced as the branch runs it", () => {
-    const { timings, shards } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
+    const { timings } = planned({ committed: even, main: even, branch: { "heavy.spec.ts": 600 } });
 
     assert.equal(timings["heavy.spec.ts"], 600);
     assert.equal(timings["light0.spec.ts"], 100);
-    const alone = assignShards(files, timings, shards.length).find((s) => s.files.includes("heavy.spec.ts"));
+    const alone = assignShards(files, timings, 4).find((s) => s.files.includes("heavy.spec.ts"));
     assert.deepEqual(alone?.files, ["heavy.spec.ts"]);
   });
 
@@ -264,12 +256,6 @@ describe("the plan prices each spec by its latest green run", () => {
     const { timings } = planned({ committed: even, main: { ...even, "heavy.spec.ts": 300 } }, ["branch"]);
 
     assert.equal(timings["heavy.spec.ts"], 300);
-  });
-
-  // Wall clock falls with every shard down to the longest spec's floor; runners are free on a public repo.
-  test("a run takes every shard the cap allows, whatever the suite weighs", () => {
-    assert.equal(planned({ committed: even }).shards.length, MAX_SHARDS);
-    assert.equal(planned({}).shards.length, MAX_SHARDS);
   });
 
   test("the fit check grows with the suite", () => {

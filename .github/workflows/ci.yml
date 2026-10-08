@@ -333,15 +333,6 @@ jobs:
       - name: Install postgresql-client
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client-16
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      # noUncheckedIndexedAccess, scoped to the areas already proven clean —
-      # rides this job rather than a new one, which would bill its own
-      # runner minute for one more `tsc` invocation.
-      - name: Typecheck — noUncheckedIndexedAccess ratchet
-        run: npm run typecheck:strict
-
       - name: Test
         shell: bash
         run: |
@@ -486,11 +477,15 @@ jobs:
         with:
           # check:comments diffs each changed file against the merge base.
           fetch-depth: 0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/install
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
+      # Here, not beside the tests: that job is the run's slowest without them.
+      - name: Typecheck
+        run: npm run typecheck
+      # noUncheckedIndexedAccess, scoped to the areas already proven clean.
+      - name: Typecheck — noUncheckedIndexedAccess ratchet
+        run: npm run typecheck:strict
       - run: npm run lint
       # Rides this job rather than a new one: it is a second-long file read, and
       # billing a runner minute for it is the whole reason it used to be local —

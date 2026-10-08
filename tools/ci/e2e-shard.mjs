@@ -137,6 +137,7 @@ export function shardsNeeded(files, timings) {
 }
 
 /**
+ * Always `MAX_SHARDS`: wall clock falls with every shard down to the longest spec, and runners are free here.
  * @param {(string | string[])[]} layers JSON timings files, oldest first; a list is one branch's
  *   runs, priced by `medianTimings`; a missing file is skipped
  * @returns {{ shards: number[], timings: Record<string, number> }}
