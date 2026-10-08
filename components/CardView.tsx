@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useId } from "react";
+import React, { useContext, useEffect } from "react";
 import { View, StyleSheet, Pressable, Image, Platform } from "react-native";
 import { TableText } from "@/components/table/TableText";
 import Animated, {
@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { Asset } from "expo-asset";
 import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Path, Circle, G, Rect, Defs, Use } from "react-native-svg";
+import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
   CardFaceGradient,
@@ -28,7 +28,6 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
 import {
-  ACE_PIP_SIZE,
   CARD_BACK_H,
   CARD_BACK_W,
   CARD_H,
@@ -36,15 +35,17 @@ import {
   cardRadius,
   COURT_RANKS,
   courtArtRect,
+  faceMarks,
   getLattice,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
   INDEX_X,
-  placedPips,
   rankFontSize,
   rankInset,
   stockLipHeight,
+  SUIT_GLYPHS,
+  suitMarksPath,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -75,70 +76,10 @@ const PANEL_HALF_H = 38;
 // Drawn as vector paths rather than as the Unicode ♠♥♦♣ glyphs: the system font
 // that resolves those characters differs on every platform, so a text-based pip
 // is a different shape on iOS, Android and web. These are one shape everywhere.
-// Each is authored in a 10×10 box centred on the origin and scaled at use.
+// The glyphs are `SUIT_GLYPHS`, in cardFaceModel.ts.
 
-const SUIT_PATHS: Record<Exclude<Suit, "clubs">, string> = {
-  hearts:
-    "M0,4.7 C-1.7,2.5 -4.7,0.5 -4.7,-1.8 C-4.7,-3.8 -3.3,-4.8 -2.1,-4.8 " +
-    "C-0.9,-4.8 -0.2,-3.9 0,-3.1 C0.2,-3.9 0.9,-4.8 2.1,-4.8 " +
-    "C3.3,-4.8 4.7,-3.8 4.7,-1.8 C4.7,0.5 1.7,2.5 0,4.7 Z",
-  diamonds: "M0,-4.9 L3.5,0 L0,4.9 L-3.5,0 Z",
-  spades:
-    "M0,-4.9 C-0.6,-3.6 -4.6,-0.6 -4.6,1.6 C-4.6,3.2 -3.4,4.0 -2.4,4.0 " +
-    "C-1.4,4.0 -0.7,3.5 -0.3,2.8 C-0.5,3.9 -1.3,4.6 -2.2,5.0 L2.2,5.0 " +
-    "C1.3,4.6 0.5,3.9 0.3,2.8 C0.7,3.5 1.4,4.0 2.4,4.0 C3.4,4.0 4.6,3.2 4.6,1.6 " +
-    "C4.6,-0.6 0.6,-3.6 0,-4.9 Z",
-};
-
-/**
- * The suit shape itself; on web, declared once per card face and referenced by every
- * pip and index mark on it. A card carries one suit in one colour, so the fill
- * is baked into the definition — nothing has to inherit through <Use>, which is
- * where this kind of hoist usually changes rendering silently.
- */
-export function SuitShape({ id, suit, color }: { id?: string; suit: Suit; color: string }) {
-  if (suit === "clubs") {
-    return (
-      <G id={id}>
-        <Circle cx={0} cy={-2.5} r={2.3} fill={color} />
-        <Circle cx={-2.7} cy={1.2} r={2.3} fill={color} />
-        <Circle cx={2.7} cy={1.2} r={2.3} fill={color} />
-        <Path d="M-2.2,5.0 C-0.9,4.1 -0.4,2.9 -0.3,1.4 L0.3,1.4 C0.4,2.9 0.9,4.1 2.2,5.0 Z" fill={color} />
-      </G>
-    );
-  }
-  return <Path id={id} d={SUIT_PATHS[suit]} fill={color} />;
-}
-
-// Android re-measures a <Use> template at every reference on every draw, and each
-// re-measure dispatches an event that makes Reanimated flush its pending updates (#1222).
-const HOIST_SUIT = Platform.OS === "web";
-
-function SuitMark({
-  href,
-  suit,
-  color,
-  x,
-  y,
-  size,
-  flipped = false,
-}: {
-  href: string;
-  suit: Suit;
-  color: string;
-  x: number;
-  y: number;
-  size: number;
-  flipped?: boolean;
-}) {
-  const k = size / 10;
-  const transform = `translate(${x},${y}) scale(${k})${flipped ? " rotate(180)" : ""}`;
-  if (HOIST_SUIT) return <Use href={href} transform={transform} />;
-  return (
-    <G transform={transform}>
-      <SuitShape suit={suit} color={color} />
-    </G>
-  );
+export function SuitShape({ suit, color }: { suit: Suit; color: string }) {
+  return <Path d={SUIT_GLYPHS[suit]} fill={color} />;
 }
 
 // ─── Joker figures ────────────────────────────────────────────────────────────
@@ -262,7 +203,7 @@ function CourtPanel({
 
 // ─── Card face art ────────────────────────────────────────────────────────────
 
-function CardFaceArt({
+function CardFaceArtBase({
   card,
   color,
   w,
@@ -277,72 +218,16 @@ function CardFaceArt({
   compact: boolean;
 }) {
   const suit = card.suit;
-  // <Defs> ids are document-global on web, where a full table renders 54 cards
-  // into one DOM — a shared id would point every card at the first card's suit.
-  const pipId = `pip-${useId().replace(/:/g, "")}`;
-  const pipHref = `#${pipId}`;
   const indexSuitSize = h * INDEX_SUIT_SIZE;
   const indexX = w * INDEX_X;
   const indexY = h * INDEX_SUIT_Y;
 
-  let centre: React.ReactNode = null;
-  if (card.isJoker) {
-    centre = compact ? null : (
-      <CourtPanel
-        kind={card.rank === "joker_colored" ? "joker_colored" : "joker_bw"}
-        color={color}
-        w={w}
-        h={h}
-      />
-    );
-  } else if (suit) {
-    if (compact) {
-      centre = <SuitMark href={pipHref} suit={suit} color={color} x={w * 0.58} y={h * 0.62} size={h * 0.24} />;
-    } else if (COURT_RANKS.has(card.rank)) {
-      // Drawn as a bitmap sibling of this Svg (see CourtArt), not here.
-      centre = null;
-    } else if (card.rank === "A") {
-      centre = (
-        <SuitMark href={pipHref} suit={suit} color={color} x={w * 0.5} y={h * 0.5} size={h * ACE_PIP_SIZE} />
-      );
-    } else {
-      centre = placedPips(card.rank, w, h).map((pip, i) => (
-        <SuitMark
-          key={i}
-          href={pipHref}
-          suit={suit}
-          color={color}
-          x={pip.x}
-          y={pip.y}
-          size={pip.size}
-          flipped={pip.flipped}
-        />
-      ));
-    }
-  }
-
   return (
     <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      {HOIST_SUIT && suit && (
-        <Defs>
-          <SuitShape id={pipId} suit={suit} color={color} />
-        </Defs>
+      {card.isJoker && !compact && (
+        <CourtPanel kind={card.rank === "joker_colored" ? "joker_colored" : "joker_bw"} color={color} w={w} h={h} />
       )}
-      {centre}
-      {suit && (
-        <>
-          <SuitMark href={pipHref} suit={suit} color={color} x={indexX} y={indexY} size={indexSuitSize} />
-          <SuitMark
-            href={pipHref}
-            suit={suit}
-            color={color}
-            x={w - indexX}
-            y={h - indexY}
-            size={indexSuitSize}
-            flipped
-          />
-        </>
-      )}
+      {suit && <Path d={suitMarksPath(suit, faceMarks(card.rank, w, h, compact))} fill={color} />}
       {card.isJoker && (
         <>
           <JokerStar x={indexX} y={indexY} size={indexSuitSize} color={color} filled={card.rank === "joker_colored"} />
@@ -358,6 +243,11 @@ function CardFaceArt({
     </Svg>
   );
 }
+
+const CardFaceArt = React.memo(
+  CardFaceArtBase,
+  (a, b) => a.card.id === b.card.id && a.color === b.color && a.w === b.w && a.h === b.h && a.compact === b.compact
+);
 
 // Red and black Joker differ by fill as well as by colour, so the two are still
 // distinguishable without colour vision.
@@ -446,7 +336,7 @@ function starPath(cx: number, cy: number, r: number, points: number): string {
   return `M${verts.join(" L")} Z`;
 }
 
-function OrnateCardBack({
+const CardBackArt = React.memo(function CardBackArt({
   width: w,
   height: h,
   back,
@@ -461,14 +351,22 @@ function OrnateCardBack({
   const ink = back.ink;
   const field = back.field;
   return (
-    <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
-      <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
-      <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
-      <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
-    </Svg>
+    <>
+      <LinearGradient
+        colors={[field[1], field[2], field[4]]}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
+        <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
+        <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
+        <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
+        <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
+      </Svg>
+    </>
   );
-}
+});
 
 /**
  * The gold glow under a selected or catching card, until the felt draws it. Its own component: a
@@ -586,7 +484,6 @@ function CardViewBase({
   const reduceMotion = usePrefersReducedMotion();
   const chosenBack = useCardBack();
   const back = backId ? getCardBack(backId) : chosenBack;
-  const backField = back.field;
   const translateY = useSharedValue(0);
   // Finger-down acknowledgement. Separate from the selection lift so a press
   // reads instantly even when the resulting selection is rejected.
@@ -654,13 +551,7 @@ function CardViewBase({
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
-          <LinearGradient
-            colors={[backField[1], backField[2], backField[4]]}
-            start={{ x: 0.15, y: 0 }}
-            end={{ x: 0.85, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <OrnateCardBack width={w} height={h} back={back} />
+          <CardBackArt width={w} height={h} back={back} />
           <TopLight light={light} />
         </View>
       </Animated.View>

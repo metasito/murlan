@@ -19,6 +19,9 @@ import {
   INDEX_TEXT_W,
   isWideRank,
   cardScale,
+  faceMarks,
+  SUIT_GLYPHS,
+  suitMarksPath,
 } from "../../components/cardFaceModel.ts";
 
 // Every face card draws the full pip field and the index at whatever size the
@@ -125,6 +128,38 @@ describe("the pip field stays inside the card", () => {
       }
     });
   }
+});
+
+describe("a face's suit marks are one path", () => {
+  const SUITS = Object.keys(SUIT_GLYPHS) as (keyof typeof SUIT_GLYPHS)[];
+  const subpaths = (d: string) => d.split("M").length - 1;
+  const points = (d: string) => (d.replace(/A\S+ 0 1 1 /g, "").match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
+
+  test("every mark the face places is in the path, glyph by glyph", () => {
+    const { w, h } = SIZES[1];
+    for (const suit of SUITS) {
+      for (const [rank, centre] of [...PIP_RANKS.map((r) => [r, Number(r)] as const), ["A", 1] as const, ["J", 0] as const]) {
+        const d = suitMarksPath(suit, faceMarks(rank, w, h, false));
+        assert.equal(subpaths(d), (centre + 2) * subpaths(SUIT_GLYPHS[suit]), `${rank} of ${suit}`);
+      }
+      assert.equal(faceMarks("10", w, h, true).length, 3);
+    }
+  });
+
+  test("a mark sits at its own centre, and a flipped one is the same glyph turned about it", () => {
+    const mark = { x: 40, y: 60, size: 10, flipped: false };
+    for (const suit of SUITS) {
+      const glyph = points(SUIT_GLYPHS[suit]);
+      const upright = points(suitMarksPath(suit, [mark]));
+      const turned = points(suitMarksPath(suit, [{ ...mark, flipped: true }]));
+      assert.equal(upright.length, glyph.length, suit);
+      upright.forEach((v, i) => {
+        const centre = i % 2 === 0 ? mark.x : mark.y;
+        assert.ok(Math.abs(v - (centre + glyph[i])) < 0.01, `${suit} coordinate ${i}`);
+        assert.ok(Math.abs(turned[i] - (2 * centre - v)) < 0.01, `${suit} flipped coordinate ${i}`);
+      });
+    }
+  });
 });
 
 describe("cardScale", () => {
