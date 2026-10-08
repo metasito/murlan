@@ -70,8 +70,8 @@ type Cost = {
 const MOVES = 16;
 const ids = (play: GameState['lastPlayedCombination']) => play?.cards.map((c) => c.id).join() ?? '';
 
-async function costPerMove(arrive: (s: GameState) => GameState = (s) => s): Promise<Cost[]> {
-  const [dealt, ...moves] = botManche().map(arrive);
+async function costPerMove(): Promise<Cost[]> {
+  const [dealt, ...moves] = botManche().map((s): GameState => JSON.parse(JSON.stringify(s)));
   const view = await render(table(dealt));
   await settle(3000);
   const costs: Cost[] = [];
@@ -105,9 +105,11 @@ describe('one bot move', () => {
     jest.restoreAllMocks();
   });
 
-  it('renders the hand and the seats only on the commits that change them', async () => {
+  it('renders the hand, the seats and the card art only on the commits that change them', async () => {
     const costs = await costPerMove();
     const commits = total(costs, 'commits');
+    expect(total(costs, 'Svg')).toBeGreaterThan(0);
+    expect(costs.filter((c) => c.Svg > c.art)).toEqual([]);
     expect(costs).toHaveLength(MOVES);
     expect(most(costs, 'commits')).toBeGreaterThanOrEqual(3);
     expect(most(costs, 'PileLayer')).toBeGreaterThanOrEqual(2);
@@ -115,11 +117,5 @@ describe('one bot move', () => {
     expect(total(costs, 'PileLayer')).toBeLessThan(commits);
     expect(most(costs, 'TopOppSlot')).toBeLessThanOrEqual(2);
     expect(most(costs, 'SideOppSlot')).toBeLessThanOrEqual(4);
-  }, 120_000);
-
-  it('draws card art only for a card thrown, or for the whole hand when the turn resizes it', async () => {
-    const costs = await costPerMove((s) => JSON.parse(JSON.stringify(s)));
-    expect(total(costs, 'Svg')).toBeGreaterThan(0);
-    expect(costs.filter((c) => c.Svg > c.art)).toEqual([]);
   }, 120_000);
 });

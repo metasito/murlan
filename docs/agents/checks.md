@@ -227,8 +227,9 @@ Real device/web divergences, verifiable only on hardware:
 - **Safe-area insets** — the native renderer injects fixed metrics; a real notch, dynamic island
   or gesture bar is device-only.
 - **Text rendering** — font-weight synthesis and line breaking differ from the browser.
-- **The New Architecture and the React Compiler** — Fabric and TurboModules are not what Jest
-  renders into.
+- **The New Architecture** — Fabric and TurboModules are not what Jest renders into. The React
+  Compiler runs only in jest's `compiled` project (`tests/native/*.compiled.test.tsx`,
+  `jest.config.js`); the `ios` and `android` projects render the uncompiled tree.
 
 ## Manual device checklist
 

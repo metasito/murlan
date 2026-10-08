@@ -2,8 +2,8 @@
 // its identity, so an effect depending on it does not re-run every render.
 //
 // What it will not survive is the `useCallback` in `useImpactFeedback` being
-// dropped in favour of the React Compiler's own memoisation, which does not
-// happen under jest at all.
+// dropped in favour of the React Compiler's own memoisation, which this
+// project does not run (only `*.compiled.test.tsx` does).
 import { describe, it, expect } from "@jest/globals";
 import { renderHook } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
