@@ -24,10 +24,7 @@ function mockProfiled(path: string, names: string[]) {
   const wrap = (name: string) => {
     const c = actual[name];
     const body = typeof c === 'function' ? c : c.type;
-    let last: Record<string, unknown> | null = null;
     const counted = (p: object) => {
-      const q = p as Record<string, unknown>;
-      last = q;
       mockRenders[name] = (mockRenders[name] ?? 0) + 1;
       return body(p);
     };
@@ -39,6 +36,15 @@ function mockProfiled(path: string, names: string[]) {
 jest.mock('@/components/table/seats', () => mockProfiled('@/components/table/seats', ['TopOppSlot', 'SideOppSlot']));
 jest.mock('@/components/table/pile', () => mockProfiled('@/components/table/pile', ['PileLayer']));
 jest.mock('@/components/table/hand', () => mockProfiled('@/components/table/hand', ['StraightHand']));
+jest.mock('react-native-svg', () => {
+  const R = jest.requireActual('react') as typeof React;
+  const actual = jest.requireActual('react-native-svg') as { default: React.ComponentType<object> };
+  const Svg = (p: object) => {
+    mockRenders.Svg = (mockRenders.Svg ?? 0) + 1;
+    return R.createElement(actual.default, p);
+  };
+  return { __esModule: true, ...actual, default: Svg, Svg };
+});
 
 const { GameTable } = require('@/components/GameTable') as typeof import('@/components/GameTable');
 
@@ -52,20 +58,36 @@ const table = (s: GameState) => (
   </Profiler>
 );
 
-type Cost = { commits: number; TopOppSlot: number; SideOppSlot: number; PileLayer: number; StraightHand: number };
+type Cost = {
+  commits: number;
+  TopOppSlot: number;
+  SideOppSlot: number;
+  PileLayer: number;
+  StraightHand: number;
+  Svg: number;
+  art: number;
+};
 const MOVES = 16;
+const ids = (play: GameState['lastPlayedCombination']) => play?.cards.map((c) => c.id).join() ?? '';
 
-async function costPerMove(): Promise<Cost[]> {
-  const [dealt, ...moves] = botManche();
+async function costPerMove(arrive: (s: GameState) => GameState = (s) => s): Promise<Cost[]> {
+  const [dealt, ...moves] = botManche().map(arrive);
   const view = await render(table(dealt));
   await settle(3000);
   const costs: Cost[] = [];
+  let prev = dealt;
   for (const s of moves.slice(0, MOVES)) {
     for (const k of Object.keys(mockRenders)) delete mockRenders[k];
     await act(async () => view.rerender(table(s)));
     await settle(STEP_MS);
-    const { commits = 0, TopOppSlot = 0, SideOppSlot = 0, PileLayer = 0, StraightHand = 0 } = mockRenders;
-    costs.push({ commits, TopOppSlot, SideOppSlot, PileLayer, StraightHand });  }
+    const { commits = 0, TopOppSlot = 0, SideOppSlot = 0, PileLayer = 0, StraightHand = 0, Svg = 0 } = mockRenders;
+    const play = s.lastPlayedCombination;
+    const thrown = play && ids(play) !== ids(prev.lastPlayedCombination) ? play.cards.length : 0;
+    const resized = (prev.currentTurnIndex === 0) !== (s.currentTurnIndex === 0);
+    const art = thrown + (resized ? Math.max(prev.players[0].hand.length, s.players[0].hand.length) : 0);
+    costs.push({ commits, TopOppSlot, SideOppSlot, PileLayer, StraightHand, Svg, art });
+    prev = s;
+  }
   await view.unmount();
   return costs;
 }
@@ -93,5 +115,11 @@ describe('one bot move', () => {
     expect(total(costs, 'PileLayer')).toBeLessThan(commits);
     expect(most(costs, 'TopOppSlot')).toBeLessThanOrEqual(2);
     expect(most(costs, 'SideOppSlot')).toBeLessThanOrEqual(4);
+  }, 120_000);
+
+  it('draws card art only for a card thrown, or for the whole hand when the turn resizes it', async () => {
+    const costs = await costPerMove((s) => JSON.parse(JSON.stringify(s)));
+    expect(total(costs, 'Svg')).toBeGreaterThan(0);
+    expect(costs.filter((c) => c.Svg > c.art)).toEqual([]);
   }, 120_000);
 });
