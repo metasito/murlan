@@ -69,7 +69,7 @@ derives it from git and the tracker.
 
    ```sh
    npm run queue:pre                            # by-hand runs only: the loop has already run it
-   node tools/loop/next-ticket.mjs $ARGUMENTS   # prints ROUTE, body, comments, blockers, takeability
+   node tools/loop/next-ticket.mjs $ARGUMENTS
    ```
 
    `queue:pre` red: **Halt**. `$ARGUMENTS` is the ticket the supervisor passed; a bare `/queue`
@@ -109,8 +109,9 @@ Done when the worktree stands and the Definition of done is checkable.
    node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
    ```
 
-2. **A `size:L` ticket with three or more independent feature groups is split before it is
-   built.** The scope report lists the groups. Keep the first group here; file each other group
+2. **A `size:L` ticket with three or more independent feature groups, or any ticket whose scope
+   report names more than 10 files to change in two or more, is split before it is built.** The
+   scope report lists the groups. Keep the first group here; file each other group
    as its own ticket, carrying its boxes and any owner ruling word for word:
 
    ```sh
@@ -130,17 +131,16 @@ Done when the scope report is in hand and any split filed.
 `PHASE C`
 
 Build with `mattpocock-skills:tdd`; a bug goes through `mattpocock-skills:diagnosing-bugs` first.
-Inside this loop those two outrank any general process skill. How to solve it is yours.
+Inside this loop those two outrank any general process skill.
 
 ### A fix round
 
 Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the planning.
 
-1. **Read the thread's `CI-RED` and any `FIX-NOTES` comments first.**
+1. **Read the thread's `CI-RED` and any `FIX-NOTES` comments first**, with rule 25's command.
 2. **Run the command the `CI-RED` comment carries and read the failure itself.** Where it states
    how many files are red, a round that diagnosed fewer has not finished, whatever it fixed;
-   where none parses, the step's own output is the count. A cheap subagent may read and return
-   the list. With no `CI-RED` comment, use `.loop-logs/ci-<n>.log`, else CI itself:
+   where none parses, the step's own output is the count. With no `CI-RED` comment, use `.loop-logs/ci-<n>.log`, else CI itself:
 
    ```sh
    gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
@@ -155,6 +155,9 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    ```sh
    npm run agent:check -- --also test:native   # or loop:test, comments; `test` always runs
    ```
+
+   A native timing budget is judged only from CI's run: time a file locally at most once, then
+   fix what CI names and push.
 
 5. Post what this round ruled out: each hypothesis on one line, with its evidence.
    `<sha>` is `git rev-parse --short HEAD`, taken after committing the fix:
@@ -197,8 +200,9 @@ Then leave through **Leaving C**.
    node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
    ```
 
-   Build what it reports partial or missing, failing test first, and ask again on the new diff
-   until it reports nothing. Where wrong, check the code, not memory.
+   Build what it reports partial or missing, failing test first, then ask once more on the new
+   diff: at most twice per process. Post what the second answer still reports as `FIX-NOTES <sha>`
+   and go on. Where wrong, check the code, not memory.
 2. Read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise.
    This does not replace phase D's review.
 3. Then commit the last slice, and run `npm run agent:check`.
@@ -208,8 +212,8 @@ Then leave through **Leaving C**.
    A box you cannot close stays `- [ ]` with why: the ticket is not done, so keep building or park it (**Never stall**).
 5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
-Only then declare handoff D and exit. The supervisor re-gates it: failing returns to C; passing
-opens a draft pull request, so CI runs while D reviews.
+Only then declare handoff D and exit. The supervisor re-gates it and opens a draft pull request,
+so CI runs while D reviews.
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what-is-left>"}
@@ -311,7 +315,7 @@ After a `LAND`, go straight on to phase E and F in this process.
 
 Phase D's LAND continues here; a process starts at E only to resume.
 
-1. From the shared checkout (it finds the worktree itself):
+1. From the shared checkout:
 
    ```sh
    node tools/loop/loop-gate.mjs
@@ -325,8 +329,8 @@ Phase D's LAND continues here; a process starts at E only to resume.
    npm run agent:check
    ```
 
-   Say its headline and any `NOT run` suites in the PR body. **If it is red, hand off to C**,
-   which fixes it and goes round again through D. Never push a red check or re-run it hoping
+   Say its headline and any `NOT run` suites in the PR body. **If it is red, hand off to C**.
+   Never push a red check or re-run it hoping
    for a different answer.
 
    ```
@@ -336,7 +340,7 @@ Phase D's LAND continues here; a process starts at E only to resume.
 3. Push and write the PR body:
 
    ```sh
-   git push -u origin agent/<n>-<slug>                  # no-op if already pushed
+   git push -u origin agent/<n>-<slug>
    gh pr edit <pr> --body-file <file>
    ```
 
@@ -345,8 +349,7 @@ Phase D's LAND continues here; a process starts at E only to resume.
    mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers.
 
    The body says what changed, how you know, which Definition-of-done boxes are closed, and
-   `Closes #<n>` (rule 13). Write the file with the Write tool or a bash heredoc, never an inline
-   `--body` (`docs/agents/checks.md`).
+   `Closes #<n>` (rule 13), through `--body-file`, never `--body` (`docs/agents/checks.md`).
 
 CI and the merge are `tools/loop/queue-loop.mjs`'s. A red CI run comes back as a fix round at phase
 C, with the log in a `CI-RED` comment and in `.loop-logs/ci-<n>.log`.
@@ -388,4 +391,4 @@ the exact failure, and the one decision needed. `.loop-stop` is the supervisor's
 ## Output
 
 Phase F step 4's `LOOP-RESULT` line is the last thing you emit, and the only summary you write.
-The supervisor renders the board from it. No other section may claim the final line.
+No other section may claim the final line.
