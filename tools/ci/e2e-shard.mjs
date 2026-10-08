@@ -35,7 +35,7 @@ export function readRunCosts(file = RUN_COSTS) {
 }
 
 /** Not the documented 20: at most the `peakConcurrency` a priced run reached, which `e2eShardSplit.test.ts` holds it to. */
-export const MAX_CONCURRENT_JOBS = 24;
+export const MAX_CONCURRENT_JOBS = 25;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;
 
@@ -147,7 +147,7 @@ export function shardsNeeded(files, timings, costs = readRunCosts()) {
 export function plan(layers, files = specFilesIn()) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
   const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
-  const count = 22;
+  const count = Math.min(MAX_SHARDS, shardsNeeded(files, timings));
   return { shards: Array.from({ length: count }, (_, i) => i + 1), timings };
 }
 
