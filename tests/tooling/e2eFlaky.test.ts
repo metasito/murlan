@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -69,6 +69,29 @@ test("the browser report job runs it on the merged report", () => {
   assert.match(step, /\n {8}env:\n {10}GITHUB_TOKEN: \$\{\{ github\.token \}\}\n/, "issueIsOpen reads GITHUB_TOKEN");
   const job = /\n {2}browser-report:\n[\s\S]*?(?=\n {2}[\w-]+:\n)/.exec(ci)?.[0] ?? "";
   assert.match(job, /\n {4}permissions:\n(?: {6}.*\n)*? {6}issues: read\n/, "a job-level permissions block zeroes every scope it omits");
+});
+
+const collect = (failures: number) => {
+  const ci = readFileSync(path.join(import.meta.dirname, "..", "..", ".github", "workflows", "ci.yml"), "utf8");
+  const step = /- name: Collect every shard's report\n[\s\S]*?\n {8}run: \|\n((?: {10}.*\n)+)/.exec(ci)?.[1] ?? "";
+  const dir = mkdtempSync(path.join(tmpdir(), "collect-"));
+  const fakes = `
+    gh() { n=$(cat calls 2>/dev/null || echo 0); echo $((n + 1)) > calls
+      [ "$n" -ge ${failures} ] || { mkdir -p "$7/blob-report-9"; touch "$7/blob-report-9/partial.zip"; echo 503 >&2; return 1; }
+      mkdir -p "$7/blob-report-1" && touch "$7/blob-report-1/report-1.zip"; }
+    sleep() { :; }
+    RUNNER_TEMP="$PWD/tmp"; GITHUB_RUN_ID=1
+  `;
+  const r = spawnSync("bash", ["-e", "-c", fakes + step.replace(/^ {10}/gm, "")], { cwd: dir, encoding: "utf8" });
+  const got = existsSync(path.join(dir, "all-blob-reports")) ? readdirSync(path.join(dir, "all-blob-reports")) : [];
+  const calls = Number(readFileSync(path.join(dir, "calls"), "utf8"));
+  rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, calls, got };
+};
+
+test("collecting the shard reports retries a refused download, from a clean directory", () => {
+  assert.deepEqual(collect(3), { status: 0, calls: 4, got: ["report-1.zip"] });
+  assert.equal(collect(4).status, 1);
 });
 
 test("a report holding no spec file is refused rather than read as clean", () => {

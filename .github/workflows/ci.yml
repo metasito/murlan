@@ -807,8 +807,14 @@ jobs:
       - name: Collect every shard's report
         env:
           GH_TOKEN: ${{ github.token }}
+        # Storage answers a burst with `503 Egress is over the account limit` (run 37784854605).
         run: |
-          gh run download "$GITHUB_RUN_ID" --pattern 'blob-report-*' --dir "$RUNNER_TEMP/blobs"
+          for wait in 5 10 20 0; do
+            rm -rf "$RUNNER_TEMP/blobs"
+            gh run download "$GITHUB_RUN_ID" --pattern 'blob-report-*' --dir "$RUNNER_TEMP/blobs" && break
+            [ "$wait" -gt 0 ] || exit 1
+            sleep "$wait"
+          done
           mkdir -p all-blob-reports
           mv "$RUNNER_TEMP"/blobs/*/* all-blob-reports/
 
