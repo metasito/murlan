@@ -177,6 +177,7 @@ const VOTE_BELOW_PILL = 7;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
+const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
  * The turn chip while the opening gate holds the table. Online the deadline is
  * the server's and keeps running under the hold, so the countdown rides over it
@@ -1174,7 +1175,7 @@ export function GameTable({
         {/* The cutout's own column. A cutout can never sit on a card, but it sits
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
-        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, greyStyle]}>
+        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, greyStyle]}>
         <ControlRail
           veiled={behindCoverOnly}
           width={frame.rail}

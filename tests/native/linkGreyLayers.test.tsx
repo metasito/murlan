@@ -3,6 +3,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
@@ -14,7 +15,7 @@ jest.mock('@/lib/accessibility', () => ({
 
 import { GameTable } from '@/components/GameTable';
 import { greyFilter } from '@/components/table/useLinkHold';
-import { Reconnect } from '@/lib/tokens';
+import { Layer, Reconnect } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
 
@@ -82,6 +83,13 @@ describe("the table while the viewer's own link is down", () => {
       jest.advanceTimersByTime(16);
     });
     expect(filters()).toEqual(LAYERS.map(() => filter));
+    await view.unmount();
+  });
+
+  it('keeps every greyed layer at the layer it wraps', async () => {
+    const view = await render(table('up'));
+    const z = (id: string) => StyleSheet.flatten(screen.getByTestId(id, { includeHiddenElements: true }).props.style).zIndex;
+    expect(LAYERS.map(z)).toEqual([Layer.felt, Layer.moment, Layer.moment, Layer.rail, Layer.table]);
     await view.unmount();
   });
 });
