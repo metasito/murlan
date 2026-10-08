@@ -36,6 +36,23 @@ test("prices a run from its own job timings", () => {
   assert.deepEqual(costs.otherJobsEndSeconds, { "Native tests": 280, "Secret scan": 70 });
 });
 
+test("prices each step of the jobs on the critical path", () => {
+  const step = (name: string, start: number, end: number | null) => ({ name, started_at: start < 0 ? null : at(start), completed_at: end === null ? null : at(end) });
+  const withSteps = jobs.map((j) => {
+    if (j.name === "Does this change need the suite?") return { ...j, steps: [step("Plan", 0, 13)] };
+    if (j.name === "Browser tests 2/2") return { ...j, steps: [step("Set up", 16, 66), step("Specs", 66, 250)] };
+    if (j.name === "Browser test report") return { ...j, completed_at: null, steps: [step("Merge", 253, 270), step("Price", 270, null), step("Upload", -1, null)] };
+    return j;
+  });
+  const costs = runCosts({ run: 7, jobs: withSteps, split, measured, files, now: at(275) });
+
+  assert.deepEqual(costs.criticalPath, [
+    { job: "Does this change need the suite?", steps: { Plan: 13 } },
+    { job: "Browser tests 2/2", steps: { "Set up": 50, Specs: 184 } },
+    { job: "Browser test report", steps: { Merge: 17, Price: 5 } },
+  ]);
+});
+
 test("the model it feeds reproduces the run it measured", () => {
   const costs = runCosts({ run: 7, jobs, split, measured, files });
   const fairShare = (110 + 120 + 50 + 60) / costs.shards.length;

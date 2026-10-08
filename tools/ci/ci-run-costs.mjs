@@ -66,6 +66,13 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
   // divides the committed timings, which are measurements, so a noise taken against a stale split's
   // heavier prices would shrink by exactly the staleness.
   const meanSpecSeconds = shards.reduce((sum, s) => sum + s.specSeconds, 0) / total;
+  const lastShard = shardJobs.reduce((a, b) => (seconds(b.completed_at) > seconds(a.completed_at) ? b : a));
+  const stepsOf = (/** @type {any} */ j) => ({
+    job: j.name,
+    steps: Object.fromEntries(
+      (j.steps ?? []).filter((s) => s.started_at).map((s) => [s.name, Math.round(seconds(s.completed_at ?? now) - seconds(s.started_at))])
+    ),
+  });
 
   return {
     run,
@@ -73,6 +80,7 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     shardOverheadSeconds,
     shardNoise: up2((lastShardEnd - scopeEnd - shardOverheadSeconds) / meanSpecSeconds),
     shards,
+    criticalPath: [byName(SCOPE), lastShard, report].map(stepsOf),
     otherJobsEndSeconds: Object.fromEntries(
       jobs
         .filter((j) => j.conclusion !== "skipped" && j.name !== SCOPE && j.name !== REPORT && !SHARD.test(j.name))

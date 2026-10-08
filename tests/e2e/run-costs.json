@@ -1,6 +1,6 @@
 {
   "run": 37776369153,
-  "aroundShardsSeconds": 42,
+  "aroundShardsSeconds": 46,
   "shardOverheadSeconds": 48,
   "shardNoise": 1.37,
   "shards": [
@@ -105,6 +105,66 @@
       "plannedSeconds": 144,
       "specSeconds": 157,
       "wallSeconds": 219
+    }
+  ],
+  "criticalPath": [
+    {
+      "job": "Does this change need the suite?",
+      "steps": {
+        "Set up job": 0,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
+        "Run # Merging a pull request runs the whole suite a second time on a tree": 1,
+        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 3,
+        "Run artifacts=$(gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100\" || echo '{\"artifacts\":[]}')": 2,
+        "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
+        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
+        "Complete job": 0
+      }
+    },
+    {
+      "job": "Browser tests 9/17",
+      "steps": {
+        "Set up job": 1,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
+        "Run ./.github/actions/install": 8,
+        "The split the scope job settled": 0,
+        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 2,
+        "Playwright version": 0,
+        "Install Playwright's browser": 1,
+        "Browser tests": 221,
+        "Keep this shard's report": 2,
+        "Keep the raw Playwright output when the suite goes red": 0,
+        "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
+        "Post Run ./.github/actions/install": 1,
+        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
+        "Complete job": 0
+      }
+    },
+    {
+      "job": "Browser test report",
+      "steps": {
+        "Set up job": 2,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
+        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
+        "Playwright's CLI": 0,
+        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 1,
+        "Run npm install --no-save --no-audit --no-fund --prefix \"$RUNNER_TEMP/pw\" \"$PW\"": 0,
+        "Collect every shard's report": 4,
+        "Every shard reported": 0,
+        "Merge into one report": 5,
+        "Keep the Playwright report": 3,
+        "Build the mockup side-by-side page": 1,
+        "Keep the mockup side-by-side page": 3,
+        "Name the tests that passed only on a retry": 0,
+        "Regenerate tests/e2e/timings.json": 1,
+        "Price this run's time outside the specs": 3,
+        "Keep the timings for the next run": 1,
+        "Commit the regenerated timings, if main's copy is stale": 0,
+        "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
+        "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
+        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 1,
+        "Complete job": 0
+      }
     }
   ],
   "otherJobsEndSeconds": {
