@@ -871,10 +871,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SPLIT: ${{ needs.scope.outputs.timings }}
         run: |
-          rm tests/e2e/run-costs.json
+          mv tests/e2e/run-costs.json "$RUNNER_TEMP/committed-costs.json"
           printf '%s' "$SPLIT" > "$RUNNER_TEMP/split.json"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
-          node tools/ci/ci-run-costs.mjs "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/split.json" tests/e2e/timings.json tests/e2e/run-costs.json
+          node tools/ci/ci-run-costs.mjs "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/split.json" tests/e2e/timings.json tests/e2e/run-costs.json "$RUNNER_TEMP/committed-costs.json"
           cp tests/e2e/run-costs.json "$RUNNER_TEMP/run-costs.json"
 
       # What the next run on this branch, or on any branch after main, splits by (scope's plan),

@@ -34,7 +34,20 @@ test("prices a run from its own job timings", () => {
   assert.equal(costs.shardOverheadSeconds, 50);
   assert.equal(costs.shardNoise, 1.1);
   assert.deepEqual(costs.otherJobsEndSeconds, { "Native tests": 280, "Secret scan": 70 });
-  assert.equal(costs.peakConcurrentJobs, 4);
+  assert.deepEqual(costs.peakConcurrency, { jobs: 4, run: 7 });
+});
+
+test("a job ending in the second another starts does not overlap it", () => {
+  const touching = jobs.map((j) => (j.name === "Does this change need the suite?" ? job(j.name, 0, 16) : j));
+
+  assert.deepEqual(runCosts({ run: 7, jobs: touching, split, measured, files }).peakConcurrency, { jobs: 4, run: 7 });
+});
+
+test("keeps the highest peak any priced run reached, with the run that reached it", () => {
+  const after = (peakConcurrency: { jobs: number; run: number }) => runCosts({ run: 7, jobs, split, measured, files, previous: { peakConcurrency } });
+
+  assert.deepEqual(after({ jobs: 24, run: 3 }).peakConcurrency, { jobs: 24, run: 3 });
+  assert.deepEqual(after({ jobs: 3, run: 3 }).peakConcurrency, { jobs: 4, run: 7 });
 });
 
 test("prices each step of the jobs on the critical path", () => {
@@ -68,6 +81,7 @@ test("a report job still running ends now, and any other job still running has n
 
   assert.equal(costs.aroundShardsSeconds, 63);
   assert.equal(costs.otherJobsEndSeconds["Native tests"], null);
+  assert.deepEqual(costs.peakConcurrency, { jobs: 5, run: 7 });
 });
 
 test("refuses a run whose shards did not all pass", () => {

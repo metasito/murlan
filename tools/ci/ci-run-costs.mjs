@@ -7,7 +7,7 @@
 //   gh api repos/metasito/murlan/actions/runs/<id>/jobs?per_page=100 > jobs.json
 //   gh run view <id> --log --job <scope job id> | grep -o 'timings=.*' | cut -c9- > split.json
 //   gh run download <id> -n e2e-timings              # the measured timings.json
-//   node tools/ci/ci-run-costs.mjs jobs.json split.json timings.json tests/e2e/run-costs.json
+//   node tools/ci/ci-run-costs.mjs jobs.json split.json timings.json tests/e2e/run-costs.json tests/e2e/run-costs.json
 
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -25,10 +25,12 @@ const up2 = (n) => Math.ceil(Math.round(n * 1e6) / 1e4) / 100;
 
 /**
  * @param {{ run: number, jobs: any[], split: Record<string, number>, measured: Record<string, number>,
- *   files: string[], now?: string }} input `split` is what the run's shards were planned by, `measured`
- *   what its specs then took; `now` ends a report job that is still running, as it is when it calls this
+ *   files: string[], now?: string, previous?: any }} input `split` is what the run's shards were planned by, `measured`
+ *   what its specs then took; `now` ends a report job that is still running, as it is when it calls this.
+ *   `previous` is the committed record: one run's peak is only what its plan overlapped, so the highest
+ *   any run reached is kept, and a cap lowered under it shows as queued shards in the times above.
  */
-export function runCosts({ run, jobs, split, measured, files, now = new Date().toISOString() }) {
+export function runCosts({ run, jobs, split, measured, files, now = new Date().toISOString(), previous = undefined }) {
   const byName = (/** @type {string} */ name) => {
     const found = jobs.find((j) => j.name === name);
     if (!found) throw new Error(`run ${run} has no "${name}" job`);
@@ -74,8 +76,8 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     .flatMap((j) => [[seconds(j.started_at), 1], [seconds(j.completed_at ?? now), -1]])
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   let running = 0;
-  const peakConcurrentJobs = Math.max(...edges.map(([, step]) => (running += step)));
-  const stepsOf =(/** @type {any} */ j) => ({
+  const peak = { jobs: Math.max(...edges.map(([, step]) => (running += step))), run };
+  const stepsOf = (/** @type {any} */ j) => ({
     job: j.name,
     steps: Object.fromEntries(
       (j.steps ?? []).filter((s) => s.started_at).map((s) => [s.name, Math.round(seconds(s.completed_at ?? now) - seconds(s.started_at))])
@@ -87,7 +89,7 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
     aroundShardsSeconds: Math.round(scopeEnd - start + reportEnd - lastShardEnd),
     shardOverheadSeconds,
     shardNoise: up2((lastShardEnd - scopeEnd - shardOverheadSeconds) / meanSpecSeconds),
-    peakConcurrentJobs,
+    peakConcurrency: previous?.peakConcurrency?.jobs > peak.jobs ? previous.peakConcurrency : peak,
     shards,
     criticalPath: [byName(SCOPE), lastShard, report].map(stepsOf),
     otherJobsEndSeconds: Object.fromEntries(
@@ -100,12 +102,12 @@ export function runCosts({ run, jobs, split, measured, files, now = new Date().t
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const [jobsFile, splitFile, measuredFile, out] = process.argv.slice(2);
-  if (!out) throw new Error("usage: node tools/ci/ci-run-costs.mjs <jobs.json> <split.json> <measured.json> <out.json>");
+  const [jobsFile, splitFile, measuredFile, out, previousFile] = process.argv.slice(2);
+  if (!out) throw new Error("usage: node tools/ci/ci-run-costs.mjs <jobs.json> <split.json> <measured.json> <out.json> [<previous.json>]");
   const read = (/** @type {string} */ f) => JSON.parse(readFileSync(f, "utf8"));
   const payload = read(jobsFile);
   const jobs = Array.isArray(payload) ? payload : payload.jobs;
-  const costs = runCosts({ run: jobs[0].run_id, jobs, split: read(splitFile), measured: read(measuredFile), files: specFilesIn() });
+  const costs = runCosts({ run: jobs[0].run_id, jobs, split: read(splitFile), measured: read(measuredFile), files: specFilesIn(), previous: previousFile && read(previousFile) });
   writeFileSync(out, `${JSON.stringify(costs, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ ...costs, shards: undefined })}\n`);
 }
