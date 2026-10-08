@@ -1,124 +1,118 @@
 {
-  "run": 37776369153,
-  "aroundShardsSeconds": 46,
+  "run": 37783551410,
+  "aroundShardsSeconds": 51,
   "shardOverheadSeconds": 48,
-  "shardNoise": 1.37,
+  "shardNoise": 1.39,
   "peakConcurrency": {
     "jobs": 24,
-    "run": 37776369153
+    "run": 37783551410
   },
   "shards": [
     {
       "shard": 1,
-      "plannedSeconds": 144,
-      "specSeconds": 142,
-      "wallSeconds": 195
+      "plannedSeconds": 147,
+      "specSeconds": 106,
+      "wallSeconds": 147
     },
     {
       "shard": 2,
-      "plannedSeconds": 144,
-      "specSeconds": 87,
-      "wallSeconds": 130
+      "plannedSeconds": 147,
+      "specSeconds": 98,
+      "wallSeconds": 147
     },
     {
       "shard": 3,
-      "plannedSeconds": 144,
-      "specSeconds": 86,
-      "wallSeconds": 125
+      "plannedSeconds": 146,
+      "specSeconds": 147,
+      "wallSeconds": 186
     },
     {
       "shard": 4,
-      "plannedSeconds": 144,
-      "specSeconds": 144,
-      "wallSeconds": 189
+      "plannedSeconds": 146,
+      "specSeconds": 146,
+      "wallSeconds": 198
     },
     {
       "shard": 5,
-      "plannedSeconds": 144,
-      "specSeconds": 154,
-      "wallSeconds": 204
+      "plannedSeconds": 146,
+      "specSeconds": 132,
+      "wallSeconds": 175
     },
     {
       "shard": 6,
-      "plannedSeconds": 144,
-      "specSeconds": 151,
-      "wallSeconds": 205
+      "plannedSeconds": 146,
+      "specSeconds": 149,
+      "wallSeconds": 202
     },
     {
       "shard": 7,
-      "plannedSeconds": 144,
-      "specSeconds": 149,
-      "wallSeconds": 197
+      "plannedSeconds": 146,
+      "specSeconds": 147,
+      "wallSeconds": 193
     },
     {
       "shard": 8,
-      "plannedSeconds": 144,
-      "specSeconds": 149,
-      "wallSeconds": 203
+      "plannedSeconds": 146,
+      "specSeconds": 148,
+      "wallSeconds": 199
     },
     {
       "shard": 9,
-      "plannedSeconds": 143,
-      "specSeconds": 194,
-      "wallSeconds": 247
+      "plannedSeconds": 146,
+      "specSeconds": 141,
+      "wallSeconds": 205
     },
     {
       "shard": 10,
-      "plannedSeconds": 144,
-      "specSeconds": 149,
-      "wallSeconds": 194
+      "plannedSeconds": 146,
+      "specSeconds": 127,
+      "wallSeconds": 167
     },
     {
       "shard": 11,
-      "plannedSeconds": 144,
-      "specSeconds": 191,
-      "wallSeconds": 232
+      "plannedSeconds": 146,
+      "specSeconds": 153,
+      "wallSeconds": 200
     },
     {
       "shard": 12,
-      "plannedSeconds": 144,
-      "specSeconds": 147,
-      "wallSeconds": 194
+      "plannedSeconds": 146,
+      "specSeconds": 139,
+      "wallSeconds": 197
     },
     {
       "shard": 13,
-      "plannedSeconds": 145,
-      "specSeconds": 134,
-      "wallSeconds": 173
+      "plannedSeconds": 147,
+      "specSeconds": 174,
+      "wallSeconds": 232
     },
     {
       "shard": 14,
-      "plannedSeconds": 144,
-      "specSeconds": 156,
-      "wallSeconds": 207
+      "plannedSeconds": 146,
+      "specSeconds": 186,
+      "wallSeconds": 246
     },
     {
       "shard": 15,
-      "plannedSeconds": 144,
-      "specSeconds": 144,
-      "wallSeconds": 196
+      "plannedSeconds": 146,
+      "specSeconds": 135,
+      "wallSeconds": 182
     },
     {
       "shard": 16,
-      "plannedSeconds": 144,
-      "specSeconds": 146,
-      "wallSeconds": 189
-    },
-    {
-      "shard": 17,
-      "plannedSeconds": 144,
-      "specSeconds": 157,
-      "wallSeconds": 219
+      "plannedSeconds": 147,
+      "specSeconds": 162,
+      "wallSeconds": 207
     }
   ],
   "criticalPath": [
     {
       "job": "Does this change need the suite?",
       "steps": {
-        "Set up job": 0,
-        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
-        "Run # Merging a pull request runs the whole suite a second time on a tree": 1,
-        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 3,
+        "Set up job": 1,
+        "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 3,
+        "Run # Merging a pull request runs the whole suite a second time on a tree": 0,
+        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 1,
         "Run artifacts=$(gh api \"repos/$GITHUB_REPOSITORY/actions/artifacts?name=e2e-timings&per_page=100\" || echo '{\"artifacts\":[]}')": 2,
         "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
         "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
@@ -126,20 +120,20 @@
       }
     },
     {
-      "job": "Browser tests 9/17",
+      "job": "Browser tests 14/16",
       "steps": {
         "Set up job": 1,
         "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
-        "Run ./.github/actions/install": 8,
+        "Run ./.github/actions/install": 12,
         "The split the scope job settled": 0,
-        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 2,
+        "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 3,
         "Playwright version": 0,
-        "Install Playwright's browser": 1,
-        "Browser tests": 221,
+        "Install Playwright's browser": 3,
+        "Browser tests": 213,
         "Keep this shard's report": 2,
         "Keep the raw Playwright output when the suite goes red": 0,
         "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
-        "Post Run ./.github/actions/install": 1,
+        "Post Run ./.github/actions/install": 0,
         "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
         "Complete job": 0
       }
@@ -147,37 +141,38 @@
     {
       "job": "Browser test report",
       "steps": {
-        "Set up job": 2,
+        "Set up job": 1,
         "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 2,
-        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
+        "Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 1,
         "Playwright's CLI": 0,
         "Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 1,
         "Run npm install --no-save --no-audit --no-fund --prefix \"$RUNNER_TEMP/pw\" \"$PW\"": 0,
-        "Collect every shard's report": 4,
+        "Collect every shard's report": 11,
         "Every shard reported": 0,
-        "Merge into one report": 5,
-        "Keep the Playwright report": 3,
+        "Merge into one report": 6,
+        "Keep the Playwright report": 4,
         "Build the mockup side-by-side page": 1,
-        "Keep the mockup side-by-side page": 3,
+        "Keep the mockup side-by-side page": 4,
         "Name the tests that passed only on a retry": 0,
-        "Regenerate tests/e2e/timings.json": 1,
-        "Price this run's time outside the specs": 3,
-        "Keep the timings for the next run": 1,
+        "Regenerate tests/e2e/timings.json": 0,
+        "Price this run's time outside the specs": 1,
+        "Keep the timings for the next run": 2,
         "Commit the regenerated timings, if main's copy is stale": 0,
         "Post Run actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830": 0,
         "Post Run actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020": 0,
-        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 1,
+        "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262": 0,
         "Complete job": 0
       }
     }
   ],
   "otherJobsEndSeconds": {
-    "Build and boot": 183,
-    "Lint": 77,
-    "Loop harness": 90,
-    "Loop harness on Windows": 46,
-    "Native tests": 184,
-    "Secret scan": 79,
-    "Typecheck and tests": 270
+    "Build and boot": 166,
+    "Lint": 81,
+    "Loop harness": 81,
+    "Loop harness on Windows": 48,
+    "Native tests 1/2": 205,
+    "Native tests 2/2": 210,
+    "Secret scan": 69,
+    "Typecheck and tests": 262
   }
 }
