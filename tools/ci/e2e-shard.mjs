@@ -26,12 +26,13 @@ export const UNMEASURED_SECONDS = 60;
 
 /** The whole CI run's wall clock, first job to last: the owner's, docs/agents/RULES.md rule 46. */
 export const TARGET_RUN_SECONDS = 300;
-/** What the run spends outside the shards on the path through them: the scope job before, the report after. Run 36126540767: 14 s and 37 s. */
-export const AROUND_SHARDS_SECONDS = 50;
-/** A shard's time outside its specs: install, the browser, the bundle, Postgres, the boot. Run 36126540767, warm caches: about 45 s. */
-export const SHARD_OVERHEAD_SECONDS = 45;
-/** How far a shard's real specs overran their LPT estimate in run 36126540767, at worst: 225 s against 197. */
-export const SHARD_NOISE = 1.2;
+/** A measured run's own job timings, priced by `tools/ci/ci-run-costs.mjs`. */
+export const RUN_COSTS = path.join(E2E_DIR, "run-costs.json");
+
+/** @returns {{ run: number, aroundShardsSeconds: number, shardOverheadSeconds: number, shardNoise: number, otherJobsEndSeconds: Record<string, number | null> }} */
+export function readRunCosts(file = RUN_COSTS) {
+  return JSON.parse(readFileSync(file, "utf8"));
+}
 /** A public repository's runners take 20 jobs at once, and six other jobs run beside the shards. */
 export const MAX_SHARDS = 14;
 
@@ -128,9 +129,9 @@ export function medianTimings(runs) {
  * @param {string[]} files
  * @param {Record<string, number>} timings
  */
-export function shardsNeeded(files, timings) {
+export function shardsNeeded(files, timings, costs = readRunCosts()) {
   const total = files.reduce((sum, f) => sum + (timings[f] ?? UNMEASURED_SECONDS), 0);
-  const budget = (TARGET_RUN_SECONDS - AROUND_SHARDS_SECONDS - SHARD_OVERHEAD_SECONDS) / SHARD_NOISE;
+  const budget = (TARGET_RUN_SECONDS - costs.aroundShardsSeconds - costs.shardOverheadSeconds) / costs.shardNoise;
   return Math.max(2, Math.ceil(total / budget));
 }
 

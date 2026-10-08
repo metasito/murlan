@@ -9,6 +9,7 @@ import {
   filesForShard,
   MAX_SHARDS,
   plan,
+  readRunCosts,
   readTimings,
   shardsNeeded,
   specFilesIn,
@@ -171,6 +172,13 @@ describe("the split is stable and even", () => {
     const needed = shardsNeeded(specFilesIn(E2E_DIR), readTimings());
 
     assert.ok(needed <= MAX_SHARDS, `${needed} shards to meet the target, over the ${MAX_SHARDS} allowed`);
+  });
+
+  test("no job beside the shards outlasted the target in the measured run", () => {
+    const { run, otherJobsEndSeconds } = readRunCosts();
+    const over = Object.entries(otherJobsEndSeconds).filter(([, end]) => end === null || end > TARGET_RUN_SECONDS);
+
+    assert.deepEqual(over, [], `run ${run}: these ended past ${TARGET_RUN_SECONDS}s, or were still running when it was priced`);
   });
 
   test("timings.json describes specs that exist", () => {

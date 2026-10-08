@@ -1,0 +1,101 @@
+{
+  "run": 37695638432,
+  "aroundShardsSeconds": 63,
+  "shardOverheadSeconds": 55,
+  "shardNoise": 1.24,
+  "shards": [
+    {
+      "shard": 1,
+      "plannedSeconds": 193,
+      "specSeconds": 174,
+      "wallSeconds": 236
+    },
+    {
+      "shard": 2,
+      "plannedSeconds": 194,
+      "specSeconds": 196,
+      "wallSeconds": 249
+    },
+    {
+      "shard": 3,
+      "plannedSeconds": 193,
+      "specSeconds": 169,
+      "wallSeconds": 216
+    },
+    {
+      "shard": 4,
+      "plannedSeconds": 194,
+      "specSeconds": 175,
+      "wallSeconds": 234
+    },
+    {
+      "shard": 5,
+      "plannedSeconds": 194,
+      "specSeconds": 175,
+      "wallSeconds": 224
+    },
+    {
+      "shard": 6,
+      "plannedSeconds": 193,
+      "specSeconds": 155,
+      "wallSeconds": 215
+    },
+    {
+      "shard": 7,
+      "plannedSeconds": 193,
+      "specSeconds": 205,
+      "wallSeconds": 267
+    },
+    {
+      "shard": 8,
+      "plannedSeconds": 193,
+      "specSeconds": 167,
+      "wallSeconds": 218
+    },
+    {
+      "shard": 9,
+      "plannedSeconds": 193,
+      "specSeconds": 150,
+      "wallSeconds": 200
+    },
+    {
+      "shard": 10,
+      "plannedSeconds": 193,
+      "specSeconds": 199,
+      "wallSeconds": 256
+    },
+    {
+      "shard": 11,
+      "plannedSeconds": 194,
+      "specSeconds": 158,
+      "wallSeconds": 201
+    },
+    {
+      "shard": 12,
+      "plannedSeconds": 193,
+      "specSeconds": 111,
+      "wallSeconds": 155
+    },
+    {
+      "shard": 13,
+      "plannedSeconds": 193,
+      "specSeconds": 172,
+      "wallSeconds": 231
+    },
+    {
+      "shard": 14,
+      "plannedSeconds": 193,
+      "specSeconds": 193,
+      "wallSeconds": 256
+    }
+  ],
+  "otherJobsEndSeconds": {
+    "Build and boot": 180,
+    "Lint": 104,
+    "Loop harness": 114,
+    "Loop harness on Windows": 50,
+    "Native tests": 275,
+    "Secret scan": 74,
+    "Typecheck and tests": 263
+  }
+}

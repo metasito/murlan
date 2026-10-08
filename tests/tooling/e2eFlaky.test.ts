@@ -64,7 +64,7 @@ test("every known race names a spec that exists and an issue", () => {
 
 test("the browser report job runs it on the merged report", () => {
   const ci = readFileSync(path.join(import.meta.dirname, "..", "..", ".github", "workflows", "ci.yml"), "utf8");
-  assert.match(ci, /PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report\.json\s+run: npx --yes -p "\$PW" playwright merge-reports --reporter html,json \.\/all-blob-reports[\s\S]*run: node tools\/ci\/e2e-flaky\.mjs merged-report\.json/);
+  assert.match(ci, /PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report\.json\s+run: \$RUNNER_TEMP\/pw\/node_modules\/\.bin\/playwright merge-reports --reporter html,json \.\/all-blob-reports[\s\S]*run: node tools\/ci\/e2e-flaky\.mjs merged-report\.json/);
   const step = /- name: Name the tests that passed only on a retry\n[\s\S]*?(?=\n\n|\n {6}- )/.exec(ci)?.[0] ?? "";
   assert.match(step, /\n {8}env:\n {10}GITHUB_TOKEN: \$\{\{ github\.token \}\}\n/, "issueIsOpen reads GITHUB_TOKEN");
   const job = /\n {2}browser-report:\n[\s\S]*?(?=\n {2}[\w-]+:\n)/.exec(ci)?.[0] ?? "";

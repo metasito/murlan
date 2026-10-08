@@ -398,7 +398,8 @@ jobs:
         with:
           path: ${{ runner.temp }}/jest-cache
           key: native-jest-${{ hashFiles('package-lock.json', 'patches/**', 'babel.config.js', 'jest.config.js') }}
-      - run: npm run test:native -- --cacheDirectory="$RUNNER_TEMP/jest-cache"
+      # jest.config.js halves the workers for a developer's machine; this runner has four cores to itself.
+      - run: npm run test:native -- --cacheDirectory="$RUNNER_TEMP/jest-cache" --maxWorkers=4
       - if: ${{ !cancelled() && steps.jest-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -710,9 +711,10 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ steps.pw.outputs.version }}
+          key: ${{ runner.os }}-playwright-shell-${{ steps.pw.outputs.version }}
+      # Headless runs launch chromium-headless-shell, never the full browser, which is most of the cache.
       - name: Install Playwright's browser
-        run: npx playwright install chromium
+        run: npx playwright install --only-shell chromium
 
       # The only layer that exercises react-native-web's side of every
       # Platform.OS branch, and the only one that measures a laid-out box —
@@ -774,6 +776,7 @@ jobs:
     permissions:
       contents: write
       issues: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -783,6 +786,13 @@ jobs:
       # CLI, pinned to the lockfile's version because a blob report is read by the version that wrote it.
       - name: Playwright's CLI
         run: echo "PW=@playwright/test@$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_ENV"
+      - id: pw-cli
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/pw
+          key: playwright-cli-${{ env.PW }}
+      - if: steps.pw-cli.outputs.cache-hit != 'true'
+        run: npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/pw" "$PW"
 
       - name: Collect every shard's report
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -807,8 +817,9 @@ jobs:
       - name: Merge into one report
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report.json
-        run: npx --yes -p "$PW" playwright merge-reports --reporter html,json ./all-blob-reports
+        run: $RUNNER_TEMP/pw/node_modules/.bin/playwright merge-reports --reporter html,json ./all-blob-reports
 
+      # Both pages are screenshots, videos and trace zips, which deflate barely shrinks.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -817,6 +828,7 @@ jobs:
           path: playwright-report/
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
       - name: Build the mockup side-by-side page
         if: ${{ !cancelled() }}
@@ -830,6 +842,7 @@ jobs:
           path: mockup-parity/
           if-no-files-found: error
           retention-days: 30
+          compression-level: 0
 
       - name: Name the tests that passed only on a retry
         env:
@@ -845,6 +858,18 @@ jobs:
           printf '%s' "$TIMINGS" > tests/e2e/timings.json
           node tools/ci/e2e-timings.mjs merged-report.json
 
+      # Last but the uploads, because this job's own time up to here is part of what it prices.
+      - name: Price this run's time outside the specs
+        if: ${{ needs.browser.result == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SPLIT: ${{ needs.scope.outputs.timings }}
+        run: |
+          printf '%s' "$SPLIT" > "$RUNNER_TEMP/split.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"
+          node tools/ci/ci-run-costs.mjs "$RUNNER_TEMP/jobs.json" "$RUNNER_TEMP/split.json" tests/e2e/timings.json tests/e2e/run-costs.json
+          cp tests/e2e/run-costs.json "$RUNNER_TEMP/run-costs.json"
+
       # What the next run on this branch, or on any branch after main, splits by (scope's plan),
       # so balance follows the suite without a commit per merge. A red shard is not a measurement.
       - name: Keep the timings for the next run
@@ -852,7 +877,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: e2e-timings
-          path: tests/e2e/timings.json
+          path: |
+            tests/e2e/timings.json
+            tests/e2e/run-costs.json
           if-no-files-found: error
           retention-days: 90
 
@@ -887,19 +914,20 @@ jobs:
           # non-fast-forward. Re-derive against the new tip rather than rebase
           # — both sides rewrote the whole file.
           for attempt in 1 2 3; do
-            if git diff --quiet -- tests/e2e/timings.json; then
-              echo "tests/e2e/timings.json already matches this run's measurements."
+            if git diff --quiet -- tests/e2e/timings.json tests/e2e/run-costs.json; then
+              echo "tests/e2e/timings.json and run-costs.json already match this run's measurements."
               exit 0
             fi
             if ! node --test tests/tooling/e2eShardSplit.test.ts; then
-              echo "::error::The measured timings fail tests/tooling/e2eShardSplit.test.ts; committing them would red main and every pull request."
+              echo "::error::This run's measurements fail tests/tooling/e2eShardSplit.test.ts: the suite no longer fits rule 46's target, and committing them would red main and every pull request."
               exit 1
             fi
-            git commit -q -m "Regenerate tests/e2e/timings.json from measured durations" -- tests/e2e/timings.json
+            git commit -q -m "Regenerate tests/e2e/timings.json and run-costs.json from measured durations" -- tests/e2e/timings.json tests/e2e/run-costs.json
             if git push; then exit 0; fi
             git fetch --force origin main:refs/remotes/origin/main
             git reset --hard refs/remotes/origin/main
             node tools/ci/e2e-timings.mjs merged-report.json
+            cp "$RUNNER_TEMP/run-costs.json" tests/e2e/run-costs.json
           done
           echo "::error::main moved under each of three attempts to commit the regenerated timings."
           exit 1
