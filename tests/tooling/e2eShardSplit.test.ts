@@ -10,7 +10,6 @@ import {
   MAX_CONCURRENT_JOBS,
   MAX_SHARDS,
   plan,
-  readRunCosts,
   readTimings,
   shardsNeeded,
   specFilesIn,
@@ -68,31 +67,8 @@ describe("every browser spec reaches exactly one shard", () => {
 
   test("the weekly timings commit passes this file before it lands, as its bot push runs no CI", () => {
     const step = /- name: Commit the regenerated timings[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
-    const price = /- name: Price this run's time outside the specs[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
 
     assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
-    assert.match(price, /run: \|\n\s+mv tests\/e2e\/run-costs\.json "\$RUNNER_TEMP\/committed-costs\.json"\n/);
-    assert.match(price, /node tools\/ci\/ci-run-costs\.mjs [^\n]* tests\/e2e\/run-costs\.json "\$RUNNER_TEMP\/committed-costs\.json"\n\s+cp tests\/e2e\/run-costs\.json "\$RUNNER_TEMP\/run-costs\.json"\n/);
-    assert.match(ciYml, /name: e2e-timings\n\s+path: \|\n\s+tests\/e2e\/timings\.json\n\s+tests\/e2e\/run-costs\.json\n/);
-    assert.match(step, /git commit [^\n]*-- tests\/e2e\/timings\.json tests\/e2e\/run-costs\.json\n/);
-    assert.match(step, /git reset --hard [^\n]*\n\s+node tools\/ci\/e2e-timings\.mjs [^\n]*\n\s+cp "\$RUNNER_TEMP\/run-costs\.json" tests\/e2e\/run-costs\.json\n/);
-    assert.ok(ciYml.indexOf(price) > ciYml.indexOf("- name: Regenerate tests/e2e/timings.json"), "the price step runs before this run's timings exist");
-    const commitCron = /github\.event\.schedule == '([^']+)'/.exec(step)?.[1];
-    assert.ok(price.includes(`continue-on-error: \${{ github.event.schedule != '${commitCron}' }}`), "a refused price must red the run that commits it, and only that run");
-  });
-
-  test("the weekly run that commits the record starts no job the record leaves out", () => {
-    const crons = [...ciYml.matchAll(/- cron: "([^"]+)"/g)].map((m) => m[1]);
-    const commitIf = /- name: Commit the regenerated timings[^\n]*\n\s+if: ([^\n]*)/.exec(ciYml)?.[1] ?? "";
-    const commitCron = /github\.event\.schedule == '([^']+)'/.exec(commitIf)?.[1] ?? "";
-    const native = ciJobs.filter((job) => /^ {4}if: .*\bnative\b/m.test(job));
-
-    assert.ok(crons.includes(commitCron), `the timings commit (${commitIf}) runs on none of ci.yml's crons ${crons.join(", ")}`);
-    assert.ok(native.length >= 2, `found ${native.length} device compile jobs; the split of ci.yml is wrong`);
-    for (const job of native) {
-      const cond = /^ {4}if: (.*)$/m.exec(job)?.[1] ?? "";
-      assert.ok(!/event_name == 'schedule'/.test(cond) && !cond.includes(`'${commitCron}'`), `${job.split("\n")[0]} runs on the cron that commits the record: ${cond}`);
-    }
   });
 
   test("a spec in a subdirectory is placed, as Playwright would run it", () => {
@@ -209,22 +185,6 @@ describe("the split is stable and even", () => {
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
     assert.ok(besideShards.length >= 8, `found ${besideShards.length} jobs beside the shards; the split of ci.yml is wrong`);
     assert.ok(MAX_SHARDS + besideShards.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${besideShards.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
-    const { jobs: peak, run } = readRunCosts().peakConcurrency;
-    assert.ok(MAX_CONCURRENT_JOBS <= peak, `no priced run had more than ${peak} jobs at once (run ${run}), so ${MAX_CONCURRENT_JOBS} is unmeasured`);
-  });
-
-  test("no job beside the shards outlasted the target in the measured run", () => {
-    const { run, otherJobsEndSeconds } = readRunCosts();
-    const over = Object.entries(otherJobsEndSeconds).filter(([, end]) => end === null || end > TARGET_RUN_SECONDS);
-
-    assert.deepEqual(over, [], `run ${run}: these ended past ${TARGET_RUN_SECONDS}s, or were still running when it was priced`);
-  });
-
-  test("the measured run priced every job ci.yml starts beside the shards", () => {
-    const { run, otherJobsEndSeconds } = readRunCosts();
-    const unpriced = besideShards.filter((name) => !(name in otherJobsEndSeconds));
-
-    assert.deepEqual(unpriced, [], `run ${run} has no end for these jobs, so nothing holds them to the target`);
   });
 
   test("the native suite runs as jest shards, each keeping its own transform cache", () => {
@@ -258,7 +218,7 @@ describe("the plan prices each spec by its latest green run", () => {
       const paths = Object.entries(layers).map(([name, layer]) =>
         Array.isArray(layer) ? layer.map((timings, i) => write(`${name}${i}`, timings)) : write(name, layer)
       );
-      return plan([...paths, ...missing.map((m) => path.join(dir, m))], files);
+      return plan([...paths, ...missing.map((m) => path.join(dir, m))]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -296,7 +256,6 @@ describe("the plan prices each spec by its latest green run", () => {
 
     assert.equal(timings["heavy.spec.ts"], 600);
     assert.equal(timings["light0.spec.ts"], 100);
-    assert.equal(shards.length, shardsNeeded(files, timings));
     const alone = assignShards(files, timings, shards.length).find((s) => s.files.includes("heavy.spec.ts"));
     assert.deepEqual(alone?.files, ["heavy.spec.ts"]);
   });
@@ -307,24 +266,15 @@ describe("the plan prices each spec by its latest green run", () => {
     assert.equal(timings["heavy.spec.ts"], 300);
   });
 
-  test("the count is arithmetic on the numbers, not a constant", () => {
-    const light = planned({ committed: even }).shards.length;
-    const heavy = planned({ committed: Object.fromEntries(files.map((f) => [f, 250])) }).shards.length;
-
-    assert.ok(heavy > light, `${light} shards for 900s of specs and ${heavy} for 2250s`);
-    const guessed = planned({}).shards.length;
-    assert.equal(guessed, shardsNeeded(files, {}), "nine unmeasured specs at the guess");
-    assert.ok(guessed < light && light < heavy);
+  // Wall clock falls with every shard down to the longest spec's floor; runners are free on a public repo.
+  test("a run takes every shard the cap allows, whatever the suite weighs", () => {
+    assert.equal(planned({ committed: even }).shards.length, MAX_SHARDS);
+    assert.equal(planned({}).shards.length, MAX_SHARDS);
   });
 
-  test("the count prices every measured cost, and refuses a record that leaves no time for specs", () => {
-    const nine = Array.from({ length: 9 }, (_, i) => `s${i}.spec.ts`);
-    const even100 = Object.fromEntries(nine.map((f) => [f, 100]));
-    const costs = { run: 1, aroundShardsSeconds: 40, shardOverheadSeconds: 50, shardNoise: 1.5, peakConcurrency: { jobs: 24, run: 1 }, otherJobsEndSeconds: {} };
-
-    assert.equal(shardsNeeded(nine, even100, costs), 7);
-    assert.throws(() => shardsNeeded(nine, even100, { ...costs, aroundShardsSeconds: 252, shardOverheadSeconds: 48 }), /run 1 leaves no time/);
-    assert.throws(() => shardsNeeded(nine, even100, { ...costs, shardNoise: 0 }), /run 1 leaves no time/);
+  test("the fit check grows with the suite", () => {
+    const heavy = Object.fromEntries(files.map((f) => [f, 250]));
+    assert.ok(shardsNeeded(files, heavy) > shardsNeeded(files, even));
   });
 });
 

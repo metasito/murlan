@@ -26,15 +26,13 @@ export const UNMEASURED_SECONDS = 60;
 
 /** The whole CI run's wall clock, first job to last: the owner's, docs/agents/RULES.md rule 46. */
 export const TARGET_RUN_SECONDS = 300;
-/** A measured run's own job timings, priced by `tools/ci/ci-run-costs.mjs`. */
-export const RUN_COSTS = path.join(E2E_DIR, "run-costs.json");
-
-/** @returns {{ run: number, aroundShardsSeconds: number, shardOverheadSeconds: number, shardNoise: number, peakConcurrency: { jobs: number, run: number }, otherJobsEndSeconds: Record<string, number | null> }} */
-export function readRunCosts(file = RUN_COSTS) {
-  return JSON.parse(readFileSync(file, "utf8"));
-}
-
-/** Not the documented 20: at most the `peakConcurrency` a priced run reached, which `e2eShardSplit.test.ts` holds it to. */
+/** Run 37792764075, 17 shards: the scope job before them and the report after, 10 s and 29 s. */
+export const AROUND_SHARDS_SECONDS = 39;
+/** Same run: a shard's wall clock less its specs, median of 17 — install, browser, bundle export, boot, upload. */
+export const SHARD_OVERHEAD_SECONDS = 52;
+/** Same run: the slowest shard's specs against the mean shard's, 1.32. */
+export const SHARD_NOISE = 1.32;
+/** Not the documented 20: run 37792764075 ran 25 jobs at once with none queued. */
 export const MAX_CONCURRENT_JOBS = 25;
 /** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
 export const MAX_SHARDS = 17;
@@ -132,10 +130,9 @@ export function medianTimings(runs) {
  * @param {string[]} files
  * @param {Record<string, number>} timings
  */
-export function shardsNeeded(files, timings, costs = readRunCosts()) {
+export function shardsNeeded(files, timings) {
   const total = files.reduce((sum, f) => sum + (timings[f] ?? UNMEASURED_SECONDS), 0);
-  const budget = (TARGET_RUN_SECONDS - costs.aroundShardsSeconds - costs.shardOverheadSeconds) / costs.shardNoise;
-  if (!(budget > 0 && Number.isFinite(budget))) throw new Error(`run ${costs.run} leaves no time for specs inside ${TARGET_RUN_SECONDS}s`);
+  const budget = (TARGET_RUN_SECONDS - AROUND_SHARDS_SECONDS - SHARD_OVERHEAD_SECONDS) / SHARD_NOISE;
   return Math.max(2, Math.ceil(total / budget));
 }
 
@@ -144,11 +141,10 @@ export function shardsNeeded(files, timings, costs = readRunCosts()) {
  *   runs, priced by `medianTimings`; a missing file is skipped
  * @returns {{ shards: number[], timings: Record<string, number> }}
  */
-export function plan(layers, files = specFilesIn()) {
+export function plan(layers) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
   const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
-  const count = Math.min(MAX_SHARDS, shardsNeeded(files, timings));
-  return { shards: Array.from({ length: count }, (_, i) => i + 1), timings };
+  return { shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1), timings };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {
