@@ -21,6 +21,7 @@ import {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const E2E_DIR = path.join(repoRoot, "tests", "e2e");
 const ciYml = readFileSync(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
+const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 
 const config = readFileSync(path.join(E2E_DIR, "playwright.config.ts"), "utf8");
@@ -60,8 +61,26 @@ describe("every browser spec reaches exactly one shard", () => {
 
   test("the weekly timings commit passes this file before it lands, as its bot push runs no CI", () => {
     const step = /- name: Commit the regenerated timings[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
+    const price = /- name: Price this run's time outside the specs[\s\S]*?\n\n/.exec(ciYml)?.[0] ?? "";
 
     assert.match(step, /node --test tests\/tooling\/e2eShardSplit\.test\.ts[\s\S]*git commit /);
+    assert.match(price, /node tools\/ci\/ci-run-costs\.mjs [^\n]* tests\/e2e\/run-costs\.json\n/);
+    assert.match(ciYml, /name: e2e-timings\n\s+path: \|\n\s+tests\/e2e\/timings\.json\n\s+tests\/e2e\/run-costs\.json\n/);
+    assert.match(step, /git commit [^\n]*-- tests\/e2e\/timings\.json tests\/e2e\/run-costs\.json\n/);
+  });
+
+  test("the weekly run that commits the record starts no job the record leaves out", () => {
+    const crons = [...ciYml.matchAll(/- cron: "([^"]+)"/g)].map((m) => m[1]);
+    const commitIf = /- name: Commit the regenerated timings[^\n]*\n\s+if: ([^\n]*)/.exec(ciYml)?.[1] ?? "";
+    const commitCron = /github\.event\.schedule == '([^']+)'/.exec(commitIf)?.[1] ?? "";
+    const native = ciJobs.filter((job) => /^ {4}if: .*\bnative\b/m.test(job));
+
+    assert.ok(crons.includes(commitCron), `the timings commit (${commitIf}) runs on none of ci.yml's crons ${crons.join(", ")}`);
+    assert.ok(native.length >= 2, `found ${native.length} device compile jobs; the split of ci.yml is wrong`);
+    for (const job of native) {
+      const cond = /^ {4}if: (.*)$/m.exec(job)?.[1] ?? "";
+      assert.ok(!/event_name == 'schedule'/.test(cond) && !cond.includes(`'${commitCron}'`), `${job.split("\n")[0]} runs on the cron that commits the record: ${cond}`);
+    }
   });
 
   test("a spec in a subdirectory is placed, as Playwright would run it", () => {
@@ -176,8 +195,7 @@ describe("the split is stable and even", () => {
   });
 
   test("the shards and every job started beside them fit the measured concurrency cap", () => {
-    const jobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-]*:\n)/).slice(1);
-    const beside = jobs.filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job));
+    const beside = ciJobs.filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !/^ {4}if: .*\bnative\b/m.test(job));
 
     assert.ok(beside.length >= 7, `found ${beside.length} jobs beside the shards; the split of ci.yml is wrong`);
     assert.ok(MAX_SHARDS + beside.length <= MAX_CONCURRENT_JOBS, `${MAX_SHARDS} shards and ${beside.length} other jobs exceed ${MAX_CONCURRENT_JOBS}`);
