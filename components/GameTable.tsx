@@ -443,7 +443,7 @@ export function GameTable({
   const focusFadeStyle = useFocusFade(focusMode);
   const stackFocused = focusMode && ownLink === "up";
   const stackFadeStyle = useFocusFade(stackFocused);
-  useTableClaim(!focusMode && !tableCovered);
+  useTableClaim(!stackFocused && !tableCovered);
 
   // ── Derived view of the game ────────────────────────────────────────────────
 
@@ -1178,27 +1178,27 @@ export function GameTable({
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
         <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, greyStyle]}>
-        <ControlRail
-          veiled={behindCoverOnly}
-          width={frame.rail}
-          topPad={frame.tableTop}
-          bottomPad={frame.tableBottom}
-          top={
-            <RailKnob
-              onPress={() => setSettingsOpen((open) => !open)}
-              a11yLabel={t("gameTable.settingsA11yLabel")}
-              size={knobSize}
-              expanded={settingsOpen}
-            >
-              <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
-            </RailKnob>
-          }
-          bottom={
-            <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
-              {railExtra}
-            </Animated.View>
-          }
-        />
+          <ControlRail
+            veiled={behindCoverOnly}
+            width={frame.rail}
+            topPad={frame.tableTop}
+            bottomPad={frame.tableBottom}
+            top={
+              <RailKnob
+                onPress={() => setSettingsOpen((open) => !open)}
+                a11yLabel={t("gameTable.settingsA11yLabel")}
+                size={knobSize}
+                expanded={settingsOpen}
+              >
+                <Ionicons name={settingsOpen ? "close" : "menu"} size={knobSize * 0.4} color={Colors.textMuted} />
+              </RailKnob>
+            }
+            bottom={
+              <Animated.View pointerEvents={focusMode ? "none" : undefined} style={focusFadeStyle}>
+                {railExtra}
+              </Animated.View>
+            }
+          />
         </Animated.View>
 
         {settingsOpen && (

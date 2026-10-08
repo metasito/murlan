@@ -52,8 +52,8 @@ const VEILED_ON_ITS_OWN_TERMS: Record<string, { spelling: RegExp; why: string }>
       "holding the table, its gate a11yHidden and its words on an A11yStatus of their own; after " +
       "that it stays until the first play, and the sheet opened over it must hide its sentence",
   },
-  ControlRail: {
-    spelling: /veiled=\{behindCoverOnly\}/,
+  "control-rail-layer": {
+    spelling: /<ControlRail\s+veiled=\{behindCoverOnly\}/,
     why:
       "answers to a cover that paints over it and deliberately not to the settings sheet — " +
       "the sheet is closed by the knob this rail carries, so the table's own veil would shut " +
@@ -166,9 +166,14 @@ describe("every child of the game table's root answers to the veil", () => {
       kids.some((l) => /styles\.kick/.test(l)),
       "the layer the kick moves is no longer a direct child of the root"
     );
-    assert.ok(
-      /^ {6}<View\b/.test(kids.find((l) => !/styles\.kick/.test(l)) ?? ""),
-      "the root's other child is no longer a plain View, so the felt may now be animated"
+    const felt = lines.findIndex((l, i) => i > open && /^ {6}<(View|Animated\.View)\b/.test(l) && !/styles\.kick/.test(l));
+    const feltTag = lines.slice(felt, lines.findIndex((l, i) => i >= felt && />\s*$/.test(l)) + 1).join("\n");
+    const feltStyles = /style=\{\[([^\]]*)\]\}/.exec(feltTag)?.[1].split(",").map((s) => s.trim()) ?? [];
+    assert.ok(felt > open && feltStyles.length > 0, "the root's other child is no longer a View with a style list");
+    assert.deepEqual(
+      feltStyles.filter((s) => !["StyleSheet.absoluteFill", "FELT_Z", "greyStyle"].includes(s)),
+      [],
+      "the felt carries a style that may move it; only the reconnect grey may animate it"
     );
   });
 

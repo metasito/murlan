@@ -17,7 +17,8 @@ import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigatio
 import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/online";
 import { setDeviceOffline } from "./helpers/deviceNetwork";
 import { mockupAt, stage, type Stage } from "./helpers/mockupStage";
-import { Reconnect, TOUCH_TARGET_MIN } from "../../lib/tokens";
+import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
+import { Reconnect } from "../../lib/tokens";
 
 const RECONNECTING = "Riconnessione…";
 const LOST = "Connessione persa";
@@ -114,8 +115,7 @@ test("online — a dropped connection says so, and the table comes back", async 
     const retry = page.getByRole("button", { name: `${LOST}, ${RETRY}` });
     await expect(retry, "still down past the give-up, the pill offers Riprova").toBeVisible({ timeout: 30_000 });
     expect(await greyOf(), "the table stays grey once it gives up").toBe(GREY);
-    const hit = (await retry.boundingBox())!;
-    expect(hit.height, "Riprova meets the 44 pt floor").toBeGreaterThanOrEqual(TOUCH_TARGET_MIN);
+    await sweepSizes(page, "turn pill, connection lost", UNDERSIZED_BY_DESIGN);
     const app = stage(page, null);
     const lost = await plateAndDot(app, page, TURN);
     const mockup = await mockupAt(browser, "reconnect", 8000);

@@ -59,6 +59,7 @@ const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
   ["components/SettingsModal.tsx", 4, "rows filling the modal's width", "settings"],
   ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row", "rematch prompt"],
   ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width", "table settings sheet"],
+  ["components/table/notices/hud.tsx", 1, "Riprova, the whole lost pill: its words plus the gold key", "turn pill, connection lost"],
   ["app/(online)/index.tsx", 3, "the modal's cancel and confirm buttons, `flex: 1` in its row", "join-room modal"],
   ["app/(online)/room.tsx", 2, "copy and share, an icon plus a label", "room, waiting for players"],
   ["app/auth.tsx", 1, "a tab, `flex: 1` in the tab bar", "sign-in"],
@@ -204,7 +205,7 @@ test("every control's touch size has been ruled on", () => {
 
 // A label only counts where the spec passes it as `sweepSizes`'s own argument, outside a comment.
 test("every control whose width comes from layout is measured by a named sweep", () => {
-  const specs = ["tests/e2e/tapTargets.spec.ts", "tests/e2e/tapTargetsOnlineHand.spec.ts"];
+  const specs = ["tests/e2e/tapTargets.spec.ts", "tests/e2e/tapTargetsOnlineHand.spec.ts", "tests/e2e/reconnect.spec.ts"];
   const spec = specs.map((f) => blankComments(read(f))).join("\n");
   const swept = new Set([...spec.matchAll(/\bsweepSizes\(\s*page\s*,\s*"([^"]+)"/g)].map((m) => m[1]));
   const unswept = WIDTH_FROM_LAYOUT.filter(([, , , screen]) => !swept.has(screen)).map(
