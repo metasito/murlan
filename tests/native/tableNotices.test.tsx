@@ -365,6 +365,29 @@ describe('the turn pill', () => {
     await r.unmount();
   });
 
+  it('brings the turn pill back through focus mode while the viewer is not online, so Riprova stays in reach', async () => {
+    const hidden = { includeHiddenElements: true };
+    const lost = { state: 'lost', text: 'Connessione persa', action: { label: 'Riprova', onPress: noop } } as const;
+    const table = (ownLink: 'up' | 'lost') => (
+      <SettingsProvider>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <GameTable gameState={STATE} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop}
+            ownLink={ownLink} connection={ownLink === 'lost' ? lost : null} />
+        </SafeAreaProvider>
+      </SettingsProvider>
+    );
+    const r = await render(table('up'));
+    const knob = screen.getByLabelText(en['gameTable.settingsA11yLabel'], hidden);
+    await act(async () => fireEvent.press(knob));
+    await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
+    await act(async () => fireEvent.press(knob));
+    const reach = () => screen.getByTestId('game-hud-stack', hidden).props.pointerEvents;
+    expect(reach()).toBe('none');
+    await r.rerender(table('lost'));
+    expect(reach()).toBe('box-none');
+    await r.unmount();
+  });
+
   it('is the one notice plate in the HUD stack', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>

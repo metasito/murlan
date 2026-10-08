@@ -441,6 +441,8 @@ export function GameTable({
   const closeSettings = useCallback(() => setSettingsOpen(false), [setSettingsOpen]);
 
   const focusFadeStyle = useFocusFade(focusMode);
+  const stackFocused = focusMode && ownLink === "up";
+  const stackFadeStyle = useFocusFade(stackFocused);
   useTableClaim(!focusMode && !tableCovered);
 
   // ── Derived view of the game ────────────────────────────────────────────────
@@ -1083,13 +1085,13 @@ export function GameTable({
 
         <Animated.View
           testID="game-hud-stack"
-          pointerEvents={focusMode ? "none" : "box-none"}
+          pointerEvents={stackFocused ? "none" : "box-none"}
           {...clockVeil}
           style={[
             styles.hudCentre,
             { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
             holdingForStart && HELD_CLOCK_Z,
-            focusFadeStyle,
+            stackFadeStyle,
           ]}
         >
           <A11yVeil veil={clockVeil}>
