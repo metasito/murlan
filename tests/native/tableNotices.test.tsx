@@ -4,6 +4,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { activate } from './tapHelpers';
 import { t } from '@/lib/i18n';
 import { cardSpokenName } from '@/lib/cardNames';
@@ -404,10 +405,14 @@ describe('the turn pill', () => {
     await act(async () => fireEvent.press(knob));
     await act(async () => fireEvent.press(screen.getByTestId(`settings-row-${en['gameSettingsSheet.focusMode']}`, hidden)));
     await act(async () => fireEvent.press(knob));
-    const reach = () => screen.getByTestId('game-hud-stack', hidden).props.pointerEvents;
-    expect(reach()).toBe('none');
+    const stack = () => screen.getByTestId('game-hud-stack', hidden);
+    const reach = async () => {
+      await act(async () => jest.advanceTimersByTime(16));
+      return [stack().props.pointerEvents, (getAnimatedStyle(stack()) as { opacity: number }).opacity];
+    };
+    expect(await reach()).toEqual(['none', 0]);
     await r.rerender(table('lost'));
-    expect(reach()).toBe('box-none');
+    expect(await reach()).toEqual(['box-none', 1]);
     await r.unmount();
   });
 
