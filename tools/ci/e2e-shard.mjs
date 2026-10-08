@@ -147,7 +147,7 @@ export function shardsNeeded(files, timings, costs = readRunCosts()) {
 export function plan(layers, files = specFilesIn()) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
   const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
-  const count = Math.min(MAX_SHARDS, shardsNeeded(files, timings));
+  const count = MAX_SHARDS;
   return { shards: Array.from({ length: count }, (_, i) => i + 1), timings };
 }
 
