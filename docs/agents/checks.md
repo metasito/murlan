@@ -83,7 +83,9 @@ drive `smoke`, `offline-game`, `exchange-phase` and `rematch-prompt` on a real s
 emulator; `ios.yml` runs them as parallel shards, one macOS job each, and its `Drive the app on a
 real iOS simulator` job is green only when every shard ran and passed
 (`tests/tooling/iosShards.test.ts`) and the run, first job start to last job end, took at most
-`BUDGET_S` in `tools/ci/ios-wall.mjs`, read from the run's own jobs API. A shard never builds: when no native build for the branch's
+`BUDGET_S` in `tools/ci/ios-wall.mjs`, read from the run's own jobs API. Each shard boots its
+simulator beside the app job and waits for that job's upload (`tools/ci/await-artifact.mjs`),
+going red when the app job ends without one. A shard never builds: when no native build for the branch's
 fingerprint is cached (a native change), it fails saying so, and `gh workflow run
 ios-app-cache.yml --ref <branch>` builds one (~21 min) before `ios.yml` is dispatched again. A ticket dispatches them from its own branch when its work needs a device run
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch

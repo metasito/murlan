@@ -94,12 +94,18 @@ test("every load sampler is stopped once the debug output carrying its log is up
   assert.ok(IOS.indexOf("- name: Upload Maestro debug output") < IOS.indexOf("- name: Stop sampling the runner's load"));
 });
 
-test("a shard needs the app job, which restores, and downloads the app it uploaded", () => {
+test("a shard boots beside the app job, which restores, and waits for the app it uploads", () => {
   assert.match(job("app"), /uses: \.\/\.github\/actions\/ios-app\n/);
-  assert.match(job("flows"), /\n {4}needs: app\n/);
+  assert.doesNotMatch(job("flows"), /\n {4}needs:/);
+  const flows = job("flows");
   const uploaded = /upload-artifact@.*\n {8}with:\n {10}name: (.+)\n/.exec(job("app"))![1];
-  assert.match(job("flows"), new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
-  assert.doesNotMatch(job("flows"), /actions\/install|npm ci|actions\/ios-app|gh api/);
+  const producer = /\n {4}name: (.+)\n/.exec(job("app"))![1];
+  assert.match(flows, /\n {4}permissions:\n(?: {6}.+\n)* {6}actions: read\n/);
+  const wait = flows.indexOf(`run: node tools/ci/await-artifact.mjs ${uploaded} "${producer}"\n`);
+  const download = flows.search(new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
+  assert.ok(wait !== -1 && download !== -1 && wait < download, "the download waits on the app job's upload");
+  assert.ok(flows.indexOf("- name: Stop the simulator services no flow needs") < wait, "the simulator settles while the app job runs");
+  assert.doesNotMatch(flows, /actions\/install|npm ci|actions\/ios-app|gh api/);
 });
 
 test("the simulator services no flow needs are found, disabled and gone before the app is installed", () => {
