@@ -21,6 +21,8 @@ describe('expo-linear-gradient on web', () => {
     expect(backgroundOf()).toMatch(/116\.56\d*deg/);
     await layOut(0, 50);
     expect(backgroundOf()).toMatch(/116\.56\d*deg/);
+    await layOut(100, 0);
+    expect(backgroundOf()).toMatch(/116\.56\d*deg/);
   });
 
   it('keeps a vertical angle through a 0x0 layout', async () => {
