@@ -6,7 +6,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
-import { feltPixels, rgbaOf, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
+import { feltPixels, rgbaOf, skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
@@ -128,6 +128,12 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   expect(pile.length, "the seeded pile").toBeGreaterThan(0);
   const lamp = (await page.evaluate(() => (window as unknown as { murlanTrace: { frames: TraceFrame[] } }).murlanTrace.frames.at(-1)!.lamp))!;
   const fall = mockupFall({ x: anchor.x / felt.sx, y: anchor.y / felt.sy }, { x: lamp.x / felt.sx, y: lamp.y / felt.sy });
+  const sampled = (await feltPixels(page)).pixels.data;
+  const unlit = await page.addStyleTag({ content: UNLIT_AIR });
+  await twoFrames(page);
+  const withoutAir = (await feltPixels(page)).pixels.data;
+  await unlit.evaluate((tag) => tag.remove());
+  expect(sampled.equals(withoutAir), "the felt's sample leaves out the motes, which are laid at random on every load").toBe(true);
   const app = await appShadows(page);
   await page.context().close();
 
