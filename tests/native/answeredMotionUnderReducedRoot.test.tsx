@@ -6,6 +6,8 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from "react-nativ
 import { setMotionPreference } from "@/lib/accessibility";
 import { Motion } from "@/lib/theme";
 import { ResultBoard } from "@/components/ResultBoard";
+import { FloatingReactions } from "@/components/ReactionLayer";
+import { clearReactions, pushReaction } from "@/lib/reactions";
 import { pileOf } from "./helpers/landing";
 
 const { getReducedMotionFromConfig } = require("react-native-reanimated/lib/module/layoutReanimation/web") as {
@@ -60,6 +62,15 @@ describe("under the app's reduced motion, an animation that answers it plays its
     expect(opacity()).toBeLessThan(1);
     await advance(Motion.reduced.reveal);
     expect(opacity()).toBe(1);
+    await view.unmount();
+  });
+
+  it("a table reaction shows, then fades, rather than its sequence skipping to the fade's end", async () => {
+    const view = await render(underReducedRoot(<FloatingReactions viewerSeat={0} playerCount={4} />));
+    await act(async () => pushReaction({ emoji: "🔥", username: "Ana", fromSeat: 2 }));
+    await advance(100);
+    expect((getAnimatedStyle(screen.getByTestId("reaction-from-2")) as { opacity: number }).opacity).toBeGreaterThan(0.5);
+    await act(async () => clearReactions());
     await view.unmount();
   });
 
