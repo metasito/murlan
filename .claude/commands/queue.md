@@ -7,7 +7,7 @@ model: opus
 
 Read `docs/agents/RULES.md` now — this file cites it by number.
 
-The only loop protocol in this repo. `docs/agents/RULES.md` is the ruleset; this file is the
+`docs/agents/RULES.md` is the ruleset; this file is the
 procedure. Where they disagree, RULES.md wins and this file is stale — fix it.
 
 One ticket at a time, one ticket per process: `tools/loop/queue-loop.mjs` spawns `/queue <n>` and
@@ -98,8 +98,6 @@ derives it from git and the tracker.
 6. **The Definition of done is the body's `## Definition of done`**, as later comments amend it;
    phase F is judged against it. With none checkable, park it (**Never stall**).
 
-Done when the worktree stands and the Definition of done is checkable.
-
 ## B — Scope
 
 `PHASE B`
@@ -124,8 +122,6 @@ Done when the worktree stands and the Definition of done is checkable.
 
 3. No file is out of scope. If the report names the schema, socket protocol, deploy runtime
    contract or a workflow, the PR body says what getting it wrong costs.
-
-Done when the scope report is in hand and any split filed.
 
 ## C — Build
 
@@ -196,20 +192,20 @@ Then leave through **Leaving C**.
    verbatim:
 
    ```sh
-   node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
+   node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n> <base>
    ```
 
+   `<base>` is `origin/main` for the ticket's first check; later, the head this
+   process's previous check read, else the newest `DOD-CHECK`'s.
    Build what it reports partial or missing, failing test first, then ask once more on the new
    diff: at most twice per process. Post what the second answer still reports as `FIX-NOTES <sha>`
    under `Completeness left:`, and go on. Where wrong, check the code, not memory.
-2. Read `git diff origin/main...HEAD` against phase D's two briefs and fix what either would raise.
-   This does not replace phase D's review.
-3. Then commit the last slice, and run `npm run agent:check`.
-4. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
+2. Then commit the last slice, and run `npm run agent:check`.
+3. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
    `- [x] <box> — <path>:<line> · <test path>:<line> · red: <its failure line before the fix>`.
    A box you cannot close stays `- [ ]` with why: the ticket is not done, so keep building or park it (**Never stall**).
-5. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
+4. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
 Only then declare handoff D and exit. The supervisor re-gates it and opens a draft pull request,
 so CI runs while D reviews.
@@ -259,11 +255,14 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
    ```
 
-3. **Post the reports** as one comment, unmerged, first line naming the head they read.
+3. **Post the reports** as one comment, first line naming the head they read: any refuter's
+   survivors first, then the reports unmerged.
 
    ```
    REVIEW <sha>
 
+   ## Survivors
+   ...
    ## Standards
    ...
    ## Spec
@@ -289,7 +288,8 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    device job, an open question; wait with `node tools/loop/await-run.mjs <run-id>…`) before the
    verdict; HOLD only for what needs a commit: a HOLD is final for its head (`loop-derive.mjs`
    `verdictFor`). Never write a round's review yourself (rule 29); only the cap's LAND has no new
-   review. Where you disagree with a finding, put one line in the commit body.
+   review. Where you disagree with a finding, put one line in the commit body. Reinstate a refuted
+   finding only with the input that breaks the code.
 
 **Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`;
 it exits non-zero at the cap, with guidance. **Stop before the cap when a round earns nothing**: a
@@ -297,8 +297,9 @@ round raising nothing new ends the review with `VERDICT: LAND`. At the cap, fix 
 without spending a round; for the rest, follow its guidance and say what you accepted in phase
 F's Definition-of-done comment. Park only for a decision only the owner can make.
 
-**A round is a process.** After a `HOLD`, say `PHASE C`, fix what it named, then leave through
-phase C's steps 1–5. A failure only a local run showed, which neither the review nor CI named,
+**A round is a process.** After a `HOLD`, say `PHASE C`, fix what it named and every sibling of it
+(`FIX-NOTES` lists each site, fixed or ruled out), then leave through
+phase C's steps 1–4. A failure only a local run showed, which neither the review nor CI named,
 is not the round's to fix: rule it out (rule 37), file what survives (rule 35), name it in `FIX-NOTES`.
 Then hand off:
 
