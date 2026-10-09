@@ -33,6 +33,8 @@ describe('the start of a manche ending', () => {
     await rerender({ inFlight: false, landsAt, pending: () => false });
     expect(landed).toHaveBeenCalledTimes(1);
     expect(landed).toHaveBeenCalledWith(landsAt);
+    await rerender({ inFlight: false, landsAt: landsAt + 50, pending: () => false });
+    expect(landed).toHaveBeenCalledTimes(1);
     await unmount();
   });
 
