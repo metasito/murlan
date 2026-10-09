@@ -68,7 +68,7 @@ export async function untilSkiaFelt(page: Page, timeout = 60_000): Promise<void>
   );
 }
 
-/** The felt alone, every other element hidden, as RGBA; `perPt` image pixels a window point, from `origin`. */
+/** The felt alone, every other element and the motes hidden, as RGBA; `perPt` image pixels a window point, from `origin`. */
 export async function feltPixels(page: Page): Promise<{ pixels: { width: number; height: number; data: Buffer }; perPt: number; origin: Point }> {
   const felt = page.getByTestId("table-felt");
   await felt.evaluate((f) => {
@@ -77,7 +77,7 @@ export async function feltPixels(page: Page): Promise<{ pixels: { width: number;
     }
   });
   const box = (await felt.boundingBox())!;
-  const pixels = await rgbaOf(page, await felt.screenshot({ type: "png" }));
+  const pixels = await rgbaOf(page, await felt.screenshot({ type: "png", style: UNLIT_AIR }));
   return { pixels, perPt: pixels.width / box.width, origin: { x: box.x, y: box.y } };
 }
 
