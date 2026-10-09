@@ -30,7 +30,7 @@ describe("brief", () => {
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);
-      if (["scope", "completeness", "standards", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
     }
   });
 
@@ -42,14 +42,16 @@ describe("brief", () => {
     assert.match(text, /git -C \S+ grep/);
   });
 
-  test("the standards brief holds a new test to its observed red run (rule 6)", () => {
+  test("the standards brief asks a test-quality finding for the change that leaves the test green (rule 6)", () => {
     const text = brief("standards", { n: 1293, worktree: WT });
-    assert.match(text, /rule 6/);
-    assert.match(text, /load or import error/);
-    assert.match(text, /DOD-CHECK/);
-    assert.match(text, /every test the diff adds, and every test whose assertions it changes/);
-    assert.match(text, /rename or refactor of a test that keeps its assertions needs no red run/);
-    assert.doesNotMatch(text, /adds or changes/);
+    assert.match(text, /rule 6\) names a change to the code under test that leaves the test green/);
+    assert.doesNotMatch(text, /DOD-CHECK/);
+  });
+
+  test("a later completeness check reads only what changed since the last one", () => {
+    const recheck = brief("completeness", { n: 1, worktree: WT, base: "abc1234" });
+    assert.match(recheck, /This is a recheck[^.]*report only what this change leaves partial, missing or newly wrong/);
+    assert.doesNotMatch(brief("completeness", { n: 1, worktree: WT }), /This is a recheck/);
   });
   test("the completeness brief sweeps the tests for a changed literal's old value", () => {
     const text = brief("completeness", { n: 1256, worktree: WT });
