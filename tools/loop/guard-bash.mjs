@@ -6,7 +6,7 @@
  *   git add -A / . / --all / -u      sessions share an index; a bare add absorbs another session's work
  *                                    (allowed on pathspecs inside the current .worktrees/agent-N)
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
- *   git worktree remove --force, rm -r .worktrees/…   delete through a node_modules junction
+ *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
  *   git push … main                  lands code with no CI
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot

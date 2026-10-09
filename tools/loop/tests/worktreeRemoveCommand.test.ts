@@ -107,10 +107,10 @@ describe("removing one named worktree", () => {
    * The floor. Without it this file would pass on a platform where nothing follows a link, and
    * report the state of the runner rather than the state of the script.
    *
-   * Rather than skip where the raw command spares the install, the floor asserts what it does
-   * there out loud.
+   * Its skip off win32 is also what puts this file in ci.yml's harness-windows selection, which
+   * fails on any skip there.
    */
-  test("the command it replaces is the one that destroys the install", () => {
+  test("the command it replaces is the one that destroys the install", { skip: process.platform !== "win32" }, () => {
     const t = makeJunctionedWorktree();
     if (!t) return;
 
@@ -119,13 +119,7 @@ describe("removing one named worktree", () => {
     } catch {
       // Losing the delete partway through is the documented shape of this failure.
     }
-    if (process.platform !== "win32") {
-      assert.equal(
-        fs.readFileSync(t.shim, "utf8"),
-        "the install",
-        "on this platform the raw command is already safe, so nothing in this file is a live guard"
-      );
-    } else if (removeFollowsJunction(git(t.repo, "--version"))) {
+    if (removeFollowsJunction(git(t.repo, "--version"))) {
       assert.equal(
         fs.existsSync(t.shim),
         false,
@@ -141,7 +135,7 @@ describe("removing one named worktree", () => {
     }
   });
 
-  test("Git for Windows follows the junction below 2.54.0 and not from it", { skip: process.platform !== "win32" }, () => {
+  test("Git for Windows follows the junction below 2.54.0 and not from it", () => {
     assert.equal(removeFollowsJunction("git version 2.53.0.windows.1"), true);
     assert.equal(removeFollowsJunction("git version 2.53.0.windows.4"), true);
     assert.equal(removeFollowsJunction("git version 2.9.5.windows.1"), true);
