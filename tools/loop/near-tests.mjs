@@ -2,6 +2,7 @@ import path from "node:path";
 
 export const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
 export const CODE = /\.(tsx?|m?js)$/;
+export const LOCAL_PROJECTS = ["ios", "compiled"];
 const stem = (f) =>
   path.posix.basename(f).replace(/\.test\.tsx$/, "").replace(/(\.(web|native|ios|android))?\.(tsx?|m?js)$/, "");
 

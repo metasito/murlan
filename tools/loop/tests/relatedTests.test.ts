@@ -1,8 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { capNear, listedTests, nearTests } from "../near-tests.mjs";
+import { capNear, listedTests, LOCAL_PROJECTS, nearTests } from "../near-tests.mjs";
 
 const T = (n: string) => `tests/native/${n}.test.tsx`;
 const src: Record<string, string> = {
@@ -39,6 +40,14 @@ describe("what native:related runs and what it leaves to CI", () => {
     assert.deepEqual(run.slice(0, 2), [T("own"), T("imp00")]);
     assert.equal(left, "… 3 more left to ci.yml native");
     assert.deepEqual(capNear([T("one")]), { run: [T("one")], left: null });
+  });
+  test("a project runs locally unless a local project already matches its files", () => {
+    type Project = { displayName: string; testMatch: string[] };
+    const { projects } = createRequire(import.meta.url)("../../../jest.config.js") as { projects: Project[] };
+    const positive = (p: Project) => p.testMatch.filter((g) => !g.startsWith("!"));
+    const local = projects.filter((p) => LOCAL_PROJECTS.includes(p.displayName));
+    const unreached = projects.filter((p) => !positive(p).every((g) => local.some((l) => positive(l).includes(g))));
+    assert.deepEqual(unreached.map((p) => p.displayName), []);
   });
   test("--listTests output keeps only paths, repo-relative and posix", () => {
     const cwd = process.cwd();
