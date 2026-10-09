@@ -12,6 +12,9 @@ export const BUDGET_S = 15;
 /** Time outside a file's cases (module load, describe bodies, beforeAll, afterAll): cold run 36820944313 peaked at 17.6 s, and runners here differ 1.7x on one tree. */
 export const OUTSIDE_S = 45;
 
+/** botMoveCost.compiled read 7.8 s on this machine and 16.8-24.5 s on CI's runner: 2.2-3.1x. */
+export const CI_SLOWER = 3.2;
+
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
 
@@ -47,15 +50,20 @@ const caseSeconds = (cases) => cases.reduce((sum, t) => sum + (t.duration ?? 0),
 const keyOf = (project, rootDir, testFilePath) => `${project}:${path.relative(rootDir, testFilePath).split(path.sep).join("/")}`;
 
 /**
- * The same reading from a local `jest --json` run, printed as information only: timings on a
- * starved machine swing too far to judge by, so CI's run is the judge (queue.md's fix round).
+ * The same reading from a local `jest --json` run. Timings on a starved machine swing too far to
+ * judge by, so CI's run is the judge; only a file the change itself touches is marked at risk.
  * @param {{ testResults: { name: string, assertionResults: { duration?: number | null }[] }[] }} json
  * @param {(testFilePath: string) => string} projectOf
+ * @param {string[]} changed repo-relative paths, `/`-separated
  */
-export function budgetLines(json, projectOf, rootDir) {
+export function budgetLines(json, projectOf, rootDir, changed = []) {
   return json.testResults.map(({ name, assertionResults }) => {
     const file = keyOf(projectOf(name), rootDir, name);
-    return `  ${caseSeconds(assertionResults).toFixed(1)}s of ${EXCEPTIONS[file]?.seconds ?? BUDGET_S}s ${file}`;
+    const budget = EXCEPTIONS[file]?.seconds ?? BUDGET_S;
+    const seconds = caseSeconds(assertionResults);
+    const touched = changed.includes(file.slice(file.indexOf(":") + 1));
+    const risk = touched && seconds > budget / CI_SLOWER ? ` — at risk: CI runs native files up to ${CI_SLOWER}x slower` : "";
+    return `  ${seconds.toFixed(1)}s of ${budget}s ${file}${risk}`;
   });
 }
 
