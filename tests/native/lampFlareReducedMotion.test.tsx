@@ -100,12 +100,18 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
   it("a bomb landing leaves the flare and the flash dark", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
+    let flare = 0;
+    let flash = 0;
+    for (let f = 0; f < 32; f++) {
+      await act(async () => {
+        jest.advanceTimersByTime(16);
+      });
+      flare = Math.max(flare, opacityOf("bomb-flare"));
+      flash = Math.max(flash, opacityOf("bomb-flash"));
+    }
 
-    expect(opacityOf("bomb-flare")).toBe(0);
-    expect(opacityOf("bomb-flash")).toBe(0);
+    expect(flare).toBe(0);
+    expect(flash).toBe(0);
 
     await r.unmount();
   });
