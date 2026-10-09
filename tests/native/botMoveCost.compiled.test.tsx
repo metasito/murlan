@@ -67,7 +67,7 @@ type Cost = {
   Svg: number;
   art: number;
 };
-const MOVES = 16;
+const MOVES = 8;
 const ids = (play: GameState['lastPlayedCombination']) => play?.cards.map((c) => c.id).join() ?? '';
 
 async function costPerMove(): Promise<Cost[]> {
