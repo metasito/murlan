@@ -22,8 +22,12 @@ describe("the native tests a change reaches first", () => {
     assert.deepEqual(near(["components/table/feltSkia.web.tsx"]), [T("feltFallbackShade")]));
   test("a name match jest's graph does not reach is dropped", () => assert.deepEqual(near(["lib/screenShake.ts"], [T("scorePill")]), []));
   test("a changed test file always runs", () => assert.deepEqual(near([T("brandNew")], []), [T("brandNew")]));
-  test("the command the loop runs uses this module", () =>
-    assert.match(readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8"), /from "\.\/near-tests\.mjs"/));
+  test("the command the loop runs uses this module, and selects jest projects only through it", () => {
+    const script = readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8");
+    assert.match(script, /from "\.\/near-tests\.mjs"/);
+    assert.doesNotMatch(script, /--selectProjects/);
+    assert.equal(script.match(/\[jest, \.\.\.onLocalProjects\(/g)?.length, 2);
+  });
   test("changed tests come first, then tests named after a changed module, then importers", () => {
     const importer: Record<string, string> = { [T("alpha")]: "import { z } from '@/lib/theme';" };
     const got = nearTests({ changed: [T("omega"), "lib/theme.ts"], related: [T("alpha"), T("theme")], source: (f) => importer[f] ?? "" });
