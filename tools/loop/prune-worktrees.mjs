@@ -132,11 +132,12 @@ export function reparsePointNames(entries) {
 /**
  * Removes the links at a worktree's top level, and nothing they point at.
  *
- * `git worktree remove` deletes the directory tree, and on Windows it walks **into** a junction
- * rather than unlinking it: this repo's parallel-worktree convention junctions `node_modules` at
- * the real install, and one such remove emptied `node_modules/.bin` of all 177 shims before
- * failing with "Invalid argument". `rmdir` on a junction detaches it and leaves the target alone,
- * so doing that first is what makes the remove that follows safe.
+ * `git worktree remove` deletes the directory tree, and on Git for Windows before 2.54.0 it walks
+ * **into** a junction rather than unlinking it: this repo's parallel-worktree convention junctions
+ * `node_modules` at the real install, and one such remove emptied `node_modules/.bin` of all 177
+ * shims before failing with "Invalid argument". From 2.54.0 it leaves the junction standing in the
+ * unregistered directory instead. `rmdir` on a junction detaches it and leaves the target alone,
+ * so doing that first is what makes the remove that follows safe and complete.
  *
  * Failures are swallowed: a link that cannot be detached is a reason to let the caller's remove
  * fail on its own, not to abort the whole prune.

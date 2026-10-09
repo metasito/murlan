@@ -34,8 +34,8 @@ describe("detaching a link before a worktree is deleted", () => {
   });
 
   /**
-   * The failure this guards against, reproduced: `git worktree remove` walks into a junction
-   * rather than unlinking it, and one such remove emptied `node_modules/.bin` of all 177 shims
+   * The failure this guards against, reproduced: `git worktree remove` on Git for Windows before
+   * 2.54.0 walks into a junction rather than unlinking it, and one such remove emptied `node_modules/.bin` of all 177 shims
    * before failing with "Invalid argument".
    */
   test("removes the link and never what it points at", () => {
