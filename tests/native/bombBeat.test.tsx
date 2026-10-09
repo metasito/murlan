@@ -76,6 +76,7 @@ const scaleOf = (id: string) =>
 const asideX = () =>
   ((getAnimatedStyle(screen.getByTestId('pile-prev-layer', { includeHiddenElements: true })) as { transform?: Record<string, number>[] }).transform ?? []).find((t) => 'translateX' in t)?.translateX ?? 0;
 const lampFlare = () => (mockSources.get('lamp')?.() as { flare: number }).flare;
+const lampKick = () => (mockSources.get('lamp')?.() as { kick: number }).kick;
 const live = () => mockSources.get('live')?.() as number;
 const scrim = () => opacity('felt-scrim');
 
@@ -119,15 +120,18 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(opacity('bomb-flash')).toBe(0);
     expect(asideX()).toBe(0);
     const flareAtContact = lampFlare();
+    const kickAtContact = lampKick();
 
     await advance(BombFx.delayMs - 30);
     expect(opacity('bomb-flash')).toBe(0);
     expect(mockOnsets).not.toContain('moment:bombFx');
+    expect(lampKick()).toBeLessThanOrEqual(kickAtContact);
 
     await advance(40);
     expect(mockOnsets).toContain('moment:bombFx');
     expect(opacity('bomb-flash')).toBeGreaterThan(0);
     expect(lampFlare()).toBeGreaterThan(flareAtContact);
+    expect(lampKick()).toBeGreaterThan(0.5);
     expect(asideX()).toBeLessThan(0);
     expect(live()).toBeGreaterThan(48 + 18);
     expect(live()).toBeLessThanOrEqual(160);
@@ -160,6 +164,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(mockOnsets).not.toContain('moment:bombFx');
     expect(opacity('bomb-flash')).toBe(0);
     expect(lampFlare()).toBe(flareAtContact);
+    expect(lampKick()).toBe(0);
     expect(asideX()).toBe(0);
     expect(mockTrauma.every((t) => t === 0)).toBe(true);
     await advance(600);
