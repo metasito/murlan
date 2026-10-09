@@ -122,7 +122,8 @@ One `ios.yml` shard also runs `.maestro/felt-opaque.yaml`: the felt's Metal laye
 bounds shows black. `tools/ci/feltPixels.mjs` fails its two screenshots (the table as it appears and
 settled, both after the landscape lock resized the felt) on a black band along an edge or over 5 %
 black; they upload as `felt-ios`. They show no black, not that the layer is opaque: the bench's
-`feltOpaque` gate is that proof.
+`feltOpaque` gate is that proof. `tools/ci/edgePixels.mjs` fails the settled one where the rotated
+cards' edges against the felt are a staircase rather than anti-aliased.
 `ci.yml`'s `ios-build` fails when the patch did not apply.
 
 A device job proves the flows still run and the app renders *something* — it does not replace
