@@ -58,8 +58,16 @@ test("a frame with no rotated card edge fails rather than passing unscored", () 
   assert.equal(verdict.pass, false);
 });
 
+const capture = (name: string) => edgeVerdict(decodePng(readFileSync(`tests/tooling/fixtures/${name}.png`)));
+
 test("the hand fan in ios.yml's felt-settled.png on main scores as aliased", () => {
-  const verdict = edgeVerdict(decodePng(readFileSync("tests/tooling/fixtures/edge-ios-aliased.png")));
+  const verdict = capture("edge-ios-aliased");
   assert.ok(verdict.lines >= 200, `scored ${verdict.lines} lines`);
   assert.ok(verdict.score < SOFT_MIN, `score ${verdict.score}`);
+});
+
+test("the same hand fan in Chromium at the simulator's scale scores as anti-aliased", () => {
+  const verdict = capture("edge-chromium-antialiased");
+  assert.ok(verdict.lines >= 200, `scored ${verdict.lines} lines`);
+  assert.ok(verdict.score >= SOFT_MIN, `score ${verdict.score}`);
 });
