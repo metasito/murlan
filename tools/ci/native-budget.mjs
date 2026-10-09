@@ -12,6 +12,9 @@ export const BUDGET_S = 15;
 /** Time outside a file's cases (module load, describe bodies, beforeAll, afterAll): cold run 36820944313 peaked at 17.6 s, and runners here differ 1.7x on one tree. */
 export const OUTSIDE_S = 45;
 
+/** botMoveCost.compiled read 7.8 s on this machine and 16.8-24.5 s on CI's runner. */
+export const CI_SLOWER = 3;
+
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
 
@@ -55,7 +58,10 @@ const keyOf = (project, rootDir, testFilePath) => `${project}:${path.relative(ro
 export function budgetLines(json, projectOf, rootDir) {
   return json.testResults.map(({ name, assertionResults }) => {
     const file = keyOf(projectOf(name), rootDir, name);
-    return `  ${caseSeconds(assertionResults).toFixed(1)}s of ${EXCEPTIONS[file]?.seconds ?? BUDGET_S}s ${file}`;
+    const budget = EXCEPTIONS[file]?.seconds ?? BUDGET_S;
+    const seconds = caseSeconds(assertionResults);
+    const risk = seconds > budget / CI_SLOWER ? " — at risk: CI runs native files up to 3x slower" : "";
+    return `  ${seconds.toFixed(1)}s of ${budget}s ${file}${risk}`;
   });
 }
 

@@ -106,6 +106,7 @@ test("a local --json run reads each file's case time against its own budget, the
       { name: path.join(repoRoot, file), assertionResults: [{ duration: ms(2) }, { duration: ms(1.5) }] },
       { name: path.join(repoRoot, "tests/native/tableNotices.test.tsx"), assertionResults: [{ duration: null }] },
       { name: compiled, assertionResults: [{ duration: ms(1) }] },
+      { name: path.join(repoRoot, "tests/native/cardHitBox.test.tsx"), assertionResults: [{ duration: ms(6) }] },
     ],
   };
   const projectOf = (f: string) => (f === compiled ? "compiled" : project);
@@ -113,6 +114,7 @@ test("a local --json run reads each file's case time against its own budget, the
     `  3.5s of ${seconds}s ${excepted}`,
     `  0.0s of ${BUDGET_S}s ${project}:tests/native/tableNotices.test.tsx`,
     `  1.0s of ${BUDGET_S}s compiled:tests/native/botMoveCost.compiled.test.tsx`,
+    `  6.0s of ${BUDGET_S}s ${project}:tests/native/cardHitBox.test.tsx — at risk: CI runs native files up to 3x slower`,
   ]);
 });
 

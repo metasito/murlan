@@ -172,8 +172,8 @@ Then leave through **Leaving C**.
   spanning files, a long log or a file you will not edit goes to one `sonnet` subagent that
   answers in a few lines. A failing check: its summary first, then only the failure you fix.
 - **Watch the check fail first, for the reason you claim** (rule 6).
-- **A native timing budget is judged only from CI's run**: time a file locally at most once, then
-  fix what CI names and push.
+- **A native timing budget is judged only from CI's run**: time a file locally at most once; shrink
+  or split one `test:native:related` marks at risk before D.
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
 - **Scope grows to what you find in its area** (not in a HOLD round): fix it in this diff, add a Definition-of-done box,
