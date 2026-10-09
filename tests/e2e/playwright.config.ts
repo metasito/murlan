@@ -112,6 +112,7 @@ export default defineConfig({
       // client-side and never resets this timer, so a selection sequence that
       // outruns it gets auto-passed mid-selection.
       MURLAN_AFK_TIMEOUT_MS: "30000",
+      MURLAN_BOT_MOVE_DELAY_MS: "200",
     },
     stdout: "pipe",
     stderr: "pipe",

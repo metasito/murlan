@@ -26,14 +26,16 @@ export const UNMEASURED_SECONDS = 60;
 
 /** The whole CI run's wall clock, first job to last: the owner's, docs/agents/RULES.md rule 46. */
 export const TARGET_RUN_SECONDS = 300;
-/** What the run spends outside the shards on the path through them: the scope job before, the report after. Run 36126540767: 14 s and 37 s. */
-export const AROUND_SHARDS_SECONDS = 50;
-/** A shard's time outside its specs: install, the browser, the bundle, Postgres, the boot. Run 36126540767, warm caches: about 45 s. */
-export const SHARD_OVERHEAD_SECONDS = 45;
-/** How far a shard's real specs overran their LPT estimate in run 36126540767, at worst: 225 s against 197. */
-export const SHARD_NOISE = 1.2;
-/** A public repository's runners take 20 jobs at once, and six other jobs run beside the shards. */
-export const MAX_SHARDS = 14;
+/** Run 37792764075, 17 shards: the scope job before them and the report after, 10 s and 29 s. */
+export const AROUND_SHARDS_SECONDS = 39;
+/** Same run: a shard's wall clock less its specs, median of 17 — install, browser, bundle export, boot, upload. */
+export const SHARD_OVERHEAD_SECONDS = 52;
+/** Same run: the slowest shard's specs against the mean shard's, 1.32. */
+export const SHARD_NOISE = 1.32;
+/** Not the documented 20: run 37792764075 ran 25 jobs at once with none queued. */
+export const MAX_CONCURRENT_JOBS = 25;
+/** What that leaves beside every job ci.yml starts with the shards; `e2eShardSplit.test.ts` counts them. */
+export const MAX_SHARDS = 17;
 
 const CONFIG = path.join(E2E_DIR, "playwright.config.ts");
 
@@ -135,15 +137,15 @@ export function shardsNeeded(files, timings) {
 }
 
 /**
+ * Always `MAX_SHARDS`: wall clock falls with every shard down to the longest spec, and runners are free here.
  * @param {(string | string[])[]} layers JSON timings files, oldest first; a list is one branch's
  *   runs, priced by `medianTimings`; a missing file is skipped
  * @returns {{ shards: number[], timings: Record<string, number> }}
  */
-export function plan(layers, files = specFilesIn()) {
+export function plan(layers) {
   const read = (/** @type {string[]} */ group) => group.filter((f) => existsSync(f)).map((f) => readTimings(f));
   const timings = resolveTimings(...layers.map((layer) => (Array.isArray(layer) ? medianTimings(read(layer)) : read([layer])[0] ?? null)));
-  const count = Math.min(MAX_SHARDS, shardsNeeded(files, timings));
-  return { shards: Array.from({ length: count }, (_, i) => i + 1), timings };
+  return { shards: Array.from({ length: MAX_SHARDS }, (_, i) => i + 1), timings };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && process.argv[2] === "plan") {

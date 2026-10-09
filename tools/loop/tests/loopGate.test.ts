@@ -117,7 +117,7 @@ function sweep() {
   execFileSync("git", ["worktree", "prune"], { cwd: root });
   const branches = execFileSync(
     "git",
-    ["branch", "--list", "agent/99*", "--format=%(refname:short)"],
+    ["branch", "--list", "agent/99*", "loop-gate-probe/*", "--format=%(refname:short)"],
     { cwd: root, encoding: "utf8" }
   )
     .split(/\r?\n/)
@@ -153,15 +153,21 @@ after(() => {
 });
 
 describe("the gate's exit code, which is what phase E reads", () => {
-  // Two ways to be off a ticket: on another branch, or on none at all. `actions/checkout` checks a
-  // PR out at a detached HEAD, so CI only ever sees the second — this asserted the first alone and
-  // went red on the runner while passing locally.
-  test("off a ticket branch it declines to judge, and that is never 0", () => {
-    // Points the gate at `root` itself rather than letting it scan `.worktrees/`, which may hold
-    // a real ticket's live worktree (this suite's own run, if any) that is not the case here.
-    const { code, out } = gate(root, undefined, BASE, root);
+  test("on another branch it declines to judge, and that is never 0", () => {
+    const wt = worktree("loop-gate-probe/off-ticket");
+    const { code, out } = gate(wt, undefined, BASE, wt);
     assert.equal(code, 2);
-    assert.match(out, /not on an agent branch|HEAD is detached/);
+    assert.match(out, /not on an agent branch/);
+    assert.match(out, /nothing to judge/);
+  });
+
+  test("on no branch at all it declines to judge, and that is never 0", () => {
+    const wt = join(dir, "detached");
+    execFileSync("git", ["worktree", "add", "-q", "--detach", wt, "HEAD"], { cwd: root });
+    madeDirs.push(wt);
+    const { code, out } = gate(wt, undefined, BASE, wt);
+    assert.equal(code, 2);
+    assert.match(out, /HEAD is detached/);
     assert.match(out, /nothing to judge/);
   });
 

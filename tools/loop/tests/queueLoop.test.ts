@@ -837,6 +837,19 @@ describe("runTicket", () => {
     assert.equal(killed[0], "SIGTERM", "SIGTERM is what takes the child's Bash tree with it");
   });
 
+  // #1389 and #1268: the watchdog fired, then the run waited 92 and 260 min for a pipe a grandchild held.
+  test("a stalled session whose pipes stay open after the kill still ends the run", async () => {
+    const held = () => {
+      const child: any = new EventEmitter();
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      child.kill = () => setImmediate(() => child.emit("exit", null));
+      return child;
+    };
+    const run = await runTicket(held, opts({ stallMs: 20, tick: 10, killGraceMs: 20 }));
+    assert.equal(run.status, "stalled");
+  });
+
   test("a talking session is never killed, however long it runs", async () => {
     const killed: string[] = [];
     const chatty = () => {

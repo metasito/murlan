@@ -81,7 +81,7 @@ test("the native job restores its jest cache only under the exact dependency set
   const native = /^ {2}native:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
   const restore = /- id: jest-cache\n([\s\S]*?)(?=\n\s*- )/.exec(native)?.[1] ?? "";
   assert.match(restore, /actions\/cache\/restore@/);
-  assert.match(restore, /key: native-jest-\$\{\{ hashFiles\('package-lock\.json', 'patches\/\*\*', 'babel\.config\.js'/);
+  assert.match(restore, /key: native-jest-\$\{\{ matrix\.shard \}\}-\$\{\{ hashFiles\('package-lock\.json', 'patches\/\*\*', 'babel\.config\.js'/);
   assert.doesNotMatch(native, /restore-keys/);
 });
 
