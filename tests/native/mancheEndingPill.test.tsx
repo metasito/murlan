@@ -32,7 +32,7 @@ const ENDED: GameState = {
 };
 const BEFORE = 7;
 const AFTER = 10;
-const { gains, settled } = mancheEndingOnsets(4);
+const { gains, settled, pileFade, deal } = mancheEndingOnsets(4);
 
 function table(onMancheLanded: (at: number) => void) {
   return (
@@ -86,6 +86,16 @@ describe('the score pill at the end of a manche', () => {
     const view = await render(table(noop));
     await advance(settled);
     expect(shownTotal()).toBe(AFTER);
+    await view.unmount();
+  });
+
+  it('fades the pile out over the last moments before the deal', async () => {
+    const view = await render(table(noop));
+    const pile = () => Number(getAnimatedStyle(screen.getByTestId('pile-area', HIDDEN)).opacity);
+    await advance(pileFade - 16);
+    expect(pile()).toBe(1);
+    await advance(deal - pileFade + 16);
+    expect(pile()).toBe(0);
     await view.unmount();
   });
 

@@ -77,7 +77,8 @@ export function useMancheEnding({
     pileOpacity.set(
       withDelay(
         Math.max(0, t0 + pileFadeAt - now),
-        withTiming(0, { duration: MancheEnding.pileFadeFor, reduceMotion: ReduceMotion.Never })
+        withTiming(0, { duration: MancheEnding.pileFadeFor, reduceMotion: ReduceMotion.Never }),
+        ReduceMotion.Never
       )
     );
     onLandedRef.current?.(t0);
