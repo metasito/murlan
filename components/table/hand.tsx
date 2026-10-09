@@ -1318,10 +1318,9 @@ export const StraightHand = React.memo(function StraightHand({
           zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
           dealDelay={descending ? 0 : -1}
           deal={dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined}
-          // From the row's own centre, which is where the flight carrying it
-          // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
-          // descent are then one continuous move into the waiting slot, rather
-          // than a card that stops at the middle and reappears at one end.
+          // A descending card starts at the row's own centre, where the flight
+          // carrying it stops (`flightOrigin`'s `bottom` is `dx: 0`), so crossing
+          // and descent are one continuous move; a dealt one starts at the pile.
           dealFromX={-home.x + (descending ? 0 : pile.dx)}
           cardScale={cardScale}
           // A descending card starts its fall from where the exchange's own
