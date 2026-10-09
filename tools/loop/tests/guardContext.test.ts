@@ -32,7 +32,7 @@ function transcript(rows: object[]): string {
 
 function run(payload: object | string, env: Record<string, string | undefined> = { LOOP_TURNS: "40", LOOP_PHASE: "C" }): string {
   const input = typeof payload === "string" ? payload : JSON.stringify(payload);
-  const clean = { ...process.env, LOOP_TURNS: undefined, LOOP_PHASE: undefined, ...env };
+  const clean = { ...process.env, LOOP_TURNS: undefined, LOOP_PHASE: undefined, LOOP_CONTEXT: undefined, ...env };
   return execFileSync(process.execPath, [SCRIPT], { input, encoding: "utf8", env: clean as NodeJS.ProcessEnv });
 }
 
@@ -65,6 +65,20 @@ describe("the context ceiling", () => {
   test("a notice already in the transcript is not repeated", () => {
     const said = ceiling;
     assert.equal(run(call(transcript([assistant(201_000), noticed(said), assistant(210_000)]))), "");
+  });
+
+  test("the ceiling is the supervisor's LOOP_CONTEXT, and the notice names it", () => {
+    const env = { LOOP_TURNS: "40", LOOP_CONTEXT: "300000" };
+    assert.equal(run(call(transcript([assistant(299_000)])), env), "");
+    const out = JSON.parse(run(call(transcript([assistant(301_000)])), env));
+    assert.match(out.hookSpecificOutput.additionalContext, /^Context is past 300k. /);
+  });
+
+  test("an unreadable LOOP_CONTEXT keeps the 200k ceiling", () => {
+    for (const LOOP_CONTEXT of ["", "abc", "0", "-5", "Infinity", "1e9", "340000"]) {
+      const out = JSON.parse(run(call(transcript([assistant(201_000)])), { LOOP_TURNS: "40", LOOP_CONTEXT }));
+      assert.equal(out.hookSpecificOutput.additionalContext, ceiling, `LOOP_CONTEXT=${JSON.stringify(LOOP_CONTEXT)}`);
+    }
   });
 
   test("a subagent is silent", () => {

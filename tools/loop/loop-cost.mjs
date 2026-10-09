@@ -26,15 +26,23 @@ export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "
 export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
+ * Where `guard-context.mjs` asks a session to hand off. A handoff costs the next process 5-14 min
+ * re-reading what this one knew; a larger ceiling costs every later turn its extra context. Sized
+ * from each size's measured need, under the 366k where auto-compaction fires.
+ */
+export const CONTEXT_BY_SIZE = { "size:M": 300_000, "size:L": 330_000, "size:XL": 330_000 };
+export const CONTEXT_DEFAULT = 200_000;
+
+/**
  * Each cap stays above twice the busiest healthy process of its size; `loop-cost` prints any size
- * where it does not.
+ * where it does not. A raised context ceiling raises its cap with it, so that one is met first.
  */
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
   "size:S": 160,
-  "size:M": 320,
-  "size:L": 320,
-  "size:XL": 400,
+  "size:M": 505,
+  "size:L": 560,
+  "size:XL": 600,
 };
 export const TURNS_DEFAULT = 150;
 

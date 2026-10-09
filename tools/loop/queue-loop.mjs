@@ -77,7 +77,7 @@ import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
-import { EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS } from "./limits.mjs";
 import { createRequire } from "node:module";
@@ -234,6 +234,9 @@ export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? U
 
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
+
+/** @param {string|null} [size] a `size:*` label, or null */
+export const contextFor = (size) => CONTEXT_BY_SIZE[size ?? ""] ?? CONTEXT_DEFAULT;
 
 /** @param {string|null} [phase] */
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
@@ -1545,6 +1548,7 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
+      LOOP_CONTEXT: String(contextFor(size)),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
       LOOP_REASON: reason ?? undefined,

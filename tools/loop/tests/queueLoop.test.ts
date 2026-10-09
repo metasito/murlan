@@ -8,7 +8,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
-import { TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import {
   parseRoute,
   pushedPr,
@@ -48,6 +48,7 @@ import {
   ticketFacts,
   exhausted,
   resumePhase,
+  contextFor,
 } from "../queue-loop.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
@@ -200,6 +201,21 @@ describe("queueLoopArgs", () => {
   test("an unlabelled ticket still gets a bound", () => {
     assert.equal(turns(null), TURNS_DEFAULT);
     assert.ok(Number.isInteger(TURNS_DEFAULT) && TURNS_DEFAULT > 0);
+  });
+
+  test("a ticket's context ceiling follows its size, and every one leaves room below auto-compaction", () => {
+    assert.equal(contextFor(null), CONTEXT_DEFAULT);
+    assert.equal(contextFor("size:S"), CONTEXT_DEFAULT);
+    assert.ok(contextFor("size:M") > contextFor("size:S"));
+    // Auto-compaction fired at 366-368k in all five loop sessions it reached.
+    for (const c of [CONTEXT_DEFAULT, ...Object.values(CONTEXT_BY_SIZE)]) assert.ok(c < 340_000, `${c}`);
+  });
+
+  test("a raised ceiling keeps a turn cap that reaches it", () => {
+    // 1.26 turns per k of context above the 34k start: the busiest healthy process at 200k; x1.5 headroom.
+    for (const size of Object.keys(CONTEXT_BY_SIZE)) {
+      assert.ok(turns(size) >= (1.5 * 1.26 * (contextFor(size) - 34_000)) / 1000, size);
+    }
   });
 
   test("every size the picker can emit has its own bound", () => {
@@ -583,6 +599,9 @@ describe("runTicket", () => {
     assert.ok(seen?.args.includes("--exclude-dynamic-system-prompt-sections"));
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS, "1", "the git status would break the prefix");
     assert.ok(seen?.env.LOOP_TURNS, "loop-status's startup hook is silent only where LOOP_TURNS is set");
+    assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor(null)));
+    await runTicket(capturing as never, opts({ size: "size:M" }));
+    assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor("size:M")));
   });
 
   test("a refusal reaches the caller, as milliseconds", async () => {
