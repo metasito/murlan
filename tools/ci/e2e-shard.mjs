@@ -24,7 +24,7 @@ const TIMINGS = path.join(E2E_DIR, "timings.json");
  */
 export const UNMEASURED_SECONDS = 60;
 
-/** The whole CI run's wall clock, first job to last: the owner's, docs/agents/RULES.md rule 46. */
+/** A pull request's ci.yml wall clock, first job to last, device compiles aside: the owner's, docs/agents/RULES.md rule 46. */
 export const TARGET_RUN_SECONDS = 300;
 /** Run 37792764075, 17 shards: the scope job before them and the report after, 10 s and 29 s. */
 export const AROUND_SHARDS_SECONDS = 39;

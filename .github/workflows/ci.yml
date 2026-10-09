@@ -506,14 +506,14 @@ jobs:
   #
   # They run weekly, on a change to the app's libraries or native config
   # (`tools/ci/nativeScope.mjs`), and on request (`gh workflow run ci.yml --ref
-  # <branch> -f native=true`). That is about 15 minutes each, against 5 for the
-  # rest, so the owner kept them off every other pull request.
+  # <branch> -f native=true`). They take 9–29 minutes, so the owner kept them off
+  # every other pull request and gave them their own budget (docs/agents/RULES.md 46).
   android-build:
     name: Android compiles
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -578,7 +578,7 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
