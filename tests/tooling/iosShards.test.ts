@@ -90,7 +90,7 @@ test("every load sampler is stopped once the debug output carrying its log is up
   const samplers = sample.match(/nohup top .*&\n/g) ?? [];
   assert.ok(samplers.length > 0);
   assert.equal((sample.match(/nohup top .*&\n\s+echo \$! >> "\$RUNNER_TEMP\/top\.pids"\n/g) ?? []).length, samplers.length);
-  assert.match(step(IOS, "Stop sampling the runner's load"), /\n {8}if: always\(\)\n {8}run: kill \$\(cat "\$RUNNER_TEMP\/top\.pids"\)/);
+  assert.match(step(IOS, "Stop sampling the runner's load"), /\n {8}if: always\(\)\n {8}run: \|\n\s+kill \$\(cat "\$RUNNER_TEMP\/top\.pids"\)/);
   assert.ok(IOS.indexOf("- name: Upload Maestro debug output") < IOS.indexOf("- name: Stop sampling the runner's load"));
 });
 

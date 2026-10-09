@@ -392,7 +392,8 @@ jobs:
 
       - name: Stop sampling the runner's load
         if: always()
-        run: kill $(cat "$RUNNER_TEMP/top.pids") 2> /dev/null || :
+        run: |
+          kill $(cat "$RUNNER_TEMP/top.pids") 2> /dev/null || :
 
   ios:
     name: Drive the app on a real iOS simulator
