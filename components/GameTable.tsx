@@ -132,6 +132,7 @@ import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/f
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
 import { dealSpecks, type ParticleEmitter } from "@/components/table/particles";
+import { traceOnset } from "@/lib/e2eTrace";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -672,7 +673,10 @@ export function GameTable({
   });
   const particles = useRef<ParticleEmitter>(null);
   const onDealt = useCallback(
-    (x: number, y: number) => particles.current?.emit(dealSpecks(x, y, reduceMotion, Math.random)),
+    (x: number, y: number) => {
+      traceOnset("moment", "dealt");
+      particles.current?.emit(dealSpecks(x, y, reduceMotion, Math.random));
+    },
     [reduceMotion]
   );
   const breathStyle = useDealBreath(deal.hand);

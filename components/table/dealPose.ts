@@ -23,6 +23,15 @@ export function handDealArc(e: number, restRot: number) {
   };
 }
 
+const BREATH_SWELL = 0.006;
+
+/** The felt's scale `sinceMs` after the deal's onset: one breath over `breathMs`, the mockup's `dealRun`. */
+export function dealBreath(sinceMs: number, breathMs: number): number {
+  "worklet";
+  const k = sinceMs / breathMs;
+  return k > 0 && k < 1 ? 1 + BREATH_SWELL * Math.sin(Math.PI * k) : 1;
+}
+
 /** An opponent's back at eased progress `e`, turning into its fan's `restRot`. */
 export function backDealArc(e: number, restRot: number) {
   "worklet";

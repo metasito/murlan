@@ -18,7 +18,8 @@ import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
 import type { HandDeal } from "@/components/table/hand";
 import { dealArrivalsMs, dealEndMs } from "@/lib/game/dealTimeline";
 import { dealLegs, dealSlotOf, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
-import { dealFlight, dealPose } from "@/components/table/dealPose";
+import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";
+import { useTraceSource } from "@/lib/e2eTrace";
 import { dealBack, designRect } from "@/components/table/cardRects";
 import { useCardRect, useCardTable } from "@/components/table/useCardRects";
 
@@ -102,16 +103,16 @@ export function useDeal({
   };
 }
 
-const BREATH_SWELL = 0.006;
-
-/** The felt's one breath at the deal's onset, `offsetMs` on its clock: the mockup's `dealRun`. */
+/** The felt's one breath at the deal's onset, `offsetMs` on its clock. */
 export function useDealBreath(deal: { offsetMs: number; clock: SharedValue<number> } | undefined) {
   const clock = deal?.clock;
   const onset = deal?.offsetMs ?? 0;
-  return useAnimatedStyle(() => {
-    const k = clock ? (clock.value - onset) / Motion.deal.breath : 1;
-    return { transform: [{ scale: k > 0 && k < 1 ? 1 + BREATH_SWELL * Math.sin(Math.PI * k) : 1 }] };
-  });
+  const scale = useCallback(() => {
+    "worklet";
+    return clock ? dealBreath(clock.value - onset, Motion.deal.breath) : 1;
+  }, [clock, onset]);
+  useTraceSource("breath", scale);
+  return useAnimatedStyle(() => ({ transform: [{ scale: scale() }] }));
 }
 
 function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: number; clock: SharedValue<number> }) {

@@ -1,7 +1,7 @@
 // The dealt card's arc, against the lantern mockup's `dealRun` and `flyBack` (#1262).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { backDealArc, dealEase, dealFlight, handDealArc } from "../../components/table/dealPose.ts";
+import { backDealArc, dealBreath, dealEase, dealFlight, handDealArc } from "../../components/table/dealPose.ts";
 
 const near = (actual: number, expected: number, what: string) => assert.ok(Math.abs(actual - expected) < 1e-6, `${what}: ${actual}, expected ${expected}`);
 
@@ -48,5 +48,11 @@ describe("the deal's arc", () => {
     near(mid.rot, 90 * 0.875, "rot halfway");
     near(mid.scale, 1 - 0.1 * 0.875, "scale halfway");
     assert.equal(dealFlight(leg, 360).inAir, false);
+  });
+
+  test("the felt breathes once, 1 + 0.006·sin(πk) over the breath, and rests at 1 either side", () => {
+    for (const [since, scale] of [[-16, 1], [0, 1], [20, 1 + 0.006 * Math.sin(Math.PI / 4)], [40, 1.006], [80, 1], [200, 1]]) {
+      near(dealBreath(since, 80), scale, `at ${since} ms`);
+    }
   });
 });

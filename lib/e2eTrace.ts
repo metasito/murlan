@@ -20,6 +20,8 @@ export interface TraceFrame {
   moth: { x: number; y: number } | null;
   /** The grey over the table while the viewer's own link is down, 0 to 1. */
   grey?: number;
+  /** The felt's scale through the deal's breath, 1 at rest. */
+  breath?: number;
 }
 
 interface Sources {
@@ -33,6 +35,7 @@ interface Sources {
   scorePill: () => NonNullable<TraceFrame["scorePill"]>;
   flight: () => number;
   grey: () => number;
+  breath: () => number;
 }
 
 export interface TraceRecorder {
@@ -52,6 +55,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   scorePill: new Set(),
   flight: new Set(),
   grey: new Set(),
+  breath: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -85,6 +89,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       motes: sum(sources.motes),
       moth: last(sources.moth),
       grey: last(sources.grey) ?? 0,
+      breath: last(sources.breath) ?? 1,
     });
     requestAnimationFrame(tick);
   };

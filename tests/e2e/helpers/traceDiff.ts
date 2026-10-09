@@ -32,7 +32,8 @@ export type Field =
   | "moth"
   | "air"
   | "grey"
-  | "freeze";
+  | "freeze"
+  | "breath";
 
 export interface Failure {
   field: Field;
@@ -56,6 +57,7 @@ export const TOLERANCES = {
   brightness: 6,
   pillPt: 1,
   contactPt: 1,
+  breath: 0.001,
 };
 
 const PILL_OPEN = 0.999;
@@ -143,6 +145,8 @@ export function diffTraces(
         } else if (Math.abs(av - mv) > tol.level) fail(k, t, mv, av, `lamp ${k} ${av} against ${mv}`);
       }
     }
+    const [mb, ab] = [m.breath ?? 1, a.breath ?? 1];
+    if (Math.abs(ab - mb) > tol.breath) fail("breath", t, mb, ab, `felt breath ${ab} against ${mb}`);
     if (!m.shake !== !a.shake) fail("shake", t, m.shake, a.shake, "a shake on one side only");
     if (!m.scorePill || !a.scorePill) {
       if (m.scorePill !== a.scorePill) fail("scorePill", t, m.scorePill, a.scorePill, "a score pill on one side only");
@@ -356,6 +360,7 @@ export function movingFields(trace: Trace): Set<Field> {
     if (differs((f) => f.shake)) moved.add("shake");
     if (differs((f) => f.scorePill && [f.scorePill.x, f.scorePill.y, f.scorePill.w, f.scorePill.h])) moved.add("scorePill");
     if (differs((f) => f.flight)) moved.add("flight");
+    if (differs((f) => f.breath ?? 1)) moved.add("breath");
   }
   const [r0] = trace.regions;
   if (r0 && trace.regions.some((r) => JSON.stringify(r.regions) !== JSON.stringify(r0.regions))) moved.add("brightness");
