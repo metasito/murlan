@@ -188,7 +188,8 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.onsets.includes("sound:deal"),
     mode: "parity",
     fields: ["onset", "live", "level", "breath", "brightness"],
-    regions: ["pool", "hand"],
+    // Not the hand: the app's viewer is on move through the deal and the mockup's is not (#1432).
+    regions: ["pool"],
     regionsAt: [1040, 1200],
     onsets: ["moment:dealt"],
   },
@@ -201,7 +202,7 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
-    regions: ["pool", "rim", "rightBand", "scorePill"],
+    regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
     fallbackStill: true,
   },
   {
