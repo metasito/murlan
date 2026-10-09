@@ -251,7 +251,9 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
   const i0 = frames.findIndex((f) => f.fliers["exchange-joker-0"]);
   expect(i0, "the Jokers never flew").toBeGreaterThan(0);
   expect(frames[i0].lit, "the loser's seat is lit while its Jokers are out").toContain("Gent");
-  const resting = frames.filter((f) => f.t - frames[i0].t >= LEG.rest + FRAME && f.t - frames[i0].t < LEG.tuck - FRAME);
+  // A flier is drawn a frame after its clock moves, so its leg began within the frame before i0's;
+  // these frames are the rest, notice and drawn pose both, for every start that allows.
+  const resting = frames.filter((f) => f.t - frames[i0].t >= LEG.rest && f.t - frames[i0].t < LEG.tuck - 2 * FRAME);
   expect(resting.length).toBeGreaterThan((Hold.reveal - 4 * FRAME) / FRAME);
   for (const f of resting) {
     for (const [id, dx] of [["exchange-joker-0", -18], ["exchange-joker-1", 18]] as const) {
