@@ -67,7 +67,7 @@ export function useMancheEnding({
       clock.set(MANCHE_IDLE);
       return;
     }
-    endedAt.current ??= performance.now();
+    if (endedAt.current === null) endedAt.current = performance.now();
     if (started.current || inFlight || pending()) return;
     started.current = true;
     // A landing older than the ending is an earlier play's: nothing flew for this one.
