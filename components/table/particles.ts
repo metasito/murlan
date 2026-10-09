@@ -149,7 +149,6 @@ function landDust(cards: number, count: number, x0: number, y0: number, rng: Rng
   return out;
 }
 
-/** The dust a landing throws on either platform's layer, scaled by `sx`/`sy`: none under reduced motion, nor for a card caught up on the way back. */
 /** The mockup's `specks`, thrown as a dealt card lands: `x`, `y` its centre. */
 export function dealSpecks(x: number, y: number, reduced: boolean, rng: Rng): ParticleSpawn[] {
   "worklet";
@@ -162,6 +161,7 @@ export function dealSpecks(x: number, y: number, reduced: boolean, rng: Rng): Pa
   });
 }
 
+/** The dust a landing throws on either platform's layer, scaled by `sx`/`sy`: none under reduced motion, nor for a card caught up on the way back. */
 export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | "y">, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
   "worklet";
   if (reduced || l.catchUp) return [];

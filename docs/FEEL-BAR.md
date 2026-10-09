@@ -47,7 +47,7 @@ Wizard of Odds publishes Jim Kilby's *Casino Operations Management* table of bla
 hands dealt per hour by seat count: 209 (1 player), 139 (2), 105 (3), **84 (4)**, 70 (5),
 60 (6), 52 (7) — verified by direct fetch, table intact. At murlan's four seats, 84
 hands/hour is one full deal-play-resolve cycle every ~42.9s on a real table, which is the
-outer ceiling our own hand (dealt in 13×42ms ≈ 546ms, played over a few more seconds) sits
+outer ceiling our own hand (dealt in under a second, played over a few more seconds) sits
 nowhere near — we have room, not a deadline. Evolution's own Speed Blackjack product page
 (verified by direct fetch) states it runs "30–40% faster" than their standard Live
 Blackjack, confirming that dealing pace is itself a tunable, marketed dial in a shipped

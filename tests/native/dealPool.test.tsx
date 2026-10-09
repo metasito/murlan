@@ -109,15 +109,19 @@ describe('the deal flies on a pool of backs', () => {
     expect(slots.length * 2).toBeLessThanOrEqual(legs.length);
 
     const flown = new Set<string>();
+    const shrunk: number[] = [];
     await frames(endMs + 200, () => {
       const t = clock.value;
       const poses = backs();
       slots.forEach((slot, i) => expect(poses[i]).toMatchObject(dealPose(legAt(slot, t), t)));
+      for (const p of poses) if (p.opacity === 1) shrunk.push(Number(p.transform.find((s: Record<string, number>) => 'scale' in s)?.scale));
       expect(poses.filter((p) => p.opacity === 1)).toHaveLength(legs.filter((l) => inAir(l, t)).length);
       for (const slot of slots) if (inAir(legAt(slot, t), t)) flown.add(legAt(slot, t).key);
     });
 
     expect(flown.size).toBe(legs.length);
+    expect(Math.min(...shrunk)).toBeLessThan(0.95);
+    expect(Math.min(...shrunk)).toBeGreaterThanOrEqual(0.9);
     expect(onLanded).toHaveBeenCalledTimes(1);
     expect(mockFrameCallbacks.length).toBeGreaterThan(0);
     expect(mockFrameCallbacks.at(-1)!.isActive).toBe(false);
