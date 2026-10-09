@@ -10,24 +10,25 @@ import { sourcesUnder } from "../helpers/sourceScan.ts";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const ANSWERING = new Set(["motionMs", "noticeTiming"]);
 const TIMED = new Set(["withTiming", "withSpring"]);
-const CARRIER_MODE_ARG: Record<string, number> = { withDelay: 2, withSequence: 0, withRepeat: 3 };
+const CARRIER_MODE_ARG: Record<string, number> = { withDelay: 2, withSequence: 0, withRepeat: 4 };
 
 const calleeName = (n: ts.CallExpression): string | undefined => {
   const callee = ts.isPropertyAccessExpression(n.expression) ? n.expression.name : n.expression;
   return ts.isIdentifier(callee) ? callee.text : undefined;
 };
 
+const boundNames = (b: ts.BindingName): string[] =>
+  ts.isIdentifier(b) ? [b.text] : b.elements.flatMap((e) => (ts.isOmittedExpression(e) ? [] : boundNames(e.name)));
+
 /** The initializer `name` is bound to where `at` reads it, by walking out through the enclosing scopes. */
 function binding(name: string, at: ts.Node): ts.Expression | undefined {
   for (let scope: ts.Node | undefined = at.parent; scope; scope = scope.parent) {
-    if (ts.isFunctionLike(scope) && scope.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === name)) return undefined;
+    if (ts.isFunctionLike(scope) && scope.parameters.some((p) => boundNames(p.name).includes(name))) return undefined;
     if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
     for (const st of scope.statements) {
       if (!ts.isVariableStatement(st)) continue;
       for (const d of st.declarationList.declarations) {
-        const names = ts.isIdentifier(d.name) ? [d.name.text] : ts.isObjectBindingPattern(d.name)
-          ? d.name.elements.flatMap((e) => (ts.isIdentifier(e.name) ? [e.name.text] : [])) : [];
-        if (names.includes(name)) return d.initializer;
+        if (boundNames(d.name).includes(name)) return d.initializer;
       }
     }
   }
@@ -90,6 +91,8 @@ function unopted(sources: [string, string][]): string[] {
         const layout = name === "duration" && ts.isPropertyAccessExpression(n.expression);
         const flagged = TIMED.has(name)
           ? answers(n.arguments[1]) && (mode(n.arguments[1]) ?? inherited(n)) !== "Never"
+          : name === "withDelay"
+          ? answers(n.arguments[0]) && (mode(n.arguments[2]) ?? inherited(n)) !== "Never"
           : layout && answers(n.arguments[0]) && chainMode(n) !== "Never";
         if (flagged) {
           const line = sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
@@ -131,9 +134,17 @@ describe("an animation whose duration answers reduced motion opts out of the roo
       "function other(ms: number) { m.value = withTiming(1, { duration: ms }); }",
       "function third() { const d = 300; n.value = withTiming(1, { duration: d }); }",
       '// o.value = withTiming(1, { duration: motionMs("reveal", r) });',
+      'const [ms] = useState(() => motionMs("reveal", r));',
+      "p.value = withTiming(1, { duration: ms });",
+      "q.value = withRepeat(withTiming(1, { duration: d }), -1, true, undefined, ReduceMotion.Never);",
+      's.value = withDelay(motionMs("reveal", r), withTiming(1, { duration: 300 }), ReduceMotion.System);',
+      "t.value = withDelay(d, withTiming(1, { duration: 300 }), ReduceMotion.Never);",
+      "function fourth({ d }: P) { u.value = withTiming(1, { duration: d }); }",
     ].join("\n");
     assert.deepEqual(unopted([["components/example.tsx", source]]), [
       "components/example.tsx:1 withTiming",
+      "components/example.tsx:19 withTiming",
+      "components/example.tsx:21 withDelay",
       "components/example.tsx:3 withTiming",
       "components/example.tsx:4 withTiming",
       "components/example.tsx:5 withTiming",

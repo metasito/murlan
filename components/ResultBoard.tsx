@@ -124,14 +124,14 @@ function RankCard({
     tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance), ReduceMotion.System);
     const counting = delay + motionMs("travel", reduceMotion);
     const shift = { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never };
-    chip.value = withDelay(counting, withTiming(1, shift), ReduceMotion.System);
-    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, shift), ReduceMotion.System);
+    chip.value = reduceMotion ? 1 : withDelay(counting, withTiming(1, shift), ReduceMotion.Never);
+    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, shift), ReduceMotion.Never);
     count.value = reduceMotion
       ? row.total
       : withDelay(
           counting,
           withTiming(row.total, { duration: motionMs("reveal", reduceMotion), reduceMotion: ReduceMotion.Never }),
-          ReduceMotion.System
+          ReduceMotion.Never
         );
   }, [chip, chipY, count, delay, opacity, reduceMotion, row.total, tx]);
   const anim = useAnimatedStyle(() => ({
