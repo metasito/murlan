@@ -233,6 +233,17 @@ describe("an opponent's hand arrives with the deal", () => {
     }
   }, 20_000);
 
+  it('lays the hand in place when reduced motion comes on mid-deal', async () => {
+    const r = await render(table());
+    for (let t = 0; t < 400; t += 16) await frame();
+    expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
+    mockReduce = true;
+    await r.rerender(table());
+    for (let t = 0; t < 400; t += 16) await frame();
+    expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
+    await r.unmount();
+  }, 20_000);
+
   it('lays the hand in place under reduced motion, with no breath, lamp rise or specks', async () => {
     mockReduce = true;
     const r = await render(table());

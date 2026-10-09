@@ -306,7 +306,9 @@ function CardItemBase({
   // becomes -1 while this card is still flying in. The deal owes its timing to
   // the value the card mounted with.
   const dealDelayRef = useRef(dealDelay);
-  const [dealt] = useState(deal);
+  const [mountedDeal] = useState(deal);
+  // Reduced motion ends the deal's clock, so a card still waiting on it would never be shown.
+  const dealt = reduceMotion ? undefined : mountedDeal;
   const dealClock = dealt?.clock;
   const dealAt = dealt ? dealt.leaveMs : -1;
   const onDealt = dealt?.onDealt;

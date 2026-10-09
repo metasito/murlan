@@ -36,9 +36,9 @@ a run of arriving elements should sit inside.
   named duration band, so a design can pick "this card's arrival is a `short3`" instead of
   guessing a number per call site — the exact trap `Motion` in this repo already avoids,
   confirmed against a second system.
-- Frame check: at `t = 0ms` no card in the deal has begun moving except the first; at
-  `t = 42ms × n` the n-th card (0-indexed) has just started its own travel, matching
-  `Motion.stagger.deal`, and no two cards' travel windows are byte-identical in start time.
+- Frame check: no card in the deal moves before `t = 40ms`; at `t = 40ms + 42ms × n` the
+  n-th card (0-indexed) has just started its own travel, matching `Motion.stagger.deal`
+  (`lib/game/dealTimeline.ts`), and no two cards' travel windows are byte-identical in start time.
 
 **2. Casino dealing pace, as a real-product ceiling on how long a deal may take**
 `https://wizardofodds.com/ask-the-wizard/136/` and
@@ -421,10 +421,10 @@ shape itself, since Evolution's page states cadence but not loop construction.
 Bomb's own ideas are above, closest to its references. These are for the other eight
 moments, each a checkable frame property rather than a claim of quality:
 
-- **Deal.** At `t = -40ms` relative to the first card's own travel start, the
-  felt's own scale departs from 1.0 by a small, named amount and returns to 1.0 by `t = 0`
-  — a single symmetric "breath" so the whole hand's arrival reads as one gesture starting
-  before the first card moves, not only once the first card is already in flight.
+- **Deal.** At the deal's onset, 40ms before the first card's own travel start, the
+  felt's own scale departs from 1.0 by a small, named amount and returns to 1.0 by
+  `Motion.deal.breath` — a single symmetric "breath" (`dealBreath`) so the whole hand's
+  arrival reads as one gesture starting before the first card moves.
 - **Card landing.** On the flight's contact frame (`contactMs` of `flightPose`, held to the
   landing sound by `tests/e2e/landingContact.spec.ts`) the trace's `live`
   count rises by `16 + 5n` dust and three puffs for `n` cards, and the landed cards' scale
