@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { capNear, listedTests, LOCAL_PROJECTS, nearTests } from "../near-tests.mjs";
+import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../near-tests.mjs";
 
 const T = (n: string) => `tests/native/${n}.test.tsx`;
 const src: Record<string, string> = {
@@ -48,6 +48,14 @@ describe("what native:related runs and what it leaves to CI", () => {
     const local = projects.filter((p) => LOCAL_PROJECTS.includes(p.displayName));
     const unreached = projects.filter((p) => !positive(p).every((g) => local.some((l) => positive(l).includes(g))));
     assert.deepEqual(unreached.map((p) => p.displayName), []);
+  });
+  test("every native test runs, and is budgeted, under the project jest.config.js gives it", () => {
+    const selected = onLocalProjects(["--listTests"]);
+    assert.equal(selected[0], "--listTests");
+    for (const [file, project] of [[T("scorePill"), "ios"], ["tests/native/x/botMoveCost.compiled.test.tsx", "compiled"]]) {
+      assert.equal(localProjectOf(join(process.cwd(), file)), project);
+      assert.ok(selected.slice(selected.indexOf("--selectProjects") + 1).includes(project), `${file}: ${project} not selected`);
+    }
   });
   test("--listTests output keeps only paths, repo-relative and posix", () => {
     const cwd = process.cwd();

@@ -1,8 +1,20 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 
 export const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
 export const CODE = /\.(tsx?|m?js)$/;
 export const LOCAL_PROJECTS = ["ios", "compiled"];
+
+/** @param {string[]} args */
+export const onLocalProjects = (args) => [...args, "--selectProjects", ...LOCAL_PROJECTS];
+
+/** @param {string} file absolute */
+export function localProjectOf(file) {
+  const require = createRequire(import.meta.url);
+  const { globsToMatcher } = require(require.resolve("jest-util", { paths: [require.resolve("jest")] }));
+  const { projects } = require("../../jest.config.js");
+  return projects.find((p) => LOCAL_PROJECTS.includes(p.displayName) && globsToMatcher(p.testMatch)(file))?.displayName;
+}
 const stem = (f) =>
   path.posix.basename(f).replace(/\.test\.tsx$/, "").replace(/(\.(web|native|ios|android))?\.(tsx?|m?js)$/, "");
 

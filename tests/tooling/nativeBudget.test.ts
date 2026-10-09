@@ -2,12 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import NativeBudgetReporter, { BUDGET_S, budgetLines, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;
+const projects = (createRequire(import.meta.url)("../../jest.config.js") as { projects: { displayName: string }[] }).projects.map((p) => p.displayName);
 
 function run(files: Record<string, number[]>, failedSuites = 0, runtimeS: Record<string, number> = {}) {
   const reporter = new NativeBudgetReporter({ rootDir: repoRoot });
@@ -88,7 +90,7 @@ test("the native job restores its jest cache only under the exact dependency set
 test("each exception names a native file and a project, says why, and grants more than the budget and no more than the cap", () => {
   for (const [key, { seconds, why }] of Object.entries(exceptions)) {
     const [project, file] = key.split(/:(.*)/s);
-    assert.ok(project === "ios" || project === "android", `${key}: unknown project`);
+    assert.ok(projects.includes(project), `${key}: unknown project`);
     assert.ok(file.startsWith("tests/native/") && existsSync(path.join(repoRoot, file)), `${key}: no such file`);
     assert.ok(why.length > 20, `${key}: no reason`);
     assert.ok(seconds > BUDGET_S && seconds <= MAX_EXCEPTION_S, `${key}: ${seconds}s`);
@@ -98,13 +100,20 @@ test("each exception names a native file and a project, says why, and grants mor
 test("a local --json run reads each file's case time against its own budget, the reporter's way", () => {
   const [excepted, { seconds }] = Object.entries(exceptions)[0]!;
   const [project, file] = excepted.split(/:(.*)/s);
+  const compiled = path.join(repoRoot, "tests/native/botMoveCost.compiled.test.tsx");
   const json = {
     testResults: [
       { name: path.join(repoRoot, file), assertionResults: [{ duration: ms(2) }, { duration: ms(1.5) }] },
       { name: path.join(repoRoot, "tests/native/tableNotices.test.tsx"), assertionResults: [{ duration: null }] },
+      { name: compiled, assertionResults: [{ duration: ms(1) }] },
     ],
   };
-  assert.deepEqual(budgetLines(json, project, repoRoot), [`  3.5s of ${seconds}s ${excepted}`, `  0.0s of ${BUDGET_S}s ${project}:tests/native/tableNotices.test.tsx`]);
+  const projectOf = (f: string) => (f === compiled ? "compiled" : project);
+  assert.deepEqual(budgetLines(json, projectOf, repoRoot), [
+    `  3.5s of ${seconds}s ${excepted}`,
+    `  0.0s of ${BUDGET_S}s ${project}:tests/native/tableNotices.test.tsx`,
+    `  1.0s of ${BUDGET_S}s compiled:tests/native/botMoveCost.compiled.test.tsx`,
+  ]);
 });
 
 test("CI runs the budget over the native suite, and nothing else does", () => {
