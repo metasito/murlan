@@ -174,8 +174,8 @@ quality:
   6px horizontal displacement from rest, and by `t = 90ms + 170ms` that displacement has
   linearly interpolated back to 0px — a number already decided by #764, restated here as
   the frame check the critic should actually run against a capture, not re-decided.
-- At the bomb's landing frame, the spark burst's individual particles show a size
-  distribution with at least three distinct radii (not one radius repeated ~24 times) —
+- `BombFx.delayMs` after the bomb's contact, the spark burst's individual particles show a size
+  distribution with at least three distinct radii (not one radius repeated 48 times) —
   uniform-sized particles read as a sprite sheet, not a burst.
 - Within the bomb's shake window, the table's rotation (not just translation) carries a
   component under 1.5° peak — Eiserloh's talk recommends combining translational and

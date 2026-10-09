@@ -7,7 +7,7 @@ export interface TraceFrame {
   onsets: string[];
   live: number;
   dropped: number;
-  lamp: { x: number; y: number; level: number | null; flare: number | null; r: number; ph?: number; freeze?: number } | null;
+  lamp: { x: number; y: number; level: number | null; flare: number | null; r: number; ph?: number; freeze?: number; kick?: number } | null;
   shake: { x: number; y: number; rotate: number } | null;
   /** Which felt is on screen: the web fallback until Skia has drawn its first frame. */
   felt?: "skia" | "fallback" | null;

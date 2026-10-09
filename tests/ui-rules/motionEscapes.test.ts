@@ -19,8 +19,8 @@ const MOTION_ESCAPE_DECL =
 
 // #829 judged every `_MS` constant in components/ against the scale and left
 // the pile below one of two ways: renamed onto Motion/Reading, or kept with a
-// comment stating why it is a one-off (ROUND_WINNER_MS, SPARK_LEAD_MS and
-// SPARK_PHASE_MS are the pattern to match). This is the count that judgement
+// comment stating why it is a one-off (ROUND_WINNER_MS and FLAKE_PHASE_MS are
+// the pattern to match). This is the count that judgement
 // left standing — not zero, CLAUDE.md allows a component-local one-off — so
 // that the next one added is a decision this test makes someone write down,
 // rather than a drift nobody notices until the next audit.
@@ -29,7 +29,7 @@ describe("a duration off the scale is a counted decision, not a silent drift", (
     const hits = scanSources(MOTION_ESCAPE_DECL, componentSources(repoRoot));
     assert.equal(
       hits.length,
-      27,
+      24,
       "a `_MS` constant was added to (or removed from) components/ — fold it onto " +
         "Motion/Reading/Hold, or update this pin with a comment at the constant saying " +
         "why it stays a one-off:\n" + hits.join("\n")

@@ -8,8 +8,9 @@ import { RestAir } from "@/lib/tokens";
 import { createAir, mothPose, MOTES, stepAir, type Air, type MothPose } from "./air";
 import { DESIGN, type Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { useLandingReaction } from "./useLandingReaction";
+import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
 import { CELLS, D, DRAW_STRIDE, layout, layoutMotes, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
@@ -139,6 +140,11 @@ export function ParticleLayer({ ref, rig, landing }: {
   useLandingReaction(landing, (l) => {
     "worklet";
     for (const p of landingDust(l, reduced, sx, sy, Math.random)) spawn(sim, p);
+  });
+  useBombBeat(landing, reduced, (l) => {
+    "worklet";
+    for (const p of bombFx(l, reduced, sx, sy, Math.random)) spawn(sim, p);
+    traceOnset("moment", "bombFx");
   });
 
   useImperativeHandle(ref, () => ({

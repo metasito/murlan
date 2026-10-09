@@ -1,7 +1,7 @@
 // tests/native/lampFlareReducedMotion.test.tsx — "Reduced motion lands at
 // exactly zero" (#765), pinned end to end rather than trusted from the
 // generic ungated-animation-block scan (tests/ui-rules/reducedMotion.test.ts) alone:
-// that scan can only see that `Flare`/`Spark`/`LampLift` each carry a
+// that scan can only see that `Flare`/`LampLift` each carry a
 // reduceMotion guard in their own source, not that a bomb landing under the
 // setting a player actually chose leaves what they draw at rest.
 // A separate file, not a second describe in lampFlareWiring.test.tsx: the
@@ -97,15 +97,21 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
     jest.useRealTimers();
   });
 
-  it("a bomb landing leaves the flare and the sparks dark", async () => {
+  it("a bomb landing leaves the flare and the flash dark", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
+    let flare = 0;
+    let flash = 0;
+    for (let f = 0; f < 32; f++) {
+      await act(async () => {
+        jest.advanceTimersByTime(16);
+      });
+      flare = Math.max(flare, opacityOf("bomb-flare"));
+      flash = Math.max(flash, opacityOf("bomb-flash"));
+    }
 
-    expect(opacityOf("bomb-flare")).toBe(0);
-    expect(opacityOf("spark-0")).toBe(0);
+    expect(flare).toBe(0);
+    expect(flash).toBe(0);
 
     await r.unmount();
   });

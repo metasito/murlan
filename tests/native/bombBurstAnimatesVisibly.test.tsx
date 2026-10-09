@@ -10,9 +10,9 @@
 import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
 import { act, render, screen } from "@testing-library/react-native";
-import { StyleSheet } from "react-native";
 import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
-import { SPARK_COUNT, type ImpactTier } from "@/components/flightPhysics";
+import type { ImpactTier } from "@/components/flightPhysics";
+import { Motion } from "@/lib/theme";
 import { BombBurst, LampLift } from "@/components/table/moments";
 import { TABLE_CENTRE, restingLamp } from "@/components/table/lampRig";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
@@ -67,22 +67,20 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
     await r.unmount();
   });
 
-  it("a spark's own opacity and translate leave their rest values once it flies", async () => {
+  it("both shockwave rings leave their rest opacity and scale, and no view draws a spark", async () => {
     jest.useFakeTimers();
     const r = await landed((landing) => <BombBurst landing={landing} scale={1} />, "bomb");
 
-    // Spark 0's own delay is 60ms (SPARK_LEAD_MS, i % 5 === 0) before its ramp
-    // starts — past that, partway into the 10%-of-1150ms opacity ramp.
     await act(async () => {
-      jest.advanceTimersByTime(60 + 50);
+      jest.advanceTimersByTime(Motion.duration.travel + 40);
       jest.runOnlyPendingTimers();
     });
 
-    expect(opacityOf("spark-0")).toBeGreaterThan(0);
-    const translateX = entry(transformOf("spark-0"), "translateX")?.translateX as number;
-    // Spark 0 flies straight out along +x (sparkOffset(0, 1).dx === 110) — a
-    // gutted effect body would leave `progress` at 0 and this at exactly 0.
-    expect(translateX).toBeGreaterThan(0);
+    for (const ring of ["bomb-wave-0", "bomb-wave-1"]) {
+      expect(opacityOf(ring)).toBeGreaterThan(0);
+      expect(entry(transformOf(ring), "scale")?.scale as number).toBeGreaterThan(0.15);
+    }
+    expect(screen.queryAllByTestId(/^spark-/, { includeHiddenElements: true })).toHaveLength(0);
 
     jest.useRealTimers();
     await r.unmount();
@@ -105,15 +103,6 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
     expect(scale).toBeGreaterThan(0.7);
 
     jest.useRealTimers();
-    await r.unmount();
-  });
-
-  it("the sparks come in three radii, cycling small, medium, large", async () => {
-    const r = await render(<BombBurst landing={makeMutable(NO_LANDING)} scale={2} />);
-    const widths = Array.from({ length: SPARK_COUNT }, (_, i) =>
-      (StyleSheet.flatten(screen.getByTestId(`spark-${i}`).props.style) as { width: number }).width
-    );
-    widths.forEach((w, i) => expect(w).toBeCloseTo(3 * 2 * [1, 1.6, 2.3][i % 3]));
     await r.unmount();
   });
 });

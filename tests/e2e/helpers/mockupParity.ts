@@ -10,8 +10,9 @@ import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
-import { createDeck } from "../../../lib/game/gameEngine";
-import { Motion } from "../../../lib/tokens";
+import { buildCombination, createDeck } from "../../../lib/game/gameEngine";
+import { BombFx, Motion } from "../../../lib/tokens";
+import { MOTES } from "../../../components/table/air";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepThen, stepUntil } from "./virtualClock";
 import {
@@ -118,6 +119,28 @@ const dealTable = (page: Page, baseURL: string) => {
   return seatTable(page, baseURL, save);
 };
 
+/** The mockup's `bomb`: luan's sevens on the pile, besnik across on move with four sixes. */
+const BOMB = ["6_spades", "6_hearts", "6_diamonds", "6_clubs", "3_clubs", "4_diamonds"];
+const SEVENS = ["7_hearts", "7_diamonds"];
+const bombTable = async (page: Page, baseURL: string) => {
+  const rest = createDeck().map((c) => c.id).filter((id) => !BOMB.includes(id) && !SEVENS.includes(id));
+  const [you, luan, gent] = [0, 1, 2].map((s) => rest.filter((_, i) => i % 3 === s).slice(0, 13));
+  const save = offlineGameSave(4, 13, 2, MOCKUP_SCORES, [you, gent, BOMB, luan]);
+  const deck = new Map(createDeck().map((c) => [c.id, c]));
+  Object.assign(save.gameState, { lastPlayedCombination: buildCombination(SEVENS.map((id) => deck.get(id)!)), lastPlayedBy: 3 });
+  await seatTable(page, baseURL, save);
+  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still. The
+  // recorder restarts behind the table's frame loops, or it samples the lamp a frame before it steps.
+  await stepUntil(page, async () => {
+    const frames = await recorded(page);
+    const landed = frames.findIndex((f) => f.onsets.includes("moment:landing"));
+    return landed >= 0 && frames.slice(landed + 1).some((f) => f.live <= MOTES);
+  }, "the restored sevens' dust settling");
+  await page.evaluate(() => (window as unknown as { murlanTrace: { stop(): void } }).murlanTrace.stop());
+  await step(page);
+  await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
+};
+
 const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
   await skiaOnSoftware(page);
   await page.addInitScript(
@@ -163,6 +186,8 @@ const glance = (windowMs: number, checkpoints: number[]) => [...Array.from({ len
 const DEAL_PHASE_MS = Motion.duration.reveal % STEP_MS;
 /** Mid-breath, before the first arrival, and between the ninth and tenth, where every speck thrown is still alive. */
 const DEAL_CHECKPOINTS = [48, 160, 656];
+
+const BOMB_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
 
 const MOMENTS: Moment[] = [
   {
@@ -273,6 +298,34 @@ const MOMENTS: Moment[] = [
     variants: ["skia"],
   },
   {
+    key: "bomb",
+    windowMs: 3200,
+    checkpoints: BOMB_CHECKPOINTS,
+    stripAt: glance(3200, BOMB_CHECKPOINTS),
+    // The app's landing is the cards' contact, sampled from the pose (ADR 0008), not the tween's end.
+    mockupScript: `const fx = bombFx;
+      const beat = () => { window.__parityOnsets.push("moment:bombFx"); fx(); };
+      bombFx = () => {};
+      let flying = null;
+      const throwCards = play;
+      play = (...a) => { throwCards(...a); flying = document.querySelector("#pile .grp.cur"); };
+      const frame = lampStep;
+      lampStep = (dt) => {
+        frame(dt);
+        const poses = flying ? [...flying.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number)) : [];
+        if (!poses.length || !poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
+        flying = null;
+        later(${BombFx.delayMs}, beat);
+      };`,
+    appTrigger: bombTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "flare", "kick"],
+    regions: [],
+    onsets: ["moment:bombFx"],
+    actions: [{ atMs: 600, app: botMove }],
+  },
+  {
     key: "score-open",
     chapter: "rest",
     windowMs: 960,
@@ -327,7 +380,7 @@ const MOCKUP_SAMPLE = `(() => {
     live: P.length + lamp.m.length,
     dropped: 0,
     breath: Number(V.bg.style.scale) || 1,
-    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r },
+    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r, kick: lamp.kick },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },
     flight: Math.max(0, ...[...document.querySelectorAll("#pile .grp.cur .card")].map((c) => {

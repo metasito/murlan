@@ -15,7 +15,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
-import { Beaten, CardGlow, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, BombFx, CardGlow, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -33,6 +33,7 @@ import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
 import { AT_REST, flightSpec, inBackground, useFlightClock, type FlightClock, type FlightSpec, type LandingPayload, type LandingSignal } from "./useFlightClock";
 import { useLandingReaction } from "./useLandingReaction";
+import { useBombBeat } from "./useBombBeat";
 import type { TableTimeline } from "./tableTimeline";
 import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
@@ -73,7 +74,7 @@ interface SweepMotion {
 
 const SWEEP_SCALE = 0.6;
 
-interface GroupMotion { sweep: SweepMotion | null; flinchY: SharedValue<number>; flinchBy: SharedValue<string>; beaten: boolean; key: string }
+interface GroupMotion { sweep: SweepMotion | null; flinchY: SharedValue<number>; asideX: SharedValue<number>; flinchBy: SharedValue<string>; beaten: boolean; key: string }
 
 /** A play is knocked only by a later play's contact, and only while it is the beaten one (#764). */
 function groupPose(g: GroupMotion, turned: number): GroupPose & { opacity: number } {
@@ -81,8 +82,9 @@ function groupPose(g: GroupMotion, turned: number): GroupPose & { opacity: numbe
   const t = g.sweep ? g.sweep.travel.value : 0;
   const fade = g.sweep ? g.sweep.fade.value : 0;
   const flinch = g.beaten && g.flinchBy.value !== g.key ? g.flinchY.value : 0;
+  const aside = g.beaten && g.flinchBy.value !== g.key ? g.asideX.value : 0;
   return {
-    tx: t * (g.sweep?.to.dx ?? 0),
+    tx: t * (g.sweep?.to.dx ?? 0) + aside,
     ty: t * (g.sweep?.to.dy ?? 0),
     scale: 1 - t * fade * (1 - SWEEP_SCALE),
     drop: turned * Beaten.drop + flinch,
@@ -127,7 +129,7 @@ const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinchBy, signal, bombClock, report, cardScale, roomW }: {
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, asideX, flinchBy, signal, bombClock, report, cardScale, roomW }: {
   play: TrickPlay;
   /** Non-null while the play is in the air; a group mounted without one never flies. */
   flight: Flight | null;
@@ -137,6 +139,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
   /** Out of sight at rest; a play still moving is drawn regardless. */
   hidden: boolean;
   flinchY: SharedValue<number>;
+  asideX: SharedValue<number>;
   /** The play whose contact set off the flinch. */
   flinchBy: SharedValue<string>;
   signal: SharedValue<LandingSignal>;
@@ -209,13 +212,14 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, flinc
   }, [beaten, buried, reduced, turned]);
   useEffect(() => () => cancelAnimation(turned), [turned]);
   const key = play.key;
-  const group = useMemo(() => ({ sweep, flinchY, flinchBy, beaten, key }), [sweep, flinchY, flinchBy, beaten, key]);
+  const group = useMemo(() => ({ sweep, flinchY, asideX, flinchBy, beaten, key }), [sweep, flinchY, asideX, flinchBy, beaten, key]);
   // The beaten pose rides this one worklet with the flinch (#764) and the sweep: React Native
   // replaces a style's `transform` wholesale.
   const pose = useAnimatedStyle(() => {
     const transform: ({ translateX: number } | { translateY: number } | { scale: number } | { rotate: string })[] = [];
     const g = groupPose(group, turned.value);
-    if (sweep) transform.push({ translateX: g.tx }, { translateY: g.ty }, { scale: g.scale });
+    transform.push({ translateX: g.tx });
+    if (sweep) transform.push({ translateY: g.ty }, { scale: g.scale });
     transform.push({ translateY: g.drop }, { rotate: `${g.rot}deg` });
     return { opacity: g.opacity, transform };
   });
@@ -412,6 +416,13 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     flinchY.set(withSequence(withTiming(distance, { duration: Motion.duration.flash }), withSpring(0, Motion.spring.land)));
   });
   useEffect(() => () => cancelAnimation(flinchY), [flinchY]);
+  const asideX = useSharedValue(0);
+  useBombBeat(signal, reduceMotion, () => {
+    "worklet";
+    asideX.set(-BombFx.asidePt * scale);
+    asideX.set(withTiming(0, { duration: BombFx.asideMs, easing: Easing.linear }));
+  });
+  useEffect(() => () => cancelAnimation(asideX), [asideX]);
 
   const swept = trick.swept;
   const travel = useSharedValue(0);
@@ -475,6 +486,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
             sweepTop={sweepTop}
             hidden={hidden}
             flinchY={flinchY}
+            asideX={asideX}
             flinchBy={flinchBy}
             signal={signal}
             bombClock={bombClock}

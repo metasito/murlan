@@ -6,6 +6,7 @@ import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/flightPhysics";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
 import { useLandingReaction } from "./useLandingReaction";
+import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
 
 /** The mockup's `deal` chapter: the lamp comes up from 75% as the cards fly. */
@@ -103,12 +104,19 @@ export function useLampRig({
 
   useLandingReaction(landing, (l) => {
     "worklet";
-    const kind = flareKindFor(l.tier);
-    if (kind === "none" || reduced.value) return;
+    if (flareKindFor(l.tier) !== "settle" || reduced.value) return;
     lamp.modify((s) => {
       "worklet";
       lampControls.flare(s, false);
-      if (kind === "brief") lampControls.kick(s, false);
+      return s;
+    }, true);
+  });
+  useBombBeat(landing, reduceMotion, () => {
+    "worklet";
+    lamp.modify((s) => {
+      "worklet";
+      lampControls.flare(s, false);
+      lampControls.kick(s, false);
       return s;
     }, true);
   });
@@ -118,7 +126,7 @@ export function useLampRig({
     "lamp",
     useCallback(() => {
       const s = lamp.value;
-      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f, r: s.r, ph: s.ph, freeze: s.freeze };
+      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f, r: s.r, ph: s.ph, freeze: s.freeze, kick: s.kick };
     }, [lamp, sx, sy])
   );
 

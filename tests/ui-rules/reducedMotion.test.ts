@@ -231,7 +231,7 @@ test("the deal — hand.tsx's stagger, drop and turn grow all skip under reduced
   assert.deepEqual(ungatedAnimationBlocks(source), []);
 });
 
-test("the bomb — kick (useTableFeedback.ts) and flare/wave/spark (moments.tsx) all skip under reduced motion", () => {
+test("the bomb — kick (useTableFeedback.ts) and flare/wave/flash (moments.tsx) all skip under reduced motion", () => {
   const feedback = readFileSync(path.join(repoRoot, "components/useTableFeedback.ts"), "utf8");
   const moments = readFileSync(path.join(repoRoot, "components/table/moments.tsx"), "utf8");
   assert.deepEqual(ungatedAnimationBlocks(feedback), []);

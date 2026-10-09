@@ -1,11 +1,11 @@
-// The bomb's burst (flare + two waves + a ring of sparks), the manche's own
+// The bomb's burst (flare + two waves) and flash, the manche's own
 // lamp lift, and the flush's sweep — one-shot celebrations. The burst and the
 // lift react to the landing signal on its contact frame; the sweep plays again
 // when `flushTrigger` (components/useTableFeedback.ts) changes. Each piece
 // decides for itself, against `usePrefersReducedMotion`, whether to animate.
 //
 // Every duration, delay and value below is the prototype's own `kick` /
-// `flare` / `wave` / `spark` / `sweep` keyframes (issue #200), `* scale` —
+// `flare` / `wave` / `sweep` keyframes (issue #200), `* scale` —
 // `LampLift` is the one exception, #765's own addition once the graduated
 // escalation (#101) gave the manche rung a reaction of its own.
 // CSS interpolates a `transform` list either function-by-function or by full
@@ -29,11 +29,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { useTraceSource } from "@/lib/e2eTrace";
-import { flareKindFor, lampLiftFor, sparkOffset, SPARK_COUNT, type FlareKind } from "@/components/flightPhysics";
-import { Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
+import { flareKindFor, lampLiftFor, type FlareKind } from "@/components/flightPhysics";
+import { BombFx, Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
 import type { LampRig } from "@/components/table/useLampRig";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
+import { useBombBeat } from "@/components/table/useBombBeat";
 import type { LandingSignal } from "@/components/table/useFlightClock";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
@@ -48,12 +48,10 @@ import type { LandingSignal } from "@/components/table/useFlightClock";
 // ancestor view — a bug this codebase has already paid for twice, and one no
 // device access this session can re-verify a variant of. Both animate a
 // plain `Animated.View`'s own `opacity`/`transform` instead, the shape
-// `Wave`/`Spark` already use, with a static blurred `glow` (`makeShadow`)
+// `Wave` already uses, with a static blurred `glow` (`makeShadow`)
 // standing outside the animated path for the outer halo.
 const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
-const SPARK_FILL = "#FFE9B0";
-const SPARK_GLOW = "#FFD070";
 const SWEEP_BAND = "rgba(255,240,200,.42)";
 const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
 // The lift's own glow (#765) — softer than the flare's near-white core: the
@@ -210,7 +208,7 @@ function Flare({ landing, scale }: { landing: SharedValue<LandingSignal>; scale:
 
   const size = FLARE_SIZE * scale;
   // Static — a shadow outside `useAnimatedStyle` never touches the per-frame
-  // animated path, the same split `Spark`'s own `glow` below relies on.
+  // animated path tests/ui-rules/animatedStyle.test.ts checks.
   const glow = makeShadow(FLARE_GLOW, 0, 0, 1, size * 0.55, 10);
   return (
     <Animated.View
@@ -242,11 +240,13 @@ const WAVE_RINGS = [
 ] as const;
 
 function Wave({
+  index,
   landing,
   scale,
   delayMs,
   durationMs,
 }: {
+  index: number;
   landing: SharedValue<LandingSignal>;
   scale: number;
   delayMs: number;
@@ -290,6 +290,7 @@ function Wave({
   return (
     <Animated.View
       pointerEvents="none"
+      testID={`bomb-wave-${index}`}
       style={[
         momentStyles.centered,
         {
@@ -308,99 +309,15 @@ function Wave({
   );
 }
 
-// ─── Spark ──────────────────────────────────────────────────────────────────
-
-const SPARK_SIZE = 3;
-const SPARK_RADII = [1, 1.6, 2.3] as const;
-const SPARK_MS = 1150;
-const SPARK_EASING = Easing.bezier(0.15, 0.75, 0.3, 1);
-const SPARK_Z = Layer.moment + 1;
-const SPARK_SCALE_FROM = 0.4;
-const SPARK_SCALE_TO = 0.2;
-
-function Spark({ index, landing, scale }: { index: number; landing: SharedValue<LandingSignal>; scale: number }) {
-  const opacity = useSharedValue(0);
-  // 0 at the spark's own origin, 1 at its landing offset — drives translate
-  // and scale together so both share the one tween.
-  const progress = useSharedValue(0);
-  const { dx, dy, delay } = sparkOffset(index, scale);
-  useTraceSource("live", () => Number(opacity.value > 0));
-
-  useBurst(landing, usePrefersReducedMotion(), () => {
-    "worklet";
-    const e = SPARK_EASING;
-    opacity.set(0);
-    progress.set(0);
-    opacity.set(
-      withDelay(
-        delay,
-        withSequence(
-          withTiming(1, { duration: SPARK_MS * 0.1, easing: e }),
-          withTiming(0, { duration: SPARK_MS * 0.9, easing: e })
-        ),
-        ReduceMotion.System
-      )
-    );
-    progress.set(withDelay(delay, withTiming(1, { duration: SPARK_MS, easing: e }), ReduceMotion.System));
-  });
-
-  useEffect(
-    () => () => {
-      cancelAnimation(opacity);
-      cancelAnimation(progress);
-    },
-    [opacity, progress]
-  );
-
-  const aStyle = useAnimatedStyle(() => {
-    const p = progress.value;
-    return {
-      opacity: opacity.value,
-      transform: [
-        { translateX: dx * p },
-        { translateY: dy * p },
-        { scale: SPARK_SCALE_FROM + (SPARK_SCALE_TO - SPARK_SCALE_FROM) * p },
-      ],
-    };
-  });
-
-  const size = SPARK_SIZE * SPARK_RADII[index % SPARK_RADII.length] * scale;
-  // Static — a shadow outside `useAnimatedStyle` never touches the
-  // per-frame animated path tests/ui-rules/animatedStyle.test.ts checks.
-  const glow = makeShadow(SPARK_GLOW, 0, 0, 1, 7 * scale, 4);
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      testID={`spark-${index}`}
-      style={[
-        momentStyles.centered,
-        {
-          width: size,
-          height: size,
-          left: -size / 2,
-          top: -size / 2,
-          borderRadius: size / 2,
-          backgroundColor: SPARK_FILL,
-          zIndex: SPARK_Z,
-        },
-        glow,
-        aStyle,
-      ]}
-    />
-  );
-}
-
 // ─── BombBurst ──────────────────────────────────────────────────────────────
 
-const SPARK_INDICES = Array.from({ length: SPARK_COUNT }, (_, i) => i);
 // Over the pile it rings, under the flight still settling onto it
 // (pileStyles.flyingContainer, Layer.sheet). Stated, never left to sibling
 // order — CLAUDE.md's invariant, and the iOS renderer is why.
 const BURST_Z = Layer.band;
 
 /**
- * The bomb's four layers, centred on the impact point — the same point
+ * The bomb's three layers, centred on the impact point — the same point
  * `PileLayer` draws the pile at. Rendered as a sibling of it inside the
  * table's own centre section. Each fires on the contact frame of a landing
  * whose tier flares (#765) — "brief" for the bomb, "settle" for the partita.
@@ -410,12 +327,9 @@ export function BombBurst({ landing, scale }: { landing: SharedValue<LandingSign
     <View pointerEvents="none" style={[momentStyles.overlay, { zIndex: BURST_Z }]}>
       <View style={momentStyles.anchor}>
         {WAVE_RINGS.map((ring, i) => (
-          <Wave key={i} landing={landing} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
+          <Wave key={i} index={i} landing={landing} scale={scale} delayMs={ring.delay} durationMs={ring.duration} />
         ))}
         <Flare landing={landing} scale={scale} />
-        {SPARK_INDICES.map((i) => (
-          <Spark key={i} index={i} landing={landing} scale={scale} />
-        ))}
       </View>
     </View>
   );
@@ -512,6 +426,30 @@ export function FeltScrim({ dim }: { dim: SharedValue<number> }) {
       testID="felt-scrim"
       pointerEvents="none"
       style={[StyleSheet.absoluteFill, { backgroundColor: Scrim.solid, zIndex: Layer.feltScrim }, aStyle]}
+    />
+  );
+}
+
+// ─── Bomb flash ─────────────────────────────────────────────────────────────
+
+/** The mockup's `flash(1, 280)`, once per bomb and, a photosensitivity cap, never twice within `BombFx.flashGapMs`. */
+export function BombFlash({ landing }: { landing: SharedValue<LandingSignal> }) {
+  const opacity = useSharedValue(0);
+  const lastAt = useSharedValue(-Infinity);
+  useBombBeat(landing, usePrefersReducedMotion(), (l) => {
+    "worklet";
+    if (l.at - lastAt.value < BombFx.flashGapMs) return;
+    lastAt.value = l.at;
+    opacity.set(1);
+    opacity.set(withTiming(0, { duration: BombFx.flashMs, easing: Easing.out(Easing.cubic) }));
+  });
+  useEffect(() => () => cancelAnimation(opacity), [opacity]);
+  const aStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View
+      testID="bomb-flash"
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: BombFx.flash, zIndex: Layer.flash }, aStyle]}
     />
   );
 }
@@ -615,7 +553,7 @@ const momentStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // A zero-size point at the impact centre — Flare/Wave/Spark each centre on
+  // A zero-size point at the impact centre — Flare/Wave each centre on
   // it with their own negative half-size offset.
   anchor: { position: "absolute", width: 0, height: 0 },
   centered: { position: "absolute" },

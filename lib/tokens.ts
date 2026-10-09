@@ -121,8 +121,7 @@ export const Colors = {
   // Bomb and royal-straight emphasis. Deliberately outside the danger family:
   // these mark a dramatic play, not an error.
   bombText:     '#FF8080',
-  bombBorder:   'rgba(255,80,80,0.55)',
-  bombFill:     'rgba(255,80,80,0.22)',
+  bombFill:    'rgba(255,80,80,0.22)',
 
   podiumGold:   '#C9A84C',
   podiumSilver: SILVER,
@@ -194,6 +193,19 @@ export const Lantern = {
 export const Dust = {
   mote: '#FFE2A8',
   puff: 'rgba(230,215,180,0.1)',
+} as const;
+
+// The bomb's beat after its landing: the mockup's `bombFx` and `flash` (#1263).
+export const BombFx = {
+  delayMs: 90,
+  sparks: ['#FFD27A', '#FFB347', '#FFF1C8'],
+  sparkSizes: [1, 1.8, 2.8],
+  ember: '#FF9A4A',
+  flash: 'rgba(255,222,150,0.5)',
+  flashMs: 280,
+  flashGapMs: 1000,
+  asidePt: 6,
+  asideMs: 170,
 } as const;
 
 // The table at rest: the mockup's `drawAir` (#1261). A mote's alpha is its light's.
@@ -382,6 +394,8 @@ export const Layer = {
   moment: 10,
   rail: 20,
   hint: 30,
+  /** The bomb's flash: over the table, its hand and chips, as the mockup's `#flash`. */
+  flash: 35,
   /**
    * The turn countdown, and nothing else. A layer that holds the table covers
    * the cards and the buttons on purpose, but a clock the seat is being charged

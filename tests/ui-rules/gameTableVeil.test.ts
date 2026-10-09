@@ -147,16 +147,24 @@ describe("every child of the game table's root answers to the veil", () => {
     // and no other: a third would ride neither rule, and whichever side of the
     // kick it landed on, the window it uncovered would show through again.
     // The scan above reads the kick layer's children, so nothing else here
-    // would notice a new root child.
+    // would notice a new root child. The bomb's flash is the one exception: it
+    // covers the whole window and never moves, so it cannot uncover anything.
     const lines = blankComments(source).split("\n");
     const open = lines.findIndex((l) => /^ {4}<View style=\{\[styles\.root/.test(l));
     assert.ok(open >= 0, "GameTable's root is no longer where this test looks for it");
     const close = lines.findIndex((l, i) => i > open && /^ {4}<\/View>/.test(l));
     assert.ok(close > open, "GameTable's root never closes");
 
-    const kids = lines
+    const children = lines
       .slice(open + 1, close)
       .filter((l) => /^ {6}</.test(l) && !/^ {6}<\//.test(l));
+    const kids = children.filter((l) => !/^ {6}<BombFlash\b/.test(l));
+    if (kids.length < children.length) {
+      const moments = readFileSync(path.join(repoRoot, "components", "table", "moments.tsx"), "utf8");
+      const flash = /export function BombFlash[\s\S]*?\n\}\n/.exec(moments)?.[0] ?? "";
+      assert.match(flash, /style=\{\[StyleSheet\.absoluteFill,/, "the bomb's flash no longer covers the whole window");
+      assert.match(flash, /useAnimatedStyle\(\(\) => \(\{ opacity: opacity\.value \}\)\)/, "the bomb's flash animates more than its opacity");
+    }
 
     assert.equal(
       kids.length,
