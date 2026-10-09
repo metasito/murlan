@@ -8,7 +8,6 @@ import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/li
 import { ResultBoard, type ContinueAction, type ResultRow } from "@/components/ResultBoard";
 import { Spacing } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 
 export default function ResultScreen() {
   const insets = useSafeAreaInsets();
@@ -17,9 +16,8 @@ export default function ResultScreen() {
   // Android keeps a leaving screen's views mid-transition, where a re-sorted row is a
   // re-insert into a parent it has not left yet: it renders what it was left showing.
   const [leftWith, setLeftWith] = useState<typeof live | null>(null);
-  const { gameState, match, tableWantsRematch, startNextHand, startNewMatch } = leftWith ?? live;
+  const { gameState, match, tableWantsRematch, startNewMatch } = leftWith ?? live;
   const { resetGame } = useLocalSession();
-  const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   useEffect(() => {
     if (!gameState) router.replace("/");
@@ -94,20 +92,6 @@ export default function ResultScreen() {
     resetGame();
     router.replace("/");
   };
-  // A match still being scored is discarded by going home, so it is asked
-  // about exactly as the in-table Quit asks; a finished one has nothing left
-  // to lose and is not worth a dialog.
-  const handleHome = () =>
-    match.over
-      ? goHome()
-      : setConfirming({
-          title: t("result.leaveConfirmTitle"),
-          body: t("result.leaveConfirmBody"),
-          cancelLabel: t("common.cancel"),
-          confirmLabel: t("result.leaveConfirmConfirm"),
-          destructive: true,
-          onConfirm: goHome,
-        });
   const goPlay = (start: () => void) => () => {
     if (leftWith) return;
     uiFeedback("medium");
@@ -118,27 +102,19 @@ export default function ResultScreen() {
 
   // The table was asked during the closing manche; a majority "no" ends it
   // here, so there is no button offering to overrule them.
-  const primary: ContinueAction | undefined = !match.over
+  const primary: ContinueAction | undefined = tableWantsRematch
     ? {
-        kind: "nextHand",
-        label: t("result.nextHand"),
-        onPress: goPlay(startNextHand),
-        testID: "btn-prossima-manche",
+        kind: "newMatch",
+        label: t("result.newMatch"),
+        onPress: goPlay(startNewMatch),
+        testID: "btn-nuova-partita",
       }
-    : tableWantsRematch
-      ? {
-          kind: "newMatch",
-          label: t("result.newMatch"),
-          onPress: goPlay(startNewMatch),
-          testID: "btn-nuova-partita",
-        }
-      : undefined;
+    : undefined;
 
   // A floor, not just the real inset: on a notchless device (most desktop
   // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
   // against the browser's raw edge is not a safe area, it's a missing margin.
   return (
-    <>
     <ResultBoard
       headerTitle={
         match.over
@@ -177,14 +153,12 @@ export default function ResultScreen() {
             : t("result.tableStops")
           : undefined
       }
-      home={{ label: t("result.home"), onPress: handleHome, testID: "btn-home" }}
+      home={{ label: t("result.home"), onPress: goHome, testID: "btn-home" }}
       primary={primary}
       topPad={Math.max(insets.top, Spacing.roomy)}
       bottomPad={Math.max(insets.bottom, Spacing.roomy)}
       leftPad={insets.left}
       rightPad={insets.right}
     />
-    <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />
-    </>
   );
 }
