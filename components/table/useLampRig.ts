@@ -80,6 +80,14 @@ export function useLampRig({
       lampControls.setLevel(s, BREATH_FROM, BREATH_RATE);
       return s;
     }, true);
+    return () =>
+      lamp.modify((s) => {
+        "worklet";
+        if (s.lvlT !== BREATH_FROM) return s;
+        s.lvl = 1;
+        lampControls.setLevel(s, 1, BREATH_RATE);
+        return s;
+      }, true);
   }, [dealClock, lamp]);
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),

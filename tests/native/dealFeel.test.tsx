@@ -93,14 +93,18 @@ describe("the viewer's hand is dealt with the felt's breath, the lamp's rise and
     }
   }, 20_000);
 
-  it('lays the hand in place when reduced motion comes on mid-deal', async () => {
+  it('lays the hand in place and lights the lamp when reduced motion comes on mid-deal', async () => {
     const r = await render(table());
     for (let t = 0; t < 400; t += 16) await frame();
     expect(handPoses().some((p) => p.opacity !== 1)).toBe(true);
+    const levels = () => jest.mocked(lampControls.setLevel).mock.calls.map((c) => c[1]);
+    expect(levels()).toEqual([0.75]);
     mockReduce = true;
     await r.rerender(table());
     for (let t = 0; t < 400; t += 16) await frame();
     expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
+    const [lamp, to] = jest.mocked(lampControls.setLevel).mock.calls.at(-1)!;
+    expect([to, lamp.lvl]).toEqual([1, 1]);
     await r.unmount();
   }, 20_000);
 
