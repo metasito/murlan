@@ -1,5 +1,6 @@
 // Plays a real offline match against AI, end to end, through the rendered UI:
-// several hands, and the card exchange that runs between them.
+// several hands, each ending on the table into the next deal, and the card
+// exchange that runs between them.
 //
 // Its own file rather than a case in offline.spec.ts because it is the
 // suite's longest single test by a wide margin, and a spec file is the unit
@@ -7,11 +8,11 @@
 
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
-import { driveGameToCompletion } from "./helpers/bot";
+import { driveGameToCompletion, untilNextDeal } from "./helpers/bot";
 
-const RESULT_URL = /\/result/;
+const GAME_URL = /\/game/;
 
-test("offline vs AI — a match plays multiple hands and exercises the card exchange between them", async ({
+test("offline vs AI — a match plays multiple hands on the table and exercises the card exchange between them", async ({
   page,
   baseURL,
   consoleErrors,
@@ -23,30 +24,29 @@ test("offline vs AI — a match plays multiple hands and exercises the card exch
     gameMode: "free_for_all",
     format: "match", // the lobby's default: first to the target score, hands separated by a card exchange
   });
+  const visited: string[] = [];
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) visited.push(frame.url());
+  });
 
   // A 2-player match awards the hand winner 1 point (lib/game/gameEngine.ts
   // `scoreHand`) against a target of 7 (`targetsFor(2)`), so reaching
   // match.over takes at least seven hands. This suite only needs to prove the
-  // between-hands exchange transition works, so it plays a small fixed number
-  // of hands and then leaves deliberately, rather than waiting for the match
-  // to conclude on its own.
+  // between-hands transition works, so it plays a small fixed number of hands
+  // and then leaves deliberately.
   const HANDS_TO_PLAY = 2;
   for (let hand = 1; hand <= HANDS_TO_PLAY; hand++) {
     await driveGameToCompletion(page, {
-      isFinished: async (p) => RESULT_URL.test(p.url()),
+      isFinished: untilNextDeal(),
       log: (line) =>
         test.info().annotations.push({ type: "move", description: `hand ${hand}: ${line}` }),
     });
-    await expect(page).toHaveURL(RESULT_URL);
-
-    if (hand === HANDS_TO_PLAY) break;
-    await page.locator('[data-testid="btn-prossima-manche"]').click();
-    await page.waitForURL(/\/game/);
+    await expect(page).toHaveURL(GAME_URL);
   }
+  expect(visited.filter((url) => !GAME_URL.test(url)), "a manche never leaves the table").toEqual([]);
 
-  // Leaving with the match unfinished discards it, so home asks first
-  // (app/result.tsx).
-  await page.locator('[data-testid="btn-home"]').click();
+  await page.getByRole("button", { name: "Impostazioni" }).click();
+  await page.getByRole("button", { name: "Esci dalla partita" }).click();
   await page.getByTestId("confirm-accept").click();
   await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
 

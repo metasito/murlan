@@ -58,7 +58,9 @@ const HIDDEN = { includeHiddenElements: true };
 const shownTotal = () => Number(screen.getByTestId('score-pill-total', HIDDEN).props.children[0]);
 const glow = () => Number(getAnimatedStyle(screen.getByTestId('score-pill-glow', HIDDEN)).opacity);
 
-beforeEach(() => jest.useFakeTimers());
+beforeEach(() => {
+  jest.useFakeTimers();
+});
 afterEach(() => {
   jest.useRealTimers();
   setMotionPreference('system');

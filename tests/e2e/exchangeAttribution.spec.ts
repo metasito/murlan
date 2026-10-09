@@ -6,7 +6,7 @@ import { installVirtualClock, step, stepUntil, takeOver } from "./helpers/virtua
 import { HAND_CARDS } from "./helpers/selectors";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 import { LEG } from "../../lib/game/exchangeTimeline";
-import { Hold, Motion } from "../../lib/tokens";
+import { Hold, MancheEnding, Motion } from "../../lib/tokens";
 
 const X = Motion.exchange;
 const FRAME = 16;
@@ -238,18 +238,15 @@ test("a seat outside the trade reads both legs off the pile and the lit seats", 
 test("both Jokers rest side by side on the pile under their notice, and go back", async ({ page, baseURL }) => {
   const over = save(0, 2, [[], [], []], { gameOver: true, exchangePhase: undefined, rankings: ["player_0", "player_1", "player_2"] });
   await open(page, baseURL!, over);
-  const next = page.getByTestId("btn-prossima-manche");
-  await stepUntil(page, () => next.isVisible(), "the result screen");
   await page.evaluate(() => {
     crypto.getRandomValues = (<T extends ArrayBufferView | null>(a: T) => {
       (a as unknown as Uint32Array).fill(92);
       return a;
     }) as Crypto["getRandomValues"];
   });
-  await next.click({ force: true });
   await table(page);
   const frames: Frame[] = [];
-  await run(page, X.beat + LEG.end + X.read + 2 * SLACK, frames);
+  await run(page, MancheEnding.deal + X.beat + LEG.end + X.read + 2 * SLACK, frames);
 
   const i0 = frames.findIndex((f) => f.fliers["exchange-joker-0"]);
   expect(i0, "the Jokers never flew").toBeGreaterThan(0);

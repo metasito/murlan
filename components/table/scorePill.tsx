@@ -158,8 +158,8 @@ export function ScorePill({
 
   const traceRead = useCallback(() => {
     const box = scorePillBox(shownOpen.value, boardProgress.value, anchor);
-    return { x: box.x, y: box.y, w: box.w, h: box.h, open: shownOpen.value, ending: clock.value };
-  }, [shownOpen, boardProgress, anchor, clock]);
+    return { x: box.x, y: box.y, w: box.w, h: box.h, open: shownOpen.value };
+  }, [shownOpen, boardProgress, anchor]);
   useTraceSource("scorePill", traceRead);
 
   const hitStyle = useAnimatedStyle(() => {
