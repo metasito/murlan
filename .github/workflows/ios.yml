@@ -130,7 +130,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # In the background; `Maestro is installed` waits for it.
+      # In the background, as is the Spotlight step below; `Maestro is installed and Spotlight
+      # indexing is off` waits for both.
       - name: Start installing Maestro
         run: |
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
@@ -150,6 +151,14 @@ jobs:
               "$HOME/.maestro/bin/maestro" --version 2>&1 | tee /dev/stderr | grep -q "$MAESTRO_VERSION"
             } > "$RUNNER_TEMP/maestro.log" 2>&1 || status=$?
             echo "$status" > "$RUNNER_TEMP/maestro.status"
+          ) > /dev/null 2>&1 &
+
+      - name: Start turning off the runner's Spotlight indexing
+        run: |
+          (
+            status=0
+            sudo mdutil -a -i off > "$RUNNER_TEMP/spotlight.log" 2>&1 || status=$?
+            echo "$status" > "$RUNNER_TEMP/spotlight.status"
           ) > /dev/null 2>&1 &
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -191,10 +200,9 @@ jobs:
           mkdir -p "$HOME/.maestro/tests"
           sysctl hw.ncpu hw.memsize > "$HOME/.maestro/tests/runner-top.log"
           nohup top -l 0 -s 5 -n 15 -o cpu -stats pid,command,cpu,rsize,state >> "$HOME/.maestro/tests/runner-top.log" 2>&1 &
+          echo $! >> "$RUNNER_TEMP/top.pids"
           nohup top -l 0 -s 30 -n 15 -o rsize -stats pid,command,cpu,rsize,state > "$HOME/.maestro/tests/runner-mem.log" 2>&1 &
-
-      - name: Turn off the runner's Spotlight indexing
-        run: sudo mdutil -a -i off
+          echo $! >> "$RUNNER_TEMP/top.pids"
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -248,10 +256,15 @@ jobs:
           extensions=$(pgrep -f "$EXTENSIONS" | tr '\n' ' ')
           [ -n "$extensions" ] || { echo "::error::The simulator runs no app extension to stop."; exit 1; }
           pids="$pids $extensions"
+          stoppers=""
           for label in $SERVICES; do
-            xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable "system/$label"
-            xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" || :
+            (
+              xcrun simctl spawn "$SIMULATOR_UDID" launchctl disable "system/$label"
+              xcrun simctl spawn "$SIMULATOR_UDID" launchctl bootout "system/$label" || :
+            ) &
+            stoppers="$stoppers $!"
           done
+          for stopper in $stoppers; do wait "$stopper"; done
           pkill -f "$EXTENSIONS" || :
           for _ in $(seq 1 30); do
             alive=""
@@ -274,14 +287,16 @@ jobs:
         id: install
         run: xcrun simctl install "$SIMULATOR_UDID" "$APP_BUNDLE"
 
-      - name: Maestro is installed
+      - name: Maestro is installed and Spotlight indexing is off
         run: |
-          for _ in $(seq 1 150); do
-            [ -s "$RUNNER_TEMP/maestro.status" ] && break
-            sleep 2
+          for task in maestro spotlight; do
+            for _ in $(seq 1 150); do
+              [ -s "$RUNNER_TEMP/$task.status" ] && break
+              sleep 2
+            done
+            cat "$RUNNER_TEMP/$task.log"
+            [ "$(cat "$RUNNER_TEMP/$task.status" 2>/dev/null)" = 0 ] || { echo "::error::The $task step failed or never finished."; exit 1; }
           done
-          cat "$RUNNER_TEMP/maestro.log"
-          [ "$(cat "$RUNNER_TEMP/maestro.status" 2>/dev/null)" = 0 ] || { echo "::error::Installing Maestro failed or never finished."; exit 1; }
 
       # The warm-up drives only XCTest's input path on a fresh simulator (#1378 B), so a second
       # attempt on a rebooted one, with a fresh driver, hides nothing in the app. The flows get none.
@@ -375,6 +390,10 @@ jobs:
           path: ~/.maestro/tests/
           if-no-files-found: ignore
 
+      - name: Stop sampling the runner's load
+        if: always()
+        run: kill $(cat "$RUNNER_TEMP/top.pids") 2> /dev/null || :
+
   ios:
     name: Drive the app on a real iOS simulator
     needs: [app, flows]
@@ -383,6 +402,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:
@@ -394,6 +414,11 @@ jobs:
         run: |
           echo "The app job's and the shards' results: $RESULTS"
           [ "$RESULTS" = "success success" ]
+
+      - name: The run finished within its wall budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tools/ci/ios-wall.mjs "Drive the app on a real iOS simulator"
 
       # `cancelled()` is a cancelled run: it skips every `failure()` step.
       - name: Report a red scheduled run to the tracker

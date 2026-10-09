@@ -27,7 +27,7 @@ instead of sitting unguarded in prose.
 | The viewer's own connection: the drop, the hold, give-up, the way back | `tests/ui-rules/{ownLink,reconnectDiff}.test.ts` and `tests/native/{ownLinkHold,resultBoardLostLink}.test.tsx`, then `tests/e2e/reconnect.spec.ts` and `tests/e2e/mockupParityReconnect.spec.ts` alone. The parity spec runs the app on **real time** (the socket's timers stall under the virtual clock, #1250) beside the mockup on the virtual one, drops the socket through `page.routeWebSocket` and refuses retries by going offline: a retry must fail with an error, since socket.io ignores a close while opening and waits its 20 s `timeout` | the pill's states and Riprova, and (native only) the result board's lost line and Riprova over a finished match; the grey, the lamp's freeze, the pill's onsets, the recovery sound and the give-up's dimmed lamp against the mockup's `reconnect` chapter, each side on its own drops, return and give-up (`tests/e2e/helpers/reconnectDiff.ts`); the app's give-up waits out `Reconnect.giveUp`, so the parity spec takes ~1.5 min | Docker + a built web bundle for the specs | ~1s / ~3s / ~1 min, ~1.5 min |
 | A table card's shadow | `tests/ui-rules/cardShadows.test.ts`, `tests/native/tableCardShadows.test.tsx`, then `tests/e2e/cardShadowParity.spec.ts` alone | the mockup's numbers; any card view carrying its own shadow; the felt's shadow against the mockup's `.card` under the same light | Docker + a built web bundle for the spec | ~1s / ~70s / ~1 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
-| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | ~17 min warm; on a native change, `ios-app-cache.yml`'s ~21 min build first |
+| Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | under 15 min warm, held by its gate; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
 | The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
@@ -82,7 +82,8 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 drive `smoke`, `offline-game`, `exchange-phase` and `rematch-prompt` on a real simulator or
 emulator; `ios.yml` runs them as parallel shards, one macOS job each, and its `Drive the app on a
 real iOS simulator` job is green only when every shard ran and passed
-(`tests/tooling/iosShards.test.ts`). A shard never builds: when no native build for the branch's
+(`tests/tooling/iosShards.test.ts`) and the run, first job start to last job end, took at most
+`BUDGET_S` in `tools/ci/ios-wall.mjs`, read from the run's own jobs API. A shard never builds: when no native build for the branch's
 fingerprint is cached (a native change), it fails saying so, and `gh workflow run
 ios-app-cache.yml --ref <branch>` builds one (~21 min) before `ios.yml` is dispatched again. A ticket dispatches them from its own branch when its work needs a device run
 (`gh workflow run ios.yml --ref agent/<n>-<slug>`, or `claude/<n>-<slug>` from a side session), and both run on `main` twice a week: a branch
