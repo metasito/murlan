@@ -956,7 +956,7 @@ export function GameTable({
   const timerActive =
     !!turnTimer &&
     turnTimerActive({
-      isMyTurn: isMyTurn && shownTurnIsMine,
+      isMyTurn,
       isFinished,
       isNewRound,
       gameOver: gameState.gameOver,
@@ -1146,6 +1146,7 @@ export function GameTable({
                 }
                 seconds={turnTimer?.seconds ?? 0}
                 active={timerActive}
+                revealed={viewerOnMove}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
                 frozen={clockHeld}

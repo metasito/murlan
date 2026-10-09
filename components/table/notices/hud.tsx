@@ -65,9 +65,12 @@ export function TurnChip({
   spokenSeat,
   connection: carried = null,
   frozen = false,
+  revealed = true,
 }: {
   seconds: number;
   active: boolean;
+  /** False keeps an active clock counting toward its deadline without drawing it: the table has not shown the turn yet. */
+  revealed?: boolean;
   /** Holds the count without counting down or sounding, and runs on from it once released. */
   frozen?: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
@@ -148,7 +151,7 @@ export function TurnChip({
       : "";
   const label = connection
     ? connection.text
-    : active
+    : active && revealed
       ? `${spokenSeat} ${tn("gameTable.a11ySecondsLeft", timeLeft)}`
       : spokenSeat;
   const tone = connection ? CONNECTION_TONE[connection.state] : ember ? "urgent" : lit ? "lit" : "neutral";
@@ -161,7 +164,7 @@ export function TurnChip({
         <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
         <NoticeText>{connection ? connection.text : chipText}</NoticeText>
         {action && <NoticeKey testID="turn-chip-retry">{action.label}</NoticeKey>}
-        {active && !connection && (
+        {active && revealed && !connection && (
           <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
             {timeLeft}
           </NoticeText>

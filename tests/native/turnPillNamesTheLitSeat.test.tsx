@@ -50,22 +50,26 @@ describe("the turn pill", () => {
     await view.unmount();
   });
 
-  it("starts the viewer's clock when the pill turns to them, not when the state does", async () => {
+  it("draws the viewer's clock once the pill turns to them, counted from the state's turn", async () => {
     const view = await render(tableAfter({ by: 2, combo: PAIR, turn: 3, turnSeconds: 30 }));
     await act(async () => {
       jest.advanceTimersByTime(1500);
     });
     await act(async () => view.rerender(tableAfter({ by: 3, combo: SINGLE, turn: 0, turnSeconds: 30 })));
-    const counting = () => view.queryByTestId("turn-chip-count", { includeHiddenElements: true }) !== null;
-    expect([pill(view), counting()]).toEqual(["P3's turn", false]);
-    for (let f = 0; f < 120 && litSeats(view).length > 0; f++) {
-      expect([pill(view), counting()]).toEqual(["P3's turn", false]);
+    const turnArrived = performance.now();
+    const count = () => view.queryByTestId("turn-chip-count", { includeHiddenElements: true })?.props.children;
+    let held = 0;
+    for (; held < 120 && litSeats(view).length > 0; held++) {
+      expect([pill(view), count()]).toEqual(["P3's turn", undefined]);
       await act(async () => {
         jest.advanceTimersByTime(16);
       });
     }
-    expect(litSeats(view)).toEqual([]);
-    expect(counting()).toBe(true);
+    expect(held).toBeGreaterThan(1);
+    await act(async () => {
+      jest.advanceTimersByTime(turnArrived + 2100 - performance.now());
+    });
+    expect([litSeats(view), count()]).toEqual([[], 28]);
     await view.unmount();
   });
 });
