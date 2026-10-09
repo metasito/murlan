@@ -34,13 +34,13 @@ const BEFORE = 7;
 const AFTER = 10;
 const { gains, settled, pileFade, deal } = mancheEndingOnsets(4);
 
-function table(onMancheLanded: (at: number) => void) {
+function table(onMancheLanded: (at: number) => void, gameState: GameState = ENDED) {
   return (
     <>
       <ReducedMotionConfig mode={ReduceMotion.Always} />
       <SafeAreaProvider initialMetrics={METRICS}>
         <GameTable
-          gameState={ENDED}
+          gameState={gameState}
           viewerSeat={0}
           handScores={{ player_0: AFTER - BEFORE, player_1: 1, player_2: 0, player_3: 0 }}
           matchScore={{ scores: { player_0: AFTER, player_1: 4, player_2: 2, player_3: 1 }, target: 21 }}
@@ -105,6 +105,9 @@ describe('the score pill at the end of a manche', () => {
     expect(pile()).toBe(1);
     await advance(deal - pileFade + 16);
     expect(pile()).toBe(0);
+    await act(async () => view.rerender(table(noop, { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false })));
+    await advance(16);
+    expect(pile()).toBe(1);
     await view.unmount();
   });
 
