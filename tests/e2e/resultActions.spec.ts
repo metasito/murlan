@@ -93,11 +93,11 @@ test("the result screen's actions read as a pair, below the rankings, at every s
   test.setTimeout(5 * 60_000);
   await seedRandomness(page, DEAL_SEED);
   await openApp(page, baseURL!);
-  // The viewer votes for a rematch: with nobody asking, `continueAction` is null,
-  // and a spec measuring a button that is not rendered would pass by finding nothing.
   await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
   await driveGameToCompletion(page, {
     isFinished: async (p) => RESULT_URL.test(p.url()),
+    // With nobody asking for a rematch there is no `primary`, and a spec measuring a
+    // button that is not rendered would pass by finding nothing.
     rematch: true,
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
