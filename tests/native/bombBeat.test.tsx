@@ -1,6 +1,7 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
+import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 
@@ -31,6 +32,7 @@ jest.mock('@/components/flightPhysics', () => {
 });
 
 import { GameTable } from '@/components/GameTable';
+import { cardScale } from '@/components/cardFaceModel';
 import { BombFlash } from '@/components/table/moments';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { farthest, fireLanding, frameOfFirst } from './helpers/landing';
@@ -169,6 +171,22 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(mockTrauma.every((t) => t === 0)).toBe(true);
     await advance(600);
     expect(mockPulses.map((p) => p.strength)).toEqual(['rigid', 'heavy', 'light']);
+    await r.unmount();
+  });
+
+  it('knocks the beaten pair 6 pt aside, sliding back linearly over 170 ms', async () => {
+    const { r } = await bombLands();
+    const { width, height } = Dimensions.get('window');
+    const scale = cardScale(Math.min(width, height));
+    await advance(BombFx.delayMs);
+    const xs = [asideX()];
+    for (let i = 0; i < 2; i++) {
+      await advance(48);
+      xs.push(asideX());
+    }
+    expect(xs[0]).toBeLessThan(0);
+    expect(xs[1] - xs[0]).toBeCloseTo(xs[2] - xs[1], 1);
+    expect((((xs[0] - xs[2]) / 96) * BombFx.asideMs) / scale).toBeCloseTo(-6, 0);
     await r.unmount();
   });
 });
