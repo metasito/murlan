@@ -320,7 +320,7 @@ const MOMENTS: Moment[] = [
     appTrigger: bombTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "flare"],
+    fields: ["onset", "live", "dropped", "flare", "kick"],
     regions: [],
     onsets: ["moment:bombFx"],
     actions: [{ atMs: 600, app: botMove }],
@@ -380,7 +380,7 @@ const MOCKUP_SAMPLE = `(() => {
     live: P.length + lamp.m.length,
     dropped: 0,
     breath: Number(V.bg.style.scale) || 1,
-    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r },
+    lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r, kick: lamp.kick },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },
     flight: Math.max(0, ...[...document.querySelectorAll("#pile .grp.cur .card")].map((c) => {

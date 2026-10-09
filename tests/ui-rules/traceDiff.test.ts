@@ -28,7 +28,7 @@ function reference(): Trace {
       onsets: t === 32 ? ["sound:bomb", "moment:bomb"] : t === 96 ? ["haptic:hapticHeavy"] : [],
       live: t < 64 ? 40 : 100,
       dropped: t < 200 ? 0 : 10,
-      lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000, r: 1 + t / 2000 },
+      lamp: { x: 457 + t / 10, y: 292, level: 1 - t / 1000, flare: t / 1000, r: 1 + t / 2000, kick: t / 1000 },
       shake: t <= 256 ? { x: 9 - t / 32, y: 4, rotate: 1.3 } : { x: 0, y: 0, rotate: 0 },
       scorePill: { x: 722.2, y: 13.4, w: 124, h: 23.7, open: 0 },
       flight: 0,
@@ -103,6 +103,11 @@ describe("diffTraces", () => {
   test("a lamp level 0.04 off fails, and a flare 0.04 off", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 480).lamp!.level! += 0.04))), new Set(["level"]));
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 0).lamp!.flare! += 0.04))), new Set(["flare"]));
+  });
+
+  test("a lamp kick 0.04 off fails, and a kick one side never recorded", () => {
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).lamp!.kick! += 0.04))), new Set(["kick"]));
+    assert.deepEqual(fieldsOf(planted((tr) => delete at(tr, 160).lamp!.kick)), new Set(["kick"]));
   });
 
   test("a lamp one side has no source for fails", () => {
@@ -185,7 +190,7 @@ describe("movingFields", () => {
   test("names every field that changes over the window, and no other", () => {
     assert.deepEqual(
       movingFields(reference()),
-      new Set(["onset", "live", "dropped", "lamp", "level", "flare", "shake", "brightness"])
+      new Set(["onset", "live", "dropped", "lamp", "level", "flare", "kick", "shake", "brightness"])
     );
     const opened = planted((tr) => (at(tr, 480).scorePill!.w = 236));
     assert.ok(movingFields(opened).has("scorePill"));

@@ -25,6 +25,7 @@ export type Field =
   | "lamp"
   | "level"
   | "flare"
+  | "kick"
   | "shake"
   | "brightness"
   | "scorePill"
@@ -137,9 +138,9 @@ export function diffTraces(
       if (d > tol.lampPt) fail("lamp", t, m.lamp, a.lamp, `lamp ${d.toFixed(1)} pt off`);
       const grown = Math.abs(a.lamp.r - m.lamp.r) * DESIGN.width;
       if (!(grown <= tol.lampPt)) fail("lamp", t, m.lamp, a.lamp, `the light's reach moves a point ${grown.toFixed(1)} pt at the table's width`);
-      for (const k of ["level", "flare"] as const) {
-        const mv = m.lamp[k];
-        const av = a.lamp[k];
+      for (const k of ["level", "flare", "kick"] as const) {
+        const mv = m.lamp[k] ?? null;
+        const av = a.lamp[k] ?? null;
         if (mv === null || av === null) {
           if (mv !== av) fail(k, t, mv, av, `lamp ${k} on one side only`);
         } else if (Math.abs(av - mv) > tol.level) fail(k, t, mv, av, `lamp ${k} ${av} against ${mv}`);
@@ -357,6 +358,7 @@ export function movingFields(trace: Trace): Set<Field> {
     if (differs((f) => f.lamp && [f.lamp.x, f.lamp.y])) moved.add("lamp");
     if (differs((f) => f.lamp?.level)) moved.add("level");
     if (differs((f) => f.lamp?.flare)) moved.add("flare");
+    if (differs((f) => f.lamp?.kick)) moved.add("kick");
     if (differs((f) => f.shake)) moved.add("shake");
     if (differs((f) => f.scorePill && [f.scorePill.x, f.scorePill.y, f.scorePill.w, f.scorePill.h])) moved.add("scorePill");
     if (differs((f) => f.flight)) moved.add("flight");
