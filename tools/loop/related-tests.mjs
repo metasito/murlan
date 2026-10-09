@@ -34,7 +34,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const status = spawnSync(process.execPath, [jest, ...onLocalProjects([...run, "--json", `--outputFile=${out}`])], { stdio: "inherit" }).status;
     if (existsSync(out)) {
       console.log(`native budget — CI's run judges (tools/ci/native-budget.mjs); a file marked at risk is shrunk or split before review:`);
-      console.log(budgetLines(JSON.parse(readFileSync(out, "utf8")), localProjectOf, process.cwd()).join("\n"));
+      console.log(budgetLines(JSON.parse(readFileSync(out, "utf8")), localProjectOf, process.cwd(), changed).join("\n"));
     }
     process.exit(status ?? 1);
   }
