@@ -276,6 +276,29 @@ describe("a PHASE line from the session", () => {
   test("a fence does not turn prose into a fact", () => {
     assert.equal(said("`PHASE E` is next"), null);
   });
+
+  // #1262 sent all three of its markers this way and its board sat on "starting" through the build.
+  test("echoed at the head of that phase's first command, it is a fact", () => {
+    const bash = (command: string, parent: string | null = null) =>
+      readLine(
+        JSON.stringify({
+          type: "assistant",
+          parent_tool_use_id: parent,
+          message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] },
+        }),
+      ) as any;
+    assert.equal(bash('echo "PHASE B" && cat docs/agents/RULES.md').letter, "B");
+    assert.equal(bash("cd /c/x/.worktrees/agent-1 && echo PHASE C && sed -n 1,9p a.ts").letter, "C");
+    assert.equal(bash("echo 'PHASE D'").letter, "D");
+    assert.equal(bash('grep -n "PHASE C" .claude/commands/queue.md').letter, null);
+    assert.equal(bash('echo "PHASE C of six" && ls').letter, null);
+    assert.equal(bash('echo "PHASE C" && ls', "toolu_sub").letter, null);
+  });
+
+  test("the message's own line wins over an echo", () => {
+    const fact = said("PHASE D", [{ type: "tool_use", id: "t", name: "Bash", input: { command: 'echo "PHASE C"' } }]);
+    assert.equal(fact.letter, "D");
+  });
 });
 
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a
