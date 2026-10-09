@@ -8,6 +8,7 @@ import {
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { MANCHE_IDLE, mancheEndingOnsets } from "@/lib/game/mancheEnding";
 import { MancheEnding } from "@/lib/theme";
 import type { TableTimeline } from "./tableTimeline";
@@ -29,16 +30,15 @@ export interface MancheEndingClock {
 export function useMancheEnding({
   ended,
   timeline,
-  reduceMotion,
   pileEmpty,
   onLanded,
 }: {
   ended: boolean;
   timeline: Pick<TableTimeline, "inFlight" | "landsAt" | "pending">;
-  reduceMotion: boolean;
   pileEmpty: boolean;
   onLanded?: (landsAt: number) => void;
 }): MancheEndingClock {
+  const reduceMotion = usePrefersReducedMotion();
   const clock = useSharedValue(MANCHE_IDLE);
   const pileOpacity = useSharedValue(1);
   const endedAt = useRef<number | null>(null);

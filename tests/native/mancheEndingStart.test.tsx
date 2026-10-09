@@ -9,7 +9,7 @@ interface Timeline { inFlight: boolean; landsAt: number | null; pending: () => b
 async function mount(timeline: Timeline) {
   const landed = jest.fn<(at: number) => void>();
   const view = await renderHook(
-    (t: Timeline) => useMancheEnding({ ended: true, timeline: t, reduceMotion: false, pileEmpty: false, onLanded: landed }),
+    (t: Timeline) => useMancheEnding({ ended: true, timeline: t, pileEmpty: false, onLanded: landed }),
     { initialProps: timeline }
   );
   return { landed, rerender: (t: Timeline) => act(async () => view.rerender(t)), unmount: () => view.unmount() };

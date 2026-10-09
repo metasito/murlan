@@ -830,7 +830,6 @@ export function GameTable({
   const mancheEnding = useMancheEnding({
     ended: gameState.gameOver && !matchOver && onMancheLanded !== undefined,
     timeline,
-    reduceMotion,
     pileEmpty: trick.plays.length === 0,
     onLanded: onMancheLanded,
   });
