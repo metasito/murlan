@@ -276,6 +276,37 @@ describe("a PHASE line from the session", () => {
   test("a fence does not turn prose into a fact", () => {
     assert.equal(said("`PHASE E` is next"), null);
   });
+
+  test("echoed at the head of that phase's first command, it is a fact", () => {
+    const bash = (command: string, parent: string | null = null) =>
+      readLine(
+        JSON.stringify({
+          type: "assistant",
+          parent_tool_use_id: parent,
+          message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] },
+        }),
+      ) as any;
+    assert.equal(bash('echo "PHASE B" && cat docs/agents/RULES.md').letter, "B");
+    assert.equal(bash("cd /c/x/.worktrees/agent-1 && echo PHASE C && sed -n 1,9p a.ts").letter, "C");
+    assert.equal(bash("echo 'PHASE D'").letter, "D");
+    assert.equal(bash('grep -n "PHASE C" .claude/commands/queue.md').letter, null);
+    assert.equal(bash('echo "PHASE C of six" && ls').letter, null);
+    assert.equal(bash('echo "PHASE C" && ls', "toolu_sub").letter, null);
+  });
+
+  test("an echo inside what a command writes is not the session's report", () => {
+    const bash = (command: string) =>
+      readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] } })) as any;
+    assert.equal(bash("cat > t.sh <<'EOF'\necho PHASE E\nEOF").letter, null);
+    assert.equal(bash('git commit -m "docs\necho PHASE E\n"').letter, null);
+    assert.equal(bash('python -c "x; echo PHASE C"').letter, null);
+    assert.equal(bash("ls; echo PHASE C").letter, null);
+  });
+
+  test("the message's own line wins over an echo", () => {
+    const fact = said("PHASE D", [{ type: "tool_use", id: "t", name: "Bash", input: { command: 'echo "PHASE C"' } }]);
+    assert.equal(fact.letter, "D");
+  });
 });
 
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a

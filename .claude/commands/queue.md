@@ -16,8 +16,9 @@ derives it from git and the tracker.
 ## In every phase
 
 - **Report the phase** on a line of its own, in the same message as that phase's first command —
-  each section's `PHASE <letter>` line. Never send it alone: in print mode a turn that ends in
-  text and no tool call is the final answer.
+  each section's `PHASE <letter>` line — or as `echo "PHASE <letter>" &&` at the head of that
+  command. Never send it alone: in print mode a turn that ends in text and no tool call is the
+  final answer.
 - **Never stall.** Answerable from the repo: look it up, or test it. A default exists in
   `docs/agents/RULES.md`, `CLAUDE.md`, an ADR or a ticket comment: follow it. Only the owner can decide:
   comment the option space on the issue (what each option costs), park it, declare, and **exit**:
