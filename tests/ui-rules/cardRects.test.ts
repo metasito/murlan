@@ -104,7 +104,7 @@ test("a dealt back and a traded card sit on the pile's offsets, a flipped card n
 test("the hand clamps its pan in one place: the row's shift, every card's rectangle, the throw's origin and a focused card", () => {
   const src = readFileSync(new URL("../../components/table/hand.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(src, /Math\.(min|max)\(Math\.(min|max)\(pan/);
-  assert.equal(src.match(/panShown\((place\.pan\.value|pan\.value|heldPlace\.pan\.value|pan\.get\(\))/g)?.length, 5);
+  assert.equal(src.match(/panShown\((panNow|pan\.value|heldPlace\.pan\.value|pan\.get\(\))/g)?.length, 5);
 });
 
 /** The box a turned card covers, the way `arcBounds` measures one. */
