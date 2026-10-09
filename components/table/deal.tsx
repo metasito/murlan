@@ -11,25 +11,31 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W } from "@/components/cardFaceModel";
-import { Layer } from "@/lib/theme";
+import { Layer, Motion } from "@/lib/theme";
 import { withdraw } from "@/lib/device/feedback";
 import { handCountOf } from "@/shared/protocol";
-import type { SeatGeometry } from "@/components/flightPhysics";
-import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "@/lib/game/dealTimeline";
-import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
-import { dealFlight, dealPose } from "@/components/table/dealPose";
+import { seatPoint, type SeatGeometry } from "@/components/flightPhysics";
+import type { HandDeal } from "@/components/table/hand";
+import { dealArrivalsMs, dealEndMs } from "@/lib/game/dealTimeline";
+import { dealLegs, dealSlotOf, dealSlots, legAt, type DealLeg } from "@/components/table/dealSlots";
+import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";
+import { useTraceSource } from "@/lib/e2eTrace";
 import { dealBack, designRect } from "@/components/table/cardRects";
 import { useCardRect, useCardTable } from "@/components/table/useCardRects";
+
+function pileFromHand(geometry: SeatGeometry) {
+  const hand = seatPoint(geometry, "bottom");
+  return { dx: -hand.dx, dy: -hand.dy };
+}
 
 /** When each of a seat's cards lands, on the deal's own clock. */
 export interface DealArrivals { at: readonly number[]; clock: SharedValue<number> }
 
-/** A deal in progress:`counts` is each seat's hand as dealt, `flightsMs` each seat's flight time, by seat index. */
+/** A deal in progress:`counts` is each seat's hand as dealt, by seat index. */
 interface Deal {
   key: number;
   offsetMs: number;
   counts: number[];
-  flightsMs: number[];
   legs: DealLeg[];
 }
 
@@ -51,7 +57,7 @@ export function useDeal({
 }): {
   cards: DealLeg[];
   arrivalsFor: (seat: number) => DealArrivals | undefined;
-  handOffsetMs: number | undefined;
+  hand: Omit<HandDeal, "onDealt"> | undefined;
   dealing: boolean;
   /** The deal's own clock, ms since its first frame; -1 before it. `DealFlights` steps it. */
   clock: SharedValue<number>;
@@ -61,7 +67,7 @@ export function useDeal({
 } {
   const { players, viewerSeat } = geometry;
   const newDeal = (key: number, offsetMs: number): Deal => {
-    const timing = { key, offsetMs, counts: players.map(handCountOf), flightsMs: dealFlightsFor(geometry) };
+    const timing = { key, offsetMs, counts: players.map(handCountOf) };
     return { ...timing, legs: dealLegs(geometry, timing) };
   };
   const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
@@ -77,24 +83,37 @@ export function useDeal({
     () =>
       deal && !reduceMotion
         ? deal.counts.map((count, seat) => ({
-            at: dealArrivalsMs(count, seat, deal.counts.length, deal.offsetMs, deal.flightsMs[seat]),
+            at: dealArrivalsMs(count, deal.offsetMs, dealSlotOf(seat, viewerSeat, deal.counts.length)),
             clock: clockOf.clock,
           }))
         : null,
-    [deal, reduceMotion, clockOf]
+    [deal, reduceMotion, clockOf, viewerSeat]
   );
   const onLanded = useCallback(() => setDeal(null), []);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
-    handOffsetMs: deal ? deal.offsetMs + dealLeaveMs(0, viewerSeat, players.length) : undefined,
+    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: clockOf.clock, pile: pileFromHand(geometry) } : undefined,
     dealing: deal !== null,
     clock: clockOf.clock,
     startMs: deal?.offsetMs ?? 0,
-    endMs: deal ? dealEndMs(deal.counts, deal.offsetMs, deal.flightsMs) : 0,
+    endMs: deal ? dealEndMs(deal.counts, deal.offsetMs) : 0,
     onLanded,
   };
+}
+
+/** The felt's one breath at the deal's onset, `offsetMs` on its clock. */
+export function useDealBreath(deal: { offsetMs: number; clock: SharedValue<number> } | undefined) {
+  const clock = deal?.clock;
+  const onset = deal?.offsetMs ?? 0;
+  const scale = useCallback(() => {
+    "worklet";
+    return clock ? dealBreath(clock.value - onset, Motion.deal.breath) : 1;
+  }, [clock, onset]);
+  useTraceSource("breath", scale);
+  // Read here, not through `scale()`: a mapper follows only the shared values in its own closure.
+  return useAnimatedStyle(() => ({ transform: [{ scale: clock ? dealBreath(clock.value - onset, Motion.deal.breath) : 1 }] }));
 }
 
 function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: number; clock: SharedValue<number> }) {

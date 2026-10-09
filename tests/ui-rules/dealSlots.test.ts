@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { dealCards, type Player } from "../../lib/game/gameEngine.ts";
 import { arrangeOpponents } from "../../components/seatLayout.ts";
 import type { SeatGeometry } from "../../components/flightPhysics.ts";
-import { dealFlightsFor, dealLegs, dealSlots, legAt, type DealLeg } from "../../components/table/dealSlots.ts";
+import { dealLegs, dealSlots, legAt, type DealLeg } from "../../components/table/dealSlots.ts";
 
 const geometryOf = (seats: number): SeatGeometry => {
   const players: Player[] = dealCards(seats).hands.map((hand, i) => ({ id: `p${i}`, name: `P${i}`, hand, type: "human" }));
@@ -27,7 +27,7 @@ const geometryOf = (seats: number): SeatGeometry => {
 const legsAt = (seats: number) => {
   const geometry = geometryOf(seats);
   const counts = geometry.players.map((p) => ("hand" in p ? p.hand.length : 0));
-  return dealLegs(geometry, { key: 1, offsetMs: 300, counts, flightsMs: dealFlightsFor(geometry) });
+  return dealLegs(geometry, { key: 1, offsetMs: 300, counts });
 };
 
 const inAir = (leg: DealLeg, t: number) => leg.leaveMs < t && t < leg.leaveMs + leg.flightMs;
@@ -44,7 +44,7 @@ function busiest(legs: readonly DealLeg[]): number {
 
 describe("the deal's pool of views", () => {
   test("hands a view on at the instant its leg lands and the next leaves, drawing neither twice", () => {
-    const to = { dx: 0, dy: -100 };
+    const to = { dx: 0, dy: -100, rot: 0 };
     const first = { key: "a", leaveMs: 0, flightMs: 100, to };
     const next = { key: "b", leaveMs: 100, flightMs: 100, to };
     const slots = dealSlots([next, first]);

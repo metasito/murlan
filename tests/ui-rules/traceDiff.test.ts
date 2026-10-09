@@ -84,6 +84,11 @@ describe("diffTraces", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 480).dropped = 11.1))), new Set(["dropped"]));
   });
 
+  test("a felt breath 0.002 off at a checkpoint fails; 0.0005 passes", () => {
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).breath = 1.002))), new Set(["breath"]));
+    assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).breath = 1.0005))), new Set());
+  });
+
   test("a lamp 5 pt off fails; 3 pt passes", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).lamp!.y += 5))), new Set(["lamp"]));
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).lamp!.x += 3))), new Set());
@@ -146,6 +151,7 @@ describe("diffTraces", () => {
       brightness: 6,
       pillPt: 1,
       contactPt: 1,
+      breath: 0.001,
     });
   });
 });

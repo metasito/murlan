@@ -10,9 +10,11 @@ import { TABLE, HAND_ZONE } from "./helpers/selectors";
 import { tap } from "./helpers/press";
 import { settled } from "./helpers/settle";
 import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";
+import { Motion } from "../../lib/tokens";
+import { STEP_MS } from "./helpers/traceDiff";
 
 const VIEWPORT = { width: 874, height: 402 };
-const LEFT_SEAT_HAND = 13;
+const SEAT_HAND = 13;
 
 interface EntryFrame {
   t: number;
@@ -54,7 +56,7 @@ async function readEntry(page: Page, windowMs: number): Promise<EntryFrame[]> {
 
 /** A fresh, undealt hand — the state `GameTable`'s own `freshDeal` arms on. */
 async function openFreshTable(page: Page, baseURL: string): Promise<EntryFrame[]> {
-  const save: any = offlineGameSave(4, LEFT_SEAT_HAND, 0);
+  const save: any = offlineGameSave(4, SEAT_HAND, 0);
   save.gameState.firstPlayMade = false;
   await page.addInitScript(
     ({ key, value }) => window.localStorage.setItem(key, value),
@@ -64,7 +66,7 @@ async function openFreshTable(page: Page, baseURL: string): Promise<EntryFrame[]
   const resume = page.getByRole("button", { name: "Riprendi partita" });
   await resume.waitFor({ state: "visible", timeout: 60_000 });
 
-  const windowMs = 2_200;
+  const windowMs = 3_000;
   await watchEntry(page, windowMs);
   await resume.click();
   return readEntry(page, windowMs);
@@ -82,6 +84,18 @@ test.describe("table entry", () => {
 
     const rest = frames[frames.length - 1];
     expect(rest.level, "the lamp never comes up to full").toBeGreaterThan(0.97);
+
+    const traced = await page.evaluate(() =>
+      (window as unknown as { murlanTrace: { frames: { t: number; onsets: string[]; breath?: number }[] } }).murlanTrace.frames
+    );
+    const breaths = traced.map((f) => f.breath ?? 1);
+    expect(Math.max(...breaths), "the felt never breathed").toBeGreaterThan(1.003);
+    expect(breaths.at(-1), "the felt is still swollen at rest").toBe(1);
+    const dealt = traced.flatMap((f) => f.onsets.filter((o) => o === "moment:dealt").map(() => f.t));
+    expect(dealt, "one landing per card in your hand").toHaveLength(SEAT_HAND);
+    expect(dealt.at(-1)! - dealt[0], "your cards land one after another, 42 ms apart").toBeGreaterThanOrEqual(
+      (SEAT_HAND - 1) * Motion.stagger.deal - 2 * STEP_MS
+    );
 
     await test.info().attach("table-entry-settled.png", {
       body: await page.screenshot(),
@@ -101,10 +115,10 @@ test.describe("opponent deal", () => {
     expect(
       Number(opening.leftCount),
       "the opponent's hand is already full on the first frame"
-    ).toBeLessThan(LEFT_SEAT_HAND);
+    ).toBeLessThan(SEAT_HAND);
 
     const dealt = frames[frames.length - 1];
-    expect(dealt.leftCount, "the opponent's hand never finishes arriving").toBe(String(LEFT_SEAT_HAND));
+    expect(dealt.leftCount, "the opponent's hand never finishes arriving").toBe(String(SEAT_HAND));
 
     await test.info().attach("opponent-deal-arrived.png", {
       body: await page.screenshot(),

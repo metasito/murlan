@@ -27,7 +27,7 @@ jest.mock('@/components/table/dealSlots', () => {
 import { GameTable } from '@/components/GameTable';
 import { DealFlights } from '@/components/table/deal';
 import { dealPose } from '@/components/table/dealPose';
-import { dealFlightsFor, dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
+import { dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
 import { GEOMETRY, frames } from './helpers/exchangeLegs';
 import { busiest, inAir } from './helpers/dealSweep';
@@ -66,8 +66,8 @@ describe('the deal flies on a pool of backs', () => {
 
   it.each([
     [2, 14, 7],
-    [3, 36, 9],
-    [4, 40, 16],
+    [3, 36, 13],
+    [4, 40, 19],
   ])('draws %i players’ %i legs with as many backs as are ever in the air at once, %i on the 844 × 390 table', async (seats, legCount, pool) => {
     const view = await render(table(freshDeal(seats)));
     const legs = slotted().calls.at(-1)![0];
@@ -96,7 +96,7 @@ describe('the deal flies on a pool of backs', () => {
 
   it('poses every leg in the air, each back one leg at a time, and stops its clock at the end', async () => {
     const counts = [14, 14, 13, 13];
-    const legs = dealLegs(GEOMETRY, { key: 1, offsetMs: 100, counts, flightsMs: dealFlightsFor(GEOMETRY) });
+    const legs = dealLegs(GEOMETRY, { key: 1, offsetMs: 100, counts });
     const slots = dealSlots(legs);
     const endMs = Math.max(...legs.map((l) => l.leaveMs + l.flightMs));
     const clock = makeMutable(-1);
@@ -109,15 +109,20 @@ describe('the deal flies on a pool of backs', () => {
     expect(slots.length * 2).toBeLessThanOrEqual(legs.length);
 
     const flown = new Set<string>();
+    const shrunk: number[] = [];
     await frames(endMs + 200, () => {
       const t = clock.value;
       const poses = backs();
       slots.forEach((slot, i) => expect(poses[i]).toMatchObject(dealPose(legAt(slot, t), t)));
+      for (const p of poses as { opacity?: number; transform?: Record<string, number>[] }[])
+        if (p.opacity === 1) shrunk.push(Number(p.transform?.find((s) => 'scale' in s)?.scale));
       expect(poses.filter((p) => p.opacity === 1)).toHaveLength(legs.filter((l) => inAir(l, t)).length);
       for (const slot of slots) if (inAir(legAt(slot, t), t)) flown.add(legAt(slot, t).key);
     });
 
     expect(flown.size).toBe(legs.length);
+    expect(Math.min(...shrunk)).toBeLessThan(0.95);
+    expect(Math.min(...shrunk)).toBeGreaterThanOrEqual(0.9);
     expect(onLanded).toHaveBeenCalledTimes(1);
     expect(mockFrameCallbacks.length).toBeGreaterThan(0);
     expect(mockFrameCallbacks.at(-1)!.isActive).toBe(false);

@@ -37,6 +37,7 @@ test("the page spans the longer side, and every chart marks the failures of its 
   const fieldOf: Record<string, string> = {
     live: "live", dropped: "dropped", motes: "air", "moth x": "moth", "lamp x": "lamp", "lamp y": "lamp",
     level: "level", flare: "flare", shake: "shake", scorePill: "scorePill", grey: "grey", "lamp phase": "freeze",
+    breath: "breath",
   };
   const run = (field: string) => {
     const dir = scratch();

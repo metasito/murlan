@@ -1,5 +1,5 @@
 import { Hold, Motion } from "../tokens.ts";
-import { DEAL_FLIGHT_MS, dealEndMs } from "./dealTimeline.ts";
+import { dealEndMs } from "./dealTimeline.ts";
 
 interface Point { x: number; y: number; rot: number }
 interface From extends Point { scale: number }
@@ -117,9 +117,9 @@ export function ceremonyEndsAt(shows: readonly number[], reduced: boolean, joker
   return shows[jokers ? 0 : 1] + legTimes(reduced).end + X.read;
 }
 
-/** The server has no seat geometry, so it deals every seat at the farthest seat's flight: never earlier than the client. */
+/** From the deal's state to the give's earliest arming: the first deal's end, after the table's entry beat. */
 export function exchangeGiveDelayMs(counts: readonly number[]): number {
-  return dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS)) + RECEIVE_MS + X.read;
+  return dealEndMs(counts, Motion.duration.reveal) + RECEIVE_MS + X.read;
 }
 
 /** From the choice to the ceremony's close; for both Jokers, from the deal's end. */

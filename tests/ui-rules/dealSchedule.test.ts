@@ -1,38 +1,40 @@
-// When each dealt card leaves the pile and lands at its seat (#1102).
+// When each dealt card leaves the pile and lands, against the lantern mockup's `dealRun` (#1262).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { Motion } from "../../lib/tokens.ts";
-import { DEAL_FLIGHT_MS, dealArrivalsMs, dealFlightsMs, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { dealArrivalsMs, dealEndMs, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { dealSlotOf } from "../../components/table/dealSlots.ts";
 
-describe("the round-robin deal", () => {
-  test("hands out one card per seat per round, in seat order, never two at once", () => {
-    for (const seats of [3, 4]) {
-      const order: number[] = [];
-      for (let round = 0; round < 18; round++) {
-        for (let seat = 0; seat < seats; seat++) order.push(dealLeaveMs(round, seat, seats));
+describe("the deal's schedule", () => {
+  for (const players of [2, 3, 4]) {
+    test(`${players} players, 13 cards: the viewer's card i leaves at 40 + 42i, slot j's at 40 + 42i + 10 + 10j, each lands 260 ms later`, () => {
+      for (let seat = 0; seat < players; seat++) {
+        const slot = dealSlotOf(seat, 0, players);
+        const lag = slot === null ? 0 : 10 + 10 * slot;
+        const leave = Array.from({ length: 13 }, (_, i) => dealLeaveMs(i, slot));
+        assert.deepEqual(leave, Array.from({ length: 13 }, (_, i) => 40 + 42 * i + lag), `seat ${seat}`);
+        assert.deepEqual(dealArrivalsMs(13, 600, slot), leave.map((ms) => 600 + ms + 260), `seat ${seat}`);
       }
-      for (let k = 1; k < order.length; k++) assert.ok(order[k] > order[k - 1], `card ${k} at ${seats} seats`);
-    }
-  });
-
-  test("keeps each seat's own cards a deal stagger apart — the spacing the viewer's hand already deals at", () => {
-    for (let seat = 0; seat < 4; seat++) {
-      assert.equal(dealLeaveMs(5, seat, 4) - dealLeaveMs(4, seat, 4), Motion.stagger.deal);
-    }
-  });
-
-  test("lands every card of a seat's actual count, a flight after it leaves, from the offset", () => {
-    const counts = [14, 14, 13, 13];
-    counts.forEach((count, seat) => {
-      const arrivals = dealArrivalsMs(count, seat, 4, 600, 180);
-      assert.equal(arrivals.length, count);
-      assert.equal(arrivals[count - 1], 600 + dealLeaveMs(count - 1, seat, 4) + 180);
     });
+  }
+
+  test("slots run top, left, right whichever seat the viewer holds", () => {
+    assert.deepEqual([0, 1, 2, 3].map((seat) => dealSlotOf(seat, 0, 4)), [null, 2, 0, 1]);
+    assert.deepEqual([0, 1, 2, 3].map((seat) => dealSlotOf(seat, 2, 4)), [0, 1, null, 2]);
+    assert.deepEqual([0, 1].map((seat) => dealSlotOf(seat, 1, 2)), [0, null]);
+    assert.deepEqual([0, 1, 2].map((seat) => dealSlotOf(seat, 0, 3)), [null, 2, 0]);
   });
 
-  test("flies every card at one speed, so the farthest seat takes a whole flight and a nearer one less", () => {
-    const flights = dealFlightsMs([{ dx: 0, dy: 150 }, { dx: -300, dy: 0 }, { dx: 0, dy: -100 }, { dx: 400, dy: 0 }]);
-    assert.equal(flights[3], DEAL_FLIGHT_MS);
-    assert.deepEqual(flights.map((ms, i) => ms / [150, 300, 100, 400][i]), Array(4).fill(DEAL_FLIGHT_MS / 400));
+  test("ends 40 + n·42 + 320 after its offset, n the largest hand: 906 ms for 13", () => {
+    assert.equal(dealEndMs([13, 13, 13, 13], 0), 906);
+    assert.equal(dealEndMs([14, 13, 13, 14], 600), 600 + 40 + 14 * 42 + 320);
+    assert.equal(dealEndMs([], 0), 0);
+  });
+
+  test("ends after every seat's last card has landed", () => {
+    for (const players of [2, 3, 4]) {
+      const counts = Array(players).fill(13);
+      const lastLanding = Math.max(...counts.map((n, seat) => dealArrivalsMs(n, 0, dealSlotOf(seat, 0, players)).at(-1)!));
+      assert.ok(dealEndMs(counts, 0) >= lastLanding, `${players} players`);
+    }
   });
 });

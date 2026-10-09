@@ -32,6 +32,7 @@ export function regionsFor({ pile, light, handTop }: SideLayout): Record<string,
     rightBand: { x: 640, y: 150, w: 60, h: 100 },
     pile: { x: pile.x - 30, y: pile.y - 20, w: 60, h: 40 },
     scorePill: { x: 740, y: 16, w: 90, h: 18 },
+    hand: { x: light.x - 160, y: handTop + 40, w: 320, h: 16 },
   };
 }
 

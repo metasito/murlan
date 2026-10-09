@@ -1,4 +1,5 @@
-import { dealFlightsMs, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { DEAL_FLIGHT_MS, dealLeaveMs } from "../../lib/game/dealTimeline.ts";
+import { FAN_TURN } from "../fanGeometry.ts";
 import { seatPoint, type SeatGeometry } from "../flightPhysics.ts";
 import { seatDirection } from "../seatLayout.ts";
 
@@ -8,29 +9,28 @@ export interface DealLeg {
   /** When it leaves the pile, in ms after the deal started. */
   leaveMs: number;
   flightMs: number;
-  /** Its seat, from the pile — `flightOrigin` for that seat. */
-  to: { dx: number; dy: number };
+  /** Its seat, from the pile — `flightOrigin` for that seat — and its fan's turn. */
+  to: { dx: number; dy: number; rot: number };
 }
 
-/** Each seat's flight time from the pile, by seat index. */
-export function dealFlightsFor(geometry: SeatGeometry): number[] {
-  const { players, viewerSeat } = geometry;
-  return dealFlightsMs(players.map((_, seat) => seatPoint(geometry, seatDirection(seat, viewerSeat, players.length))));
+const SLOTS = ["top", "left", "right"] as const;
+
+/** A seat's place in the deal's order behind the viewer: null for the viewer. */
+export function dealSlotOf(seat: number, viewerSeat: number, players: number): number | null {
+  const dir = seatDirection(seat, viewerSeat, players);
+  return dir === "bottom" ? null : SLOTS.indexOf(dir);
 }
 
-/** Every opponent card's leg, round-robin: `counts` and `flightsMs` by seat index. */
-export function dealLegs(
-  geometry: SeatGeometry,
-  deal: { key: number; offsetMs: number; counts: readonly number[]; flightsMs: readonly number[] }
-): DealLeg[] {
-  return (["top", "left", "right"] as const).flatMap((side) => {
+/** Every opponent card's leg, round-robin: `counts` by seat index. */
+export function dealLegs(geometry: SeatGeometry, deal: { key: number; offsetMs: number; counts: readonly number[] }): DealLeg[] {
+  return SLOTS.flatMap((side, slot) => {
     const o = geometry.opponents[side];
     if (!o) return [];
-    const to = seatPoint(geometry, side);
+    const to = { ...seatPoint(geometry, side), rot: FAN_TURN[side] };
     return Array.from({ length: deal.counts[o.seat] }, (_, round) => ({
       key: `${deal.key}-${o.seat}-${round}`,
-      leaveMs: deal.offsetMs + dealLeaveMs(round, o.seat, deal.counts.length),
-      flightMs: deal.flightsMs[o.seat],
+      leaveMs: deal.offsetMs + dealLeaveMs(round, slot),
+      flightMs: DEAL_FLIGHT_MS,
       to,
     }));
   });

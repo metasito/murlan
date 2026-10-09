@@ -1,10 +1,7 @@
 // tests/native/seatDealArrival.test.tsx — an opponent's hand is dealt to it
 // card by card, and its badge counts only what has landed (#1102).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
-import React from 'react';
-import { act, render, screen, within } from '@testing-library/react-native';
-import { StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { render, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 
 let mockReduce = false;
@@ -19,48 +16,10 @@ jest.mock('@/components/table/dealSlots', () => {
   return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
 });
 
-import { GameTable } from '@/components/GameTable';
 import { dealSlots } from '@/components/table/dealSlots';
 import { busiest } from './helpers/dealSweep';
+import { along, freshDeal, frame, handPoses, table, type Pose } from './helpers/dealTable';
 import { bootFeedback, startsOf } from './helpers/feedback';
-import type { Card, GameState, Player } from '@/lib/game/gameEngine';
-
-const METRICS = {
-  frame: { x: 0, y: 0, width: 844, height: 390 },
-  insets: { top: 0, left: 47, right: 34, bottom: 0 },
-};
-
-const NAMES = ['Ana', 'Besi', 'Cimi', 'Drin'];
-const handOf = (seatIdx: number, n: number): Card[] =>
-  Array.from({ length: n }, (_, i) => ({ id: `s${seatIdx}_${i}`, rank: '3', suit: 'spades', isJoker: false }) as Card);
-const players: Player[] = NAMES.map((name, i) => ({ id: `player_${i}`, name, hand: handOf(i, 13), type: 'human' }));
-
-const freshDeal: GameState = {
-  players,
-  currentTurnIndex: 0,
-  lastPlayedCombination: null,
-  lastPlayedBy: 0,
-  passCount: 0,
-  gameMode: 'free_for_all',
-  roundWinner: null,
-  gameOver: false,
-  rankings: [],
-  firstPlayMade: false,
-};
-
-const noop = () => {};
-const table = (gameState: GameState = freshDeal) => (
-  <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable
-      gameState={gameState}
-      viewerSeat={0}
-      onPlay={noop}
-      onPass={noop}
-      onQuit={noop}
-      onExchangeGive={noop}
-    />
-  </SafeAreaProvider>
-);
 
 const SEATS = ['top-seat', 'side-seat-left', 'side-seat-right'];
 const counted = (testID: string) => {
@@ -69,20 +28,10 @@ const counted = (testID: string) => {
 };
 const seated = () => SEATS.reduce((sum, id) => sum + counted(id), 0);
 
-type Pose = { opacity?: number; transform?: Record<string, number | string>[] };
 const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b) as Pose);
-const spin = (p: Pose) => parseFloat(String(p.transform?.find((t) => 'rotate' in t)?.rotate ?? 0));
+const reach = (p: Pose) => Math.hypot(along(p, 'translateX'), along(p, 'translateY'));
 const landedSince = (before: Pose[], after: Pose[]) =>
-  after.filter((p, i) => before[i]?.opacity === 1 && (p.opacity !== 1 || spin(p) < spin(before[i]))).length;
-
-const handPoses = () =>
-  screen.getAllByTestId('card-box').map((box) => {
-    let n = box.parent;
-    while (n && !(n.props.jestAnimatedStyle && typeof StyleSheet.flatten(n.props.style)?.left === 'number')) n = n.parent;
-    return getAnimatedStyle(n!) as Pose;
-  });
-
-const frame = () => act(async () => void jest.advanceTimersByTime(16));
+  after.filter((p, i) => before[i]?.opacity === 1 && (p.opacity !== 1 || reach(p) < reach(before[i]))).length;
 
 describe("an opponent's hand arrives with the deal", () => {
   beforeEach(async () => {

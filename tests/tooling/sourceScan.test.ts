@@ -5,9 +5,29 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import os from "node:os";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { blankComments, blankCommentsAndStrings, sourcesUnder } from "../helpers/sourceScan.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+
+test("a file git ignores, like a local Playwright report, is not a source", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "source-scan-"));
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    mkdirSync(path.join(root, "tests", "playwright-report"), { recursive: true });
+    writeFileSync(path.join(root, ".gitignore"), "playwright-report/\ntests/local.ts\n");
+    writeFileSync(path.join(root, "tests", "kept.ts"), "export const a = 1;\n");
+    writeFileSync(path.join(root, "tests", "local.ts"), "`\n");
+    writeFileSync(path.join(root, "tests", "local.tsx"), "export const b = 2;\n");
+    writeFileSync(path.join(root, "tests", "playwright-report", "sw.bundle.js"), "`\n");
+    const kept = sourcesUnder(root, ["tests"], /\.(tsx?|m?js)$/).map(([f]) => f).sort();
+    assert.deepEqual(kept, ["tests/kept.ts", "tests/local.tsx"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 /** Every scanned source in the trees the helpers are pointed at. */
 const sources = () =>

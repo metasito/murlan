@@ -10,6 +10,8 @@ import { pathToFileURL } from "node:url";
 import { GIOCA_VALID_LABEL } from "./labels";
 import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
+import { createDeck } from "../../../lib/game/gameEngine";
+import { Motion } from "../../../lib/tokens";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepThen, stepUntil } from "./virtualClock";
 import {
@@ -105,6 +107,17 @@ const BELOW_CAPS = [TRICK_HANDS[0], TRICK_HANDS[1].slice(0, 4), TRICK_HANDS[2].s
 export const belowCapsTable = (page: Page, baseURL: string) =>
   seatTable(page, baseURL, offlineGameSave(4, 13, 1, MOCKUP_SCORES, BELOW_CAPS));
 
+const SUITS: Record<string, string> = { c: "clubs", d: "diamonds", h: "hearts", s: "spades" };
+/** The mockup's `H13` in your hand, the rest of the deck round the others, 13 across as `dealRun` deals; nobody has played yet. */
+const MOCKUP_DEAL = ["3h", "4c", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad"].map((c) => `${c.slice(0, -1)}_${SUITS[c.slice(-1)]}`);
+const dealTable = (page: Page, baseURL: string) => {
+  const rest = createDeck().map((c) => c.id).filter((id) => !MOCKUP_DEAL.includes(id));
+  const others = [0, 2, 1].map((s) => rest.filter((_, i) => i % 3 === s));
+  const save = offlineGameSave(4, 13, 0, MOCKUP_SCORES, [MOCKUP_DEAL, ...others]);
+  save.gameState.firstPlayMade = false;
+  return seatTable(page, baseURL, save);
+};
+
 const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>) => {
   await skiaOnSoftware(page);
   await page.addInitScript(
@@ -146,7 +159,40 @@ const LANDING_CHECKPOINTS = [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t
 /** For a moment whose strip no assertion reads, only the side-by-side page: a JPEG a step was most of its time. */
 const glance = (windowMs: number, checkpoints: number[]) => [...Array.from({ length: Math.floor(windowMs / 240) + 1 }, (_, i) => i * 240), ...checkpoints];
 
+/** The app's deal begins `reveal` into a clock that ticks on the step grid, so this far past its onset frame. */
+const DEAL_PHASE_MS = Motion.duration.reveal % STEP_MS;
+/** Mid-breath, before the first arrival, and between the ninth and tenth, where every speck thrown is still alive. */
+const DEAL_CHECKPOINTS = [48, 160, 656];
+
 const MOMENTS: Moment[] = [
+  {
+    key: "deal",
+    // The mockup's exchange opens at 1250 ms.
+    windowMs: 1200,
+    checkpoints: DEAL_CHECKPOINTS,
+    stripAt: glance(1200, DEAL_CHECKPOINTS),
+    // A tween begun from an `at` starts on the frame that ran it, not at the time `dealRun` gives it: 82 ms
+    // would leave at 96 and land a frame past 40 + 42i + 260. Each event runs at its own time instead.
+    mockupScript: `const speck = specks;
+      specks = (x, y, k) => { window.__parityOnsets.push("moment:dealt"); speck(x, y, k); };
+      runEvents = () => {
+        const now = sceneT;
+        const due = EV.filter((e) => e.t <= now).sort((a, b) => a.t - b.t);
+        EV = EV.filter((e) => e.t > now);
+        for (const e of due) { sceneT = e.t; e.fn(); }
+        sceneT = now;
+      };
+      const begin = start;
+      start = (i) => { begin(i); sceneT = -${DEAL_PHASE_MS}; };`,
+    appTrigger: dealTable,
+    appOnset: (f) => f.onsets.includes("sound:deal"),
+    mode: "parity",
+    fields: ["onset", "live", "level", "breath", "brightness"],
+    // Not the hand: the app's viewer is on move through the deal and the mockup's is not (#1432).
+    regions: ["pool"],
+    regionsAt: [1040, 1200],
+    onsets: ["moment:dealt"],
+  },
   {
     key: "rest",
     windowMs: 2400,
@@ -156,7 +202,7 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
-    regions: ["pool", "rim", "rightBand", "scorePill"],
+    regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
     fallbackStill: true,
   },
   {
@@ -280,6 +326,7 @@ const MOCKUP_SAMPLE = `(() => {
     onsets: window.__parityOnsets.splice(0),
     live: P.length + lamp.m.length,
     dropped: 0,
+    breath: Number(V.bg.style.scale) || 1,
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r },
     shake,
     scorePill: { ...(${PILL_BOX}), open: SC.o },

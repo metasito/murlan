@@ -1,21 +1,27 @@
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 /** What `scannedFiles` walks: the two trees that hold rendered UI, never one without the other. */
 const SCANNED_DIRS = ["components", "app"];
 
-/** The sources under `dirs`, as `[repo-relative path, contents]`. */
+function ignoredUnder(repoRoot: string, dir: string): string[] {
+  const args = ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--", dir];
+  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).split("\0").filter(Boolean);
+}
+
+/** The sources git does not ignore under `dirs`, as `[repo-relative path, contents]`. */
 export function sourcesUnder(repoRoot: string, dirs: string[], keep = /\.tsx?$/): [string, string][] {
-  return dirs.flatMap((dir) =>
-    readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
+  return dirs.flatMap((dir) => {
+    const ignored = ignoredUnder(repoRoot, dir);
+    return readdirSync(path.join(repoRoot, dir), { recursive: true, encoding: "utf8" })
       // match, not test: a caller's `/g` pattern would carry lastIndex from one
       // file to the next and drop every other one.
       .filter((f) => f.match(keep))
-      .map((f): [string, string] => [
-        path.posix.join(dir, f.split(path.sep).join("/")),
-        readFileSync(path.join(repoRoot, dir, f), "utf8"),
-      ])
-  );
+      .map((f) => path.posix.join(dir, f.split(path.sep).join("/")))
+      .filter((rel) => !ignored.some((i) => rel === i || (i.endsWith("/") && rel.startsWith(i))))
+      .map((rel): [string, string] => [rel, readFileSync(path.join(repoRoot, rel), "utf8")]);
+  });
 }
 
 /** `app/`, `components/` and `lib/`, as `[repo-relative path, contents]`. */

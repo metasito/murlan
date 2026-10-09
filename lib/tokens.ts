@@ -513,6 +513,8 @@ export const Motion = {
   stagger: {
     deal: 42,
   },
+  /** The lantern mockup's `dealRun`: the first card's lead, each opponent slot's gap, the felt's breath, the tail past the last round. */
+  deal: { lead: 40, seat: 10, breath: 80, tail: 320 },
   /** The lantern mockup's `play()` (ADR-0008): per card, and between cards; catch-up is its reconnect replay. */
   throw: { card: 380, stagger: 45, catchUpCard: 200, catchUpStagger: 20 },
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
