@@ -112,7 +112,8 @@ export function useDealBreath(deal: { offsetMs: number; clock: SharedValue<numbe
     return clock ? dealBreath(clock.value - onset, Motion.deal.breath) : 1;
   }, [clock, onset]);
   useTraceSource("breath", scale);
-  return useAnimatedStyle(() => ({ transform: [{ scale: scale() }] }));
+  // Read here, not through `scale()`: a mapper follows only the shared values in its own closure.
+  return useAnimatedStyle(() => ({ transform: [{ scale: clock ? dealBreath(clock.value - onset, Motion.deal.breath) : 1 }] }));
 }
 
 function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: number; clock: SharedValue<number> }) {

@@ -34,7 +34,13 @@ jest.mock('@/components/table/particles', () => {
   return { ...actual, __esModule: true, dealSpecks: jest.fn(actual.dealSpecks) };
 });
 
+jest.mock('@/components/table/dealPose', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/dealPose')>('@/components/table/dealPose');
+  return { ...actual, __esModule: true, handDealArc: jest.fn(actual.handDealArc) };
+});
+
 import { GameTable } from '@/components/GameTable';
+import { handDealArc } from '@/components/table/dealPose';
 import { dealSlots } from '@/components/table/dealSlots';
 import { lampControls, restingLamp } from '@/components/table/lampRig';
 import { dealSpecks } from '@/components/table/particles';
@@ -199,6 +205,32 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(Math.min(...scales)).toBeLessThan(0.9);
     expect(jest.mocked(dealSpecks).mock.calls).toHaveLength(13);
     await r.unmount();
+  }, 20_000);
+
+  it("lifts and turns each of the viewer's dealt cards by its arc", async () => {
+    const actual = jest.requireActual<typeof import('@/components/table/dealPose')>('@/components/table/dealPose');
+    const firstShown = async (lift: number) => {
+      jest.mocked(handDealArc).mockImplementation(() => ({ lift, rot: 33, scale: 0.5 }));
+      const r = await render(table());
+      for (let i = 0; i < 80; i++) {
+        await frame();
+        const k = handPoses().findIndex((p) => p.opacity === 1);
+        if (k < 0) continue;
+        const p = handPoses()[k];
+        await r.unmount();
+        return { i, k, ty: along(p, 'translateY'), rot: p.transform?.find((t) => 'rotate' in t)?.rotate, scale: along(p, 'scale') };
+      }
+      throw new Error('no dealt card shown');
+    };
+    try {
+      const flat = await firstShown(0);
+      const lifted = await firstShown(100);
+      expect([lifted.i, lifted.k]).toEqual([flat.i, flat.k]);
+      expect(lifted.ty - flat.ty).toBeCloseTo(-100);
+      expect([flat.rot, flat.scale]).toEqual(['33deg', 0.5]);
+    } finally {
+      jest.mocked(handDealArc).mockImplementation(actual.handDealArc);
+    }
   }, 20_000);
 
   it('lays the hand in place under reduced motion, with no breath, lamp rise or specks', async () => {
