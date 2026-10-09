@@ -54,11 +54,11 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 // A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
 const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 /**
- * How long the offline exchange overlay holds under Maestro. A real device's
- * `btn-prossima-manche` tap doesn't return for ~8.2s, measured on the iOS
- * runner (#915, run 33906243513) — well past the overlay's real ~5.2s — so no
- * wait placed after that single command can observe it. This holds it past
- * that measured return instead of speeding the real ceremony up.
+ * How long the offline exchange overlay holds under Maestro. One command on a
+ * real device can take ~8.2s to return, measured on the iOS runner (#915, run
+ * 33906243513) — well past the overlay's real ~5.2s — so a wait placed after
+ * the command the deal follows may miss it. This holds it past that measured
+ * return instead of speeding the real ceremony up.
  */
 const MEASURED_TAP_RETURN_MS = 8200;
 const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
