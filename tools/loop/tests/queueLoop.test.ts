@@ -212,9 +212,9 @@ describe("queueLoopArgs", () => {
   });
 
   test("a raised ceiling keeps a turn cap that reaches it", () => {
-    // 1.26 turns per k of context above the 34k start: the busiest healthy process at 200k.
+    // 1.26 turns per k of context above the 34k start: the busiest healthy process at 200k; x1.5 headroom.
     for (const size of Object.keys(CONTEXT_BY_SIZE)) {
-      assert.ok(turns(size) >= (1.26 * (contextFor(size) - 34_000)) / 1000, size);
+      assert.ok(turns(size) >= (1.5 * 1.26 * (contextFor(size) - 34_000)) / 1000, size);
     }
   });
 

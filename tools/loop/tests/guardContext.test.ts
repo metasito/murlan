@@ -75,7 +75,7 @@ describe("the context ceiling", () => {
   });
 
   test("an unreadable LOOP_CONTEXT keeps the 200k ceiling", () => {
-    for (const LOOP_CONTEXT of ["", "abc", "0", "-5"]) {
+    for (const LOOP_CONTEXT of ["", "abc", "0", "-5", "Infinity", "1e9", "340000"]) {
       const out = JSON.parse(run(call(transcript([assistant(201_000)])), { LOOP_TURNS: "40", LOOP_CONTEXT }));
       assert.equal(out.hookSpecificOutput.additionalContext, ceiling, `LOOP_CONTEXT=${JSON.stringify(LOOP_CONTEXT)}`);
     }

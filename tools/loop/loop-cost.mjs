@@ -40,7 +40,7 @@ export const CONTEXT_DEFAULT = 200_000;
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
   "size:S": 160,
-  "size:M": 500,
+  "size:M": 505,
   "size:L": 560,
   "size:XL": 600,
 };
