@@ -48,10 +48,10 @@ describe("brief", () => {
     assert.doesNotMatch(text, /DOD-CHECK/);
   });
 
-  test("a later completeness check reads only what changed since the last one", () => {
-    const recheck = brief("completeness", { n: 1, worktree: WT, base: "abc1234" });
-    assert.match(recheck, /This is a recheck[\s\S]*Answer every box again from the code at HEAD[\s\S]*sweeps on this change alone/);
-    assert.doesNotMatch(brief("completeness", { n: 1, worktree: WT }), /This is a recheck/);
+  test("the completeness brief asks for the covering test, and leaves test strength to D's Standards", () => {
+    const text = brief("completeness", { n: 1, worktree: WT });
+    assert.match(text, /the test that covers it/);
+    assert.doesNotMatch(text, /line is deleted|either way|recheck/);
   });
   test("the completeness brief sweeps the tests for a changed literal's old value", () => {
     const text = brief("completeness", { n: 1256, worktree: WT });

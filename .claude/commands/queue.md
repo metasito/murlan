@@ -172,9 +172,8 @@ Then leave through **Leaving C**.
   or split one `test:native:related` marks at risk before D.
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
-- **Scope grows to what you find in its area** (not in a HOLD round): fix it in this diff, add a Definition-of-done box,
-  name it in the PR body. File only what needs an owner decision, lies in an untouched subsystem,
-  or would not fit the turn budget:
+- **A defect in the lines this diff changes is fixed here** (outside a HOLD round): add a
+  Definition-of-done box, name it in the PR body. Anything else you find is filed, not built:
   `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>` —
   `ready-for-agent` when its Definition of done has no open box, `ready-for-human` only when it
   needs an account, a device, a design or a policy call. If it cannot start until this lands,
@@ -183,23 +182,25 @@ Then leave through **Leaving C**.
   why in the commit.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
+- **Open the draft pull request with your first commit**, so CI judges every push while you build:
+  `git push -u origin HEAD`, then
+  `gh pr create --draft --base main --title "<issue title>" --body "Closes #<n>"`.
+  Before `DOD-CHECK`, read the branch's newest finished run and fix what it names.
 
 ### Leaving C
 
 `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
 
-1. **The completeness check**: one `sonnet` subagent whose prompt starts with the output of this,
-   verbatim:
+1. **The completeness check, once per ticket**: skipped when the issue already carries a `DOD-CHECK`
+   (a HOLD or CI round). One `sonnet` subagent whose prompt
+   starts with the output of this, verbatim:
 
    ```sh
-   node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n> <base>
+   node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
    ```
 
-   `<base>` is `origin/main` for the ticket's first check; later, the head this
-   process's previous check read, else the newest `DOD-CHECK`'s.
-   Build what it reports partial or missing, failing test first, then ask once more on the new
-   diff: at most twice per process. Post what the second answer still reports as `FIX-NOTES <sha>`
-   under `Completeness left:`, and go on. Where wrong, check the code, not memory.
+   Build what it reports partial or missing, failing test first; post what you leave as
+   `FIX-NOTES <sha>` under `Completeness left:`. Where wrong, check the code, not memory.
 2. Then commit the last slice, and run `npm run agent:check`.
 3. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
@@ -207,8 +208,7 @@ Then leave through **Leaving C**.
    A box you cannot close stays `- [ ]` with why: the ticket is not done, so keep building or park it (**Never stall**).
 4. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
-Only then declare handoff D and exit. The supervisor re-gates it and opens a draft pull request,
-so CI runs while D reviews.
+Only then declare handoff D and exit. The supervisor re-gates it.
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what-is-left>"}

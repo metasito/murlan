@@ -242,11 +242,26 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
-  // #1261: twelve rounds of asking until it reported nothing were 19% of the ticket; phase D's spec review catches the rest.
-  test("phase C asks the completeness check at most twice, then names what is left and goes on", () => {
-    const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
-    assert.match(c, /completeness check[\s\S]*at most twice per process\.[^.]*still reports as `FIX-NOTES <sha>`\s+under `Completeness left:`/);
-    assert.doesNotMatch(c, /until it reports nothing/);
+  // October: 6.3 passes a ticket at 10.8 min each, and every HOLD round re-ran it; D's Spec review catches the rest.
+  test("phase C asks the completeness check once per ticket, never in a HOLD or CI round, then names what is left", () => {
+    const c = read(QUEUE).split("### Leaving C")[1]?.split("## D — Review")[0] ?? "";
+    assert.match(c, /completeness check, once per ticket[^.]*skipped when the issue already carries a `DOD-CHECK`\s+\(a HOLD or CI round\)/);
+    assert.match(c, /brief\.mjs completeness <n> \.worktrees\/agent-<n>\n/);
+    assert.match(c, /`FIX-NOTES <sha>`\s+under `Completeness left:`/);
+    assert.doesNotMatch(c, /twice per process|<base>/);
+  });
+
+  test("phase C opens the draft with its first commit, so CI judges each push while it builds", () => {
+    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
+    assert.match(work, /draft pull request with your first commit[\s\S]*gh pr create --draft --base main/);
+    assert.match(work, /Before `DOD-CHECK`, read the branch's newest finished run/);
+  });
+
+  test("scope grows only to defects in the changed lines; the rest is filed, not built", () => {
+    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
+    assert.match(work, /defect in the lines this diff changes is fixed here/);
+    assert.match(work, /Anything else you find is filed, not built/);
+    assert.doesNotMatch(work, /Scope grows to what you find in its area/);
   });
 
   // #1261: 94 minutes of local native re-runs steered by timings that only CI's reporter judges.
@@ -268,11 +283,8 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named and every sibling of it[^.]*then leave through\s+phase C's steps 1–4/);
   });
 
-  test("a later completeness check reads only the change since the last one, and C has no pre-read of D's briefs", () => {
-    const c = read(QUEUE).split("### Leaving C")[1]?.split("## D — Review")[0] ?? "";
-    assert.match(c, /brief\.mjs completeness <n> \.worktrees\/agent-<n> <base>/);
-    assert.match(c, /`<base>` is `origin\/main` for the ticket's first check; later, the head this\s+process's previous check read, else the newest `DOD-CHECK`'s/);
-    assert.doesNotMatch(c, /phase D's two briefs/);
+  test("C has no pre-read of D's briefs", () => {
+    assert.doesNotMatch(read(QUEUE), /phase D's two briefs/);
   });
 
   test("the posted review leads with the refuter's survivors", () => {
