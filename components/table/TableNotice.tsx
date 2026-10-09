@@ -128,7 +128,7 @@ export function TableNotice<K extends NoticeKind>({
       : shown ? entrance : leaving ? probed(out, probe, "exit") : out;
     if (shown) {
       risen.value = 0;
-      risen.value = withTiming(1, { duration: enter });
+      risen.value = withTiming(1, { duration: enter, reduceMotion: ANSWERED });
     }
     return () => {
       cancelAnimation(life);

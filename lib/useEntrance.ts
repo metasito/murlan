@@ -24,7 +24,7 @@ export function useEntrance(step: number) {
     const delay = step * ENTRANCE_STEP_MS;
     opacity.value = withDelay(
       delay,
-      withTiming(1, { duration: motionMs("reveal", reduceMotion) }),
+      withTiming(1, { duration: motionMs("reveal", reduceMotion), reduceMotion: ReduceMotion.Never }),
       ReduceMotion.System
     );
     translateY.value = reduceMotion

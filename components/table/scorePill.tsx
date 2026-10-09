@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
+  ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -111,6 +112,7 @@ export function ScorePill({
     progress.value = withTiming(open ? 1 : 0, {
       duration: motionMs("shift", reduce),
       easing: open ? OPEN_EASING : CLOSE_EASING,
+      reduceMotion: ReduceMotion.Never,
     });
   }, [open, reduce, progress]);
 

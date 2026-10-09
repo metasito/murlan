@@ -9,6 +9,7 @@ import {
   withRepeat,
   cancelAnimation,
   Easing,
+  ReduceMotion,
   type AnimatedStyle,
   type SharedValue,
 } from "react-native-reanimated";
@@ -195,7 +196,7 @@ function useImpactFeedback(landing: SharedValue<LandingSignal>, reduceMotion: bo
     shakeElapsed.set(0);
     if (trauma === 0) return;
     scheduleOnRN(traceOnset, "moment", l.tier);
-    shakeElapsed.set(withTiming(decayMs, { duration: decayMs, easing: Easing.linear }));
+    shakeElapsed.set(withTiming(decayMs, { duration: decayMs, easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
   });
 
   const reject = () => {
