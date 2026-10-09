@@ -834,6 +834,7 @@ export function GameTable({
     onLanded: onMancheLanded,
   });
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
+  const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
@@ -955,7 +956,7 @@ export function GameTable({
   const timerActive =
     !!turnTimer &&
     turnTimerActive({
-      isMyTurn,
+      isMyTurn: isMyTurn && shownTurnIsMine,
       isFinished,
       isNewRound,
       gameOver: gameState.gameOver,
@@ -991,8 +992,8 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerOnMove = isMyTurn && !isFinished && !gameState.gameOver;
-  const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
+  const viewerOnMove = shownTurnIsMine && !isFinished && !gameState.gameOver;
+  const onMoveName = players[shownTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, and the turn changing is what arms it. There is no per-seat
