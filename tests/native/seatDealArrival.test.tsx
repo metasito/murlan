@@ -19,8 +19,25 @@ jest.mock('@/components/table/dealSlots', () => {
   return { ...actual, __esModule: true, dealSlots: jest.fn(actual.dealSlots) };
 });
 
+jest.mock('@/components/table/lampRig', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/lampRig')>('@/components/table/lampRig');
+  return {
+    ...actual,
+    __esModule: true,
+    restingLamp: jest.fn(actual.restingLamp),
+    lampControls: { ...actual.lampControls, setLevel: jest.fn(actual.lampControls.setLevel) },
+  };
+});
+
+jest.mock('@/components/table/particles', () => {
+  const actual = jest.requireActual<typeof import('@/components/table/particles')>('@/components/table/particles');
+  return { ...actual, __esModule: true, dealSpecks: jest.fn(actual.dealSpecks) };
+});
+
 import { GameTable } from '@/components/GameTable';
 import { dealSlots } from '@/components/table/dealSlots';
+import { lampControls, restingLamp } from '@/components/table/lampRig';
+import { dealSpecks } from '@/components/table/particles';
 import { busiest } from './helpers/dealSweep';
 import { bootFeedback, startsOf } from './helpers/feedback';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
@@ -71,9 +88,11 @@ const seated = () => SEATS.reduce((sum, id) => sum + counted(id), 0);
 
 type Pose = { opacity?: number; transform?: Record<string, number | string>[] };
 const backs = () => screen.queryAllByTestId('dealt-back').map((b) => getAnimatedStyle(b) as Pose);
-const spin = (p: Pose) => parseFloat(String(p.transform?.find((t) => 'rotate' in t)?.rotate ?? 0));
+const along = (p: Pose, key: string) => Number(p.transform?.find((t) => key in t)?.[key] ?? 1);
+const reach = (p: Pose) => Math.hypot(along(p, 'translateX'), along(p, 'translateY'));
+const breath = () => along(getAnimatedStyle(screen.getByTestId('table-felt', { includeHiddenElements: true })) as Pose, 'scale');
 const landedSince = (before: Pose[], after: Pose[]) =>
-  after.filter((p, i) => before[i]?.opacity === 1 && (p.opacity !== 1 || spin(p) < spin(before[i]))).length;
+  after.filter((p, i) => before[i]?.opacity === 1 && (p.opacity !== 1 || reach(p) < reach(before[i]))).length;
 
 const handPoses = () =>
   screen.getAllByTestId('card-box').map((box) => {
@@ -157,6 +176,42 @@ describe("an opponent's hand arrives with the deal", () => {
     expect(screen.queryAllByTestId('dealt-back').length).toBe(0);
     expect(startsOf('deal')).toHaveLength(1);
 
+    await r.unmount();
+  });
+
+  it("breathes the felt at the deal's onset, raises the lamp a lead after it, and throws specks as each of the viewer's cards lands", async () => {
+    const r = await render(table());
+    expect(jest.mocked(restingLamp).mock.calls[0][1]).toBe(0.75);
+    const rises: number[] = [];
+    const breaths: number[] = [];
+    const scales = new Set<number>();
+    for (let t = 16; t <= 1700; t += 16) {
+      await frame();
+      if (jest.mocked(lampControls.setLevel).mock.calls.some((c) => c[1] === 1)) rises.push(t);
+      breaths.push(breath());
+      for (const p of handPoses()) if (p.opacity === 1) scales.add(along(p, 'scale'));
+    }
+    expect(rises[0]).toBeGreaterThanOrEqual(600 + 40);
+    expect(rises[0]).toBeLessThan(600 + 40 + 3 * 16);
+    expect(Math.max(...breaths)).toBeGreaterThan(1.004);
+    expect(Math.max(...breaths)).toBeLessThanOrEqual(1.006);
+    expect(breaths.at(-1)).toBe(1);
+    expect(Math.min(...scales)).toBeLessThan(0.9);
+    expect(jest.mocked(dealSpecks).mock.calls).toHaveLength(13);
+    await r.unmount();
+  }, 20_000);
+
+  it('lays the hand in place under reduced motion, with no breath, lamp rise or specks', async () => {
+    mockReduce = true;
+    const r = await render(table());
+    expect(jest.mocked(restingLamp).mock.calls[0][1]).toBe(1);
+    for (let t = 0; t < 1200; t += 16) {
+      await frame();
+      expect(handPoses().map((p) => [p.opacity, along(p, 'scale')])).toEqual(Array(13).fill([1, 1]));
+      expect(breath()).toBe(1);
+    }
+    expect(lampControls.setLevel).not.toHaveBeenCalled();
+    expect(dealSpecks).not.toHaveBeenCalled();
     await r.unmount();
   });
 });

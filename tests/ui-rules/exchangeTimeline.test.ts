@@ -12,7 +12,7 @@ import {
   restPoint,
   type LegPoints,
 } from "../../lib/game/exchangeTimeline.ts";
-import { DEAL_FLIGHT_MS, dealEndMs, dealFlightsMs } from "../../lib/game/dealTimeline.ts";
+import { dealEndMs } from "../../lib/game/dealTimeline.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { Hold, Motion } from "../../lib/tokens.ts";
 
@@ -89,13 +89,10 @@ test("the choice opens on the clock the legs are drawn on: the receive landed an
   }
 });
 
-test("the server's give floor is no earlier than any client's choice opening, whatever the seats' distances", () => {
-  const counts = [13, 13, 13, 13];
-  const farthest = dealEndMs(counts, Motion.duration.reveal, counts.map(() => DEAL_FLIGHT_MS));
-  assert.equal(exchangeGiveDelayMs(counts), farthest + choiceOpensAt(false));
-  for (const seats of [[{ dx: 0, dy: 100 }, { dx: -300, dy: 0 }, { dx: 300, dy: 0 }, { dx: 0, dy: -120 }], [{ dx: 0, dy: 10 }, { dx: 5, dy: 0 }, { dx: 0, dy: -400 }, { dx: 20, dy: 0 }]]) {
-    const client = dealEndMs(counts, Motion.duration.reveal, dealFlightsMs(seats)) + choiceOpensAt(false);
-    assert.ok(client <= exchangeGiveDelayMs(counts), `the client's choice opens at ${client}, after the server's floor`);
+test("the server's give floor is no earlier than the client's choice opening after the first deal", () => {
+  for (const counts of [[13, 13, 13, 13], [14, 14, 13, 13], [18, 18, 17], [27, 27]]) {
+    const client = dealEndMs(counts, Motion.duration.reveal) + choiceOpensAt(false);
+    assert.equal(exchangeGiveDelayMs(counts), client);
   }
 });
 

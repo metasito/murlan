@@ -124,9 +124,9 @@ export function pileCard(
   };
 }
 
-export function dealBack(pile: Point, at: { dx: number; dy: number; rot: number }, w: number, h: number): DrawnCard {
+export function dealBack(pile: Point, at: { dx: number; dy: number; rot: number; scale: number }, w: number, h: number): DrawnCard {
   "worklet";
-  return { cx: pile.x + at.dx, cy: pile.y + at.dy, w, h, rot: at.rot, back: true, lift: 0, glow: 0 };
+  return { cx: pile.x + at.dx, cy: pile.y + at.dy, w: w * at.scale, h: h * at.scale, rot: at.rot, back: true, lift: 0, glow: 0 };
 }
 
 /** `w`/`h` are whichever side the flier shows. */

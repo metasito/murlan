@@ -27,7 +27,7 @@ jest.mock('@/components/table/dealSlots', () => {
 import { GameTable } from '@/components/GameTable';
 import { DealFlights } from '@/components/table/deal';
 import { dealPose } from '@/components/table/dealPose';
-import { dealFlightsFor, dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
+import { dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
 import { GEOMETRY, frames } from './helpers/exchangeLegs';
 import { busiest, inAir } from './helpers/dealSweep';
@@ -66,8 +66,8 @@ describe('the deal flies on a pool of backs', () => {
 
   it.each([
     [2, 14, 7],
-    [3, 36, 9],
-    [4, 40, 16],
+    [3, 36, 13],
+    [4, 40, 19],
   ])('draws %i players’ %i legs with as many backs as are ever in the air at once, %i on the 844 × 390 table', async (seats, legCount, pool) => {
     const view = await render(table(freshDeal(seats)));
     const legs = slotted().calls.at(-1)![0];
@@ -96,7 +96,7 @@ describe('the deal flies on a pool of backs', () => {
 
   it('poses every leg in the air, each back one leg at a time, and stops its clock at the end', async () => {
     const counts = [14, 14, 13, 13];
-    const legs = dealLegs(GEOMETRY, { key: 1, offsetMs: 100, counts, flightsMs: dealFlightsFor(GEOMETRY) });
+    const legs = dealLegs(GEOMETRY, { key: 1, offsetMs: 100, counts });
     const slots = dealSlots(legs);
     const endMs = Math.max(...legs.map((l) => l.leaveMs + l.flightMs));
     const clock = makeMutable(-1);

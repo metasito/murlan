@@ -130,7 +130,8 @@ import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moment
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
-import { DealFlights, useDeal } from "@/components/table/deal";
+import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
+import { dealSpecks, type ParticleEmitter } from "@/components/table/particles";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -669,6 +670,12 @@ export function GameTable({
     entryMs,
     reduceMotion,
   });
+  const particles = useRef<ParticleEmitter>(null);
+  const onDealt = useCallback(
+    (x: number, y: number) => particles.current?.emit(dealSpecks(x, y, reduceMotion, Math.random)),
+    [reduceMotion]
+  );
+  const breathStyle = useDealBreath(deal.hand);
 
   // ── Screen-reader table description ─────────────────────────────────────────
   //
@@ -817,7 +824,7 @@ export function GameTable({
   ];
   const rig = useLampRig({
     pool: lampAim,
-    fresh: dealFresh,
+    deal: deal.hand,
     width: W,
     height: H,
     landing: landingSignal,
@@ -1052,13 +1059,13 @@ export function GameTable({
           information (#1244), lit by the one lamp rig. */}
       <Animated.View
         testID="table-felt"
-        style={[StyleSheet.absoluteFill, FELT_Z, greyStyle]}
+        style={[StyleSheet.absoluteFill, FELT_Z, greyStyle, breathStyle]}
         pointerEvents="none"
         {...a11yHidden()}
       >
         <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} />
         <LampLift landing={landingSignal} scale={scale} rig={rig} />
-        <ParticleLayer rig={rig} landing={landingSignal} />
+        <ParticleLayer ref={particles} rig={rig} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
       </Animated.View>
 
@@ -1454,7 +1461,7 @@ export function GameTable({
                     // Only while the opening is still owed. Named rather than
                     // counted to: Maestro's `index` sorts by position, and the
                     // arc puts the outermost card below its neighbours (#757).
-                    dealOffsetMs={deal.handOffsetMs}
+                    deal={deal.hand && { ...deal.hand, onDealt }}
                     startCardId={
                       gameState.firstPlayMade ? undefined : gameState.startCard?.id
                     }

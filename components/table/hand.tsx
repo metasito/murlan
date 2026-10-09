@@ -35,6 +35,8 @@ import { dropIndex, lendBack, stripAt } from "@/components/handOrder";
 import type { HandSelection } from "./useSelection";
 import type { SettledSelection } from "./selectionLeaves";
 import { HAND_ARC, solveArc } from "@/components/tableArc";
+import { DEAL_FLIGHT_MS, dealLeaveMs } from "@/lib/game/dealTimeline";
+import { dealEase, handDealArc } from "@/components/table/dealPose";
 import { HAND_CROP, HAND_ZONE_H, exchangeArrivalRise, handRowHeadroom } from "@/components/seatLayout";
 import {
   CARD_W,
@@ -90,14 +92,6 @@ export function useHandArrival(input: {
 // the lift reading as a flat slide; the lift itself is `handRowHeadroom`, a
 // share of the card, so the row's reserved headroom cannot fall short of it.
 const SELECT_TILT = -3;
-// A deal drops from above the table, not up out of the middle of it — a fixed
-// distance (scaled with the hand), not one derived from the card's own
-// height. Every value here is the prototype's own `deal` keyframe verbatim,
-// short of its scale-from-0.7: `tests/e2e/a11yOverlays.spec.ts` measures a
-// rank glyph's own ink overflow in untransformed px, so a `scale` transform
-// on the card — unlike its translate and rotate — reads as new clipping the
-// glyph never actually has.
-const DEAL_RISE_PX = -170;
 const DEAL_DURATION_MS = 500;
 const DEAL_EASING = Easing.bezier(0.2, 0.85, 0.3, 1);
 // The exchange's two states. Colour cannot be the only channel that carries
@@ -203,19 +197,15 @@ interface CardItemProps {
   giveable?: boolean;
   /** What a tap does, when it is not "play this card". */
   hint?: string;
-  /** ms to wait before this card flies in, or -1 for no deal animation. */
+  /** ms to wait before this card descends, or -1 for none. */
   dealDelay: number;
-  /** Horizontal distance back to the deck, so the fan converges on one point. */
+  /** Read once, at mount, like `dealDelay`. */
+  deal?: CardDeal;
+  /** Horizontal distance back to where the card flies in from. */
   dealFromX: number;
-  /**
-   * Fade the card up as it travels. False for a card arriving off the felt: a
-   * flier hands over to it at the same point in the same frame, and fading in
-   * there is a blink in the middle of a crossing that has to stay visible.
-   */
-  dealFade: boolean;
   /** The table's own scale, times HAND_SCALE — this hand's card size. */
   cardScale: number;
-  /** Vertical distance a dealt card rises from, derived from that same size. */
+  /** Vertical distance back to where the card flies in from. */
   dealRise: number;
   /** The strip of this card a tap can reach — the rest is under its neighbour. */
   hitW: number;
@@ -250,6 +240,12 @@ interface CardItemProps {
 
 interface DrawnCard { liftY: SharedValue<number>; tilt: SharedValue<number>; shift: SharedValue<number> }
 
+/** A card dealt from the pile on the deal's clock, `onDealt` given its landing point in design points. */
+interface CardDeal { clock: SharedValue<number>; leaveMs: number; onDealt: (x: number, y: number) => void }
+
+/** The deal under way, on its own clock: `pile` is where it flies from, off the hand zone's centre. */
+export interface HandDeal { offsetMs: number; clock: SharedValue<number>; pile: { dx: number; dy: number }; onDealt: (x: number, y: number) => void }
+
 /** The registry apart from the place: a mapper reading it would re-run on its own every write. */
 interface HandRow {
   table: CardTable;
@@ -268,8 +264,8 @@ function CardItemBase({
   disabled,
   zIndex,
   dealDelay,
+  deal,
   dealFromX,
-  dealFade,
   cardScale,
   dealRise,
   hitW,
@@ -310,6 +306,10 @@ function CardItemBase({
   // becomes -1 while this card is still flying in. The deal owes its timing to
   // the value the card mounted with.
   const dealDelayRef = useRef(dealDelay);
+  const [dealt] = useState(deal);
+  const dealClock = dealt?.clock;
+  const dealAt = dealt ? dealt.leaveMs : -1;
+  const onDealt = dealt?.onDealt;
   const shift = useSharedValue(shiftX);
 
   // The gap is not an effect laid over the fan; it is the fan, laid out around
@@ -400,36 +400,59 @@ function CardItemBase({
     arcTilt.set(arcRot);
   }, [arcTilt, arcRot]);
   // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
-  const pose = (d: number, arc: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean) => {
+  const pose = (d: number, arc: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean, now: number) => {
     "worklet";
-    // The deal starts upright (0deg) and rotates into the card's own resting
-    // tilt as it lands, rather than overshooting past it.
     const restRot = arc + tiltNow + pressNow * PRESS_TILT;
+    if (dealAt >= 0) {
+      const e = dealEase(Math.min(1, Math.max(0, (now - dealAt) / DEAL_FLIGHT_MS)));
+      const a = handDealArc(e, restRot);
+      return {
+        opacity: gone || now < dealAt ? 0 : 1,
+        tx: dealFromX * (1 - e) + shiftNow,
+        ty: lift + pressNow * PRESS_RISE + dealRise * (1 - e) - a.lift,
+        rot: a.rot,
+        scale: a.scale,
+      };
+    }
     return {
-      opacity: gone ? 0 : dealFade ? 1 - d : 1,
+      opacity: gone ? 0 : 1,
       tx: dealFromX * d + shiftNow,
       ty: lift + pressNow * PRESS_RISE + dealRise * d,
       rot: restRot * (1 - d),
+      scale: 1,
     };
   };
   const aStyle = useAnimatedStyle(() => {
-    const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
+    const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
     return {
       opacity: p.opacity,
-      transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }],
+      transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }, { scale: p.scale }],
     };
   });
   const place = rects?.place;
+  const rectOf = (p: ReturnType<typeof pose>) => {
+    "worklet";
+    if (!place) return null;
+    const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
+    return designRect(handCard(place, card, panShown(place.pan.value, place.panLimit), place.lift.value), place.felt, place.motion.value);
+  };
   useCardRect(
     rects?.table ?? null,
     `hand:${cardId}`,
     true,
     () => {
       "worklet";
-      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId));
-      if (!place || p.opacity <= 0) return null;
-      const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: 1, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
-      return designRect(handCard(place, card, panShown(place.pan.value, place.panLimit), place.lift.value), place.felt, place.motion.value);
+      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+      return p.opacity > 0 ? rectOf(p) : null;
+    }
+  );
+  useAnimatedReaction(
+    () => (dealClock ? dealClock.value : -1),
+    (now, prev) => {
+      const landAt = dealAt + DEAL_FLIGHT_MS;
+      if (!onDealt || prev === null || prev >= landAt || now < landAt) return;
+      const r = rectOf(pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, false, now));
+      if (r) scheduleOnRN(onDealt, r.x, r.y);
     }
   );
 
@@ -507,8 +530,8 @@ function CardItemBase({
 
 /**
  * Compares the card by id for the same reason CardView does: an incoming
- * `game:state` rebuilds every card object, and `dealDelay` is deliberately
- * excluded because the deal reads it once at mount (`dealDelayRef`), so a
+ * `game:state` rebuilds every card object, and `dealDelay` and `deal` are deliberately
+ * excluded because the card reads them once at mount, so a
  * later change to it must not remount the card mid-flight.
  */
 export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean {
@@ -527,7 +550,6 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.giveable === b.giveable &&
     a.hint === b.hint &&
     a.dealFromX === b.dealFromX &&
-    a.dealFade === b.dealFade &&
     a.cardScale === b.cardScale &&
     a.dealRise === b.dealRise &&
     a.hitW === b.hitW &&
@@ -603,7 +625,7 @@ export const StraightHand = React.memo(function StraightHand({
   lifted,
   startCardId,
   handBottomPad = 0,
-  dealOffsetMs,
+  deal,
   onOrigins,
 }: {
   cards: Card[];
@@ -671,8 +693,8 @@ export const StraightHand = React.memo(function StraightHand({
    * Unused, so omittable, on any hand that never receives one.
    */
   handBottomPad?: number;
-  /** How long after mounting a dealt hand its first card drops; absent while the table deals nothing, and the hand appears in place. */
-  dealOffsetMs?: number;
+  /** Absent while the table deals nothing, and the hand appears in place. */
+  deal?: HandDeal;
   /** Each drawn card's resting pose, from the hand zone's centre, in field-card units — where a throw leaves from. */
   onOrigins?: (origins: ReadonlyMap<string, CardFrom>) => void;
 }) {
@@ -707,7 +729,7 @@ export const StraightHand = React.memo(function StraightHand({
   // its foot is lost, and the row keeps the height that buys for the table.
   const crop = cardH * HAND_CROP;
   const visibleH = cardH - crop;
-  const dealRise = DEAL_RISE_PX * cardScale;
+  const pile = deal?.pile ?? { dx: 0, dy: 0 };
   const drawnRef = useRef(new Map<string, DrawnCard>());
   const onDrawn = useCallback((id: string, d: DrawnCard) => void drawnRef.current.set(id, d), []);
   const giveableSet = useMemo(
@@ -1290,18 +1312,17 @@ export const StraightHand = React.memo(function StraightHand({
           // hand this row could ever be handed is what makes the ceiling hold,
           // not an assumption about how big one gets.
           zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
-          dealDelay={dealArmed && dealOffsetMs !== undefined ? dealOffsetMs + i * Motion.stagger.deal : descending ? 0 : -1}
+          dealDelay={descending ? 0 : -1}
+          deal={dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined}
           // From the row's own centre, which is where the flight carrying it
           // stops (`flightOrigin`'s `bottom` is `dx: 0`). The crossing and the
           // descent are then one continuous move into the waiting slot, rather
           // than a card that stops at the middle and reappears at one end.
-          dealFromX={descending ? -home.x : -home.x - cardW / 2}
-          dealFade={!descending}
+          dealFromX={-home.x + (descending ? 0 : pile.dx)}
           cardScale={cardScale}
           // A descending card starts its fall from where the exchange's own
-          // flying card retires, not from `dealRise`'s deck-drop height —
-          // otherwise the two disagree about where the card just was.
-          dealRise={descending ? cardH / 2 - crop - home.y - exchangeArrivalDealRise : dealRise}
+          // flying card retires; a dealt one from the pile, off that same point.
+          dealRise={cardH / 2 - crop - home.y - exchangeArrivalDealRise + (descending ? 0 : pile.dy)}
           hitW={hitWidth(slot, arc.length, step, cardW)}
           isStartCard={card.id === startCardId}
           cardW={cardW}

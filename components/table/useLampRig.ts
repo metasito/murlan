@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
+import { Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/flightPhysics";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
@@ -34,14 +35,14 @@ function lampStepper(lamp: SharedValue<Lamp>, reduced: SharedValue<boolean>) {
 
 export function useLampRig({
   pool,
-  fresh,
+  deal,
   width,
   height,
   landing,
 }: {
   pool: Pool;
-  /** A deal is starting: the lamp breathes up with it. */
-  fresh: boolean;
+  /** A deal under way, `offsetMs` its onset on its clock: the lamp comes up a lead after it. */
+  deal: { offsetMs: number; clock: SharedValue<number> } | undefined;
   width: number;
   height: number;
   /** A landing that flares (#765) flares the lamp, and a bomb's kicks it, on the contact frame. */
@@ -49,7 +50,7 @@ export function useLampRig({
 }): LampRig {
   const reduceMotion = usePrefersReducedMotion();
   const reduced = useSharedValue(reduceMotion);
-  const lamp = useSharedValue<Lamp>(restingLamp(pool, fresh ? BREATH_FROM : 1));
+  const lamp = useSharedValue<Lamp>(restingLamp(pool, deal ? BREATH_FROM : 1));
   const [px, py, reach] = pool;
 
   useEffect(() => {
@@ -69,15 +70,28 @@ export function useLampRig({
     }, true);
   }, [px, py, reach, lamp, reduced]);
 
+  const dealClock = deal?.clock;
+  const riseAt = (deal?.offsetMs ?? 0) + Motion.deal.lead;
   useEffect(() => {
-    if (!fresh) return;
+    if (!dealClock) return;
     lamp.modify((s) => {
       "worklet";
       s.lvl = BREATH_FROM;
-      lampControls.setLevel(s, 1, BREATH_RATE);
+      lampControls.setLevel(s, BREATH_FROM, BREATH_RATE);
       return s;
     }, true);
-  }, [fresh, lamp]);
+  }, [dealClock, lamp]);
+  useAnimatedReaction(
+    () => (dealClock ? dealClock.value : -1),
+    (now, prev) => {
+      if (now < riseAt || (prev !== null && prev >= riseAt)) return;
+      lamp.modify((s) => {
+        "worklet";
+        lampControls.setLevel(s, 1, BREATH_RATE);
+        return s;
+      }, true);
+    }
+  );
 
   useLandingReaction(landing, (l) => {
     "worklet";

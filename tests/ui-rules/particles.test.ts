@@ -6,6 +6,7 @@ import {
   STRIDE,
   alpha,
   createParticles,
+  dealSpecks,
   rgba,
   spawn,
   landingDust,
@@ -136,5 +137,25 @@ describe("the particle module", () => {
     assert.equal(at(false, false).length, 16 + 5 * 2 + 3);
     assert.deepEqual(at(true, false), []);
     assert.deepEqual(at(false, true), []);
+  });
+
+  test("a dealt card lands with 3 specks 30 above its centre, thrown either way, except under reduced motion", () => {
+    const within = (v: number | undefined, lo: number, hi: number, what: string) => assert.ok(v !== undefined && v >= lo && v <= hi, `${what}: ${v}`);
+    for (let seed = 1; seed <= 200; seed++) {
+      const specks = dealSpecks(400, 360, false, mulberry32(seed));
+      assert.equal(specks.length, 3);
+      specks.forEach((s, i) => {
+        within(s.x, 400 - 18, 400 + 18, "x");
+        assert.equal(s.y, 330);
+        assert.equal(Math.sign(s.vx ?? 0), i % 2 ? -1 : 1, `direction of speck ${i}`);
+        within(Math.abs(s.vx ?? 0), 15 * Math.cos(0.5) - 1e-9, 45 + 1e-9, "sideways speed");
+        within(s.vy, -14, -4, "vy");
+        assert.deepEqual([s.g, s.drag], [-6, 0.92]);
+        within(s.life, 0.4, 0.8, "life");
+        within(s.size, 0.35, 1, "r");
+        assert.deepEqual(rgba(s.col!), rgba("#ffe2a8"));
+      });
+    }
+    assert.deepEqual(dealSpecks(400, 360, true, mulberry32(1)), []);
   });
 });

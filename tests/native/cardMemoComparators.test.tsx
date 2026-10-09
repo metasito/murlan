@@ -65,7 +65,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   giveable: [false, true],
   dealDelay: [0, 120],
   dealFromX: [0, 120],
-  dealFade: [false, true],
+  deal: [{ leaveMs: 0 }, { leaveMs: 42 }],
   dealRise: [0, 120],
   cardW: [64, 92],
   cardH: [90, 128],
@@ -85,6 +85,7 @@ const EXEMPT: Record<string, Record<string, string>> = {
     dealDelay:
       "the deal reads it once at mount (dealDelayRef), so a later change must " +
       "not restart a card that is already in flight",
+    deal: "read once at mount, like dealDelay",
   },
   cardViewPropsEqual: {},
 };
