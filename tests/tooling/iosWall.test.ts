@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overBudget, wallSeconds, BUDGET_S } from "../../tools/ci/ios-wall.mjs";
+import { overBudget, run, wallSeconds, BUDGET_S } from "../../tools/ci/ios-wall.mjs";
 
 const GATE = "Drive the app on a real iOS simulator";
 const at = (minute: number, second = 0) => `2026-10-08T04:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}Z`;
@@ -29,4 +29,21 @@ test("a run listing nothing but the gate is red", () => {
 test("the budget is over only past its last second", () => {
   assert.equal(overBudget(BUDGET_S), false);
   assert.equal(overBudget(BUDGET_S + 1), true);
+});
+
+test("the gate reads its own run's latest jobs and exits red only past the budget", () => {
+  const env = { GITHUB_REPOSITORY: "metasito/murlan", GITHUB_RUN_ID: "37769925676" };
+  const runFor = (endSecond: number) => {
+    const routes: string[] = [];
+    const lines: string[] = [];
+    const end = new Date(Date.parse(at(0)) + endSecond * 1000).toISOString();
+    const jobs = [job("Restore the app and bundle its JS", at(0), at(1)), job("flows (smoke)", at(1), end), job(GATE, at(0), null)];
+    const code = run(GATE, env, (route: string) => (routes.push(route), JSON.stringify({ jobs })), (line: string) => lines.push(line));
+    return { code, routes, lines };
+  };
+  const over = runFor(BUDGET_S + 1);
+  assert.deepEqual(over.routes, ["repos/metasito/murlan/actions/runs/37769925676/jobs?filter=latest&per_page=100"]);
+  assert.equal(over.code, 1);
+  assert.match(over.lines.at(-1)!, /^::error::/);
+  assert.equal(runFor(BUDGET_S).code, 0);
 });
