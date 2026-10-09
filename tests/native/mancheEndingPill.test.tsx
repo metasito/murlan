@@ -111,6 +111,17 @@ describe('the score pill at the end of a manche', () => {
     await view.unmount();
   });
 
+  it('keeps the glow fading through the next deal', async () => {
+    const view = await render(table(noop));
+    await advance(deal);
+    await act(async () => view.rerender(table(noop, { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false })));
+    await advance(16);
+    expect(glow()).toBeGreaterThan(0.5);
+    await advance(1000);
+    expect(glow()).toBe(0);
+    await view.unmount();
+  });
+
   it('under reduced motion starts settled, and its glow still fades over its length', async () => {
     setMotionPreference('on');
     const view = await render(table(noop));

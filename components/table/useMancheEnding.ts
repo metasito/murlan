@@ -16,7 +16,7 @@ import type { TableTimeline } from "./tableTimeline";
 const { settled, glowEnd, pileFade: pileFadeAt } = mancheEndingOnsets(0);
 
 export interface MancheEndingClock {
-  /** ms since the landing that ended the manche; MANCHE_IDLE with no ending running. */
+  /** ms since the landing that ended the manche, 0 while that play flies; MANCHE_IDLE before any ending. */
   clock: SharedValue<number>;
   pileOpacity: SharedValue<number>;
   /** Jumps a running ending to the settled pill; the deal keeps its own time. */
@@ -62,12 +62,19 @@ export function useMancheEnding({
   useEffect(() => {
     if (!ended) {
       endedAt.current = null;
+      // The deal comes before the glow has faded: a started ending runs on to its end.
+      if (!started.current) {
+        cancelAnimation(clock);
+        clock.set(MANCHE_IDLE);
+      }
       started.current = false;
-      cancelAnimation(clock);
-      clock.set(MANCHE_IDLE);
       return;
     }
-    if (endedAt.current === null) endedAt.current = performance.now();
+    if (endedAt.current === null) {
+      endedAt.current = performance.now();
+      cancelAnimation(clock);
+      clock.set(0);
+    }
     if (started.current || inFlight || pending()) return;
     started.current = true;
     // A landing older than the ending is an earlier play's: nothing flew for this one.
@@ -92,7 +99,7 @@ export function useMancheEnding({
 
   const skip = useCallback(() => {
     const e = clock.get();
-    if (e >= 0 && e < settled) runFrom(settled);
+    if (started.current && e < settled) runFrom(settled);
   }, [clock, runFrom]);
 
   return { clock, pileOpacity, skip };

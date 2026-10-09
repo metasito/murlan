@@ -12,7 +12,13 @@ async function mount(timeline: Timeline) {
     (t: Timeline) => useMancheEnding({ ended: true, timeline: t, pileEmpty: false, onLanded: landed }),
     { initialProps: timeline }
   );
-  return { landed, rerender: (t: Timeline) => act(async () => view.rerender(t)), unmount: () => view.unmount() };
+  return {
+    landed,
+    clock: () => view.result.current.clock.get(),
+    skip: () => view.result.current.skip(),
+    rerender: (t: Timeline) => act(async () => view.rerender(t)),
+    unmount: () => view.unmount(),
+  };
 }
 
 beforeEach(() => {
@@ -43,6 +49,15 @@ describe('the start of a manche ending', () => {
     expect(landed).not.toHaveBeenCalled();
     await rerender({ inFlight: false, landsAt: null, pending: () => false });
     expect(landed).toHaveBeenCalledTimes(1);
+    await unmount();
+  });
+
+  it('holds the pill on the standings before the manche while that play flies, a tap included', async () => {
+    const { clock, skip, unmount } = await mount({ inFlight: true, landsAt: null, pending: () => false });
+    expect(clock()).toBe(0);
+    await act(async () => skip());
+    jest.advanceTimersByTime(100);
+    expect(clock()).toBe(0);
     await unmount();
   });
 
