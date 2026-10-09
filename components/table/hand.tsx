@@ -432,11 +432,11 @@ function CardItemBase({
     };
   });
   const place = rects?.place;
-  const rectOf = (p: ReturnType<typeof pose>) => {
+  const rectOf = (p: ReturnType<typeof pose>, liftNow: number, glowNow: number, panNow: number, handLift: number, motionNow: TableMotion) => {
     "worklet";
     if (!place) return null;
-    const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftY.value / selectLift, glow: glow.value };
-    return designRect(handCard(place, card, panShown(place.pan.value, place.panLimit), place.lift.value), place.felt, place.motion.value);
+    const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftNow / selectLift, glow: glowNow };
+    return designRect(handCard(place, card, panShown(panNow, place.panLimit), handLift), place.felt, motionNow);
   };
   useCardRect(
     rects?.table ?? null,
@@ -445,15 +445,17 @@ function CardItemBase({
     () => {
       "worklet";
       const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
-      return p.opacity > 0 ? rectOf(p) : null;
+      if (!place || p.opacity <= 0) return null;
+      return rectOf(p, liftY.value, glow.value, place.pan.value, place.lift.value, place.motion.value);
     }
   );
   useAnimatedReaction(
     () => (dealClock ? dealClock.value : -1),
     (now, prev) => {
       const landAt = dealAt + DEAL_FLIGHT_MS;
-      if (!onDealt || prev === null || prev >= landAt || now < landAt) return;
-      const r = rectOf(pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, false, now));
+      if (!onDealt || !place || prev === null || prev >= landAt || now < landAt) return;
+      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, false, now);
+      const r = rectOf(p, liftY.value, glow.value, place.pan.value, place.lift.value, place.motion.value);
       if (r) scheduleOnRN(onDealt, r.x, r.y);
     }
   );

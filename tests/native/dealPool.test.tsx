@@ -114,7 +114,8 @@ describe('the deal flies on a pool of backs', () => {
       const t = clock.value;
       const poses = backs();
       slots.forEach((slot, i) => expect(poses[i]).toMatchObject(dealPose(legAt(slot, t), t)));
-      for (const p of poses) if (p.opacity === 1) shrunk.push(Number(p.transform.find((s: Record<string, number>) => 'scale' in s)?.scale));
+      for (const p of poses as { opacity?: number; transform?: Record<string, number>[] }[])
+        if (p.opacity === 1) shrunk.push(Number(p.transform?.find((s) => 'scale' in s)?.scale));
       expect(poses.filter((p) => p.opacity === 1)).toHaveLength(legs.filter((l) => inAir(l, t)).length);
       for (const slot of slots) if (inAir(legAt(slot, t), t)) flown.add(legAt(slot, t).key);
     });
