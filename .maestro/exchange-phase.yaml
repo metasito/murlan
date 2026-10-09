@@ -1,7 +1,7 @@
 ##
 # Exchange-phase flow: plays the first hand of a real offline "Partita"
-# (match format, not "Manche secca") far enough to reach the result screen,
-# advances to the second manche, and drives the exchange the engine runs on
+# (match format, not "Manche secca") until it ends on the table, which deals
+# the second manche itself, and drives the exchange the engine runs on
 # that deal — see #55 and docs/GAME-RULES.md §10.
 #
 # Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
@@ -14,12 +14,11 @@
 # adds the format tile's own name over offline-game.yaml's flow — not a
 # second play strategy. One hand is enough: `dealFrom` (context/GameContext.tsx,
 # called by both `startNextHand` and `startNewMatch`) builds `exchangePhase`
-# synchronously with the deal, before the table remounts.
+# synchronously with the deal.
 #
-# The ceremony's own overlay (`<ExchangeAnnouncement>`, testID
-# `exchange-announce`) is waited for below, after the `btn-prossima-manche`
-# tap that deals the hand it fires on: the overlay may not be up yet the
-# instant that tap returns, so this polls rather than asserting once.
+# The ceremony's own overlay (`<ExchangeLegs>`, testID `exchange-announce`)
+# is what ends hand 1's pass loop below: the table deals hand 2 on its own
+# clock, so no command marks the moment it fires.
 # `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS` is the authority on how
 # long that hold lasts and why; not repeated here. What the exchange
 # *decides* is asserted by the unit tests, which can see it — this flow only
@@ -27,8 +26,8 @@
 #
 # This flow does not play the second hand out: a dealt hand with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the
-# whole claim. Costing this flow only one hand plus one "Prossima manche"
-# tap over offline-game.yaml's own budget is deliberate — #823 is open on
+# whole claim. Costing this flow only one hand over offline-game.yaml's own
+# budget is deliberate — #823 is open on
 # wall-clock already too slow to gate a PR.
 #
 # See offline-game.yaml for the performance note on `waitToSettleTimeoutMs`
@@ -97,32 +96,20 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Hand 1: pass whenever legal, until the hand empties and the result screen replaces the table ---
+# --- Hand 1: pass whenever legal, until the table deals hand 2 and its exchange shows ---
+# `btn-passa` stays drawn, disabled, through the table's ending, so it cannot mark the hand's end.
 - repeat:
-    times: 30
+    times: 45
     while:
-      visible:
-        id: "btn-passa"
+      notVisible:
+        id: "exchange-announce"
     commands:
       - tapOn:
           id: "btn-passa"
           optional: true
           waitToSettleTimeoutMs: 500
 
-# --- Result screen: a "Partita" is not over after one hand, so "Prossima manche" replaces "Manche secca"'s "Casa" ---
-- extendedWaitUntil:
-    visible:
-      id: "btn-prossima-manche"
-    timeout: 30000
-- tapOn:
-    id: "btn-prossima-manche"
-    waitToSettleTimeoutMs: 500
-
-# --- Hand 2: the deal the exchange runs on ---
-- extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 90000
+# --- Hand 2: a "Partita" is not over after one hand, so the table deals the next one itself ---
 - extendedWaitUntil:
     visible:
       id: "exchange-announce"

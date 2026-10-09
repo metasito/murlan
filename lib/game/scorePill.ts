@@ -15,6 +15,13 @@ export interface PillRow {
   /** Shared by rows level on points. */
   place: number;
   mine: boolean;
+  /** The total before the manche just played. */
+  before: number;
+  beforePlace: number;
+  /** The row's index in the standings before the manche, a tie kept in today's order. */
+  beforePos: number;
+  /** When its gain counts in: its place in the manche's finishing order. */
+  order: number;
 }
 
 export interface PillStandings {
@@ -44,7 +51,7 @@ export function scorePillStandings({
   };
   const viewerTeam = players.find((p) => p.id === viewerId)?.team;
 
-  let entries: (Omit<PillRow, "place"> & { finishedAt: number })[];
+  let entries: (Omit<PillRow, "place" | "before" | "beforePlace" | "beforePos" | "order"> & { finishedAt: number })[];
   if (teams) {
     const teamOf = Object.fromEntries(players.map((p) => [p.id, p.team ?? ""]));
     const totals = aggregateTeamScores(scores, teamOf);
@@ -70,10 +77,16 @@ export function scorePillStandings({
     }));
   }
 
-  const rows = standings(entries.map((e) => ({ ...e, points: e.gain }))).map(
-    ({ finishedAt: _f, points: _p, ...row }, _i, all): PillRow => ({
+  const ranked = standings(entries.map((e) => ({ ...e, points: e.gain, before: e.total - e.gain })));
+  const beforeOrder = ranked.map((_, i) => i).sort((a, b) => ranked[b].before - ranked[a].before || a - b);
+  const finishOrder = ranked.map((_, i) => i).sort((a, b) => ranked[a].finishedAt - ranked[b].finishedAt || a - b);
+  const rows = ranked.map(
+    ({ finishedAt: _f, points: _p, ...row }, i, all): PillRow => ({
       ...row,
       place: 1 + all.filter((other) => other.total > row.total).length,
+      beforePlace: 1 + all.filter((other) => other.before > row.before).length,
+      beforePos: beforeOrder.indexOf(i),
+      order: finishOrder.indexOf(i),
     })
   );
   const mine = rows.find((r) => r.mine);

@@ -558,6 +558,23 @@ export const Reconnect = {
   lampRate: 1,
 } as const;
 
+/** A manche ending on the table, in ms from the landing that ends it: the lantern mockup's `payoff` (#1266). */
+export const MancheEnding = {
+  open: 700,
+  openFor: 240,
+  gain: 900,
+  gainStep: 120,
+  popFor: 180,
+  countFor: 500,
+  rerank: 1500,
+  rerankFor: 300,
+  close: 2150,
+  closeFor: 250,
+  glowFor: 900,
+  pileFadeFor: 150,
+  deal: 2500,
+} as const;
+
 /**
  * How long `step` runs for this player.
  *

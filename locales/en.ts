@@ -359,6 +359,7 @@ export const en = {
   "gameShared.emptyTable": "— Table clear —",
   "gameShared.yourTurn": "Your turn",
   "gameShared.turnOf": "{{name}}'s turn",
+  "gameShared.handOver": "Hand over",
   "gameShared.passedLabel": "PASSED",
 
   // -------------------------------------------------------------- game.*
@@ -401,6 +402,7 @@ export const en = {
   "gameTable.startCardBannerSelf": "You start! You hold the {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "It's your turn.",
   "gameTable.a11yTurnOf": "{{name}}'s turn.",
+  "gameTable.a11yHandOver": "The hand is over.",
   "gameTable.a11yEmptyTable": "No cards on the table.",
   "gameTable.a11yYouPlayed": "You played {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} played {{label}}.",
@@ -689,9 +691,6 @@ export const en = {
   "result.statTarget": "Target",
   "result.statMode": "Mode",
   "result.home": "Home",
-  "result.leaveConfirmTitle": "Leave the match?",
-  "result.leaveConfirmBody": "The match is still being played. Going home discards it and the scores so far.",
-  "result.leaveConfirmConfirm": "Leave",
   "result.nextHand": "Next hand",
   "result.newMatch": "New match",
   "result.tableStops": "The table stops here",

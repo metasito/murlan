@@ -116,6 +116,7 @@ import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
+import { useMancheEnding } from "@/components/table/useMancheEnding";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -295,6 +296,11 @@ export interface GameTableProps {
   onExchangeGive: (cardId: string) => void;
   /** The exchange's choice opens: the received card has landed and been read. The offline bot winner gives on it. */
   onExchangeReady?: () => void;
+  /**
+   * Present where a manche ends on the table: the score pill's payoff runs, and this hears the
+   * landing that ended it, which the next deal is timed from (`MancheEnding.deal`).
+   */
+  onMancheLanded?: (landsAt: number) => void;
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
@@ -354,6 +360,7 @@ export function GameTable({
   onQuit,
   onExchangeGive,
   onExchangeReady,
+  onMancheLanded,
   turnTimer,
   exchangeAnnouncement,
   rematchPrompt,
@@ -640,6 +647,7 @@ export function GameTable({
   // whatever it was for, so the pill never costs a play. The pill's own box is left to
   // the pill, whose press toggles it.
   const closeScoreElsewhere = (e: GestureResponderEvent) => {
+    mancheEnding.skip();
     if (scoreOpen) {
       const hit = scorePillHitBox(1, 0, pillAnchor, TOUCH_TARGET_MIN);
       const { pageX: x, pageY: y } = e.nativeEvent;
@@ -721,10 +729,12 @@ export function GameTable({
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
+        handOver: gameState.gameOver,
       },
       tableA11yStrings
     );
   }, [
+    gameState.gameOver,
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
     gameState.currentTurnIndex,
@@ -816,6 +826,12 @@ export function GameTable({
     handOrigins,
     roomW: frame.fieldRoomW,
     catchUp,
+  });
+  const mancheEnding = useMancheEnding({
+    ended: gameState.gameOver && !matchOver && onMancheLanded !== undefined,
+    timeline,
+    pileEmpty: trick.plays.length === 0,
+    onLanded: onMancheLanded,
   });
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
 
@@ -975,7 +991,7 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerOnMove = isMyTurn && !isFinished;
+  const viewerOnMove = isMyTurn && !isFinished && !gameState.gameOver;
   const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
@@ -1112,11 +1128,20 @@ export function GameTable({
                 scale={scale}
                 lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
                 chipText={
-                  exchangeChip ?? (viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName }))
+                  exchangeChip ??
+                  (gameState.gameOver
+                    ? t("gameShared.handOver")
+                    : viewerOnMove
+                      ? t("gameShared.yourTurn")
+                      : t("gameShared.turnOf", { name: onMoveName }))
                 }
                 spokenSeat={
                   exchangeChip ??
-                  (viewerOnMove ? t("gameTable.a11yYourTurn") : t("gameTable.a11yTurnOf", { name: onMoveName }))
+                  (gameState.gameOver
+                    ? t("gameTable.a11yHandOver")
+                    : viewerOnMove
+                      ? t("gameTable.a11yYourTurn")
+                      : t("gameTable.a11yTurnOf", { name: onMoveName }))
                 }
                 seconds={turnTimer?.seconds ?? 0}
                 active={timerActive}
@@ -1137,6 +1162,7 @@ export function GameTable({
               open={scoreOpen}
               onPress={() => setScoreOpen((open) => !open)}
               anchor={pillAnchor}
+              ending={mancheEnding.clock}
             />
           </Animated.View>
         )}
@@ -1336,6 +1362,7 @@ export function GameTable({
                   scale={scale}
                   note={pileNote}
                   hidden={startCardDue}
+                  opacity={mancheEnding.pileOpacity}
                 />
 
                 {/* Centred on the same point the pile draws at, so the burst

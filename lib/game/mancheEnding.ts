@@ -1,0 +1,90 @@
+// A manche's ending on the table (#1266): when the score pill opens, counts each gain in,
+// re-ranks and closes, and when the next deal comes, all from one clock — the ms since the
+// landing that ended the manche, or MANCHE_IDLE with no ending running.
+//
+// Free of runtime `@/` imports, so `node --test` can load it — docs/agents/checks.md,
+// "Node's TypeScript loader".
+import { MancheEnding as M } from "../tokens.ts";
+
+export const MANCHE_IDLE = -1;
+
+export interface MancheOnsets {
+  open: number;
+  /** One per row, in finishing order. */
+  gains: number[];
+  rerank: number;
+  close: number;
+  /** The pill is closed on the new standings: where a tap or reduced motion jumps to. */
+  settled: number;
+  pileFade: number;
+  deal: number;
+  glowEnd: number;
+}
+
+export function mancheEndingOnsets(rows: number): MancheOnsets {
+  const settled = M.close + M.closeFor;
+  return {
+    open: M.open,
+    gains: Array.from({ length: rows }, (_, i) => M.gain + i * M.gainStep),
+    rerank: M.rerank,
+    close: M.close,
+    settled,
+    pileFade: M.deal - M.pileFadeFor,
+    deal: M.deal,
+    glowEnd: settled + M.glowFor,
+  };
+}
+
+const SETTLED = M.close + M.closeFor;
+
+function clamp01(k: number): number {
+  "worklet";
+  return Math.min(1, Math.max(0, k));
+}
+function backOut(k: number): number {
+  "worklet";
+  return k <= 0 ? 0 : 1 + 2.70158 * Math.pow(k - 1, 3) + 1.70158 * Math.pow(k - 1, 2);
+}
+function easeOut(k: number): number {
+  "worklet";
+  return 1 - Math.pow(1 - k, 3);
+}
+function easeInOut(k: number): number {
+  "worklet";
+  return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+}
+
+/** How far open the ending holds the pill; back-out overshoots 1. */
+export function mancheOpen(e: number): number {
+  "worklet";
+  if (e < M.open || e >= SETTLED) return 0;
+  if (e < M.close) return backOut(clamp01((e - M.open) / M.openFor));
+  return 1 - easeOut(clamp01((e - M.close) / M.closeFor));
+}
+
+/** The row's "+gain", 0 to 1 with a back-out; shown only while the pill is up. */
+export function mancheRowPop(e: number, order: number): number {
+  "worklet";
+  if (e < 0 || e >= SETTLED) return 0;
+  return backOut(clamp01((e - (M.gain + order * M.gainStep)) / M.popFor));
+}
+
+/** How far the row's total has counted from before the manche to after it. */
+export function mancheRowCount(e: number, order: number): number {
+  "worklet";
+  if (e < 0) return 1;
+  return easeOut(clamp01((e - (M.gain + order * M.gainStep)) / M.countFor));
+}
+
+/** From the order before the manche (0) to the order after it (1). */
+export function mancheRerank(e: number): number {
+  "worklet";
+  if (e < 0) return 1;
+  return easeInOut(clamp01((e - M.rerank) / M.rerankFor));
+}
+
+export function mancheGlow(e: number, changed: boolean): number {
+  "worklet";
+  if (!changed || e < SETTLED) return 0;
+  return 1 - clamp01((e - SETTLED) / M.glowFor);
+}

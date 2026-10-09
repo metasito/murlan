@@ -345,9 +345,10 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
     test.setTimeout(4 * 60_000);
     await page.setViewportSize({ width: size.width, height: size.height });
 
-    await resumeSaved(page, baseURL!, offlineGameSave(4, CLOSING_HAND_CARDS));
-    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()) });
-    await expect(page.getByTestId("btn-prossima-manche")).toBeVisible({ timeout: 15_000 });
+    const save = offlineGameSave(4, CLOSING_HAND_CARDS);
+    await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
+    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()), rematch: true });
+    await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 15_000 });
     await settled(page, 2500);
     await sweepSizes(page, "result board");
   });

@@ -362,6 +362,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.turnOf": "Radha e {{name}}",
+  "gameShared.handOver": "Dora mbaroi",
   "gameShared.passedLabel": "KALOI",
 
   // -------------------------------------------------------------- game.*
@@ -404,6 +405,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.startCardBannerSelf": "Fillon ti! Ke {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "Është radha jote.",
   "gameTable.a11yTurnOf": "Radha e {{name}}.",
+  "gameTable.a11yHandOver": "Dora mbaroi.",
   "gameTable.a11yEmptyTable": "Asnjë letër në tavolinë.",
   "gameTable.a11yYouPlayed": "Ke luajtur {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} luajti {{label}}.",
@@ -692,9 +694,6 @@ export const sq: Record<keyof typeof en, string> = {
   "result.statTarget": "Objektivi",
   "result.statMode": "Modaliteti",
   "result.home": "Kreu",
-  "result.leaveConfirmTitle": "Të braktiset ndeshja?",
-  "result.leaveConfirmBody": "Ndeshja vazhdon ende. Kthimi te kreu e anulon atë, bashkë me pikët e deritanishme.",
-  "result.leaveConfirmConfirm": "Dil",
   "result.nextHand": "Dora tjetër",
   "result.newMatch": "Ndeshje e re",
   "result.tableStops": "Tavolina ndalon këtu",

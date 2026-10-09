@@ -12,7 +12,9 @@
 // flexbox, so a native test cannot say how tall either button ended up, nor
 // where the pair landed relative to the rankings — which is the whole ticket.
 //
-// One hand is played, once, and the window is then resized through the
+// A manche ends on the table, so only a partita reaches /result: one of a
+// single manche is played, once, with the viewer voting for a rematch so the
+// screen offers Nuova partita, and the window is then resized through the
 // ticket's list. Re-playing per viewport would cost five games to measure a
 // layout that is a function of the window alone.
 import { test, expect } from "./fixtures";
@@ -22,6 +24,7 @@ import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
 const RESULT_URL = /\/result/;
+const PRIMARY = "btn-nuova-partita";
 const SCREEN = "body";
 /** The winner's swell rings for ~9s of spring time, and Reanimated caps a frame's step at 64ms, so a starved runner stretches it. */
 const REST_TIMEOUT_MS = 45_000;
@@ -90,12 +93,12 @@ test("the result screen's actions read as a pair, below the rankings, at every s
   test.setTimeout(5 * 60_000);
   await seedRandomness(page, DEAL_SEED);
   await openApp(page, baseURL!);
-  // A match rather than a single hand: `continueAction` is null once a match is
-  // over and nobody has asked for a rematch, and a spec measuring a button that
-  // is not rendered would pass by finding nothing.
-  await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "match" });
+  await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
   await driveGameToCompletion(page, {
     isFinished: async (p) => RESULT_URL.test(p.url()),
+    // With nobody asking for a rematch there is no `primary`, and a spec measuring a
+    // button that is not rendered would pass by finding nothing.
+    rematch: true,
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
   await expect(page).toHaveURL(RESULT_URL);
@@ -113,7 +116,7 @@ test("the result screen's actions read as a pair, below the rankings, at every s
 
     const [home, primary, rankings] = await boxes(
       page,
-      ["btn-home", "btn-prossima-manche", "result-rankings"],
+      ["btn-home", PRIMARY, "result-rankings"],
       vp.width
     );
 
@@ -163,8 +166,8 @@ test("the result screen's actions read as a pair, below the rankings, at every s
     // The label fits on one line without being cut. `numberOfLines={1}` stops
     // it wrapping, so the failure it can still have is an ellipsis — which the
     // ticket asks against just as much as a wrap does.
-    const clipped = await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="btn-prossima-manche"]');
+    const clipped = await page.evaluate((primary) => {
+      const btn = document.querySelector(`[data-testid="${primary}"]`);
       return [...(btn?.querySelectorAll("*") ?? [])]
         .filter((el) => (el.textContent ?? "").trim().length > 0)
         .filter((el) => el.scrollWidth > el.clientWidth + 1)
@@ -173,7 +176,7 @@ test("the result screen's actions read as a pair, below the rankings, at every s
           scrollW: el.scrollWidth,
           clientW: el.clientWidth,
         }));
-    });
+    }, PRIMARY);
     expect(clipped, `at ${vp.name} the primary's label must not be cut off`).toEqual([]);
 
     // Nothing may reach past the window: the pair is a row now, and a row of

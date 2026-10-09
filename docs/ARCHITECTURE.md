@@ -304,8 +304,9 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   `celebration()` takes an ordered candidate list and passes over any id naming no seat.
 - **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
   order, placement colours and labels, and the ceremony's own clock.
-- **`components/ResultBoard.tsx`** — the end-of-manche screen for both modes; `app/result.tsx`
-  and the online `GameOverOverlay` are thin callers.
+- **`components/ResultBoard.tsx`** — the results board: offline `app/result.tsx` shows it after a
+  partita, the online `GameOverOverlay` after a manche too; both are thin callers. Offline a manche
+  ends on the table (`lib/game/mancheEnding.ts`, the score pill's payoff) and deals the next one.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 
