@@ -1,13 +1,24 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   Easing,
   ReduceMotion,
+  useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
+import {
+  MANCHE_IDLE,
+  mancheGlow,
+  mancheOpen,
+  mancheRerank,
+  mancheRowCount,
+  mancheRowPop,
+} from "@/lib/game/mancheEnding";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Rect } from "react-native-svg";
 import { TableText } from "./TableText";
@@ -49,6 +60,9 @@ import {
 const OPEN_EASING = Easing.out(Easing.back(1.70158));
 const CLOSE_EASING = Easing.out(Easing.cubic);
 const SHADOW = withAlpha(Colors.shadow, PILL_SHADOW.alpha);
+const GLOW = withAlpha(Colors.goldLit, 0.55);
+const GLOW_BLUR = 18;
+const GAIN_FROM_SCALE = 0.5;
 
 // The mockup's px, multiplied by `anchor.unit`.
 const PX = {
@@ -87,7 +101,7 @@ export function ScorePill({
   onPress,
   anchor,
   board,
-  payoff,
+  ending,
 }: {
   standings: PillStandings;
   target: number;
@@ -97,16 +111,42 @@ export function ScorePill({
   anchor: PillAnchor;
   /** From the open panel (0) to the end-of-partita board (1); the board's own content is #1267's. */
   board?: SharedValue<number>;
-  /** How far each row's "+gain" from the manche just played is shown; #1266 drives it. */
-  payoff?: SharedValue<number>;
+  /** The manche ending's clock (`lib/game/mancheEnding.ts`), which opens, counts in, re-ranks and closes the pill. */
+  ending?: SharedValue<number>;
 }) {
   const { t, tn } = useTranslation();
   const reduce = usePrefersReducedMotion();
   const progress = useSharedValue(0);
   const still = useSharedValue(0);
+  const idle = useSharedValue(MANCHE_IDLE);
   const boardProgress = board ?? still;
-  const payoffProgress = payoff ?? still;
+  const clock = ending ?? idle;
+  const shownOpen = useDerivedValue(() => Math.max(progress.value, mancheOpen(clock.value)));
   const u = anchor.unit;
+  const mineRow = standings.rows.find((r) => r.mine);
+  const glows = (mineRow?.gain ?? 0) > 0;
+
+  const counts = standings.rows.map(({ before, total, order, beforePlace, place }) => ({ before, total, order, beforePlace, place }));
+  const [countedKey, setCountedKey] = useState("");
+  useAnimatedReaction(
+    () => {
+      const e = clock.value;
+      const reranked = mancheRerank(e) >= 0.5;
+      return counts
+        .map((r) => `${Math.round(r.before + (r.total - r.before) * mancheRowCount(e, r.order))}:${reranked ? r.place : r.beforePlace}`)
+        .join(",");
+    },
+    (key, prev) => {
+      if (key !== prev) scheduleOnRN(setCountedKey, key);
+    }
+  );
+  const counted = countedKey.split(",").map((cell) => cell.split(":").map(Number));
+  const shownOf = (i: number) => {
+    const row = standings.rows[i];
+    const [total, place] = counted.length === standings.rows.length ? counted[i] : [row.total, row.place];
+    return { total, place };
+  };
+  const mineShown = mineRow ? shownOf(standings.rows.indexOf(mineRow)) : null;
 
   useEffect(() => {
     progress.value = withTiming(open ? 1 : 0, {
@@ -117,28 +157,29 @@ export function ScorePill({
   }, [open, reduce, progress]);
 
   const traceRead = useCallback(() => {
-    const box = scorePillBox(progress.value, boardProgress.value, anchor);
-    return { x: box.x, y: box.y, w: box.w, h: box.h, open: progress.value };
-  }, [progress, boardProgress, anchor]);
+    const box = scorePillBox(shownOpen.value, boardProgress.value, anchor);
+    return { x: box.x, y: box.y, w: box.w, h: box.h, open: shownOpen.value, ending: clock.value };
+  }, [shownOpen, boardProgress, anchor, clock]);
   useTraceSource("scorePill", traceRead);
 
   const hitStyle = useAnimatedStyle(() => {
-    const hit = scorePillHitBox(progress.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
+    const hit = scorePillHitBox(shownOpen.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
     return { left: hit.x, top: hit.y, width: hit.w, height: hit.h };
   });
   const pillStyle = useAnimatedStyle(() => {
-    const box = scorePillBox(progress.value, boardProgress.value, anchor);
-    const hit = scorePillHitBox(progress.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
+    const box = scorePillBox(shownOpen.value, boardProgress.value, anchor);
+    const hit = scorePillHitBox(shownOpen.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
     return { top: box.y - hit.y, width: box.w, height: box.h, borderRadius: box.radius };
   });
-  const liftStyle = useAnimatedStyle(() => ({ opacity: scorePillLift(progress.value, boardProgress.value) }));
+  const liftStyle = useAnimatedStyle(() => ({ opacity: scorePillLift(shownOpen.value, boardProgress.value) }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: mancheGlow(clock.value, glows) }));
   const shadowOf = ({ offsetY, blur }: { offsetY: number; blur: number }) => ({
     boxShadow: `0px ${offsetY * u}px ${blur * u}px ${PILL_SHADOW.spread * u}px ${SHADOW}`,
   });
-  const chipStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(progress.value, boardProgress.value).chip }));
+  const chipStyle = useAnimatedStyle(() => ({ opacity: scorePillFades(shownOpen.value, boardProgress.value).chip }));
   // Transparent is not enough: the rows would still be laid out past the pill, off the screen's right edge.
   const panelStyle = useAnimatedStyle(() => {
-    const panel = scorePillFades(progress.value, boardProgress.value).panel;
+    const panel = scorePillFades(shownOpen.value, boardProgress.value).panel;
     return { opacity: panel, display: panel > 0 ? "flex" : "none" };
   });
   const headerStyle = useAnimatedStyle(() => {
@@ -186,13 +227,13 @@ export function ScorePill({
             <Rect x={4} y={1.5} width={3} height={9.5} rx={0.6} />
             <Rect x={8} y={3.5} width={3} height={7.5} rx={0.6} opacity={0.7} />
           </Svg>
-          {mine ? (
+          {mineShown ? (
             <>
               <TableText style={[styles.you, { fontSize: small, letterSpacing: PX.youTracking * u }]}>
                 {t("scorePill.you")}
               </TableText>
-              <TableText style={[styles.total, { fontSize: tableFontSize(FontSize.sm, u) }]}>
-                {mine.total}
+              <TableText testID="score-pill-total" style={[styles.total, { fontSize: tableFontSize(FontSize.sm, u) }]}>
+                {mineShown.total}
                 <TableText style={[styles.of, { fontSize: small }]}>/{target}</TableText>
               </TableText>
               <View style={[styles.sep, { height: PX.sepH * u }]} />
@@ -209,7 +250,7 @@ export function ScorePill({
                     { fontSize: small, paddingHorizontal: PX.badgePadH * u, paddingVertical: PX.badgePadV * u },
                   ]}
                 >
-                  {t("scorePill.place", { place: mine.place })}
+                  {t("scorePill.place", { place: mineShown.place })}
                 </TableText>
               </View>
             </>
@@ -220,7 +261,7 @@ export function ScorePill({
           )}
           <Chevron up={false} unit={u} />
         </Animated.View>
-        {mine && (
+        {mineShown && (
           <Animated.View
             style={[
               styles.track,
@@ -232,7 +273,7 @@ export function ScorePill({
               colors={[Colors.goldDark, Colors.goldLit]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={[styles.trackFill, { width: progress01(mine.total) }]}
+              style={[styles.trackFill, { width: progress01(mineShown.total) }]}
             />
           </Animated.View>
         )}
@@ -261,17 +302,19 @@ export function ScorePill({
             <StandingRowView
               key={row.key}
               row={row}
+              shown={shownOf(pos)}
               name={nameOf(row)}
               initial={row.mine && !standings.teams ? t("scorePill.you") : row.initial}
               pos={pos}
               board={boardProgress}
-              payoff={payoffProgress}
+              ending={clock}
               unit={u}
-              fill={progress01(row.total)}
+              target={target}
             />
           ))}
         </Animated.View>
       </Animated.View>
+      <Animated.View pointerEvents="none" style={[styles.shadow, styles.glow, { boxShadow: `0px 0px ${GLOW_BLUR * u}px ${GLOW}` }, pillStyle, glowStyle]} />
     </Animated.View>
   );
 }
@@ -282,23 +325,26 @@ function StandingRowView({
   initial,
   pos,
   board,
-  payoff,
+  ending,
   unit: u,
-  fill,
+  target,
+  shown: { total, place },
 }: {
   row: PillRow;
   name: string;
   initial: string;
   pos: number;
   board: SharedValue<number>;
-  payoff: SharedValue<number>;
+  ending: SharedValue<number>;
   unit: number;
-  fill: `${number}%`;
+  target: number;
+  shown: { total: number; place: number };
 }) {
   const w = PILL_ROW.w * u;
   const h = PILL_ROW.h * u;
+  const { before, total: after, order, beforePos } = row;
   const placed = useAnimatedStyle(() => {
-    const at = scorePillRow(pos, board.value, u);
+    const at = scorePillRow(beforePos + (pos - beforePos) * mancheRerank(ending.value), board.value, u);
     return {
       transform: [
         { translateX: at.x + (w * (at.scale - 1)) / 2 },
@@ -307,7 +353,14 @@ function StandingRowView({
       ],
     };
   });
-  const shown = useAnimatedStyle(() => ({ opacity: Math.min(1, payoff.value) }));
+  const popStyle = useAnimatedStyle(() => {
+    const pop = mancheRowPop(ending.value, order);
+    return { opacity: Math.min(1, pop), transform: [{ scale: GAIN_FROM_SCALE + (1 - GAIN_FROM_SCALE) * pop }] };
+  });
+  const fillStyle = useAnimatedStyle(() => {
+    const counted = before + (after - before) * mancheRowCount(ending.value, order);
+    return { width: `${(Math.min(counted, target) / target) * 100}%` };
+  });
   const text = tableFontSize(FontSize.xs, u);
   return (
     <Animated.View
@@ -320,7 +373,7 @@ function StandingRowView({
       ]}
     >
       {row.mine && <View style={[styles.rowMineBar, { width: PX.meBar * u }]} />}
-      <TableText style={[styles.place, { width: PX.place * u, fontSize: text }]}>{row.place}</TableText>
+      <TableText style={[styles.place, { width: PX.place * u, fontSize: text }]}>{place}</TableText>
       <LinearGradient
         colors={[Colors.seatDisc, Colors.seatDiscDeep]}
         start={{ x: 0, y: 0 }}
@@ -335,15 +388,17 @@ function StandingRowView({
         {name}
       </TableText>
       <View style={[styles.bar, { width: PX.bar * u, height: PX.barH * u, borderRadius: (PX.barH * u) / 2 }]}>
-        <LinearGradient
-          colors={[Colors.goldDark, Colors.gold]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.barFill, { width: fill, borderRadius: (PX.barH * u) / 2 }]}
-        />
+        <Animated.View style={[styles.barFill, { borderRadius: (PX.barH * u) / 2 }, fillStyle]}>
+          <LinearGradient
+            colors={[Colors.goldDark, Colors.gold]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </Animated.View>
         <View style={[styles.tick, { height: PX.tickH * u, top: ((PX.barH - PX.tickH) / 2) * u }]} />
       </View>
-      <Animated.View style={shown}>
+      <Animated.View style={popStyle}>
         <TableText
           style={[styles.gain, row.gain === 0 && styles.gainNone, { width: PX.cell * u, fontSize: tableFontSize(FontSize.xxs, u) }]}
         >
@@ -351,7 +406,7 @@ function StandingRowView({
         </TableText>
       </Animated.View>
       <TableText style={[styles.rowTotal, { width: PX.cell * u, fontSize: tableFontSize(FontSize.sm, u) }]}>
-        {row.total}
+        {total}
       </TableText>
     </Animated.View>
   );
@@ -404,7 +459,8 @@ const styles = StyleSheet.create({
   name: { flex: 1, fontFamily: "Rajdhani_600SemiBold", color: Colors.textSecondary, textTransform: "uppercase" },
   nameMine: { color: Colors.goldLit },
   bar: { backgroundColor: Colors.track },
-  barFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
+  barFill: { position: "absolute", left: 0, top: 0, bottom: 0, overflow: "hidden" },
+  glow: { borderWidth: 1, borderColor: Colors.goldLit },
   tick: { position: "absolute", right: -1, width: 1, backgroundColor: Colors.goldStrong },
   gain: { fontFamily: "Rajdhani_700Bold", color: Colors.goldLit, textAlign: "right" },
   gainNone: { color: Colors.textSecondary },

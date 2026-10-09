@@ -3,7 +3,7 @@
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true offline and nowhere else: the AI turn loop, the AI's
 // side of the exchange phase, a local response timer that auto-passes,
-// and navigation to the results screen.
+// the next deal after a manche, and navigation to the results screen after a partita.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
@@ -22,6 +22,7 @@ import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
+import { MancheEnding } from "@/lib/theme";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -50,7 +51,7 @@ export default function GameScreen() {
     acknowledgeExchange,
     releaseStuckExchange,
   } = useLocalExchange();
-  const { match, rematchPromptOpen, rematchAnswers, rematchTally, answerRematch } = useLocalMatch();
+  const { match, rematchPromptOpen, rematchAnswers, rematchTally, answerRematch, startNextHand } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never
@@ -59,11 +60,13 @@ export default function GameScreen() {
   const passTurnRef = useRef(passTurn);
   const chooseExchangeRef = useRef(chooseExchangeCard);
   const releaseStuckRef = useRef(releaseStuckExchange);
+  const startNextHandRef = useRef(startNextHand);
   useEffect(() => {
     runAITurnRef.current = runAITurn;
     passTurnRef.current = passTurn;
     chooseExchangeRef.current = chooseExchangeCard;
     releaseStuckRef.current = releaseStuckExchange;
+    startNextHandRef.current = startNextHand;
   });
 
   // tests/e2e/helpers/mockupParity.ts times each bot's turn to the mockup's hand-offs.
@@ -93,10 +96,19 @@ export default function GameScreen() {
   // Every hook runs unconditionally, before the null guard below.
 
   useEffect(() => {
-    if (!gameState?.gameOver) return;
+    if (!gameState?.gameOver || !match.over) return;
     const t = setTimeout(() => router.replace("/result"), RESULT_DELAY);
     return () => clearTimeout(t);
-  }, [gameState?.gameOver]);
+  }, [gameState?.gameOver, match.over]);
+
+  const [mancheLandedAt, setMancheLandedAt] = useState<number | null>(null);
+  const mancheEnding = gameState?.gameOver === true && !match.over;
+  if (!mancheEnding && mancheLandedAt !== null) setMancheLandedAt(null);
+  useEffect(() => {
+    if (mancheLandedAt === null) return;
+    const t = setTimeout(() => startNextHandRef.current(), mancheLandedAt + MancheEnding.deal - performance.now());
+    return () => clearTimeout(t);
+  }, [mancheLandedAt]);
 
   // AI turn loop. The key identifies one AI turn — seat, pass count and the
   // combination on the table — and is null whenever no AI is on move, so an
@@ -176,6 +188,7 @@ export default function GameScreen() {
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onExchangeReady={onExchangeReady}
+      onMancheLanded={mancheEnding ? setMancheLandedAt : undefined}
       onQuit={() =>
         setConfirming({
           title: t("offlineGame.quitConfirmTitle"),

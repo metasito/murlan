@@ -42,7 +42,31 @@ describe("scorePillStandings, solo", () => {
   });
 
   test("each row carries its total, its last gain and a one-letter disc", () => {
-    assert.deepEqual(s.rows[0], { key: "player_1", name: "Luan", initial: "L", total: 12, gain: 3, place: 1, mine: false });
+    assert.deepEqual(s.rows[0], {
+      key: "player_1",
+      name: "Luan",
+      initial: "L",
+      total: 12,
+      gain: 3,
+      place: 1,
+      mine: false,
+      before: 9,
+      beforePlace: 1,
+      beforePos: 0,
+      order: 0,
+    });
+  });
+
+  test("each row knows where it stood before the manche, which the ending re-ranks it from", () => {
+    assert.deepEqual(
+      s.rows.map((r) => [r.key, r.before, r.beforePos, r.beforePlace]),
+      [
+        ["player_1", 9, 0, 1],
+        ["player_0", 6, 2, 3],
+        ["player_2", 7, 1, 2],
+        ["player_3", 3, 3, 4],
+      ]
+    );
   });
 });
 
@@ -78,6 +102,16 @@ describe("scorePillStandings, teams", () => {
       [false, true]
     );
     assert.deepEqual(s.mine, { total: 7, place: 2 });
+  });
+
+  test("a pair's gain counts in at its better partner's finish", () => {
+    assert.deepEqual(
+      s.rows.map((r) => [r.key, r.order]),
+      [
+        ["B", 1],
+        ["A", 0],
+      ]
+    );
   });
 
   test("a pair level on points is ordered by its better partner's finish", () => {

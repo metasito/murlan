@@ -375,6 +375,8 @@ export interface PileLayerProps {
   scale?: number;
   /** Out of the layout while something else holds the centre: plays at rest hide, and a play still moving keeps moving. */
   hidden?: boolean;
+  /** The whole pile's, for its fade before the next deal. */
+  opacity?: SharedValue<number>;
 }
 
 /**
@@ -386,6 +388,9 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
+  const opaque = useSharedValue(1);
+  const shown = props.opacity ?? opaque;
+  const fadeStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
 
   const on = useRef(props);
   useEffect(() => {
@@ -472,7 +477,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
 
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
-    <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
+    <Animated.View style={[pileStyles.pileArea, hidden && pileStyles.aside, fadeStyle]} testID="pile-area">
       {roundWinner && !hidden ? (
         <Animated.View
           exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit).reduceMotion(ReduceMotion.Never)}
@@ -526,7 +531,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
           </View>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 });
 // ─── getComboLabel ────────────────────────────────────────────────────────────
