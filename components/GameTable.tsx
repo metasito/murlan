@@ -126,7 +126,7 @@ import { useSameCards } from "@/components/useSameCards";
 import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
 import { warmCourtArt } from "@/components/CardView";
-import { BombBurst, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
+import { BombBurst, BombFlash, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
@@ -1514,6 +1514,7 @@ export function GameTable({
 
         {portrait && <RotateOverlay />}
       </Animated.View>
+      <BombFlash landing={landingSignal} />
     </View>
     </CardCastContext.Provider>
     </CardTableProvider>

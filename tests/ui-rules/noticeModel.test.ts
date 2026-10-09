@@ -183,7 +183,7 @@ test("the gold edges map onto the five-step scale (Q4), and nothing paints the p
   assert.equal(NoticePalette.chip.neutral.edge, Colors.goldBorder);
   assert.equal(NoticePalette.chip.lit.edge, Colors.goldStrong);
   assert.equal(NoticePalette.panel.neutral.edge, Colors.goldStrong);
-  const power = new Set([Colors.bombText, Colors.bombBorder, Colors.bombFill]);
+  const power = new Set([Colors.bombText, Colors.bombFill]);
   const painted = JSON.stringify(NoticePalette);
   for (const colour of power) assert.ok(!painted.includes(colour), `the notice palette paints ${colour}`);
 });

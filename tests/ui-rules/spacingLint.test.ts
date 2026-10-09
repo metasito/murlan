@@ -202,7 +202,7 @@ describe("a bare millisecond is refused wherever Reanimated takes one", () => {
 
   test("a named constant is accepted — that is the escape for what is not motion", () => {
     assert.ok(!timed("const s = { duration: Reading.notice };"));
-    assert.ok(!timed("const s = { delay: SPARK_LEAD_MS + i * SPARK_PHASE_MS };"));
+    assert.ok(!timed("const s = { delay: LEAD_MS + i * PHASE_MS };"));
   });
 
   test("zero is accepted, and so is a duration that is not a timing", () => {

@@ -26,8 +26,9 @@ import { RestAir } from "@/lib/tokens";
 import { createAir, mothPose, MOTES, relit, stepAir, type Air, type MothPose, type MoteLight } from "./air";
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
-import { createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { useLandingReaction } from "./useLandingReaction";
+import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
 import { CELLS, D, DRAW_STRIDE, layout, layoutMotes, SHEET, SPARK_LEN, SPRITE_R } from "./particleSprites";
 
@@ -142,6 +143,16 @@ export function ParticleLayer({ ref, rig, landing }: {
       for (const p of dust) spawn(v.s, p);
       return v;
     }, true);
+  });
+  useBombBeat(landing, reduced, (l) => {
+    "worklet";
+    const fx = bombFx(l, still.value, sx, sy, Math.random);
+    field.modify((v) => {
+      "worklet";
+      for (const p of fx) spawn(v.s, p);
+      return v;
+    }, true);
+    scheduleOnRN(traceOnset, "moment", "bombFx");
   });
 
   // The compiler drops a `useCallback` around a worklet — useLampRig.ts.

@@ -1,7 +1,7 @@
-// tests/native/bombBurstNodeBudget.test.tsx — the spark burst's own node
+// tests/native/bombBurstNodeBudget.test.tsx — the bomb burst's own node
 // budget (#765): "~24 nodes... that was the prototype's figure and it is the
 // budget", and "a test pins the count rather than trusting the
-// implementation to stay honest." A source scan can only read `SPARK_COUNT`;
+// implementation to stay honest." A source scan can only read the source;
 // it cannot see what mounting `BombBurst` actually costs, so this mounts the
 // real tree and counts what react-test-renderer actually built. `Flare` and
 // `LampLift` are a plain filled+shadowed circle rather than an `<Svg>` (a
@@ -14,7 +14,6 @@ import React from "react";
 import { render } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
 import { BombBurst, LampLift } from "@/components/table/moments";
-import { SPARK_COUNT } from "@/components/flightPhysics";
 import { TABLE_CENTRE, restingLamp } from "@/components/table/lampRig";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 
@@ -80,7 +79,7 @@ describe("the bomb burst's own node budget (#765)", () => {
     const count = countNodes(r.toJSON());
     expect(count).toBeLessThanOrEqual(NODE_BUDGET);
     // Not vacuous: a burst that rendered nothing would also stay under budget.
-    expect(count).toBeGreaterThan(SPARK_COUNT);
+    for (const id of ["bomb-wave-0", "bomb-wave-1", "bomb-flare"]) expect(findByTestID(r.toJSON(), id)).not.toBeNull();
 
     await r.unmount();
   });

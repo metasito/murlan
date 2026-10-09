@@ -3,7 +3,7 @@
 // 874 × 402 points. It draws nothing, and game information never passes through it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { Dust } from "../../lib/tokens.ts";
+import { BombFx, Dust } from "../../lib/tokens.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
 import { MOTES } from "./air.ts";
 
@@ -166,4 +166,28 @@ export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | 
   "worklet";
   if (reduced || l.catchUp) return [];
   return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
+}
+
+/** The mockup's `bombFx` sparks and embers, thrown `BombFx.delayMs` after a bomb's landing at `x`, `y`. */
+export function bombFx(l: Pick<LandingPayload, "x" | "y">, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
+  "worklet";
+  if (reduced) return [];
+  const R = (a: number, b: number) => a + rng() * (b - a);
+  const x0 = l.x / sx;
+  const y0 = l.y / sy;
+  const out: ParticleSpawn[] = [];
+  for (let i = 0; i < 48; i++) {
+    const a = R(0, TAU);
+    const s = R(160, 540);
+    const x = x0 + R(-20, 20);
+    const y = y0 + R(-20, 20);
+    out.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, g: 520, drag: 0.965, life: R(0.5, 1.2), size: BombFx.sparkSizes[i % 3], col: BombFx.sparks[i % 3], shape: "spark" });
+  }
+  for (let i = 0; i < 18; i++) {
+    const x = x0 + R(-40, 40);
+    const vx = R(-30, 30);
+    const vy = R(-90, -30);
+    out.push({ x, y: y0, vx, vy, g: -10, drag: 0.985, life: R(1.5, 2.6), size: R(1, 2), col: BombFx.ember, glow: 6 });
+  }
+  return out;
 }

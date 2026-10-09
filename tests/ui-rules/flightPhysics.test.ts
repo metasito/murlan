@@ -55,10 +55,7 @@ import {
   passedSeats,
   seatsJustPassed,
   floatTop,
-  sparkOffset,
-  SPARK_COUNT,
   flareKindFor,
-  sparksFor,
   lampLiftFor,
   type ImpactTier,
   type FlareKind,
@@ -869,17 +866,10 @@ describe("the lamp's flare and lift (#765)", () => {
     }
   });
 
-  test("a straight or flush lands at its own tier and gets neither a flare nor a spark", () => {
+  test("a straight or flush lands at its own tier and gets no flare", () => {
     // The rung this ticket's own tier table names "Ordinary win, straight /
     // flush" — the row `comboImpactTier` calls "straightFlush", never a bomb.
     assert.equal(flareKindFor("straightFlush"), "none");
-    assert.equal(sparksFor("straightFlush"), false);
-  });
-
-  test("sparksFor never disagrees with flareKindFor — every tier that flares also sparks", () => {
-    for (const tier of ALL_TIERS) {
-      assert.equal(sparksFor(tier), flareKindFor(tier) !== "none", `${tier} spark/flare must agree`);
-    }
   });
 
   test("only the manche rung lifts the lamp — the row that hands over to the banner instead of flaring", () => {
@@ -1145,49 +1135,6 @@ describe("flightOrigin", () => {
   test("SEAT_DISC is declared in seatLayout.ts and nowhere else", () => {
     const SEAT_DISC_DECL = /(?<![\w$])(?:const|let|var)\s+SEAT_DISC(?![\w$])/g;
     assert.deepEqual(scan(SEAT_DISC_DECL), ["components/seatLayout.ts: const SEAT_DISC"]);
-  });
-});
-
-describe("sparkOffset", () => {
-  test("16 sparks ring the impact, evenly spaced", () => {
-    assert.equal(SPARK_COUNT, 16);
-  });
-
-  test("the first spark flies straight out along +x, unsquashed there", () => {
-    const s = sparkOffset(0, 1);
-    assert.equal(s.dx, 110);
-    assert.equal(s.dy, 0);
-    assert.equal(s.delay, 60);
-  });
-
-  test("a quarter turn round the ring flies +y, squashed to .62", () => {
-    // i = 4: angle = (4/16)*2π = π/2, distance = 110 + (4%4)*34 = 110.
-    const s = sparkOffset(4, 1);
-    assert.ok(Math.abs(s.dx) < 1e-9);
-    assert.equal(Math.round(s.dy), 68); // 110 * 0.62
-  });
-
-  test("distance steps every 4th spark, delay every 5th — the two cycles fall out of phase", () => {
-    const near = sparkOffset(0, 1);
-    const far = sparkOffset(1, 1);
-    assert.equal(Math.hypot(near.dx, near.dy / 0.62), 110);
-    assert.equal(Math.hypot(far.dx, far.dy / 0.62), 144); // 110 + 34
-    assert.equal(sparkOffset(5, 1).delay, 60); // (5 % 5) === 0, same as spark 0
-  });
-
-  test("distance scales with the table; delay is a stagger and never does", () => {
-    const s = sparkOffset(0, 2);
-    assert.equal(s.dx, 220);
-    assert.equal(s.delay, 60);
-  });
-
-  test("every spark before SPARK_COUNT has a distinct angle", () => {
-    const angles = new Set<string>();
-    for (let i = 0; i < SPARK_COUNT; i++) {
-      const s = sparkOffset(i, 1);
-      angles.add(Math.atan2(s.dy / 0.62, s.dx).toFixed(6));
-    }
-    assert.equal(angles.size, SPARK_COUNT);
   });
 });
 

@@ -9,7 +9,7 @@
 //
 // This file does neither: `useTableFeedback` is not mocked at all, `GameTable`
 // is mounted for real, a play lands for real, and the animated style is read
-// back off the real rendered `bomb-flare`/`spark-0`/`lamp-lift` nodes the way
+// back off the real rendered `bomb-flare`/`bomb-flash`/`lamp-lift` nodes the way
 // tests/native/pileFlinch.test.tsx reads a rendered transform — the one path
 // a hardcoded trigger literal in GameTable's own JSX cannot survive.
 //
@@ -127,18 +127,17 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
     jest.useRealTimers();
   });
 
-  it("a bomb landing visibly flares and sparks through GameTable's own wiring, not a mock of it", async () => {
+  it("a bomb landing visibly flares and flashes through GameTable's own wiring, not a mock of it", async () => {
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
     const { frame, drawn } = await frameOfFirst(r, () => opacityOf(r, "bomb-flare") > 0);
     expect(drawn[frame]).toBeLessThanOrEqual(1);
     expect(drawn[frame - 1]).toBeGreaterThan(1);
-    // Past spark 0's own lead delay (60ms) — see tests/native/bombBurstAnimatesVisibly.test.tsx.
     await act(async () => {
-      jest.advanceTimersByTime(90);
+      jest.advanceTimersByTime(100);
     });
 
-    expect(opacityOf(r, "spark-0")).toBeGreaterThan(0);
+    expect(opacityOf(r, "bomb-flash")).toBeGreaterThan(0);
 
     await r.unmount();
   });
@@ -165,11 +164,11 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
 
     await frameOfFirst(r, () => farthest(r) <= 1);
     await act(async () => {
-      jest.advanceTimersByTime(90);
+      jest.advanceTimersByTime(100);
     });
 
     expect(opacityOf(r, "bomb-flare")).toBe(0);
-    expect(opacityOf(r, "spark-0")).toBe(0);
+    expect(opacityOf(r, "bomb-flash")).toBe(0);
 
     await r.unmount();
   });

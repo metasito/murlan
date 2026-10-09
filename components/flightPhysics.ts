@@ -253,61 +253,10 @@ export function flareKindFor(tier: ImpactTier): FlareKind {
   return "none";
 }
 
-/**
- * Whether a tier's landing throws sparks off the point of impact. Never
- * disagrees with `flareKindFor`: every tier that flares also sparks, in the
- * table #101 settled, so this reads that one derivation rather than carrying
- * a second membership test that could drift from it.
- */
-export function sparksFor(tier: ImpactTier): boolean {
-  return flareKindFor(tier) !== "none";
-}
-
 /** Whether a tier's landing lifts the lamp rather than flaring it. */
 export function lampLiftFor(tier: ImpactTier): boolean {
   "worklet";
   return tier === "mancheWon";
-}
-
-// ─── Bomb burst ────────────────────────────────────────────────────────────────
-
-/** Spark dots ringing the bomb's impact point. */
-export const SPARK_COUNT = 16;
-
-interface SparkOffset {
-  /** Where the spark ends up, relative to the impact point. */
-  dx: number;
-  dy: number;
-  /** ms before this spark's own animation starts. */
-  delay: number;
-}
-
-/**
- * The burst's own head start, and the gap between its five phases. Off the
- * Motion scale on purpose: every other timing in the app is chosen to line up
- * with its neighbours, and these two are chosen against each other so that
- * sixteen sparks read as debris rather than as one ring leaving at once.
- */
-const SPARK_LEAD_MS = 60;
-const SPARK_PHASE_MS = 22;
-
-/**
- * Where the i-th of `SPARK_COUNT` sparks flies to, and when it starts —
- * derived from its index so every client draws the same burst. `dy` is
- * squashed to .62 of the unsquashed distance: sparks land in a shallow
- * ellipse, not a circle, the way debris does on a table seen from above
- * rather than face-on. The distance steps every 4th spark and the delay
- * every 5th, so the two cycles fall out of phase across the ring instead of
- * both resetting at the same spark.
- */
-export function sparkOffset(i: number, scale: number): SparkOffset {
-  const angle = (i / SPARK_COUNT) * Math.PI * 2;
-  const dist = (110 + (i % 4) * 34) * scale;
-  return {
-    dx: Math.cos(angle) * dist,
-    dy: Math.sin(angle) * dist * 0.62,
-    delay: SPARK_LEAD_MS + (i % 5) * SPARK_PHASE_MS,
-  };
 }
 
 // ─── Seat anchors ──────────────────────────────────────────────────────────────
