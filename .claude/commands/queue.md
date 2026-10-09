@@ -187,7 +187,6 @@ Then leave through **Leaving C**.
   why in the commit.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
-- **Batch what does not depend on the last answer.**
 
 ### Leaving C
 
@@ -391,4 +390,3 @@ the exact failure, and the one decision needed. `.loop-stop` is the supervisor's
 ## Output
 
 Phase F step 4's `LOOP-RESULT` line is the last thing you emit, and the only summary you write.
-No other section may claim the final line.
