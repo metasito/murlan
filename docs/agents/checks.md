@@ -82,7 +82,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 drive `smoke`, `offline-game`, `exchange-phase` and `rematch-prompt` on a real simulator or
 emulator; `ios.yml` runs them as parallel shards, one macOS job each, and its `Drive the app on a
 real iOS simulator` job is green only when every shard ran and passed
-(`tests/tooling/iosShards.test.ts`) and the run, first job start to last job end, took at most
+(`tests/tooling/iosShards.test.ts`) and the run's attempt, first job start to last job end, took at most
 `BUDGET_S` in `tools/ci/ios-wall.mjs`, read from the run's own jobs API. Each shard boots its
 simulator beside the app job and waits for that job's upload (`tools/ci/await-artifact.mjs`),
 going red when the app job ends without one. A shard never builds: when no native build for the branch's
