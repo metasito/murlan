@@ -132,7 +132,7 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   const unlit = await page.addStyleTag({ content: UNLIT_AIR });
   await twoFrames(page);
   const withoutAir = (await feltPixels(page)).pixels.data;
-  await unlit.evaluate((tag) => tag.remove());
+  await unlit.evaluate((tag) => tag.parentNode!.removeChild(tag));
   expect(sampled.equals(withoutAir), "the felt's sample leaves out the motes, which are laid at random on every load").toBe(true);
   const app = await appShadows(page);
   await page.context().close();
