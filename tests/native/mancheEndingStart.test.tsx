@@ -61,6 +61,20 @@ describe('the start of a manche ending', () => {
     await unmount();
   });
 
+  it('runs a started ending on through the deal, whatever the table does next', async () => {
+    const landed = { inFlight: false, landsAt: null, pending: () => false };
+    const view = await renderHook(
+      ({ ended, t }: { ended: boolean; t: Timeline }) => useMancheEnding({ ended, timeline: t, pileEmpty: false }),
+      { initialProps: { ended: true, t: landed } }
+    );
+    await act(async () => void jest.advanceTimersByTime(2500));
+    await act(async () => view.rerender({ ended: false, t: landed }));
+    await act(async () => view.rerender({ ended: false, t: { ...landed, inFlight: true } }));
+    await act(async () => void jest.advanceTimersByTime(100));
+    expect(view.result.current.clock.get()).toBeGreaterThan(2500);
+    await view.unmount();
+  });
+
   it('starts at the ending itself when the last landing was an earlier play', async () => {
     const endedAt = performance.now();
     const { landed, unmount } = await mount({ inFlight: false, landsAt: endedAt - 1000, pending: () => false });

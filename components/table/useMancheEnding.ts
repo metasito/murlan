@@ -61,6 +61,7 @@ export function useMancheEnding({
   const { inFlight, landsAt, pending } = timeline;
   useEffect(() => {
     if (!ended) {
+      if (endedAt.current === null) return;
       endedAt.current = null;
       // The deal comes before the glow has faded: a started ending runs on to its end.
       if (!started.current) {
