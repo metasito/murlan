@@ -369,6 +369,8 @@ export default function OnlineGameScreen() {
                 ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
                 handRecorded={handRecorded}
                 match={matchState}
+                ownLink={ownLink}
+                onRetry={retryConnection}
               />
             )}
           </View>

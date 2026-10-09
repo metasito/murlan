@@ -13,6 +13,7 @@ import type { GameState } from "@/lib/game/gameEngine";
 import { standings } from "@/lib/game/standings";
 import { celebratesViewer, celebration, isDrawnHand, handOutcomeFor } from "@/lib/game/matchState";
 import type { OnlineMatchState } from "@/context/OnlineGameContext";
+import type { OwnLink } from "@/lib/ownLink";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
@@ -42,6 +43,8 @@ export function GameOverOverlay({
   ratingDelta,
   handRecorded,
   match,
+  ownLink,
+  onRetry,
 }: {
   gameState: GameState;
   topPad: number;
@@ -63,6 +66,8 @@ export function GameOverOverlay({
   /** Whether the hand just played wrote a `/api/stats/history` row. */
   handRecorded: boolean;
   match: OnlineMatchState;
+  ownLink?: OwnLink;
+  onRetry?: () => void;
 }) {
   const { t } = useTranslation();
   // Closed until asked for: the breakdown's queries do not run, so reaching
@@ -248,6 +253,11 @@ export function GameOverOverlay({
         }}
         primary={primary}
         footer={breakdown}
+        linkLost={
+          ownLink === "lost" && onRetry
+            ? { text: t("onlineGame.connectionLost"), retry: { label: t("common.retry"), onPress: onRetry } }
+            : undefined
+        }
         topPad={topPad}
         bottomPad={bottomPad}
         leftPad={leftPad}
