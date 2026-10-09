@@ -66,8 +66,12 @@ test("the hand fan in ios.yml's felt-settled.png on main scores as aliased", () 
   assert.ok(verdict.score < SOFT_MIN, `score ${verdict.score}`);
 });
 
-test("the same hand fan in Chromium at the simulator's scale scores as anti-aliased", () => {
-  const verdict = capture("edge-chromium-antialiased");
-  assert.ok(verdict.lines >= 200, `scored ${verdict.lines} lines`);
-  assert.ok(verdict.score >= SOFT_MIN, `score ${verdict.score}`);
-});
+for (const [name, where] of [
+  ["edge-chromium-antialiased", "in Chromium at the simulator's scale"],
+  ["edge-ios-antialiased", "in the simulator, each outline layer carrying a perspective"],
+])
+  test(`the same hand fan ${where} scores as anti-aliased`, () => {
+    const verdict = capture(name);
+    assert.ok(verdict.lines >= 200, `scored ${verdict.lines} lines`);
+    assert.ok(verdict.score >= SOFT_MIN, `score ${verdict.score}`);
+  });
