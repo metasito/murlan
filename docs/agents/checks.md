@@ -422,9 +422,11 @@ the spec count, not the colour).
 ## Remaining traps
 
 - **`git worktree remove --force` deletes straight through a `node_modules` junction into the
-  shared install and exits 0, silently.** `tools/loop/guard-bash.mjs` blocks the raw `--force` and
-  points at `worktrees:remove` (rule 39);
-  `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the defect. `npm run worktrees:prune`
+  shared install and exits 0, silently, on Git for Windows before 2.54.0.** From 2.54.0 it
+  spares the install but leaves the junction standing in an unregistered directory, for the next
+  `rm -r` to follow. `tools/loop/guard-bash.mjs` blocks the raw `--force` and points at
+  `worktrees:remove` (rule 39); `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the
+  defect and pins the version where it changed, on the Windows CI leg. `npm run worktrees:prune`
   (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
   It only ever removes worktrees directly under `.worktrees/`; one registered anywhere else is a
   person's, and only `worktrees:remove` takes it.

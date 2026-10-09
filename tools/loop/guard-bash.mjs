@@ -6,7 +6,7 @@
  *   git add -A / . / --all / -u      sessions share an index; a bare add absorbs another session's work
  *                                    (allowed on pathspecs inside the current .worktrees/agent-N)
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
- *   git worktree remove --force, rm -r .worktrees/…   delete through a node_modules junction
+ *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
  *   git push … main                  lands code with no CI
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
@@ -643,9 +643,10 @@ const RULES = [
       (c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "remove" && has(c.args, /^(--force|-f+)$/)),
     message:
       "Deleting a worktree by force is blocked: if its node_modules is a junction, " +
-      "git worktree remove --force, rm -r and Remove-Item -Recurse delete through the link into " +
-      "the shared install and still exit 0. That is how " +
-      "C:\\Users\\roton\\murlan\\node_modules was emptied.\n" +
+      "rm -r, Remove-Item -Recurse and, on Git for Windows before 2.54.0, git worktree remove " +
+      "--force delete through the link into the shared install and still exit 0. That is how " +
+      "C:\\Users\\roton\\murlan\\node_modules was emptied. From 2.54.0 git spares the install " +
+      "but leaves the junction standing in an unregistered directory, for the next rm -r to follow.\n" +
       "Use the script that detaches the link first:\n" +
       "  npm run worktrees:remove -- .worktrees/<name>\n" +
       "Better still, do not create the junction: a worktree nested inside the checkout already " +
