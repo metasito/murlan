@@ -51,9 +51,14 @@ test("the gate reads its own attempt's start and latest jobs, and exits red only
   const runFor = (endSecond: number) => {
     const routes: string[] = [];
     const lines: string[] = [];
-    const end = new Date(Date.parse(at(0)) + endSecond * 1000).toISOString();
-    const jobs = [job("Restore the app and bundle its JS", at(0), at(1)), job("flows (smoke)", at(1), end), job(GATE, at(0), null)];
-    const api = (route: string) => (routes.push(route), JSON.stringify(route.includes("/jobs") ? { jobs } : { run_started_at: at(0) }));
+    const end = new Date(Date.parse(at(20)) + endSecond * 1000).toISOString();
+    const jobs = [
+      job("flows (lobby)", at(0), at(1)),
+      job("Restore the app and bundle its JS", at(20), at(21)),
+      job("flows (smoke)", at(21), end),
+      job(GATE, at(20), null),
+    ];
+    const api = (route: string) => (routes.push(route), JSON.stringify(route.includes("/jobs") ? { jobs } : { run_started_at: at(20) }));
     const code = run(GATE, env, api, (line: string) => lines.push(line));
     return { code, routes, lines };
   };
