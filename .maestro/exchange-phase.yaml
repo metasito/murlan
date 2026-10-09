@@ -17,8 +17,8 @@
 # synchronously with the deal.
 #
 # The ceremony's own overlay (`<ExchangeLegs>`, testID `exchange-announce`)
-# is polled for below, from the last command of hand 1: the table deals
-# hand 2 on its own clock, so no command marks the moment it fires.
+# is what ends hand 1's pass loop below: the table deals hand 2 on its own
+# clock, so no command marks the moment it fires.
 # `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS` is the authority on how
 # long that hold lasts and why; not repeated here. What the exchange
 # *decides* is asserted by the unit tests, which can see it — this flow only
@@ -96,12 +96,13 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Hand 1: pass whenever legal, until the hand ends on the table ---
+# --- Hand 1: pass whenever legal, until the table deals hand 2 and its exchange shows ---
+# `btn-passa` stays drawn, disabled, through the table's ending, so it cannot mark the hand's end.
 - repeat:
-    times: 30
+    times: 45
     while:
-      visible:
-        id: "btn-passa"
+      notVisible:
+        id: "exchange-announce"
     commands:
       - tapOn:
           id: "btn-passa"
