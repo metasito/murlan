@@ -245,22 +245,22 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
   // October: 6.3 passes a ticket at 10.8 min each, and every HOLD round re-ran it; D's Spec review catches the rest.
   test("phase C asks the completeness check once per ticket, never in a HOLD or CI round, then names what is left", () => {
     const c = read(QUEUE).split("### Leaving C")[1]?.split("## D — Review")[0] ?? "";
-    assert.match(c, /completeness check, once per ticket[^.]*skipped when the issue already carries a `DOD-CHECK`\s+\(a HOLD or CI round\)/);
+    assert.match(c, /completeness check, once per ticket[^.]*skipped when a `DOD-CHECK` follows the issue's\s+newest `Claimed by` comment\s+\(a HOLD or CI round\)/);
     assert.match(c, /brief\.mjs completeness <n> \.worktrees\/agent-<n>\n/);
     assert.match(c, /`FIX-NOTES <sha>`\s+under `Completeness left:`/);
     assert.doesNotMatch(c, /twice per process|<base>/);
   });
 
-  test("phase C opens the draft with its first commit, so CI judges each push while it builds", () => {
-    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
-    assert.match(work, /draft pull request with your first commit[\s\S]*gh pr create --draft --base main/);
-    assert.match(work, /Before `DOD-CHECK`, read the branch's newest finished run/);
+  // An open pull request is what the supervisor settles: one opened mid-C turns a refused or stalled build into a CI round.
+  test("phase C never opens the pull request; the supervisor does at the D handoff", () => {
+    const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
+    assert.doesNotMatch(c, /gh pr create/);
   });
 
   test("scope grows only to defects in the changed lines; the rest is filed, not built", () => {
     const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
     assert.match(work, /defect in the lines this diff changes is fixed here/);
-    assert.match(work, /Anything else you find is filed, not built/);
+    assert.match(work, /A defect in your own tools, checks or worktree\s+is rule 34's\. Anything else in the product is filed, not built/);
     assert.doesNotMatch(work, /Scope grows to what you find in its area/);
   });
 

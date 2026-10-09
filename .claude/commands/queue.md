@@ -173,7 +173,8 @@ Then leave through **Leaving C**.
 - **Fix the root cause across every caller.**
 - **A diff that describes code is traced here, not in phase D** (rule 20).
 - **A defect in the lines this diff changes is fixed here** (outside a HOLD round): add a
-  Definition-of-done box, name it in the PR body. Anything else you find is filed, not built:
+  Definition-of-done box, name it in the PR body. A defect in your own tools, checks or worktree
+  is rule 34's. Anything else in the product is filed, not built:
   `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>` —
   `ready-for-agent` when its Definition of done has no open box, `ready-for-human` only when it
   needs an account, a device, a design or a policy call. If it cannot start until this lands,
@@ -182,17 +183,12 @@ Then leave through **Leaving C**.
   why in the commit.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
   `Co-Authored-By: <your model's name> <noreply@anthropic.com>`.
-- **Open the draft pull request with your first commit**, so CI judges every push while you build:
-  `git push -u origin HEAD`, then
-  `gh pr create --draft --base main --title "<issue title>" --body "Closes #<n>"`.
-  Before `DOD-CHECK`, read the branch's newest finished run and fix what it names.
-
 ### Leaving C
 
 `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
 
-1. **The completeness check, once per ticket**: skipped when the issue already carries a `DOD-CHECK`
-   (a HOLD or CI round). One `sonnet` subagent whose prompt
+1. **The completeness check, once per ticket**: skipped when a `DOD-CHECK` follows the issue's
+   newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent whose prompt
    starts with the output of this, verbatim:
 
    ```sh
