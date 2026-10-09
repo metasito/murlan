@@ -42,7 +42,7 @@ const BLOCKING_OVERLAYS: [string, string][] = [
  */
 const NOT_A_BLOCKER: [string, number, string][] = [
   ["components/GameTable.tsx", 3, "the game itself at Layer.table, over the felt it is dealt on — the whole table rather than a layer across it, and the one thing a landing displaces; the score pill's box-none layer, which takes no touch and holds only the pill; and the rail's box-none layer, which takes no touch and holds only the rail, greyed with the table"],
-  ["components/table/scorePill.tsx", 2, "the pill's press target and its open panel, each absolute within the pill's own box, never the table"],
+  ["components/table/scorePill.tsx", 3, "the pill's press target, its open panel and a standing bar's fill, each absolute within its own box, never the table"],
   ["components/table/chrome.tsx", 1, "the rail is a fixed-width strip down one edge: full-height, never full-screen, and the table is laid out beside it"],
   ["app/index.tsx", 1, "the face of one animated card, absolute within that card's own view"],
   ["components/table/ExchangeLegs.tsx", 3, "a traded card's face and back, each absolute within that card's own box; and the pointer-transparent layer the cards and tags ride on"],
