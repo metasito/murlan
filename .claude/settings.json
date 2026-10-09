@@ -32,11 +32,6 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/hint-test-traps.mjs"]
-          },
-          {
-            "type": "command",
-            "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"]
           },
           {
