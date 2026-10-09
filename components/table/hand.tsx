@@ -693,7 +693,7 @@ export const StraightHand = React.memo(function StraightHand({
    * `TableFrame.bottomPad` — the safe-area inset `HAND_ZONE_H` reserves below
    * the row. `descendingId`'s own arrival reads it to start its descent from
    * where the exchange's flying card actually retires (`exchangeArrivalRise`)
-   * rather than from the unrelated height a freshly dealt card drops from.
+   * rather than from the pile a freshly dealt card flies from.
    * Unused, so omittable, on any hand that never receives one.
    */
   handBottomPad?: number;
@@ -879,9 +879,7 @@ export const StraightHand = React.memo(function StraightHand({
   const arcRise = box.h - cardH;
   // Where the exchange's flying card retires, in the row's own baseline units
   // (`exchangeArrivalRise`'s own doc). The arriving card's descent starts
-  // there instead of from `dealRise` above, which is a fixed rise meant for a
-  // card dropping from the deck and unrelated to where any given card in this
-  // hand actually receives one.
+  // there, not at the pile a dealt card flies from.
   //
   // `handCenter` is `arcRise` taller than the row and centres it, so the row's
   // baseline sits half the climb above the zone's own padded floor; and the
