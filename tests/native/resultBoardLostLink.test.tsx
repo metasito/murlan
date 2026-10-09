@@ -74,7 +74,7 @@ describe('the result board over a lost link', () => {
     await view.unmount();
   });
 
-  it.each<OwnLink>(['up', 'reconnecting', 'back'])('shows neither while the link is %s', async (ownLink) => {
+  it.each<OwnLink>(['up', 'dropped', 'reconnecting', 'back'])('shows neither while the link is %s', async (ownLink) => {
     const view = await mountBoard({ ownLink, onRetry: jest.fn() });
     expect(view.queryByTestId('result-link-lost', HIDDEN)).toBeNull();
     expect(view.queryByTestId('result-link-retry', HIDDEN)).toBeNull();
