@@ -51,8 +51,8 @@ const SHOTS = 14;
  * all reach an edge and are bright, and all three move with the kick, so a
  * border-wide sample would report a card face sliding into the strip as an
  * uncovered one. Nothing is drawn into the last three pixels of a corner —
- * `hudLeft` is inset by `frame.pad` — so the only thing that can turn one
- * bright is the window showing through.
+ * `hudLeft` is inset by `frame.pad` — and the bomb's window-wide flash, which
+ * never moves, is hidden, so only the window showing through turns one bright.
  */
 const CORNER_PX = 3;
 
@@ -287,6 +287,8 @@ test.describe("a bomb's landing never moves the felt off the window (#101)", () 
   test("the felt covers every edge through the whole excursion", async ({ page, baseURL }) => {
     test.setTimeout(90_000);
     await armedBomb(page, baseURL!);
+    await expect(page.getByTestId("bomb-flash")).toHaveCount(1);
+    await page.addStyleTag({ content: '[data-testid="bomb-flash"]{visibility:hidden!important}' });
 
     const atRest = await cornerLuminance(page);
 
