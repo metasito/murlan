@@ -853,7 +853,7 @@ describe("the beaten pile's flinch (#764)", () => {
 describe("the lamp's flare and lift (#765)", () => {
   const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
 
-  test("the graduated table #101 settled: only the bomb and the partita flare and spark", () => {
+  test("the graduated table #101 settled: only the bomb and the partita flare", () => {
     const expected: Record<ImpactTier, FlareKind> = {
       ordinary: "none",
       straightFlush: "none",
