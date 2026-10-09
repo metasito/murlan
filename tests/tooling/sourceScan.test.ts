@@ -17,10 +17,13 @@ test("a file git ignores, like a local Playwright report, is not a source", () =
   try {
     execFileSync("git", ["init", "-q"], { cwd: root });
     mkdirSync(path.join(root, "tests", "playwright-report"), { recursive: true });
-    writeFileSync(path.join(root, ".gitignore"), "playwright-report/\n");
+    writeFileSync(path.join(root, ".gitignore"), "playwright-report/\ntests/local.ts\n");
     writeFileSync(path.join(root, "tests", "kept.ts"), "export const a = 1;\n");
+    writeFileSync(path.join(root, "tests", "local.ts"), "`\n");
+    writeFileSync(path.join(root, "tests", "local.tsx"), "export const b = 2;\n");
     writeFileSync(path.join(root, "tests", "playwright-report", "sw.bundle.js"), "`\n");
-    assert.deepEqual(sourcesUnder(root, ["tests"], /\.(tsx?|m?js)$/).map(([f]) => f), ["tests/kept.ts"]);
+    const kept = sourcesUnder(root, ["tests"], /\.(tsx?|m?js)$/).map(([f]) => f).sort();
+    assert.deepEqual(kept, ["tests/kept.ts", "tests/local.tsx"]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -19,7 +19,7 @@ export function sourcesUnder(repoRoot: string, dirs: string[], keep = /\.tsx?$/)
       // file to the next and drop every other one.
       .filter((f) => f.match(keep))
       .map((f) => path.posix.join(dir, f.split(path.sep).join("/")))
-      .filter((rel) => !ignored.some((i) => rel.startsWith(i)))
+      .filter((rel) => !ignored.some((i) => rel === i || (i.endsWith("/") && rel.startsWith(i))))
       .map((rel): [string, string] => [rel, readFileSync(path.join(repoRoot, rel), "utf8")]);
   });
 }
