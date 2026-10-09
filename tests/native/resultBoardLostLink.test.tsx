@@ -26,7 +26,7 @@ const gameState: GameState = {
   lastPlayedCombination: null,
   lastPlayedBy: 0,
   passCount: 0,
-  gameMode: 'individual',
+  gameMode: 'free_for_all',
   roundWinner: null,
   gameOver: true,
   rankings: ['player_0', 'player_1', 'player_2', 'player_3'],
