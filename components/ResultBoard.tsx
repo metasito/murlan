@@ -49,7 +49,7 @@ import {
   Type,
 } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import { a11yHidden, a11yState } from "@/lib/a11y";
+import { A11yStatus, a11yHidden, a11yState } from "@/lib/a11y";
 import { placementColor, positionLabelKey } from "@/lib/game/placement";
 
 const POSITION_ICONS = ["trophy", "medal", "ribbon", "remove-circle"] as const;
@@ -379,6 +379,7 @@ export function ResultBoard({
   home,
   primary,
   footer,
+  linkLost,
   topPad,
   bottomPad,
   leftPad = 0,
@@ -405,6 +406,8 @@ export function ResultBoard({
   primary?: ContinueAction;
   /** Sits under the standings, inside their scroll. */
   footer?: React.ReactNode;
+  /** The viewer's own connection, given up on while the board covers the table's lost pill. */
+  linkLost?: { text: string; retry: { label: string; onPress: () => void } };
   topPad: number;
   bottomPad: number;
   leftPad?: number;
@@ -424,6 +427,25 @@ export function ResultBoard({
     <View style={styles.headerMulti}>
       <Text style={styles.headerTitle}>{headerTitle}</Text>
       <Text style={styles.headerFormat}>{formatLine}</Text>
+      {linkLost && (
+        <>
+          <A11yStatus label={linkLost.text} live="assertive" />
+          <Text testID="result-link-lost" style={styles.linkLostText} {...a11yHidden()}>
+            {linkLost.text}
+          </Text>
+          <Pressable
+            testID="result-link-retry"
+            onPress={linkLost.retry.onPress}
+            style={styles.retryBtn}
+            accessibilityLabel={linkLost.retry.label}
+            {...a11yState({ role: "button" })}
+          >
+            <Text style={styles.retryText} numberOfLines={1} {...a11yHidden()}>
+              {linkLost.retry.label}
+            </Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 
@@ -707,6 +729,21 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   headerFormat: { ...Type.caption, color: Colors.gold, letterSpacing: 1 },
+  linkLostText: { ...Type.caption, color: Colors.dangerDim },
+  retryBtn: {
+    minWidth: TOUCH_TARGET_MIN,
+    minHeight: TOUCH_TARGET_MIN,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.wide,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.gold,
+  },
+  retryText: {
+    fontFamily: "Rajdhani_700Bold",
+    fontSize: FontSize.md,
+    color: Colors.badgeInk,
+    letterSpacing: 0.5,
+  },
 
   portraitScroll: { padding: Spacing.wide, gap: Spacing.md },
 

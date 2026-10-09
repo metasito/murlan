@@ -2,12 +2,13 @@
 // table replaying: every throw keeps the full flight while the notice is up.
 import { afterEach, describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
+const mockOverlayProps = jest.fn();
 const mockOwnLink = { current: 'up' };
 const mockConnected = { current: true };
 const mockState: { current?: GameState } = {};
@@ -79,6 +80,13 @@ jest.mock('@/context/onlineGameHooks', () => ({
   }),
 }));
 
+jest.mock('@/components/GameOverOverlay', () => ({
+  GameOverOverlay: (props: object) => {
+    mockOverlayProps(props);
+    return null;
+  },
+}));
+
 jest.mock('@/components/GameTable', () => ({
   GameTable: (props: object) => {
     mockTableProps(props);
@@ -104,7 +112,13 @@ describe('the online table under a reconnect notice', () => {
 });
 
 type Connection = { state: string; action?: { onPress: () => void } } | null;
-const lastTable = () => mockTableProps.mock.calls.at(-1)![0] as { ownLink: string; catchUp: boolean; connection: Connection };
+const lastTable = () =>
+  mockTableProps.mock.calls.at(-1)![0] as {
+    ownLink: string;
+    catchUp: boolean;
+    connection: Connection;
+    overlays: (veiled: object) => React.ReactNode;
+  };
 
 describe("the online table on the viewer's own link", () => {
   afterEach(() => {
@@ -112,6 +126,7 @@ describe("the online table on the viewer's own link", () => {
     mockConnected.current = true;
     mockState.current = undefined;
     mockTableProps.mockClear();
+    mockRetry.mockClear();
   });
 
   it('catches up from the drop through the first state after the way back, however late it lands', async () => {
@@ -149,6 +164,29 @@ describe("the online table on the viewer's own link", () => {
     connection?.action?.onPress();
     expect(mockRetry).toHaveBeenCalledTimes(1);
     await view.unmount();
+  });
+
+  it('hands the lost link and the same Riprova to the result board over a finished match', async () => {
+    jest.useFakeTimers();
+    mockOwnLink.current = 'lost';
+    mockState.current = { ...mockMidHand, gameOver: true, rankings: ['player_0', 'player_1'] };
+    const view = await render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <OnlineGameScreen />
+      </SafeAreaProvider>
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    const { overlays } = lastTable();
+    const slot = await render(<SafeAreaProvider initialMetrics={METRICS}>{overlays({})}</SafeAreaProvider>);
+    const board = mockOverlayProps.mock.calls.at(-1)![0] as { ownLink: string; onRetry: () => void };
+    expect(board.ownLink).toBe('lost');
+    board.onRetry();
+    expect(mockRetry).toHaveBeenCalledTimes(1);
+    await slot.unmount();
+    await view.unmount();
+    jest.useRealTimers();
   });
 
   it('says it is reconnecting from the first frame for a socket that was never up', async () => {
