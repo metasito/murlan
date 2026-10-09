@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { blankComments } from "../helpers/sourceScan.ts";
+import { dealBreath } from "../../components/table/dealPose.ts";
+import { Motion } from "../../lib/tokens.ts";
 
 /**
  * #408 withdrew everything behind the settings sheet from the accessibility
@@ -171,10 +173,21 @@ describe("every child of the game table's root answers to the veil", () => {
     const feltStyles = /style=\{\[([^\]]*)\]\}/.exec(feltTag)?.[1].split(",").map((s) => s.trim()) ?? [];
     assert.ok(felt > open && feltStyles.length > 0, "the root's other child is no longer a View with a style list");
     assert.deepEqual(
-      feltStyles.filter((s) => !["StyleSheet.absoluteFill", "FELT_Z", "greyStyle"].includes(s)),
+      feltStyles.filter((s) => !["StyleSheet.absoluteFill", "FELT_Z", "greyStyle", "breathStyle"].includes(s)),
       [],
-      "the felt carries a style that may move it; only the reconnect grey may animate it"
+      "the felt carries a style that may move it; only the reconnect grey and the deal's breath may animate it"
     );
+  });
+
+  test("the felt's breath only scales it, never below 1, so no edge of the window shows", () => {
+    assert.match(source, /const breathStyle = useDealBreath\(/);
+    const deal = blankComments(readFileSync(path.join(repoRoot, "components", "table", "deal.tsx"), "utf8"));
+    const body = deal.slice(deal.indexOf("export function useDealBreath"));
+    const style = /useAnimatedStyle\(\(\) => \((\{[^\n]*\})\)\)/.exec(body)?.[1] ?? "";
+    assert.match(style, /^\{ transform: \[\{ scale: [^\]{}]*dealBreath\([^\]{}]*\}\] \}$/, `the breath's style is no longer a scale from dealBreath alone: ${style}`);
+    for (let since = -20; since <= 120; since += 0.5) {
+      assert.ok(dealBreath(since, Motion.deal.breath) >= 1, `the breath shrinks the felt at ${since} ms`);
+    }
   });
 
   for (const child of children) {
