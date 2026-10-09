@@ -83,7 +83,8 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
 34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
-    worktree is yours to close, not to hand on — outside a review round, which fixes only what its review or CI named. File an issue only for what you tried and could
+    worktree is yours to close, not to hand on — outside a review round, which fixes only what its review or CI named
+    and each sibling of it: the same defect at another site. File an issue only for what you tried and could
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.

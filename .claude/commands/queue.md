@@ -195,8 +195,8 @@ Then leave through **Leaving C**.
    node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n> <base>
    ```
 
-   `<base>` is `origin/main` for the ticket's first check, then the head the last check read or
-   the newest `DOD-CHECK`'s.
+   `<base>` is `origin/main` for the ticket's first check; later, the head this
+   process's previous check read, else the newest `DOD-CHECK`'s.
    Build what it reports partial or missing, failing test first, then ask once more on the new
    diff: at most twice per process. Post what the second answer still reports as `FIX-NOTES <sha>`
    under `Completeness left:`, and go on. Where wrong, check the code, not memory.
@@ -255,8 +255,8 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
    ```
 
-3. **Post the reports** as one comment, first line naming the head they read: the refuter's
-   survivors first, then both reports unmerged.
+3. **Post the reports** as one comment, first line naming the head they read: any refuter's
+   survivors first, then the reports unmerged.
 
    ```
    REVIEW <sha>

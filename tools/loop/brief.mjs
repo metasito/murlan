@@ -62,9 +62,9 @@ const BODIES = {
     "report each test still asserting the old value." +
     (base === "origin/main"
       ? ""
-      : " This is a recheck of what changed since the last check read the branch: report only what this " +
-        "change leaves partial, missing or newly wrong; a box the newest DOD-CHECK ticked stands unless " +
-        "this change touches it."),
+      : " This is a recheck: the diff above is only what changed since the last check. Answer every box " +
+        "again from the code at HEAD; a box the newest DOD-CHECK ticked stands unless this change " +
+        "touches it. Run the caller, name and literal sweeps on this change alone."),
   standards: ({ worktree, base }) =>
     `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +
     "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
