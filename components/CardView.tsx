@@ -754,19 +754,25 @@ export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean 
 export const CardView = React.memo(CardViewBase, cardViewPropsEqual);
 CardView.displayName = "CardView";
 
+// iOS antialiases only the edges of a layer whose own transform rotates, skews or has perspective
+// (RCTViewComponentView.mm), never of the children of a rotated one, so a card's edge layers carry
+// a perspective, which leaves a flat layer where it was.
+const edgeAntialiased = Platform.select({ ios: { transform: [{ perspective: 1000 }] } });
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: Colors.cardPaper,
     borderWidth: 1,
     borderColor: Colors.cardEdge,
     overflow: "hidden",
+    ...edgeAntialiased,
   },
   cardBack: {
     backgroundColor: Colors.felt,
     borderWidth: 1,
   },
   // A solid view under the card rather than a shadow layer: nothing to mask, on the felt or off it.
-  lip: { position: "absolute", left: 0, zIndex: Layer.felt, backgroundColor: Colors.cardLip },
+  lip: { position: "absolute", left: 0, zIndex: Layer.felt, backgroundColor: Colors.cardLip, ...edgeAntialiased },
   stock: { zIndex: Layer.table },
   // The index characters sit in the drawn index column: the suit mark below
   // them comes from the SVG layer, so the two must agree on INDEX_X.

@@ -336,6 +336,10 @@ jobs:
           done
           node tools/ci/feltPixels.mjs "$RUNNER_TEMP/felt/felt-first.png" "$RUNNER_TEMP/felt/felt-settled.png"
 
+      - name: Rotated card edges are anti-aliased
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
+        run: node tools/ci/edgePixels.mjs "$RUNNER_TEMP/felt/felt-settled.png"
+
       - name: Upload the felt screenshots
         if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -16,7 +16,7 @@
 const rootDir = __dirname.replace(/\\/g, '/');
 
 const PILE_ON_ONE_PLATFORM =
-  'Counts pile-card mounts and flight clocks; trick.ts, the pile, useFlightClock and CardView branch only on web, never on ios against android.';
+  'Counts pile-card mounts and flight clocks; trick.ts, the pile and useFlightClock branch only on web, and CardView on ios against android only in a style, never in what mounts.';
 const IOS_ONLY = {
   'everyMomentHasACaller.test.tsx':
     'Asks which moment each table change raises; nothing from GameTable to lib/device/feedback branches on ios against android.',
