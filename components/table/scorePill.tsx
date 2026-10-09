@@ -314,7 +314,7 @@ export function ScorePill({
           ))}
         </Animated.View>
       </Animated.View>
-      <Animated.View pointerEvents="none" style={[styles.shadow, styles.glow, { boxShadow: `0px 0px ${GLOW_BLUR * u}px ${GLOW}` }, pillStyle, glowStyle]} />
+      <Animated.View testID="score-pill-glow" pointerEvents="none" style={[styles.shadow, styles.glow, { boxShadow: `0px 0px ${GLOW_BLUR * u}px ${GLOW}` }, pillStyle, glowStyle]} />
     </Animated.View>
   );
 }
