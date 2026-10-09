@@ -4,6 +4,7 @@ import {
   Easing,
   ReduceMotion,
   useSharedValue,
+  withDelay,
   withTiming,
   type SharedValue,
 } from "react-native-reanimated";
@@ -42,7 +43,6 @@ export function useMancheEnding({
   const pileOpacity = useSharedValue(1);
   const endedAt = useRef<number | null>(null);
   const started = useRef(false);
-  const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const onLandedRef = useRef(onLanded);
   useEffect(() => {
     onLandedRef.current = onLanded;
@@ -74,21 +74,21 @@ export function useMancheEnding({
     const t0 = Math.max(landsAt ?? 0, endedAt.current);
     const now = performance.now();
     runFrom(reduceMotion ? Math.max(now - t0, settled) : now - t0);
-    // On the JS clock the deal runs on, so the reset below always comes after the fade began.
-    fadeTimer.current = setTimeout(
-      () => pileOpacity.set(withTiming(0, { duration: MancheEnding.pileFadeFor, reduceMotion: ReduceMotion.Never })),
-      Math.max(0, t0 + pileFadeAt - now)
+    pileOpacity.set(
+      withDelay(
+        Math.max(0, t0 + pileFadeAt - now),
+        withTiming(0, { duration: MancheEnding.pileFadeFor, reduceMotion: ReduceMotion.Never }),
+        ReduceMotion.Never
+      )
     );
     onLandedRef.current?.(t0);
   }, [ended, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
 
   useEffect(() => {
     if (ended || !pileEmpty) return;
-    clearTimeout(fadeTimer.current);
     cancelAnimation(pileOpacity);
     pileOpacity.set(1);
   }, [ended, pileEmpty, pileOpacity]);
-  useEffect(() => () => clearTimeout(fadeTimer.current), []);
 
   const skip = useCallback(() => {
     const e = clock.get();
