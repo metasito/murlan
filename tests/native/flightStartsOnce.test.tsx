@@ -1,4 +1,4 @@
-// tests/native/flightStartsOnce.test.tsx — jest runs without the React Compiler, so a throw that
+// tests/native/flightStartsOnce.test.tsx — this project runs without the React Compiler, so a throw that
 // restarts on its parent's re-render shows here even when the compiled app hides it.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import { act, render } from '@testing-library/react-native';

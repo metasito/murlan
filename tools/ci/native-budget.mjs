@@ -50,10 +50,11 @@ const keyOf = (project, rootDir, testFilePath) => `${project}:${path.relative(ro
  * The same reading from a local `jest --json` run, printed as information only: timings on a
  * starved machine swing too far to judge by, so CI's run is the judge (queue.md's fix round).
  * @param {{ testResults: { name: string, assertionResults: { duration?: number | null }[] }[] }} json
+ * @param {(testFilePath: string) => string} projectOf
  */
-export function budgetLines(json, project, rootDir) {
+export function budgetLines(json, projectOf, rootDir) {
   return json.testResults.map(({ name, assertionResults }) => {
-    const file = keyOf(project, rootDir, name);
+    const file = keyOf(projectOf(name), rootDir, name);
     return `  ${caseSeconds(assertionResults).toFixed(1)}s of ${EXCEPTIONS[file]?.seconds ?? BUDGET_S}s ${file}`;
   });
 }

@@ -4,7 +4,7 @@
 // Everything is expressed as a fraction of the card's own width or height, so
 // one set of numbers serves both card sizes.
 
-import type { Rank } from "@/lib/game/gameEngine";
+import type { Rank, Suit } from "@/lib/game/gameEngine";
 import { TOUCH_TARGET_MIN } from "../lib/tokens.ts";
 
 // ─── Scale ──────────────────────────────────────────────────────────────────
@@ -291,6 +291,57 @@ export function placedPips(rank: Rank | string, w: number, h: number): PlacedPip
     size,
     flipped: spot.row > 0.5,
   }));
+}
+
+/** Every suit mark on a face: the two indices, then a compact face's one mark, the ace's or the pip field. */
+export function faceMarks(rank: Rank | string, w: number, h: number, compact: boolean): PlacedPip[] {
+  const size = h * INDEX_SUIT_SIZE;
+  const index = [
+    { x: w * INDEX_X, y: h * INDEX_SUIT_Y, size, flipped: false },
+    { x: w - w * INDEX_X, y: h - h * INDEX_SUIT_Y, size, flipped: true },
+  ];
+  if (compact) return [{ x: w * 0.58, y: h * 0.62, size: h * 0.24, flipped: false }, ...index];
+  if (COURT_RANKS.has(rank)) return index;
+  if (rank === "A") return [{ x: w * 0.5, y: h * 0.5, size: h * ACE_PIP_SIZE, flipped: false }, ...index];
+  return [...placedPips(rank, w, h), ...index];
+}
+
+/** Each suit's glyph, 10 units across, centred on the origin. Clubs' lobes wind the same way as its stem, so one nonzero fill joins them. */
+export const SUIT_GLYPHS: Record<Suit, string> = {
+  hearts:
+    "M0,4.7 C-1.7,2.5 -4.7,0.5 -4.7,-1.8 C-4.7,-3.8 -3.3,-4.8 -2.1,-4.8 " +
+    "C-0.9,-4.8 -0.2,-3.9 0,-3.1 C0.2,-3.9 0.9,-4.8 2.1,-4.8 " +
+    "C3.3,-4.8 4.7,-3.8 4.7,-1.8 C4.7,0.5 1.7,2.5 0,4.7 Z",
+  diamonds: "M0,-4.9 L3.5,0 L0,4.9 L-3.5,0 Z",
+  spades:
+    "M0,-4.9 C-0.6,-3.6 -4.6,-0.6 -4.6,1.6 C-4.6,3.2 -3.4,4.0 -2.4,4.0 " +
+    "C-1.4,4.0 -0.7,3.5 -0.3,2.8 C-0.5,3.9 -1.3,4.6 -2.2,5.0 L2.2,5.0 " +
+    "C1.3,4.6 0.5,3.9 0.3,2.8 C0.7,3.5 1.4,4.0 2.4,4.0 C3.4,4.0 4.6,3.2 4.6,1.6 " +
+    "C4.6,-0.6 0.6,-3.6 0,-4.9 Z",
+  clubs:
+    "M-2.3,-2.5 A2.3,2.3 0 1 1 2.3,-2.5 A2.3,2.3 0 1 1 -2.3,-2.5 Z " +
+    "M-5,1.2 A2.3,2.3 0 1 1 -0.4,1.2 A2.3,2.3 0 1 1 -5,1.2 Z " +
+    "M0.4,1.2 A2.3,2.3 0 1 1 5,1.2 A2.3,2.3 0 1 1 0.4,1.2 Z " +
+    "M-2.2,5.0 C-0.9,4.1 -0.4,2.9 -0.3,1.4 L0.3,1.4 C0.4,2.9 0.9,4.1 2.2,5.0 Z",
+};
+
+const px = (v: number) => String(Math.round(v * 100) / 100);
+
+function placeGlyph(glyph: string, mark: PlacedPip): string {
+  const k = (mark.size / 10) * (mark.flipped ? -1 : 1);
+  const at = (x: number, y: number) => `${px(mark.x + k * x)},${px(mark.y + k * y)}`;
+  return glyph.replace(/([MLCA])([^MLCAZ]*)/g, (_, cmd: string, args: string) => {
+    const n = args.trim().split(/[\s,]+/).map(Number);
+    if (cmd === "A") return `A${px(Math.abs(k) * n[0])},${px(Math.abs(k) * n[1])} ${n[2]} ${n[3]} ${n[4]} ${at(n[5], n[6])} `;
+    const points: string[] = [];
+    for (let i = 0; i < n.length; i += 2) points.push(at(n[i], n[i + 1]));
+    return `${cmd}${points.join(" ")} `;
+  });
+}
+
+/** The marks as one path: each SVG element is a native view, and a ten of clubs drew sixty of them. */
+export function suitMarksPath(suit: Suit, marks: readonly PlacedPip[]): string {
+  return marks.map((m) => placeGlyph(SUIT_GLYPHS[suit], m)).join(" ");
 }
 
 export function pipBox(pip: PlacedPip): Box {

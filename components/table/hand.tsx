@@ -582,7 +582,7 @@ function liveFrom(x: () => number, y: () => number, rot: () => number, scale: nu
   };
 }
 
-export function StraightHand({
+export const StraightHand = React.memo(function StraightHand({
   cards,
   store,
   selection,
@@ -1374,7 +1374,7 @@ export function StraightHand({
       </View>
     </View>
   );
-}
+});
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 

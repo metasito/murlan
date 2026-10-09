@@ -51,7 +51,8 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 ## Running each suite
 
 - **Native renderer** (`jest`, `jest-expo`) runs every suite twice, once with `Platform.OS ===
-  'ios'` and once `'android'` — the only layer that runs app code the way a phone does; the web
+  'ios'` and once `'android'`, except a `*.compiled.test.tsx`, which runs once, under the React
+  Compiler (the `compiled` project, which `related-tests.mjs` selects beside `ios`) — the only layer that runs app code the way a phone does; the web
   e2e suite runs through `react-native-web`, which resolves a *different* module graph and takes
   the other side of every `Platform.OS` branch. Tests are named `.test.tsx` on purpose: `node
   --test` globs `tests/**/*.test.ts` and must not pick them up — see *Node's TypeScript loader*.
@@ -227,8 +228,9 @@ Real device/web divergences, verifiable only on hardware:
 - **Safe-area insets** — the native renderer injects fixed metrics; a real notch, dynamic island
   or gesture bar is device-only.
 - **Text rendering** — font-weight synthesis and line breaking differ from the browser.
-- **The New Architecture and the React Compiler** — Fabric and TurboModules are not what Jest
-  renders into.
+- **The New Architecture** — Fabric and TurboModules are not what Jest renders into. The React
+  Compiler runs only in jest's `compiled` project (`tests/native/*.compiled.test.tsx`,
+  `jest.config.js`); the `ios` and `android` projects render the uncompiled tree.
 
 ## Manual device checklist
 

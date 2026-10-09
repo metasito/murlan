@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedReaction,
@@ -376,7 +376,7 @@ export interface PileLayerProps {
  * Every play of the trick and the swept trick, each one group of views from
  * the throw to the end of its sweep, with the pile's chip, note and winner tag.
  */
-export function PileLayer(props: PileLayerProps) {
+export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   const { trick, flights, signal, bombClock, comboLabel, roundWinner, note, roomW, scale = 1, hidden = false } = props;
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
@@ -509,7 +509,7 @@ export function PileLayer(props: PileLayerProps) {
       )}
     </View>
   );
-}
+});
 // ─── getComboLabel ────────────────────────────────────────────────────────────
 
 export function getComboLabel(

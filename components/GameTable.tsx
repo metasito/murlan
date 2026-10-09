@@ -1036,7 +1036,7 @@ export function GameTable({
         : exchange.viewerIsLoser
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
-  const seatMark = (seat: number) => ({ lit: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const seatMark = (seat: number) => ({ marked: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
   const onMove = (seat: number) => !trade && seat === shownTurnIndex;
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
@@ -1277,7 +1277,7 @@ export function GameTable({
                   scale={scale}
                   countdown={seatCountdown}
                   focusMode={focusMode}
-                  mark={seatMark(opponents.top.seat)}
+                  {...seatMark(opponents.top.seat)}
                 />
               ) : (
                 <View />
@@ -1303,7 +1303,7 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
-                    mark={seatMark(opponents.left.seat)}
+                    {...seatMark(opponents.left.seat)}
                   />
                 )}
               </View>
@@ -1382,7 +1382,7 @@ export function GameTable({
                     scale={scale}
                     countdown={seatCountdown}
                     focusMode={focusMode}
-                    mark={seatMark(opponents.right.seat)}
+                    {...seatMark(opponents.right.seat)}
                   />
                 )}
               </View>

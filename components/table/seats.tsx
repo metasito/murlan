@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, type TextProps, type ViewProps } from "react-native";
 import { TableText } from "./TableText";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./notices/seatMarks";
@@ -51,6 +51,11 @@ export interface SeatMark { lit: boolean; seat: number; flash: SharedValue<RingF
 
 /** A seat is lit while it is on move or the trade marks it: its ring, its glow and its name all read this. */
 const seatLit = (isActive: boolean, mark?: Pick<SeatMark, "lit">) => isActive || mark?.lit === true;
+
+/** A slot takes its mark as separate values: one object built per table render would re-render the memoized slot on every commit. */
+type SlotMark = { seat?: number; marked?: boolean; flash?: SharedValue<RingFlash> };
+const markOf = ({ seat, marked, flash }: SlotMark): SeatMark | undefined =>
+  flash && { lit: marked === true, seat: seat ?? -1, flash };
 
 /**
  * Which seats have already answered the round on the table. Derived rather
@@ -578,7 +583,7 @@ function SeatBadges({
 
 // ─── TopOppSlot ───────────────────────────────────────────────────────────────
 
-export function TopOppSlot({
+export const TopOppSlot = memo(function TopOppSlot({
   player,
   isActive,
   cardCount,
@@ -589,8 +594,8 @@ export function TopOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
-  mark,
-}: {
+  ...marking
+}: SlotMark & {
   player: Player;
   isActive: boolean;
   cardCount?: number;
@@ -608,11 +613,11 @@ export function TopOppSlot({
   focusMode?: boolean;
   /** While a deal runs, when each of this seat's cards lands — see useArrivedCount. */
   dealArrivals?: DealArrivals;
-  mark?: SeatMark;
 }) {
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
+  const mark = markOf(marking);
   const lit = seatLit(isActive, mark);
   return (
     <View
@@ -642,7 +647,7 @@ export function TopOppSlot({
       )}
     </View>
   );
-}
+});
 
 // ─── SeatWho ──────────────────────────────────────────────────────────────────
 
@@ -753,7 +758,7 @@ function SeatWho({
 
 // ─── SideOppSlot ──────────────────────────────────────────────────────────────
 
-export function SideOppSlot({
+export const SideOppSlot = memo(function SideOppSlot({
   player,
   isActive,
   side,
@@ -765,11 +770,10 @@ export function SideOppSlot({
   countdown,
   focusMode = false,
   dealArrivals,
-  mark,
-}: {
+  ...marking
+}: SlotMark & {
   player: Player;
   isActive: boolean;
-  mark?: SeatMark;
   side: "left" | "right";
   cardCount?: number;
   /** This seat has passed in the round on the table. */
@@ -791,6 +795,7 @@ export function SideOppSlot({
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
+  const mark = markOf(marking);
   const lit = seatLit(isActive, mark);
   return (
     <View
@@ -822,7 +827,7 @@ export function SideOppSlot({
       )}
     </View>
   );
-}
+});
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 

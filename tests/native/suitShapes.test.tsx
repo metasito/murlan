@@ -1,5 +1,5 @@
 // tests/native/suitShapes.test.tsx — a suit is told apart by its own glyph
-// (components/CardView.tsx `SuitShape`), not only by ink. tests/ui-rules/suitColours.test.ts
+// (components/cardFaceModel.ts `SUIT_GLYPHS`), not only by ink. tests/ui-rules/suitColours.test.ts
 // pins the ink; its own comment says "the pip glyph differs per suit" and
 // nothing asserted that sentence until now. Collapsing every suit to the same
 // SVG shape — separated only by fill colour — passed the whole suite with 0
@@ -15,70 +15,46 @@ jest.mock('@/lib/accessibility', () => ({
 }));
 
 import { CardView } from '@/components/CardView';
-import type { Card, Suit } from '@/lib/game/gameEngine';
+import { SUIT_GLYPHS } from '@/components/cardFaceModel';
+import type { Card, Rank, Suit } from '@/lib/game/gameEngine';
 // The instance type behind every RNTL query in this codebase's installed
 // version — `test-renderer`'s own, not `react-test-renderer`'s.
 import type { TestInstance } from 'test-renderer';
 
-// The Ace draws exactly one pip in the centre, so each `SuitShape` copy
-// this reads is the whole of the suit's own shape — no other card draws more
-// of it, only more copies. `queryAll` on the raw node, rather than a typed
-// query, because `container` has no by-component-type query — an SVG Path is
-// told apart from a Circle by which props it carries.
+const SUITS = ['hearts', 'diamonds', 'spades', 'clubs'] as const;
 const isPath = (n: TestInstance) => typeof n.props.d === 'string';
-const isCircle = (n: TestInstance) =>
-  typeof n.props.r === 'number' && typeof n.props.cx === 'number' && typeof n.props.d !== 'string';
+const isUse = (n: TestInstance) => typeof n.props.href === 'string';
+const subpaths = (d: string) => d.split('M').length - 1;
 
-/** Ace of the given suit: the one card whose face draws exactly one pip. */
-const ace = (suit: Suit): Card => ({ id: `A_${suit}`, rank: 'A', suit, isJoker: false });
-
-/** The suit definition's own Path and Circle descendants, wherever the def
- *  actually lives in the tree — a G wrapper for clubs, a bare Path for the
- *  other three. */
-async function suitDefShape(suit: Suit) {
-  const r = await render(<CardView card={ace(suit)} scale={1} light="flat" />);
+async function drawn(rank: Rank, suit: Suit) {
+  const card: Card = { id: `${rank}_${suit}`, rank, suit, isJoker: false };
+  const r = await render(<CardView card={card} scale={1} light="flat" />);
   const paths = r.container.queryAll(isPath).map((p) => p.props.d as string);
-  const circles = r.container.queryAll(isCircle).length;
+  const uses = r.container.queryAll(isUse).length;
   await r.unmount();
-  return { paths, circles };
+  return { paths, uses };
 }
 
 describe('a suit is distinguishable by shape, not only by fill colour', () => {
-  it('hearts, diamonds and spades each draw their own distinct outline', async () => {
-    const hearts = await suitDefShape('hearts');
-    const diamonds = await suitDefShape('diamonds');
-    const spades = await suitDefShape('spades');
-
-    // None of the three is a circle — the exact shape a hue-only regression
-    // collapses every suit to.
-    expect(hearts.circles).toBe(0);
-    expect(diamonds.circles).toBe(0);
-    expect(spades.circles).toBe(0);
-
-    expect(hearts.paths[0]).not.toBe(diamonds.paths[0]);
-    expect(hearts.paths[0]).not.toBe(spades.paths[0]);
-    expect(diamonds.paths[0]).not.toBe(spades.paths[0]);
+  it('each suit draws its own outline', async () => {
+    const outlines: string[] = [];
+    for (const suit of SUITS) outlines.push((await drawn('A', suit)).paths[0]);
+    expect(new Set(outlines).size).toBe(SUITS.length);
   });
 
-  it('clubs is built from three circles and a path — a different construction, not just a different fill', async () => {
-    const clubs = await suitDefShape('clubs');
-    expect(clubs.circles).toBe(3 * clubs.paths.length);
-    expect(clubs.paths.length).toBeGreaterThanOrEqual(1);
+  it('clubs is three round lobes and a stem — a different construction, not just a different fill', () => {
+    expect(subpaths(SUIT_GLYPHS.clubs)).toBe(4);
+    expect(SUIT_GLYPHS.clubs.match(/A/g)).toHaveLength(6);
+    for (const suit of ['hearts', 'diamonds', 'spades'] as const) expect(SUIT_GLYPHS[suit]).not.toMatch(/A/);
   });
 });
 
 // Android redraws a <Use> template at each reference, dispatching a layout event per mark per frame (#1222).
-describe('on native every suit mark is drawn in place, never through <Use>', () => {
-  const isUse = (n: TestInstance) => typeof n.props.href === 'string';
-
-  it.each(['hearts', 'diamonds', 'spades', 'clubs'] as const)('ten of %s', async (suit) => {
-    const r = await render(
-      <CardView card={{ id: `10_${suit}`, rank: '10', suit, isJoker: false }} scale={1} light="flat" />
-    );
-    const uses = r.container.queryAll(isUse).length;
-    const marks = r.container.queryAll(isPath).length;
-    await r.unmount();
+describe('every suit mark on a face is one path, drawn in place, never through <Use>', () => {
+  it.each(SUITS)('ten of %s', async (suit) => {
+    const { paths, uses } = await drawn('10', suit);
     expect(uses).toBe(0);
-    expect(marks).toBe(12);
+    expect(paths).toHaveLength(1);
+    expect(subpaths(paths[0])).toBe(12 * subpaths(SUIT_GLYPHS[suit]));
   });
 });

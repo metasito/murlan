@@ -1,8 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { capNear, listedTests, nearTests } from "../near-tests.mjs";
+import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../near-tests.mjs";
 
 const T = (n: string) => `tests/native/${n}.test.tsx`;
 const src: Record<string, string> = {
@@ -21,8 +22,12 @@ describe("the native tests a change reaches first", () => {
     assert.deepEqual(near(["components/table/feltSkia.web.tsx"]), [T("feltFallbackShade")]));
   test("a name match jest's graph does not reach is dropped", () => assert.deepEqual(near(["lib/screenShake.ts"], [T("scorePill")]), []));
   test("a changed test file always runs", () => assert.deepEqual(near([T("brandNew")], []), [T("brandNew")]));
-  test("the command the loop runs uses this module", () =>
-    assert.match(readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8"), /from "\.\/near-tests\.mjs"/));
+  test("the command the loop runs uses this module, and selects jest projects only through it", () => {
+    const script = readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8");
+    assert.match(script, /from "\.\/near-tests\.mjs"/);
+    assert.doesNotMatch(script, /--selectProjects/);
+    assert.equal(script.match(/\[jest, \.\.\.onLocalProjects\(/g)?.length, 2);
+  });
   test("changed tests come first, then tests named after a changed module, then importers", () => {
     const importer: Record<string, string> = { [T("alpha")]: "import { z } from '@/lib/theme';" };
     const got = nearTests({ changed: [T("omega"), "lib/theme.ts"], related: [T("alpha"), T("theme")], source: (f) => importer[f] ?? "" });
@@ -39,6 +44,22 @@ describe("what native:related runs and what it leaves to CI", () => {
     assert.deepEqual(run.slice(0, 2), [T("own"), T("imp00")]);
     assert.equal(left, "… 3 more left to ci.yml native");
     assert.deepEqual(capNear([T("one")]), { run: [T("one")], left: null });
+  });
+  test("a project runs locally unless a local project already matches its files", () => {
+    type Project = { displayName: string; testMatch: string[] };
+    const { projects } = createRequire(import.meta.url)("../../../jest.config.js") as { projects: Project[] };
+    const positive = (p: Project) => p.testMatch.filter((g) => !g.startsWith("!"));
+    const local = projects.filter((p) => LOCAL_PROJECTS.includes(p.displayName));
+    const unreached = projects.filter((p) => !positive(p).every((g) => local.some((l) => positive(l).includes(g))));
+    assert.deepEqual(unreached.map((p) => p.displayName), []);
+  });
+  test("every native test runs, and is budgeted, under the project jest.config.js gives it", () => {
+    const selected = onLocalProjects(["--listTests"]);
+    assert.equal(selected[0], "--listTests");
+    for (const [file, project] of [[T("scorePill"), "ios"], ["tests/native/x/botMoveCost.compiled.test.tsx", "compiled"]]) {
+      assert.equal(localProjectOf(join(process.cwd(), file)), project);
+      assert.ok(selected.slice(selected.indexOf("--selectProjects") + 1).includes(project), `${file}: ${project} not selected`);
+    }
   });
   test("--listTests output keeps only paths, repo-relative and posix", () => {
     const cwd = process.cwd();

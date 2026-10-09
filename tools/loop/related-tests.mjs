@@ -6,7 +6,7 @@ import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { budgetLines } from "../ci/native-budget.mjs";
 
-import { capNear, CODE, listedTests, nearTests } from "./near-tests.mjs";
+import { capNear, CODE, listedTests, localProjectOf, nearTests, onLocalProjects } from "./near-tests.mjs";
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const lines = (...a) => execFileSync("git", a, { encoding: "utf8" }).split("\n").filter(Boolean);
@@ -20,7 +20,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const jest = path.join(path.dirname(createRequire(import.meta.url).resolve("jest/package.json")), "bin", "jest.js");
   const code = changed.filter((f) => CODE.test(f));
   const listed = code.length
-    ? execFileSync(process.execPath, [jest, "--listTests", "--findRelatedTests", ...code, "--selectProjects", "ios"], { encoding: "utf8" })
+    ? execFileSync(process.execPath, [jest, ...onLocalProjects(["--listTests", "--findRelatedTests", ...code])], { encoding: "utf8" })
     : "";
   const related = listedTests(listed, process.cwd());
   const near = nearTests({ changed, related, source: (f) => readFileSync(f, "utf8") });
@@ -31,10 +31,10 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const out = path.join(".loop-logs", "native-related.json");
     mkdirSync(".loop-logs", { recursive: true });
     rmSync(out, { force: true });
-    const status = spawnSync(process.execPath, [jest, ...run, "--selectProjects", "ios", "--json", `--outputFile=${out}`], { stdio: "inherit" }).status;
+    const status = spawnSync(process.execPath, [jest, ...onLocalProjects([...run, "--json", `--outputFile=${out}`])], { stdio: "inherit" }).status;
     if (existsSync(out)) {
       console.log(`native budget — information only, CI's run judges (tools/ci/native-budget.mjs):`);
-      console.log(budgetLines(JSON.parse(readFileSync(out, "utf8")), "ios", process.cwd()).join("\n"));
+      console.log(budgetLines(JSON.parse(readFileSync(out, "utf8")), localProjectOf, process.cwd()).join("\n"));
     }
     process.exit(status ?? 1);
   }
