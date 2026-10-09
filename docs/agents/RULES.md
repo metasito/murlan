@@ -10,7 +10,7 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
-3. **Before you push, run every test your change adds or edits, and the ones covering the code it changed** (`npm run agent:check` runs the nearest ten native ones `tools/loop/related-tests.mjs` finds, and names how many it left to `ci.yml`): `npx jest tests/native/a.test.tsx …`, and each browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. CI is the second run, never the first: a test you push unrun is named in the PR body with the reason (e.g. the memory preflight refused).
+3. **Before you push, run every test your change adds or edits**, one file at a time (rule 4): `npx jest tests/native/a.test.tsx`, a browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. The tests covering the code it changed are CI's: `npm run agent:check` runs the nearest ten native ones, and the pull request opened for review runs the rest. A test you add and push unrun is named in the PR body with the reason.
 4. **While iterating, run one file:** `node --test tests/x.test.ts`, or `node --test tools/loop/tests/x.test.ts` for the loop's own. That is where rule 6's red-then-green is watched; everything wider rides CI.
 5. **Add `E2E_SKIP_BUILD=1` only when your edit is confined to a spec file.** Any change under
    `app/`, `components/` or `lib/` needs a rebuild, or the run tests a stale bundle.

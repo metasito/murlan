@@ -50,21 +50,15 @@ const BODIES = {
   completeness: ({ n, worktree, base }) =>
     `Read issue #${n} with ${issue(n)} (a later comment overrides the body) and the change with ` +
     `${diff(worktree, base)}. For each Definition-of-done box, answer done, partial or missing. ` +
-    "Done names the `<path>:<line>` that does it and the test that fails when that line is deleted " +
-    "— a test that passes either way does not count; a pure deletion or a docs change says " +
-    "\"no test applicable\". Then list what the issue asks for that no box covers, and every " +
+    "Done names the `<path>:<line>` that does it and the test that covers it; a pure deletion or a " +
+    "docs change says \"no test applicable\". Then list what the issue asks for that no box covers, and every " +
     "caller of a changed function the diff did not update. Then list every name the diff removes " +
     "or renames — identifier, export, env var, file path, npm script, locale key, testID, CLI " +
     `flag, workflow or job name — run \`git -C ${worktree} grep -n -F <name>\` for each, and ` +
     "report every remaining mention outside the diff's own deleted lines." +
     " Then, for every literal value the diff changes — a number, string or colour on a `-` line whose " +
     `\`+\` line carries a new one — run \`git -C ${worktree} grep -n -F <old value> -- tests tools/loop/tests\` and ` +
-    "report each test still asserting the old value." +
-    (base === "origin/main"
-      ? ""
-      : " This is a recheck: the diff above is only what changed since the last check. Answer every box " +
-        "again from the code at HEAD; a box the newest DOD-CHECK ticked stands unless this change " +
-        "touches it. Run the caller, name and literal sweeps on this change alone."),
+    "report each test still asserting the old value.",
   standards: ({ worktree, base }) =>
     `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +
     "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
