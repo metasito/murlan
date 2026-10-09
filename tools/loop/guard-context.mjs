@@ -7,7 +7,7 @@
 if (!process.env.LOOP_TURNS) process.exit(0);
 const { closeSync, fstatSync, openSync, readFileSync, readSync } = await import("node:fs");
 
-const CONTEXT_CEILING = 200_000;
+const CONTEXT_CEILING = Number(process.env.LOOP_CONTEXT) > 0 ? Number(process.env.LOOP_CONTEXT) : 200_000;
 const TAIL_BYTES = 4 * 1024 * 1024;
 
 function tail(file) {
@@ -53,7 +53,7 @@ function notices(payload) {
   const lines = text.split("\n");
   const said = [];
 
-  const ceiling = "Context is past 200k. Commit what works, post HANDOFF <sha> on the issue, and hand off to the phase of your last PHASE line.";
+  const ceiling = `Context is past ${Math.round(CONTEXT_CEILING / 1000)}k. Commit what works, post HANDOFF <sha> on the issue, and hand off to the phase of your last PHASE line.`;
   if (!text.includes(ceiling)) {
     const last = newest(lines, (r) => r.type === "assistant" && r.message?.usage);
     if (last && contextOf(last.message.usage) > CONTEXT_CEILING) said.push(ceiling);
