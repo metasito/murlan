@@ -265,14 +265,27 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named, then leave through\s+phase C's steps 1–5/);
+    assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named and every sibling of it[^.]*then leave through\s+phase C's steps 1–4/);
+  });
+
+  test("a later completeness check reads only the change since the last one, and C has no pre-read of D's briefs", () => {
+    const c = read(QUEUE).split("### Leaving C")[1]?.split("## D — Review")[0] ?? "";
+    assert.match(c, /brief\.mjs completeness <n> \.worktrees\/agent-<n> <base>/);
+    assert.match(c, /`<base>` is `origin\/main` for the ticket's first check; later, the head this\s+process's previous check read, else the newest `DOD-CHECK`'s/);
+    assert.doesNotMatch(c, /phase D's two briefs/);
+  });
+
+  test("the posted review leads with the refuter's survivors", () => {
+    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
+    assert.match(d, /REVIEW <sha>\s+## Survivors[\s\S]*## Standards[\s\S]*## Spec/);
+    assert.match(d, /any refuter's\s+survivors first/);
   });
 
   test("a HOLD round fixes what was named, and files a failure only a local run showed", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
     assert.match(d, /neither the review nor CI named[\s\S]{0,60}not the round's to fix/);
     assert.match(d, /rule 37[\s\S]{0,80}rule 35/);
-    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only what its review or CI named/);
+    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only what its review or CI named\s+and each sibling of it/);
   });
 
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
