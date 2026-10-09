@@ -729,10 +729,12 @@ export function GameTable({
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
+        handOver: gameState.gameOver,
       },
       tableA11yStrings
     );
   }, [
+    gameState.gameOver,
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
     gameState.currentTurnIndex,
@@ -990,7 +992,7 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerOnMove = isMyTurn && !isFinished;
+  const viewerOnMove = isMyTurn && !isFinished && !gameState.gameOver;
   const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
@@ -1127,11 +1129,20 @@ export function GameTable({
                 scale={scale}
                 lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
                 chipText={
-                  exchangeChip ?? (viewerOnMove ? t("gameShared.yourTurn") : t("gameShared.turnOf", { name: onMoveName }))
+                  exchangeChip ??
+                  (gameState.gameOver
+                    ? t("gameShared.handOver")
+                    : viewerOnMove
+                      ? t("gameShared.yourTurn")
+                      : t("gameShared.turnOf", { name: onMoveName }))
                 }
                 spokenSeat={
                   exchangeChip ??
-                  (viewerOnMove ? t("gameTable.a11yYourTurn") : t("gameTable.a11yTurnOf", { name: onMoveName }))
+                  (gameState.gameOver
+                    ? t("gameTable.a11yHandOver")
+                    : viewerOnMove
+                      ? t("gameTable.a11yYourTurn")
+                      : t("gameTable.a11yTurnOf", { name: onMoveName }))
                 }
                 seconds={turnTimer?.seconds ?? 0}
                 active={timerActive}

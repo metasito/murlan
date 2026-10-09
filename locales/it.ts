@@ -350,6 +350,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.turnOf": "Turno di {{name}}",
+  "gameShared.handOver": "Manche finita",
   // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
   // È la dichiarazione del giocatore, non il pulsante ("PASSA") che il
   // giocatore preme, e non concorda con il genere di chi la pronuncia.
@@ -397,6 +398,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.startCardBannerSelf": "Inizi tu! Hai il {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "È il tuo turno.",
   "gameTable.a11yTurnOf": "Turno di {{name}}.",
+  "gameTable.a11yHandOver": "Manche finita.",
   "gameTable.a11yEmptyTable": "Nessuna carta sul tavolo.",
   "gameTable.a11yYouPlayed": "Hai giocato {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} ha giocato {{label}}.",

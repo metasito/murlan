@@ -84,6 +84,13 @@ describe('the score pill at the end of a manche', () => {
     await view.unmount();
   });
 
+  it('names nobody on move while the ending holds the table', async () => {
+    const view = await render(table(noop));
+    expect(screen.queryAllByText('Hand over', HIDDEN).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Your turn', HIDDEN)).toHaveLength(0);
+    await view.unmount();
+  });
+
   it('counts in without a tap by the time the pill has settled', async () => {
     const view = await render(table(noop));
     await advance(settled);

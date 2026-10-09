@@ -17,9 +17,19 @@ const a11yStrings: TableA11yStrings = {
   yourCardCount: (count) => `YOU=${count}`,
   exchangeGiveCard: (loserName) => `EXCHANGE_GIVE(${loserName})`,
   exchangeWaitForCard: (winnerName) => `EXCHANGE_WAIT(${winnerName})`,
+  handOver: "HAND_OVER",
 };
 
 describe("describeTableForA11y", () => {
+  test("a manche that is over, still on the table, names nobody on move", () => {
+    const base = { currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [], handOver: true };
+    for (const isMyTurn of [true, false]) {
+      const text = describeTableForA11y({ ...base, isMyTurn }, a11yStrings);
+      assert.ok(text.startsWith("HAND_OVER"), text);
+      assert.doesNotMatch(text, /YOUR_TURN|TURN_OF/);
+    }
+  });
+
   test("the brief's example: viewer's turn, one opponent, matches both name and count", () => {
     const text = describeTableForA11y(
       {
