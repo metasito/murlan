@@ -11,6 +11,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -62,8 +63,8 @@ function FAQItem({ item, isLast }: { item: FAQ; isLast: boolean }) {
     const nextOpen = !open;
     const to = nextOpen ? 1 : 0;
     setOpen(nextOpen);
-    height.value = withTiming(to, { duration: motionMs("travel", reduceMotion) });
-    opacity.value = withTiming(to, { duration: motionMs("shift", reduceMotion) });
+    height.value = withTiming(to, { duration: motionMs("travel", reduceMotion), reduceMotion: ReduceMotion.Never });
+    opacity.value = withTiming(to, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never });
   };
 
   const answerStyle = useAnimatedStyle(() => ({

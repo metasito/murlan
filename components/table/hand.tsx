@@ -318,7 +318,7 @@ function CardItemBase({
   // a slot. It has to open and close continuously, though, or the cards jump
   // between two arrangements while the finger is still between them.
   useEffect(() => {
-    shift.value = withTiming(shiftX, { duration: motionMs("shift", reduceMotion) });
+    shift.value = withTiming(shiftX, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never });
   }, [shiftX, reduceMotion, shift]);
 
   useEffect(() => {
@@ -1138,7 +1138,7 @@ export const StraightHand = React.memo(function StraightHand({
     settleRot.value = target.rot;
     // The same step the gap closes on, so the card arrives as the fan closes
     // around it rather than into a hand still moving.
-    settle.value = withTiming(1, { duration: ms }, () => scheduleOnRN(commit));
+    settle.value = withTiming(1, { duration: ms, reduceMotion: ReduceMotion.Never }, () => scheduleOnRN(commit));
   };
 
   const drag = usePanGesture({

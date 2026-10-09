@@ -17,6 +17,7 @@ import Animated, {
   withRepeat,
   withSequence,
   Easing,
+  ReduceMotion,
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
@@ -681,7 +682,7 @@ export default function HomeScreen() {
   const titleScale = useSharedValue(TITLE_FROM);
 
   useEffect(() => {
-    titleOpacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
+    titleOpacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion), reduceMotion: ReduceMotion.Never });
     titleScale.value = reduceMotion
       ? 1
       : withTiming(1, {

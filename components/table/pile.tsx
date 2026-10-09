@@ -11,6 +11,7 @@ import Animated, {
   Easing,
   cancelAnimation,
   FadeOut,
+  ReduceMotion,
   type SharedValue,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
@@ -208,7 +209,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, aside
     if (buried) return;
     const to = beaten ? 1 : 0;
     const ms = motionMs("beaten", reduced);
-    turned.set(ms === 0 ? to : withTiming(to, { duration: ms, easing: BEATEN_EASING }));
+    turned.set(ms === 0 ? to : withTiming(to, { duration: ms, easing: BEATEN_EASING, reduceMotion: ReduceMotion.Never }));
   }, [beaten, buried, reduced, turned]);
   useEffect(() => () => cancelAnimation(turned), [turned]);
   const key = play.key;
@@ -438,8 +439,11 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     }
     const travelMs = motionMs("travel", reduceMotion);
     const shiftMs = motionMs("shift", reduceMotion);
-    if (!reduceMotion) travel.value = withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic) });
+    if (!reduceMotion) {
+      travel.value = withTiming(1, { duration: travelMs, easing: Easing.in(Easing.cubic), reduceMotion: ReduceMotion.Never });
+    }
     fade.value = withSequence(
+      ReduceMotion.Never,
       withTiming(0, { duration: travelMs - shiftMs }),
       withTiming(1, { duration: shiftMs }, (finished) => {
         if (finished) scheduleOnRN(sweepEnd);
@@ -470,7 +474,10 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   return (
     <View style={[pileStyles.pileArea, hidden && pileStyles.aside]} testID="pile-area">
       {roundWinner && !hidden ? (
-        <Animated.View exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit)} style={pileStyles.winnerAt}>
+        <Animated.View
+          exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit).reduceMotion(ReduceMotion.Never)}
+          style={pileStyles.winnerAt}
+        >
           <RoundWinnerMark name={roundWinner} scale={scale} />
         </Animated.View>
       ) : null}

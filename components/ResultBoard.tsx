@@ -118,17 +118,21 @@ function RankCard({
   useEffect(() => {
     opacity.value = withDelay(
       delay,
-      withTiming(1, { duration: motionMs("travel", reduceMotion) }),
+      withTiming(1, { duration: motionMs("travel", reduceMotion), reduceMotion: ReduceMotion.Never }),
       ReduceMotion.System
     );
     tx.value = reduceMotion ? 0 : withDelay(delay, withSpring(0, Motion.spring.entrance), ReduceMotion.System);
     const counting = delay + motionMs("travel", reduceMotion);
-    const shift = { duration: motionMs("shift", reduceMotion) };
-    chip.value = withDelay(counting, withTiming(1, shift), ReduceMotion.System);
-    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, shift), ReduceMotion.System);
+    const shift = { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never };
+    chip.value = reduceMotion ? 1 : withDelay(counting, withTiming(1, shift), ReduceMotion.Never);
+    chipY.value = reduceMotion ? 0 : withDelay(counting, withTiming(0, shift), ReduceMotion.Never);
     count.value = reduceMotion
       ? row.total
-      : withDelay(counting, withTiming(row.total, { duration: motionMs("reveal", reduceMotion) }), ReduceMotion.System);
+      : withDelay(
+          counting,
+          withTiming(row.total, { duration: motionMs("reveal", reduceMotion), reduceMotion: ReduceMotion.Never }),
+          ReduceMotion.Never
+        );
   }, [chip, chipY, count, delay, opacity, reduceMotion, row.total, tx]);
   const anim = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -217,10 +221,15 @@ function GoldFlake({ index, reach }: { index: number; reach: number }) {
   const flakeMs = motionMs("reveal", usePrefersReducedMotion()) * 2;
   useEffect(() => {
     const easing = Easing.out(Easing.cubic);
-    progress.value = withDelay(delay, withTiming(1, { duration: flakeMs, easing }), ReduceMotion.System);
+    progress.value = withDelay(
+      delay,
+      withTiming(1, { duration: flakeMs, easing, reduceMotion: ReduceMotion.Never }),
+      ReduceMotion.System
+    );
     opacity.value = withDelay(
       delay,
       withSequence(
+        ReduceMotion.Never,
         withTiming(1, { duration: flakeMs * 0.15 }),
         withTiming(0, { duration: flakeMs * 0.85, easing: Easing.in(Easing.quad) })
       ),
@@ -291,7 +300,7 @@ function WinnerCelebration({
   }, [viewerCelebrated]);
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion) });
+    opacity.value = withTiming(1, { duration: motionMs("reveal", reduceMotion), reduceMotion: ReduceMotion.Never });
     if (reduceMotion) {
       // The swell and the breathing glow behind it are the parts with nothing to
       // say; the result itself still arrives.
@@ -326,6 +335,7 @@ function WinnerCelebration({
 
   return (
     <Animated.View
+      testID="winner-celebration"
       style={[styles.celebration, compact && styles.celebrationCompact, containerAnim]}
     >
       <Animated.View

@@ -14,6 +14,7 @@ import Animated, {
   withSequence,
   withSpring,
   Easing,
+  ReduceMotion,
   SlideInLeft,
 } from "react-native-reanimated";
 import { Colors, FontSize, Layer, Motion, motionMs, Radius, Scrim, Spacing, TOUCH_TARGET_MIN } from "@/lib/theme";
@@ -60,11 +61,13 @@ function FloatingReaction({ reaction, direction }: { reaction: TableReaction; di
   useEffect(() => {
     const appear = motionMs("shift", reduceMotion);
     opacity.value = withSequence(
+      ReduceMotion.Never,
       withTiming(1, { duration: appear }),
       withTiming(0, { duration: RISE_MS - appear })
     );
     if (reduceMotion) return;
     y.value = withSequence(
+      ReduceMotion.Never,
       withSpring(0, Motion.spring.land),
       withTiming(RISE_PX, { duration: RISE_MS - appear, easing: Easing.out(Easing.quad) })
     );
