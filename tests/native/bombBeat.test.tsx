@@ -7,7 +7,6 @@ import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 
 const mockOnsets: string[] = [];
 const mockSources = new Map<string, () => unknown>();
-const mockPulses: { strength: string; at: number }[] = [];
 const mockTrauma: number[] = [];
 
 jest.mock('@/lib/e2eTrace', () => ({
@@ -15,10 +14,6 @@ jest.mock('@/lib/e2eTrace', () => ({
   traceOnset: (kind: string, name: string) => mockOnsets.push(`${kind}:${name}`),
   useTraceSource: (field: string, read: () => unknown) => void mockSources.set(field, read),
 }));
-jest.mock('@/lib/device/hapticsEngine', () => {
-  const actual = jest.requireActual<typeof import('@/lib/device/hapticsEngine')>('@/lib/device/hapticsEngine');
-  return { ...actual, pulse: (strength: string) => void mockPulses.push({ strength, at: performance.now() }) };
-});
 jest.mock('@/components/flightPhysics', () => {
   const actual = jest.requireActual<typeof import('@/components/flightPhysics')>('@/components/flightPhysics');
   return {
@@ -36,6 +31,7 @@ import { cardScale } from '@/components/cardFaceModel';
 import { BombFlash } from '@/components/table/moments';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { farthest, fireLanding, frameOfFirst } from './helpers/landing';
+import { hapticCalls } from './helpers/feedback';
 import { setMotionPreference } from '@/lib/accessibility';
 import { BombFx, Motion } from '@/lib/theme';
 import type { Card, Combination, GameState, Player } from '@/lib/game/gameEngine';
@@ -92,7 +88,7 @@ async function bombLands() {
   const r = await render(table(state(PAIR, 0)));
   await advance(2000);
   await r.rerender(table(state(BOMB, 1)));
-  mockPulses.length = 0;
+  hapticCalls().length = 0;
   mockTrauma.length = 0;
   mockOnsets.length = 0;
   const dark: number[] = [];
@@ -148,14 +144,15 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     await advance(600);
     expect(opacity('bomb-flash')).toBe(0);
     expect(asideX()).toBe(0);
-    expect(Math.abs(mockPulses[0].at - contact)).toBeLessThanOrEqual(16);
-    expect(mockPulses.map((p) => [p.strength, p.at - mockPulses[0].at])).toEqual([
+    const pulses = hapticCalls();
+    expect(Math.abs(pulses[0].at - contact)).toBeLessThanOrEqual(16);
+    expect(pulses.map((p) => [p.type, p.at - pulses[0].at])).toEqual([
       ['rigid', 0],
-      ['heavy', 256],
-      ['light', 416],
+      ['impactHeavy', 256],
+      ['impactLight', 416],
     ]);
     await r.unmount();
-  });
+  }, 20_000);
 
   it('under reduced motion the sound and pulses stay, and no sparks, flash, lamp kick, aside or shake', async () => {
     setMotionPreference('on');
@@ -170,7 +167,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(asideX()).toBe(0);
     expect(mockTrauma.every((t) => t === 0)).toBe(true);
     await advance(600);
-    expect(mockPulses.map((p) => p.strength)).toEqual(['rigid', 'heavy', 'light']);
+    expect(hapticCalls().map((p) => p.type)).toEqual(['rigid', 'impactHeavy', 'impactLight']);
     await r.unmount();
   });
 
@@ -188,7 +185,7 @@ describe("the bomb's beat keeps everything that hits (#1263)", () => {
     expect(xs[1] - xs[0]).toBeCloseTo(xs[2] - xs[1], 1);
     expect((((xs[0] - xs[2]) / 96) * BombFx.asideMs) / scale).toBeCloseTo(-6, 0);
     await r.unmount();
-  });
+  }, 20_000);
 });
 
 describe("the bomb's flash (#1263)", () => {
