@@ -17,16 +17,24 @@ export const POLL_MS = 5000;
  */
 export async function awaitArtifact(artifact, producer, env, ghApi, sleep, log = console.log, tries = 300) {
   const run = `repos/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`;
-  for (let i = 0; i < tries; i++) {
-    // Jobs before artifacts: a job read as finished has finished uploading, so an artifact missing
-    // from the later read is missing for good.
-    const job = JSON.parse(ghApi(`${run}/jobs?filter=latest&per_page=100`)).jobs.find((j) => j.name === producer);
+  for (let i = 0; i < tries; i++, await sleep()) {
+    let job, artifacts;
+    try {
+      // Jobs before artifacts: a job read as finished has finished uploading, so an artifact missing
+      // from the later read is missing for good.
+      job = JSON.parse(ghApi(`${run}/jobs?filter=latest&per_page=100`)).jobs.find((j) => j.name === producer);
+      if (job) ({ artifacts } = JSON.parse(ghApi(`${run}/artifacts?name=${artifact}`)));
+    } catch (error) {
+      log(`::warning::Reading the run failed, and is retried: ${error.message}`);
+      continue;
+    }
     if (!job) {
       log(`::error::The run has no job named "${producer}".`);
       return 1;
     }
-    const { artifacts } = JSON.parse(ghApi(`${run}/artifacts?name=${artifact}`));
-    if (artifacts.some((a) => a.name === artifact && !a.expired)) {
+    // An earlier attempt's upload stays listed under the run until this attempt's job replaces it.
+    const fresh = (a) => Date.parse(a.created_at) >= Date.parse(job.started_at);
+    if (artifacts.some((a) => a.name === artifact && !a.expired && job.started_at && fresh(a))) {
       log(`${artifact} is uploaded.`);
       return 0;
     }
@@ -34,7 +42,6 @@ export async function awaitArtifact(artifact, producer, env, ghApi, sleep, log =
       log(`::error::"${producer}" ended ${job.conclusion} without uploading ${artifact}.`);
       return 1;
     }
-    await sleep();
   }
   log(`::error::${artifact} never appeared while "${producer}" ran.`);
   return 1;
