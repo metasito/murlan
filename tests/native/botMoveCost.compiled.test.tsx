@@ -105,6 +105,11 @@ describe('one bot move', () => {
     jest.restoreAllMocks();
   });
 
+  it('runs the table as the React Compiler compiled it', () => {
+    const body = (GameTable as unknown as { type?: object }).type ?? GameTable;
+    expect(String(body)).toMatch(/_compilerRuntime\.c\)\(\d+\)/);
+  });
+
   it('renders the hand, the seats and the card art only on the commits that change them', async () => {
     const costs = await costPerMove();
     const commits = total(costs, 'commits');
