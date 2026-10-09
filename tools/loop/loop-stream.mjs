@@ -9,7 +9,7 @@
 // same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
 /** The same report as a statement of its own in a main-session command: `echo "PHASE C" && …`. */
-export const ECHOED = /(?:^|&&|;)[ \t]*echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/m;
+export const ECHOED = /^[ \t]*(?:cd[ \t]+[^&;\r\n]*&&[ \t]*)?echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/;
 
 /**
  * What the session says it did, once, before it exits — the one channel that is a statement rather

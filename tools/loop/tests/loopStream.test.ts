@@ -277,7 +277,6 @@ describe("a PHASE line from the session", () => {
     assert.equal(said("`PHASE E` is next"), null);
   });
 
-  // #1262 sent all three of its markers this way and its board sat on "starting" through the build.
   test("echoed at the head of that phase's first command, it is a fact", () => {
     const bash = (command: string, parent: string | null = null) =>
       readLine(
@@ -293,6 +292,15 @@ describe("a PHASE line from the session", () => {
     assert.equal(bash('grep -n "PHASE C" .claude/commands/queue.md').letter, null);
     assert.equal(bash('echo "PHASE C of six" && ls').letter, null);
     assert.equal(bash('echo "PHASE C" && ls', "toolu_sub").letter, null);
+  });
+
+  test("an echo inside what a command writes is not the session's report", () => {
+    const bash = (command: string) =>
+      readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] } })) as any;
+    assert.equal(bash("cat > t.sh <<'EOF'\necho PHASE E\nEOF").letter, null);
+    assert.equal(bash('git commit -m "docs\necho PHASE E\n"').letter, null);
+    assert.equal(bash('python -c "x; echo PHASE C"').letter, null);
+    assert.equal(bash("ls; echo PHASE C").letter, null);
   });
 
   test("the message's own line wins over an echo", () => {
