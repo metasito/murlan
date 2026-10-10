@@ -116,7 +116,7 @@ export const en = {
   "auth.missingFieldsRegister": "Enter a username, email and password",
   "auth.unknownError": "Unknown error",
   "auth.checkEmailTitle": "Check your email",
-  "auth.checkEmailBody": "We've sent you an email. Verify your address to unlock the full game — or, if you already have an account with this address, follow the instructions there.",
+  "auth.checkEmailBody": "We've sent you an email. Verify your address so you can reset your password if you ever forget it — or, if you already have an account with this address, follow the instructions there.",
   "auth.checkEmailContinue": "Continue",
   "auth.checkEmailBackToSignIn": "Back to sign in",
   "auth.checkEmailVerifyNow": "Enter code now",
