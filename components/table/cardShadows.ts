@@ -95,14 +95,20 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
 }
 
 /** Every field `buildShadow` reads, per card: equal for two registries whose shadow paths are equal. */
-export function shadowShape(rects: CardRects): string {
+export function shadowShape(rects: CardRects, keys: readonly string[] = Object.keys(rects)): string {
   "worklet";
   let shape = "";
-  for (const key of Object.keys(rects)) {
+  for (const key of keys) {
     const r = rects[key];
     shape += `${key}:${r.x},${r.y},${r.w},${r.h},${r.rot},${r.back},${r.seen};`;
   }
   return shape;
+}
+
+/** Equal for two clusters whose `buildShadow` paths are equal, whatever order their members come in. */
+export function shadowClusterId(path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[]): string {
+  "worklet";
+  return `${path}|${felt.sx},${felt.sy},${felt.s},${midX}|${shadowShape(rects, [...keys].sort())}`;
 }
 
 export interface GlowSink extends PathSink {

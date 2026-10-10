@@ -20,6 +20,7 @@ import {
   Shader,
   Skia,
   type SkImage,
+  type SkPath,
   type SkPicture,
   type SkRRect,
 } from "@shopify/react-native-skia";
@@ -32,7 +33,7 @@ import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 
@@ -63,12 +64,19 @@ const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
 const DISPOSE_PATHS = Platform.OS === "web";
-const E2E = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
 function countBuild(counter: "murlanShadowBuilds" | "murlanGlowBuilds") {
   "worklet";
   const e2e = globalThis as { murlanShadowBuilds?: number; murlanGlowBuilds?: number };
   e2e[counter] = (e2e[counter] ?? 0) + 1;
+}
+
+function countClusterBuild(kind: ShadowPath, members: readonly string[]) {
+  "worklet";
+  const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
+  const builds = (e2e.murlanShadowClusterBuilds ??= {});
+  const cluster = `${kind}|${[...members].sort().join(",")}`;
+  builds[cluster] = (builds[cluster] ?? 0) + 1;
 }
 
 /** Moves on when a card's outline does, and not when only its lift or glow does. */
@@ -122,6 +130,8 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
     return recorder.finishRecordingAsPicture();
   }, [recorder]);
   const drawn = useSharedValue<SkPicture>(empty);
+  const paths = useSharedValue<Record<string, SkPath>>({});
+  const e2e = process.env.EXPO_PUBLIC_E2E_FAST === "1";
   // A reaction, not a derived value: a mapper takes every shared value in its closure as an input, and one writing `drawn` re-ran each frame.
   // `rects` is read in the handler, outside the inputs, so a glow-only change builds nothing.
   useAnimatedReaction(
@@ -131,31 +141,42 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
       const sets = kinds.map((kind, i) => shadowClusters(kind, all, felt, midX, paints[i].reach));
       if (drawn.value === empty && sets.every((s) => s.length === 0)) return;
       const canvas = recorder.beginRecording();
+      const built = paths.value;
+      const kept: Record<string, SkPath> = {};
       kinds.forEach((kind, i) => {
         for (const keys of sets[i]) {
-          builder.reset();
-          buildShadow(builder, kind, all, felt, midX, keys);
-          const path = builder.build();
+          const id = shadowClusterId(kind, all, felt, midX, keys);
+          let path = built[id];
+          if (!path) {
+            builder.reset();
+            buildShadow(builder, kind, all, felt, midX, keys);
+            path = builder.build();
+            if (e2e) countClusterBuild(kind, keys);
+          }
+          kept[id] = path;
           canvas.drawPath(path, paints[i].paint);
-          if (DISPOSE_PATHS) path.dispose();
         }
-        if (E2E) countBuild("murlanShadowBuilds");
+        if (e2e) countBuild("murlanShadowBuilds");
       });
       const last = drawn.value;
       drawn.value = recorder.finishRecordingAsPicture();
-      if (DISPOSE_PATHS && last !== empty) last.dispose();
+      paths.value = kept;
+      if (!DISPOSE_PATHS) return;
+      if (last !== empty) last.dispose();
+      for (const id of Object.keys(built)) if (kept[id] !== built[id]) built[id].dispose();
     },
-    [recorder, builder, paints, kinds, rects, felt, midX, empty]
+    [recorder, builder, paints, kinds, rects, felt, midX, empty, paths, e2e]
   );
   useEffect(
     () => () => {
       if (!DISPOSE_PATHS) return;
       if (drawn.value !== empty) drawn.value.dispose();
+      for (const path of Object.values(paths.value)) path.dispose();
       empty.dispose();
       builder.dispose();
       recorder.dispose();
     },
-    [recorder, builder, drawn, empty]
+    [recorder, builder, drawn, empty, paths]
   );
   return drawn;
 }
@@ -185,6 +206,7 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
   }, [recorder]);
   const drawn = useSharedValue<SkPicture>(empty);
   const lit = useSharedValue(false);
+  const e2e = process.env.EXPO_PUBLIC_E2E_FAST === "1";
   useAnimatedReaction(
     () => rects.value,
     (all) => {
@@ -194,7 +216,7 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
       const last = drawn.value;
       if (!any) {
         drawn.value = empty;
-        if (E2E) countBuild("murlanGlowBuilds");
+        if (e2e) countBuild("murlanGlowBuilds");
         if (DISPOSE_PATHS) last.dispose();
         return;
       }
@@ -215,10 +237,10 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
       };
       buildGlow(sink, all, felt, midX);
       drawn.value = recorder.finishRecordingAsPicture();
-      if (E2E) countBuild("murlanGlowBuilds");
+      if (e2e) countBuild("murlanGlowBuilds");
       if (DISPOSE_PATHS && last !== empty) last.dispose();
     },
-    [recorder, builder, paint, empty, felt, midX]
+    [recorder, builder, paint, empty, felt, midX, e2e]
   );
   useEffect(
     () => () => {

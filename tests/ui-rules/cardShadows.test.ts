@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Motion } from "../../lib/tokens.ts";
@@ -95,6 +95,17 @@ describe("the shadow paths", () => {
     assert.equal(shape({ lift: 1, glow: 0.5 }), shape({}));
     const moved = [{ x: 101 }, { y: 51 }, { w: 65 }, { h: 91 }, { rot: 1 }, { back: true }, { seen: 0.5 }].map((o) => shape(o));
     assert.equal(new Set([shape({}), shape({}, "fan:top:0"), ...moved]).size, moved.length + 2);
+  });
+
+  test("a cluster is the same path for the same kind, felt and members' shapes, in any order", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const rects = { "pile:a": rect(), "pile:b": rect({ x: 200 }), "pile:c": rect({ x: 900 }) };
+    const id = (over: Partial<Record<string, CardRect>> = {}, f = felt, midX = 0, keys = ["pile:a", "pile:b"]) =>
+      shadowClusterId("face", { ...rects, ...over } as Record<string, CardRect>, f, midX, keys);
+    assert.equal(id({}, felt, 0, ["pile:b", "pile:a"]), id());
+    assert.equal(id({ "pile:c": rect({ x: 901 }) }), id());
+    const changed = [id({ "pile:b": rect({ x: 201 }) }), id({}, { ...felt, sx: 2 }), id({}, { ...felt, sy: 2 }), id({}, { ...felt, s: 2 }), id({}, felt, 1), shadowClusterId("cast", rects, felt, 0, ["pile:a", "pile:b"])];
+    assert.equal(new Set([id(), ...changed]).size, changed.length + 1);
   });
 
   function bounds(r: CardRect, felt = { sx: 2, sy: 1.5, s: 1.25 }, midX = 0) {
