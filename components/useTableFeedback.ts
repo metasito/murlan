@@ -25,7 +25,7 @@ import {
 } from "@/components/flightPhysics";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
 import { celebratesViewer, handOutcomeFor } from "@/lib/game/matchState";
-import { Motion, motionMs } from "@/lib/theme";
+import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import type { LandingSignal } from "@/components/table/useFlightClock";
@@ -335,7 +335,7 @@ export function useTableFeedback({
     // Routed through the one function the results board's own haptic reads
     // for the same question (`lib/game/matchState.ts`), fed the same `handScores`
     // the caller already holds rather than a second `scoreHand` of its own,
-    // so a teams-mode 3-3 manche (GAME-RULES.md §11) stays neutral here exactly as
+    // so a teams-mode 3-3 manche (GAME-RULES.md §11) celebrates no seat here exactly as
     // it does there, instead of this effect deciding the same question again.
     const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
     // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
@@ -344,16 +344,15 @@ export function useTableFeedback({
     // the decision on data that was never real; returning without touching
     // the ref lets the next render, carrying the real `handScores`, run this
     // same effect again instead.
-    // The sting is placed in the engine a beat after the hand-off, so leaving the
+    // The sting is placed in the engine ahead of time, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    const after = motionMs("shift", reduceMotion);
     if (matchOver && matchWinners.length > 0) {
-      moment({ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }, "handoff", after);
+      moment({ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }, "handoff", motionMs("shift", reduceMotion));
     } else {
-      moment({ kind: "mancheOver", outcome }, "handoff", after);
+      moment({ kind: "mancheOver", outcome }, "landing", Hold.sting);
     }
   }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners, moment]);
 

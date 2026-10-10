@@ -52,6 +52,7 @@ describe("every moment maps", () => {
     assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "won" }), { sound: "mancheWon", bus: "sting", haptics: [tapAt("success")] });
     assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "lost" }), { sound: "mancheLost", bus: "sting", haptics: [tapAt("warn")] });
     assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "neutral" }), { sound: "mancheNeutral", bus: "sting", haptics: [] });
+    assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "draw" }), { sound: "mancheNeutral", bus: "sting", haptics: [] });
   });
 
   test("a partita's haptic opens 300 ms ahead of its sting", () => {
