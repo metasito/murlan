@@ -20,20 +20,23 @@ export interface Gloss {
 }
 
 /** The lamp as a gloss reads it. */
-export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r">;
+export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r" | "t">;
 
 /** Steps no soft gloss shows: the lamp sways at the felt's 0.01 pt, and every gloss following that is two mappers a card a frame. */
 const GLOSS_POINT_STEP = 0.5;
 const GLOSS_LIGHT_STEP = 1 / 256;
+/** Under a 60 Hz frame, so its jitter never skips one: a faster display, or jest's 1 ms frames, poses a gloss no oftener. */
+export const GLOSS_FRAME_S = 0.012;
 
 export function glossLightOf(lamp: GlossLight): GlossLight {
   "worklet";
-  return { lx: lamp.lx, ly: lamp.ly, level: lamp.level, r: lamp.r };
+  return { lx: lamp.lx, ly: lamp.ly, level: lamp.level, r: lamp.r, t: lamp.t };
 }
 
-/** The light every gloss should now read, or null while `lamp` is within a step of `shown`. */
+/** The light every gloss should now read, or null while `lamp` is within a step or a frame of `shown`. */
 export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight | null {
   "worklet";
+  if (lamp.t - shown.t < GLOSS_FRAME_S) return null;
   const still =
     Math.abs(lamp.lx - shown.lx) < GLOSS_POINT_STEP &&
     Math.abs(lamp.ly - shown.ly) < GLOSS_POINT_STEP &&

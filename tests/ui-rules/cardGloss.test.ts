@@ -76,13 +76,17 @@ describe("a card's gloss is the mockup's", () => {
 });
 
 describe("the light a gloss reads", () => {
-  const shown = { lx: 437, ly: 180, level: 0.8, r: 1 };
+  const shown = { lx: 437, ly: 180, level: 0.8, r: 1, t: 0 };
+  const aFrameOn = 1 / 60;
   test("holds through the felt's steps of a sway", () => {
-    assert.equal(nextGlossLight(shown, { lx: 437.4, ly: 179.6, level: 0.803, r: 1.003 }), null);
+    assert.equal(nextGlossLight(shown, { lx: 437.4, ly: 179.6, level: 0.803, r: 1.003, t: aFrameOn }), null);
+  });
+  test("holds any move inside a gloss frame", () => {
+    assert.equal(nextGlossLight(shown, { lx: 480, ly: 120, level: 0.2, r: 2, t: 0.008 }), null);
   });
   test("follows a half-point move, a level step or a reach step, each alone", () => {
     for (const moved of [{ lx: 437.5 }, { ly: 179.5 }, { level: 0.8 + 1 / 256 }, { r: 1 + 1 / 256 }]) {
-      const lamp = { ...shown, ...moved };
+      const lamp = { ...shown, t: aFrameOn, ...moved };
       assert.deepEqual(nextGlossLight(shown, lamp), lamp, JSON.stringify(moved));
     }
   });

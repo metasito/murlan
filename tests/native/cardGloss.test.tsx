@@ -8,7 +8,7 @@ import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 
 
 import { CardView } from '@/components/CardView';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
-import type { GlossLight } from '@/components/table/cardGloss';
+import { GLOSS_FRAME_S, type GlossLight } from '@/components/table/cardGloss';
 import type { Pool } from '@/components/table/lampRig';
 import { NO_LANDING } from '@/components/table/useFlightClock';
 import { useLampRig } from '@/components/table/useLampRig';
@@ -78,7 +78,7 @@ const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at
 const card = (id: string): Card => ({ id, rank: id.split('_')[0] as Card['rank'], suit: id.split('_')[1] as Card['suit'], isJoker: false });
 const rectAt = (x: number, y: number): CardRect => ({ x, y, w: 58, h: 84, rot: 0, back: false, lift: 0, glow: 0, seen: 1 });
 
-const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, level, r: 1 });
+const lightAt = (lx: number, ly: number, level = 1): GlossLight => ({ lx, ly, level, r: 1, t: 0 });
 
 function Table({ light, children }: { light: SharedValue<GlossLight>; children: React.ReactNode }) {
   const value = useCardTableValue(places, useSharedValue(TABLE_AT_REST), useSharedValue(0), light);
@@ -157,5 +157,16 @@ describe('moving the lamp', () => {
     await view.rerender(<RiggedTable pool={[150, 300, 1]}>{threeCards}</RiggedTable>);
     await act(async () => void jest.advanceTimersByTime(3000));
     expect(glossPoses().map((p, i) => p === resting[i])).toEqual([false, false, false]);
+  });
+
+  it('poses each gloss at most once a gloss frame while the rig glides to a new pool', async () => {
+    const view = await render(<RiggedTable pool={[437, 180, 1]}>{threeCards}</RiggedTable>);
+    await act(async () => void jest.advanceTimersByTime(3000));
+    const before = mockGlossRuns.n;
+    await view.rerender(<RiggedTable pool={[150, 300, 1]}>{threeCards}</RiggedTable>);
+    await act(async () => void jest.advanceTimersByTime(1000));
+    const posesPerCard = (mockGlossRuns.n - before) / 6;
+    expect(posesPerCard).toBeGreaterThan(10);
+    expect(posesPerCard).toBeLessThanOrEqual(Math.ceil(1 / GLOSS_FRAME_S));
   });
 });
