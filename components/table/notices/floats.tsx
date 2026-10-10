@@ -63,7 +63,7 @@ export function FloatSlot({
   const place =
     float?.kind === "reject"
       ? [styles.beside, { bottom: beside.giocaTop + mockupPx(ABOVE_GIOCA, scale), left: beside.left, right: beside.right }, beside.mirrored && styles.mirrored]
-      : [styles.slot, { width: slot, left: at.x - slot / 2, top: at.y }];
+      : [styles.slot, float?.kind === "toast" && styles.overBoard, { width: slot, left: at.x - slot / 2, top: at.y }];
   return (
     <>
       <A11yStatus label={float?.live ? float.text : ""} veiled={veiled} nonce={float?.id} />
@@ -84,6 +84,8 @@ export function FloatSlot({
 
 const styles = StyleSheet.create({
   slot: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
+  /** A refusal can answer the end-of-partita board's own vote, so it floats over the board. */
+  overBoard: { zIndex: Layer.hint },
   beside: { position: "absolute", alignItems: "flex-end", zIndex: Layer.hint },
   mirrored: { alignItems: "flex-start" },
 });

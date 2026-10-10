@@ -16,7 +16,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { trackedRootFiles } from "../helpers/trackedFiles.ts";
-import { Motion } from "../../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -278,11 +277,3 @@ test("only maestro.yml's build sets the automation flag", () => {
   );
 });
 
-// WCAG 2.2.2: an auto-playing celebration stops inside 5s.
-test("the winner glow settles inside five seconds", () => {
-  const source = readFileSync(path.join(repoRoot, "components/ResultBoard.tsx"), "utf8");
-  const reps = [...source.matchAll(/withRepeat\(withSequence\(breath\([^)]*\), breath\([^)]*\)\), (-?\d+), false\)/g)]
-    .map((m) => Number(m[1]));
-  assert.equal(reps.length, 2, "both glow loops are found");
-  for (const n of reps) assert.ok(n > 0 && n * 2 * Motion.duration.dwell <= 5000, `${n} reps`);
-});

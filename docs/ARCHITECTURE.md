@@ -297,17 +297,18 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   (CLAUDE.md's bot-move invariant: one chooser, both callers). It also owns
   `resolveStuckExchange`, the valve for an exchange no seat can satisfy.
 - **`lib/game/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
-  `MatchVerdict`) and `celebration()`, which picks the name the results board shouts. A
+  `MatchVerdict`) and `celebratesViewer()`, which decides whether a win cue is the viewer's. A
   winner travels as an **engine player id** (`player_N`), never a username or a seat index
   (server/CLAUDE.md's rule). `matchWinnerIds` may be empty on a match that
   *is* over — a client rejoining a finished table never receives the event — so
-  `celebration()` takes an ordered candidate list and passes over any id naming no seat.
+  `celebratesViewer()` takes an ordered candidate list and passes over any id naming no seat.
 - **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
   order, placement colours and labels, and the ceremony's own clock.
-- **`components/ResultBoard.tsx`** — the results board: offline `app/result.tsx` shows it after a
-  partita, the online `GameOverOverlay` likewise; both are thin callers. A manche ends on the table
-  (`lib/game/mancheEnding.ts`, the score pill's payoff): offline it deals the next one, online the
-  pill holds open with the next-hand vote at its foot until the deal arrives.
+- **The endings, on the table.** A manche ends in the score pill's payoff
+  (`lib/game/mancheEnding.ts`): offline it deals the next one, online the pill holds open with the
+  next-hand vote at its foot until the deal arrives. A partita ends with the pill growing into the
+  result board over the dimmed table (`lib/game/partitaEnding.ts`, `components/table/partitaBoard.tsx`),
+  with Home and Nuova partita; online, Nuova partita is the rematch vote. There is no result route.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 

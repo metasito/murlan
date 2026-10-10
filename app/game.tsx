@@ -3,7 +3,7 @@
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true offline and nowhere else: the AI turn loop, the AI's
 // side of the exchange phase, a local response timer that auto-passes,
-// the next deal after a manche, and navigation to the results screen after a partita.
+// the next deal after a manche, and the end-of-partita board's actions.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
@@ -32,8 +32,6 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
-/** Beat before the results screen takes over, so the last play is seen. */
-const RESULT_DELAY = E2E_FAST ? 0 : 800;
 /** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */
 const AI_SUSPENDED = suspendAI(E2E_FAST);
 
@@ -51,7 +49,7 @@ export default function GameScreen() {
     acknowledgeExchange,
     releaseStuckExchange,
   } = useLocalExchange();
-  const { match, startNextHand } = useLocalMatch();
+  const { match, startNextHand, startNewMatch } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never
@@ -94,12 +92,6 @@ export default function GameScreen() {
       : (gameState?.players.findIndex((p) => p.type === "human") ?? -1);
 
   // Every hook runs unconditionally, before the null guard below.
-
-  useEffect(() => {
-    if (!gameState?.gameOver || !match.over) return;
-    const t = setTimeout(() => router.replace("/result"), RESULT_DELAY);
-    return () => clearTimeout(t);
-  }, [gameState?.gameOver, match.over]);
 
   const [mancheLandedAt, setMancheLandedAt] = useState<number | null>(null);
   const mancheEnding = gameState?.gameOver === true && !match.over;
@@ -180,7 +172,21 @@ export default function GameScreen() {
       matchOver={match.over}
       matchWinners={match.winners}
       handScores={lastHandScores}
-      matchScore={match.length === "single" ? undefined : { scores: match.scores, target: match.target }}
+      matchScore={{ scores: match.scores, target: match.target, single: match.length === "single" }}
+      partitaActions={{
+        onHome: () => {
+          uiFeedback("light");
+          resetGame();
+          router.replace("/");
+        },
+        again: {
+          testID: "btn-nuova-partita",
+          onPress: () => {
+            uiFeedback("medium");
+            startNewMatch();
+          },
+        },
+      }}
       viewerSeat={humanIdx}
       onPlay={playCards}
       onPass={passTurn}

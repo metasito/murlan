@@ -78,6 +78,8 @@ import {
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
+import type { PartitaBoardActions } from "@/components/table/partitaBoard";
+import { partitaDim } from "@/lib/game/partitaEnding";
 import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
@@ -258,18 +260,19 @@ export interface GameTableProps {
   matchOver?: boolean;
   matchWinners?: readonly string[];
   /**
-   * What the manche just played awarded, by engine player id — the same
-   * value the results board reads (`GameOverOverlay`/`app/result.tsx`), fed
-   * to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
+   * What the manche just played awarded, by engine player id — the score
+   * pill's gains, fed to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
    * for the same callers `matchOver` defaults false for: with no scores to
    * read, the sting simply stays silent rather than guessing.
    */
   handScores?: Record<string, number>;
   /**
    * The partita's running points by engine player id, and the target they race to — what
-   * the score pill shows. Absent where there is no partita: a single manche, a replay.
+   * the score pill shows. Absent in a replay. A `single` manche shows the pill only as its board.
    */
-  matchScore?: { scores: Record<string, number>; target: number };
+  matchScore?: { scores: Record<string, number>; target: number; single?: boolean };
+  /** Present where a partita ends on the table: the score pill becomes the board, with these. */
+  partitaActions?: PartitaBoardActions;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -345,6 +348,7 @@ export function GameTable({
   matchWinners,
   handScores = {},
   matchScore,
+  partitaActions,
   viewerSeat,
   spectating = false,
   onPlay,
@@ -635,11 +639,29 @@ export function GameTable({
       rankings: gameState.rankings,
       viewerId: spectating ? undefined : viewer?.id,
     });
+  const partitaBoard = (() => {
+    if (!pillStandings || !matchScore || !partitaActions) return null;
+    const teamOf: Record<string, string | undefined> = Object.fromEntries(players.map((p) => [p.id, p.team]));
+    const winnerKeys = (matchWinners ?? []).map((id) => (pillStandings.teams ? (teamOf[id] ?? id) : id));
+    const won = pillStandings.rows.filter((row) => winnerKeys.includes(row.key));
+    const race = matchScore.single ? t("result.singleHandFormat") : t("scorePill.race", { target: matchScore.target });
+    return {
+      winnerKeys,
+      actions: partitaActions,
+      winner: {
+        name: won.map((row) => (pillStandings.teams ? t("lobby.team", { team: row.name }) : row.name)).join(" · "),
+        mine: won.length === 1 && won[0].mine,
+        draw: won.length > 1,
+        line: won.length === 1 ? `${race} · ${won[0].total}` : race,
+      },
+    };
+  })();
   // Capture, returning false: every touch on the table closes the pill on its way to
   // whatever it was for, so the pill never costs a play. The pill's own box is left to
   // the pill, whose press toggles it.
   const closeScoreElsewhere = (e: GestureResponderEvent) => {
     mancheEnding.skip();
+    partitaEnding.skip();
     if (scoreOpen) {
       const hit = scorePillHitBox(1, 0, pillAnchor, TOUCH_TARGET_MIN);
       const { pageX: x, pageY: y } = e.nativeEvent;
@@ -826,6 +848,14 @@ export function GameTable({
     pileEmpty: trick.plays.length === 0,
     onLanded: onMancheLanded,
   });
+  const partitaOnTable = gameState.gameOver && matchOver && partitaActions !== undefined;
+  const partitaEnding = useMancheEnding({
+    ended: partitaOnTable,
+    partita: true,
+    timeline,
+    pileEmpty: trick.plays.length === 0,
+  });
+  const dimStyle = useAnimatedStyle(() => ({ opacity: partitaDim(partitaEnding.clock.value) }));
   const mancheVoteStyle = useAnimatedStyle(() => {
     const shown = mancheVoteShown(mancheEnding.clock.value);
     return { opacity: shown, display: shown > 0 ? "flex" : "none" };
@@ -884,7 +914,7 @@ export function GameTable({
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Fast game -> result -> game navigation makes these cancel each other, and an
+    // Fast game -> menu -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     warmCardArt();
     return () => {
@@ -1166,15 +1196,19 @@ export function GameTable({
           </A11yVeil>
         </Animated.View>
 
-        {pillStandings && matchScore && (
+        {pillStandings && matchScore && (!matchScore.single || partitaOnTable) && (
           <Animated.View {...behindVeil} testID="score-pill-layer" pointerEvents="box-none" style={[styles.pillLayer, greyStyle]}>
+            {partitaOnTable && (
+              <Animated.View testID="partita-dim" pointerEvents="none" style={[styles.partitaDim, dimStyle]} />
+            )}
             <ScorePill
               standings={pillStandings}
               target={matchScore.target}
               open={scoreOpen}
               onPress={() => setScoreOpen((open) => !open)}
               anchor={pillAnchor}
-              ending={mancheEnding.clock}
+              ending={partitaOnTable ? partitaEnding.clock : mancheEnding.clock}
+              partita={partitaOnTable ? partitaBoard : null}
             />
           </Animated.View>
         )}
@@ -1582,6 +1616,7 @@ const styles = StyleSheet.create({
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
+  partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
 
 

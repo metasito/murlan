@@ -173,8 +173,8 @@ function partitaPointSave(): object {
   return save;
 }
 
-test.describe("partita gold dust", () => {
-  test("winning the partita dusts gold behind the trophy", async ({ page, baseURL }) => {
+test.describe("a partita won on the felt", () => {
+  test("winning the partita turns the score pill into the board, on the table", async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await page.setViewportSize(VIEWPORT);
     await resumeSaved(page, baseURL!, partitaPointSave());
@@ -185,11 +185,12 @@ test.describe("partita gold dust", () => {
     await expect(gioca).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
     await tap(page, gioca);
 
-    await expect(page).toHaveURL(/\/result/, { timeout: 20_000 });
-    await expect(page.getByTestId("gold-flake").first()).toBeAttached({ timeout: 10_000 });
-    expect(await page.getByTestId("gold-flake").count(), "the gold dust fell short of its flakes").toBe(24);
+    await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/\/game/);
+    await expect(page.getByTestId("partita-winner-name")).toHaveText("Ana");
+    await expect(page.getByText("Hai vinto")).toBeVisible();
 
-    await test.info().attach("partita-gold-dust.png", {
+    await test.info().attach("partita-board.png", {
       body: await page.screenshot(),
       contentType: "image/png",
     });

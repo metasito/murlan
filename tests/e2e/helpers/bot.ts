@@ -259,7 +259,7 @@ async function playOrPass(
   // the table's own description has not caught up for a tick. The
   // play-or-pass invariant below is about a hand that still has cards in it —
   // asserting it here turns a finished game into a failure. Handing back null
-  // lets the caller's isFinished check see the game-over overlay.
+  // lets the caller's isFinished check see the end-of-partita board.
   if (labels.length === 0) return null;
 
   function cardByLabel(label: string): Locator {
@@ -636,8 +636,8 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
 /**
  * Waits for the table's description to differ from `previous`, or for the
- * table to disappear entirely (a full navigation away — e.g. to /result —
- * counts as progress on its own).
+ * table to disappear entirely (a full navigation away counts as progress on
+ * its own).
  */
 async function waitForChange(page: Page, previous: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;

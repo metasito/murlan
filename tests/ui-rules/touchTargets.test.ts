@@ -38,7 +38,8 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
   ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
-  ["components/table/notices/netNotes.tsx", 2, "the end-match and next-hand votes are pill notices reaching the floor through `hitSlop`"],
+  ["components/table/partitaBoard.tsx", 1, "Home and Nuova partita on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
+  ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes are pill notices reaching the floor through `hitSlop`"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
 
@@ -49,12 +50,9 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
  */
 const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
   ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row", "offline lobby"],
-  ["components/GameOverOverlay.tsx", 1, "the breakdown toggle, a labelled row", "match over"],
-  ["components/HandBreakdown.tsx", 1, "replay, a label plus horizontal padding", "hand breakdown"],
   ["components/HistoryRow.tsx", 1, "a history row, the list's full width", "profile, after a hand"],
   ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width", "notification banner"],
   ["components/ReplayControls.tsx", 1, "a move row, the move list's full width", "replay"],
-  ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`", "result board"],
   ["components/SegmentedControl.tsx", 1, "a segment, `flex: 1` in the track", "leaderboard"],
   ["components/SettingsModal.tsx", 4, "rows filling the modal's width", "settings"],
   ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width", "table settings sheet"],

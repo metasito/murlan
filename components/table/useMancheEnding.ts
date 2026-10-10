@@ -10,10 +10,12 @@ import {
 } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { MANCHE_IDLE, mancheEndingOnsets } from "@/lib/game/mancheEnding";
+import { partitaEndingOnsets } from "@/lib/game/partitaEnding";
 import { MancheEnding } from "@/lib/theme";
 import type { TableTimeline } from "./tableTimeline";
 
-const { close, settled, glowEnd, pileFade: pileFadeAt } = mancheEndingOnsets(0);
+const { close, settled: mancheSettled, glowEnd, pileFade: pileFadeAt } = mancheEndingOnsets(0);
+const { settled: partitaSettled } = partitaEndingOnsets(0);
 
 export interface MancheEndingClock {
   /** ms since the landing that ended the manche, 0 while that play flies; MANCHE_IDLE before any ending. */
@@ -30,6 +32,7 @@ export interface MancheEndingClock {
 export function useMancheEnding({
   ended,
   hold = false,
+  partita = false,
   timeline,
   pileEmpty,
   onLanded,
@@ -37,6 +40,8 @@ export function useMancheEnding({
   ended: boolean;
   /** Parks the ending on the open pill, re-ranked, until `ended` goes false. */
   hold?: boolean;
+  /** Runs `lib/game/partitaEnding.ts` instead: it settles on the board, which stays until `ended` goes false. */
+  partita?: boolean;
   timeline: Pick<TableTimeline, "inFlight" | "landsAt" | "pending">;
   pileEmpty: boolean;
   onLanded?: (landsAt: number) => void;
@@ -51,7 +56,8 @@ export function useMancheEnding({
   useEffect(() => {
     onLandedRef.current = onLanded;
   });
-  const end = hold ? close : glowEnd;
+  const settled = partita ? partitaSettled : mancheSettled;
+  const end = partita ? partitaSettled : hold ? close : glowEnd;
 
   const runFrom = useCallback(
     (from: number, to: number) => {
@@ -69,7 +75,7 @@ export function useMancheEnding({
       if (endedAt.current === null) return;
       endedAt.current = null;
       // The deal comes before the glow has faded: a started ending runs on to its end.
-      if (!started.current) {
+      if (!started.current || partita) {
         cancelAnimation(clock);
         clock.set(MANCHE_IDLE);
       } else if (parked.current) {
@@ -89,7 +95,7 @@ export function useMancheEnding({
     const t0 = Math.max(landsAt ?? 0, endedAt.current);
     const now = performance.now();
     runFrom(reduceMotion ? Math.max(now - t0, Math.min(settled, end)) : now - t0, end);
-    pileOpacity.set(
+    if (!partita) pileOpacity.set(
       withDelay(
         Math.max(0, t0 + pileFadeAt - now),
         withTiming(0, { duration: MancheEnding.pileFadeFor, reduceMotion: ReduceMotion.Never }),
@@ -97,7 +103,7 @@ export function useMancheEnding({
       )
     );
     onLandedRef.current?.(t0);
-  }, [ended, end, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
+  }, [ended, end, settled, partita, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
 
   useEffect(() => {
     if (ended || !pileEmpty) return;
@@ -108,7 +114,7 @@ export function useMancheEnding({
   const skip = useCallback(() => {
     const to = Math.min(settled, end);
     if (started.current && clock.get() < to) runFrom(to, end);
-  }, [clock, end, runFrom]);
+  }, [clock, end, settled, runFrom]);
 
   return { clock, pileOpacity, skip };
 }

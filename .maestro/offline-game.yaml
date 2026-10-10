@@ -1,8 +1,8 @@
 ##
 # Offline gameplay flow: starts a real offline match vs one AI opponent
-# and plays it through to the result screen using the server-validated
+# and plays it through to the end-of-partita board using the server-validated
 # game engine — not a mock. Exercises real turn-taking, the AI, and the
-# result screen, none of which the web/native/unit suites can see
+# board on the felt, none of which the web/native/unit suites can see
 # (see docs/agents/checks.md).
 #
 # Strategy: configure a 2-player, single-hand ("Manche secca") match so
@@ -13,7 +13,7 @@
 # seat is dealt 3♠ it plays it; otherwise it only ever passes. Passing
 # is not "not playing" — it drives real turn cycling through the
 # server-authoritative engine and the AI until someone empties their
-# hand, which is what actually reaches the result screen. This is a
+# hand, which is what actually ends the partita. This is a
 # deliberate simplification, not full strategic play.
 #
 # Performance note: every tapOn that *lands on* the game table pins
@@ -210,9 +210,8 @@ appId: "${MAESTRO_APP_ID}"
 # AI's favour, so this cycles real turns through the AI until a hand empties.
 # `optional` keeps a tap on the off-turn button a no-op rather than a failure.
 #
-# `while` is what ends the loop: the result screen replaces the table, so the
-# moment `btn-passa` is gone it stops instead of spending its remaining turns on
-# a screen with nothing to pass on. `times` is the ceiling — one pass per turn
+# `while` is what ends the loop: the moment `btn-passa` is gone it stops instead
+# of spending its remaining turns on a table with nothing to pass on. `times` is the ceiling — one pass per turn
 # the opponent takes, against a hand of about twenty, so thirty is the hand plus
 # margin. Each surplus iteration costs a full screen read on a table whose
 # animations never stop, which is where this flow's minutes went.
@@ -227,6 +226,8 @@ appId: "${MAESTRO_APP_ID}"
           optional: true
           waitToSettleTimeoutMs: 500
 
-# --- Result screen ---
-- assertVisible:
-    id: "btn-home"
+# --- The board on the felt ---
+- extendedWaitUntil:
+    visible:
+      id: "btn-home"
+    timeout: 30000

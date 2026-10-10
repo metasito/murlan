@@ -2,7 +2,7 @@
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true online and nowhere else: server acknowledgement of a
-// play, reactions, the rematch/results overlay, and the connection-loss
+// play, reactions, the end-of-partita board's rematch vote, and the connection-loss
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -28,23 +28,12 @@ import {
   ReactionPanel,
   ReactionTrigger,
 } from "@/components/ReactionLayer";
-import { GameOverOverlay } from "@/components/GameOverOverlay";
 import { MenuButton } from "@/components/MenuButton";
 import { Colors, FontSize, Reading, Spacing, Type, Layer } from "@/lib/theme";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
 import { linkPill } from "@/lib/ownLink";
 import { useCatchUp } from "@/lib/useOwnLink";
-
-// Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
-// at bundle build time, so this only ever takes the fast path in a build the
-// E2E harness produced itself (scripts/e2e-server.mjs) — production pacing
-// is untouched.
-const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
-
-// Beat before the results overlay covers the final play. A domain hold, not a
-// generic UI transition, so it is not a Motion token.
-const GAME_OVER_DELAY = E2E_FAST ? 0 : 800;
 
 /**
  * The veiled wrapper below opens a stacking context, so the 100 and 300 its
@@ -80,8 +69,6 @@ export default function OnlineGameScreen() {
     cumulativeScores,
     handScores,
     handScoresCurrent,
-    ratingDeltas,
-    handRecorded,
     rematchVoteState,
     endMatchVoteState,
     voteRematch,
@@ -92,7 +79,6 @@ export default function OnlineGameScreen() {
     useOnlineExchange();
 
   const [showReactions, setShowReactions] = useState(false);
-  const [showGameOver, setShowGameOver] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
 
   const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,21 +93,6 @@ export default function OnlineGameScreen() {
     },
     []
   );
-
-  // The latch belongs to one game-over, so the game-over passing is what clears
-  // it — online this screen is never unmounted between manches, and a latch left
-  // standing would let the next one skip its delay.
-  const [latchedOver, setLatchedOver] = useState(gameState?.gameOver);
-  if (gameState?.gameOver !== latchedOver) {
-    setLatchedOver(gameState?.gameOver);
-    if (!gameState?.gameOver) setShowGameOver(false);
-  }
-
-  useEffect(() => {
-    if (!gameState?.gameOver) return;
-    const t = setTimeout(() => setShowGameOver(true), GAME_OVER_DELAY);
-    return () => clearTimeout(t);
-  }, [gameState?.gameOver]);
 
   const goToLobby = useCallback(() => {
     if (entrySource === "quickmatch") router.replace("/(online)/quickmatch");
@@ -189,8 +160,6 @@ export default function OnlineGameScreen() {
   const myUserId = user?.id ?? "";
   const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
 
-  // The results overlay sits above the table and needs the same safe-area pads
-  // the table uses; the table computes its own full frame from the same source.
   const pads = computeScreenPads({ insets });
   // The tray opens beside the rail's own lower knob, which is where the
   // trigger it belongs to lives.
@@ -227,8 +196,11 @@ export default function OnlineGameScreen() {
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
   const mancheOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
-  const resultsShown = showGameOver && gameState.gameOver && matchState.over;
   const nextHandVotes = rematchVoteState?.votes ?? [];
+  const voteRematchNow = () => {
+    uiFeedback("medium");
+    voteRematch();
+  };
 
   return (
     <GameTable
@@ -236,8 +208,24 @@ export default function OnlineGameScreen() {
       matchOver={matchState.over}
       matchWinners={matchState.winners}
       handScores={handScores}
-      matchScore={
-        matchState.length === "single" ? undefined : { scores: cumulativeScores, target: matchState.target }
+      matchScore={{ scores: cumulativeScores, target: matchState.target, single: matchState.length === "single" }}
+      partitaActions={
+        handScoresCurrent
+          ? {
+              onHome: requestLeave,
+              again: matchState.continues
+                ? {
+                    testID: "btn-rivincita",
+                    onPress: voteRematchNow,
+                    tally: {
+                      voted: nextHandVotes.includes(user?.id ?? ""),
+                      votes: nextHandVotes.length,
+                      total: rematchVoteState?.total ?? gameState.players.length,
+                    },
+                  }
+                : null,
+            }
+          : undefined
       }
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
@@ -315,14 +303,10 @@ export default function OnlineGameScreen() {
               voted: nextHandVotes.includes(user?.id ?? ""),
               votes: nextHandVotes.length,
               total: rematchVoteState?.total ?? gameState.players.length,
-              onPress: () => {
-                uiFeedback("medium");
-                voteRematch();
-              },
+              onPress: voteRematchNow,
             }
           : null
       }
-      tableCovered={resultsShown}
       overlays={(veiled) => (
         <>
           {/* A <Modal> renders above the settings sheet rather than behind it,
@@ -349,31 +333,6 @@ export default function OnlineGameScreen() {
                   sendReaction(emoji);
                 }}
                 onClose={() => setShowReactions(false)}
-              />
-            )}
-
-            {resultsShown && (
-              <GameOverOverlay
-                gameState={gameState}
-                topPad={pads.topPad}
-                bottomPad={pads.bottomPad}
-                leftPad={pads.leftPad}
-                rightPad={pads.rightPad}
-                onLeave={requestLeave}
-                onVoteRematch={() => {
-                  uiFeedback("medium");
-                  voteRematch();
-                }}
-                voteState={rematchVoteState}
-                myUserId={user?.id ?? ""}
-                mySeatIndex={mySeatIndex}
-                cumulativeScores={cumulativeScores}
-                handScores={handScores}
-                ratingDelta={ratingDeltas[user?.id ?? ""] ?? null}
-                handRecorded={handRecorded}
-                match={matchState}
-                ownLink={ownLink}
-                onRetry={retryConnection}
               />
             )}
           </View>

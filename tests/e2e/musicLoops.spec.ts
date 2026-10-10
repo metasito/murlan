@@ -23,7 +23,7 @@ const musicDir = path.resolve(__dirname, "..", "..", "assets", "music");
 
 /** The tracks; tests/tooling/musicAssets.test.ts pins these against what
  * lib/device/musicTracks.ts and lib/device/musicTracks.web.ts actually require. */
-const TRACKS = ["menu", "hand", "cue"] as const;
+const TRACKS = ["menu", "hand"] as const;
 const WEBM = Object.fromEntries(TRACKS.map((t) => [t, `${t}.webm`]));
 const FLAC = Object.fromEntries(TRACKS.map((t) => [t, `native/${t}.flac`]));
 

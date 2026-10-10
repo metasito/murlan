@@ -89,13 +89,13 @@ describe('music follows the route', () => {
     await r.unmount();
   });
 
-  it('starts the hand again after the result screen, on a second entry to the table', async () => {
+  it('starts the hand again after a menu, on a second entry to the table', async () => {
     mockPathname = '/game';
     const r = await render(<Harness />);
     await settle(1000);
-    await go(r, '/result');
+    await go(r, '/');
     await go(r, '/game');
-    expect(loops().map(fileOf)).toEqual(['hand', 'cue', 'hand']);
+    expect(loops().map(fileOf)).toEqual(['hand', 'menu', 'hand']);
     await r.unmount();
   });
 

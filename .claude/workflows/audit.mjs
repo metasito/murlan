@@ -152,7 +152,7 @@ List what BETA-PLAYTEST found that is still unaddressed.`,
   },
   {
     key: 'polish', kind: 'opportunities', model: 'opus', skills: ['game-feel', 'game-ui-design', 'react-native-best-practices'],
-    start: 'docs/FEEL-BAR.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, components/GameOverOverlay.tsx, lib/device/feedback.ts, lib/device/moments.ts, lib/device/audioEngine.ts, lib/device/hapticsEngine.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
+    start: 'docs/FEEL-BAR.md, components/useTableFeedback.ts, components/flightPhysics.ts, components/table/, components/ReactionLayer.tsx, lib/device/feedback.ts, lib/device/moments.ts, lib/device/audioEngine.ts, lib/device/hapticsEngine.ts, lib/theme.ts (Motion), assets/sounds/, assets/music/, app/index.tsx',
     refs: 'game-feel skill (hit-stop, easing, squash and stretch, layered feedback); FEEL-BAR references per moment.',
     ask: `You propose improvements; you do not hunt defects.
 Cover every FEEL-BAR moment (Deal, Card landing, Bomb, Pass, Turn hand-off, Win, Loss, Reconnect, Idle table), plus menus, lobby, results and transitions.

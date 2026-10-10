@@ -21,7 +21,7 @@ applies here.
 
 ## What they are
 
-All four are **one composition**, *Week 1 — Retro Lounge*. That is the point
+Both are **one composition**, *Week 1 — Retro Lounge*. That is the point
 rather than a coincidence: research done for #137 found that four variations of
 one idea are more memorable than four unrelated pieces, so a change of screen
 is a change of arrangement, not a change of music.
@@ -30,7 +30,6 @@ is a change of arrangement, not a change of music.
 |---|---|---|
 | `menu.webm` | `Week 1 - Retro Lounge BASE.ogg` | every menu screen |
 | `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a hand is live |
-| `cue.webm` | `Week 1 - Retro Lounge UNUSED ALT.ogg` | the result screen |
 
 Chosen by the owner on #113 from the twelve candidates auditioned in #163.
 

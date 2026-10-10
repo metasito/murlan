@@ -12,7 +12,6 @@ export const CONTAINER = "flac" as const;
 export const TRACKS = {
   menu: () => require("../../assets/music/native/menu.flac") as number,
   hand: () => require("../../assets/music/native/hand.flac") as number,
-  cue: () => require("../../assets/music/native/cue.flac") as number,
 } as const;
 
 export type TrackId = keyof typeof TRACKS;

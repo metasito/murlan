@@ -64,7 +64,7 @@ Verify against source before changing any.
   call site.
 - **Gold is a five-step alpha scale** (`goldGhost` … `goldStrong`): pick by role, add no sixth.
 - **Reach for the shared piece before writing one**: `ScreenHeader`, `StateBlock`, `IconButton`,
-  `Avatar`, `ResultBoard`, `AppModal`, `useIsLandscape()`. A local component never takes a shared
+  `Avatar`, `AppModal`, `useIsLandscape()`. A local component never takes a shared
   one's name.
 - **Paint new or moved notices with `TableNotice`**; `components/table/notices/` lays out only
   (`tests/ui-rules/noticePaintLint.test.ts`).

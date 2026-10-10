@@ -1,5 +1,5 @@
 // tests/native/mancheEndsOnTable.test.tsx — offline, a manche ends on the table and the next one
-// is dealt from the landing that ended it; only a partita still leaves for /result.
+// is dealt from the landing that ended it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
@@ -78,12 +78,12 @@ describe('the end of a manche, offline', () => {
     jest.useRealTimers();
   });
 
-  it('deals the next manche once, at the ending landing plus the deal onset, and never routes to /result', async () => {
+  it('deals the next manche once, at the ending landing plus the deal onset, and never changes route', async () => {
     const view = await render(<GameScreen />);
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
-    expect(router.replace).not.toHaveBeenCalledWith('/result');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(mockStartNextHand).not.toHaveBeenCalled();
 
     await act(async () => mockTable.props.onMancheLanded?.(performance.now()));
@@ -99,7 +99,7 @@ describe('the end of a manche, offline', () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
     expect(mockStartNextHand).toHaveBeenCalledTimes(1);
-    expect(router.replace).not.toHaveBeenCalledWith('/result');
+    expect(router.replace).not.toHaveBeenCalled();
     await view.unmount();
   });
 
@@ -125,14 +125,14 @@ describe('the end of a manche, offline', () => {
     expect(mockStartNextHand).not.toHaveBeenCalled();
   });
 
-  it('a partita still ends on /result, and the table is not asked to deal', async () => {
+  it('a partita ends on the table too, and the table is not asked to deal', async () => {
     mockMatch.over = true;
     const view = await render(<GameScreen />);
     expect(mockTable.props.onMancheLanded).toBeUndefined();
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
-    expect(router.replace).toHaveBeenCalledWith('/result');
+    expect(router.replace).not.toHaveBeenCalled();
     expect(mockStartNextHand).not.toHaveBeenCalled();
     await view.unmount();
   });

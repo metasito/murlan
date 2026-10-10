@@ -332,11 +332,8 @@ export function useTableFeedback({
     // The manche/partita shake itself is NOT fired here: it reacts to the
     // winning card's own landing signal, on its contact frame.
     // `rankings` holds engine player ids (`player_0`), never display names.
-    // Routed through the one function the results board's own haptic reads
-    // for the same question (`lib/game/matchState.ts`), fed the same `handScores`
-    // the caller already holds rather than a second `scoreHand` of its own,
-    // so a teams-mode 3-3 manche (GAME-RULES.md §11) celebrates no seat here exactly as
-    // it does there, instead of this effect deciding the same question again.
+    // `lib/game/matchState.ts` decides who a manche celebrates, from the caller's
+    // own `handScores`: a teams-mode 3-3 manche (GAME-RULES.md §11) celebrates no seat.
     const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
     // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
     // the scores that decide it (`game:over`, unawaited server-side and

@@ -40,32 +40,11 @@ export interface MatchState extends MatchVerdict {
 }
 
 /**
- * What the results board calls the seat it celebrates.
- *
- * `candidates` is ordered best-first, and one naming no seat is passed over
- * rather than accepted empty: a match can be over with no winners, because a
- * client that rejoins a finished table never receives `game:over`, and a
- * winner id can outlive the seat it named. The empty string where none of them
- * names a seat — never an id, which reaches the screen as `player_0`.
- */
-export function celebration(
-  players: readonly { id: string; name: string; team?: string }[],
-  candidates: readonly (string | undefined)[],
-  teamLabel: ((team: string) => string) | null
-): string {
-  for (const id of candidates) {
-    const seat = id === undefined ? undefined : players.find((p) => p.id === id);
-    if (!seat) continue;
-    return teamLabel && seat.team ? teamLabel(seat.team) : seat.name;
-  }
-  return "";
-}
-
-/**
- * Whether `viewerId` is the seat (or, in team mode, teammate of the seat)
- * `celebration` would name from the same `candidates`. Gated on `isTeamMode`
- * rather than on `seat.team` alone, to stay in step with `celebration`'s own
- * `teamLabel` gate. Undefined for a viewer holding no seat.
+ * Whether `viewerId` is the first seat named by `candidates` (or, in team
+ * mode, its teammate). `candidates` is ordered best-first, and one naming no
+ * seat is passed over: a client that rejoins a finished table never receives
+ * `game:over`, and a winner id can outlive the seat it named. False for a
+ * viewer holding no seat.
  */
 export function celebratesViewer(
   players: readonly { id: string; team?: string }[],
@@ -87,10 +66,7 @@ export function celebratesViewer(
 
 /**
  * Whether a just-played manche paid every team the same total (GAME-RULES.md §11):
- * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3. A draw this
- * way has no candidate to celebrate, so the caller must drop the manche's own
- * placement (`rankings[0]`, the standings' own first row) from `celebration`'s
- * candidates rather than let it fall through to the seat that went out first.
+ * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3.
  */
 export function isDrawnHand(
   players: readonly { id: string; team?: string }[],
@@ -113,16 +89,11 @@ export type HandOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
 
 /**
  * What the manche that just ended did to `viewerId` — the decision the
- * table's own win/lose sting reads (`components/useTableFeedback.ts`), and
- * the one the results board's haptic reads for a hand the match itself has
- * not yet decided. `handScores` is a parameter rather than recomputed here,
- * so both readers score the manche from the one value its caller already
- * holds (the server's `game:over` payload online, the played hand's own
- * `pointsAwarded` offline) instead of two calls to `scoreHand` that happen to
- * agree today. A 3-3 teams draw (GAME-RULES.md §11) is `"draw"` here the same
- * way it is an empty `celebration` there — one path recomputing its own
- * placement checks, rather than reading the shared one, is how a win cue
- * reached a losing seat's body in the first place (#777).
+ * table's own win/lose sting reads (`components/useTableFeedback.ts`).
+ * `handScores` is a parameter rather than recomputed here, so the manche is
+ * scored from the one value its caller already holds (the server's
+ * `game:over` payload online, the played hand's own `pointsAwarded` offline)
+ * instead of a second call to `scoreHand` that happens to agree today.
  *
  * `"pending"` is an answer of its own, not a stand-in for `"draw"`: online, a
  * finished hand's `rankings` reach the client (`game:state`, `gameOver:
