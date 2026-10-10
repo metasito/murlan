@@ -52,7 +52,7 @@ export interface RematchVoteState {
 export interface OnlineMatchState extends MatchVerdict {
   /** Manches decided on this match so far. */
   handsPlayed: number;
-  /** Verdict of the rematch question once the match is over. */
+  /** Once the match is over, whether a rematch may follow: false only when it ended by vote. */
   continues: boolean;
 }
 

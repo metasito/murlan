@@ -1477,7 +1477,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   };
 }
 
-// ─── Match length and the rematch question ────────────────────────────────────
+// ─── Match length ─────────────────────────────────────────────────────────────
 
 /**
  * How long a game runs.

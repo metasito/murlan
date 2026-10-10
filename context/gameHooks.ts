@@ -2,9 +2,9 @@
  * The local table's surface, in the four pieces a screen actually reads.
  *
  * The online counterpart is `onlineGameHooks.ts`. The two are deliberately not
- * one set: the local game has no connection and no turn clock, its match
- * carries a tally and a local majority where the server's carries votes and
- * rating deltas. One hook spanning both would be a union with half its fields
+ * one set: the local game has no connection and no turn clock, and its match
+ * carries none of the votes and rating deltas the server's does. One hook
+ * spanning both would be a union with half its fields
  * null on either side.
  *
  * Each is a projection, never a home for logic. What is genuinely one concept
