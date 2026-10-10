@@ -4,6 +4,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
+import { tap } from "./helpers/press";
 
 function pageErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -11,9 +12,9 @@ function pageErrors(page: Page): string[] {
   return errors;
 }
 
-async function playFirstCard(page: Page): Promise<void> {
-  await page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true, position: { x: 8, y: 30 } });
-  await page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 });
+async function playTopCard(page: Page): Promise<void> {
+  await tap(page, page.locator('[data-hand-state] [data-testid="card-box"]').last());
+  await tap(page, page.getByRole("button", { name: GIOCA_VALID_LABEL }));
 }
 
 async function untilHome(page: Page): Promise<void> {
@@ -30,7 +31,7 @@ test("Home on the end-of-partita board leaves the Skia felt without an error", a
   await resumeSaved(page, baseURL!, save);
   await untilSkiaFelt(page);
 
-  await playFirstCard(page);
+  await playTopCard(page);
   await page.getByTestId("btn-home").click({ timeout: 30_000 });
   await untilHome(page);
 
@@ -44,7 +45,7 @@ test("leaving mid-manche through the menu leaves the Skia felt without an error"
   await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
   await untilSkiaFelt(page);
 
-  await playFirstCard(page);
+  await playTopCard(page);
   await page.getByRole("button", { name: "Impostazioni" }).click();
   await page.getByRole("button", { name: "Esci dalla partita" }).click();
   await page.getByTestId("confirm-accept").click();
