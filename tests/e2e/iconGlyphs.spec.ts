@@ -120,16 +120,16 @@ test("the replay screen renders the correct transport icon in both its paused an
   // ending — gameOver.ts writes a replay after any hand with a human seat,
   // and this is the cheapest way to reach one. Not load-bearing for
   // correctness (a multi-hand "Partita" would also eventually reach
-  // "Esci dalla partita" and still produce a replay) — only for speed — so a
+  // the board's home button and still produce a replay) — only for speed — so a
   // generous budget below covers either outcome rather than trusting this
   // click took effect.
   await page.getByRole("radio", { name: /Manche secca/ }).first().click();
   await fillWithBotsAndStart(page);
 
   await driveGameToCompletion(page, {
-    isFinished: (p) => p.getByRole("button", { name: "Esci dalla partita" }).isVisible(),
+    isFinished: (p) => p.getByTestId("btn-home").isVisible(),
   });
-  await expect(page.getByRole("button", { name: "Esci dalla partita" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("btn-home")).toBeVisible({ timeout: 15_000 });
 
   // A hard navigation, not the in-app "leave" button then a click through the
   // home screen: gameOver.ts already wrote the replay the moment the hand

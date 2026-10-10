@@ -36,6 +36,7 @@ const mockResetGame = jest.fn();
 const mockVoteRematch = jest.fn();
 let mockVotes: { votes: string[]; total: number } | null = null;
 let mockError: { text: string; seq: number } | null = null;
+let mockScoresCurrent = true;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
@@ -84,7 +85,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     matchState: { ...MOCK_MATCH, length: 'match' },
     cumulativeScores: MOCK_SCORES,
     handScores: MOCK_HAND,
-    handScoresCurrent: true,
+    handScoresCurrent: mockScoresCurrent,
     ratingDeltas: {},
     handRecorded: true,
     rematchVoteState: mockVotes,
@@ -125,6 +126,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockVotes = null;
   mockError = null;
+  mockScoresCurrent = true;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -143,7 +145,6 @@ describe.each<[string, React.ComponentType, string]>([
 
     await advance(settled);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('winner-celebration', HIDDEN)).toBeNull();
     expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
     expect(screen.getAllByText(t('partitaBoard.wins'), HIDDEN).length).toBeGreaterThan(0);
     expect(screen.getByTestId('score-pill-winner-row', HIDDEN)).toHaveTextContent('1');
@@ -185,6 +186,19 @@ describe('Nuova partita on the board', () => {
     await fireEvent.press(screen.getByTestId('btn-home', HIDDEN));
     expect(mockResetGame).toHaveBeenCalledTimes(1);
     expect(router.replace).toHaveBeenCalledWith('/');
+    await view.unmount();
+  });
+
+  it('holds the online board until the manche scores arrive', async () => {
+    mockScoresCurrent = false;
+    const view = await render(wrap(OnlineGameScreen));
+    await advance(settled + 100);
+    expect(screen.queryByTestId('btn-home', HIDDEN)).toBeNull();
+
+    mockScoresCurrent = true;
+    await act(async () => view.rerender(wrap(OnlineGameScreen)));
+    await advance(settled + 100);
+    expect(pressable('btn-home')).toBe(true);
     await view.unmount();
   });
 

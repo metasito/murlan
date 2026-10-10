@@ -30,7 +30,7 @@ is a change of arrangement, not a change of music.
 |---|---|---|
 | `menu.webm` | `Week 1 - Retro Lounge BASE.ogg` | every menu screen |
 | `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a hand is live |
-| `cue.webm` | `Week 1 - Retro Lounge UNUSED ALT.ogg` | the result screen |
+| `cue.webm` | `Week 1 - Retro Lounge UNUSED ALT.ogg` | no screen; only the music diagnostics scenarios play it |
 
 Chosen by the owner on #113 from the twelve candidates auditioned in #163.
 

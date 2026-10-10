@@ -2,7 +2,7 @@
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true online and nowhere else: server acknowledgement of a
-// play, reactions, the rematch/results overlay, and the connection-loss
+// play, reactions, the end-of-partita board's rematch vote, and the connection-loss
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";

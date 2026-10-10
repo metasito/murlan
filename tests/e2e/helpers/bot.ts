@@ -259,7 +259,7 @@ async function playOrPass(
   // the table's own description has not caught up for a tick. The
   // play-or-pass invariant below is about a hand that still has cards in it —
   // asserting it here turns a finished game into a failure. Handing back null
-  // lets the caller's isFinished check see the game-over overlay.
+  // lets the caller's isFinished check see the end-of-partita board.
   if (labels.length === 0) return null;
 
   function cardByLabel(label: string): Locator {
