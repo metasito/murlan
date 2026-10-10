@@ -127,14 +127,11 @@ function FanBack({ id, at, boxW, backScale, zIndex }: {
 function CardFan({
   count,
   side,
-  isActive,
   scale = 1,
 }: {
   /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
   side: OpponentSide;
-  /** This seat is on move, so the lamp is over it and its backs are lit. */
-  isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
@@ -651,7 +648,7 @@ export const TopOppSlot = memo(function TopOppSlot({
         mark={mark}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} side="top" isActive={lit} scale={scale} />
+        <CardFan count={displayed} side="top" scale={scale} />
       )}
     </View>
   );
@@ -832,7 +829,7 @@ export const SideOppSlot = memo(function SideOppSlot({
         mark={mark}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} side={side} isActive={lit} scale={scale} />
+        <CardFan count={displayed} side={side} scale={scale} />
       )}
     </View>
   );
