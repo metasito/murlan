@@ -104,7 +104,7 @@ describe("isDrawnHand", () => {
 
 // The one function every win/lose cue reads — the table's own sting
 // (components/useTableFeedback.ts) and the results board (celebration/
-// celebratesViewer) both, so a teams-mode 3-3 manche is neutral on both
+// celebratesViewer) both, so a teams-mode 3-3 manche celebrates no seat on both
 // paths rather than each recomputing its own placement check (#777).
 describe("handOutcomeFor", () => {
   const TEAMS_TABLE = [
@@ -117,9 +117,9 @@ describe("handOutcomeFor", () => {
   const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
   const drawnScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 
-  test("is neutral for every seat on a drawn teams manche", () => {
+  test("is a draw for every seat on a drawn teams manche", () => {
     for (const { id } of TEAMS_TABLE) {
-      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "neutral");
+      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "draw");
     }
   });
 
@@ -138,6 +138,7 @@ describe("handOutcomeFor", () => {
     assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", false), "won");
     assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", false), "lost");
     assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", false), "neutral");
+    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_1", false), "neutral");
   });
 
   test("is neutral for a spectator holding no seat", () => {

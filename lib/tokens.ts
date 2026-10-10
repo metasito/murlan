@@ -616,6 +616,8 @@ export const Reading = {
 export const Hold = {
   /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
   land: 175,
+  /** From the landing that ends a manche to its sting (the lantern mockup's `mwin`/`mlose`). */
+  sting: 300,
   /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
   reveal: 1500,
 } as const;
