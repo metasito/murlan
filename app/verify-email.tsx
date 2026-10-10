@@ -149,7 +149,7 @@ export default function VerifyEmailScreen() {
                 accessibilityLabel={t("verifyEmail.submit")}
               />
 
-              {user && !user.emailVerified && (
+              {user?.emailVerified === false && (
                 <MenuButton
                   label={resending ? t("verifyEmail.resending") : t("verifyEmail.resend")}
                   onPress={resend}
