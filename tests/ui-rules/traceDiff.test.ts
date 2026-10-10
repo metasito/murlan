@@ -84,6 +84,14 @@ describe("diffTraces", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 480).dropped = 11.1))), new Set(["dropped"]));
   });
 
+  test("a turn clock 0.1 off, or drawn at one seat on one side only, fails at a checkpoint; 0.02 off passes", () => {
+    const clocks = (app: Record<string, number>, mockup: Record<string, number>) =>
+      new Set(diffTraces(planted((tr) => (at(tr, 160).clocks = mockup)), planted((tr) => (at(tr, 160).clocks = app)), CHECKPOINTS).map((f) => f.field));
+    assert.deepEqual(clocks({ top: 0.9 }, { top: 1 }), new Set(["clocks"]));
+    assert.deepEqual(clocks({ left: 1 }, { top: 1, left: 0 }), new Set(["clocks"]));
+    assert.deepEqual(clocks({ top: 0.98, left: 0 }, { top: 1 }), new Set());
+  });
+
   test("a felt breath 0.002 off at a checkpoint fails; 0.0005 passes", () => {
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).breath = 1.002))), new Set(["breath"]));
     assert.deepEqual(fieldsOf(planted((tr) => (at(tr, 160).breath = 1.0005))), new Set());
@@ -157,6 +165,7 @@ describe("diffTraces", () => {
       pillPt: 1,
       contactPt: 1,
       breath: 0.001,
+      clock: 0.05,
     });
   });
 });

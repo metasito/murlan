@@ -257,19 +257,20 @@ const MOMENTS: Moment[] = [
     stripAt: glance(6800, TRICK_CHECKPOINTS),
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      window.__paritySeats = { luan: "left", besnik: "top", gent: "right" };
       const hand = handoff;
       handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "lamp", "level"],
+    fields: ["onset", "lamp", "level", "live", "clocks"],
     regions: [],
     onsets: ["moment:handoff"],
     actions: [
       { atMs: 1150, app: playLowest(2) },
       { atMs: 3250, app: pass },
       { atMs: 4550, app: pass },
-      { atMs: 5950, app: pass },
+      { atMs: 5350, app: botMove },
     ],
   },
   {
@@ -279,8 +280,7 @@ const MOMENTS: Moment[] = [
     windowMs: 6992,
     checkpoints: LANDING_CHECKPOINTS,
     stripAt: glance(6992, LANDING_CHECKPOINTS),
-    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
-      ember = () => {};`,
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -291,7 +291,7 @@ const MOMENTS: Moment[] = [
     actions: [
       { atMs: 1150, app: playLowest(2) },
       { atMs: 2600, app: botMove },
-      { atMs: 4150, app: pass },
+      { atMs: 4550, app: pass },
       { atMs: 5350, app: botMove },
     ],
     // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
@@ -323,7 +323,8 @@ const MOMENTS: Moment[] = [
     fields: ["onset", "live", "dropped", "flare", "kick"],
     regions: [],
     onsets: ["moment:bombFx"],
-    actions: [{ atMs: 600, app: botMove }],
+    // The chapter holds the turn until 3300; the table hands it on as the bomb settles, under its sparks.
+    actions: [{ atMs: 600, app: botMove }, { atMs: 1300, mockup: "handoff('besnik', 'gent')" }],
   },
   {
     key: "score-open",
@@ -379,6 +380,9 @@ const MOCKUP_SAMPLE = `(() => {
     onsets: window.__parityOnsets.splice(0),
     live: P.length + lamp.m.length,
     dropped: 0,
+    clocks: Object.fromEntries(
+      Object.entries(window.__paritySeats ?? { luan: "right", besnik: "top", gent: "left" }).map(([k, side]) => [side, Number(getComputedStyle(seatEls[k].ring).opacity)])
+    ),
     breath: Number(V.bg.style.scale) || 1,
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r, kick: lamp.kick },
     shake,

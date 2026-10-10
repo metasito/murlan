@@ -388,9 +388,11 @@ function SeatRing({
   countdown,
   focusMode = false,
   mark,
+  side,
 }: {
   name: string;
   isActive: boolean;
+  side: OpponentSide;
   cardCount: number;
   /** The seat's real hand, where `cardCount` is only what a running deal has landed so far. */
   held: number;
@@ -429,7 +431,7 @@ function SeatRing({
   );
   const lit = seatLit(isActive, mark);
   const probe = useRingProbe(name);
-  const clock = useClockFade(isActive ? (countdown ?? null) : null, clockKey);
+  const clock = useClockFade(isActive ? (countdown ?? null) : null, clockKey, side);
 
   useEffect(
     () => () => {
@@ -757,6 +759,7 @@ function SeatWho({
         countdown={countdown}
         focusMode={focusMode}
         mark={mark}
+        side={anchor === "centre" ? "top" : anchor}
       />
       {passed && !focusMode && <PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} scale={scale} />}
     </View>

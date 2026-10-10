@@ -3,13 +3,19 @@ import { useSharedValue, withDelay, withTiming, type SharedValue } from "react-n
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Handoff } from "@/lib/tokens";
+import { useTraceSource } from "@/lib/e2eTrace";
+import type { OpponentSide } from "@/components/seatLayout";
 
 /**
  * A turn clock across a hand-off: `shown` is `clock` while there is one, then the last one, held
  * while it fades out; a clock arriving waits out the leaving one's fade, so the table never draws
  * two. `key` says when a clock still on has changed.
  */
-export function useClockFade<T>(clock: T | null, key: (c: T) => string): { shown: T | null; opacity: SharedValue<number> } {
+export function useClockFade<T>(
+  clock: T | null,
+  key: (c: T) => string,
+  seat?: OpponentSide
+): { shown: T | null; opacity: SharedValue<number> } {
   const reduced = usePrefersReducedMotion();
   const on = clock !== null;
   const [held, setHeld] = useState({ on, last: clock, leaving: false });
@@ -28,5 +34,9 @@ export function useClockFade<T>(clock: T | null, key: (c: T) => string): { shown
       });
     }
   }, [on, reduced, opacity, gone]);
-  return { shown: on ? clock : held.leaving ? held.last : null, opacity };
+  const shown = on ? clock : held.leaving ? held.last : null;
+  const drawn = shown !== null;
+  const read = useCallback(() => [seat ?? "", drawn ? opacity.value : 0] as const, [seat, drawn, opacity]);
+  useTraceSource("clock", seat ? read : null);
+  return { shown, opacity };
 }
