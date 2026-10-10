@@ -53,7 +53,7 @@ function Lit({ table, rectKey, width, height }: Props & { table: CardTable; rect
         source={GLOSS_SPOT_ART()}
         style={[styles.layer, { left: -radius, top: -radius, width: 2 * radius, height: 2 * radius }, spotStyle]}
       />
-      <Animated.View testID="card-gloss-streak" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, streakStyle]}>
+      <Animated.View testID="card-gloss-streak" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, streakStyle]}>
         <LinearGradient colors={STREAK} style={StyleSheet.absoluteFill} />
       </Animated.View>
     </View>
