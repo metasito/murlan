@@ -1,6 +1,6 @@
 import { FeltCanvas } from "./feltCanvas";
 import type { FeltProps } from "./feltReady";
 
-export function Felt({ rig, stops, onReady, cards }: FeltProps) {
-  return <FeltCanvas lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} />;
+export function Felt({ rig, stops, onReady, cards, grey }: FeltProps) {
+  return <FeltCanvas lamp={rig.lamp} sx={rig.sx} sy={rig.sy} stops={stops} onReady={onReady} cards={cards} grey={grey} />;
 }
