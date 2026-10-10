@@ -209,7 +209,7 @@ describe('app/verify-email', () => {
       fireEvent.press(resend);
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', {});
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'en' });
     const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'signedin@example.test');
     await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
     await view.unmount();
@@ -265,6 +265,7 @@ describe('app/recover', () => {
     await waitFor(() =>
       expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/request-password-reset', {
         email: 'player@example.test',
+        locale: 'en',
       })
     );
 

@@ -43,4 +43,25 @@ describe("register -> mail -> verify-email, end to end", { skip: hasDatabase() ?
     });
     assert.equal(verifyRes.status, 200, await verifyRes.text());
   });
+
+  test("the locale a request carries is the language of the mail it sends", async () => {
+    const username = "mailitaliano";
+    const email = `${username}@example.test`;
+    const post = (route: string, body: object) =>
+      fetch(`${server.url}/api/auth/${route}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const registerRes = await post("register", { username, password: "password123", email, locale: "it" });
+    assert.equal(registerRes.status, 202, await registerRes.text());
+    const code = await readMailToken(email, "Verifica la tua email Murlan");
+    const verifyRes = await post("verify-email", { email, code });
+    assert.equal(verifyRes.status, 200, await verifyRes.text());
+
+    const resetRes = await post("request-password-reset", { email, locale: "it" });
+    assert.equal(resetRes.status, 200, await resetRes.text());
+    const token = await readMailToken(email, "Reimposta la tua password Murlan");
+    assert.match(token, /\S+/);
+  });
 });

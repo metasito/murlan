@@ -127,6 +127,10 @@ export const en = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verify email",
+  "mail.verifySubject": "Verify your Murlan email",
+  "mail.verifyBody": "Someone signed up for a Murlan account (@{{username}}) using this email address.\n\nIf that was you, your verification code is:\n\n{{code}}\n\nThis code expires in {{minutes}} minutes.\n\nIf it was not you, no further action is needed — leaving this code unused does not give that account your address.",
+  "mail.resetSubject": "Reset your Murlan password",
+  "mail.resetBody": "Your Murlan password reset code is:\n\n{{token}}\n\nThis code expires in {{minutes}} minutes. If you did not request this, you can ignore this email.",
   "verifyEmail.body": "Enter the 6-digit code from the email we sent you.",
   "verifyEmail.codeLabel": "Code",
   "verifyEmail.codePlaceholder": "6-digit code",

@@ -14,8 +14,8 @@ interface SinkEntry {
 const POLL_MS = 200;
 
 function tokenFromBody(text: string): string | null {
-  // Both verificationEmailBody and sendPasswordResetEmail's body put the
-  // token alone on its own line, straight after "...is:".
+  // verificationEmailBody and passwordResetEmailBody put the token alone on
+  // its own line, straight after a colon, in every locale.
   return text.match(/:\n\n(\S+)\n\n/)?.[1] ?? null;
 }
 

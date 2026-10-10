@@ -17,6 +17,7 @@ export const RegisterSchema = z.object({
   // format check, so a pathological value is rejected on size before regex
   // backtracking ever sees it.
   email: z.string().trim().min(3).max(254).email(),
+  locale: z.string().max(16).optional(),
 });
 
 /** `code` is the 6-digit value mailed by replaceEmailVerifyCode — see server/http/authTokens.ts. */
@@ -27,11 +28,13 @@ export const VerifyEmailSchema = z.object({
 
 export const RequestPasswordResetSchema = z.object({
   email: RegisterSchema.shape.email,
+  locale: RegisterSchema.shape.locale,
 });
 
 /** The existing-account migration nudge (#863) — same shape signup validates. */
 export const AddEmailSchema = z.object({
   email: RegisterSchema.shape.email,
+  locale: RegisterSchema.shape.locale,
 });
 
 /** `token` is a `randomBytes(32)` base64url value — see server/http/authTokens.ts. */

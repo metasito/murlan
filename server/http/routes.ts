@@ -26,7 +26,7 @@ import {
   BugReportSchema,
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "../socket/push.ts";
-import { DEFAULT_LOCALE, type Locale } from "../../shared/i18n.ts";
+import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../../shared/i18n.ts";
 import {
   declineGameInviteAndNotify,
   emitToUser,
@@ -327,18 +327,21 @@ function sessionUser(user: User) {
  * claim (userStore.markEmailVerified). Exported so tests can pin the wording
  * without standing up a mail provider.
  */
-export function verificationEmailBody(username: string, code: string): string {
-  return (
-    `Someone signed up for a Murlan account (@${username}) using this email address.\n\n` +
-    `If that was you, your verification code is:\n\n${code}\n\nThis code expires in 15 minutes.\n\n` +
-    `If it was not you, no further action is needed — leaving this code unused does not give ` +
-    `that account your address.`
-  );
+export function verificationEmailBody(username: string, code: string, locale: Locale): string {
+  return translate(locale, "mail.verifyBody", { username, code, minutes: EMAIL_VERIFY_CODE_TTL_MS / 60_000 });
+}
+
+export function passwordResetEmailBody(token: string, locale: Locale): string {
+  return translate(locale, "mail.resetBody", { token, minutes: PASSWORD_RESET_TOKEN_TTL_MS / 60_000 });
+}
+
+export function mailLocale(value: unknown): Locale {
+  return typeof value === "string" && isLocale(value) ? value : DEFAULT_LOCALE;
 }
 
 /** Never awaited by a caller — a provider outage must not delay or fail the response it rides with. */
-function sendVerificationEmail(to: string, username: string, code: string, userId: string): void {
-  sendMail(to, "Verify your Murlan email", verificationEmailBody(username, code), userId)
+function sendVerificationEmail(to: string, username: string, code: string, userId: string, locale: Locale): void {
+  sendMail(to, translate(locale, "mail.verifySubject"), verificationEmailBody(username, code, locale), userId)
     .catch((err) => logger.error({ err, userId }, "sendVerificationEmail failed"));
 }
 
@@ -347,14 +350,8 @@ function sendVerificationEmail(to: string, username: string, code: string, userI
  * request-password-reset handler replies before this settles, so the only
  * work the response waits on is the token mint, not the outbound HTTPS call.
  */
-function sendPasswordResetEmail(to: string, token: string, userId: string): void {
-  sendMail(
-    to,
-    "Reset your Murlan password",
-    `Your Murlan password reset code is:\n\n${token}\n\nThis code expires in 30 minutes. ` +
-      `If you did not request this, you can ignore this email.`,
-    userId
-  ).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed"));
+function sendPasswordResetEmail(to: string, token: string, userId: string, locale: Locale): void {
+  sendMail(to, translate(locale, "mail.resetSubject"), passwordResetEmailBody(token, locale), userId).catch((err) => logger.error({ err, userId }, "sendPasswordResetEmail failed"));
 }
 
 /**
@@ -424,7 +421,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // rather than degrade into a second, session-less registration outcome
   // that a client cannot tell apart from success.
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
-    const { username, password, email } = req.body as { username: string; password: string; email: string };
+    const { username, password, email, locale } = req.body as {
+      username: string;
+      password: string;
+      email: string;
+      locale?: string;
+    };
 
     const existingUsername = await userStore.getUserByUsername(username);
     if (existingUsername) {
@@ -475,7 +477,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // and doing it before the reply would reopen the timing gap #897
         // exists to close.
         replaceEmailVerifyCode({ userId: user.id, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS })
-          .then((code) => sendVerificationEmail(email, username, code, user.id))
+          .then((code) => sendVerificationEmail(email, username, code, user.id, mailLocale(locale)))
           .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the verification code"));
       });
     });
@@ -595,7 +597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // write below are not one transaction, and this is an authenticated
   // account overwriting its own row, not a public lookup.
   app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), addEmailLimiter, async (req, res) => {
-    const { email } = req.body as { email: string };
+    const { email, locale } = req.body as { email: string; locale?: string };
     const userId = req.session.userId!;
 
     const existing = await userStore.getUser(userId);
@@ -611,7 +613,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const user = await userStore.setEmail(userId, email);
 
     const code = await replaceEmailVerifyCode({ userId, email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
-    sendVerificationEmail(email, user.username, code, userId);
+    sendVerificationEmail(email, user.username, code, userId, mailLocale(locale));
     logger.info({ userId }, "Email added, pending verification");
     res.json(sessionUser(user));
   });
@@ -678,7 +680,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const code = await replaceEmailVerifyCode({ userId, email: user.email, ttlMs: EMAIL_VERIFY_CODE_TTL_MS });
-    sendVerificationEmail(user.email, user.username, code, userId);
+    sendVerificationEmail(user.email, user.username, code, userId, mailLocale(req.body?.locale));
     logger.info({ userId }, "Verification email resent");
     res.json({ ok: true });
   });
@@ -699,14 +701,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     validate(RequestPasswordResetSchema),
     passwordResetRequestLimiter,
     async (req, res) => {
-      const { email } = req.body as { email: string };
+      const { email, locale } = req.body as { email: string; locale?: string };
       const user = await userStore.getVerifiedUserByEmail(email);
       res.json({ ok: true });
       if (!user?.emailVerifiedAt) return;
       // Not awaited: the request this reply belonged to is already done, so
       // a rejection here has no caller left to reach it except this catch.
       mintAuthToken(user.id, "password_reset", PASSWORD_RESET_TOKEN_TTL_MS)
-        .then((token) => sendPasswordResetEmail(user.email!, token, user.id))
+        .then((token) => sendPasswordResetEmail(user.email!, token, user.id, mailLocale(locale)))
         .catch((err) => logger.error({ err, userId: user.id }, "Failed to mint the reset token"));
     }
   );

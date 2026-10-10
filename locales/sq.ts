@@ -136,6 +136,10 @@ export const sq: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verifiko email-in",
+  "mail.verifySubject": "Verifiko email-in për Murlan",
+  "mail.verifyBody": "Dikush krijoi një llogari Murlan (@{{username}}) me këtë adresë emaili.\n\nNëse ishe ti, kodi yt i verifikimit është:\n\n{{code}}\n\nKy kod skadon pas {{minutes}} minutash.\n\nNëse nuk ishe ti, nuk duhet të bësh asgjë: nëse e lë këtë kod të papërdorur, llogaria në fjalë nuk e merr adresën tënde.",
+  "mail.resetSubject": "Rivendos fjalëkalimin e Murlan",
+  "mail.resetBody": "Kodi yt për të rivendosur fjalëkalimin e Murlan është:\n\n{{token}}\n\nKy kod skadon pas {{minutes}} minutash. Nëse nuk e ke kërkuar, mund ta shpërfillësh këtë email.",
   "verifyEmail.body": "Shkruaj kodin 6-shifror nga email-i që të dërguam.",
   "verifyEmail.codeLabel": "Kodi",
   "verifyEmail.codePlaceholder": "Kod 6-shifror",
