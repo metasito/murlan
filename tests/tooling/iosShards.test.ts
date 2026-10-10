@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { CAPTURE_VIEWER_SEAT, captureGameState, captureStateById } from "../../lib/captureStates.ts";
+import { seatDirection } from "../../components/seatLayout.ts";
 
 const root = path.resolve(import.meta.dirname, "..", "..");
 const code = (rel: string) => readFileSync(path.join(root, rel), "utf8").replace(/[ \t]*#.*$/gm, "");
@@ -25,6 +27,7 @@ const shards = job("flows")
     flows: /\n {12}flows: (.+)/.exec(entry)![1].trim().split(/\s+/),
     felt: /\n {12}felt: true\b/.test(entry),
   }));
+const photographed = () => [...code(CAPTURES).matchAll(/takeScreenshot: ([\w-]+)/g)].map((m) => m[1]);
 const step = (source: string, name: string) => {
   const start = source.indexOf(`- name: ${name}`);
   assert.notEqual(start, -1, `no step named "${name}"`);
@@ -47,8 +50,25 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
 test("the felt flow runs the captures last, and their screenshots are collected from it", () => {
   assert.match(code(FELT), /\n- runFlow: captures\.yaml\n?$/);
   const collect = step(IOS, "Collect the capture states");
-  assert.match(collect, /for shot in held pile-right lamp-bottom; do/);
+  const collected = /for shot in ([\w -]+); do/.exec(collect)![1].split(" ").sort();
+  assert.deepEqual(collected, photographed().sort());
   assert.match(collect, /-path "\*\/felt-opaque\/\*"/);
+});
+
+test("each capture photographs the state its link opened", () => {
+  const flow = code(CAPTURES);
+  const opened = [...flow.matchAll(/openLink: "murlan:\/\/capture\?state=([\w-]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(opened, photographed());
+  for (const id of opened) assert.ok(captureStateById(id), `${id} is not a capture state`);
+});
+
+test("a play flown in from a side seat is photographed", () => {
+  const sides = photographed().flatMap((id) => {
+    const state = captureStateById(id)!;
+    const game = captureGameState(state);
+    return state.pile ? [seatDirection(game.lastPlayedBy, CAPTURE_VIEWER_SEAT, state.playerCount)] : [];
+  });
+  assert.ok(sides.some((side) => side === "left" || side === "right"), `piles photographed fly from: ${sides}`);
 });
 
 test("each shard runs its own flows, and exactly one photographs the felt", () => {

@@ -376,7 +376,7 @@ jobs:
         if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/captures"
-          for shot in held pile-right lamp-bottom; do
+          for shot in held pile-right play-right-landed lamp-bottom; do
             found=$(find "$HOME/.maestro/tests" -path "*/felt-opaque/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
             [ -n "$found" ] || { echo "::error::The capture flow wrote no $shot.png."; exit 1; }
             cp "$found" "$RUNNER_TEMP/captures/$shot.png"
