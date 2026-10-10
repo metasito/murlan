@@ -746,6 +746,7 @@ export function GameTable({
         opponents: opponentsA11y,
         exchange: exchangeA11y,
         handOver: gameState.gameOver,
+        dealing: deal.dealing,
       },
       tableA11yStrings
     );
@@ -758,6 +759,7 @@ export function GameTable({
     viewerSeat,
     handOnTable.length,
     turnShown,
+    deal.dealing,
     spectating,
     exchange,
     tableA11yStrings,

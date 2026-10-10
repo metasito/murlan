@@ -18,6 +18,7 @@ const a11yStrings: TableA11yStrings = {
   exchangeGiveCard: (loserName) => `EXCHANGE_GIVE(${loserName})`,
   exchangeWaitForCard: (winnerName) => `EXCHANGE_WAIT(${winnerName})`,
   handOver: "HAND_OVER",
+  dealing: "DEALING",
 };
 
 describe("describeTableForA11y", () => {
@@ -26,6 +27,15 @@ describe("describeTableForA11y", () => {
     for (const isMyTurn of [true, false]) {
       const text = describeTableForA11y({ ...base, isMyTurn }, a11yStrings);
       assert.ok(text.startsWith("HAND_OVER"), text);
+      assert.doesNotMatch(text, /YOUR_TURN|TURN_OF/);
+    }
+  });
+
+  test("a deal still in the air names nobody on move", () => {
+    const base = { currentTurnName: "Ana", myCardCount: 13, lastPlay: null, opponents: [], dealing: true };
+    for (const isMyTurn of [true, false]) {
+      const text = describeTableForA11y({ ...base, isMyTurn }, a11yStrings);
+      assert.ok(text.startsWith("DEALING"), text);
       assert.doesNotMatch(text, /YOUR_TURN|TURN_OF/);
     }
   });

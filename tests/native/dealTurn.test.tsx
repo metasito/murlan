@@ -8,10 +8,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from '@/components/cardFaceModel';
+import { type CardRects } from '@/components/table/cardRects';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
 import { Colors, Motion } from '@/lib/theme';
 import { en } from '@/locales/en';
 import { bootFeedback, haptics } from './helpers/feedback';
+
+const mockWindow = { width: 844, height: 390, scale: 2, fontScale: 1 };
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true, default: () => mockWindow }));
 
 const HIDDEN_TOO = { includeHiddenElements: true };
 
@@ -28,8 +32,8 @@ const freshDeal = (): GameState => ({
   firstPlayMade: false,
 });
 
-const table = (gameState: GameState) => (
-  <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
+const table = (gameState: GameState, { width, height } = { width: 844, height: 390 }) => (
+  <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width, height }, insets: { top: 0, left: 47, right: 34, bottom: 0 } }}>
     <GameTable gameState={gameState} viewerSeat={0} onPlay={() => {}} onPass={() => {}} onQuit={() => {}} onExchangeGive={() => {}} />
   </SafeAreaProvider>
 );
@@ -74,6 +78,7 @@ describe("the viewer's turn waits for the deal to land", () => {
     expect(giocaIsLit()).toBe(false);
     expect(chipReads('gameShared.dealing')).toBe(true);
     expect(tableSays('gameTable.a11yYourTurn')).toBe(false);
+    expect(JSON.stringify(screen.toJSON())).not.toContain(en['gameTable.a11yTurnOf'].replace('{{name}}', 'P0'));
     expect(haptics()).not.toContain('impactLight');
     const dealtW = handCardW();
 
@@ -90,5 +95,28 @@ describe("the viewer's turn waits for the deal to land", () => {
     await advance(Motion.duration.shift + 32);
     expect(handCardScale()).toBeCloseTo(1, 2);
     await view.unmount();
+  }, 20_000);
+
+  it.each([
+    ['a phone', 844, 390, false],
+    ['a 4:3 tablet, where the grown fan starts to scroll', 1024, 768, true],  ])('on %s the landed cards grow from where they were drawn', async (_, width, height, scrolls) => {
+    process.env.EXPO_PUBLIC_E2E_FAST = '1';
+    Object.assign(mockWindow, { width, height });
+    const view = await render(table(freshDeal(), { width, height }));
+    const registry = () => (globalThis as { murlanCardRects?: () => CardRects }).murlanCardRects?.() ?? {};
+    const pan = () => screen.queryByTestId('hand-pan');
+    const rowPan = () => ((pan() && getAnimatedStyle(pan()!)) as { transform?: Record<string, number>[] } | null)?.transform?.[0]?.translateX ?? 0;
+    let [before, last]: CardRects[] = [{}, {}];
+    for (let ms = 0; dealing() && ms < 3000; ms += 160) [before, last] = [last, registry()], await advance(160);
+    const id = Object.keys(last).find((k) => k.startsWith('hand:') && Math.abs(last[k].x - before[k]?.x) < 0.01)!;
+    expect(rowPan() < -1).toBe(scrolls);
+    const landed = registry()[id];
+    expect(landed.x).toBeCloseTo(last[id].x, 0);
+    expect(landed.y).toBeCloseTo(last[id].y, 0);
+    expect(landed.w).toBeCloseTo(last[id].w, 0);
+    await advance(Motion.duration.shift + 32);
+    expect(registry()[id].w / last[id].w).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
+    await view.unmount();
+    delete process.env.EXPO_PUBLIC_E2E_FAST;
   }, 20_000);
 });

@@ -1394,41 +1394,44 @@ export const StraightHand = React.memo(function StraightHand({
   return (
     <View style={[handStyles.handCenter, { width: availW, height: visibleH + arcRise }]}>
       <View style={handStyles.handGlowWrap}>
-        {scrollable ? (
-          // The hand compresses inside its share, so this is reached only when
-          // even the finger floor cannot fit the row in availW — a full hand on
-          // a small phone. The row overflows and is moved under a window that
-          // clips it, rather than clipping the hand or stepping below what a
-          // thumb can separate.
-          //
-          // The window clears everything the row *draws*, which is more than the
-          // row is tall: `topClearance` above it, and below it the crop plus
-          // what a tilt hangs past the bottom edge. `overflow` takes both axes
-          // or neither, so a box sized to the row alone cuts a straight line
-          // across the fan.
-          //
-          // The two negative margins give that extra room back to the layout,
-          // so the box occupies exactly `visibleH` and the row lands where the
-          // unclipped branch below puts it. Stated rather than left to cancel
-          // out: the parent centres its children, so a box that is taller than
-          // what it stands in for moves the hand by half the difference.
-          <View
-            style={{
-              width: availW,
-              marginTop: -topClearance,
-              marginBottom: -(crop + tiltOverhang),
-              height: topClearance + visibleH + crop + tiltOverhang,
-              paddingTop: topClearance,
-              // `clip` on web: a focused card would otherwise scroll a `hidden` box, sliding the row off the pan it is drawn and hit-tested by.
-              overflow: Platform.OS === "web" ? ("clip" as "hidden") : "hidden",
-            }}
-            onFocus={Platform.OS === "web" ? panToFocused : undefined}
-          >
-            <Animated.View style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>
-          </View>
-        ) : (
-          row
-        )}
+        {/*
+          The hand compresses inside its share, so the window clips only when
+          even the finger floor cannot fit the row in availW — a full hand on
+          a small phone. The row overflows and is moved under a window that
+          clips it, rather than clipping the hand or stepping below what a
+          thumb can separate. Mounted either way: a change of parent would
+          remount every card, and a card mid-resize would snap.
+
+          The window clears everything the row *draws*, which is more than the
+          row is tall: `topClearance` above it, and below it the crop plus
+          what a tilt hangs past the bottom edge. `overflow` takes both axes
+          or neither, so a box sized to the row alone cuts a straight line
+          across the fan.
+
+          The two negative margins give that extra room back to the layout,
+          so the box occupies exactly `visibleH` and the row lands where an
+          unclipped one sits. Stated rather than left to cancel
+          out: the parent centres its children, so a box that is taller than
+          what it stands in for moves the hand by half the difference.
+        */}
+        <View
+          style={
+            scrollable
+              ? {
+                  width: availW,
+                  marginTop: -topClearance,
+                  marginBottom: -(crop + tiltOverhang),
+                  height: topClearance + visibleH + crop + tiltOverhang,
+                  paddingTop: topClearance,
+                  // `clip` on web: a focused card would otherwise scroll a `hidden` box, sliding the row off the pan it is drawn and hit-tested by.
+                  overflow: Platform.OS === "web" ? ("clip" as "hidden") : "hidden",
+                }
+              : undefined
+          }
+          onFocus={scrollable && Platform.OS === "web" ? panToFocused : undefined}
+        >
+          <Animated.View testID="hand-pan" style={[{ width: totalW }, rowShiftStyle]}>{row}</Animated.View>
+        </View>
       </View>
     </View>
   );
