@@ -26,6 +26,7 @@ import {
   getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
+  mancheUnplayed,
   openingIsPending,
   sortHand,
   type Card,
@@ -672,7 +673,7 @@ export function GameTable({
   };
 
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
-  const dealFresh = !gameState.firstPlayMade && !gameState.gameOver;
+  const dealFresh = mancheUnplayed(gameState);
   const deal = useDeal({
     geometry: seatGeometry,
     fresh: dealFresh,

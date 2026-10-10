@@ -28,7 +28,7 @@ import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
 } from "../../lib/game/autoMove.ts";
-import { openingIsPending } from "../../lib/game/gameEngine.ts";
+import { mancheUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
@@ -102,7 +102,9 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
 
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
-    const delayMs = game.gameState.exchangePhase?.active
+    const phase = game.gameState.exchangePhase;
+    const tradeOnTable = phase?.active || (phase?.bothJokersException && mancheUnplayed(game.gameState));
+    const delayMs = tradeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
       : botDelayMs;
     botTimers.set(
