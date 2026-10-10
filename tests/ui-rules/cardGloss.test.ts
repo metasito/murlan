@@ -2,7 +2,7 @@
 // mockup's own lines (#1260).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { cardGloss } from "../../components/table/cardGloss.ts";
+import { cardGloss, nextGlossLight } from "../../components/table/cardGloss.ts";
 import { CardGloss } from "../../lib/tokens.ts";
 import { fixtureLine, runFixture } from "../helpers/lanternFixture.ts";
 
@@ -72,5 +72,18 @@ describe("a card's gloss is the mockup's", () => {
     ]);
     assert.match(paint, new RegExp(`\\) ${CardGloss.spot.mid.at * 100}%,`));
     assert.match(paint, new RegExp(`rgba\\(${hex(CardGloss.streak.color).join(",")},\\$\\{a\\.toFixed`));
+  });
+});
+
+describe("the light a gloss reads", () => {
+  const shown = { lx: 437, ly: 180, level: 0.8, r: 1 };
+  test("holds through the felt's steps of a sway", () => {
+    assert.equal(nextGlossLight(shown, { lx: 437.4, ly: 179.6, level: 0.803, r: 1.003 }), null);
+  });
+  test("follows a half-point move, a level step or a reach step, each alone", () => {
+    for (const moved of [{ lx: 437.5 }, { ly: 179.5 }, { level: 0.8 + 1 / 256 }, { r: 1 + 1 / 256 }]) {
+      const lamp = { ...shown, ...moved };
+      assert.deepEqual(nextGlossLight(shown, lamp), lamp, JSON.stringify(moved));
+    }
   });
 });

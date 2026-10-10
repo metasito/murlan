@@ -21,6 +21,7 @@ import {
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
 import { GLOSS_SPOT_ART, LampGloss } from "@/components/table/LampGloss";
+import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -398,8 +399,9 @@ interface CardViewProps {
    * `accessibilityState.selected` already carries the selection.
    */
   hint?: string;
-  /** The card registry's key this view is drawn as (`components/table/cardRects.ts`): the lamp's gloss reads its centre there. */
+  /** The key this view is drawn as in `rects`, its publisher's own: the lamp's gloss reads its centre there. */
   rectKey?: string;
+  rects?: OwnedRects;
   /**
    * Discrete equivalents of a gesture this card also answers, for assistive
    * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
@@ -430,6 +432,7 @@ function CardViewBase({
   noLift = false,
   decorative = false,
   rectKey,
+  rects,
   hitWidth,
   testID,
   hint,
@@ -513,7 +516,7 @@ function CardViewBase({
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
           <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
-          <LampGloss rectKey={rectKey} width={w} height={h} />
+          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
       </Animated.View>
     );
@@ -628,7 +631,7 @@ function CardViewBase({
           >
             {rankText}
           </TableText>
-          <LampGloss rectKey={rectKey} width={w} height={h} />
+          <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
       </Pressable>
     </Animated.View>
@@ -655,6 +658,7 @@ export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean 
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
     a.rectKey === b.rectKey &&
+    a.rects === b.rects &&
     a.style === b.style &&
     a.hitWidth === b.hitWidth &&
     a.testID === b.testID &&

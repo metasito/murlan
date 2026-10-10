@@ -877,7 +877,7 @@ export function GameTable({
     },
     tableMotion,
     handLift,
-    rig.lamp
+    rig.glossLight
   );
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));

@@ -19,28 +19,56 @@ export interface Gloss {
   band: { x: number; y: number; half: number };
 }
 
+/** The lamp as a gloss reads it. */
+export type GlossLight = Pick<Lamp, "lx" | "ly" | "level" | "r">;
+
+/** Steps no soft gloss shows: the lamp sways at the felt's 0.01 pt, and every gloss following that is two mappers a card a frame. */
+const GLOSS_POINT_STEP = 0.5;
+const GLOSS_LIGHT_STEP = 1 / 256;
+
+export function glossLightOf(lamp: GlossLight): GlossLight {
+  "worklet";
+  return { lx: lamp.lx, ly: lamp.ly, level: lamp.level, r: lamp.r };
+}
+
+/** The light every gloss should now read, or null while `lamp` is within a step of `shown`. */
+export function nextGlossLight(shown: GlossLight, lamp: GlossLight): GlossLight | null {
+  "worklet";
+  const still =
+    Math.abs(lamp.lx - shown.lx) < GLOSS_POINT_STEP &&
+    Math.abs(lamp.ly - shown.ly) < GLOSS_POINT_STEP &&
+    Math.abs(lamp.level - shown.level) < GLOSS_LIGHT_STEP &&
+    Math.abs(lamp.r - shown.r) < GLOSS_LIGHT_STEP;
+  return still ? null : glossLightOf(lamp);
+}
+
 const clamp01 = (v: number) => {
   "worklet";
   return Math.max(0, Math.min(1, v));
 };
 
+/** The spot alone, which needs none of the streak's trigonometry: arguments as `cardGloss`'s. */
+export function glossSpot(cx: number, cy: number, w: number, h: number, lamp: Pick<Lamp, "lx" | "ly" | "level">): Pick<Gloss, "spot" | "spotAlpha"> {
+  "worklet";
+  return { spot: { x: w / 2 + lamp.lx - cx, y: h / 2 + lamp.ly - cy }, spotAlpha: CardGloss.spot.alpha * lamp.level };
+}
+
 /** `cx`, `cy` the card's centre and `w`, `h` its own size, all in design points. */
 export function cardGloss(cx: number, cy: number, w: number, h: number, lamp: Pick<Lamp, "lx" | "ly" | "level" | "r">): Gloss {
   "worklet";
-  const { falloff, squash, spot, streak } = CardGloss;
+  const { falloff, squash, streak } = CardGloss;
   const vx = lamp.lx - cx;
   const vy = lamp.ly - cy;
-  const d = Math.hypot(vx, vy) || 1;
-  const b = clamp01(1 - Math.hypot(vx, vy * squash) / (falloff * lamp.r));
+  const d = Math.sqrt(vx * vx + vy * vy) || 1;
+  const b = clamp01(1 - Math.sqrt(vx * vx + vy * squash * vy * squash) / (falloff * lamp.r));
   const ang = Math.atan2(vx / d, -vy / d);
   const len = Math.abs(w * Math.sin(ang)) + Math.abs(h * Math.cos(ang));
-  const half = Math.hypot(w, h) / 2;
+  const half = Math.sqrt(w * w + h * h) / 2;
   const peak = Math.min(1, d / streak.reach) * streak.travel * half;
   const cp = 50 + (peak / len) * 100;
   const wp = ((half * streak.width) / len) * 100;
   return {
-    spot: { x: w / 2 + vx, y: h / 2 + vy },
-    spotAlpha: spot.alpha * lamp.level,
+    ...glossSpot(cx, cy, w, h, lamp),
     ang,
     cp,
     wp,

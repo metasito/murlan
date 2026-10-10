@@ -13,7 +13,7 @@ import {
 } from "@/components/seatLayout";
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
-import { useCardTable, useStaticCardRects } from "./useCardRects";
+import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -97,8 +97,9 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ id, at, boxW, backScale, zIndex }: {
+function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
   id: string;
+  rects: OwnedRects;
   at: ArcCard;
   boxW: number;
   backScale: number;
@@ -119,6 +120,7 @@ function FanBack({ id, at, boxW, backScale, zIndex }: {
         faceDown
         scale={backScale}
         rectKey={id}
+        rects={rects}
       />
     </View>
   );
@@ -149,7 +151,7 @@ function CardFan({
         : [],
     [table, side, count, scale]
   );
-  useStaticCardRects(table, `fan:${side}:`, drawn);
+  const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -182,7 +184,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
     </View>

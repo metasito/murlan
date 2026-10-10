@@ -7,7 +7,6 @@ import { makeMutable, type SharedValue } from 'react-native-reanimated';
 
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
 import { useCardRect, type CardTable } from '@/components/table/useCardRects';
-import { restingLamp } from '@/components/table/lampRig';
 
 // jest applies a JS-thread write at once; native queues it for the UI thread, which this store models.
 function uiQueue() {
@@ -60,7 +59,7 @@ describe('a card rect under queued UI writes', () => {
       hand: at,
       seats: { top: at, left: at, right: at },
       handLift: makeMutable(0),
-      lamp: makeMutable(restingLamp([0, 0, 1], 1)),
+      glossLight: makeMutable({ lx: 0, ly: 0, level: 1, r: 1 }),
     };
     const Table = ({ turn, tick = 0, drawn }: { turn: number; tick?: number; drawn: boolean }) => <Owner table={useMemo(() => table, [])} arc={arc} turn={turn} tick={tick} drawn={drawn} />;
 

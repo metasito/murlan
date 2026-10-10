@@ -5,6 +5,7 @@ import { Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/flightPhysics";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
+import { glossLightOf, nextGlossLight, type GlossLight } from "./cardGloss";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
@@ -16,6 +17,8 @@ const BREATH_RATE = 2.2;
 /** The controls keep their identities while the size changes, so an effect firing one can depend on them. */
 export interface LampRig {
   lamp: SharedValue<Lamp>;
+  /** The lamp in the coarser steps the card glosses follow (`cardGloss.ts`). */
+  glossLight: SharedValue<GlossLight>;
   /** Design points to the felt box's own. */
   sx: number;
   sy: number;
@@ -25,12 +28,14 @@ export interface LampRig {
   freeze(amount: number): void;
 }
 
-function lampStepper(lamp: SharedValue<Lamp>, reduced: SharedValue<boolean>) {
+function lampStepper(lamp: SharedValue<Lamp>, glossLight: SharedValue<GlossLight>, reduced: SharedValue<boolean>) {
   return (frame: FrameInfo) => {
     "worklet";
     const s = lamp.value;
     stepLamp(s, (frame.timeSincePreviousFrame ?? 0) / 1000, reduced.value);
     if (lampMoved(s)) lamp.modify(undefined, true);
+    const gloss = nextGlossLight(glossLight.value, s);
+    if (gloss) glossLight.value = gloss;
   };
 }
 
@@ -51,7 +56,9 @@ export function useLampRig({
 }): LampRig {
   const reduceMotion = usePrefersReducedMotion();
   const reduced = useSharedValue(reduceMotion);
-  const lamp = useSharedValue<Lamp>(restingLamp(pool, deal ? BREATH_FROM : 1));
+  const resting = restingLamp(pool, deal ? BREATH_FROM : 1);
+  const lamp = useSharedValue<Lamp>(resting);
+  const glossLight = useSharedValue<GlossLight>(glossLightOf(resting));
   const [px, py, reach] = pool;
 
   useEffect(() => {
@@ -60,7 +67,7 @@ export function useLampRig({
 
   // The compiler drops a `useCallback` around a worklet, and `useFrameCallback` re-registers
   // on every new identity, stepping one frame with dt 0 each render.
-  const [step] = useState(() => lampStepper(lamp, reduced));
+  const [step] = useState(() => lampStepper(lamp, glossLight, reduced));
   useFrameCallback(step);
 
   useEffect(() => {
@@ -159,5 +166,5 @@ export function useLampRig({
     };
   }, [lamp, reduced]);
 
-  return useMemo(() => ({ lamp, sx, sy, ...controls }), [lamp, sx, sy, controls]);
+  return useMemo(() => ({ lamp, glossLight, sx, sy, ...controls }), [lamp, glossLight, sx, sy, controls]);
 }

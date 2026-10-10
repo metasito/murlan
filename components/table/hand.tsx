@@ -438,7 +438,7 @@ function CardItemBase({
     const card = { left, bottom, w: cardW, h: cardH, tx: p.tx, ty: p.ty, rot: p.rot, scale: p.scale, back: faceDown, lift: liftNow / selectLift, glow: glowNow };
     return designRect(handCard(place, card, panShown(panNow, place.panLimit), handLift), place.felt, motionNow);
   };
-  useCardRect(
+  const ownRects = useCardRect(
     rects?.table ?? null,
     `hand:${cardId}`,
     true,
@@ -514,6 +514,7 @@ function CardItemBase({
         faceDown={faceDown}
         scale={cardScale}
         rectKey={`hand:${cardId}`}
+        rects={ownRects}
         hitWidth={hitW}
         testID={isStartCard ? "card-start" : undefined}
         hint={hint}
@@ -1025,7 +1026,7 @@ export const StraightHand = React.memo(function StraightHand({
     return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, lift: handLift, motion } };
   }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
   const heldPlace = handRow?.place;
-  useCardRect(
+  const heldRects = useCardRect(
     cardTable,
     `hand:${heldId ?? ""}`,
     heldId !== null,
@@ -1348,6 +1349,7 @@ export const StraightHand = React.memo(function StraightHand({
             faceDown={faceDown}
             scale={cardScale}
             rectKey={`hand:${heldCard.id}`}
+            rects={heldRects}
             decorative
             noLift
           />
