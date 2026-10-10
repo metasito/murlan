@@ -5,16 +5,9 @@ import NetInfo from "@react-native-community/netinfo";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/device/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
+import { parseCachedUser, type AuthUser } from "@/lib/authUser";
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  /** When this account first opened the tutorial, on any device; null if never. */
-  tutorialSeenAt: string | null;
-  /** Null for an account that predates the email requirement (#861) — see lib/emailNudge.ts. */
-  email: string | null;
-  emailVerified: boolean;
-}
+export type { AuthUser };
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -63,15 +56,6 @@ async function fetchMe(): Promise<AuthUser | null | undefined> {
     return (await res.json()) as AuthUser;
   } catch {
     return undefined;
-  }
-}
-
-function parseCachedUser(raw: string | null): AuthUser | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
   }
 }
 
