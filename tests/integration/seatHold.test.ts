@@ -123,6 +123,22 @@ describe(
       assert.deepEqual(afterFriend.seatHolds, [], "nothing is held once they have arrived");
     });
 
+    test("is answered by arriving: the invite is no longer offered to the friend seated in it", async () => {
+      const { host, friend, room } = await roomWithAnInvite("arrive");
+      const offered = async () => {
+        const res = await fetch(`${server.url}/api/friends/invites`, {
+          headers: { cookie: friend.cookie },
+        });
+        assert.equal(res.status, 200);
+        return ((await res.json()) as { roomCode: string }[]).map((row) => row.roomCode);
+      };
+      assert.deepEqual(await offered(), [room.code]);
+
+      const seated = await joins(friend, room.code, host.socket);
+      assert.equal(seated.players.find((p) => p.userId === friend.user.id)?.seatIndex, 2);
+      assert.deepEqual(await offered(), []);
+    });
+
     test("expires, and the seat it was holding goes to whoever is next", async () => {
       const { host, room } = await roomWithAnInvite("expiry");
 

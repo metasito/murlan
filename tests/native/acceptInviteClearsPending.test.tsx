@@ -35,6 +35,12 @@ jest.mock('@/lib/socket', () => ({
   setSocketAuthFailureHandler: () => {},
 }));
 
+const mockApiRequest = jest.fn(async (..._args: unknown[]) => ({}));
+jest.mock('@/lib/query-client', () => ({
+  ...(jest.requireActual('@/lib/query-client') as object),
+  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
+}));
+
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
@@ -44,9 +50,8 @@ const { SocketProvider, useSocket } =
 const { NotificationProvider } =
   require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
-const mount = () => {
+const mount = (client = new QueryClient()) => {
   // Out here, not in the wrapper's body, which React re-runs on every render.
-  const client = new QueryClient();
   return renderHook(() => useSocket(), {
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={client}>
@@ -79,6 +84,60 @@ describe('accepting an invite', () => {
 
     expect(result.current.acceptedInvite).toBe('ABC123');
     expect(result.current.pendingInvite).toBeNull();
+
+    await unmount();
+  });
+
+  it('takes the invite off the list without declining the seat it holds', async () => {
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    const { result, unmount } = await mount(client);
+    expect(result.current.gameInvites).toHaveLength(1);
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+
+    expect(result.current.gameInvites).toEqual([]);
+    expect(mockApiRequest).not.toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
+
+    await unmount();
+  });
+
+  it('keeps an accepted invite off the list when a refetch still returns its row', async () => {
+    const client = new QueryClient();
+    const row = { fromUsername: 'ana', roomCode: 'ABC123' };
+    client.setQueryData(['/api/friends/invites'], [row]);
+    const { result, unmount } = await mount(client);
+    const serverStillReturnsRow = () =>
+      act(async () => {
+        client.setQueryData(['/api/friends/invites'], [row]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+    await serverStillReturnsRow();
+    expect(result.current.gameInvites).toEqual([]);
+
+    await invite();
+    await serverStillReturnsRow();
+    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
+
+    await unmount();
+  });
+
+  it('puts a declined invite back when the decline never reached the server', async () => {
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    const { result, unmount } = await mount(client);
+    let rejectDecline: (reason: Error) => void = () => {};
+    mockApiRequest.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectDecline = reject))
+    );
+
+    await act(async () => result.current.dismissGameInvite('ABC123'));
+    expect(result.current.gameInvites).toEqual([]);
+
+    await act(async () => rejectDecline(new Error('offline')));
+    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
 
     await unmount();
   });

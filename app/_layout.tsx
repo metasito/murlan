@@ -16,6 +16,7 @@ import { NotificationProvider, useNotification } from "@/context/NotificationCon
 import NotificationBanner from "@/components/NotificationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { OrientationProvider } from "@/lib/device/orientation";
+import { followInviteTaps } from "@/lib/device/inviteTaps";
 import { initLocale } from "@/lib/i18n";
 import { useFonts } from "expo-font";
 import { APP_FONTS } from "@/lib/device/fonts";
@@ -54,6 +55,7 @@ export function RootLayoutNav() {
   // The reporter is a plain module, so the route reaches it by being pushed
   // rather than read — a crash in a timer has no hook to call.
   useEffect(() => setCurrentScreen(pathname), [pathname]);
+  useEffect(() => followInviteTaps(), []);
 
   // Keyed on the route's track rather than the route itself: several screens
   // share one track (trackForRoute), and backgroundMusic is a no-op for the
@@ -77,6 +79,7 @@ export function RootLayoutNav() {
         <Stack.Screen name="auth" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="(online)" />
+        <Stack.Screen name="join/[code]" />
         <Stack.Screen name="game" />
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
             development build: the screen refuses to render in a production one

@@ -5,10 +5,11 @@
 // seat and no hand, so every seat draws face-down and no action button exists.
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
+import { leaveScreen } from "@/components/ScreenHeader";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
 import { LoadingBlock, ErrorBlock, TerminalErrorBlock } from "@/components/StateBlock";
@@ -126,7 +127,7 @@ export default function ReplayScreen() {
   const back = (
     <MenuButton
       label={t("replay.back")}
-      onPress={() => router.back()}
+      onPress={leaveScreen}
       variant="secondary"
       size="sm"
       accessibilityLabel={t("replay.back")}
@@ -177,7 +178,7 @@ export default function ReplayScreen() {
       spectating
       onPlay={NOOP}
       onPass={NOOP}
-      onQuit={() => router.back()}
+      onQuit={leaveScreen}
       onExchangeGive={NOOP}
       banners={
         <ReplayTransport
@@ -196,7 +197,7 @@ export default function ReplayScreen() {
           }}
           onExit={() => {
             uiFeedback("selection");
-            router.back();
+            leaveScreen();
           }}
           onCycleSpeed={() => {
             setSpeedIndex((i) => (i + 1) % REPLAY_SPEEDS.length);

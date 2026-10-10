@@ -6,7 +6,7 @@ import { describe, it, expect, jest } from '@jest/globals';
 
 const mockBack = jest.fn();
 jest.mock('expo-router', () => ({
-  router: { back: mockBack, push: jest.fn(), replace: jest.fn() },
+  router: { back: mockBack, canGoBack: () => true, push: jest.fn(), replace: jest.fn() },
   useLocalSearchParams: () => ({ id: 'expired-replay-id' }),
 }));
 

@@ -213,7 +213,7 @@ export const friendStore = {
   },
 
   /**
-   * The rooms this player has been asked to join and can still join.
+   * The rooms this player has been asked to join, is not seated in, and can still join.
    *
    * Both halves of "can still join" are checked, because `claimRoomSeat`
    * refuses `full` and `not_waiting` separately: a room nobody has started can
@@ -227,6 +227,10 @@ export const friendStore = {
       .select({ count: sql<number>`count(*)::int` })
       .from(roomPlayers)
       .where(eq(roomPlayers.roomId, gameInvites.roomId));
+    const alreadySeated = db
+      .select({ one: sql`1` })
+      .from(roomPlayers)
+      .where(and(eq(roomPlayers.roomId, gameInvites.roomId), eq(roomPlayers.userId, inviteeId)));
     const rows = await db
       .select({
         id: gameInvites.id,
@@ -241,7 +245,8 @@ export const friendStore = {
         and(
           eq(gameInvites.inviteeId, inviteeId),
           eq(rooms.status, "waiting"),
-          sql`(${seatCount}) < ${rooms.maxPlayers}`
+          sql`(${seatCount}) < ${rooms.maxPlayers}`,
+          sql`not exists (${alreadySeated})`
         )
       )
       .orderBy(desc(gameInvites.createdAt));

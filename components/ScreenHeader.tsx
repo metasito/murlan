@@ -10,6 +10,12 @@ import { IconButton } from "@/components/IconButton";
 import { Colors, FontSize, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 
+/** A typed URL or an opened link can start the stack here, with nothing under it. */
+export function leaveScreen() {
+  if (router.canGoBack()) router.back();
+  else router.replace("/");
+}
+
 export function ScreenHeader({
   title,
   onBack,
@@ -30,7 +36,7 @@ export function ScreenHeader({
       <IconButton
         name="chevron-back"
         label={backLabel ?? t("common.back")}
-        onPress={onBack ?? (() => router.back())}
+        onPress={onBack ?? leaveScreen}
       />
       {title === undefined ? <View style={styles.fill} /> : <Text style={styles.title}>{title}</Text>}
       {right ?? <View style={styles.balance} />}

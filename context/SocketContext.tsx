@@ -77,9 +77,11 @@ interface SocketContextValue {
   clearInvite: () => void;
   gameInvites: PendingInvite[];
   dismissGameInvite: (roomCode: string) => void;
+  hideGameInvite: (roomCode: string) => void;
   /**
    * The room the player has asked to be put into, set by tapping Join on an
-   * invite and consumed by the online group, which is the only place
+   * invite or by opening app/join/[code].tsx (a join link, a tapped invite
+   * push), and consumed by the online group, which is the only place
    * `joinRoom` exists.
    *
    * Distinct from `pendingInvite`, which only says one arrived: an invite that
@@ -103,6 +105,8 @@ const RECONCILED_ON_CONNECT = [
   ["/api/friends/sent"],
   ["/api/friends/invites"],
 ] as const;
+
+const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
@@ -145,9 +149,27 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (signedInRef.current && !userId) qc.clear();
     signedInRef.current = userId;
   }, [userId, qc]);
+  // Keyed by account rather than reset on sign-out: a render after the clear
+  // above re-subscribes the invites query and puts it back in the emptied cache.
+  const [hidden, setHidden] = useState<{ userId?: string; codes: ReadonlySet<string> }>({
+    codes: NO_HIDDEN_INVITES,
+  });
+  const hiddenInvites = hidden.userId === userId ? hidden.codes : NO_HIDDEN_INVITES;
+  const updateHiddenInvites = useCallback(
+    (update: (codes: Set<string>) => void) =>
+      setHidden((prev) => {
+        const codes = new Set(prev.userId === userId ? prev.codes : NO_HIDDEN_INVITES);
+        update(codes);
+        return { userId, codes };
+      }),
+    [userId]
+  );
   const gameInvites = useMemo<PendingInvite[]>(
-    () => inviteRows.map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
-    [inviteRows]
+    () =>
+      inviteRows
+        .filter((row) => !hiddenInvites.has(row.roomCode))
+        .map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
+    [inviteRows, hiddenInvites]
   );
   const [sessionReplaced, setSessionReplaced] = useState<ServerPayload | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -161,15 +183,16 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
-  const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
-  // Answering an invite answers it for both: leaving `pendingInvite` up would
-  // reopen the code prompt over the join it just started, for the same room.
-  const acceptInvite = useCallback((roomCode: string) => {
-    setPendingInvite(null);
-    setAcceptedInvite(roomCode);
-  }, []);
-  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
-
+  // Filtered on read rather than spliced from the cache: an accepted invite's row
+  // stays on the server until seating, so any refetch before then would restore it.
+  const hideGameInvite = useCallback(
+    (roomCode: string) => updateHiddenInvites((codes) => codes.add(roomCode)),
+    [updateHiddenInvites]
+  );
+  const unhideGameInvite = useCallback(
+    (roomCode: string) => updateHiddenInvites((codes) => codes.delete(roomCode)),
+    [updateHiddenInvites]
+  );
   /**
    * Turning an invite down deletes it rather than hiding it. A dismissal that
    * only cleared the screen would come back on the next reconnect, and would
@@ -177,15 +200,28 @@ export function SocketProvider({ children }: { children: ReactNode }) {
    */
   const dismissGameInvite = useCallback(
     (roomCode: string) => {
-      qc.setQueryData<InviteRow[]>(["/api/friends/invites"], (prev) =>
-        (prev ?? []).filter((row) => row.roomCode !== roomCode)
-      );
+      hideGameInvite(roomCode);
       void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
-        .catch(() => {})
+        .catch(() => unhideGameInvite(roomCode))
         .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
     },
-    [qc]
+    [qc, hideGameInvite, unhideGameInvite]
   );
+
+  const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
+  // Answering an invite answers it for both: leaving `pendingInvite` up would
+  // reopen the code prompt over the join it just started, for the same room.
+  // Hidden, not deleted: the row is the invitee's seat hold until they are seated
+  // (`server/game/seatAllocation.ts`), and the server stops offering it then.
+  const acceptInvite = useCallback(
+    (roomCode: string) => {
+      hideGameInvite(roomCode);
+      setPendingInvite(null);
+      setAcceptedInvite(roomCode);
+    },
+    [hideGameInvite]
+  );
+  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
 
   /**
    * Claims the account back on this device. The only way out of the replaced
@@ -347,6 +383,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
+      unhideGameInvite(roomCode);
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
       showNotification({
         type: "game_invite",
@@ -446,7 +483,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [userId, logout, qc, showNotification]);
+  }, [userId, logout, qc, showNotification, unhideGameInvite]);
 
   const contextValue = useMemo(
     () => ({
@@ -457,6 +494,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       clearInvite,
       gameInvites,
       dismissGameInvite,
+      hideGameInvite,
       acceptedInvite,
       acceptInvite,
       clearAcceptedInvite,
@@ -469,6 +507,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       gameInvites,
       clearInvite,
       dismissGameInvite,
+      hideGameInvite,
       acceptedInvite,
       acceptInvite,
       clearAcceptedInvite,

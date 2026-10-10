@@ -610,7 +610,7 @@ function HomeInviteCard({
 }) {
   const { t } = useTranslation();
   const entrance = useEntrance(step);
-  const { acceptInvite, dismissGameInvite } = useSocket();
+  const { acceptInvite } = useSocket();
 
   return (
     <Animated.View style={[styles.inviteCard, entrance]}>
@@ -622,7 +622,6 @@ function HomeInviteCard({
         testID="home-invite-join"
         onPress={() => {
           uiFeedback("light");
-          dismissGameInvite(roomCode);
           acceptInvite(roomCode);
           router.push("/(online)");
         }}
