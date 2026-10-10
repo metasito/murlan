@@ -25,6 +25,7 @@ import {
   type SkRRect,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
+import { scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
@@ -64,6 +65,11 @@ const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
 const DISPOSE_PATHS = Platform.OS === "web";
+
+/** On web `stopMapper` waits on the UI queue, so a reaction can still run after an unmount's synchronous cleanup. */
+function disposeAfterReactions(dispose: () => void) {
+  if (DISPOSE_PATHS) scheduleOnUI(dispose);
+}
 
 function countBuild(counter: "murlanShadowBuilds" | "murlanGlowBuilds") {
   "worklet";
@@ -116,13 +122,13 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
     [kinds, felt.s]
   );
   useEffect(
-    () => () => {
-      if (!DISPOSE_PATHS) return;
-      for (const { paint, blur } of paints) {
-        paint.dispose();
-        blur.dispose();
-      }
-    },
+    () => () =>
+      disposeAfterReactions(() => {
+        for (const { paint, blur } of paints) {
+          paint.dispose();
+          blur.dispose();
+        }
+      }),
     [paints]
   );
   const empty = useMemo(() => {
@@ -168,14 +174,14 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
     [recorder, builder, paints, kinds, rects, felt, midX, empty, paths, e2e]
   );
   useEffect(
-    () => () => {
-      if (!DISPOSE_PATHS) return;
-      if (drawn.value !== empty) drawn.value.dispose();
-      for (const path of Object.values(paths.value)) path.dispose();
-      empty.dispose();
-      builder.dispose();
-      recorder.dispose();
-    },
+    () => () =>
+      disposeAfterReactions(() => {
+        if (drawn.value !== empty) drawn.value.dispose();
+        for (const path of Object.values(paths.value)) path.dispose();
+        empty.dispose();
+        builder.dispose();
+        recorder.dispose();
+      }),
     [recorder, builder, drawn, empty, paths]
   );
   return drawn;
@@ -193,11 +199,11 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
     return [p, b] as const;
   }, [felt.s]);
   useEffect(
-    () => () => {
-      if (!DISPOSE_PATHS) return;
-      paint.dispose();
-      blur.dispose();
-    },
+    () => () =>
+      disposeAfterReactions(() => {
+        paint.dispose();
+        blur.dispose();
+      }),
     [paint, blur]
   );
   const empty = useMemo(() => {
@@ -243,13 +249,13 @@ function useGlow(rects: SharedValue<CardRects>, felt: CardTable["felt"], midX: n
     [recorder, builder, paint, empty, felt, midX, e2e]
   );
   useEffect(
-    () => () => {
-      if (!DISPOSE_PATHS) return;
-      if (drawn.value !== empty) drawn.value.dispose();
-      empty.dispose();
-      builder.dispose();
-      recorder.dispose();
-    },
+    () => () =>
+      disposeAfterReactions(() => {
+        if (drawn.value !== empty) drawn.value.dispose();
+        empty.dispose();
+        builder.dispose();
+        recorder.dispose();
+      }),
     [recorder, builder, drawn, empty]
   );
   return drawn;
@@ -304,7 +310,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const k = PixelRatio.get() * Math.min(sx, sy);
   const rail = useMemo(() => bakeRail(k), [k]);
   // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
-  useEffect(() => () => rail?.dispose(), [rail]);
+  useEffect(() => () => disposeAfterReactions(() => rail?.dispose()), [rail]);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
   const uniforms = useDerivedValue(() => ({
