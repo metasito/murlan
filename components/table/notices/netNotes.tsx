@@ -5,6 +5,33 @@ import { Spacing } from "@/lib/theme";
 import { NoticeBadge, NoticeGlyph, NoticeText, TableNotice } from "../TableNotice";
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
+export type MancheVoteNote = EndMatchVoteNote;
+
+/** The next-hand vote at the open pill's foot: the tally as a count, lit and spent once the viewer has voted. */
+export function MancheVote({ scale, voted, votes, total, onPress }: MancheVoteNote & { scale: number }) {
+  const { t } = useTranslation();
+  const waiting = t("gameOverOverlay.waitingA11yLabel", { count: votes, total });
+  return (
+    <>
+      <A11yStatus label={voted ? waiting : ""} />
+      <Pressable
+        hitSlop={Spacing.wide}
+        {...a11yState({ role: "button", disabled: voted })}
+        accessibilityLabel={voted ? waiting : t("gameOverOverlay.nextHandA11yLabel")}
+        disabled={voted}
+        onPress={onPress}
+      >
+        <View {...a11yHidden()}>
+          <TableNotice kind="mancheVote" tone={voted ? "lit" : "neutral"} scale={scale}>
+            <NoticeGlyph name={voted ? "checkmark-circle" : "play-forward-outline"} px={12} />
+            <NoticeText>{voted ? t("gameOverOverlay.nextHandWaiting", { count: votes, total }) : t("result.nextHand")}</NoticeText>
+            {!voted && votes > 0 && <NoticeBadge>{`${votes}/${total}`}</NoticeBadge>}
+          </TableNotice>
+        </View>
+      </Pressable>
+    </>
+  );
+}
 
 /** G2's vote: the button's words, the tally as a count, lit once the viewer has voted. */
 export function EndMatchVote({ scale, voted, votes, total, onPress }: EndMatchVoteNote & { scale: number }) {

@@ -65,6 +65,7 @@ export const NOTICES = {
   waitingOthers: { shape: "pill", selector: "#n-waiting", tones: ["gold"] },
   emptyHand: { shape: "pill", selector: "#n-empty", tones: ["gold"] },
   endMatchVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
+  mancheVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];
