@@ -27,25 +27,29 @@ afterEach(() => {
 });
 
 describe('the felt during a bot throw', () => {
-  it('builds a shadow cluster holding no moving card at most once', async () => {
+  it('rebuilds a cluster each frame a card in it moves, and one holding no moving card at most once', async () => {
     const shapes = new Map<string, string>();
     const moving = new Set<string>();
+    let moves = 0;
     const sample = () => {
       const rects = e2e.murlanCardRects?.() ?? {};
+      let moved = false;
       for (const key of Object.keys(rects)) {
         const shape = shadowShape({ [key]: rects[key] });
-        if (shapes.has(key) && shapes.get(key) !== shape) moving.add(key);
+        if (shapes.has(key) && shapes.get(key) !== shape) moving.add(key), (moved = true);
         shapes.set(key, shape);
       }
+      if (moved) moves++;
     };
     const view = await throwPair(3);
     await frames(2000, sample);
 
     const builds = Object.entries(e2e.murlanShadowClusterBuilds ?? {});
     const still = builds.filter(([cluster]) => cluster.split('|')[1].split(',').every((key) => !moving.has(key)));
-    expect(moving.size).toBeGreaterThan(0);
+    const movedFaces = builds.filter(([cluster]) => cluster.startsWith('face|') && !still.some(([c]) => c === cluster));
+    expect(moves).toBeGreaterThan(0);
     expect(still.length).toBeGreaterThan(0);
-    expect(builds.some(([, n]) => n > 1)).toBe(true);
+    expect(movedFaces.reduce((sum, [, n]) => sum + n, 0)).toBeGreaterThanOrEqual(moves);
     expect(still.filter(([, n]) => n > 1)).toEqual([]);
     await view.unmount();
   }, 120_000);

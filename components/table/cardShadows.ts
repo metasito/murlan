@@ -105,6 +105,12 @@ export function shadowShape(rects: CardRects, keys: readonly string[] = Object.k
   return shape;
 }
 
+/** Equal for two clusters whose `buildShadow` paths are equal, whatever order their members come in. */
+export function shadowClusterId(path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[]): string {
+  "worklet";
+  return `${path}|${felt.sx},${felt.sy},${felt.s},${midX}|${shadowShape(rects, [...keys].sort())}`;
+}
+
 export interface GlowSink extends PathSink {
   /** Fills the outline added since the last fill. */
   fill(alpha: number): unknown;

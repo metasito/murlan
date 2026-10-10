@@ -33,7 +33,7 @@ import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
 import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
-import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
+import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 
@@ -75,7 +75,7 @@ function countClusterBuild(kind: ShadowPath, members: readonly string[]) {
   "worklet";
   const e2e = globalThis as { murlanShadowClusterBuilds?: Record<string, number> };
   const builds = (e2e.murlanShadowClusterBuilds ??= {});
-  const cluster = `${kind}|${members.join(",")}`;
+  const cluster = `${kind}|${[...members].sort().join(",")}`;
   builds[cluster] = (builds[cluster] ?? 0) + 1;
 }
 
@@ -143,17 +143,15 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
       const canvas = recorder.beginRecording();
       const built = paths.value;
       const kept: Record<string, SkPath> = {};
-      const at = `${felt.sx},${felt.sy},${felt.s},${midX}`;
       kinds.forEach((kind, i) => {
         for (const keys of sets[i]) {
-          const members = [...keys].sort();
-          const id = `${kind}|${at}|${shadowShape(all, members)}`;
+          const id = shadowClusterId(kind, all, felt, midX, keys);
           let path = built[id];
           if (!path) {
             builder.reset();
-            buildShadow(builder, kind, all, felt, midX, members);
+            buildShadow(builder, kind, all, felt, midX, keys);
             path = builder.build();
-            if (e2e) countClusterBuild(kind, members);
+            if (e2e) countClusterBuild(kind, keys);
           }
           kept[id] = path;
           canvas.drawPath(path, paints[i].paint);
