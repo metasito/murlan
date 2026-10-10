@@ -5,6 +5,7 @@
 import { test, expect } from "./fixtures";
 import { openApp, uniqueUsername } from "./helpers/navigation";
 import { readMailToken } from "./helpers/mailSink";
+import { it as copy } from "../../locales/it";
 
 test("account recovery — verify a fresh address, then reset a forgotten password", async ({
   page,
@@ -30,7 +31,7 @@ test("account recovery — verify a fresh address, then reset a forgotten passwo
   await page.getByRole("button", { name: "Crea account" }).click();
   await page.waitForURL(/\/verify-email/);
 
-  const verifyToken = await readMailToken(email, "Verify your Murlan email");
+  const verifyToken = await readMailToken(email, copy["mail.verifySubject"]);
   await page.getByRole("textbox", { name: "Codice di verifica" }).fill(verifyToken);
   await page.getByRole("button", { name: "Verifica" }).click();
   // The success state, not a screen that closed itself: a redeemed code and a
@@ -61,7 +62,7 @@ test("account recovery — verify a fresh address, then reset a forgotten passwo
   await page.getByRole("textbox", { name: "Email" }).fill(email);
   await page.getByRole("button", { name: "Invia codice" }).click();
 
-  const resetToken = await readMailToken(email, "Reset your Murlan password");
+  const resetToken = await readMailToken(email, copy["mail.resetSubject"]);
   await page.getByRole("textbox", { name: "Codice di reimpostazione" }).fill(resetToken);
   await page.getByRole("textbox", { name: "Nuova password" }).fill(newPassword);
   await page.getByRole("button", { name: "Reimposta password" }).click();
