@@ -107,7 +107,10 @@ describe("the viewer's turn waits for the deal to land", () => {
     const pan = () => screen.queryByTestId('hand-pan');
     const rowPan = () => ((pan() && getAnimatedStyle(pan()!)) as { transform?: Record<string, number>[] } | null)?.transform?.[0]?.translateX ?? 0;
     let [before, last]: CardRects[] = [{}, {}];
-    for (let ms = 0; dealing() && ms < 3000; ms += 160) [before, last] = [last, registry()], await advance(160);
+    for (let ms = 0; dealing() && ms < 3000; ms += 160) {
+      [before, last] = [last, registry()];
+      await advance(160);
+    }
     const id = Object.keys(last).find((k) => k.startsWith('hand:') && Math.abs(last[k].x - before[k]?.x) < 0.01)!;
     expect(rowPan() < -1).toBe(scrolls);
     const landed = registry()[id];
