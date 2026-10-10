@@ -84,7 +84,7 @@ async function openBreakdown(over: boolean, voteState: RematchVoteState | null =
 }
 
 const REPLAY = t('handBreakdown.openReplayA11yLabel');
-const DEFERRED = t('handBreakdown.replayAfterMatch');
+const DEFERRED = t('handBreakdown.replayAfterLeaving');
 
 describe('the replay in the breakdown of an online hand', () => {
   it('is offered once the match is over and the viewer has not asked for another', async () => {

@@ -242,7 +242,7 @@ export function HandBreakdown({
       {!replayId ? (
         <Text style={styles.stateBody}>{t("handBreakdown.noReplay")}</Text>
       ) : mancheCanFollow ? (
-        <Text style={styles.stateBody}>{t("handBreakdown.replayAfterMatch")}</Text>
+        <Text style={styles.stateBody}>{t("handBreakdown.replayAfterLeaving")}</Text>
       ) : (
         <Pressable
           onPress={() => router.push({ pathname: "/(online)/replay", params: { id: replayId } })}
