@@ -1578,7 +1578,7 @@ export function GameTable({
                   startCard={gameState.startCard}
                   firstPlayMade={gameState.firstPlayMade}
                   isNewRound={isNewRound}
-                  isMyTurn={turnShown}
+                  isMyTurn={isMyTurn}
                   isFinished={isFinished}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
                   lit={exchangeIsMine || (turnShown && !isFinished && !exchange.active)}
