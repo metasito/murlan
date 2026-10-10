@@ -127,7 +127,7 @@ export type HandOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
  * placement checks, rather than reading the shared one, is how a win cue
  * reached a losing seat's body in the first place (#777).
  *
- * `"pending"` is a fourth answer, not a stand-in for `"neutral"`: online, a
+ * `"pending"` is an answer of its own, not a stand-in for `"draw"`: online, a
  * finished hand's `rankings` reach the client (`game:state`, `gameOver:
  * true`) before its scores do (the separate, unawaited `game:over`), and a
  * genuine draw is indistinguishable from "not scored yet" without them —

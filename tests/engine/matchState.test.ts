@@ -163,7 +163,7 @@ describe("handOutcomeFor", () => {
   // Online, `rankings` reaches the client (`game:state`, gameOver: true) a
   // render ahead of `handScores` (the separate `game:over`) — the caller
   // (components/useTableFeedback.ts) has to be able to tell "not decided
-  // yet" apart from "neutral" (an actual draw) so it knows to wait for the
+  // yet" apart from "draw" so it knows to wait for the
   // render the scores arrive on instead of latching a decision made with
   // none.
   test("is pending in team mode when the manche has a finish order but no scores yet", () => {
