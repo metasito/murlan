@@ -36,7 +36,10 @@ describe('the felt during a bot throw', () => {
       let moved = false;
       for (const key of Object.keys(rects)) {
         const shape = shadowShape({ [key]: rects[key] });
-        if (shapes.has(key) && shapes.get(key) !== shape) moving.add(key), (moved = true);
+        if (shapes.has(key) && shapes.get(key) !== shape) {
+          moving.add(key);
+          moved = true;
+        }
         shapes.set(key, shape);
       }
       if (moved) moves++;
