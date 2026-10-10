@@ -220,8 +220,7 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.onsets.includes("sound:deal"),
     mode: "parity",
     fields: ["onset", "live", "level", "breath", "brightness"],
-    // Not the hand: the app's viewer is on move through the deal and the mockup's is not (#1432).
-    regions: ["pool"],
+    regions: ["pool", "hand"],
     regionsAt: [1040, 1200],
     onsets: ["moment:dealt"],
   },
