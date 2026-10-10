@@ -39,6 +39,8 @@ const LIT_OVER_FAR = 1.5;
 
 /** The patch size `feltNap` uses, kept so the two files' numbers are comparable. */
 const PATCH_PX = 15;
+/** A card's lamp gloss: its boxes overhang the card, but the card clips its paint, so none reaches the cloth. */
+const CARD_GLOSS = '[data-testid="card-gloss"]';
 
 /**
  * Where a mirrored pair of patches may sit, best first. A fixed fraction is bare felt at one
@@ -74,7 +76,7 @@ async function bareAt(
   frame: { x: number; y: number; width: number; height: number }
 ): Promise<Patch[] | null> {
   const chosen = await page.evaluate(
-    ({ cloth, frame, candidates, size }) => {
+    ({ cloth, frame, candidates, size, gloss }) => {
       const felt = document.querySelector(cloth);
       if (!felt) return null;
       const area = frame.width * frame.height;
@@ -97,7 +99,7 @@ async function bareAt(
       };
 
       const drawn = [...document.body.querySelectorAll("*")]
-        .filter((el) => !felt.contains(el) && el !== felt && paints(el))
+        .filter((el) => !felt.contains(el) && el !== felt && !el.closest(gloss) && paints(el))
         .map((el) => el.getBoundingClientRect())
         // A box the size of the cloth is the room behind it, not a thing on it.
         .filter((r) => r.width > 0 && r.height > 0 && r.width * r.height < area * 0.7);
@@ -115,7 +117,7 @@ async function bareAt(
       }
       return null;
     },
-    { cloth, frame, candidates: CANDIDATES.map((c) => ({ ...c })), size: PATCH_PX }
+    { cloth, frame, candidates: CANDIDATES.map((c) => ({ ...c })), size: PATCH_PX, gloss: CARD_GLOSS }
   );
   if (!chosen) return null;
   return [
