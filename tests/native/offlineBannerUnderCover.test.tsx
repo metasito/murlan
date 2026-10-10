@@ -69,7 +69,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     ownLink: 'up',
   }),
   useOnlineMatch: () => ({
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, handsPlayed: 1 },
+    matchState: { target: 21, length: 'match', over: true, winners: [], isDraw: false, continues: false, handsPlayed: 1 },
     cumulativeScores: {},
     handScores: {},
     ratingDeltas: {},

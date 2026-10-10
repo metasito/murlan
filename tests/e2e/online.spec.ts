@@ -10,9 +10,21 @@ import { createRoom, fillWithBotsAndStart, goToOnlineLobby, joinRoom, startRoom 
 import { driveGameToCompletion } from "./helpers/bot";
 
 const LEAVE_BUTTON = { role: "button" as const, name: "Esci dalla partita" };
+const nextHandVote = (page: Page) => page.getByRole("button", { name: "Pronto per la prossima manche", exact: true });
+const waitingVote = (page: Page) => page.getByRole("button", { name: /^In attesa degli altri/ });
 
-async function isOnlineGameOver(page: Page): Promise<boolean> {
-  return page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name }).isVisible();
+async function isMancheOver(page: Page): Promise<boolean> {
+  return nextHandVote(page).isVisible();
+}
+
+/** The manche ended on the table: no results overlay, and the vote at the pill's foot deals the next one. */
+async function voteForTheNextDeal(pages: Page[]) {
+  for (const page of pages) await expect(page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toHaveCount(0);
+  for (const page of pages) await nextHandVote(page).click();
+  for (const page of pages) {
+    await expect(nextHandVote(page)).toHaveCount(0);
+    await expect(waitingVote(page)).toHaveCount(0);
+  }
 }
 
 test("online — host fills the room with bots and plays a real server-authoritative game", async ({
@@ -28,12 +40,10 @@ test("online — host fills the room with bots and plays a real server-authorita
   await fillWithBotsAndStart(page);
 
   await driveGameToCompletion(page, {
-    isFinished: isOnlineGameOver,
+    isFinished: isMancheOver,
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
-
-  await expect(page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
-  await page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name }).click();
+  await voteForTheNextDeal([page]);
 
   expect(consoleErrors.entries, "no console errors/warnings during the online game").toEqual([]);
 });
@@ -79,17 +89,15 @@ test("online — two real browsers play a live 2-player game against each other"
 
     await Promise.all([
       driveGameToCompletion(pageA, {
-        isFinished: isOnlineGameOver,
+        isFinished: isMancheOver,
         log: (line) => test.info().annotations.push({ type: "move-A", description: line }),
       }),
       driveGameToCompletion(pageB, {
-        isFinished: isOnlineGameOver,
+        isFinished: isMancheOver,
         log: (line) => test.info().annotations.push({ type: "move-B", description: line }),
       }),
     ]);
-
-    await expect(pageA.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
-    await expect(pageB.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toBeVisible();
+    await voteForTheNextDeal([pageA, pageB]);
 
     expect(errorsA, "no console errors/warnings for player A").toEqual([]);
     expect(errorsB, "no console errors/warnings for player B").toEqual([]);
