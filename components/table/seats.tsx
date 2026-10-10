@@ -97,12 +97,11 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
+function FanBack({ id, at, boxW, backScale, zIndex }: {
   id: string;
   at: ArcCard;
   boxW: number;
   backScale: number;
-  isActive: boolean;
   zIndex: number;
 }) {
   return (
@@ -119,7 +118,7 @@ function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
         card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
         faceDown
         scale={backScale}
-        light={isActive ? "standingLit" : "standing"}
+        rectKey={id}
       />
     </View>
   );
@@ -186,7 +185,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
     </View>

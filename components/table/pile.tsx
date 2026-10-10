@@ -317,7 +317,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>
-          <CardView testID="pile-card" card={card} scale={cardScale} light="flat" />
+          <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} />
         </View>
         <Animated.View testID="beaten-shade" pointerEvents="none" style={[pileStyles.beatenShade, { borderRadius: cardRadius(CARD_W(cardScale)) }, shade]} />
       </Animated.View>

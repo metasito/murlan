@@ -28,7 +28,7 @@ const subpaths = (d: string) => d.split('M').length - 1;
 
 async function drawn(rank: Rank, suit: Suit) {
   const card: Card = { id: `${rank}_${suit}`, rank, suit, isJoker: false };
-  const r = await render(<CardView card={card} scale={1} light="flat" />);
+  const r = await render(<CardView card={card} scale={1} />);
   const paths = r.container.queryAll(isPath).map((p) => p.props.d as string);
   const uses = r.container.queryAll(isUse).length;
   await r.unmount();

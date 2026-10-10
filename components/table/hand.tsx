@@ -513,6 +513,7 @@ function CardItemBase({
         disabled={disabled}
         faceDown={faceDown}
         scale={cardScale}
+        rectKey={`hand:${cardId}`}
         hitWidth={hitW}
         testID={isStartCard ? "card-start" : undefined}
         hint={hint}
@@ -1346,6 +1347,7 @@ export const StraightHand = React.memo(function StraightHand({
             selected={heldSelected}
             faceDown={faceDown}
             scale={cardScale}
+            rectKey={`hand:${heldCard.id}`}
             decorative
             noLift
           />

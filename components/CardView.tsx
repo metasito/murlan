@@ -9,19 +9,18 @@ import Animated, {
   cancelAnimation,
 } from "react-native-reanimated";
 import { Asset } from "expo-asset";
-import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
   cardShadow,
   Colors,
   FontSize,
-  Lantern,
   Layer,
   Motion,
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
+import { GLOSS_SPOT_ART, LampGloss } from "@/components/table/LampGloss";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
@@ -300,7 +299,7 @@ let cardArtWarmed: Promise<void> | null = null;
  */
 export function warmCardArt(): void {
   if (cardArtWarmed) return;
-  const art = [...Object.values(COURT_ART), ...Object.values(BACK_ART), STOCK_ART];
+  const art = [...Object.values(COURT_ART), ...Object.values(BACK_ART), STOCK_ART, GLOSS_SPOT_ART];
   cardArtWarmed = Asset.loadAsync(art.map((load) => load()))
     .then(() => undefined)
     .catch(() => undefined);
@@ -399,13 +398,8 @@ interface CardViewProps {
    * `accessibilityState.selected` already carries the selection.
    */
   hint?: string;
-  /**
-   * How the table's lamp falls on this card. A card standing in a hand has its
-   * head nearer a hanging lamp than its foot; one lying flat on the felt
-   * catches far less of the same lamp. Omit for the viewer's own hand, which
-   * is between the player and the lamp rather than under it.
-   */
-  light?: "standing" | "standingLit" | "flat";
+  /** The card registry's key this view is drawn as (`components/table/cardRects.ts`): the lamp's gloss reads its centre there. */
+  rectKey?: string;
   /**
    * Discrete equivalents of a gesture this card also answers, for assistive
    * technology only (WCAG 2.5.7). They cost no pixels and appear to nobody
@@ -435,7 +429,7 @@ function CardViewBase({
   style,
   noLift = false,
   decorative = false,
-  light,
+  rectKey,
   hitWidth,
   testID,
   hint,
@@ -519,7 +513,7 @@ function CardViewBase({
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
           <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
-          <TopLight light={light} />
+          <LampGloss rectKey={rectKey} width={w} height={h} />
         </View>
       </Animated.View>
     );
@@ -634,51 +628,10 @@ function CardViewBase({
           >
             {rankText}
           </TableText>
-          <TopLight light={light} />
+          <LampGloss rectKey={rectKey} width={w} height={h} />
         </View>
       </Pressable>
     </Animated.View>
-  );
-}
-
-// ─── TopLight ─────────────────────────────────────────────────────────────────
-
-/**
- * What the table's lamp leaves on a card. Four stops rather than two: the
- * warm head has to fall away before the shadow starts, or the card reads as a
- * gradient swatch instead of as a lit object.
- */
-const STANDING_STOPS = [
-  Lantern.headLit,
-  Lantern.headFade,
-  Lantern.midShade,
-  Lantern.footShade,
-] as const;
-const STANDING_LIT_STOPS = [
-  Lantern.headLitOn,
-  Lantern.headFadeOn,
-  Lantern.midShadeOn,
-  Lantern.footShadeOn,
-] as const;
-const FLAT_STOPS = [
-  Lantern.flatHead,
-  Lantern.flatFade,
-  Lantern.flatMid,
-  Lantern.flatFoot,
-] as const;
-const STANDING_LOCATIONS = [0, 0.3, 0.64, 1] as const;
-const FLAT_LOCATIONS = [0, 0.34, 0.74, 1] as const;
-
-function TopLight({ light }: { light?: CardViewProps["light"] }) {
-  if (light === undefined) return null;
-  const flat = light === "flat";
-  return (
-    <LinearGradient
-      colors={flat ? FLAT_STOPS : light === "standingLit" ? STANDING_LIT_STOPS : STANDING_STOPS}
-      locations={flat ? FLAT_LOCATIONS : STANDING_LOCATIONS}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
   );
 }
 
@@ -701,7 +654,7 @@ export function cardViewPropsEqual(a: CardViewProps, b: CardViewProps): boolean 
     a.disabled === b.disabled &&
     a.noLift === b.noLift &&
     a.decorative === b.decorative &&
-    a.light === b.light &&
+    a.rectKey === b.rectKey &&
     a.style === b.style &&
     a.hitWidth === b.hitWidth &&
     a.testID === b.testID &&

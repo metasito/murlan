@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { designRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
+import type { Lamp } from "./lampRig";
 
 /**
  * The one registry, and the laid-out places every owner measures its cards from, in window points.
@@ -17,6 +18,7 @@ export interface CardTable {
   hand: Point;
   seats: Record<OpponentSide, Point>;
   handLift: SharedValue<number>;
+  lamp: SharedValue<Lamp>;
 }
 
 const CardTableContext = createContext<CardTable | null>(null);
@@ -28,7 +30,7 @@ export function useCardTable(): CardTable | null {
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>, lamp: SharedValue<Lamp>): CardTable {
   const rects = useSharedValue<CardRects>({});
   const key = JSON.stringify(places);
   useEffect(() => {
@@ -46,7 +48,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift }), [key, rects, motion, handLift]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift, lamp }), [key, rects, motion, handLift, lamp]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
