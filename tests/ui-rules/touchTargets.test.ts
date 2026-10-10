@@ -38,7 +38,7 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
   ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
-  ["components/table/partitaBoard.tsx", 1, "Home and Nuova partita on the board are `PX.btnH * u` tall, reaching the floor through `hitSlop`"],
+  ["components/table/partitaBoard.tsx", 1, "Home and Nuova partita on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
   ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes are pill notices reaching the floor through `hitSlop`"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];

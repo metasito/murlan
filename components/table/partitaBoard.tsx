@@ -151,24 +151,25 @@ function BoardButton({
       testID={testID}
       onPress={onPress}
       disabled={disabled || !live}
-      hitSlop={{ top: slop, bottom: slop }}
       accessibilityLabel={a11yLabel ?? label}
       {...a11yState({ role: "button", disabled: disabled || !live })}
-      style={[styles.btn, primary && styles.btnPrimary, { height: h, borderRadius: h / 2, paddingHorizontal: PX.btnPadH * u }]}
+      style={{ height: h + 2 * slop, marginVertical: -slop, justifyContent: "center" }}
     >
-      {primary && (
-        <LinearGradient colors={Gradient.playButton} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-      )}
-      <TableText
-        {...a11yHidden()}
-        style={[
-          styles.btnText,
-          primary && styles.btnTextPrimary,
-          { fontSize: tableFontSize(FontSize.xs, u), letterSpacing: PX.btnTracking * u },
-        ]}
-      >
-        {label}
-      </TableText>
+      <View style={[styles.btn, primary && styles.btnPrimary, { height: h, borderRadius: h / 2, paddingHorizontal: PX.btnPadH * u }]}>
+        {primary && (
+          <LinearGradient colors={Gradient.playButton} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        )}
+        <TableText
+          {...a11yHidden()}
+          style={[
+            styles.btnText,
+            primary && styles.btnTextPrimary,
+            { fontSize: tableFontSize(FontSize.xs, u), letterSpacing: PX.btnTracking * u },
+          ]}
+        >
+          {label}
+        </TableText>
+      </View>
     </Pressable>
   );
 }

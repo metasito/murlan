@@ -348,6 +348,10 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
     await driveGameToCompletion(page, { isFinished: (p) => p.getByTestId("btn-home").isVisible() });
     await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 15_000 });
     await settled(page, 2500);
+    // sweepSizes skips a disabled control, and the actions are disabled until they fade in.
+    for (const id of ["btn-home", "btn-nuova-partita"]) {
+      await expect(page.getByTestId(id)).not.toHaveAttribute("aria-disabled", "true");
+    }
     await sweepSizes(page, "result board");
   });
 }
