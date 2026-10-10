@@ -16,7 +16,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -63,7 +63,7 @@ import {
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
 import type { ServerError } from "@/context/OnlineGameContext";
-import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
+import { EndMatchVote, MancheVote, type EndMatchVoteNote, type MancheVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
@@ -78,7 +78,7 @@ import {
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
-import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
+import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
@@ -118,6 +118,7 @@ import { CardTableProvider, useCardTableValue } from "@/components/table/useCard
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useMancheEnding } from "@/components/table/useMancheEnding";
+import { mancheVoteShown } from "@/lib/game/mancheEnding";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -323,6 +324,8 @@ export interface GameTableProps {
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
   endMatchVote?: EndMatchVoteNote | null;
+  /** Present where the next deal waits on a vote: the manche's ending holds the pill open with this at its foot. */
+  mancheVote?: MancheVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -371,6 +374,7 @@ export function GameTable({
   error = null,
   autoPassed = 0,
   endMatchVote = null,
+  mancheVote = null,
   connection,
   catchUp = false,
   ownLink = "up",
@@ -829,11 +833,17 @@ export function GameTable({
     catchUp,
   });
   const mancheEnding = useMancheEnding({
-    ended: gameState.gameOver && !matchOver && onMancheLanded !== undefined,
+    ended: gameState.gameOver && !matchOver && (onMancheLanded !== undefined || mancheVote !== null),
+    hold: mancheVote !== null,
     timeline,
     pileEmpty: trick.plays.length === 0,
     onLanded: onMancheLanded,
   });
+  const mancheVoteStyle = useAnimatedStyle(() => {
+    const shown = mancheVoteShown(mancheEnding.clock.value);
+    return { opacity: shown, display: shown > 0 ? "flex" : "none" };
+  });
+  const openPill = scorePillBox(1, 0, pillAnchor);
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
   const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
 
@@ -1195,6 +1205,23 @@ export function GameTable({
               <EndMatchVote {...endMatchVote} scale={scale} />
             </A11yVeil>
           </View>
+        )}
+
+        {mancheVote && (
+          <Animated.View
+            {...behindVeil}
+            testID="manche-vote"
+            pointerEvents="box-none"
+            style={[
+              styles.voteSpot,
+              { right: W - pillAnchor.right, top: openPill.y + openPill.h + mockupPx(VOTE_BELOW_PILL, scale) },
+              mancheVoteStyle,
+            ]}
+          >
+            <A11yVeil veil={behindVeil}>
+              <MancheVote {...mancheVote} scale={scale} />
+            </A11yVeil>
+          </Animated.View>
         )}
 
         <FloatSlot

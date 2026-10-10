@@ -13,13 +13,13 @@ import { MANCHE_IDLE, mancheEndingOnsets } from "@/lib/game/mancheEnding";
 import { MancheEnding } from "@/lib/theme";
 import type { TableTimeline } from "./tableTimeline";
 
-const { settled, glowEnd, pileFade: pileFadeAt } = mancheEndingOnsets(0);
+const { close, settled, glowEnd, pileFade: pileFadeAt } = mancheEndingOnsets(0);
 
 export interface MancheEndingClock {
   /** ms since the landing that ended the manche, 0 while that play flies; MANCHE_IDLE before any ending. */
   clock: SharedValue<number>;
   pileOpacity: SharedValue<number>;
-  /** Jumps a running ending to the settled pill; the deal keeps its own time. */
+  /** Jumps a running ending to the settled pill, or a held one to its hold; the deal keeps its own time. */
   skip: () => void;
 }
 
@@ -29,11 +29,14 @@ export interface MancheEndingClock {
  */
 export function useMancheEnding({
   ended,
+  hold = false,
   timeline,
   pileEmpty,
   onLanded,
 }: {
   ended: boolean;
+  /** Parks the ending on the open pill, re-ranked, until `ended` goes false. */
+  hold?: boolean;
   timeline: Pick<TableTimeline, "inFlight" | "landsAt" | "pending">;
   pileEmpty: boolean;
   onLanded?: (landsAt: number) => void;
@@ -43,17 +46,19 @@ export function useMancheEnding({
   const pileOpacity = useSharedValue(1);
   const endedAt = useRef<number | null>(null);
   const started = useRef(false);
+  const parked = useRef(false);
   const onLandedRef = useRef(onLanded);
   useEffect(() => {
     onLandedRef.current = onLanded;
   });
+  const end = hold ? close : glowEnd;
 
   const runFrom = useCallback(
-    (from: number) => {
-      clock.set(from);
-      clock.set(
-        withTiming(glowEnd, { duration: Math.max(0, glowEnd - from), easing: Easing.linear, reduceMotion: ReduceMotion.Never })
-      );
+    (from: number, to: number) => {
+      parked.current = to < glowEnd;
+      const at = Math.min(from, to);
+      clock.set(at);
+      clock.set(withTiming(to, { duration: to - at, easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
     },
     [clock]
   );
@@ -67,6 +72,8 @@ export function useMancheEnding({
       if (!started.current) {
         cancelAnimation(clock);
         clock.set(MANCHE_IDLE);
+      } else if (parked.current) {
+        runFrom(reduceMotion ? Math.max(clock.get(), settled) : clock.get(), glowEnd);
       }
       started.current = false;
       return;
@@ -81,7 +88,7 @@ export function useMancheEnding({
     // A landing older than the ending is an earlier play's: nothing flew for this one.
     const t0 = Math.max(landsAt ?? 0, endedAt.current);
     const now = performance.now();
-    runFrom(reduceMotion ? Math.max(now - t0, settled) : now - t0);
+    runFrom(reduceMotion ? Math.max(now - t0, Math.min(settled, end)) : now - t0, end);
     pileOpacity.set(
       withDelay(
         Math.max(0, t0 + pileFadeAt - now),
@@ -90,7 +97,7 @@ export function useMancheEnding({
       )
     );
     onLandedRef.current?.(t0);
-  }, [ended, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
+  }, [ended, end, inFlight, landsAt, pending, reduceMotion, clock, pileOpacity, runFrom]);
 
   useEffect(() => {
     if (ended || !pileEmpty) return;
@@ -99,9 +106,9 @@ export function useMancheEnding({
   }, [ended, pileEmpty, pileOpacity]);
 
   const skip = useCallback(() => {
-    const e = clock.get();
-    if (started.current && e < settled) runFrom(settled);
-  }, [clock, runFrom]);
+    const to = Math.min(settled, end);
+    if (started.current && clock.get() < to) runFrom(to, end);
+  }, [clock, end, runFrom]);
 
   return { clock, pileOpacity, skip };
 }

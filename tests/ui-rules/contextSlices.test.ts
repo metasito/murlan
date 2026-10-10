@@ -67,7 +67,7 @@ const ONLINE: Record<string, string[]> = {
   useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed"],
   useOnlineTurnClock: ["turnSeconds", "turnDeadlineMs"],
   useOnlineMatch: [
-    "matchState", "cumulativeScores", "handScores", "ratingDeltas", "handRecorded",
+    "matchState", "cumulativeScores", "handScores", "handScoresCurrent", "ratingDeltas", "handRecorded",
     "rematchVoteState", "endMatchVoteState", "rematchIntents", "rematchPromptOpen",
     "voteRematch", "voteToEndMatch", "answerRematch",
   ],

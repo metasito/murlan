@@ -10,6 +10,7 @@ const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
 const mockOverlayProps = jest.fn();
 const mockOwnLink = { current: 'up' };
+const mockMatchOver = { current: false };
 const mockConnected = { current: true };
 const mockState: { current?: GameState } = {};
 
@@ -59,7 +60,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     ownLink: mockOwnLink.current,
   }),
   useOnlineMatch: () => ({
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, handsPlayed: 0 },
+    matchState: { target: 21, length: 'match', over: mockMatchOver.current, winners: [], isDraw: false, continues: true, handsPlayed: 0 },
     cumulativeScores: {},
     handScores: {},
     ratingDeltas: {},
@@ -123,6 +124,7 @@ const lastTable = () =>
 describe("the online table on the viewer's own link", () => {
   afterEach(() => {
     mockOwnLink.current = 'up';
+    mockMatchOver.current = false;
     mockConnected.current = true;
     mockState.current = undefined;
     mockTableProps.mockClear();
@@ -169,6 +171,7 @@ describe("the online table on the viewer's own link", () => {
   it('hands the lost link and the same Riprova to the result board over a finished match', async () => {
     jest.useFakeTimers();
     mockOwnLink.current = 'lost';
+    mockMatchOver.current = true;
     mockState.current = { ...mockMidHand, gameOver: true, rankings: ['player_0', 'player_1'] };
     const view = await render(
       <SafeAreaProvider initialMetrics={METRICS}>

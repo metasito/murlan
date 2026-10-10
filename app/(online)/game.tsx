@@ -79,6 +79,7 @@ export default function OnlineGameScreen() {
     matchState,
     cumulativeScores,
     handScores,
+    handScoresCurrent,
     ratingDeltas,
     handRecorded,
     rematchVoteState,
@@ -216,9 +217,7 @@ export default function OnlineGameScreen() {
     goToLobby();
   };
 
-  // One question for both ways out of a live match — the in-table Quit and the
-  // Leave the between-hands overlay offers. A match already decided is left
-  // without one: there is nothing to discard.
+  // A match already decided is left without a question: there is nothing to discard.
   const requestLeave = () =>
     matchState.over
       ? leaveAndExit()
@@ -232,6 +231,9 @@ export default function OnlineGameScreen() {
         });
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
+  const mancheOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
+  const resultsShown = showGameOver && gameState.gameOver && matchState.over;
+  const nextHandVotes = rematchVoteState?.votes ?? [];
 
   return (
     <GameTable
@@ -319,7 +321,20 @@ export default function OnlineGameScreen() {
             }
           : null
       }
-      tableCovered={showGameOver && gameState.gameOver}
+      mancheVote={
+        mancheOnTable
+          ? {
+              voted: nextHandVotes.includes(user?.id ?? ""),
+              votes: nextHandVotes.length,
+              total: rematchVoteState?.total ?? gameState.players.length,
+              onPress: () => {
+                uiFeedback("medium");
+                voteRematch();
+              },
+            }
+          : null
+      }
+      tableCovered={resultsShown}
       overlays={(veiled) => (
         <>
           {/* A <Modal> renders above the settings sheet rather than behind it,
@@ -349,7 +364,7 @@ export default function OnlineGameScreen() {
               />
             )}
 
-            {showGameOver && gameState.gameOver && (
+            {resultsShown && (
               <GameOverOverlay
                 gameState={gameState}
                 topPad={pads.topPad}

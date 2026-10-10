@@ -110,6 +110,8 @@ interface OnlineGameContextValue {
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by engine player id. */
   handScores: Record<string, number>;
+  /** Whether `game:over` has scored the manche `gameState` shows: its `game:state` arrives first. */
+  handScoresCurrent: boolean;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
@@ -208,6 +210,7 @@ type MatchSlice = Pick<
   | "matchState"
   | "cumulativeScores"
   | "handScores"
+  | "handScoresCurrent"
   | "ratingDeltas"
   | "handRecorded"
   | "rematchVoteState"
@@ -303,6 +306,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [autoPassed, setAutoPassed] = useState(0);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [handScores, setHandScores] = useState<Record<string, number>>({});
+  const [handScoresCurrent, setHandScoresCurrent] = useState(false);
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
@@ -477,6 +481,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setEndMatchVoteState(null);
       setDisconnectedSeats({});
       setCumulativeScores({});
+      setHandScoresCurrent(false);
       prevExchangeActiveRef.current = false;
       prevBothJokersExceptionRef.current = false;
       setReconnectNotice(null);
@@ -610,6 +615,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       gameStateRef.current = state;
       setGameState(state);
       setRematchVoteState(null);
+      if (!state.gameOver) setHandScoresCurrent(false);
 
       // The game genuinely ending is the only reason to forget the room while
       // still seated; a rematch re-arms it on the next non-final state.
@@ -698,6 +704,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
       setHandRecorded(recorded);
+      setHandScoresCurrent(true);
       if (scores) {
         setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
         setHandScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
@@ -975,6 +982,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEndMatchVoteState(null);
     setDisconnectedSeats({});
     setCumulativeScores({});
+    setHandScoresCurrent(false);
     setPlayerLeft(false);
     setRejoinFailed(false);
     // The lobby stays mounted under the table: a refusal about it would greet the player there.
@@ -1111,6 +1119,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchState,
       cumulativeScores,
       handScores,
+      handScoresCurrent,
       ratingDeltas,
       handRecorded,
       rematchVoteState,
@@ -1121,7 +1130,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       voteToEndMatch,
       answerRematch,
     }),
-    [matchState, cumulativeScores, handScores, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, rematchIntents, rematchPromptOpen, voteRematch, voteToEndMatch, answerRematch]
+    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, rematchIntents, rematchPromptOpen, voteRematch, voteToEndMatch, answerRematch]
   );
 
   const exchangeValue = useMemo(
