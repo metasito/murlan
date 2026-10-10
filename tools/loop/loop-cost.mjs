@@ -23,7 +23,11 @@ const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
  * imports this instead.
  */
 export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "sonnet", F: "sonnet" };
-export const EFFORT_BY_PHASE = { A: "high", B: "high", C: "high", D: "high", E: "medium", F: "medium" };
+/**
+ * A fresh ticket is built at medium; a process that starts at C or D is a fix round or a review,
+ * and runs at high. Anthropic's measured trade on Opus 5.5: medium first, failures re-run at high.
+ */
+export const EFFORT_BY_PHASE = { A: "medium", B: "medium", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
  * Where `guard-context.mjs` asks a session to hand off. A handoff costs the next process 5-14 min

@@ -70,9 +70,9 @@ lives in `CLAUDE.md` and `docs/agents/`. A prompt disagreeing with a rule is sta
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model on every sub-agent.** Implementing: opus. Independent review: sonnet reviewers
-    plus a sonnet refuter (precision, not depth, is the measured failure). Recon and verification:
-    sonnet. Mechanical: haiku. Give every dispatch a label.
+29. **Name a model on every sub-agent.** Implementing: opus. Independent review: opus reviewers
+    plus an opus refuter, at `medium` effort (a false or missed finding costs a whole round).
+    Recon and verification: sonnet at `medium`. Mechanical: haiku. Give every dispatch a label.
 
 ## Finishing
 

@@ -102,7 +102,7 @@ derives it from git and the tracker.
 
 `PHASE B`
 
-1. One `sonnet` subagent maps the change. Its prompt starts with the output of this, verbatim:
+1. One `sonnet` subagent at `medium` effort maps the change. Its prompt starts with the output of this, verbatim:
 
    ```sh
    node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
@@ -188,7 +188,7 @@ Then leave through **Leaving C**.
 `git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
 
 1. **The completeness check, once per ticket**: skipped when a `DOD-CHECK` follows the issue's
-   newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent whose prompt
+   newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent at `medium` effort whose prompt
    starts with the output of this, verbatim:
 
    ```sh
@@ -224,7 +224,7 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    node tools/loop/loop-gate.mjs --fix-delta <landSha>
    ```
 
-   If its `lines` is at most 80: one `sonnet` reviewer, no refuter, whose prompt starts with the
+   If its `lines` is at most 80: one `opus` reviewer, no refuter, whose prompt starts with the
    output of this, verbatim. Its comment's first line is `REVIEW <sha> fix`, still with both
    headings. Skip to step 3.
 
@@ -232,7 +232,7 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
    ```
 
-2. **The full review**: two fresh `sonnet` subagents, dispatched in one message, each whose prompt
+2. **The full review**: two fresh `opus` subagents at `medium` effort, dispatched in one message, each whose prompt
    starts with the output of one of these, verbatim:
 
    ```sh
@@ -244,7 +244,7 @@ The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
    to the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still
    assumes the old one, and every test that would pass either way.`
 
-   Then a `sonnet` refuter, given both reports, whose prompt starts with the output of this,
+   Then an `opus` refuter at `medium` effort, given both reports, whose prompt starts with the output of this,
    verbatim:
 
    ```sh

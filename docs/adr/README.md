@@ -16,7 +16,7 @@ An ADR is history and is never rewritten. A decision that no longer holds gets
 | [0007](0007-account-recovery-email-verification-and-password-reset.md) | Account recovery: email verification and password reset | Accepted | Six boxes (migration, token storage, sender, rate limiting, enumeration-safety, session clearing) shipped across #861–#864; `server/http/routes.ts` and related source cite them by number. |
 | [0008](0008-the-throw-is-the-lantern-mockups.md) | The throw is the lantern mockup's, and its landing is the card's contact | Accepted | The flight is the mockup's pose on one UI-thread clock; every landing effect follows the sampled contact frame, and `impactDelayMs()` is gone. |
 | [0009](0009-audio-and-haptics-libraries.md) | Audio is react-native-audio-api and haptics are react-native-turbo-haptics | Accepted | expo-audio and expo-haptics go; the libraries' known defects are guarded in our code, and adoption waits for CI builds and a soak on both platforms. |
-| [0010](0010-the-loop-on-the-5-5-family.md) | The loop on the 5.5 family: no Haiku executor, measured effort, guards that fail closed | Accepted | Opus 5.5 stays the builder; an advisor, a lower effort or a Haiku subagent each waits on an A/B; `loop-cost` prices each 5.5 release; `PreToolUse` guards are `onFailure: "block"`. |
+| [0010](0010-the-loop-on-the-5-5-family.md) | The loop on the 5.5 family: no Haiku executor, effort by round, Opus review | Accepted | Opus 5.5 builds a fresh ticket at `medium` and a fix round at `high`; reviewers and refuter run Opus at `medium`; no advisor or orchestrator; `loop-cost` prices each 5.5 release; `PreToolUse` guards are `onFailure: "block"`. |
 
 ## Writing one
 

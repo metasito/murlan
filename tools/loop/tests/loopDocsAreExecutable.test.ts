@@ -273,7 +273,7 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
 
   test("review dispatches its two reviewers together, and a LAND lands in the same process", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /two fresh `sonnet` subagents[^.]*dispatched in one\s+message/);
+    assert.match(d, /two fresh `opus` subagents[^.]*dispatched in one\s+message/);
     assert.match(d, /After a `LAND`, go straight on to phase E and F in this process/);
     assert.doesNotMatch(read(QUEUE), /"handoff":"E"/);
   });

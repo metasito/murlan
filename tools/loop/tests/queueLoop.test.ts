@@ -190,7 +190,7 @@ describe("queueLoopArgs", () => {
       "medium",
       "high",
       "high",
-      "high",
+      "medium",
     ]);
   });
 

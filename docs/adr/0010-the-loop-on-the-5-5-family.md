@@ -1,4 +1,4 @@
-# 0010. The loop on the 5.5 family: no Haiku executor, measured effort, guards that fail closed
+# 0010. The loop on the 5.5 family: no Haiku executor, effort by round, Opus review
 
 **Status:** Accepted
 **Date:** 2026-10-10
@@ -37,36 +37,43 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
 
 ## Decision
 
-1. **The builder stays Opus 5.5.** A fix round in this loop costs a full review and a CI cycle,
-   which is far more than the gap between Haiku and Opus per turn. The evidence above says a Haiku
-   executor loses solve rate, and an advisor it is not told to call adds nothing. `--advisor` is not
-   passed to `queueLoopArgs`.
-2. **An advisor is adopted only once an A/B on the loop's own tickets shows a gain**, measured with
-   `loop-cost` as cost per landed ticket and fix rounds per ticket. Two candidates are worth a run:
-   Opus 5.5 at `medium` with an Opus advisor for `size:XS`/`size:S`, and Sonnet 5.5 with an Opus
-   advisor for processes that start at E/F. Either run's prompt has to tell the executor when to
-   consult: before the first write, when an error recurs, and before `LOOP-RESULT`.
-3. **Effort is swept before it is changed.** `EFFORT_BY_PHASE` stays `high` for A to D for now. The
-   process that starts at A carries on through C and D, so lowering A's effort lowers the build's.
-   The sweep compares `medium` with `high` on ticket outcomes. The Agent tool's `effort` parameter
-   (2.1.292) can lower review and scope subagents' effort without touching the builder's.
-4. **Haiku 5.5 is a candidate only for read-and-summarise subagents**, such as phase B's scope map
-   and phase C's long-log reads, and only behind the same A/B. Reviewers and the refuter stay
-   `sonnet` (rule 29: precision is the measured failure). A Haiku dispatch must keep its prompt
-   under 100k, or it pays five times the rate.
-5. **`loop-cost` prices each 5.5 release at its own rate**, including Haiku 5.5's long-prompt tier.
-6. **Every `PreToolUse` guard is `onFailure: "block"`.**
+1. **The builder stays Opus 5.5, and there is no advisor.** A fix round costs a full review and a
+   CI cycle, which is far more than the per-turn gap between Haiku and Opus. A Haiku executor
+   loses solve rate, and an advisor it is not told to call adds nothing. Making Opus an
+   orchestrator over Sonnet or Haiku builders was also rejected: Anthropic found delegation
+   pays only on routine work or on work too large for one context window, and a ticket build is
+   one dependent chain that fits in one.
+2. **A fresh ticket is built at `medium`; a fix round at `high`.** `EFFORT_BY_PHASE` puts A and B
+   at `medium`. The process that starts at A carries the build through C and D. A process that
+   starts at C (a CI-red round) or D (a review round, and the HOLD fix it makes) stays at `high`.
+   This is Anthropic's "low first, re-run the failures higher" trade, with the review and CI as
+   the failure signal.
+3. **Review runs on Opus at `medium`.** Rule 29's reviewers and refuter were `sonnet`, and their
+   measured failure was precision. A false finding costs a HOLD round and a missed one costs a CI
+   round, and either is a whole Opus process. Opus 5.5 at `medium` costs about 1.4 times a
+   Sonnet 5.5 reviewer at `high`. The refuter stays, but on Opus: a weaker model refuting a
+   stronger one's findings would kill true ones. `MODEL_BY_KIND` in `brief.mjs` holds each brief
+   kind's model, and `guard-agent-model.mjs` denies a dispatch on any other.
+4. **Recon and verification subagents run Sonnet at `medium`.** This covers scope, completeness
+   and long reads. The effort is set with the Agent tool's `effort` parameter (Claude Code 2.1.292).
+5. **Haiku 5.5 is not adopted for any loop subagent yet.** Its coding gap makes a wrong scope map
+   likely, and the subagents' share of a ticket's cost bounds the saving.
+6. **`loop-cost` prices each 5.5 release at its own rate**, including Haiku 5.5's long-prompt tier.
+7. **Every `PreToolUse` guard is `onFailure: "block"`.**
 
 ## Consequences
 
+- `loop-cost` must show the effort and reviewer changes paying off: cost per landed ticket, and
+  HOLD and CI-red rounds per ticket, against the nights before this change. If first-build
+  failures rise enough to eat the saving, A goes back to `high`. If Opus review does not cut
+  rounds, the reviewers go back to `sonnet`.
 - A guard that cannot run (node missing, a syntax error, a crash past its own `catch`) now stops the
-  tool call instead of waving it through. Each guard still exits 0 on a payload it cannot read, so
-  that path is unchanged.
+  tool call instead of waving it through. This applies to interactive sessions too. Each guard
+  still exits 0 on a payload it cannot read. The loop machine needs Claude Code 2.1.295 or later
+  for `onFailure` and 2.1.292 or later for a subagent's `effort`; autoupdate is off there.
 - Rows logged from 5.5 sessions show lower absolute prices and a different model share. Rows from
-  Opus 5 and Sonnet 5, and rows spelled as a bare alias, keep the old family rate.
-- The advisor, effort and Haiku questions are A/B experiments, still to be filed as tickets and run.
-  Until one lands, rule 29 and `MODEL_BY_PHASE` are unchanged.
-- `guard-context.mjs` and `CONTEXT_BY_SIZE` still assume auto-compaction at about 366k. Claude Code
-  now compacts native-1M models (Opus 5.5 included) at about 967k. The handoff ceilings are a cost
-  choice that is still valid, but the 340k bound that clamps `LOOP_CONTEXT` should be
-  re-derived when the context experiment runs.
+  Opus 5 and Sonnet 5, and rows spelled as a bare alias, keep the old family rate. The per-ticket
+  dollar caps read Claude Code's own `total_cost_usd`, so they do not move.
+- The context ceilings are not raised. Claude Code's docs say native-1M models compact near 967k,
+  but every loop session that reached compaction compacted at 366–368k
+  (`tools/loop/tests/queueLoop.test.ts`). Until a 5.5 session is seen to compact later, the 340k bound stands.

@@ -298,7 +298,7 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ["release removes in-progress and says why", 26, "remove `in-progress`, say why"],
   ["a routed implement goes through /queue", 27, "a routed `implement` goes through `/queue`"],
   ["ready-for-agent comes off with ready-for-human", 28, "`ready-for-agent` comes off at the same time"],
-  ["precision, not depth, is the measured failure", 29, "precision, not depth, is the measured failure"],
+  ["a false or missed finding costs a whole round", 29, "a false or missed finding costs a whole round"],
   ["a gap named beats a green report", 30, "a gap named is worth more than a green report"],
   ["preflight blocks a run starting on an uncommitted one", 31, "blocks a run that would start on top of one"],
   ["outstanding work is a GitHub issue, never a TODO", 33, "never a `TODO` or a markdown backlog"],

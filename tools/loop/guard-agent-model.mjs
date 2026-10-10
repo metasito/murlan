@@ -6,7 +6,7 @@
  * Exit 0 always. stdout carries the deny, or nothing.
  */
 import { readFileSync } from "node:fs";
-import { brief, parseHeader } from "./brief.mjs";
+import { brief, MODEL_BY_KIND, parseHeader } from "./brief.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
@@ -21,6 +21,10 @@ function denial(payload) {
   const prompt = unix(String(input.prompt ?? ""));
   const header = parseHeader(prompt);
   if (header) {
+    const want = MODEL_BY_KIND[header.kind];
+    if (!String(input.model).includes(want)) {
+      return `A ${header.kind} brief runs on \`${want}\` (rule 29 of docs/agents/RULES.md). Dispatch it again with that model.`;
+    }
     return prompt.startsWith(brief(header.kind, header).trimEnd())
       ? null
       : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
