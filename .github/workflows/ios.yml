@@ -348,18 +348,13 @@ jobs:
           path: ${{ runner.temp }}/felt/
           if-no-files-found: ignore
 
-      - name: Photograph the capture states
-        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
-        env:
-          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
-        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/captures.yaml
-
+      # felt-opaque.yaml runs captures.yaml last: a second `maestro test` pays the driver start again.
       - name: Collect the capture states
         if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/captures"
           for shot in held pile-right lamp-bottom; do
-            found=$(find "$HOME/.maestro/tests" -path "*/captures/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
+            found=$(find "$HOME/.maestro/tests" -path "*/felt-opaque/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
             [ -n "$found" ] || { echo "::error::The capture flow wrote no $shot.png."; exit 1; }
             cp "$found" "$RUNNER_TEMP/captures/$shot.png"
           done

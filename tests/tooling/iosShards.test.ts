@@ -44,6 +44,13 @@ test("every flow runs in exactly one shard, bar those another workflow drives", 
   for (const [flow, workflow] of Object.entries(OWN_WORKFLOW)) assert.match(code(workflow), new RegExp(`\\.maestro/${flow}`));
 });
 
+test("the felt flow runs the captures last, and their screenshots are collected from it", () => {
+  assert.match(code(FELT), /\n- runFlow: captures\.yaml\n?$/);
+  const collect = step(IOS, "Collect the capture states");
+  assert.match(collect, /for shot in held pile-right lamp-bottom; do/);
+  assert.match(collect, /-path "\*\/felt-opaque\/\*"/);
+});
+
 test("each shard runs its own flows, and exactly one photographs the felt", () => {
   assert.ok(shards.length > 1);
   assert.match(step(IOS, "Run the flows"), /FLOWS: \$\{\{ matrix\.flows \}\}[\s\S]*test -e MAESTRO_APP_ID="\$APP_ID" \$FLOWS\n/);
@@ -60,11 +67,10 @@ test("the warm-up runs before the flows, at most twice, and red when both attemp
   assert.equal(shards.filter((s) => s.felt).length, 1);
   assert.match(step(IOS, "Install the app on the simulator"), /\n {8}id: install\n/);
   const feltSteps = ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"];
-  for (const name of [...feltSteps, "Photograph the capture states", "Upload the capture states"]) {
+  for (const name of [...feltSteps, "Collect the capture states", "Upload the capture states"]) {
     assert.match(step(IOS, name), /if: \$\{\{ !cancelled\(\) && matrix\.felt && steps\.install\.outcome == 'success' \}\}\n/, name);
   }
   assert.match(step(IOS, "Photograph the felt"), new RegExp(`test -e MAESTRO_APP_ID="\\$APP_ID" ${FELT}\\n`));
-  assert.match(step(IOS, "Photograph the capture states"), new RegExp(`test -e MAESTRO_APP_ID="\\$APP_ID" ${CAPTURES}\\n`));
   assert.match(step(IOS, "Upload the capture states"), /\n {10}name: ios-captures\n/);
 });
 
