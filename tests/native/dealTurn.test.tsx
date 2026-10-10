@@ -99,7 +99,8 @@ describe("the viewer's turn waits for the deal to land", () => {
 
   it.each([
     ['a phone', 844, 390, false],
-    ['a 4:3 tablet, where the grown fan starts to scroll', 1024, 768, true],  ])('on %s the landed cards grow from where they were drawn', async (_, width, height, scrolls) => {
+    ['a 4:3 tablet, where the grown fan starts to scroll', 1024, 768, true],
+  ])('on %s the landed cards grow from where they were drawn', async (_, width, height, scrolls) => {
     process.env.EXPO_PUBLIC_E2E_FAST = '1';
     Object.assign(mockWindow, { width, height });
     const view = await render(table(freshDeal(), { width, height }));
