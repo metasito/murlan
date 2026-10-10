@@ -122,10 +122,15 @@ function styleEntry(file: string, ref: string): string {
   return balanced(defs[0], m.index + m[0].length - 1);
 }
 
-const COLOUR = String.raw`([A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+')`;
+const COLOUR = String.raw`(withAlpha\([A-Za-z]+\.[A-Za-z]+, [\d.]+\)|[A-Za-z]+\.[A-Za-z]+|"[^"]+"|'[^']+')`;
 
 function colourValue(written: string): string {
   if (/^["']/.test(written)) return written.slice(1, -1);
+  const alpha = /^withAlpha\((\S+), ([\d.]+)\)$/.exec(written);
+  if (alpha) {
+    const rgb = parseInt(colourValue(alpha[1]).slice(1), 16);
+    return `rgba(${rgb >> 16},${(rgb >> 8) & 255},${rgb & 255},${alpha[2]})`;
+  }
   const [ns, key] = written.split(".");
   const val = PALETTES[ns]?.[key];
   assert.ok(val, `unresolved colour ${written}`);
@@ -241,6 +246,12 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.gain": SCORE_ROW,
   "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
+  "table/scorePill.tsx:styles.placeWon": SCORE_ROW,
+  "table/partitaBoard.tsx:styles.label": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.name": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.nameMine": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.btnText": { plate: "styles.btn" },
+  "table/partitaBoard.tsx:styles.btnTextPrimary": { gradient: Gradient.playButton },
   "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
   "table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
   // The disc's own gradient is darker than both stand-in stops.
