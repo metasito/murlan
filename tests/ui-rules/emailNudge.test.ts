@@ -40,6 +40,11 @@ describe("shouldShowVerifyEmailCard", () => {
     );
   });
 
+  test("absent while verification is unknown, as in a cache written before the field existed", () => {
+    assert.equal(shouldShowVerifyEmailCard({ email: "player@example.test" }), false);
+    assert.equal(shouldShowVerifyEmailCard({ email: "player@example.test", emailVerified: undefined }), false);
+  });
+
   test("absent for an account with no address at all — that is shouldShowAddEmailCard's cohort", () => {
     assert.equal(shouldShowVerifyEmailCard({ email: null, emailVerified: false }), false);
     assert.equal(shouldShowVerifyEmailCard({}), false);
