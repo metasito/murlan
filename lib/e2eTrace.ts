@@ -22,6 +22,8 @@ export interface TraceFrame {
   grey?: number;
   /** The felt's scale through the deal's breath, 1 at rest. */
   breath?: number;
+  /** Each seat ring's turn clock opacity, by the side it sits on. */
+  clocks?: Record<string, number>;
 }
 
 interface Sources {
@@ -36,6 +38,7 @@ interface Sources {
   flight: () => number;
   grey: () => number;
   breath: () => number;
+  clock: () => readonly [string, number];
 }
 
 export interface TraceRecorder {
@@ -56,6 +59,7 @@ const sources: { [K in keyof Sources]: Set<Sources[K]> } = {
   flight: new Set(),
   grey: new Set(),
   breath: new Set(),
+  clock: new Set(),
 };
 let recording = false;
 let pending: string[] = [];
@@ -90,6 +94,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       moth: last(sources.moth),
       grey: last(sources.grey) ?? 0,
       breath: last(sources.breath) ?? 1,
+      clocks: Object.fromEntries([...sources.clock].map((read) => read())),
     });
     requestAnimationFrame(tick);
   };
@@ -113,9 +118,9 @@ export function traceOnset(kind: "sound" | "haptic" | "moment", name: string): v
 }
 
 /** Registers what this component draws with the trace, for as long as it is mounted. */
-export function useTraceSource<K extends keyof Sources>(field: K, read: Sources[K]): void {
+export function useTraceSource<K extends keyof Sources>(field: K, read: Sources[K] | null): void {
   useEffect(() => {
-    if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
+    if (process.env.EXPO_PUBLIC_E2E_FAST !== "1" || !read) return;
     sources[field].add(read);
     return () => {
       sources[field].delete(read);

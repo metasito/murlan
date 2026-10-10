@@ -843,6 +843,17 @@ export function GameTable({
   const lampAim = lampPools(anchors, W, H)[
     holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
+  const emberFrom = useRef(shownTurnIndex);
+  const emberRuns = !holdingForStart && !trade && !gameState.gameOver && gameState.firstPlayMade;
+  useEffect(() => {
+    const from = emberFrom.current;
+    emberFrom.current = shownTurnIndex;
+    if (from === shownTurnIndex || !emberRuns) return;
+    particles.current?.ember(
+      seatDirection(from, viewerSeat, players.length),
+      seatDirection(shownTurnIndex, viewerSeat, players.length)
+    );
+  }, [shownTurnIndex, emberRuns, viewerSeat, players.length]);
   const rig = useLampRig({
     pool: lampAim,
     deal: deal.hand,

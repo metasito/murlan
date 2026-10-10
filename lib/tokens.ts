@@ -28,6 +28,7 @@ export const Colors = {
   // currently the table's own subject — the seat on move, the turn chip, GIOCA.
   goldLit:      '#F3E0A6',
   goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
+  goldLitDisc:  'rgba(243,224,166,0.7)', // a lit disc's border: the seat on move, a notice's disc
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
@@ -193,6 +194,21 @@ export const Lantern = {
 export const Dust = {
   mote: '#FFE2A8',
   puff: 'rgba(230,215,180,0.1)',
+  moteLifeSec: [0.5, 1.1],
+  puffLifeSec: [0.7, 1.1],
+  speckLifeSec: [0.4, 0.8],
+} as const;
+
+// The turn hand-off: the mockup's `ember` along the rim, and its `.ring` transition, the outgoing
+// clock out before the incoming in, at once under reduced motion (#1264).
+export const Handoff = {
+  emberHead: '#FFF1C8',
+  emberTrail: '#FFD27A',
+  emberMs: 380,
+  headLifeSec: 0.05,
+  trailLifeSec: [0.25, 0.4],
+  clockOutMs: 100,
+  clockInMs: 100,
 } as const;
 
 // The bomb's beat after its landing: the mockup's `bombFx` and `flash` (#1263).
@@ -200,7 +216,9 @@ export const BombFx = {
   delayMs: 90,
   sparks: ['#FFD27A', '#FFB347', '#FFF1C8'],
   sparkSizes: [1, 1.8, 2.8],
+  sparkLifeSec: [0.5, 1.2],
   ember: '#FF9A4A',
+  emberLifeSec: [1.5, 2.6],
   flash: 'rgba(255,222,150,0.5)',
   flashMs: 280,
   flashGapMs: 1000,

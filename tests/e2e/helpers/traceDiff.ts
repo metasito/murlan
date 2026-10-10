@@ -34,7 +34,8 @@ export type Field =
   | "air"
   | "grey"
   | "freeze"
-  | "breath";
+  | "breath"
+  | "clocks";
 
 export interface Failure {
   field: Field;
@@ -59,6 +60,7 @@ export const TOLERANCES = {
   pillPt: 1,
   contactPt: 1,
   breath: 0.001,
+  clock: 0.05,
 };
 
 const PILL_OPEN = 0.999;
@@ -145,6 +147,10 @@ export function diffTraces(
           if (mv !== av) fail(k, t, mv, av, `lamp ${k} on one side only`);
         } else if (Math.abs(av - mv) > tol.level) fail(k, t, mv, av, `lamp ${k} ${av} against ${mv}`);
       }
+    }
+    for (const seat of new Set([...Object.keys(m.clocks ?? {}), ...Object.keys(a.clocks ?? {})])) {
+      const [mc, ac] = [m.clocks?.[seat] ?? 0, a.clocks?.[seat] ?? 0];
+      if (Math.abs(ac - mc) > tol.clock) fail("clocks", t, mc, ac, `${seat}'s clock at ${ac} against ${mc}`);
     }
     const [mb, ab] = [m.breath ?? 1, a.breath ?? 1];
     if (Math.abs(ab - mb) > tol.breath) fail("breath", t, mb, ab, `felt breath ${ab} against ${mb}`);
