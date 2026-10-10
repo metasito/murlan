@@ -14,6 +14,9 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
+import { greyFilter } from '@/components/table/useLinkHold';
+import { holdGrey } from '@/lib/ownLink';
 
 // The table is landscape-locked and jest-expo's own window is a fixed portrait
 // one, which is a different card scale. Everything else here is the same shape
@@ -46,7 +49,7 @@ jest.mock('expo-router', () => ({
 
 // Required after the mocks, so the screen picks them up.
 const CaptureScreen = require('@/app/capture').default as React.ComponentType;
-const { ALL_CAPTURE_STATES } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
+const { ALL_CAPTURE_STATES, captureStateById } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
 const { redirectSystemPath } = require('@/app/+native-intent') as typeof import('@/app/+native-intent');
 
 const mount = () =>
@@ -73,6 +76,8 @@ describe('the capture screen', () => {
     // The swing is the one state that needs an input rather than a route, so a
     // capture cannot be taken of the handover without it.
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
+    const link = captureStateById(id)?.link ?? 'up';
+    expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(greyFilter(holdGrey(link)));
     await view.unmount();
   });
 
