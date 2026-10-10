@@ -53,9 +53,9 @@ jest.mock('@/lib/cosmetics', () => {
   const actual = jest.requireActual('@/lib/cosmetics') as typeof import('@/lib/cosmetics');
   return {
     ...actual,
-    useCardBack: () => {
+    useCardBackId: () => {
       mockCount.card += 1;
-      return actual.useCardBack();
+      return actual.useCardBackId();
     },
   };
 });

@@ -1,17 +1,22 @@
-// tests/native/courtArtWarm.test.tsx — the twelve court bitmaps are fetched
+// tests/native/cardArtWarm.test.tsx — the court, back and stock bitmaps are fetched
 // once, from the table's own mount, rather than on each card's first render
-// (#838). `warmCourtArt` is exported from CardView.tsx because it is the only
-// module that knows the twelve keys — this pins that the warm-up actually
-// reaches all of them, without keeping a second list of filenames here.
+// (#838). `warmCardArt` is exported from CardView.tsx because it is the only
+// module that knows the keys — this pins that the warm-up actually reaches all
+// of them, without keeping a second list of filenames here.
 import { describe, it, expect, jest } from "@jest/globals";
 
-describe("warmCourtArt", () => {
-  it("fetches all twelve court bitmaps, once per session", () => {
+import { CARD_BACK_IDS } from "@/lib/cosmetics";
+
+const COURT_FIGURES = 12;
+const STOCK = 1;
+
+describe("warmCardArt", () => {
+  it("fetches every court figure, every back and the stock, once per session", () => {
     const loadAsync = jest.fn((_modules: unknown[]) => Promise.resolve([]));
     let warm!: () => void;
     jest.isolateModules(() => {
       jest.doMock("expo-asset", () => ({ Asset: { loadAsync } }));
-      ({ warmCourtArt: warm } = require("@/components/CardView"));
+      ({ warmCardArt: warm } = require("@/components/CardView"));
     });
 
     warm();
@@ -19,7 +24,7 @@ describe("warmCourtArt", () => {
 
     expect(loadAsync).toHaveBeenCalledTimes(1);
     const [modules] = loadAsync.mock.calls[0];
-    expect(modules).toHaveLength(12);
+    expect(new Set(modules).size).toBe(COURT_FIGURES + CARD_BACK_IDS.length + STOCK);
   });
 
   it("swallows a rejected load instead of throwing into the table", async () => {
@@ -27,7 +32,7 @@ describe("warmCourtArt", () => {
     let warm!: () => void;
     jest.isolateModules(() => {
       jest.doMock("expo-asset", () => ({ Asset: { loadAsync } }));
-      ({ warmCourtArt: warm } = require("@/components/CardView"));
+      ({ warmCardArt: warm } = require("@/components/CardView"));
     });
 
     expect(() => warm()).not.toThrow();
