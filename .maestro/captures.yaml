@@ -15,6 +15,11 @@ appId: "${MAESTRO_APP_ID}"
     commands:
       - tapOn:
           point: "198,530"
+          waitToSettleTimeoutMs: 500
+          optional: true
+      - extendedWaitUntil:
+          notVisible: "Cancel"
+          timeout: 2000
           optional: true
 - runFlow:
     when:
@@ -22,6 +27,7 @@ appId: "${MAESTRO_APP_ID}"
     commands:
       - tapOn:
           point: "530,222"
+          waitToSettleTimeoutMs: 500
           optional: true
 - extendedWaitUntil:
     visible:
