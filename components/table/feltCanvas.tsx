@@ -310,7 +310,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const k = PixelRatio.get() * Math.min(sx, sy);
   const rail = useMemo(() => bakeRail(k), [k]);
   // CanvasKit frees nothing itself. Skia commits the new image in a layout effect, before this cleanup.
-  useEffect(() => () => disposeAfterReactions(() => rail?.dispose()), [rail]);
+  useEffect(() => () => (DISPOSE_PATHS ? disposeAfterReactions(() => rail?.dispose()) : rail?.dispose()), [rail]);
   const base = useMemo(() => clothUniforms(stops, k), [stops, k]);
 
   const uniforms = useDerivedValue(() => ({
