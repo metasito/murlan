@@ -135,7 +135,20 @@ module.exports = defineConfig([
       // derive it, or read the external thing through `useSyncExternalStore`.
       "react-hooks/set-state-in-effect": "error",
       "no-restricted-syntax": ["error", ...TOKEN_SYNTAX],
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "router",
+          property: "back",
+          message:
+            "Leave through `leaveScreen` (components/ScreenHeader.tsx): a screen a link opened has no history, and a bare back does nothing there.",
+        },
+      ],
     },
+  },
+  {
+    files: ["components/ScreenHeader.tsx"],
+    rules: { "no-restricted-properties": "off" },
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "context/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],

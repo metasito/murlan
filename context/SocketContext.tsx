@@ -167,28 +167,35 @@ export function SocketProvider({ children }: { children: ReactNode }) {
    * only cleared the screen would come back on the next reconnect, and would
    * leave the host waiting for someone who has already said no.
    */
-  const dismissGameInvite = useCallback(
-    (roomCode: string) => {
+  const hideGameInvite = useCallback(
+    (roomCode: string) =>
       qc.setQueryData<InviteRow[]>(["/api/friends/invites"], (prev) =>
         (prev ?? []).filter((row) => row.roomCode !== roomCode)
-      );
+      ),
+    [qc]
+  );
+  const dismissGameInvite = useCallback(
+    (roomCode: string) => {
+      hideGameInvite(roomCode);
       void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
         .catch(() => {})
         .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
     },
-    [qc]
+    [qc, hideGameInvite]
   );
 
   const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
   // Answering an invite answers it for both: leaving `pendingInvite` up would
   // reopen the code prompt over the join it just started, for the same room.
+  // Hidden, not deleted: the row is the invitee's seat hold until they are seated
+  // (`server/game/seatAllocation.ts`), and the server stops offering it then.
   const acceptInvite = useCallback(
     (roomCode: string) => {
-      dismissGameInvite(roomCode);
+      hideGameInvite(roomCode);
       setPendingInvite(null);
       setAcceptedInvite(roomCode);
     },
-    [dismissGameInvite]
+    [hideGameInvite]
   );
   const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
 

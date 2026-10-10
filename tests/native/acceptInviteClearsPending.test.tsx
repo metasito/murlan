@@ -88,7 +88,7 @@ describe('accepting an invite', () => {
     await unmount();
   });
 
-  it('deletes the invite row it answered', async () => {
+  it('takes the invite off the list without declining the seat it holds', async () => {
     const client = new QueryClient();
     client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
     const { result, unmount } = await mount(client);
@@ -97,7 +97,7 @@ describe('accepting an invite', () => {
     await act(async () => result.current.acceptInvite('ABC123'));
 
     expect(result.current.gameInvites).toEqual([]);
-    expect(mockApiRequest).toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
+    expect(mockApiRequest).not.toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
 
     await unmount();
   });
