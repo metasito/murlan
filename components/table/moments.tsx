@@ -37,9 +37,8 @@ import { useBombBeat } from "@/components/table/useBombBeat";
 import type { LandingSignal } from "@/components/table/useFlightClock";
 
 // The prototype's own literal colours for this one effect — a lamp exploding
-// at the pile is a brighter, whiter flash than the felt's own ambient
-// Lantern tokens, which are tuned for a light source rather than an event,
-// and CLAUDE.md's invariant against a token used outside the role it was
+// at the pile is a brighter, whiter flash than the lamp's own tokens, which
+// are tuned for a light source rather than an event, and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
 //
 // Neither `Flare` nor `LampLift` animate an `<Svg>`. #209 recorded that

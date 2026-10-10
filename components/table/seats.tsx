@@ -13,7 +13,7 @@ import {
 } from "@/components/seatLayout";
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
-import { useCardTable, useStaticCardRects } from "./useCardRects";
+import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -97,12 +97,12 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
+function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
   id: string;
+  rects: OwnedRects;
   at: ArcCard;
   boxW: number;
   backScale: number;
-  isActive: boolean;
   zIndex: number;
 }) {
   return (
@@ -119,7 +119,8 @@ function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
         card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
         faceDown
         scale={backScale}
-        light={isActive ? "standingLit" : "standing"}
+        rectKey={id}
+        rects={rects}
       />
     </View>
   );
@@ -128,14 +129,11 @@ function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
 function CardFan({
   count,
   side,
-  isActive,
   scale = 1,
 }: {
   /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
   side: OpponentSide;
-  /** This seat is on move, so the lamp is over it and its backs are lit. */
-  isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
@@ -153,7 +151,7 @@ function CardFan({
         : [],
     [table, side, count, scale]
   );
-  useStaticCardRects(table, `fan:${side}:`, drawn);
+  const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -186,7 +184,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
     </View>
@@ -627,7 +625,6 @@ export const TopOppSlot = memo(function TopOppSlot({
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID="top-seat"
@@ -652,7 +649,7 @@ export const TopOppSlot = memo(function TopOppSlot({
         mark={mark}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} side="top" isActive={lit} scale={scale} />
+        <CardFan count={displayed} side="top" scale={scale} />
       )}
     </View>
   );
@@ -806,7 +803,6 @@ export const SideOppSlot = memo(function SideOppSlot({
   const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID={`side-seat-${side}`}
@@ -833,7 +829,7 @@ export const SideOppSlot = memo(function SideOppSlot({
         mark={mark}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} side={side} isActive={lit} scale={scale} />
+        <CardFan count={displayed} side={side} scale={scale} />
       )}
     </View>
   );

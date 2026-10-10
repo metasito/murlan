@@ -22,6 +22,7 @@ test("every committed card WebP is byte-identical to a fresh bake, and none is m
     const expected = [
       ...Object.keys(CardBacks).flatMap((id) => [`back_${id}`, `foil_${id}`]),
       "stock",
+      "gloss_spot",
     ].flatMap((name) => ["", "@2x", "@3x"].map((s) => `${name}${s}.webp`)).sort();
     assert.deepEqual(baked, expected);
     assert.deepEqual(webps(committedDir), baked);

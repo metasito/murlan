@@ -164,26 +164,12 @@ export const CardFaceGradient = [
   Colors.cardPaperEdge,
 ] as const;
 
-// The lamp over the table, and what it falls on. A light, not a cloth: the
-// felt's own five stops still carry which felt the player chose, and these are
-// what lands on them. Every entry is translucent for that reason — a lit
-// surface is the surface plus the light, never a colour of its own.
-export const Lantern = {
-  // A card standing in a hand has its head nearer a hanging lamp than its
-  // foot. The `-on` pair is the same card in the seat that is on move.
-  headLit:     'rgba(255,240,205,0.26)',
-  headLitOn:   'rgba(255,244,214,0.40)',
-  headFade:    'rgba(255,240,205,0.08)',
-  headFadeOn:  'rgba(255,240,205,0.13)',
-  midShade:    'rgba(0,0,0,0.12)',
-  midShadeOn:  'rgba(0,0,0,0.08)',
-  footShade:   'rgba(0,0,0,0.34)',
-  footShadeOn: 'rgba(0,0,0,0.26)',
-  // A card lying flat on the felt catches far less of the same lamp.
-  flatHead:  'rgba(255,246,222,0.22)',
-  flatFade:  'rgba(255,246,222,0.04)',
-  flatMid:   'rgba(24,20,12,0.05)',
-  flatFoot:  'rgba(24,20,12,0.13)',
+// The Lantern Table mockup's `gloss()`, in design points at reach 1 (components/table/cardGloss.ts).
+export const CardGloss = {
+  falloff: 440,
+  squash: 1.2,
+  spot: { radius: 85, color: '#FFF8E8', alpha: 0.3, mid: { at: 0.3, color: '#FFF4DE', alpha: 0.1 } },
+  streak: { color: '#FFF6E4', reach: 260, travel: 0.7, width: 0.2, alpha: { floor: 0.05, lit: 0.22 } },
 } as const;
 
 // What a card landing throws up off the felt: the mockup's `landDust` (#1242).

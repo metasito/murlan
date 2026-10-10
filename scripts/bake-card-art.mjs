@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { CardBacks, CardFaceGradient } from "../lib/tokens.ts";
+import { CardBacks, CardFaceGradient, CardGloss } from "../lib/tokens.ts";
 import { CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W } from "../components/cardFaceModel.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -155,12 +155,26 @@ function drawStock(canvas, w, h) {
   canvas.drawRect(CK.XYWHRect(0, 0, w, h), p);
 }
 
+// At full alpha: the overlay's opacity carries the mockup's `.3·L`, so the mid stop is `.1 / .3` of it.
+function drawGlossSpot(canvas, w) {
+  const { spot } = CardGloss;
+  const mid = spot.mid.alpha / spot.alpha;
+  const p = new CK.Paint();
+  p.setShader(CK.Shader.MakeRadialGradient(
+    [w / 2, w / 2], w / 2,
+    [color(rgb(spot.color)), color(rgb(spot.mid.color), mid), color(rgb(spot.mid.color), 0)],
+    [0, spot.mid.at, 1], CK.TileMode.Clamp, undefined, 1,
+  ));
+  canvas.drawRect(CK.XYWHRect(0, 0, w, w), p);
+}
+
 const jobs = [
   ...Object.entries(CardBacks).flatMap(([id, spec]) => [
     [`back_${id}`, CARD_BACK_W(BASE_SCALE), CARD_BACK_H(BASE_SCALE), drawBack(spec), GRAIN],
     [`foil_${id}`, CARD_BACK_W(BASE_SCALE), CARD_BACK_H(BASE_SCALE), drawFoil(spec), 0],
   ]),
   ["stock", CARD_W(BASE_SCALE), CARD_H(BASE_SCALE), drawStock, GRAIN],
+  ["gloss_spot", 2 * CardGloss.spot.radius * BASE_SCALE, 2 * CardGloss.spot.radius * BASE_SCALE, drawGlossSpot, 0],
 ];
 
 mkdirSync(outDir, { recursive: true });

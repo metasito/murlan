@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
 import { designRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
+import type { GlossLight } from "./cardGloss";
 
 /**
  * The one registry, and the laid-out places every owner measures its cards from, in window points.
@@ -17,7 +18,11 @@ export interface CardTable {
   hand: Point;
   seats: Record<OpponentSide, Point>;
   handLift: SharedValue<number>;
+  glossLight: SharedValue<GlossLight>;
 }
+
+/** One publisher's own cards, mirrored from the registry: a reader of these re-runs on its owner's writes alone. */
+export type OwnedRects = SharedValue<CardRects> & { readonly __owned: true };
 
 const CardTableContext = createContext<CardTable | null>(null);
 export const CardTableProvider = CardTableContext.Provider;
@@ -28,7 +33,7 @@ export function useCardTable(): CardTable | null {
 
 type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 
-export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>): CardTable {
+export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>, glossLight: SharedValue<GlossLight>): CardTable {
   const rects = useSharedValue<CardRects>({});
   const key = JSON.stringify(places);
   useEffect(() => {
@@ -46,7 +51,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift }), [key, rects, motion, handLift]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift, glossLight }), [key, rects, motion, handLift, glossLight]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
@@ -63,11 +68,15 @@ function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {
  * the UI thread from values the commit has already set — so a card still drawn is never left out once
  * the UI thread has run them. On native nothing on JS sees them within the commit.
  */
-export function useCardRect(table: CardTable | null, key: string, drawn: boolean, read: () => CardRect | null): void {
+export function useCardRect(table: CardTable | null, key: string, drawn: boolean, read: () => CardRect | null): OwnedRects {
   const rects = table?.rects;
+  const own = useSharedValue<CardRects>({}) as OwnedRects;
   useLayoutEffect(() => {
     if (!rects) return;
-    if (!drawn) return forget(rects, key, false);
+    if (!drawn) {
+      own.value = {};
+      return forget(rects, key, false);
+    }
     const alive = makeMutable(true);
     const publish = () => {
       "worklet";
@@ -76,6 +85,7 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
         "worklet";
         const rect = alive.value ? read() : null;
         if (!alive.value || sameRect(r[key], rect)) return r;
+        own.value = rect ? { [key]: rect } : {};
         const next = { ...r };
         if (rect) next[key] = rect;
         else delete next[key];
@@ -87,9 +97,11 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
     return () => {
       alive.value = false;
       stopMapper(mapper);
+      own.value = {};
       forget(rects, key, false);
     };
-  }, [rects, key, drawn, read]);
+  }, [rects, own, key, drawn, read]);
+  return own;
 }
 
 function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
@@ -99,10 +111,11 @@ function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
 }
 
 /** Publishes cards laid out by a render, all under `prefix`: replaced in the commit that draws them, moved with the table. */
-export function useStaticCardRects(table: CardTable | null, prefix: string, cards: readonly DrawnCard[]): void {
+export function useStaticCardRects(table: CardTable | null, prefix: string, cards: readonly DrawnCard[]): OwnedRects {
   const rects = table?.rects;
   const felt = table?.felt;
   const motion = table?.motion;
+  const own = useSharedValue<CardRects>({}) as OwnedRects;
   useLayoutEffect(() => {
     if (!rects || !felt || !motion) return;
     const alive = makeMutable(true);
@@ -112,10 +125,12 @@ export function useStaticCardRects(table: CardTable | null, prefix: string, card
         "worklet";
         if (!alive.value) return r;
         for (const k of Object.keys(r)) if (k.startsWith(prefix)) delete r[k];
+        const mine: CardRects = {};
         cards.forEach((c, i) => {
-          r[`${prefix}${i}`] = designRect(c, felt, motion.value);
+          mine[`${prefix}${i}`] = designRect(c, felt, motion.value);
         });
-        return r;
+        own.value = mine;
+        return Object.assign(r, mine);
       });
     };
     publish();
@@ -123,7 +138,9 @@ export function useStaticCardRects(table: CardTable | null, prefix: string, card
     return () => {
       alive.value = false;
       stopMapper(mapper);
+      own.value = {};
       forget(rects, prefix, true);
     };
-  }, [rects, felt, motion, prefix, cards]);
+  }, [rects, own, felt, motion, prefix, cards]);
+  return own;
 }

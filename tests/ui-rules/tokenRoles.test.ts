@@ -16,7 +16,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import ts from "typescript";
-import { Colors, Scrim, Highlight, Lantern, Layer, Type } from "../../lib/tokens.ts";
+import { Colors, Scrim, Highlight, Layer, Type } from "../../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -32,7 +32,6 @@ const PALETTES: Record<string, Record<string, string>> = {
   Colors,
   Scrim,
   Highlight,
-  Lantern,
 };
 
 function alphaOf(value: string): number {

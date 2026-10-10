@@ -124,7 +124,7 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
   const pile = table?.pile;
   const felt = table?.felt;
   const motion = table?.motion;
-  useCardRect(
+  const ownRects = useCardRect(
     table,
     `deal:${legs[0].key}`,
     true,
@@ -136,7 +136,7 @@ function DealtBack({ legs, scale, clock }: { legs: readonly DealLeg[]; scale: nu
   );
   return (
     <Animated.View testID="dealt-back" nativeID={`card-deal:${legs[0].key}`} style={[dealStyles.back, style]}>
-      <CardView card={{ id: "bk", suit: null, rank: "3", isJoker: false }} faceDown scale={scale * BACK_SCALE} />
+      <CardView card={{ id: "bk", suit: null, rank: "3", isJoker: false }} faceDown scale={scale * BACK_SCALE} rectKey={`deal:${legs[0].key}`} rects={ownRects} />
     </Animated.View>
   );
 }
