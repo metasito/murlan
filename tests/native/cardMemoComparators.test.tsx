@@ -69,6 +69,8 @@ const VALUES: Record<string, [unknown, unknown]> = {
   dealRise: [0, 120],
   cardW: [64, 92],
   cardH: [90, 128],
+  restX: [0, 24],
+  restY: [0, 24],
   shiftX: [0, 24],
   received: [false, true],
   hidden: [{ value: [] }, { value: [] }],
