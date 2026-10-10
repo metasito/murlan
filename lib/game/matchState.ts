@@ -39,9 +39,6 @@ export interface MatchState extends MatchVerdict {
   hands: HandResult[];
 }
 
-/** Each seat's answer to the rematch question, by engine player id. */
-export type RematchAnswers = Record<string, boolean>;
-
 /**
  * What the results board calls the seat it celebrates.
  *

@@ -421,13 +421,6 @@ export const en = {
   "gameTable.a11yLastPlayRoyalStraight": "royal straight of {{count}} {{suit}} cards, topping at {{rank}}",
   "gameTable.a11yHandCount_one": "Your hand: {{count}} card.",
   "gameTable.a11yHandCount_other": "Your hand: {{count}} cards.",
-  "gameTable.rematchPromptTitle": "AGAIN?",
-  "gameTable.rematchPromptSubtitle": "Majority decides",
-  "gameTable.rematchYes": "YES",
-  "gameTable.rematchNo": "NO",
-  "gameTable.rematchYesA11yLabel": "Yes, I want another match",
-  "gameTable.rematchNoA11yLabel": "No, I stop here",
-  "gameTable.rematchTally": "{{yes}}/{{total}} yes",
   "gameTable.a11yCardMoved": "{{card}} moved to position {{position}} of {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selected.",
   "gameTable.a11yHandSelected_other": "{{count}} selected.",
@@ -694,7 +687,6 @@ export const en = {
   "result.nextHand": "Next hand",
   "result.newMatch": "New match",
   "result.tableStops": "The table stops here",
-  "result.tableContinues": "The table wants to carry on",
 
   // ---------------------------------------------------------------- tutorial.*
   "tutorial.you": "You",

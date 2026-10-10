@@ -37,7 +37,7 @@ const FLOWS = [
   ".maestro/smoke.yaml",
   ".maestro/offline-game.yaml",
   ".maestro/exchange-phase.yaml",
-  ".maestro/rematch-prompt.yaml",
+  ".maestro/new-partita.yaml",
 ];
 
 /**
@@ -272,7 +272,7 @@ describe("the landscape screen is read on a landscape device", () => {
   const gameTableFlows = [
     ".maestro/offline-game.yaml",
     ".maestro/exchange-phase.yaml",
-    ".maestro/rematch-prompt.yaml",
+    ".maestro/new-partita.yaml",
   ];
 
   for (const flow of gameTableFlows) {

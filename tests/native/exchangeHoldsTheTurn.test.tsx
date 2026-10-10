@@ -62,10 +62,6 @@ jest.mock('@/context/GameContext', () => ({
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    rematchPromptOpen: false,
-    rematchAnswers: {},
-    rematchTally: { yes: 0, total: 0 },
-    answerRematch: () => {},
     match: { length: 'single', target: 21 },
   }),
 }));

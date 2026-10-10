@@ -269,7 +269,7 @@ collapsed:
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`turnTimer`, `exchangeAnnouncement`,
-  `rematchPrompt`, `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
+  `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
   offline and online adapters inject exactly what differs between them (a local AI turn loop and
   its response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.

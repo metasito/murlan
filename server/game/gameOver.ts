@@ -4,7 +4,7 @@ import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import { resolveHandEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
-import { isMajority, tallyRematchAnswers, firstTargetFor } from "../../lib/game/gameEngine.ts";
+import { firstTargetFor } from "../../lib/game/gameEngine.ts";
 import type { GameOverPayload } from "../../lib/game/matchState.ts";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
@@ -91,8 +91,6 @@ export async function handleGameOver(
   game.matchOver = result.matchOver;
   game.handsPlayed += 1;
 
-  const matchContinues = game.matchOver ? tableWantsRematch(game) : false;
-
   game.rematchVotes = new Set();
 
   // One clock for the preview, the emit and the rated write below: two calls
@@ -122,7 +120,7 @@ export async function handleGameOver(
     handsPlayed: game.handsPlayed,
     matchOver: game.matchOver,
     matchWinnerIds: winnerEngineIds,
-    matchContinues,
+    matchContinues: true,
     isDraw,
     // Keyed by user id, and absent for a table that earns no rating — an
     // offline or teams hand, or one without two rated finishers. The client
@@ -323,23 +321,7 @@ export function rollMatchForward(game: OnlineGameState) {
     game.matchTarget = target;
     game.handsPlayed = 0;
     game.matchOver = false;
-    game.rematchIntents.clear();
   }
-}
-
-/**
- * How many seats want another match, and how many seats there are. A seat
- * with no playerMap entry — a bot, or a human's seat after they left — has
- * no one who can answer, so it abstains: it counts toward neither yes nor
- * total. A seated human who never answered counts as a no, but still counts
- * toward total.
- */
-export function countRematchAnswers(game: OnlineGameState): { yes: number; total: number } {
-  return tallyRematchAnswers(game.gameState.players.length, (seat) => {
-    const userId = game.playerMap[seat];
-    if (userId === undefined) return "abstain";
-    return game.rematchIntents.get(userId) === true;
-  });
 }
 
 /**
@@ -353,18 +335,4 @@ export function scoresByEngineId(game: OnlineGameState): Record<string, number> 
     byId[p.id] = seatTotal(game.cumulativeScores, game.playerMap, game.vacatedSeats, seat);
   });
   return byId;
-}
-
-export function tableWantsRematch(game: OnlineGameState): boolean {
-  const { yes, total } = countRematchAnswers(game);
-  return isMajority(yes, total);
-}
-
-export function broadcastRematchIntents(io: SocketServer, game: OnlineGameState, room = game.roomId) {
-  const { yes, total } = countRematchAnswers(game);
-  io.to(room).emit("game:rematch_intents", {
-    yes,
-    total,
-    answers: Object.fromEntries(game.rematchIntents),
-  });
 }

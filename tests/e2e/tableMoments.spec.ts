@@ -155,7 +155,6 @@ function flightSave(): object {
       firstPlayMade: true,
     },
     match: { length: "single", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    rematchAnswers: {},
     players: [
       { name: "Ana", type: "human" },
       { name: "Bea", type: "ai", personality: "luan" },

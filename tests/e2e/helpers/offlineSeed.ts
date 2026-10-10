@@ -101,7 +101,6 @@ export function offlineGameSave(
       winners: [],
       isDraw: false,
     },
-    rematchAnswers: {},
     players: Array.from({ length: playerCount }, (_, i) =>
       i === 0
         ? { name: "Ana", type: "human" }

@@ -17,12 +17,10 @@ import {
   foldHandIntoMatch,
   initializeGame,
   initializeRematch,
-  isMajority,
   processExchangeChoice,
   processPlay,
   processPass,
   buildCombination,
-  tallyRematchAnswers,
   canPlay,
 } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
@@ -40,12 +38,10 @@ import { useNotification } from "@/context/NotificationContext";
 import { t } from "@/lib/i18n";
 import {
   buildExchangeAnnounce,
-  rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
-import { handCountOf } from "@/shared/protocol";
-import type { HandResult, MatchState, PlayerSetupConfig, RematchAnswers } from "@/lib/game/matchState";
+import type { HandResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -64,7 +60,7 @@ const MEASURED_TAP_RETURN_MS = 8200;
 const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
 const E2E_EXCHANGE_HOLD_MS = MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS;
 
-export type { PlayerSetupConfig, HandResult, MatchState, RematchAnswers };
+export type { PlayerSetupConfig, HandResult, MatchState };
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {
@@ -113,13 +109,6 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
 interface GameContextValue {
   gameState: GameState | null;
   match: MatchState;
-  rematchAnswers: RematchAnswers;
-  /** True while the table is being asked whether it wants another match. */
-  rematchPromptOpen: boolean;
-  /** How many seats said yes, out of how many had anyone to answer. */
-  rematchTally: { yes: number; total: number };
-  /** True once a majority of the table has said yes to another match. */
-  tableWantsRematch: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
@@ -127,7 +116,6 @@ interface GameContextValue {
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextHand: () => void;
   startNewMatch: () => void;
-  answerRematch: (playerId: string, wants: boolean) => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
   playCards: (cardIds: string[]) => boolean;
@@ -148,7 +136,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
 
   const [match, setMatch] = useState<MatchState>(() => freshMatch("match", 4));
-  const [rematchAnswers, setRematchAnswers] = useState<RematchAnswers>({});
   const [savedPlayerConfigs, setSavedPlayerConfigs] = useState<PlayerSetupConfig[]>([]);
   const [savedGameMode, setSavedGameMode] = useState<GameMode>("free_for_all");
   const [dealFirstSeat, setDealFirstSeat] = useState(0);
@@ -192,7 +179,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGameState(state);
       setDealFirstSeat(firstSeat);
       setMatch(freshMatch(length, players.length));
-      setRematchAnswers({});
       setSavedPlayerConfigs(players);
       setSavedGameMode(mode);
     },
@@ -228,27 +214,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const startNewMatch = useCallback(() => {
     if (!gameState) return;
     setMatch(freshMatch(match.length, gameState.players.length));
-    setRematchAnswers({});
     dealFrom(gameState.rankings, true);
   }, [gameState, match.length, dealFrom]);
-
-  const rematchPromptOpen = useMemo(
-    () =>
-      isRematchPromptOpen(
-        gameState && {
-          gameOver: gameState.gameOver,
-          handCounts: gameState.players.map(handCountOf),
-          players: gameState.players,
-        },
-        match,
-        match.scores
-      ),
-    [gameState, match]
-  );
-
-  const answerRematch = useCallback((playerId: string, wants: boolean) => {
-    setRematchAnswers((prev) => ({ ...prev, [playerId]: wants }));
-  }, []);
 
   const chooseExchangeCard = useCallback(
     (cardId: string) => {
@@ -327,7 +294,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const resetGame = useCallback(() => {
     setGameState(null);
     setMatch(freshMatch("match", gameState?.players.length ?? 4));
-    setRematchAnswers({});
     clearSavedGame();
   }, [clearSavedGame, gameState?.players.length]);
 
@@ -337,7 +303,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     if (!isResumable(save)) return false;
     setGameState(save.gameState);
     setMatch(save.match);
-    setRematchAnswers(save.rematchAnswers);
     setSavedPlayerConfigs(save.players);
     setSavedGameMode(save.gameMode);
     setDealFirstSeat(save.dealFirstSeat);
@@ -392,42 +357,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       encodeOfflineSave({
         gameState,
         match,
-        rematchAnswers,
         players: savedPlayerConfigs,
         gameMode: savedGameMode,
         dealFirstSeat,
       })
     ).catch(() => {});
-  }, [gameState, match, rematchAnswers, savedPlayerConfigs, savedGameMode, dealFirstSeat, dropSavedRow]);
-
-  // A computer has no preference worth recording, so an AI seat abstains from
-  // the count and the total alike — the same policy the server applies to bot
-  // and vacated seats (docs/GAME-RULES.md § Decisions).
-  const rematchTally = useMemo(() => {
-    const players = gameState?.players ?? [];
-    return tallyRematchAnswers(players.length, (seat) => {
-      const p = players[seat];
-      return !p || p.type === "ai" ? "abstain" : rematchAnswers[p.id] === true;
-    });
-  }, [gameState?.players, rematchAnswers]);
-
-  const tableWantsRematch = isMajority(rematchTally.yes, rematchTally.total);
+  }, [gameState, match, savedPlayerConfigs, savedGameMode, dealFirstSeat, dropSavedRow]);
 
   const value = useMemo(
     () => ({
       gameState,
       match,
-      rematchAnswers,
-      rematchPromptOpen,
-      rematchTally,
-      tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
       exchangeHoldMsOverride,
       setupGame,
       startNextHand,
       startNewMatch,
-      answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
       playCards,
@@ -441,17 +387,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [
       gameState,
       match,
-      rematchAnswers,
-      rematchPromptOpen,
-      rematchTally,
-      tableWantsRematch,
       exchangeAnnouncing,
       exchangeAnnounceData,
       exchangeHoldMsOverride,
       setupGame,
       startNextHand,
       startNewMatch,
-      answerRematch,
       chooseExchangeCard,
       acknowledgeExchange,
       playCards,

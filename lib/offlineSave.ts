@@ -9,7 +9,7 @@
 // they can be tested without AsyncStorage or a renderer. The context does the
 // I/O and nothing else.
 import type { GameMode, GameState } from "./game/gameEngine.ts";
-import type { MatchState, PlayerSetupConfig, RematchAnswers } from "./game/matchState.ts";
+import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
 
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
@@ -26,7 +26,6 @@ export interface OfflineSave {
   version: number;
   gameState: GameState;
   match: MatchState;
-  rematchAnswers: RematchAnswers;
   /** Needed to deal the next manche — `initializeRematch` takes the setup, not the state. */
   players: PlayerSetupConfig[];
   gameMode: GameMode;
@@ -72,11 +71,10 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   if (!isObject(parsed)) return NONE;
   if (parsed.version !== OFFLINE_SAVE_VERSION) return INCOMPATIBLE;
 
-  const { gameState, match, rematchAnswers, players, gameMode, dealFirstSeat } = parsed;
+  const { gameState, match, players, gameMode, dealFirstSeat } = parsed;
   if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
   if (gameState.players.length === 0) return INCOMPATIBLE;
   if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return INCOMPATIBLE;
-  if (!isObject(rematchAnswers)) return INCOMPATIBLE;
   if (!Array.isArray(players) || players.length !== gameState.players.length) return INCOMPATIBLE;
   if (gameMode !== "free_for_all" && gameMode !== "teams") return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;

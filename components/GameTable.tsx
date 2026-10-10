@@ -109,7 +109,6 @@ import {
 import { useSelection } from "@/components/table/useSelection";
 import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
-import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
 import { useLinkHold } from "@/components/table/useLinkHold";
@@ -142,7 +141,6 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
   motionMs,
-  Spacing,
   Layer,
   TOUCH_TARGET_MIN,
 } from "@/lib/theme";
@@ -235,15 +233,6 @@ export interface TurnTimerConfig {
   pausable?: boolean;
 }
 
-/**
- * The rematch question, put to the table down the side of the screen while the
- * closing manche is still being played. Majority decides; a seat that never
- * answers counts as a no.
- */
-export interface RematchPromptSlot extends RematchAnswers {
-  visible: boolean;
-}
-
 export interface ExchangeAnnouncementSlot {
   visible: boolean;
   data: ExchangeAnnounceData | null;
@@ -306,7 +295,6 @@ export interface GameTableProps {
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
-  rematchPrompt?: RematchPromptSlot;
   /**
    * Seats mid disconnect grace, by seat — the countdown for the whole 60 s
    * window (docs/GAME-RULES.md § Decisions), driven from the server's own `seconds` the
@@ -367,7 +355,6 @@ export function GameTable({
   onMancheLanded,
   turnTimer,
   exchangeAnnouncement,
-  rematchPrompt,
   disconnectedSeats = {},
   railExtra,
   banners,
@@ -1567,16 +1554,6 @@ export function GameTable({
           </Animated.View>
           </A11yVeil>
         </Animated.View>
-
-
-        {rematchPrompt?.visible && (
-          <RematchPromptPanel
-            prompt={rematchPrompt}
-            top={frame.tableTop + CHIP_H(scale) + frame.pad}
-            left={frame.tableLeft + Spacing.sm}
-            veiled={behindVeil}
-          />
-        )}
 
 
         <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>

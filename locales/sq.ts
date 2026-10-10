@@ -424,13 +424,6 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11yLastPlayRoyalStraight": "shkallë mbretërore me {{count}} letra {{suit}}, më e larta {{rank}}",
   "gameTable.a11yHandCount_one": "Dora jote: {{count}} letër.",
   "gameTable.a11yHandCount_other": "Dora jote: {{count}} letra.",
-  "gameTable.rematchPromptTitle": "PËRSËRI?",
-  "gameTable.rematchPromptSubtitle": "Vendos shumica",
-  "gameTable.rematchYes": "PO",
-  "gameTable.rematchNo": "JO",
-  "gameTable.rematchYesA11yLabel": "Po, dua një ndeshje tjetër",
-  "gameTable.rematchNoA11yLabel": "Jo, ndalem këtu",
-  "gameTable.rematchTally": "{{yes}}/{{total}} po",
   "gameTable.a11yCardMoved": "{{card}} u zhvendos në pozicionin {{position}} nga {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} e zgjedhur.",
   "gameTable.a11yHandSelected_other": "{{count}} të zgjedhura.",
@@ -697,7 +690,6 @@ export const sq: Record<keyof typeof en, string> = {
   "result.nextHand": "Dora tjetër",
   "result.newMatch": "Ndeshje e re",
   "result.tableStops": "Tavolina ndalon këtu",
-  "result.tableContinues": "Tavolina do të vazhdojë",
 
   // ---------------------------------------------------------------- tutorial.*
   "tutorial.you": "Ti",

@@ -417,13 +417,6 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.a11yLastPlayRoyalStraight": "scala reale di {{count}} carte di {{suit}}, la più alta {{rank}}",
   "gameTable.a11yHandCount_one": "La tua mano: {{count}} carta.",
   "gameTable.a11yHandCount_other": "La tua mano: {{count}} carte.",
-  "gameTable.rematchPromptTitle": "ANCORA?",
-  "gameTable.rematchPromptSubtitle": "Decide la maggioranza",
-  "gameTable.rematchYes": "SÌ",
-  "gameTable.rematchNo": "NO",
-  "gameTable.rematchYesA11yLabel": "Sì, voglio un'altra partita",
-  "gameTable.rematchNoA11yLabel": "No, mi fermo qui",
-  "gameTable.rematchTally": "{{yes}}/{{total}} sì",
   "gameTable.a11yCardMoved": "{{card}} spostata in posizione {{position}} di {{total}}.",
   "gameTable.a11yHandSelected_one": "{{count}} selezionata.",
   "gameTable.a11yHandSelected_other": "{{count}} selezionate.",
@@ -690,7 +683,6 @@ export const it: Record<keyof typeof en, string> = {
   "result.nextHand": "Prossima manche",
   "result.newMatch": "Nuova partita",
   "result.tableStops": "Il tavolo si ferma qui",
-  "result.tableContinues": "Il tavolo vuole continuare",
 
   // ---------------------------------------------------------------- tutorial.*
   "tutorial.you": "Tu",

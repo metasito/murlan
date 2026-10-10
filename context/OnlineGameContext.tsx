@@ -20,7 +20,6 @@ import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
   gameOverSchema,
   gameStateSchema,
-  handCountOf,
   type IntentPayload,
   roomStateSchema,
   type WireGameState,
@@ -34,7 +33,6 @@ import type { GameState, MatchLength } from "@/lib/game/gameEngine";
 import type { GameOverPayload, MatchVerdict } from "@/lib/game/matchState";
 import {
   buildExchangeAnnounce,
-  rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
@@ -58,13 +56,6 @@ export interface OnlineMatchState extends MatchVerdict {
   continues: boolean;
 }
 
-/** Answers to the side-panel rematch question, by userId. */
-export interface RematchIntentState {
-  yes: number;
-  total: number;
-  answers: Record<string, boolean>;
-}
-
 const initialTarget = MATCH_TARGETS[0];
 if (initialTarget === undefined) throw new Error("MATCH_TARGETS must not be empty");
 
@@ -77,8 +68,6 @@ const INITIAL_MATCH: OnlineMatchState = {
   isDraw: false,
   continues: false,
 };
-
-const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
 
 /** Another seat dropping (`back: false`) or returning, in the viewer's language. */
 export type ReconnectNotice = { text: string; back: boolean };
@@ -117,9 +106,6 @@ interface OnlineGameContextValue {
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
   handRecorded: boolean;
   matchState: OnlineMatchState;
-  rematchIntents: RematchIntentState;
-  /** True while the table is being asked whether it wants another match. */
-  rematchPromptOpen: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
@@ -143,7 +129,6 @@ interface OnlineGameContextValue {
    * once a seat has been vacated.
    */
   voteToEndMatch: (wants: boolean) => void;
-  answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
   giveExchangeCard: (cardId: string) => void;
@@ -215,11 +200,8 @@ type MatchSlice = Pick<
   | "handRecorded"
   | "rematchVoteState"
   | "endMatchVoteState"
-  | "rematchIntents"
-  | "rematchPromptOpen"
   | "voteRematch"
   | "voteToEndMatch"
-  | "answerRematch"
 >;
 type ExchangeSlice = Pick<
   OnlineGameContextValue,
@@ -311,7 +293,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
-  const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
   const {
@@ -679,10 +660,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setHandScores({});
       setRatingDeltas({});
       setHandRecorded(false);
-      setRematchIntents(INITIAL_INTENTS);
     };
-
-    const onRematchIntents = (state: RematchIntentState) => setRematchIntents(state);
 
     const onGameOver = (raw: unknown) => {
       const parsed = gameOverSchema.safeParse(raw);
@@ -854,7 +832,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("game:notification", onGameNotification);
     socket?.on("game:over", onGameOver);
     socket?.on("game:match_state", onMatchState);
-    socket?.on("game:rematch_intents", onRematchIntents);
     socket?.on("game:vote_state", onVoteState);
     socket?.on("game:end_match_vote_state", onEndMatchVoteState);
     socket?.on("game:reaction", onReaction);
@@ -875,7 +852,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket?.off("game:notification", onGameNotification);
       socket?.off("game:over", onGameOver);
       socket?.off("game:match_state", onMatchState);
-      socket?.off("game:rematch_intents", onRematchIntents);
       socket?.off("game:vote_state", onVoteState);
       socket?.off("game:end_match_vote_state", onEndMatchVoteState);
       socket?.off("game:reaction", onReaction);
@@ -1022,26 +998,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     deliver("game:end_match_vote", { wants });
   }, [deliver]);
 
-  const answerRematch = useCallback((wants: boolean) => {
-    deliver("game:rematch_intent", { wants });
-  }, [deliver]);
-
-  // Same predicate as the offline table (lib/game/gameEngine), fed by the sanitized
-  // state: opponents' hands are blanked but `handCount` is not.
-  const rematchPromptOpen = useMemo(
-    () =>
-      isRematchPromptOpen(
-        gameState && {
-          gameOver: gameState.gameOver,
-          handCounts: gameState.players.map(handCountOf),
-          players: gameState.players,
-        },
-        matchState,
-        cumulativeScores
-      ),
-    [gameState, matchState, cumulativeScores]
-  );
-
   const playCards = useCallback(
     (cardIds: string[]) => deliver("game:play", { cardIds }),
     [deliver]
@@ -1124,13 +1080,10 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       handRecorded,
       rematchVoteState,
       endMatchVoteState,
-      rematchIntents,
-      rematchPromptOpen,
       voteRematch,
       voteToEndMatch,
-      answerRematch,
     }),
-    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, rematchIntents, rematchPromptOpen, voteRematch, voteToEndMatch, answerRematch]
+    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
   );
 
   const exchangeValue = useMemo(

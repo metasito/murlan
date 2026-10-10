@@ -31,39 +31,12 @@ export function useLocalSession() {
   );
 }
 
-/** Where the match stands, and whether the table wants another. */
+/** Where the match stands, and how the table goes on from it. */
 export function useLocalMatch() {
-  const {
-    match,
-    rematchAnswers,
-    rematchTally,
-    tableWantsRematch,
-    rematchPromptOpen,
-    answerRematch,
-    startNextHand,
-    startNewMatch,
-  } = useGame();
+  const { match, startNextHand, startNewMatch } = useGame();
   return useMemo(
-    () => ({
-      match,
-      rematchAnswers,
-      rematchTally,
-      tableWantsRematch,
-      rematchPromptOpen,
-      answerRematch,
-      startNextHand,
-      startNewMatch,
-    }),
-    [
-      match,
-      rematchAnswers,
-      rematchTally,
-      tableWantsRematch,
-      rematchPromptOpen,
-      answerRematch,
-      startNextHand,
-      startNewMatch,
-    ]
+    () => ({ match, startNextHand, startNewMatch }),
+    [match, startNextHand, startNewMatch]
   );
 }
 

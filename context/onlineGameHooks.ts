@@ -145,11 +145,8 @@ export function useOnlineMatch() {
     handRecorded,
     rematchVoteState,
     endMatchVoteState,
-    rematchIntents,
-    rematchPromptOpen,
     voteRematch,
     voteToEndMatch,
-    answerRematch,
   } = useMatchSlice();
   return useMemo(
     () => ({
@@ -161,11 +158,8 @@ export function useOnlineMatch() {
       handRecorded,
       rematchVoteState,
       endMatchVoteState,
-      rematchIntents,
-      rematchPromptOpen,
       voteRematch,
       voteToEndMatch,
-      answerRematch,
     }),
     [
       matchState,
@@ -176,11 +170,8 @@ export function useOnlineMatch() {
       handRecorded,
       rematchVoteState,
       endMatchVoteState,
-      rematchIntents,
-      rematchPromptOpen,
       voteRematch,
       voteToEndMatch,
-      answerRematch,
     ]
   );
 }

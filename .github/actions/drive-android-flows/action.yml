@@ -182,4 +182,4 @@ runs:
           #
           # A failed run asks whether the device still answers: flows that failed on an emulator
           # which had stopped answering say nothing about the app, and the verdict must know that.
-          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml .maestro/rematch-prompt.yaml || { timeout 30 adb -s emulator-5554 shell true || touch "$RUNNER_TEMP/emulator-lost"; exit 1; }
+          maestro --device emulator-5554 test -e MAESTRO_APP_ID="$APP_ID" .maestro/smoke.yaml .maestro/offline-game.yaml .maestro/exchange-phase.yaml .maestro/new-partita.yaml || { timeout 30 adb -s emulator-5554 shell true || touch "$RUNNER_TEMP/emulator-lost"; exit 1; }

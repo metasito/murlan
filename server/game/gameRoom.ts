@@ -20,12 +20,6 @@ export interface OnlineGameState {
   joinCode: string;
   /** Ready gate for the next manche of the running match, by userId. */
   rematchVotes: Set<string>;
-  /**
-   * Answers to the side-panel rematch question, by userId. A seat that never
-   * answered counts as a no. Bot seats are absent — no userId to key by — and
-   * abstain from the verdict (countRematchAnswers).
-   */
-  rematchIntents: Map<string, boolean>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
   cumulativeScores: Record<string, number>;
   gameMode: GameMode;

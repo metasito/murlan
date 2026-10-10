@@ -6,8 +6,7 @@
 // content (the row list) — exactly the class of thing only a rendered page
 // answers (docs/agents/checks.md).
 import { test, expect, type Page } from "@playwright/test";
-import { offlineGameSave, openSeededGame, resumeSaved } from "./helpers/offlineSeed";
-import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
+import { openSeededGame } from "./helpers/offlineSeed";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 
 const VIEWPORT = { width: 844, height: 390 };
@@ -331,37 +330,4 @@ test("the open sheet takes the table out of the accessibility tree", async ({ pa
 
   // Closing gives it all back.
   await expect(passByRole, "the table never came back").toHaveCount(1);
-});
-
-/**
- * The check above can only see what is on screen when it runs, and the rematch
- * prompt is only up while a match is ending — two minutes of played-out hands
- * away (#424 is what that costs). A single-manche match counts as closing the
- * moment a hand is nearly played out (`matchIsClosing`), so a seeded save with
- * short hands raises the panel on the first frame.
- */
-test("the open sheet takes a closing match's rematch prompt out of the tree", async ({
-  page,
-  baseURL,
-}) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize(VIEWPORT);
-
-  const save = offlineGameSave(4, CLOSING_HAND_CARDS);
-  await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
-
-  const yes = page.getByTestId("btn-rematch-yes");
-  await expect(yes, "the seed did not raise the rematch prompt, so this proves nothing").toHaveCount(
-    1
-  );
-  expect(
-    await reachableBehindVeil(page),
-    "the rematch buttons are unreachable with the sheet shut, so this cannot tell the veil apart from nothing"
-  ).toContain("Sì, voglio un'altra partita");
-
-  await page.getByRole("button", { name: "Impostazioni" }).click();
-  await expect(page.locator(SHEET)).toBeVisible();
-
-  await expect(yes, "the prompt stopped rendering behind the veil").toHaveCount(1);
-  expect(await reachableBehindVeil(page), "these are reachable behind the veil").toEqual([]);
 });

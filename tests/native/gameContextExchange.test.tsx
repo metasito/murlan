@@ -125,7 +125,6 @@ test("choosing an exchange card moves the card and announces it through the real
     encodeOfflineSave({
       gameState: exchangeState(),
       match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-      rematchAnswers: {},
       players: [
         { name: "Ana", type: "human" },
         { name: "Gent", type: "ai" },
@@ -169,7 +168,6 @@ test("a fresh match clears the announcement outright, not on the old ceremony's 
     encodeOfflineSave({
       gameState: exchangeState(),
       match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-      rematchAnswers: {},
       players: [
         { name: "Ana", type: "human" },
         { name: "Gent", type: "ai" },
