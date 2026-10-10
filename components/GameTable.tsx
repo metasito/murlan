@@ -260,9 +260,8 @@ export interface GameTableProps {
   matchOver?: boolean;
   matchWinners?: readonly string[];
   /**
-   * What the manche just played awarded, by engine player id — the same
-   * value the results board reads (`GameOverOverlay`/`app/result.tsx`), fed
-   * to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
+   * What the manche just played awarded, by engine player id — the score
+   * pill's gains, fed to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
    * for the same callers `matchOver` defaults false for: with no scores to
    * read, the sting simply stays silent rather than guessing.
    */
@@ -915,7 +914,7 @@ export function GameTable({
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    // Fast game -> result -> game navigation makes these cancel each other, and an
+    // Fast game -> menu -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
     warmCardArt();
     return () => {

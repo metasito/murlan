@@ -38,7 +38,6 @@ SplashScreen.preventAutoHideAsync();
  * of the path, and an online hand should sound like an offline one anyway.
  */
 function trackForRoute(pathname: string): TrackId {
-  if (pathname.startsWith("/result")) return "cue";
   if (pathname.startsWith("/game")) return "hand";
   return "menu";
 }
@@ -79,7 +78,6 @@ export function RootLayoutNav() {
         <Stack.Screen name="profile" />
         <Stack.Screen name="(online)" />
         <Stack.Screen name="game" />
-        <Stack.Screen name="result" options={{ animation: "fade" }} />
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
             development build: the screen refuses to render in a production one
             either way, and a route a player can reach and be shown nothing on

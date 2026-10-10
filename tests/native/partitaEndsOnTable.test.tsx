@@ -127,10 +127,10 @@ afterEach(() => {
   setMotionPreference('system');
 });
 
-describe.each([
+describe.each<[string, React.ComponentType, string]>([
   ['offline', OfflineGameScreen, 'btn-nuova-partita'],
   ['online', OnlineGameScreen, 'btn-rivincita'],
-] as const)('a partita ending %s', (_where, Screen, againID) => {
+])('a partita ending %s', (_where, Screen, againID) => {
   it('stays on the table and settles on the board with the winner and both actions', async () => {
     const view = await render(wrap(Screen));
     await advance(board - 100);
@@ -140,7 +140,6 @@ describe.each([
     await advance(settled);
     expect(router.replace).not.toHaveBeenCalled();
     expect(screen.queryByTestId('winner-celebration', HIDDEN)).toBeNull();
-    expect(screen.queryByRole('button', { name: t('gameOverOverlay.leaveA11yLabel') })).toBeNull();
     expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
     expect(screen.getAllByText(t('partitaBoard.wins'), HIDDEN).length).toBeGreaterThan(0);
     expect(screen.getByTestId('score-pill-winner-row', HIDDEN)).toHaveTextContent('1');

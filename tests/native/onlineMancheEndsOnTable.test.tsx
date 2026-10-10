@@ -87,7 +87,7 @@ const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms
 const pillOpen = () => getAnimatedStyle(screen.getByTestId('score-pill-panel', HIDDEN)).display === 'flex';
 const voteShown = () => getAnimatedStyle(screen.getByTestId('manche-vote', HIDDEN)).display === 'flex';
 const voteButton = () => screen.queryByRole('button', { name: t('gameOverOverlay.nextHandA11yLabel'), ...HIDDEN });
-const overlayLeave =() => screen.queryByRole('button', { name: t('gameOverOverlay.leaveA11yLabel') });
+const overlayLeave = () => screen.queryByTestId('btn-home', HIDDEN);
 
 beforeEach(() => {
   jest.useFakeTimers();

@@ -81,8 +81,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     },
     cumulativeScores: {},
     handScores: {},
-    ratingDeltas: {},
-    handRecorded: true,
+    handScoresCurrent: true,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),
@@ -100,11 +99,20 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { onQuit: () => void; overlays?: (v: object) => React.ReactNode }) =>
+    GameTable: (props: {
+      onQuit: () => void;
+      partitaActions?: { onHome: () => void };
+      gameState: { gameOver: boolean };
+      matchOver: boolean;
+      overlays?: (v: object) => React.ReactNode;
+    }) =>
       react.createElement(
         rn.View,
         null,
         react.createElement(rn.Pressable, { testID: 'table-quit', onPress: props.onQuit }),
+        props.partitaActions && props.gameState.gameOver && props.matchOver
+          ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.partitaActions.onHome })
+          : null,
         props.overlays ? props.overlays({}) : null
       ),
   };
@@ -130,7 +138,7 @@ async function overlayShown() {
   return view;
 }
 
-/** Comfortably past whatever beat the screen waits before the overlay lands. */
+/** Comfortably past the partita ending's settled board. */
 const GAME_OVER_DELAY_CEILING = 10_000;
 
 describe('leaving between hands, online', () => {
@@ -145,7 +153,7 @@ describe('leaving between hands, online', () => {
   it('asks before abandoning a match that is still being scored', async () => {
     mockMatchOver = false;
     const view = await overlayShown();
-    expect(view.queryByRole('button', { name: locale['gameOverOverlay.leaveA11yLabel'] })).toBeNull();
+    expect(view.queryByTestId('btn-home', { includeHiddenElements: true })).toBeNull();
 
     await fireEvent.press(view.getByTestId('table-quit'));
     expect(mockLeaveRoom).not.toHaveBeenCalled();
@@ -161,7 +169,7 @@ describe('leaving between hands, online', () => {
     mockMatchOver = true;
     const view = await overlayShown();
 
-    await fireEvent.press(view.getByRole('button', { name: locale['gameOverOverlay.leaveA11yLabel'] }));
+    await fireEvent.press(view.getByTestId('btn-home', { includeHiddenElements: true }));
     expect(view.queryByText(locale['onlineGame.quitConfirmTitle'])).toBeNull();
     expect(mockLeaveRoom).toHaveBeenCalled();
 

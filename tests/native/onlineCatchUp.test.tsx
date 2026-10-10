@@ -2,13 +2,12 @@
 // table replaying: every throw keeps the full flight while the notice is up.
 import { afterEach, describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { act, render } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 
 const mockTableProps = jest.fn();
 const mockRetry = jest.fn();
-const mockOverlayProps = jest.fn();
 const mockOwnLink = { current: 'up' };
 const mockMatchOver = { current: false };
 const mockConnected = { current: true };
@@ -63,8 +62,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     matchState: { target: 21, length: 'match', over: mockMatchOver.current, winners: [], isDraw: false, continues: true, handsPlayed: 0 },
     cumulativeScores: {},
     handScores: {},
-    ratingDeltas: {},
-    handRecorded: false,
+    handScoresCurrent: true,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),
@@ -76,13 +74,6 @@ jest.mock('@/context/onlineGameHooks', () => ({
     giveExchangeCard: jest.fn(),
     acknowledgeExchange: jest.fn(),
   }),
-}));
-
-jest.mock('@/components/GameOverOverlay', () => ({
-  GameOverOverlay: (props: object) => {
-    mockOverlayProps(props);
-    return null;
-  },
 }));
 
 jest.mock('@/components/GameTable', () => ({
@@ -115,6 +106,7 @@ const lastTable = () =>
     ownLink: string;
     catchUp: boolean;
     connection: Connection;
+    partitaActions?: object;
     overlays: (veiled: object) => React.ReactNode;
   };
 
@@ -165,8 +157,7 @@ describe("the online table on the viewer's own link", () => {
     await view.unmount();
   });
 
-  it('hands the lost link and the same Riprova to the result board over a finished match', async () => {
-    jest.useFakeTimers();
+  it('keeps the lost link and its Riprova on the table over a finished match', async () => {
     mockOwnLink.current = 'lost';
     mockMatchOver.current = true;
     mockState.current = { ...mockMidHand, gameOver: true, rankings: ['player_0', 'player_1'] };
@@ -175,18 +166,12 @@ describe("the online table on the viewer's own link", () => {
         <OnlineGameScreen />
       </SafeAreaProvider>
     );
-    await act(async () => {
-      jest.advanceTimersByTime(1000);
-    });
-    const { overlays } = lastTable();
-    const slot = await render(<SafeAreaProvider initialMetrics={METRICS}>{overlays({})}</SafeAreaProvider>);
-    const board = mockOverlayProps.mock.calls.at(-1)![0] as { ownLink: string; onRetry: () => void };
-    expect(board.ownLink).toBe('lost');
-    board.onRetry();
+    const { connection, partitaActions } = lastTable();
+    expect(partitaActions).toBeDefined();
+    expect(connection?.state).toBe('lost');
+    connection?.action?.onPress();
     expect(mockRetry).toHaveBeenCalledTimes(1);
-    await slot.unmount();
     await view.unmount();
-    jest.useRealTimers();
   });
 
   it('says it is reconnecting from the first frame for a socket that was never up', async () => {

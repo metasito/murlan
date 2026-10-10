@@ -6,10 +6,9 @@ import { createRoom, fillWithBotsAndStart, goToOnlineLobby } from "./helpers/onl
 import { driveGameToCompletion } from "./helpers/bot";
 import { settled } from "./helpers/settle";
 import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
-import { it as copy } from "../../locales/it";
 
-// One size: an online match played out is minutes of bot play, and the overlay,
-// the breakdown and the replay only exist after one.
+// One size: an online match played out is minutes of bot play, and the board on
+// the felt and the replay only exist after one.
 test("no control is undersized after an online hand — phone landscape", async ({ page, baseURL }) => {
   test.setTimeout(8 * 60_000);
   await page.setViewportSize({ width: 844, height: 390 });
@@ -21,17 +20,10 @@ test("no control is undersized after an online hand — phone landscape", async 
   await page.getByRole("radio", { name: /Manche secca/ }).first().click();
   await fillWithBotsAndStart(page);
   await driveGameToCompletion(page, {
-    isFinished: (p) => p.getByRole("button", { name: "Esci dalla partita" }).isVisible(),
+    isFinished: (p) => p.getByTestId("btn-home").isVisible(),
   });
   await settled(page, 2500);
   await sweepSizes(page, "match over", UNDERSIZED_BY_DESIGN);
-
-  await page.getByRole("button", { name: copy["handBreakdown.toggleA11yLabel"] }).click();
-  await expect(page.getByRole("button", { name: copy["handBreakdown.openReplayA11yLabel"] })).toBeVisible({
-    timeout: 15_000,
-  });
-  await settled(page, 1500);
-  await sweepSizes(page, "hand breakdown", UNDERSIZED_BY_DESIGN);
 
   await page.goto(`${baseURL!}/profile`);
   const replayRow = page.getByRole("button", { name: /^Guarda:/ }).first();

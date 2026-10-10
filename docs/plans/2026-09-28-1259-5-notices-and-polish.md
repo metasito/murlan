@@ -67,7 +67,7 @@ and perfect performance. Only what a player sees goes to the owner, by eye, at a
   mark for every combination; today's power red and sheen go. The bomb's emphasis is #1263's.
 - **Q6, who starts as one notice: open, settled by eye at G1.**
 - **Q7, the rematch question during the last manche: owner, "Drop it".** Only the end board asks
-  (#1267). Code check: today it cannot simply be removed. Offline, `app/result.tsx` offers
+  (#1267). Code check: today it cannot simply be removed. Offline, the result screen offers
   "Nuova partita" only when `tableWantsRematch` (the closing manche's answers) is a majority.
   Online, `rematchRefused` in `server/game/tableHandlers.ts` refuses a rematch vote unless those
   intents said yes. That refusal is a recorded rule (`docs/GAME-RULES.md` § Decisions, "A rematch
@@ -547,7 +547,7 @@ stall each fail the gate). Run `tests/tooling/diagnosticsGate.test.ts`,
 - **Task 10 vs #1265:** no conflict; the panel reuses the score pill's plate tokens rather than
   copying them.
 - **The rematch question vs #1267: leave to the ticket.** The owner dropped the question (Q7), but
-  today's partita ending offers a rematch only through it: `app/result.tsx` shows "Nuova partita"
+  today's partita ending offers a rematch only through it: the result screen shows "Nuova partita"
   only on a majority of its answers, and `rematchRefused` in `server/game/tableHandlers.ts` refuses
   the online vote otherwise, a rule recorded in `docs/GAME-RULES.md` § Decisions. Removing
   the prompt component alone would leave no rematch at all, so #1267 removes it
