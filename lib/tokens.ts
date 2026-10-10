@@ -3,10 +3,6 @@
 // adds the platform-aware Shadow.
 import type { TextStyle, ViewStyle } from "react-native";
 
-// Named once because two unrelated roles want the same ink: the second-place
-// podium and the silver card back.
-const SILVER = '#C0C0C0';
-
 export const Colors = {
   bg:           '#031008',
   // `bg` at zero alpha, for the clear end of a fade over it. Spelt out rather
@@ -28,6 +24,7 @@ export const Colors = {
   // currently the table's own subject — the seat on move, the turn chip, GIOCA.
   goldLit:      '#F3E0A6',
   goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
+  goldLitDisc:  'rgba(243,224,166,0.7)', // a lit disc's border: the seat on move, a notice's disc
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.
@@ -124,7 +121,7 @@ export const Colors = {
   bombFill:    'rgba(255,80,80,0.22)',
 
   podiumGold:   '#C9A84C',
-  podiumSilver: SILVER,
+  podiumSilver: '#C0C0C0',
   podiumBronze: '#CD7F32',
 };
 
@@ -167,32 +164,33 @@ export const CardFaceGradient = [
   Colors.cardPaperEdge,
 ] as const;
 
-// The lamp over the table, and what it falls on. A light, not a cloth: the
-// felt's own five stops still carry which felt the player chose, and these are
-// what lands on them. Every entry is translucent for that reason — a lit
-// surface is the surface plus the light, never a colour of its own.
-export const Lantern = {
-  // A card standing in a hand has its head nearer a hanging lamp than its
-  // foot. The `-on` pair is the same card in the seat that is on move.
-  headLit:     'rgba(255,240,205,0.26)',
-  headLitOn:   'rgba(255,244,214,0.40)',
-  headFade:    'rgba(255,240,205,0.08)',
-  headFadeOn:  'rgba(255,240,205,0.13)',
-  midShade:    'rgba(0,0,0,0.12)',
-  midShadeOn:  'rgba(0,0,0,0.08)',
-  footShade:   'rgba(0,0,0,0.34)',
-  footShadeOn: 'rgba(0,0,0,0.26)',
-  // A card lying flat on the felt catches far less of the same lamp.
-  flatHead:  'rgba(255,246,222,0.22)',
-  flatFade:  'rgba(255,246,222,0.04)',
-  flatMid:   'rgba(24,20,12,0.05)',
-  flatFoot:  'rgba(24,20,12,0.13)',
+// The Lantern Table mockup's `gloss()`, in design points at reach 1 (components/table/cardGloss.ts).
+export const CardGloss = {
+  falloff: 440,
+  squash: 1.2,
+  spot: { radius: 85, color: '#FFF8E8', alpha: 0.3, mid: { at: 0.3, color: '#FFF4DE', alpha: 0.1 } },
+  streak: { color: '#FFF6E4', reach: 260, travel: 0.7, width: 0.2, alpha: { floor: 0.05, lit: 0.22 } },
 } as const;
 
 // What a card landing throws up off the felt: the mockup's `landDust` (#1242).
 export const Dust = {
   mote: '#FFE2A8',
   puff: 'rgba(230,215,180,0.1)',
+  moteLifeSec: [0.5, 1.1],
+  puffLifeSec: [0.7, 1.1],
+  speckLifeSec: [0.4, 0.8],
+} as const;
+
+// The turn hand-off: the mockup's `ember` along the rim, and its `.ring` transition, the outgoing
+// clock out before the incoming in, at once under reduced motion (#1264).
+export const Handoff = {
+  emberHead: '#FFF1C8',
+  emberTrail: '#FFD27A',
+  emberMs: 380,
+  headLifeSec: 0.05,
+  trailLifeSec: [0.25, 0.4],
+  clockOutMs: 100,
+  clockInMs: 100,
 } as const;
 
 // The bomb's beat after its landing: the mockup's `bombFx` and `flash` (#1263).
@@ -200,7 +198,9 @@ export const BombFx = {
   delayMs: 90,
   sparks: ['#FFD27A', '#FFB347', '#FFF1C8'],
   sparkSizes: [1, 1.8, 2.8],
+  sparkLifeSec: [0.5, 1.2],
   ember: '#FF9A4A',
+  emberLifeSec: [1.5, 2.6],
   flash: 'rgba(255,222,150,0.5)',
   flashMs: 280,
   flashGapMs: 1000,
@@ -320,9 +320,9 @@ export const Gradient = {
 // floor for all four — pinned by tests/ui-rules/cosmetics.test.ts.
 export const FeltGradients = {
   verde:    ['#2E9F62', '#23854F', '#186B41', '#0F4E31', '#093320'],
-  blu:      ['#2288C4', '#1C6FA2', '#155780', '#0F3F5E', '#092A3E'],
-  bordeaux: ['#B03D4C', '#94323F', '#782833', '#5A1E27', '#3D141B'],
-  notte:    ['#5D6874', '#4E5862', '#3F4750', '#31373E', '#23272C'],
+  blu:      ['#1F8A93', '#197279', '#135A60', '#0D4247', '#082C30'],
+  bordeaux: ['#9A3A5E', '#80304E', '#66263F', '#4C1C2F', '#331320'],
+  notte:    ['#566878', '#475765', '#394652', '#2B353F', '#1E252C'],
 } as const;
 
 /** The default felt. Anything not themed by the player's choice uses this. */
@@ -331,17 +331,16 @@ export const FeltGradient = FeltGradients.verde;
 // Card backs. Only three things survive at card size — the ink, the field
 // colour and how dense the lattice is — so a back is those plus a star count,
 // not a bespoke drawing. The field is card stock, not cloth: its own five-stop
-// gradient, dark enough to hold the ink lattice against any felt, so repainting
-// FeltGradients can never repaint a back.
+// gradient, so repainting FeltGradients can never repaint a back.
 export const CardBacks = {
   // The prototype's own back, and the default: a green field, so an opponent's
-  // fan still reads as cards on the far side of the table. Every other back is
-  // dark enough to vanish into the felt once the lamp is standing elsewhere.
+  // fan still reads as cards on the far side of the table.
   smeraldo:   { field: ['#1E6544', '#19583B', '#144B32', '#0F3E29', '#0A3120'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  oro:        { field: ['#3A2C13', '#2E2210', '#241A0B', '#180F06', '#0D0803'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  rubino:     { field: ['#4A1622', '#3A111A', '#2C0C13', '#1E080D', '#120507'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  zaffiro:    { field: ['#12294A', '#0E2038', '#0A182A', '#07101D', '#040A10'], ink: SILVER,      lattice: 9, starPoints: 6 },
-  inchiostro: { field: ['#2A2A2E', '#212124', '#191919', '#111112', '#0A0A0B'], ink: Colors.gold, lattice: 5, starPoints: 4 },
+  oro:        { field: ['#7A5528', '#654520', '#503718', '#3B2811', '#271A0A'], ink: '#E2BE62',   lattice: 7, starPoints: 8 },
+  rubino:     { field: ['#5E1B28', '#4C1520', '#3A1018', '#2A0B11', '#1A060A'], ink: Colors.gold, lattice: 7, starPoints: 8 },
+  zaffiro:    { field: ['#1C3B63', '#172F50', '#12243E', '#0C192C', '#07101C'], ink: '#BFC3C8',   lattice: 9, starPoints: 6 },
+  // Blind embossed: the lattice and frame are pressed, not inked, and only the star is gold.
+  inchiostro: { field: ['#34302C', '#2A2623', '#201D1A', '#171513', '#0E0C0B'], ink: Colors.gold, lattice: 5, starPoints: 4, emboss: true },
 } as const;
 
 // Ordered by value, and only the order says so: nothing in slim, snug, cosy,
@@ -617,6 +616,8 @@ export const Reading = {
 export const Hold = {
   /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
   land: 175,
+  /** From the landing that ends a manche to its sting (the lantern mockup's `mwin`/`mlose`). */
+  sting: 300,
   /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
   reveal: 1500,
 } as const;

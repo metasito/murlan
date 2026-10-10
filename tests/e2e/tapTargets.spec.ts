@@ -28,10 +28,10 @@ import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { TABLE, TABLE_DEALING } from "./helpers/selectors";
 import { sweepSizes, UNDERSIZED_BY_DESIGN } from "./helpers/tapTargets";
-import { CLOSING_HAND_CARDS } from "../../lib/game/gameEngine";
 import { Reading } from "../../lib/tokens";
 import { it as copy } from "../../locales/it";
 
+const SHORT_HAND = 5;
 const BANNER = '[data-testid="notification-banner"]';
 
 interface Blocked {
@@ -325,15 +325,13 @@ for (const size of SIZES) {
 }
 
 for (const size of SIZES.filter((s) => s.width > s.height)) {
-  test(`no control is undersized on a closing match — ${size.name}`, async ({ page, baseURL }) => {
+  test(`no control is undersized in the table settings sheet — ${size.name}`, async ({ page, baseURL }) => {
     test.setTimeout(2 * 60_000);
     await page.setViewportSize({ width: size.width, height: size.height });
 
-    const save = offlineGameSave(4, CLOSING_HAND_CARDS);
+    const save = offlineGameSave(4, SHORT_HAND);
     await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
-    await expect(page.getByTestId("btn-rematch-yes")).toHaveCount(1);
     await settled(page, 2500);
-    await sweepSizes(page, "rematch prompt", UNDERSIZED_BY_DESIGN);
 
     await page.getByRole("button", { name: "Impostazioni" }).click();
     await expect(page.locator('[data-testid="settings-sheet"]')).toBeVisible();
@@ -345,9 +343,9 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
     test.setTimeout(4 * 60_000);
     await page.setViewportSize({ width: size.width, height: size.height });
 
-    const save = offlineGameSave(4, CLOSING_HAND_CARDS);
+    const save = offlineGameSave(4, SHORT_HAND);
     await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
-    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()), rematch: true });
+    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()) });
     await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 15_000 });
     await settled(page, 2500);
     await sweepSizes(page, "result board");

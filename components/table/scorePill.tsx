@@ -278,6 +278,7 @@ export function ScorePill({
           </Animated.View>
         )}
         <Animated.View
+          testID="score-pill-panel"
           {...(open ? a11yGroup(spokenStandings) : a11yHidden())}
           style={[StyleSheet.absoluteFill, panelStyle]}
         >

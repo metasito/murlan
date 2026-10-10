@@ -27,6 +27,7 @@ import { createAir, mothPose, MOTES, relit, stepAir, type Air, type MothPose, ty
 import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
+import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
@@ -40,6 +41,7 @@ interface Field {
   shown: number;
   light: MoteLight;
   due: number;
+  ember: EmberRun;
 }
 
 // Above any display's refresh, so a device lays out every frame; jest's rAF ticks every millisecond.
@@ -84,11 +86,12 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const v = field.value;
     const l = lamp.value;
     v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
-    const idle = !v.s.live && !v.shown;
+    const idle = !v.s.live && !v.shown && v.ember.t < 0;
     if (idle && v.due < AIR_TICK_S) return;
     if (idle && still.value && v.air.mothT < 0 && !relit(v.light, l)) return;
     const dt = Math.min(0.05, v.due);
     v.due = 0;
+    for (const p of emberFrame(v.ember, dt, Math.random)) spawn(v.s, p);
     step(v.s, dt);
     if (stepAir(v.air, dt, l, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
@@ -127,6 +130,7 @@ export function ParticleLayer({ ref, rig, landing }: {
     shown: 0,
     light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
     due: 0,
+    ember: idleEmber(),
   }));
   const field = useSharedValue(initial);
   const moth = useSharedValue<MothPose | null>(null);
@@ -177,7 +181,15 @@ export function ParticleLayer({ ref, rig, landing }: {
         return v;
       }, true);
     },
-  }), [field]);
+    ember(from, to) {
+      if (reduced) return;
+      field.modify((v) => {
+        "worklet";
+        startEmber(v.ember, from, to);
+        return v;
+      }, true);
+    },
+  }), [field, reduced]);
 
   const sprites = useRectBuffer(PARTICLE_BUDGET, (r, i) => {
     "worklet";

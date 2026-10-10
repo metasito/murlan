@@ -1,8 +1,8 @@
-// tests/native/onlineLeaveConfirm.test.tsx — the Leave the between-hands
-// overlay offers is one tap away from abandoning a scored match, so it asks
-// the same question the in-table Quit asks. Rendered rather than scanned: the
-// dialog is wired by a prop, and a scan cannot tell a wired one from a
-// defined one.
+// tests/native/onlineLeaveConfirm.test.tsx — the in-table Quit between manches
+// is one tap away from abandoning a scored match, so it asks; the results
+// overlay's Leave, over a decided match, does not. Rendered rather than
+// scanned: the dialog is wired by a prop, and a scan cannot tell a wired one
+// from a defined one.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
@@ -85,11 +85,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
     handRecorded: true,
     rematchVoteState: null,
     endMatchVoteState: null,
-    rematchIntents: { yes: 0, total: 0, answers: {} },
-    rematchPromptOpen: false,
     voteRematch: jest.fn(),
     voteToEndMatch: jest.fn(),
-    answerRematch: jest.fn(),
   }),
   useOnlineExchange: () => ({
     exchangeAnnouncing: false,
@@ -103,8 +100,13 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { overlays?: (v: object) => React.ReactNode }) =>
-      react.createElement(rn.View, null, props.overlays ? props.overlays({}) : null),
+    GameTable: (props: { onQuit: () => void; overlays?: (v: object) => React.ReactNode }) =>
+      react.createElement(
+        rn.View,
+        null,
+        react.createElement(rn.Pressable, { testID: 'table-quit', onPress: props.onQuit }),
+        props.overlays ? props.overlays({}) : null
+      ),
   };
 });
 
@@ -131,7 +133,7 @@ async function overlayShown() {
 /** Comfortably past whatever beat the screen waits before the overlay lands. */
 const GAME_OVER_DELAY_CEILING = 10_000;
 
-describe('leaving from the between-hands overlay, online', () => {
+describe('leaving between hands, online', () => {
   beforeEach(() => {
     mockLeaveRoom.mockClear();
     jest.useFakeTimers();
@@ -143,8 +145,9 @@ describe('leaving from the between-hands overlay, online', () => {
   it('asks before abandoning a match that is still being scored', async () => {
     mockMatchOver = false;
     const view = await overlayShown();
+    expect(view.queryByRole('button', { name: locale['gameOverOverlay.leaveA11yLabel'] })).toBeNull();
 
-    await fireEvent.press(view.getByRole('button', { name: locale['gameOverOverlay.leaveA11yLabel'] }));
+    await fireEvent.press(view.getByTestId('table-quit'));
     expect(mockLeaveRoom).not.toHaveBeenCalled();
     expect(view.getByText(locale['onlineGame.quitConfirmTitle'])).toBeTruthy();
 

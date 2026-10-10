@@ -54,7 +54,7 @@ export function throwPair(by = 3, catchUp = false) {
 }
 
 /** That table as an element, for `rerender`: `by` threw `combo` and seat `turn` is on move. */
-export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false }: { by: number; combo: Combination; passCount?: number; turn?: number; catchUp?: boolean }) {
+export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false, turnSeconds }: { by: number; combo: Combination; passCount?: number; turn?: number; catchUp?: boolean; turnSeconds?: number }) {
   const state: GameState = {
     players: [0, 1, 2, 3].map(seat),
     currentTurnIndex: turn,
@@ -77,6 +77,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
         onQuit={noop}
         onExchangeGive={noop}
         catchUp={catchUp}
+        turnTimer={turnSeconds === undefined ? undefined : { seconds: turnSeconds }}
       />
     </SafeAreaProvider>
   );

@@ -16,7 +16,7 @@ export default function ResultScreen() {
   // Android keeps a leaving screen's views mid-transition, where a re-sorted row is a
   // re-insert into a parent it has not left yet: it renders what it was left showing.
   const [leftWith, setLeftWith] = useState<typeof live | null>(null);
-  const { gameState, match, tableWantsRematch, startNewMatch } = leftWith ?? live;
+  const { gameState, match, startNewMatch } = leftWith ?? live;
   const { resetGame } = useLocalSession();
 
   useEffect(() => {
@@ -100,16 +100,12 @@ export default function ResultScreen() {
     router.replace("/game");
   };
 
-  // The table was asked during the closing manche; a majority "no" ends it
-  // here, so there is no button offering to overrule them.
-  const primary: ContinueAction | undefined = tableWantsRematch
-    ? {
-        kind: "newMatch",
-        label: t("result.newMatch"),
-        onPress: goPlay(startNewMatch),
-        testID: "btn-nuova-partita",
-      }
-    : undefined;
+  const primary: ContinueAction = {
+    kind: "newMatch",
+    label: t("result.newMatch"),
+    onPress: goPlay(startNewMatch),
+    testID: "btn-nuova-partita",
+  };
 
   // A floor, not just the real inset: on a notchless device (most desktop
   // browsers) env(safe-area-inset-*) is genuinely 0, and content flush
@@ -146,13 +142,6 @@ export default function ResultScreen() {
       handCount={match.hands.length}
       target={isSingleHand ? undefined : match.target}
       teams={isTeamMode}
-      verdictLine={
-        match.over
-          ? tableWantsRematch
-            ? t("result.tableContinues")
-            : t("result.tableStops")
-          : undefined
-      }
       home={{ label: t("result.home"), onPress: goHome, testID: "btn-home" }}
       primary={primary}
       topPad={Math.max(insets.top, Spacing.roomy)}

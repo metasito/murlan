@@ -196,7 +196,7 @@ describe('the replay button while another manche can still follow', () => {
 
   it('says where the replay went instead of going silent', async () => {
     const view = await renderBreakdown(WITH_REPLAY, 12, true);
-    expect(view.getByText('Watch it from your profile once the match is over')).toBeTruthy();
+    expect(view.getByText('Watch it from your profile after you leave the table')).toBeTruthy();
   });
 
   // A hand nothing recorded says so, whatever the room is doing: the deferral
@@ -204,7 +204,7 @@ describe('the replay button while another manche can still follow', () => {
   it('does not promise a replay of a hand that was never recorded', async () => {
     const view = await renderBreakdown(FULL, 12, true);
     expect(view.getByText('No replay for this hand')).toBeTruthy();
-    expect(view.queryByText('Watch it from your profile once the match is over')).toBeNull();
+    expect(view.queryByText('Watch it from your profile after you leave the table')).toBeNull();
   });
 
   // The floor: the same breakdown with the seat released still offers it, so

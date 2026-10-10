@@ -56,7 +56,6 @@ const CARD_FACE = [Colors.cardPaper, Colors.cardPaperMid, Colors.cardPaperEdge] 
 const CARD_FACE_STOPS = [0, 0.55, 1] as const;
 const DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
 const PLATE_SHADOW = withAlpha(Colors.shadow, PILL_SHADOW.alpha);
-const DISC_EDGE = withAlpha(Colors.goldLit, 0.7);
 const DISC_GLOW = 10;
 const TILE_SHADOW = 3;
 const TILE_CAST = withAlpha(Colors.shadow, 0.5);
@@ -426,7 +425,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: DISC_EDGE,
+    borderColor: Colors.goldLitDisc,
   },
   text: {
     fontFamily: "Rajdhani_600SemiBold",

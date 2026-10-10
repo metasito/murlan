@@ -5,6 +5,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { BombFx, Dust } from "../../lib/tokens.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
+import type { FlyDirection } from "../seatLayout.ts";
 import { MOTES } from "./air.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
@@ -46,6 +47,7 @@ export type Rng = () => number;
 /** What a draw layer hands its owner: the one way into its simulation. */
 export interface ParticleEmitter {
   emit(spawns: readonly ParticleSpawn[]): void;
+  ember(from: FlyDirection, to: FlyDirection): void;
 }
 
 export function createParticles(budget: number = TRANSIENTS): Particles {
@@ -138,13 +140,13 @@ function landDust(cards: number, count: number, x0: number, y0: number, rng: Rng
     const a = side ? R(-0.4, 0.4) + (x < x0 ? Math.PI * 0.95 : Math.PI * 0.05) : R(0, TAU);
     const s = R(18, 70);
     const vy = Math.sin(a) * s * 0.4 - R(4, 14);
-    out.push({ x, y, vx: Math.cos(a) * s, vy, g: -6, drag: 0.92, life: R(0.5, 1.1), size: R(0.35, 1.1), col: Dust.mote });
+    out.push({ x, y, vx: Math.cos(a) * s, vy, g: -6, drag: 0.92, life: R(...Dust.moteLifeSec), size: R(0.35, 1.1), col: Dust.mote });
   }
   for (let i = 0; i < puffs; i++) {
     const x = x0 + R(-w / 2, w / 2);
     const vx = R(-20, 20);
     const vy = R(-10, 0);
-    out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(0.7, 1.1), size: R(10, 18), col: Dust.puff, shape: "soft" });
+    out.push({ x, y: y0 + 44, vx, vy, drag: 0.95, life: R(...Dust.puffLifeSec), size: R(10, 18), col: Dust.puff, shape: "soft" });
   }
   return out;
 }
@@ -157,7 +159,7 @@ export function dealSpecks(x: number, y: number, reduced: boolean, rng: Rng): Pa
   return Array.from({ length: 3 }, (_, i) => {
     const a = R(-0.5, 0.5) + (i % 2 ? Math.PI : 0);
     const s = R(15, 45);
-    return { x: x + R(-18, 18), y: y - 30, vx: Math.cos(a) * s, vy: -R(4, 14), g: -6, drag: 0.92, life: R(0.4, 0.8), size: R(0.35, 1), col: Dust.mote };
+    return { x: x + R(-18, 18), y: y - 30, vx: Math.cos(a) * s, vy: -R(4, 14), g: -6, drag: 0.92, life: R(...Dust.speckLifeSec), size: R(0.35, 1), col: Dust.mote };
   });
 }
 
@@ -181,13 +183,13 @@ export function bombFx(l: Pick<LandingPayload, "x" | "y">, reduced: boolean, sx:
     const s = R(160, 540);
     const x = x0 + R(-20, 20);
     const y = y0 + R(-20, 20);
-    out.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, g: 520, drag: 0.965, life: R(0.5, 1.2), size: BombFx.sparkSizes[i % 3], col: BombFx.sparks[i % 3], shape: "spark" });
+    out.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, g: 520, drag: 0.965, life: R(...BombFx.sparkLifeSec), size: BombFx.sparkSizes[i % 3], col: BombFx.sparks[i % 3], shape: "spark" });
   }
   for (let i = 0; i < 18; i++) {
     const x = x0 + R(-40, 40);
     const vx = R(-30, 30);
     const vy = R(-90, -30);
-    out.push({ x, y: y0, vx, vy, g: -10, drag: 0.985, life: R(1.5, 2.6), size: R(1, 2), col: BombFx.ember, glow: 6 });
+    out.push({ x, y: y0, vx, vy, g: -10, drag: 0.985, life: R(...BombFx.emberLifeSec), size: R(1, 2), col: BombFx.ember, glow: 6 });
   }
   return out;
 }

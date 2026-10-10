@@ -52,7 +52,7 @@ const VALUES: Record<string, [unknown, unknown]> = {
   isStartCard: [false, true],
   decorative: [false, true],
   hint: ["give this card", "play this card"],
-  light: ["standing", "flat"],
+  rectKey: ["hand:3_hearts", "pile:3_hearts"],
   a11yActions: [[{ name: "left" }], [{ name: "right" }]],
   onA11yAction: [noop, () => {}],
   a11yActionKeys: [{ ArrowLeft: "left" }, { ArrowRight: "right" }],

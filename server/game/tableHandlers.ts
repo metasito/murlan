@@ -60,12 +60,7 @@ import {
   persistGameState,
   sendGameStateTo,
 } from "./gamePersistence.ts";
-import {
-  broadcastRematchIntents,
-  endMatchByAgreement,
-  handleGameOver,
-  tableWantsRematch,
-} from "./gameOver.ts";
+import { endMatchByAgreement, handleGameOver } from "./gameOver.ts";
 import { armAfterMove, armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
@@ -188,7 +183,6 @@ export async function rehydrateGame(
     gameState: restoredState,
     playerMap,
     rematchVotes: new Set(),
-    rematchIntents: new Map(),
     cumulativeScores: scores,
     gameMode,
     maxPlayers,
@@ -382,10 +376,9 @@ function rematchAnswered(game: OnlineGameState): boolean {
   return votesUnanimous(game.rematchVotes, game);
 }
 
-/** The table was asked during the closing manche and said no — or the match
- *  was ended by the vote, which is never rematched (docs/GAME-RULES.md § Decisions). */
+/** A match ended by the vote is never rematched (docs/GAME-RULES.md § Decisions). */
 function rematchRefused(game: OnlineGameState): boolean {
-  return !!game.endedByVote || (game.matchOver && !tableWantsRematch(game));
+  return !!game.endedByVote;
 }
 
 /**
@@ -757,7 +750,6 @@ async function startMatchAction(
     roomId,
     joinCode: room.code,
     rematchVotes: new Set(),
-    rematchIntents: new Map(),
     cumulativeScores: previous?.cumulativeScores ?? {},
     gameMode: room.gameMode,
     maxPlayers: room.maxPlayers,
@@ -916,17 +908,6 @@ async function applyTableAction(
         fromSeat: seat,
         username: seatName(game, seat),
       });
-      return OK;
-    }
-    case "rematchIntent": {
-      if (seatOfUser(game, action.userId) === null) return { ok: false, code: "NOT_SEATED" };
-      // `rematchRefused` recomputes the verdict from these intents, so one
-      // arriving after the match is over reverses a table's own stop.
-      if (game.gameState.gameOver && game.matchOver) {
-        return { ok: false, code: "REMATCH_DECLINED" };
-      }
-      game.rematchIntents.set(action.userId, action.wants);
-      broadcastRematchIntents(io, game);
       return OK;
     }
     case "rematchVote":

@@ -91,7 +91,17 @@ const STILL_LIGHT = `const swaying = lampStep;
 /** The mockup's `BASE`, by the seat each name sits at: luan right, besnik across, gent left. */
 const MOCKUP_SCORES = { player_0: 15, player_1: 11, player_2: 16, player_3: 10 };
 
-export const heldTurnTable = (page: Page, baseURL: string) => seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES));
+const SUITS: Record<string, string> = { c: "clubs", d: "diamonds", h: "hearts", s: "spades" };
+const mockupCards = (ids: string[]) => ids.map((c) => `${c.slice(0, -1)}_${SUITS[c.slice(-1)]}`);
+const othersBesides = (hand: string[]) => {
+  const rest = createDeck().map((c) => c.id).filter((id) => !hand.includes(id));
+  return [0, 2, 1].map((s) => rest.filter((_, i) => i % 3 === s));
+};
+
+/** The mockup's `rest` hand (`HT`) in yours, so the `hand` region compares the same faces. */
+const REST_HAND = mockupCards(["3h", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad", "2h"]);
+export const heldTurnTable = (page: Page, baseURL: string) =>
+  seatTable(page, baseURL, offlineGameSave(4, 13, 0, MOCKUP_SCORES, [REST_HAND, ...othersBesides(REST_HAND).map((h) => h.slice(0, 13))]));
 
 /** The mockup's `trick`: a pair of fives in your hand, nines at the next seat on move (the left) and queens at the last. */
 const TRICK_HANDS = [
@@ -108,13 +118,10 @@ const BELOW_CAPS = [TRICK_HANDS[0], TRICK_HANDS[1].slice(0, 4), TRICK_HANDS[2].s
 export const belowCapsTable = (page: Page, baseURL: string) =>
   seatTable(page, baseURL, offlineGameSave(4, 13, 1, MOCKUP_SCORES, BELOW_CAPS));
 
-const SUITS: Record<string, string> = { c: "clubs", d: "diamonds", h: "hearts", s: "spades" };
 /** The mockup's `H13` in your hand, the rest of the deck round the others, 13 across as `dealRun` deals; nobody has played yet. */
-const MOCKUP_DEAL = ["3h", "4c", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad"].map((c) => `${c.slice(0, -1)}_${SUITS[c.slice(-1)]}`);
+const MOCKUP_DEAL = mockupCards(["3h", "4c", "5c", "5d", "6s", "7h", "8s", "9c", "10d", "Jh", "Qs", "Kc", "Ad"]);
 const dealTable = (page: Page, baseURL: string) => {
-  const rest = createDeck().map((c) => c.id).filter((id) => !MOCKUP_DEAL.includes(id));
-  const others = [0, 2, 1].map((s) => rest.filter((_, i) => i % 3 === s));
-  const save = offlineGameSave(4, 13, 0, MOCKUP_SCORES, [MOCKUP_DEAL, ...others]);
+  const save = offlineGameSave(4, 13, 0, MOCKUP_SCORES, [MOCKUP_DEAL, ...othersBesides(MOCKUP_DEAL)]);
   save.gameState.firstPlayMade = false;
   return seatTable(page, baseURL, save);
 };
@@ -228,6 +235,8 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
+    // The app's Skia felt draws card shadows beneath every card, so none darkens a neighbour (#1466).
+    mockupScript: `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`,
     fallbackStill: true,
   },
   {
@@ -257,19 +266,20 @@ const MOMENTS: Moment[] = [
     stripAt: glance(6800, TRICK_CHECKPOINTS),
     // The mockup hands off anticlockwise; GAME-RULES.md plays clockwise, so its lamp takes the left seat next.
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      window.__paritySeats = { luan: "left", besnik: "top", gent: "right" };
       const hand = handoff;
       handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "lamp", "level"],
+    fields: ["onset", "lamp", "level", "live", "clocks"],
     regions: [],
     onsets: ["moment:handoff"],
     actions: [
       { atMs: 1150, app: playLowest(2) },
       { atMs: 3250, app: pass },
       { atMs: 4550, app: pass },
-      { atMs: 5950, app: pass },
+      { atMs: 5350, app: botMove },
     ],
   },
   {
@@ -279,8 +289,7 @@ const MOMENTS: Moment[] = [
     windowMs: 6992,
     checkpoints: LANDING_CHECKPOINTS,
     stripAt: glance(6992, LANDING_CHECKPOINTS),
-    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
-      ember = () => {};`,
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -291,7 +300,7 @@ const MOMENTS: Moment[] = [
     actions: [
       { atMs: 1150, app: playLowest(2) },
       { atMs: 2600, app: botMove },
-      { atMs: 4150, app: pass },
+      { atMs: 4550, app: pass },
       { atMs: 5350, app: botMove },
     ],
     // The particle canvas never touches CanvasKit, and a second variant would take the browser suite past MAX_SHARDS.
@@ -323,7 +332,8 @@ const MOMENTS: Moment[] = [
     fields: ["onset", "live", "dropped", "flare", "kick"],
     regions: [],
     onsets: ["moment:bombFx"],
-    actions: [{ atMs: 600, app: botMove }],
+    // The chapter holds the turn until 3300; the table hands it on as the bomb settles, under its sparks.
+    actions: [{ atMs: 600, app: botMove }, { atMs: 1300, mockup: "handoff('besnik', 'gent')" }],
   },
   {
     key: "score-open",
@@ -379,6 +389,9 @@ const MOCKUP_SAMPLE = `(() => {
     onsets: window.__parityOnsets.splice(0),
     live: P.length + lamp.m.length,
     dropped: 0,
+    clocks: Object.fromEntries(
+      Object.entries(window.__paritySeats ?? { luan: "right", besnik: "top", gent: "left" }).map(([k, side]) => [side, Number(getComputedStyle(seatEls[k].ring).opacity)])
+    ),
     breath: Number(V.bg.style.scale) || 1,
     lamp: { x: lamp.lx, y: lamp.ly, level: lamp.L, flare: lamp.f, r: lamp.r, kick: lamp.kick },
     shake,

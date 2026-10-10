@@ -16,7 +16,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useSharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import * as ScreenOrientation from "expo-screen-orientation";
 import type { NativeStackNavigationProp } from "expo-router";
 import { NavigationContext, type ParamListBase } from "expo-router/react-navigation";
@@ -26,6 +26,7 @@ import {
   getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
+  mancheUnplayed,
   openingIsPending,
   sortHand,
   type Card,
@@ -62,7 +63,7 @@ import {
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
 import type { ServerError } from "@/context/OnlineGameContext";
-import { EndMatchVote, type EndMatchVoteNote } from "@/components/table/notices/netNotes";
+import { EndMatchVote, MancheVote, type EndMatchVoteNote, type MancheVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
@@ -77,7 +78,7 @@ import {
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
-import { MOCKUP_SHORT_EDGE, scorePillHitBox } from "@/components/table/scorePillModel";
+import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
 import { HudComboPill, TurnChip, type ConnectionNote } from "@/components/table/notices/hud";
@@ -108,7 +109,6 @@ import {
 import { useSelection } from "@/components/table/useSelection";
 import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
-import { RematchPromptPanel, type RematchAnswers } from "@/components/table/rematchPrompt";
 import { Felt } from "@/components/table/feltSkia";
 import { useLampRig } from "@/components/table/useLampRig";
 import { useLinkHold } from "@/components/table/useLinkHold";
@@ -117,6 +117,7 @@ import { CardTableProvider, useCardTableValue } from "@/components/table/useCard
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useMancheEnding } from "@/components/table/useMancheEnding";
+import { mancheVoteShown } from "@/lib/game/mancheEnding";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -126,7 +127,7 @@ import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
-import { warmCourtArt } from "@/components/CardView";
+import { warmCardArt } from "@/components/CardView";
 import { BombBurst, BombFlash, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
@@ -140,7 +141,6 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import {
   Colors,
   motionMs,
-  Spacing,
   Layer,
   TOUCH_TARGET_MIN,
 } from "@/lib/theme";
@@ -233,15 +233,6 @@ export interface TurnTimerConfig {
   pausable?: boolean;
 }
 
-/**
- * The rematch question, put to the table down the side of the screen while the
- * closing manche is still being played. Majority decides; a seat that never
- * answers counts as a no.
- */
-export interface RematchPromptSlot extends RematchAnswers {
-  visible: boolean;
-}
-
 export interface ExchangeAnnouncementSlot {
   visible: boolean;
   data: ExchangeAnnounceData | null;
@@ -304,7 +295,6 @@ export interface GameTableProps {
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
-  rematchPrompt?: RematchPromptSlot;
   /**
    * Seats mid disconnect grace, by seat — the countdown for the whole 60 s
    * window (docs/GAME-RULES.md § Decisions), driven from the server's own `seconds` the
@@ -322,6 +312,8 @@ export interface GameTableProps {
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
   endMatchVote?: EndMatchVoteNote | null;
+  /** Present where the next deal waits on a vote: the manche's ending holds the pill open with this at its foot. */
+  mancheVote?: MancheVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -363,13 +355,13 @@ export function GameTable({
   onMancheLanded,
   turnTimer,
   exchangeAnnouncement,
-  rematchPrompt,
   disconnectedSeats = {},
   railExtra,
   banners,
   error = null,
   autoPassed = 0,
   endMatchVote = null,
+  mancheVote = null,
   connection,
   catchUp = false,
   ownLink = "up",
@@ -672,7 +664,7 @@ export function GameTable({
   };
 
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
-  const dealFresh = !gameState.firstPlayMade && !gameState.gameOver;
+  const dealFresh = mancheUnplayed(gameState);
   const deal = useDeal({
     geometry: seatGeometry,
     fresh: dealFresh,
@@ -828,12 +820,19 @@ export function GameTable({
     catchUp,
   });
   const mancheEnding = useMancheEnding({
-    ended: gameState.gameOver && !matchOver && onMancheLanded !== undefined,
+    ended: gameState.gameOver && !matchOver && (onMancheLanded !== undefined || mancheVote !== null),
+    hold: mancheVote !== null,
     timeline,
     pileEmpty: trick.plays.length === 0,
     onLanded: onMancheLanded,
   });
+  const mancheVoteStyle = useAnimatedStyle(() => {
+    const shown = mancheVoteShown(mancheEnding.clock.value);
+    return { opacity: shown, display: shown > 0 ? "flex" : "none" };
+  });
+  const openPill = scorePillBox(1, 0, pillAnchor);
   const shownTurnIndex = useShownTurn(gameState.currentTurnIndex, timeline);
+  const shownTurnIsMine = viewerOwnsSeat(shownTurnIndex, viewerSeat, spectating);
 
   // The owner's own remedy for an announcement nobody noticed: swing the lamp
   // off the seat and onto the middle, where the words are. The table's existing
@@ -842,6 +841,17 @@ export function GameTable({
   const lampAim = lampPools(anchors, W, H)[
     holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
+  const emberFrom = useRef(shownTurnIndex);
+  const emberRuns = !holdingForStart && !trade && !gameState.gameOver && gameState.firstPlayMade;
+  useEffect(() => {
+    const from = emberFrom.current;
+    emberFrom.current = shownTurnIndex;
+    if (from === shownTurnIndex || !emberRuns) return;
+    particles.current?.ember(
+      seatDirection(from, viewerSeat, players.length),
+      seatDirection(shownTurnIndex, viewerSeat, players.length)
+    );
+  }, [shownTurnIndex, emberRuns, viewerSeat, players.length]);
   const rig = useLampRig({
     pool: lampAim,
     deal: deal.hand,
@@ -863,7 +873,8 @@ export function GameTable({
       },
     },
     tableMotion,
-    handLift
+    handLift,
+    rig.glossLight
   );
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
@@ -875,7 +886,7 @@ export function GameTable({
   useEffect(() => {
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
-    warmCourtArt();
+    warmCardArt();
     return () => {
       ScreenOrientation.unlockAsync().catch(() => {});
       nativeOrientation?.release().catch(() => {});
@@ -991,8 +1002,8 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerOnMove = isMyTurn && !isFinished && !gameState.gameOver;
-  const onMoveName = players[gameState.currentTurnIndex]?.name ?? "";
+  const viewerOnMove = shownTurnIsMine && !isFinished && !gameState.gameOver;
+  const onMoveName = players[shownTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
   // counts down, and the turn changing is what arms it. There is no per-seat
@@ -1145,6 +1156,7 @@ export function GameTable({
                 }
                 seconds={turnTimer?.seconds ?? 0}
                 active={timerActive}
+                revealed={viewerOnMove}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
                 frozen={clockHeld}
@@ -1180,6 +1192,23 @@ export function GameTable({
               <EndMatchVote {...endMatchVote} scale={scale} />
             </A11yVeil>
           </View>
+        )}
+
+        {mancheVote && (
+          <Animated.View
+            {...behindVeil}
+            testID="manche-vote"
+            pointerEvents="box-none"
+            style={[
+              styles.voteSpot,
+              { right: W - pillAnchor.right, top: openPill.y + openPill.h + mockupPx(VOTE_BELOW_PILL, scale) },
+              mancheVoteStyle,
+            ]}
+          >
+            <A11yVeil veil={behindVeil}>
+              <MancheVote {...mancheVote} scale={scale} />
+            </A11yVeil>
+          </Animated.View>
         )}
 
         <FloatSlot
@@ -1525,16 +1554,6 @@ export function GameTable({
           </Animated.View>
           </A11yVeil>
         </Animated.View>
-
-
-        {rematchPrompt?.visible && (
-          <RematchPromptPanel
-            prompt={rematchPrompt}
-            top={frame.tableTop + CHIP_H(scale) + frame.pad}
-            left={frame.tableLeft + Spacing.sm}
-            veiled={behindVeil}
-          />
-        )}
 
 
         <A11yVeil veil={behindSheetOnly}>{overlays?.(behindSheetOnly)}</A11yVeil>

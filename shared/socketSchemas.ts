@@ -77,11 +77,6 @@ export const RoomStartSchema = z
   ])
   .transform((v) => v ?? {});
 
-/** The side-panel rematch question: one boolean per seat, majority decides. */
-export const GameRematchIntentSchema = z.object({
-  wants: z.boolean(),
-});
-
 /**
  * The vote to end a match a seat has been vacated from, as a toggle rather
  * than a second event. `wants` defaults to `true` when the field is absent —

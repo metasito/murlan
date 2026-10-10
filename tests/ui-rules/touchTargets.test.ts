@@ -38,7 +38,7 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
   ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
-  ["components/table/notices/netNotes.tsx", 1, "the end-match vote is a pill notice reaching the floor through `hitSlop`"],
+  ["components/table/notices/netNotes.tsx", 2, "the end-match and next-hand votes are pill notices reaching the floor through `hitSlop`"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
 
@@ -57,7 +57,6 @@ const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
   ["components/ResultBoard.tsx", 2, "home is `HOME_BTN_W` wide, rematch is `flex: 1`", "result board"],
   ["components/SegmentedControl.tsx", 1, "a segment, `flex: 1` in the track", "leaderboard"],
   ["components/SettingsModal.tsx", 4, "rows filling the modal's width", "settings"],
-  ["components/table/rematchPrompt.tsx", 2, "yes and no, labelled choices sharing the prompt's row", "rematch prompt"],
   ["components/table/settingsSheet.tsx", 1, "a sheet row, the sheet's full width", "table settings sheet"],
   ["components/table/notices/hud.tsx", 1, "Riprova, the whole lost pill: its words plus the gold key", "turn pill, connection lost"],
   ["app/(online)/index.tsx", 3, "the modal's cancel and confirm buttons, `flex: 1` in its row", "join-room modal"],

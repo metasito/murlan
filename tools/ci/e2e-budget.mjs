@@ -29,6 +29,8 @@ export function overBudget(measured, recorded) {
 export default class BudgetReporter {
   /** @type {Record<string, number>} */
   ms = {};
+  /** @type {Map<string, number>} */
+  slowestAttempt = new Map();
   /** @type {Set<string>} */
   skipped = new Set();
   testDir = "";
@@ -48,7 +50,11 @@ export default class BudgetReporter {
     while (suite && suite.type !== "file") suite = suite.parent;
     const file = path.relative(this.testDir, suite?.location?.file ?? test.location.file).split(path.sep).join("/");
     if (result.status === "skipped") this.skipped.add(file);
-    this.ms[file] = (this.ms[file] ?? 0) + result.duration;
+    // A retry is e2e-flaky.mjs's to judge; the budget prices one run of the test, its slowest.
+    const prior = this.slowestAttempt.get(test.id) ?? 0;
+    if (result.duration <= prior) return;
+    this.slowestAttempt.set(test.id, result.duration);
+    this.ms[file] = (this.ms[file] ?? 0) + result.duration - prior;
   }
 
   /** @param {any} result */

@@ -120,8 +120,8 @@ jobs:
       # Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
       matrix:
         include:
-          - shard: rematch-prompt
-            flows: .maestro/rematch-prompt.yaml
+          - shard: new-partita
+            flows: .maestro/new-partita.yaml
           - shard: offline-game
             flows: .maestro/offline-game.yaml
           - shard: exchange-phase

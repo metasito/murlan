@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { A11yStatus, a11yGroup, a11yHidden } from "@/lib/a11y";
 import { TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
@@ -7,6 +8,7 @@ import { event, silence } from "@/lib/device/feedback";
 import { urgentThresholdSeconds, CLOCK_RUNNING_OUT_SECONDS } from "@/components/turnTimerUi";
 import { NoticeDot, NoticeKey, NoticeText, TableNotice } from "../TableNotice";
 import { noticeBox } from "../noticeModel";
+import { useClockFade } from "../useClockFade";
 
 /**
  * The name run, capped so a long username ellipsizes rather than pushing the
@@ -65,9 +67,12 @@ export function TurnChip({
   spokenSeat,
   connection: carried = null,
   frozen = false,
+  revealed = true,
 }: {
   seconds: number;
   active: boolean;
+  /** False keeps an active clock counting toward its deadline without drawing it: the table has not shown the turn yet. */
+  revealed?: boolean;
   /** Holds the count without counting down or sounding, and runs on from it once released. */
   frozen?: boolean;
   /** Restarts the countdown whenever it changes — one full clock per turn. */
@@ -131,6 +136,8 @@ export function TurnChip({
     };
   }, [active, frozen, resetKey, seconds]);
 
+  const count = useClockFade(active && revealed && !connection ? timeLeft : null, String);
+  const countFade = useAnimatedStyle(() => ({ opacity: count.opacity.value }));
   const threshold = urgentThresholdSeconds(seconds);
   const ember = lit && active && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
   // A live region speaks every time its text changes, so seconds in its label
@@ -148,7 +155,7 @@ export function TurnChip({
       : "";
   const label = connection
     ? connection.text
-    : active
+    : active && revealed
       ? `${spokenSeat} ${tn("gameTable.a11ySecondsLeft", timeLeft)}`
       : spokenSeat;
   const tone = connection ? CONNECTION_TONE[connection.state] : ember ? "urgent" : lit ? "lit" : "neutral";
@@ -161,10 +168,12 @@ export function TurnChip({
         <NoticeDot testID="turn-chip-dot" blink={connection?.state === "reconnecting"} />
         <NoticeText>{connection ? connection.text : chipText}</NoticeText>
         {action && <NoticeKey testID="turn-chip-retry">{action.label}</NoticeKey>}
-        {active && !connection && (
-          <NoticeText strong warn={timeLeft <= threshold} testID="turn-chip-count">
-            {timeLeft}
-          </NoticeText>
+        {count.shown !== null && (
+          <Animated.View testID="turn-chip-clock" style={countFade}>
+            <NoticeText strong warn={count.shown <= threshold} testID="turn-chip-count">
+              {count.shown}
+            </NoticeText>
+          </Animated.View>
         )}
       </TableNotice>
     </View>

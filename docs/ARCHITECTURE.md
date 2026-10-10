@@ -81,7 +81,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 
 **Offline:** `GameContext` holds a `GameState` produced by `lib/game/gameEngine.ts` in memory.
 User actions call context methods that call the engine directly and set new state. The
-whole match — engine state, scoreboard, rematch answers, and the seat setup the next
+whole match — engine state, scoreboard, and the seat setup the next
 manche is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
 so a kill mid-hand is resumable from the home screen. A save from another version is
 discarded rather than migrated, the same call `active_games` makes.
@@ -240,7 +240,7 @@ React Context, one provider per concern:
 | Context | Owns |
 |---|---|
 | `AuthContext` | Session user, and the account state machine: login/logout/register, rename, change password, add email, `refreshUser` |
-| `GameContext` | Offline `GameState`, the match score, rematch and exchange-announcement state; calls `lib/game/gameEngine.ts` directly |
+| `GameContext` | Offline `GameState`, the match score and exchange-announcement state; calls `lib/game/gameEngine.ts` directly |
 | `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/ui-rules/contextSlices.test.ts` pins that |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
 | `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
@@ -269,7 +269,7 @@ collapsed:
   takes `seatDirection` from `seatLayout`; the reverse must never happen.
 - **`components/GameTable.tsx`** — the one presentational table. It takes a `GameState`, a
   `viewerSeat`, and a small set of slots (`turnTimer`, `exchangeAnnouncement`,
-  `rematchPrompt`, `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
+  `disconnectedSeats`, `railExtra`, `banners`, `overlays`) through which the
   offline and online adapters inject exactly what differs between them (a local AI turn loop and
   its response timer offline; server acknowledgement,
   reactions, and connection-loss banners online). It contains no `isOnline &&` branching.
@@ -305,8 +305,9 @@ they *decide*, so a rule cannot hold in one mode and not the other:
 - **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
   order, placement colours and labels, and the ceremony's own clock.
 - **`components/ResultBoard.tsx`** — the results board: offline `app/result.tsx` shows it after a
-  partita, the online `GameOverOverlay` after a manche too; both are thin callers. Offline a manche
-  ends on the table (`lib/game/mancheEnding.ts`, the score pill's payoff) and deals the next one.
+  partita, the online `GameOverOverlay` likewise; both are thin callers. A manche ends on the table
+  (`lib/game/mancheEnding.ts`, the score pill's payoff): offline it deals the next one, online the
+  pill holds open with the next-hand vote at its foot until the deal arrives.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 

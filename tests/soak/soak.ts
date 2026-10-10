@@ -579,12 +579,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
       wasOver = over;
       if (over) {
-        // Both halves: the intent is what the results screen asks, and the vote
-        // is what actually deals again once every seated player has answered.
-        for (const seat of seats) {
-          seat.socket.emit("game:rematch_intent", { wants: true });
-          seat.socket.emit("game:rematch_vote");
-        }
+        for (const seat of seats) seat.socket.emit("game:rematch_vote");
         // A fresh deal refills every hand, so the ceiling the oracle measures
         // against belongs to the manche that is starting, not the one that
         // just emptied.
@@ -692,10 +687,7 @@ async function playTable(
   let unanswered = 0;
   while (Date.now() < until) {
     if (seats.every((s) => s.state?.gameOver)) {
-      for (const seat of seats) {
-        seat.socket.emit("game:rematch_intent", { wants: true });
-        seat.socket.emit("game:rematch_vote");
-      }
+      for (const seat of seats) seat.socket.emit("game:rematch_vote");
       await sleep(700);
       continue;
     }

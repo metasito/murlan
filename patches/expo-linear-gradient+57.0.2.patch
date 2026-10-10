@@ -1,0 +1,16 @@
+diff --git a/node_modules/expo-linear-gradient/build/NativeLinearGradient.web.js b/node_modules/expo-linear-gradient/build/NativeLinearGradient.web.js
+index e9c7402..110a854 100644
+--- a/node_modules/expo-linear-gradient/build/NativeLinearGradient.web.js
++++ b/node_modules/expo-linear-gradient/build/NativeLinearGradient.web.js
+@@ -20,6 +20,11 @@ export default function NativeLinearGradient({ colors, locations, startPoint, en
+         ], onLayout: (event) => {
+             const { width, height } = event.nativeEvent.layout;
+             setLayout((oldLayout) => {
++                // A box under `display: none` measures 0x0, which turns every angle to 90deg until a
++                // real-time ResizeObserver measures it again once shown.
++                if (width === 0 || height === 0) {
++                    return oldLayout;
++                }
+                 // don't set new layout state unless the layout has actually changed
+                 if (width !== oldLayout.width || height !== oldLayout.height) {
+                     return { height, width };

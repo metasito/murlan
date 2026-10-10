@@ -30,7 +30,6 @@ import {
   autoStartTimers,
   clearAutoStart,
 } from "../game/gameTimers.ts";
-import { broadcastRematchIntents } from "../game/gameOver.ts";
 import { sendGameStateTo } from "../game/gamePersistence.ts";
 import { emitEndMatchVoteState, emitMatchState, emitVoteState } from "./emit.ts";
 import { armTurnIfIdle } from "../game/gameTurn.ts";
@@ -195,9 +194,8 @@ export async function announceRejoin(
   );
   sendGameStateTo(io, userId, game);
   // The client reads this as the framing of a manche that has just begun and
-  // zeroes the match verdict and the rematch tally along with it, so it is
-  // only right while one is running — at the results screen `game:over` and
-  // `game:rematch_intents` own those.
+  // zeroes the match verdict along with it, so it is only right while one is
+  // running — at the results screen `game:over` owns that.
   if (!game.gameState.gameOver) {
     emitMatchState(io, userRoom(userId), game);
   } else if (game.lastGameOverPayload) {
@@ -207,7 +205,6 @@ export async function announceRejoin(
     // its own hand twice.
     io.to(userRoom(userId)).emit("game:over", game.lastGameOverPayload);
     emitVoteState(io, userRoom(userId), game);
-    broadcastRematchIntents(io, game, userRoom(userId));
   }
   emitEndMatchVoteState(io, userRoom(userId), game);
   for (const other of Object.values(game.playerMap)) {

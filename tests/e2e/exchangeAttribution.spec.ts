@@ -25,6 +25,7 @@ interface Frame {
   ping: string[];
   glow: boolean;
   hand: string[];
+  dealt: number;
 }
 
 const card = (id: string) => {
@@ -50,7 +51,6 @@ function save(winnerIdx: number, loserIdx: number, hands: string[][], over: obje
       ...over,
     },
     match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    rematchAnswers: {},
     players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -120,6 +120,7 @@ async function frame(page: Page): Promise<Frame> {
       ping: seats.filter((s) => s.ping).map((s) => s.name),
       glow: [...document.querySelectorAll('[data-testid="hand-received-highlight"]')].some((el) => seen(el) > 0),
       hand: [...document.querySelectorAll(hand)].map((el) => el.getAttribute("aria-label") ?? ""),
+      dealt: document.querySelectorAll('[data-testid="dealt-back"]').length,
     };
   }, { fliers: FLIERS, hand: HAND_CARDS });
 }
@@ -250,6 +251,8 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
 
   const i0 = frames.findIndex((f) => f.fliers["exchange-joker-0"]);
   expect(i0, "the Jokers never flew").toBeGreaterThan(0);
+  expect(frames.slice(0, i0).some((f) => f.dealt > 0), "the manche was never dealt before the Jokers").toBe(true);
+  expect(frames.slice(i0).every((f) => f.dealt === 0), "the deal still flew under the Jokers").toBe(true);
   expect(frames[i0].lit, "the loser's seat is lit while its Jokers are out").toContain("Gent");
   // A flier is drawn a frame after its clock moves, so its leg began within the frame before i0's;
   // these frames are the rest, notice and drawn pose both, for every start that allows.

@@ -22,10 +22,10 @@ function run(durations: Record<string, number[]>, status = "passed", skipped: st
   const reporter = new BudgetReporter();
   reporter.onBegin({ projects: [{ testDir }] });
   for (const [file, list] of Object.entries(durations)) {
-    for (const duration of list) {
+    list.forEach((duration, i) => {
       const s = skipped.includes(file) ? "skipped" : "passed";
-      reporter.onTestEnd({ location: { file: path.join(testDir, file) } }, { status: s, duration });
-    }
+      reporter.onTestEnd({ id: `${file}#${i}`, location: { file: path.join(testDir, file) } }, { status: s, duration });
+    });
   }
   const prior = process.env.CI;
   process.env.CI = "1";
@@ -49,6 +49,20 @@ test("the reporter fails a green shard whose spec blew its budget, and names it"
   const { verdict, out } = run({ [priced]: [ms / 2, ms / 2] });
   assert.deepEqual(verdict, { status: "failed" });
   assert.match(out, new RegExp(`::error::${priced.replace(/\./g, "\\.")} took`));
+});
+
+test("a retried test is charged its slowest attempt, not every attempt", () => {
+  const budgetMs = (seconds * RATIO + SLACK_S) * 1000;
+  const retried = (first: number, retry: number) => {
+    const reporter = new BudgetReporter();
+    reporter.onBegin({ projects: [{ testDir }] });
+    const t = { id: "retried", location: { file: path.join(testDir, priced) } };
+    reporter.onTestEnd(t, { status: "failed", duration: first, retry: 0 });
+    reporter.onTestEnd(t, { status: "passed", duration: retry, retry: 1 });
+    return reporter.ms[priced];
+  };
+  assert.equal(retried(budgetMs * 0.6, budgetMs * 0.7), budgetMs * 0.7);
+  assert.equal(retried(budgetMs * 1.1, budgetMs * 0.2), budgetMs * 1.1);
 });
 
 test("a test a helper declares is charged to the spec file that calls the helper", () => {

@@ -15,9 +15,9 @@ jest.mock('@/lib/cosmetics', () => {
   const actual = jest.requireActual('@/lib/cosmetics') as typeof import('@/lib/cosmetics');
   return {
     ...actual,
-    useCardBack: () => {
+    useCardBackId: () => {
       mockCardRenders.n += 1;
-      return actual.useCardBack();
+      return actual.useCardBackId();
     },
   };
 });
@@ -137,7 +137,6 @@ const CALLBACKS = {
   sendReaction: jest.fn(),
   leaveRoom: jest.fn(),
   voteRematch: jest.fn(),
-  answerRematch: jest.fn(),
   acknowledgeExchange: jest.fn(),
   clearPlayerLeft: jest.fn(),
   clearRejoinFailed: jest.fn(),
@@ -157,8 +156,6 @@ const online = (cards: Card[]) => ({
   rematchVoteState: null,
   cumulativeScores: {},
   matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
-  rematchIntents: { yes: 0, total: 0, answers: {} },
-  rematchPromptOpen: false,
   exchangeAnnouncing: false,
   exchangeAnnounceData: null,
 });

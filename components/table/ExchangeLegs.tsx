@@ -126,7 +126,7 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
   const pile = table?.pile;
   const felt = table?.felt;
   const motion = table?.motion;
-  useCardRect(
+  const ownRects = useCardRect(
     table,
     `leg:${testID}`,
     true,
@@ -142,10 +142,10 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
   return (
     <Animated.View testID={testID} nativeID={`card-leg:${testID}`} pointerEvents="none" style={[styles.box, { width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2 }, style]}>
       <Animated.View style={[StyleSheet.absoluteFill, face]}>
-        <CardView card={card} scale={scale * FIELD_SCALE} noLift decorative light="flat" />
+        <CardView card={card} scale={scale * FIELD_SCALE} noLift decorative rectKey={`leg:${testID}`} rects={ownRects} />
       </Animated.View>
       <Animated.View style={[StyleSheet.absoluteFill, styles.centred, back]}>
-        <CardView card={BACK_CARD} faceDown scale={backScale} />
+        <CardView card={BACK_CARD} faceDown scale={backScale} rectKey={`leg:${testID}`} rects={ownRects} />
       </Animated.View>
     </Animated.View>
   );

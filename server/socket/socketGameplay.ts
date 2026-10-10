@@ -25,7 +25,6 @@ import {
   GameRejoinSchema,
   GameReactionSchema,
   GameExchangeGiveCardSchema,
-  GameRematchIntentSchema,
   GameEndMatchVoteSchema,
 } from "../../shared/socketSchemas.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
@@ -100,18 +99,6 @@ export function registerGameplayHandlers({
         return applyOrForward(io, { kind: "pass", roomId, userId, intentId });
       },
       { limit: GAME_ACTION_RATE_LIMIT, windowMs: 60_000 }
-    );
-
-    onEvent(
-      socket,
-      "game:rematch_intent",
-      GameRematchIntentSchema,
-      async ({ wants }, { intentId }) => {
-        const roomId = atTable();
-        if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        return applyOrForward(io, { kind: "rematchIntent", roomId, userId, wants, intentId });
-      },
-      { limit: 20, windowMs: 60_000 }
     );
 
     onEvent(

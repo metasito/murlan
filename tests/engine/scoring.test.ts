@@ -4,15 +4,11 @@ import {
   MATCH_TARGETS,
   targetsFor,
   addHandScores,
-  CLOSING_HAND_CARDS,
   foldHandIntoMatch,
-  isMajority,
-  matchIsClosing,
   nextMatchTarget,
   resolveMatch,
   resolveTeamMatch,
   scoreHand,
-  tallyRematchAnswers,
 } from "./helpers.ts";
 
 describe("scoreHand", () => {
@@ -495,113 +491,6 @@ describe("foldHandIntoMatch", () => {
     test("a single manche, in both modes", () => {
       agree({ rankings, length: "single", gameMode: "free_for_all", target: 21, cumulative: {} });
       agree({ rankings, length: "single", gameMode: "teams", target: 21, cumulative: {}, teamOf });
-    });
-  });
-});
-
-describe("the rematch decision", () => {
-  describe("isMajority", () => {
-    test("a table split down the middle stops", () => {
-      assert.equal(isMajority(1, 2), false);
-      assert.equal(isMajority(2, 4), false);
-    });
-
-    test("both must say yes at two seats", () => {
-      assert.equal(isMajority(0, 2), false);
-      assert.equal(isMajority(2, 2), true);
-    });
-
-    test("three and four seats need two and three", () => {
-      assert.equal(isMajority(1, 3), false);
-      assert.equal(isMajority(2, 3), true);
-      assert.equal(isMajority(2, 4), false);
-      assert.equal(isMajority(3, 4), true);
-    });
-
-    test("nobody answering is never a majority", () => {
-      for (const seats of [2, 3, 4]) assert.equal(isMajority(0, seats), false);
-    });
-  });
-
-  describe("tallyRematchAnswers", () => {
-    test("every seat answering counts toward both halves", () => {
-      const answers = [true, false, true, true];
-      assert.deepEqual(tallyRematchAnswers(4, (seat) => answers[seat]), { yes: 3, total: 4 });
-    });
-
-    test("a seat with nobody behind it abstains from both", () => {
-      // The server's rule: a bot seat, or a seat its human walked out of, has
-      // nobody who can answer, so it neither votes nor raises the bar.
-      const answers: (boolean | "abstain")[] = [true, "abstain", false, "abstain"];
-      assert.deepEqual(tallyRematchAnswers(4, (seat) => answers[seat]), { yes: 1, total: 2 });
-    });
-
-    test("a seated player who never answered is a no, and still counts", () => {
-      assert.deepEqual(tallyRematchAnswers(3, () => false), { yes: 0, total: 3 });
-    });
-
-    test("a table nobody can answer for decides nothing", () => {
-      const tally = tallyRematchAnswers(4, () => "abstain");
-      assert.deepEqual(tally, { yes: 0, total: 0 });
-      assert.equal(isMajority(tally.yes, tally.total), false);
-    });
-  });
-
-  describe("matchIsClosing", () => {
-    const base = {
-      length: "match" as const,
-      target: 21,
-      cumulative: { a: 19 },
-      handCounts: [3, 8, 9],
-      playerCount: 4,
-    };
-
-    test("the closing threshold is five cards in the shortest hand", () => {
-      assert.equal(CLOSING_HAND_CARDS, 5);
-      assert.equal(matchIsClosing({ ...base, handCounts: [6, 8, 9] }), false);
-      assert.equal(matchIsClosing({ ...base, handCounts: [5, 8, 9] }), true);
-    });
-
-    test("a single manche is always its own last one", () => {
-      assert.equal(matchIsClosing({ ...base, length: "single", cumulative: {} }), true);
-    });
-
-    test("an empty table is never closing", () => {
-      assert.equal(matchIsClosing({ ...base, handCounts: [] }), false);
-    });
-
-    test("a leader who cannot reach the target from this manche is not closing", () => {
-      assert.equal(matchIsClosing({ ...base, cumulative: { a: 17 } }), false);
-      assert.equal(matchIsClosing({ ...base, cumulative: { a: 18 } }), true);
-    });
-
-    test("in teams a pair races on its summed score and its two best awards", () => {
-      const teamOfKey = { a1: "A", b1: "B", a2: "A", b2: "B" };
-      const pair = (a1: number, a2: number) =>
-        matchIsClosing({ ...base, teamOfKey, cumulative: { a1, a2, b1: 0, b2: 0 } });
-      const [first, second] = Object.values(scoreHand(["x", "y", "z", "w"], 4));
-      assert.equal(pair(10, 9), true);
-      assert.equal(pair(10, 21 - first - second - 10), true);
-      assert.equal(pair(10, 20 - first - second - 10), false);
-    });
-
-    test("the reach it allows for is the top per-manche award", () => {
-      // `playerCount - 1` inside matchIsClosing is an unwritten restatement of
-      // scoreHand's best prize. Change the point table and the prompt appears
-      // a manche early or never appears at all.
-      for (const playerCount of [2, 3, 4]) {
-        const seats = ["a", "b", "c", "d"].slice(0, playerCount);
-        const best = Math.max(...Object.values(scoreHand(seats, playerCount)));
-        assert.equal(playerCount - 1, best);
-        assert.equal(
-          matchIsClosing({ ...base, playerCount, cumulative: { a: 21 - best } }),
-          true
-        );
-        assert.equal(
-          matchIsClosing({ ...base, playerCount, cumulative: { a: 20 - best } }),
-          false
-        );
-      }
     });
   });
 });

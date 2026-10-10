@@ -64,7 +64,6 @@ function openingSave() {
       winners: [],
       isDraw: false,
     },
-    rematchAnswers: {},
     players: [
       { name: "Ana", type: "human" },
       { name: "Bea", type: "ai", personality: "luan" },

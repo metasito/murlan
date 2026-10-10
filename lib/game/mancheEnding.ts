@@ -83,6 +83,13 @@ export function mancheRerank(e: number): number {
   return easeInOut(clamp01((e - M.rerank) / M.rerankFor));
 }
 
+/** The held pill's vote, in once the re-rank has played and the pill is still fully open. */
+export function mancheVoteShown(e: number): number {
+  "worklet";
+  const from = M.rerank + M.rerankFor;
+  return clamp01((e - from) / (M.close - from));
+}
+
 export function mancheGlow(e: number, changed: boolean): number {
   "worklet";
   if (!changed || e < SETTLED) return 0;

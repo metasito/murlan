@@ -8,7 +8,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.t
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -78,7 +78,6 @@ export interface ServerToClientEvents {
   "game:player_reconnected": (seat: MaybeSeated & ServerPayload) => void;
   "game:rejoin_failed": (refusal: ServerPayload & { roomId?: string }) => void;
   "game:reaction": (reaction: { emoji: string; fromSeat: number; username: string }) => void;
-  "game:rematch_intents": (intents: { yes: number; total: number; answers: Record<string, boolean> }) => void;
   "game:error": (error: ServerPayload) => void;
   "room:error": (error: ServerPayload) => void;
   "socket:error": (error: ServerPayload) => void;
@@ -111,7 +110,6 @@ export interface IntentSchemas {
   "room:start": typeof Inbound.RoomStartSchema;
   "game:play": typeof Inbound.GamePlaySchema;
   "game:pass": typeof Inbound.NoPayloadSchema;
-  "game:rematch_intent": typeof Inbound.GameRematchIntentSchema;
   "game:rematch_vote": typeof Inbound.NoPayloadSchema;
   "game:end_match_vote": typeof Inbound.GameEndMatchVoteSchema;
   "game:rejoin": typeof Inbound.GameRejoinSchema;

@@ -20,7 +20,6 @@ import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
   gameOverSchema,
   gameStateSchema,
-  handCountOf,
   type IntentPayload,
   roomStateSchema,
   type WireGameState,
@@ -34,7 +33,6 @@ import type { GameState, MatchLength } from "@/lib/game/gameEngine";
 import type { GameOverPayload, MatchVerdict } from "@/lib/game/matchState";
 import {
   buildExchangeAnnounce,
-  rematchPromptOpen as isRematchPromptOpen,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
 } from "@/lib/game/sharedGameFlow";
@@ -54,15 +52,8 @@ export interface RematchVoteState {
 export interface OnlineMatchState extends MatchVerdict {
   /** Manches decided on this match so far. */
   handsPlayed: number;
-  /** Verdict of the rematch question once the match is over. */
+  /** Once the match is over, whether a rematch may follow: false when it closed unscored, by vote or voided. */
   continues: boolean;
-}
-
-/** Answers to the side-panel rematch question, by userId. */
-export interface RematchIntentState {
-  yes: number;
-  total: number;
-  answers: Record<string, boolean>;
 }
 
 const initialTarget = MATCH_TARGETS[0];
@@ -77,8 +68,6 @@ const INITIAL_MATCH: OnlineMatchState = {
   isDraw: false,
   continues: false,
 };
-
-const INITIAL_INTENTS: RematchIntentState = { yes: 0, total: 0, answers: {} };
 
 /** Another seat dropping (`back: false`) or returning, in the viewer's language. */
 export type ReconnectNotice = { text: string; back: boolean };
@@ -110,14 +99,13 @@ interface OnlineGameContextValue {
   cumulativeScores: Record<string, number>;
   /** What the manche just played awarded, by engine player id. */
   handScores: Record<string, number>;
+  /** Whether `game:over` has scored the manche `gameState` shows: its `game:state` arrives first. */
+  handScoresCurrent: boolean;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
   handRecorded: boolean;
   matchState: OnlineMatchState;
-  rematchIntents: RematchIntentState;
-  /** True while the table is being asked whether it wants another match. */
-  rematchPromptOpen: boolean;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   createRoom: (gameMode: "free_for_all" | "teams", maxPlayers: number) => void;
@@ -141,7 +129,6 @@ interface OnlineGameContextValue {
    * once a seat has been vacated.
    */
   voteToEndMatch: (wants: boolean) => void;
-  answerRematch: (wants: boolean) => void;
   playCards: (cardIds: string[]) => void;
   pass: () => void;
   giveExchangeCard: (cardId: string) => void;
@@ -208,15 +195,13 @@ type MatchSlice = Pick<
   | "matchState"
   | "cumulativeScores"
   | "handScores"
+  | "handScoresCurrent"
   | "ratingDeltas"
   | "handRecorded"
   | "rematchVoteState"
   | "endMatchVoteState"
-  | "rematchIntents"
-  | "rematchPromptOpen"
   | "voteRematch"
   | "voteToEndMatch"
-  | "answerRematch"
 >;
 type ExchangeSlice = Pick<
   OnlineGameContextValue,
@@ -303,11 +288,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const [autoPassed, setAutoPassed] = useState(0);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
   const [handScores, setHandScores] = useState<Record<string, number>>({});
+  const [handScoresCurrent, setHandScoresCurrent] = useState(false);
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
-  const [rematchIntents, setRematchIntents] = useState<RematchIntentState>(INITIAL_INTENTS);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
   const {
@@ -477,6 +462,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setEndMatchVoteState(null);
       setDisconnectedSeats({});
       setCumulativeScores({});
+      setHandScoresCurrent(false);
       prevExchangeActiveRef.current = false;
       prevBothJokersExceptionRef.current = false;
       setReconnectNotice(null);
@@ -610,6 +596,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       gameStateRef.current = state;
       setGameState(state);
       setRematchVoteState(null);
+      if (!state.gameOver) setHandScoresCurrent(false);
 
       // The game genuinely ending is the only reason to forget the room while
       // still seated; a rematch re-arms it on the next non-final state.
@@ -673,10 +660,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setHandScores({});
       setRatingDeltas({});
       setHandRecorded(false);
-      setRematchIntents(INITIAL_INTENTS);
     };
-
-    const onRematchIntents = (state: RematchIntentState) => setRematchIntents(state);
 
     const onGameOver = (raw: unknown) => {
       const parsed = gameOverSchema.safeParse(raw);
@@ -698,6 +682,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
       setHandRecorded(recorded);
+      setHandScoresCurrent(true);
       if (scores) {
         setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
         setHandScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
@@ -847,7 +832,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("game:notification", onGameNotification);
     socket?.on("game:over", onGameOver);
     socket?.on("game:match_state", onMatchState);
-    socket?.on("game:rematch_intents", onRematchIntents);
     socket?.on("game:vote_state", onVoteState);
     socket?.on("game:end_match_vote_state", onEndMatchVoteState);
     socket?.on("game:reaction", onReaction);
@@ -868,7 +852,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket?.off("game:notification", onGameNotification);
       socket?.off("game:over", onGameOver);
       socket?.off("game:match_state", onMatchState);
-      socket?.off("game:rematch_intents", onRematchIntents);
       socket?.off("game:vote_state", onVoteState);
       socket?.off("game:end_match_vote_state", onEndMatchVoteState);
       socket?.off("game:reaction", onReaction);
@@ -975,6 +958,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEndMatchVoteState(null);
     setDisconnectedSeats({});
     setCumulativeScores({});
+    setHandScoresCurrent(false);
     setPlayerLeft(false);
     setRejoinFailed(false);
     // The lobby stays mounted under the table: a refusal about it would greet the player there.
@@ -1013,26 +997,6 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   const voteToEndMatch = useCallback((wants: boolean) => {
     deliver("game:end_match_vote", { wants });
   }, [deliver]);
-
-  const answerRematch = useCallback((wants: boolean) => {
-    deliver("game:rematch_intent", { wants });
-  }, [deliver]);
-
-  // Same predicate as the offline table (lib/game/gameEngine), fed by the sanitized
-  // state: opponents' hands are blanked but `handCount` is not.
-  const rematchPromptOpen = useMemo(
-    () =>
-      isRematchPromptOpen(
-        gameState && {
-          gameOver: gameState.gameOver,
-          handCounts: gameState.players.map(handCountOf),
-          players: gameState.players,
-        },
-        matchState,
-        cumulativeScores
-      ),
-    [gameState, matchState, cumulativeScores]
-  );
 
   const playCards = useCallback(
     (cardIds: string[]) => deliver("game:play", { cardIds }),
@@ -1111,17 +1075,15 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       matchState,
       cumulativeScores,
       handScores,
+      handScoresCurrent,
       ratingDeltas,
       handRecorded,
       rematchVoteState,
       endMatchVoteState,
-      rematchIntents,
-      rematchPromptOpen,
       voteRematch,
       voteToEndMatch,
-      answerRematch,
     }),
-    [matchState, cumulativeScores, handScores, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, rematchIntents, rematchPromptOpen, voteRematch, voteToEndMatch, answerRematch]
+    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
   );
 
   const exchangeValue = useMemo(

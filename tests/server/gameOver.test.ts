@@ -119,7 +119,6 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     roomId: ROOM,
     joinCode: "ABC123",
     rematchVotes: new Set(["u_alice"]),
-    rematchIntents: new Map(),
     cumulativeScores: {},
     gameMode: "free_for_all",
     maxPlayers: 2,
@@ -222,6 +221,7 @@ describe("handleGameOver — the broadcast", () => {
     assert.equal(payload.matchOver, true, "one manche is the whole match");
     assert.deepEqual(payload.matchWinnerIds, ["player_0"], "Alice emptied her hand first");
     assert.equal(payload.isDraw, false);
+    assert.equal(payload.matchContinues, true, "a new partita is offered with nobody asked");
     assert.equal(game.matchOver, true, "the game carries the same verdict");
   });
 

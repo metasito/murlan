@@ -35,7 +35,6 @@ const midExchangeSave = () => ({
     exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2_spades", "2", "spades"), bothJokersException: false },
   },
   match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-  rematchAnswers: {},
   players: [{ name: "Ana", type: "human" }, { name: "Bea", type: "ai", personality: "luan" }],
   gameMode: "free_for_all",
   dealFirstSeat: 0,

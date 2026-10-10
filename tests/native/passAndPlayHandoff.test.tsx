@@ -1,8 +1,8 @@
 // tests/native/passAndPlayHandoff.test.tsx — pass and play hands the table to
 // whichever human seat is on move (#1070).
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
@@ -17,8 +17,7 @@ const SEAT0_REST = card('s0-4', '4');
 const SEAT1_CARD = card('s1-9', '9');
 
 /** Two humans at one device; seat 0 leads a fresh round. */
-const mockTable: { state: GameState; rematchOpen: boolean } = {
-  rematchOpen: false,
+const mockTable: { state: GameState } = {
   state: {
     players: [
       { id: 'player_0', name: 'Ana', hand: [SEAT0_LEAD, SEAT0_REST], type: 'human' },
@@ -47,8 +46,6 @@ const mockPlayCards = jest.fn((_ids: string[]) => {
   };
 });
 
-const mockAnswerRematch = jest.fn();
-
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: mockTable.state,
@@ -61,10 +58,6 @@ jest.mock('@/context/GameContext', () => ({
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    rematchPromptOpen: mockTable.rematchOpen,
-    rematchAnswers: {},
-    rematchTally: { yes: 0, total: 0 },
-    answerRematch: mockAnswerRematch,
     match: { length: 'single', target: 21 },
   }),
 }));
@@ -89,9 +82,16 @@ const screenTree = () => (
 );
 
 const cardShown = (c: Card) => screen.queryByLabelText(cardSpokenName(c, t)) !== null;
+const pill = () =>
+  within(screen.getByTestId('game-hud-stack')).getByText(/'s turn$/, { includeHiddenElements: true }).props.children;
 
 describe('pass and play', () => {
-  it('gives seat 1 its own hand, an enabled pass and a running clock once the turn reaches it', async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('gives seat 1 its own hand and an enabled pass at once, and its clock once the pill turns to it', async () => {
+    jest.useFakeTimers();
     const view = await render(screenTree());
     expect(cardShown(SEAT0_REST)).toBe(true);
     expect(cardShown(SEAT1_CARD)).toBe(false);
@@ -112,22 +112,13 @@ describe('pass and play', () => {
     expect(screen.getByTestId('btn-passa').props.accessibilityState).toEqual(
       expect.objectContaining({ disabled: false })
     );
-    expect(
-      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS)}`)
-    ).toBeTruthy();
-
-    await view.unmount();
-  });
-
-  it('records a rematch tap under the seat on move', async () => {
-    mockTable.state = { ...mockTable.state, currentTurnIndex: 1 };
-    mockTable.rematchOpen = true;
-    const view = await render(screenTree());
-
+    expect(pill()).toBe("Ana's turn");
     await act(async () => {
-      await fireEvent.press(screen.getByTestId('btn-rematch-yes'));
+      jest.advanceTimersByTime(2100);
     });
-    expect(mockAnswerRematch).toHaveBeenCalledWith('player_1', true);
+    expect(
+      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS - 2)}`)
+    ).toBeTruthy();
 
     await view.unmount();
   });

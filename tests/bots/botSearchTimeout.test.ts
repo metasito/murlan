@@ -155,9 +155,6 @@ function makeFake(opts: FakeOptions = {}): Fake {
   };
 
   const locator = (selector: string) => {
-    if (selector === '[data-testid="btn-rematch-no"]') {
-      return { count: async () => 0, isVisible: async () => false };
-    }
     if (selector === '[data-testid="start-reason-gate"]') {
       return { count: async () => 0 };
     }

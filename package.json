@@ -40,6 +40,7 @@
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "typecheck": "tsc --noEmit",
     "typecheck:strict": "node scripts/checkStrictIndexed.mjs",
+    "bake:card-art": "node scripts/bake-card-art.mjs",
     "check:comments": "node tools/loop/comment-budget.mjs",
     "loop:cost": "node tools/loop/loop-cost.mjs",
     "verify": "npm run typecheck && npm run typecheck:strict && npm run test && npm run test:native && npm run lint",

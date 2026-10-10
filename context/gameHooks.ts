@@ -2,9 +2,9 @@
  * The local table's surface, in the four pieces a screen actually reads.
  *
  * The online counterpart is `onlineGameHooks.ts`. The two are deliberately not
- * one set: the local game has no connection and no turn clock, its match
- * carries a tally and a local majority where the server's carries votes and
- * rating deltas. One hook spanning both would be a union with half its fields
+ * one set: the local game has no connection and no turn clock, and its match
+ * carries none of the votes and rating deltas the server's does. One hook
+ * spanning both would be a union with half its fields
  * null on either side.
  *
  * Each is a projection, never a home for logic. What is genuinely one concept
@@ -31,39 +31,12 @@ export function useLocalSession() {
   );
 }
 
-/** Where the match stands, and whether the table wants another. */
+/** Where the match stands, and how the table goes on from it. */
 export function useLocalMatch() {
-  const {
-    match,
-    rematchAnswers,
-    rematchTally,
-    tableWantsRematch,
-    rematchPromptOpen,
-    answerRematch,
-    startNextHand,
-    startNewMatch,
-  } = useGame();
+  const { match, startNextHand, startNewMatch } = useGame();
   return useMemo(
-    () => ({
-      match,
-      rematchAnswers,
-      rematchTally,
-      tableWantsRematch,
-      rematchPromptOpen,
-      answerRematch,
-      startNextHand,
-      startNewMatch,
-    }),
-    [
-      match,
-      rematchAnswers,
-      rematchTally,
-      tableWantsRematch,
-      rematchPromptOpen,
-      answerRematch,
-      startNextHand,
-      startNewMatch,
-    ]
+    () => ({ match, startNextHand, startNewMatch }),
+    [match, startNextHand, startNewMatch]
   );
 }
 

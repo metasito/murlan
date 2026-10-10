@@ -5,7 +5,7 @@ import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
-import { EndMatchVote } from "./netNotes";
+import { EndMatchVote, MancheVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
 import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
@@ -139,5 +139,10 @@ export const NOTICE_GALLERY = {
     { name: "a seat left, no votes", tone: "neutral", render: (scale) => <EndMatchVote {...vote(false, 0)} scale={scale} /> },
     { name: "another seat voted", tone: "neutral", render: (scale) => <EndMatchVote {...vote(false, 1)} scale={scale} /> },
     { name: "you voted", tone: "lit", render: (scale) => <EndMatchVote {...vote(true, 2)} scale={scale} /> },
+  ],
+  mancheVote: [
+    { name: "the manche is over", tone: "neutral", render: (scale) => <MancheVote {...vote(false, 0)} scale={scale} /> },
+    { name: "another seat is ready", tone: "neutral", render: (scale) => <MancheVote {...vote(false, 1)} scale={scale} /> },
+    { name: "you are ready", tone: "lit", render: (scale) => <MancheVote {...vote(true, 2)} scale={scale} /> },
   ],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };

@@ -1,9 +1,6 @@
 import { useCallback, useState } from "react";
 
-// Relative and extensioned, not `@/`: `tests/engine/sharedGameFlow.test.ts` loads this
-// under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
-import { matchIsClosing } from "./gameEngine.ts";
-import type { Card, MatchLength } from "@/lib/game/gameEngine";
+import type { Card } from "@/lib/game/gameEngine";
 
 export interface ExchangeAnnounceData {
   winnerName: string;
@@ -41,38 +38,6 @@ export function buildExchangeAnnounce(
     cardGiven: cards.given,
     cardReceived: cards.received,
   };
-}
-
-/**
- * Whether to ask the table about another match. Not a hook: the two providers
- * hold these inputs in different objects, so each memoises on its own and only
- * the answer is shared.
- *
- * The hand counts come in already read, because only the caller knows whether
- * a seat's hand is the hand or a count the server sent in place of one.
- */
-export function rematchPromptOpen(
-  game: {
-    gameOver: boolean;
-    handCounts: number[];
-    players: readonly { id: string; team?: string }[];
-  } | null,
-  match: { length: MatchLength; target: number; over: boolean },
-  cumulative: Record<string, number>
-): boolean {
-  if (!game || game.gameOver || match.over) return false;
-  const teamOfKey: Record<string, string> = {};
-  for (const p of game.players) {
-    if (p.team) teamOfKey[p.id] = p.team;
-  }
-  return matchIsClosing({
-    teamOfKey,
-    length: match.length,
-    target: match.target,
-    cumulative,
-    handCounts: game.handCounts,
-    playerCount: game.handCounts.length,
-  });
 }
 
 export interface ExchangeAnnouncement {

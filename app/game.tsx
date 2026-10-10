@@ -51,7 +51,7 @@ export default function GameScreen() {
     acknowledgeExchange,
     releaseStuckExchange,
   } = useLocalExchange();
-  const { match, rematchPromptOpen, rematchAnswers, rematchTally, answerRematch, startNextHand } = useLocalMatch();
+  const { match, startNextHand } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never
@@ -171,8 +171,6 @@ export default function GameScreen() {
 
   if (!gameState) return null;
 
-  const humanId = gameState.players[humanIdx]?.id;
-  const myAnswer = humanId !== undefined && humanId in rematchAnswers ? rematchAnswers[humanId] : null;
   const hands = match.hands ?? [];
   const lastHandScores = hands[hands.length - 1]?.pointsAwarded ?? {};
 
@@ -225,15 +223,6 @@ export default function GameScreen() {
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
         holdMsOverride: exchangeHoldMsOverride,
-      }}
-      rematchPrompt={{
-        visible: rematchPromptOpen,
-        myAnswer,
-        yesCount: rematchTally.yes,
-        seatCount: rematchTally.total || gameState.players.length,
-        onAnswer: (wants) => {
-          if (humanId !== undefined) answerRematch(humanId, wants);
-        },
       }}
       overlays={() => <ConfirmDialog request={confirming} onClose={() => setConfirming(null)} />}
     />

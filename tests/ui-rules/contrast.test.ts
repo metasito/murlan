@@ -220,7 +220,6 @@ const MEASURED = { measuredBy: "tests/e2e/seatNameContrast.spec.ts" };
 const GIOCA = [...Gradient.playButton, ...sourceArray("GIOCA_GRADIENT_PRESSED")];
 const PASSA = [...Gradient.garnet, ...sourceArray("PASS_GRADIENT_PRESSED")];
 const SHEET = sourceArray("SHEET_GRADIENT");
-const REMATCH = { plate: "styles.rematchPanel" };
 const SCORE_PILL = { gradient: [Colors.scorePillTop, Colors.scorePillFoot] };
 const SCORE_ROW = { ...SCORE_PILL, plate: "styles.rowMine" };
 const ON_TABLE: Record<string, Backdrop> = {
@@ -242,11 +241,6 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/scorePill.tsx:styles.gain": SCORE_ROW,
   "table/scorePill.tsx:styles.gainNone": SCORE_ROW,
   "table/scorePill.tsx:styles.rowTotal": SCORE_ROW,
-  "table/rematchPrompt.tsx:styles.rematchTally": REMATCH,
-  "table/rematchPrompt.tsx:styles.rematchTitle": REMATCH,
-  "table/rematchPrompt.tsx:styles.rematchSubtitle": REMATCH,
-  "table/rematchPrompt.tsx:styles.rematchChoiceLabel": { plate: ["styles.rematchPanel", "styles.rematchChoice"] },
-  "table/rematchPrompt.tsx:styles.rematchChoiceYesLabel": { plate: ["styles.rematchPanel", "styles.rematchChoiceYes"] },
   "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
   "table/rotateOverlay.tsx:portraitOverlayStyles.sub": { plate: "portraitOverlayStyles.overlay" },
   // The disc's own gradient is darker than both stand-in stops.

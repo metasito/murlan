@@ -13,7 +13,7 @@ import {
 } from "@/components/seatLayout";
 import { FAN_TURN, fanCounts, fanPoint, seatFanArc } from "@/components/fanGeometry";
 import { fanBacks } from "./cardRects";
-import { useCardTable, useStaticCardRects } from "./useCardRects";
+import { useCardTable, useStaticCardRects, type OwnedRects } from "./useCardRects";
 import { passedSeats } from "@/components/flightPhysics";
 import { handCountOf } from "@/shared/protocol";
 import Animated, {
@@ -32,6 +32,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { DealArrivals } from "./deal";
+import { useClockFade } from "./useClockFade";
 import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -96,12 +97,12 @@ export function usePassedSeats(
 const FAN_LEAN_DEG = -17;
 const FAN_PERSPECTIVE = 560;
 
-function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
+function FanBack({ id, rects, at, boxW, backScale, zIndex }: {
   id: string;
+  rects: OwnedRects;
   at: ArcCard;
   boxW: number;
   backScale: number;
-  isActive: boolean;
   zIndex: number;
 }) {
   return (
@@ -118,7 +119,8 @@ function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
         card={{ id: "bk", suit: null, rank: "3", isJoker: false }}
         faceDown
         scale={backScale}
-        light={isActive ? "standingLit" : "standing"}
+        rectKey={id}
+        rects={rects}
       />
     </View>
   );
@@ -127,14 +129,11 @@ function FanBack({ id, at, boxW, backScale, isActive, zIndex }: {
 function CardFan({
   count,
   side,
-  isActive,
   scale = 1,
 }: {
   /** The seat's count; the thrown cards left it at the throw (ADR-0008). */
   count: number;
   side: OpponentSide;
-  /** This seat is on move, so the lamp is over it and its backs are lit. */
-  isActive: boolean;
   /** The table's own scale — the fan draws its backs at `scale * BACK_SCALE`. */
   scale?: number;
 }) {
@@ -152,7 +151,7 @@ function CardFan({
         : [],
     [table, side, count, scale]
   );
-  useStaticCardRects(table, `fan:${side}:`, drawn);
+  const fanRects = useStaticCardRects(table, `fan:${side}:`, drawn);
   if (count === 0) return null;
 
   const backScale = scale * BACK_SCALE;
@@ -185,7 +184,7 @@ function CardFan({
         }}
       >
         {full.cards.map((card, i) => (
-          <FanBack key={i} id={`fan:${side}:${i}`} at={card} boxW={full.box.w} backScale={backScale} isActive={isActive} zIndex={i} />
+          <FanBack key={i} id={`fan:${side}:${i}`} rects={fanRects} at={card} boxW={full.box.w} backScale={backScale} zIndex={i} />
         ))}
       </View>
     </View>
@@ -238,6 +237,7 @@ const RING_PULSE_LOW = 0.6;
 
 /** `held` stops the sweep where it stands, and it runs on from there once released. */
 export type SeatCountdown = { seconds: number; resetKey: string; held?: boolean };
+const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
 
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
@@ -251,12 +251,14 @@ function CountdownRing({
   resetKey,
   held = false,
   scale,
+  fade,
 }: {
   size: number;
   seconds: number;
   resetKey: string;
   held?: boolean;
   scale: number;
+  fade: SharedValue<number>;
 }) {
   const stroke = RING_STROKE * scale;
   const box = size + RING_GAP * 2 * scale;
@@ -322,7 +324,7 @@ function CountdownRing({
   const leftRed = useAnimatedStyle(() => ({ opacity: urgent.value }));
   const rightGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
   const leftGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
-  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value * fade.value }));
   const c = box / 2;
   const arc = (d: string, colour: string) => (
     <Svg width={box} height={box}>
@@ -384,9 +386,11 @@ function SeatRing({
   countdown,
   focusMode = false,
   mark,
+  side,
 }: {
   name: string;
   isActive: boolean;
+  side: OpponentSide;
   cardCount: number;
   /** The seat's real hand, where `cardCount` is only what a running deal has landed so far. */
   held: number;
@@ -425,6 +429,7 @@ function SeatRing({
   );
   const lit = seatLit(isActive, mark);
   const probe = useRingProbe(name);
+  const clock = useClockFade(isActive ? (countdown ?? null) : null, clockKey, side);
 
   useEffect(
     () => () => {
@@ -497,12 +502,13 @@ function SeatRing({
         start={{ x: 0.3, y: 0.25 }}
         end={{ x: 1, y: 1 }}
         colors={SEAT_DISC_FILL}
+        testID="seat-disc"
         style={[
           seatStyles.disc,
           lit && seatStyles.discActive,
           { width: size, height: size, borderRadius: size / 2 },
           lit
-            ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
+            ? makeShadow(Colors.goldLit, 0, 0, SEAT_GLOW.opacity, mockupPx(SEAT_GLOW.blur, scale), 0)
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
@@ -510,13 +516,14 @@ function SeatRing({
           {initials}
         </TableText>
       </LinearGradient>
-      {countdown && isActive && (
+      {clock.shown && (
         <CountdownRing
           size={size}
-          seconds={countdown.seconds}
-          resetKey={countdown.resetKey}
-          held={countdown.held}
+          seconds={clock.shown.seconds}
+          resetKey={clock.shown.resetKey}
+          held={clock.shown.held || !isActive}
           scale={scale}
+          fade={clock.opacity}
         />
       )}
       {showCount && (
@@ -618,7 +625,6 @@ export const TopOppSlot = memo(function TopOppSlot({
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID="top-seat"
@@ -643,7 +649,7 @@ export const TopOppSlot = memo(function TopOppSlot({
         mark={mark}
       />
       {player.finishPosition === undefined && displayed > 0 && (
-        <CardFan count={displayed} side="top" isActive={lit} scale={scale} />
+        <CardFan count={displayed} side="top" scale={scale} />
       )}
     </View>
   );
@@ -750,6 +756,7 @@ function SeatWho({
         countdown={countdown}
         focusMode={focusMode}
         mark={mark}
+        side={anchor === "centre" ? "top" : anchor}
       />
       {passed && !focusMode && <PassedMark side={anchor === "centre" ? "top" : "side"} disc={disc} scale={scale} />}
     </View>
@@ -796,7 +803,6 @@ export const SideOppSlot = memo(function SideOppSlot({
   const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID={`side-seat-${side}`}
@@ -823,7 +829,7 @@ export const SideOppSlot = memo(function SideOppSlot({
         mark={mark}
       />
       {displayed > 0 && player.finishPosition === undefined && (
-        <CardFan count={displayed} side={side} isActive={lit} scale={scale} />
+        <CardFan count={displayed} side={side} scale={scale} />
       )}
     </View>
   );
@@ -860,7 +866,7 @@ const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
-const SEAT_GLOW = 22;
+const SEAT_GLOW = { blur: 14, opacity: 0.35 } as const;
 /** The initial in the middle of the disc. */
 const SEAT_INITIAL_FS = 13;
 const SEAT_DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
@@ -924,7 +930,7 @@ const seatStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.goldSoft,
   },
-  discActive: { borderColor: Colors.goldLit },
+  discActive: { borderColor: Colors.goldLitDisc },
   discInitials: {
     fontFamily: "Rajdhani_700Bold",
     color: Colors.text,

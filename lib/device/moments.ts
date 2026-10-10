@@ -6,7 +6,7 @@ type Plain = "roundWon" | "roundStart" | "select" | "deselect" | "reject" | "giv
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
-  | { kind: "mancheOver"; outcome: "won" | "lost" | "neutral" }
+  | { kind: "mancheOver"; outcome: "won" | "lost" | "neutral" | "draw" }
   | { kind: "partitaOver"; won: boolean }
   | { [K in Plain]: { kind: K } }[Plain];
 export type MomentKind = Moment["kind"];

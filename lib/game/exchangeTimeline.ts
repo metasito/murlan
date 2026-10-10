@@ -117,7 +117,7 @@ export function ceremonyEndsAt(shows: readonly number[], reduced: boolean, joker
   return shows[jokers ? 0 : 1] + legTimes(reduced).end + X.read;
 }
 
-/** From the deal's state to the give's earliest arming: the first deal's end, after the table's entry beat. */
+/** From the deal's state to the give's earliest arming, counting the table's entry beat: a standing table, dealing at once, opens up to that beat earlier. */
 export function exchangeGiveDelayMs(counts: readonly number[]): number {
   return dealEndMs(counts, Motion.duration.reveal) + RECEIVE_MS + X.read;
 }

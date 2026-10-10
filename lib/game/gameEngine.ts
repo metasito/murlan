@@ -1025,6 +1025,19 @@ export function openingIsPending(state: {
   return state.playedRanks?.every((played) => played === 0) ?? false;
 }
 
+/**
+ * Whether the manche on the table is still as dealt: nobody has played into it.
+ * An exchange manche counts, though it carries `firstPlayMade` from the last one.
+ */
+export function mancheUnplayed(state: {
+  gameOver: boolean;
+  firstPlayMade: boolean;
+  playedRanks?: number[];
+}): boolean {
+  if (state.gameOver) return false;
+  return !state.firstPlayMade || (state.playedRanks?.every((played) => played === 0) ?? false);
+}
+
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
 export const TEAMS_PLAYER_COUNT = 4;
 
@@ -1464,7 +1477,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   };
 }
 
-// ─── Match length and the rematch question ────────────────────────────────────
+// ─── Match length ─────────────────────────────────────────────────────────────
 
 /**
  * How long a game runs.
@@ -1480,61 +1493,4 @@ export function firstTargetFor(playerCount: number): number {
   const [target] = targetsFor(playerCount);
   if (target === undefined) throw new Error(`targetsFor(${playerCount}) returned no targets`);
   return target;
-}
-
-/** Cards left in the shortest hand at or below which a manche counts as closing. */
-export const CLOSING_HAND_CARDS = 5;
-
-/**
- * Whether the game is close enough to over to be worth asking the table
- * whether they want another one — true once the current manche is nearly
- * played out *and* it can be the last one, either because the game is a
- * single manche or because the leader can reach the target from it.
- * With a non-empty `teamOfKey` the leader is a pair (docs/GAME-RULES.md §11),
- * which can take the manche's two best awards.
- */
-export function matchIsClosing(args: {
-  length: MatchLength;
-  target: number;
-  cumulative: Record<string, number>;
-  handCounts: number[];
-  playerCount: number;
-  teamOfKey?: Record<string, string>;
-}): boolean {
-  const { length, target, cumulative, handCounts, playerCount } = args;
-  if (handCounts.length === 0) return false;
-  if (Math.min(...handCounts) > CLOSING_HAND_CARDS) return false;
-  if (length === "single") return true;
-  const teamOfKey = args.teamOfKey ?? {};
-  const teams = Object.keys(teamOfKey).length > 0;
-  const totals = teams ? aggregateTeamScores(cumulative, teamOfKey) : cumulative;
-  const leader = Math.max(0, ...Object.values(totals));
-  const reach = teams ? 2 * playerCount - 3 : playerCount - 1;
-  return leader + reach >= target;
-}
-
-/** Strictly more than half. A table split down the middle stops. */
-export function isMajority(yesCount: number, seatCount: number): boolean {
-  return yesCount * 2 > seatCount;
-}
-
-/**
- * The rematch verdict's two inputs: how many seats said yes, and how many
- * seats had anyone to say it. `"abstain"` is a seat with nobody behind it —
- * on the server a bot seat, or a seat its human walked out of — and counts
- * toward neither.
- */
-export function tallyRematchAnswers(
-  seatCount: number,
-  answerOf: (seat: number) => boolean | "abstain"
-): { yes: number; total: number } {
-  let yes = 0;
-  let total = 0;
-  for (let seat = 0; seat < seatCount; seat++) {
-    const answer = answerOf(seat);
-    if (answer === "abstain") continue;
-    total++;
-    if (answer) yes++;
-  }
-  return { yes, total };
 }
