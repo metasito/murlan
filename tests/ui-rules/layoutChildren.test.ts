@@ -59,18 +59,18 @@ describe("a navigator's children", () => {
 
   // `Protected` takes the screen off the navigator, not the route out of the
   // tree, so `app/capture.tsx` keeps a guard of its own — pinned below.
-  test("the capture harness stays off the navigator outside a development build", () => {
+  test("the capture harness stays off the navigator outside a development or e2e build", () => {
     const root = layouts().find(({ file }) => file === "_layout.tsx");
     assert.ok(root, "app/_layout.tsx is missing");
     assert.match(
       root.source.replace(/\s+/g, " "),
-      /<Stack\.Protected guard=\{__DEV__\}> <Stack\.Screen name="capture" \/> <\/Stack\.Protected>/,
-      "the capture harness must stay behind a __DEV__ guard"
+      /<Stack\.Protected guard=\{captureEnabled\(\)\}> <Stack\.Screen name="capture" \/> <\/Stack\.Protected>/,
+      "the capture harness must stay behind captureEnabled()"
     );
   });
 
-  test("the capture screen returns before anything else outside a development build", () => {
+  test("the capture screen returns before anything else outside a development or e2e build", () => {
     const source = readFileSync(path.join(appDir, "capture.tsx"), "utf8");
-    assert.match(source, /export default function CaptureScreen\(\) \{\s*if \(!__DEV__\) \{/);
+    assert.match(source, /export default function CaptureScreen\(\) \{\s*if \(!captureEnabled\(\)\) \{/);
   });
 });

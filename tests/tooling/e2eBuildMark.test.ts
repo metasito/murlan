@@ -34,6 +34,13 @@ test("every workflow that builds with a test-only flag checks the build carries 
   for (const f of flagged) assert.match(readFileSync(path.join(dir, f), "utf8"), /e2eBuildMark\.mjs --present /, f);
 });
 
+test("every store build ci.yml compiles proves it carries no test-only flag", () => {
+  const ci = readFileSync(path.join(root, ".github", "workflows", "ci.yml"), "utf8");
+  for (const built of ["dist", '"$RUNNER_TEMP/apk"', '"$app"']) {
+    assert.match(ci, new RegExp(`e2eBuildMark\\.mjs --absent ${built.replace(/\$/g, "\\$")}\\n`), built);
+  }
+});
+
 test("a build directory is judged by whether any file carries the mark", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "murlan-mark-"));
   mkdirSync(path.join(dir, "js"));
