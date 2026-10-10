@@ -215,12 +215,15 @@ const MOMENTS: Moment[] = [
         sceneT = now;
       };
       const begin = start;
-      start = (i) => { begin(i); sceneT = -${DEAL_PHASE_MS}; };`,
+      start = (i) => { begin(i); sceneT = -${DEAL_PHASE_MS}; };
+      // The chapter deals into its exchange, nobody on move; the app's fixture deals into play, as \`nextDeal\` does.
+      const deal = dealRun;
+      dealRun = (t0, final, then) => deal(t0, final, then ?? (() => setTurn("you")));`,
     appTrigger: dealTable,
     appOnset: (f) => f.onsets.includes("sound:deal"),
     mode: "parity",
     fields: ["onset", "live", "level", "breath", "brightness"],
-    // Not the hand: the app's viewer is on move through the deal and the mockup's is not (#1432).
+    // Not the hand: the mockup's level shade dims it and the app's does not (#1433).
     regions: ["pool"],
     regionsAt: [1040, 1200],
     onsets: ["moment:dealt"],

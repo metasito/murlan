@@ -350,6 +350,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.you": "Tu",
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
+  "gameShared.dealing": "Distribuzione",
   "gameShared.turnOf": "Turno di {{name}}",
   "gameShared.handOver": "Manche finita",
   // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
@@ -398,6 +399,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.moveCardRight": "Sposta questa carta a destra",
   "gameTable.startCardBannerSelf": "Inizi tu! Hai il {{rank}}{{suit}}",
   "gameTable.a11yYourTurn": "È il tuo turno.",
+  "gameTable.a11yDealing": "Si distribuiscono le carte.",
   "gameTable.a11yTurnOf": "Turno di {{name}}.",
   "gameTable.a11yHandOver": "Manche finita.",
   "gameTable.a11yEmptyTable": "Nessuna carta sul tavolo.",

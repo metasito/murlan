@@ -112,6 +112,11 @@ test("the beaten play turns over the lantern mockup's .grp transition, and at on
   assert.equal(motionMs("beaten", true), 0);
 });
 
+test("the hand grows into its turn over the mockup's .12s, and at once under reduced motion", () => {
+  assert.equal(motionMs("handResize", false), 120);
+  assert.equal(motionMs("handResize", true), 0);
+});
+
 // Reading time is set by how many words there are, not by how the table moves,
 // and the whole point of the separate group is that a later sweep cannot quietly
 // fold a 4-second read back onto a step. Every budget sits clear of the longest
