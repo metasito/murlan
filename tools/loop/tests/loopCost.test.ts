@@ -127,6 +127,17 @@ describe("priceOf", () => {
     assert.equal(priceOf("claude-opus-5", u).toFixed(4), "2.6356");
     assert.ok(priceOf("opus", { cache_creation_input_tokens: 1e6 }) < priceOf("opus", { cache_creation_input_tokens: 1e6, cache_creation: { ephemeral_1h_input_tokens: 1e6 } }));
   });
+
+  test("prices a 5.5 release at its own rate, not its family's", () => {
+    assert.equal(priceOf("claude-opus-5-5", { cache_read_input_tokens: 1e6 }), 0.2);
+    assert.equal(priceOf("claude-opus-5", { cache_read_input_tokens: 1e6 }), 0.5);
+    assert.equal(priceOf("claude-sonnet-5-5[1m]", { output_tokens: 1e6 }), 10);
+  });
+
+  test("prices a Haiku 5.5 prompt past 100k at five times every rate", () => {
+    assert.equal(priceOf("claude-haiku-5-5", { input_tokens: 100_000 }).toFixed(4), "0.0100");
+    assert.equal(priceOf("claude-haiku-5-5", { cache_read_input_tokens: 99_000, input_tokens: 2_000 }).toFixed(5), "0.00595");
+  });
 });
 
 describe("sinceWindow", () => {

@@ -52,7 +52,14 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("the exact brief with material appended is allowed", () => {
-    assert.equal(run(agent("Refute findings", brief("refute", { n: 42, worktree: WT }) + "\n## Standards\n- x")), "");
+    const refute = agent("Refute findings", brief("refute", { n: 42, worktree: WT }) + "\n## Standards\n- x");
+    assert.equal(run({ ...refute, tool_input: { ...refute.tool_input, model: "opus" } }), "");
+  });
+
+  test("a brief dispatched on another model than its kind's is denied", () => {
+    const spec = agent("Spec review", brief("spec", { n: 42, worktree: WT }));
+    assert.match(run(spec), /spec brief runs on `opus`/);
+    assert.equal(run({ ...spec, tool_input: { ...spec.tool_input, model: "claude-opus-5-5" } }), "");
   });
 
   test("an edited brief is denied", () => {

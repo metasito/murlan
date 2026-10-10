@@ -12,6 +12,9 @@ import { TRUSTED_AUTHORS } from "./loop-derive.mjs";
 
 export const KINDS = ["scope", "completeness", "standards", "spec", "refute", "fix"];
 
+/** Rule 29's model for each kind; `guard-agent-model.mjs` denies a dispatch on any other. */
+export const MODEL_BY_KIND = { scope: "sonnet", completeness: "sonnet", standards: "opus", spec: "opus", refute: "opus", fix: "opus" };
+
 const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
 
 const BASELINE = join(import.meta.dirname, "..", "..", "docs", "agents", "smell-baseline.md");
