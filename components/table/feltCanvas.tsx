@@ -153,7 +153,8 @@ function useShadowPicture(kinds: readonly ShadowPath[], shape: SharedValue<numbe
             builder.reset();
             buildShadow(builder, kind, all, felt, midX, members);
             path = builder.build();
-            if (e2e) countClusterBuild(kind, members);          }
+            if (e2e) countClusterBuild(kind, members);
+          }
           kept[id] = path;
           canvas.drawPath(path, paints[i].paint);
         }
