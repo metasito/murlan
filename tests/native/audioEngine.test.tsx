@@ -3,7 +3,15 @@ import { AppState } from 'react-native';
 import * as nativeEngine from '@/lib/device/audioEngine';
 import * as webEngine from '@/lib/device/audioEngine.web';
 import { SOUND_FILES } from '@/lib/device/soundAssets';
+import type { TrackId } from '@/lib/device/musicTracks';
 import { api, appStateHandler, ctxTime, effects, fileOf, loops, settle, soundOf, startsOf, voiceGain } from './helpers/feedback';
+
+// The app ships two tracks and keeps two decoded; eviction needs a third.
+jest.mock('@/lib/device/musicTracks', () => {
+  const actual = jest.requireActual<typeof import('@/lib/device/musicTracks')>('@/lib/device/musicTracks');
+  return { ...actual, TRACKS: { ...actual.TRACKS, spare: actual.TRACKS.hand } };
+});
+const SPARE = 'spare' as TrackId;
 
 const sameSurface: typeof nativeEngine = webEngine;
 const lastContext = () => api().contexts.at(-1)!;
@@ -139,7 +147,7 @@ describe('the audio engine', () => {
     await engine.startAudio();
     engine.music('hand');
     await settle(1000);
-    engine.music('cue');
+    engine.music(SPARE);
     engine.music('menu');
     await settle();
     await settle();
@@ -154,13 +162,13 @@ describe('the audio engine', () => {
     engine.music('hand');
     await settle(1000);
     const decodedBefore = api().decoded.length;
-    engine.music('cue');
+    engine.music(SPARE);
     expect(loops().map(fileOf)).toEqual(['menu', 'hand']);
     await settle();
     await settle();
     expect(api().decoded.length).toBe(decodedBefore + 1);
     expect(loops()).toHaveLength(3);
-    expect(fileOf(loops()[2])).toBe('cue');
+    expect(fileOf(loops()[2])).toBe(SPARE);
     expect(engine.engineStats().resident).toBe(2);
   }));
 

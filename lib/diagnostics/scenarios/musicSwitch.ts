@@ -3,7 +3,7 @@ import type { TrackId } from "@/lib/device/musicTracks";
 import { registerBenchScenario } from "../bench";
 import { diag } from "../index";
 
-const TRACKS: TrackId[] = ["menu", "hand", "cue"];
+const TRACKS: TrackId[] = ["menu", "hand"];
 
 registerBenchScenario("musicSwitch", async (ctx) => {
   setMusicVolume(1);

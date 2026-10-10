@@ -30,7 +30,7 @@ import "@/lib/e2eBuildMark";
 SplashScreen.preventAutoHideAsync();
 
 /**
- * Which loop belongs to a screen. All four are the same composition, so a
+ * Which loop belongs to a screen. Both are the same composition, so a
  * change of screen is a change of arrangement rather than a change of music —
  * which is the whole reason one composition was chosen over four (#163).
  *

@@ -16,7 +16,7 @@ const CYCLE: Moment[][] = [
   [{ kind: "pass" }, { kind: "roundWon" }],
   [{ kind: "deal" }],
 ];
-const TRACKS: TrackId[] = ["menu", "hand", "cue"];
+const TRACKS: TrackId[] = ["menu", "hand"];
 
 registerBenchScenario("smoke", (ctx) => soak(ctx, 1));
 registerBenchScenario("soak", (ctx) => soak(ctx, Number(ctx.params.minutes ?? "30")));
