@@ -19,6 +19,7 @@ async function playTopCard(page: Page): Promise<void> {
 
 async function untilHome(page: Page): Promise<void> {
   await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");
+  // fixed wait on purpose: the error is thrown frames after the route changes, with no state to wait on.
   await page.waitForTimeout(1_500);
 }
 
