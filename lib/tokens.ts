@@ -195,6 +195,12 @@ export const Dust = {
   puff: 'rgba(230,215,180,0.1)',
 } as const;
 
+// The turn hand-off's ember along the rim: the mockup's `ember` (#1264).
+export const Ember = {
+  head: '#FFF1C8',
+  trail: '#FFD27A',
+} as const;
+
 // The bomb's beat after its landing: the mockup's `bombFx` and `flash` (#1263).
 export const BombFx = {
   delayMs: 90,
