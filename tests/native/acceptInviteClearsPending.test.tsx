@@ -124,6 +124,24 @@ describe('accepting an invite', () => {
     await unmount();
   });
 
+  it('puts a declined invite back when the decline never reached the server', async () => {
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    const { result, unmount } = await mount(client);
+    let rejectDecline: (reason: Error) => void = () => {};
+    mockApiRequest.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectDecline = reject))
+    );
+
+    await act(async () => result.current.dismissGameInvite('ABC123'));
+    expect(result.current.gameInvites).toEqual([]);
+
+    await act(async () => rejectDecline(new Error('offline')));
+    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
+
+    await unmount();
+  });
+
   it('leaves an invite nobody answered standing', async () => {
     const { result, unmount } = await mount();
     await invite();

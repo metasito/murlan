@@ -106,6 +106,8 @@ const RECONCILED_ON_CONNECT = [
   ["/api/friends/invites"],
 ] as const;
 
+const NO_HIDDEN_INVITES: ReadonlySet<string> = new Set();
+
 const SocketContext = createContext<SocketContextValue | null>(null);
 
 export function useSocket() {
@@ -143,14 +145,25 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // here, after this commit disabled every observer: a clear that lands first lets
   // an earlier render's pending effect refetch them with the dead session.
   const signedInRef = useRef(userId);
-  const [hiddenInvites, setHiddenInvites] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
-    if (signedInRef.current && !userId) {
-      qc.clear();
-      setHiddenInvites(new Set());
-    }
+    if (signedInRef.current && !userId) qc.clear();
     signedInRef.current = userId;
   }, [userId, qc]);
+  // Keyed by account rather than reset on sign-out: a render after the clear
+  // above re-subscribes the invites query and puts it back in the emptied cache.
+  const [hidden, setHidden] = useState<{ userId?: string; codes: ReadonlySet<string> }>({
+    codes: NO_HIDDEN_INVITES,
+  });
+  const hiddenInvites = hidden.userId === userId ? hidden.codes : NO_HIDDEN_INVITES;
+  const updateHiddenInvites = useCallback(
+    (update: (codes: Set<string>) => void) =>
+      setHidden((prev) => {
+        const codes = new Set(prev.userId === userId ? prev.codes : NO_HIDDEN_INVITES);
+        update(codes);
+        return { userId, codes };
+      }),
+    [userId]
+  );
   const gameInvites = useMemo<PendingInvite[]>(
     () =>
       inviteRows
@@ -173,8 +186,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // Filtered on read rather than spliced from the cache: an accepted invite's row
   // stays on the server until seating, so any refetch before then would restore it.
   const hideGameInvite = useCallback(
-    (roomCode: string) => setHiddenInvites((prev) => new Set(prev).add(roomCode)),
-    []
+    (roomCode: string) => updateHiddenInvites((codes) => codes.add(roomCode)),
+    [updateHiddenInvites]
+  );
+  const unhideGameInvite = useCallback(
+    (roomCode: string) => updateHiddenInvites((codes) => codes.delete(roomCode)),
+    [updateHiddenInvites]
   );
   /**
    * Turning an invite down deletes it rather than hiding it. A dismissal that
@@ -185,10 +202,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     (roomCode: string) => {
       hideGameInvite(roomCode);
       void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
-        .catch(() => {})
+        .catch(() => unhideGameInvite(roomCode))
         .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
     },
-    [qc, hideGameInvite]
+    [qc, hideGameInvite, unhideGameInvite]
   );
 
   const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
@@ -366,12 +383,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
-      setHiddenInvites((prev) => {
-        if (!prev.has(roomCode)) return prev;
-        const next = new Set(prev);
-        next.delete(roomCode);
-        return next;
-      });
+      unhideGameInvite(roomCode);
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
       showNotification({
         type: "game_invite",
@@ -471,7 +483,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       socket.off("friend:error", onFriendError);
       socket.off("socket:error", onSocketError);
     };
-  }, [userId, logout, qc, showNotification]);
+  }, [userId, logout, qc, showNotification, unhideGameInvite]);
 
   const contextValue = useMemo(
     () => ({
