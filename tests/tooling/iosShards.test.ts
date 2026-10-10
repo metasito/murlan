@@ -86,12 +86,36 @@ test("the run is green only when every shard ran and passed", () => {
   assert.doesNotMatch(IOS, /continue-on-error/);
 });
 
-test("a shard needs the app job, which restores, and downloads the app it uploaded", () => {
+test("the gate is red when the run's own jobs took longer than its wall budget", () => {
+  const gate = job("ios");
+  const name = /\n {4}name: (.+)\n/.exec(gate)![1];
+  assert.match(gate, /\n {4}permissions:\n(?: {6}.+\n)* {6}actions: read\n/);
+  const wall = step(gate, "The run finished within its wall budget");
+  assert.match(wall, new RegExp(`GH_TOKEN: \\$\\{\\{ github\\.token \\}\\}\\n[\\s\\S]*run: node tools/ci/ios-wall\\.mjs "${name}"\\n`));
+  assert.ok(gate.indexOf("- name: Every shard ran and passed") < gate.indexOf("- name: The run finished within its wall budget"));
+});
+
+test("every load sampler is stopped once the debug output carrying its log is uploaded", () => {
+  const sample = step(IOS, "Sample the runner's load");
+  const samplers = sample.match(/nohup top .*&\n/g) ?? [];
+  assert.ok(samplers.length > 0);
+  assert.equal((sample.match(/nohup top .*&\n\s+echo \$! >> "\$RUNNER_TEMP\/top\.pids"\n/g) ?? []).length, samplers.length);
+  assert.match(step(IOS, "Stop sampling the runner's load"), /\n {8}if: always\(\)\n {8}run: \|\n\s+kill \$\(cat "\$RUNNER_TEMP\/top\.pids"\)/);
+  assert.ok(IOS.indexOf("- name: Upload Maestro debug output") < IOS.indexOf("- name: Stop sampling the runner's load"));
+});
+
+test("a shard boots beside the app job, which restores, and waits for the app it uploads", () => {
   assert.match(job("app"), /uses: \.\/\.github\/actions\/ios-app\n/);
-  assert.match(job("flows"), /\n {4}needs: app\n/);
+  assert.doesNotMatch(job("flows"), /\n {4}needs:/);
+  const flows = job("flows");
   const uploaded = /upload-artifact@.*\n {8}with:\n {10}name: (.+)\n/.exec(job("app"))![1];
-  assert.match(job("flows"), new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
-  assert.doesNotMatch(job("flows"), /actions\/install|npm ci|actions\/ios-app|gh api/);
+  const producer = /\n {4}name: (.+)\n/.exec(job("app"))![1];
+  assert.match(flows, /\n {4}permissions:\n(?: {6}.+\n)* {6}actions: read\n/);
+  const wait = flows.indexOf(`run: node tools/ci/await-artifact.mjs ${uploaded} "${producer}"\n`);
+  const download = flows.search(new RegExp(`download-artifact@.*\\n {8}with:\\n {10}name: ${uploaded}\\n`));
+  assert.ok(wait !== -1 && download !== -1 && wait < download, "the download waits on the app job's upload");
+  assert.ok(flows.indexOf("- name: Stop the simulator services no flow needs") < wait, "the simulator settles while the app job runs");
+  assert.doesNotMatch(flows, /actions\/install|npm ci|actions\/ios-app|gh api/);
 });
 
 test("the simulator services no flow needs are found, disabled and gone before the app is installed", () => {
@@ -103,6 +127,7 @@ test("the simulator services no flow needs are found, disabled and gone before t
   assert.match(stop, /for label in \$SERVICES; do\n.*'\$3 == label \{ found = 1 \} END \{ exit !found \}' \|\|\n\s+\{ echo "::error::.*"; exit 1; \}\n\s+pids="\$pids \$\(pid_of "\$label"\)"\n/);
   assert.match(stop, /extensions=\$\(pgrep -f "\$EXTENSIONS".*\n.*\[ -n "\$extensions" \] \|\| \{ echo "::error::.*"; exit 1; \}\n\s+pids="\$pids \$extensions"\n/);
   assert.match(stop, /launchctl disable "system\/\$label"\n/);
+  assert.match(stop, /\) &\n\s+stoppers="\$stoppers \$!"\n\s+done\n\s+for stopper in \$stoppers; do wait "\$stopper"; done\n/);
   assert.match(stop, /pkill -f "\$EXTENSIONS"/);
   assert.match(stop, /for pid in \$pids; do kill -0 "\$pid" 2> \/dev\/null && alive=/);
   assert.match(stop, /for label in \$SERVICES; do \[ -z "\$\(pid_of "\$label"\)" \] \|\| alive=/);
