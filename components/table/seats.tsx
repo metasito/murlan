@@ -32,6 +32,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import type { DealArrivals } from "./deal";
+import { useClockFade } from "./useClockFade";
 import type { RingFlash } from "./ExchangeLegs";
 import Svg, { Path } from "react-native-svg";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -238,6 +239,7 @@ const RING_PULSE_LOW = 0.6;
 
 /** `held` stops the sweep where it stands, and it runs on from there once released. */
 export type SeatCountdown = { seconds: number; resetKey: string; held?: boolean };
+const clockKey = (c: SeatCountdown) => `${c.resetKey}|${c.seconds}|${c.held}`;
 
 /**
  * The turn clock, drawn as an arc around the seat on move. It is a display of
@@ -251,12 +253,14 @@ function CountdownRing({
   resetKey,
   held = false,
   scale,
+  fade,
 }: {
   size: number;
   seconds: number;
   resetKey: string;
   held?: boolean;
   scale: number;
+  fade: SharedValue<number>;
 }) {
   const stroke = RING_STROKE * scale;
   const box = size + RING_GAP * 2 * scale;
@@ -322,7 +326,7 @@ function CountdownRing({
   const leftRed = useAnimatedStyle(() => ({ opacity: urgent.value }));
   const rightGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
   const leftGold = useAnimatedStyle(() => ({ opacity: 1 - urgent.value }));
-  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value * fade.value }));
   const c = box / 2;
   const arc = (d: string, colour: string) => (
     <Svg width={box} height={box}>
@@ -425,6 +429,7 @@ function SeatRing({
   );
   const lit = seatLit(isActive, mark);
   const probe = useRingProbe(name);
+  const clock = useClockFade(isActive ? (countdown ?? null) : null, clockKey);
 
   useEffect(
     () => () => {
@@ -510,13 +515,14 @@ function SeatRing({
           {initials}
         </TableText>
       </LinearGradient>
-      {countdown && isActive && (
+      {clock.shown && (
         <CountdownRing
           size={size}
-          seconds={countdown.seconds}
-          resetKey={countdown.resetKey}
-          held={countdown.held}
+          seconds={clock.shown.seconds}
+          resetKey={clock.shown.resetKey}
+          held={clock.shown.held || !isActive}
           scale={scale}
+          fade={clock.opacity}
         />
       )}
       {showCount && (

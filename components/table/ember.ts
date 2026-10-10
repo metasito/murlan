@@ -2,12 +2,11 @@
 // table's 874 × 402 points, run by either platform's particle layer one frame at a time.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { Ember } from "../../lib/tokens.ts";
+import { Handoff } from "../../lib/tokens.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 import type { ParticleSpawn, Rng } from "./particles.ts";
 
 export const RIM = { cx: 465, cy: 201, rx: 385, ry: 182 } as const;
-export const EMBER_MS = 380;
 const ANGLE: Record<FlyDirection, number> = { bottom: 90, right: 0, top: -90, left: -180 };
 
 /** The one run a layer holds: a new hand-off restarts it, so two embers never fly at once. `t` < 0 is idle. */
@@ -45,7 +44,7 @@ export function startEmber(run: EmberRun, from: FlyDirection, to: FlyDirection):
 export function emberFrame(run: EmberRun, dt: number, rng: Rng): ParticleSpawn[] {
   "worklet";
   if (run.t < 0) return [];
-  const k = Math.min(1, (run.t * 1000) / EMBER_MS);
+  const k = Math.min(1, (run.t * 1000) / Handoff.emberMs);
   run.t = k < 1 ? run.t + dt : -1;
   const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
   const a = ((run.a0 + (run.a1 - run.a0) * e) * Math.PI) / 180;
@@ -53,7 +52,7 @@ export function emberFrame(run: EmberRun, dt: number, rng: Rng): ParticleSpawn[]
   const y = RIM.cy + RIM.ry * Math.sin(a);
   const R = (lo: number, hi: number) => lo + rng() * (hi - lo);
   return [
-    { x, y, life: 0.05, size: 2.4, col: Ember.head, glow: 10 },
-    { x, y, vx: R(-15, 15), vy: R(-15, 15), drag: 0.9, life: R(0.25, 0.4), size: R(0.6, 1.3), col: Ember.trail, glow: 4 },
+    { x, y, life: 0.05, size: 2.4, col: Handoff.emberHead, glow: 10 },
+    { x, y, vx: R(-15, 15), vy: R(-15, 15), drag: 0.9, life: R(0.25, 0.4), size: R(0.6, 1.3), col: Handoff.emberTrail, glow: 4 },
   ];
 }

@@ -195,10 +195,14 @@ export const Dust = {
   puff: 'rgba(230,215,180,0.1)',
 } as const;
 
-// The turn hand-off's ember along the rim: the mockup's `ember` (#1264).
-export const Ember = {
-  head: '#FFF1C8',
-  trail: '#FFD27A',
+// The turn hand-off: the mockup's `ember` along the rim, and its `.ring` transition, the outgoing
+// clock out before the incoming in, at once under reduced motion (#1264).
+export const Handoff = {
+  emberHead: '#FFF1C8',
+  emberTrail: '#FFD27A',
+  emberMs: 380,
+  clockOutMs: 100,
+  clockInMs: 100,
 } as const;
 
 // The bomb's beat after its landing: the mockup's `bombFx` and `flash` (#1263).
@@ -540,8 +544,7 @@ export const Motion = {
   /** The exchange's legs, giver → pile → receiver, and the holds between them: the owner's "Through the pile" (tests/e2e/fixtures/exchange-legs, PLAN). */
   exchange: { beat: 344, lift: 500, fly: 1000, tuck: 1000, highlight: 1500, giveWait: 420, read: 900 },
   /** A notice's mark or float, and the connection dot's blink: the lantern mockup's `passSeat`, `passYou` and `blink` (#1259 Q1). */
-  mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
-  /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
+  mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },  /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
   beaten: 280,
 } as const;
 

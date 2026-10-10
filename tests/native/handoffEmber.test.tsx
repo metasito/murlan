@@ -14,13 +14,13 @@ jest.mock('@/components/table/ember', () => {
 });
 
 import { emberFrame, RIM } from '@/components/table/ember';
-import { Ember } from '@/lib/tokens';
+import { Handoff } from '@/lib/tokens';
 import { bootFeedback } from './helpers/feedback';
 import { PAIR, tableAfter } from './helpers/landing';
 
 type Spawns = ReturnType<typeof emberFrame>;
 const heads = () =>
-  jest.mocked(emberFrame).mock.results.flatMap((r) => (r.value as Spawns).filter((p) => p.col === Ember.head));
+  jest.mocked(emberFrame).mock.results.flatMap((r) => (r.value as Spawns).filter((p) => p.col === Handoff.emberHead));
 const angle = (p: { x: number; y: number }) => (Math.atan2((p.y - RIM.cy) / RIM.ry, (p.x - RIM.cx) / RIM.rx) * 180) / Math.PI;
 
 async function frames(ms: number) {

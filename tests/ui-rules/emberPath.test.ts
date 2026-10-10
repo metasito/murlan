@@ -1,6 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { EMBER_MS, emberFrame, emberSweep, idleEmber, RIM, startEmber } from "../../components/table/ember.ts";
+import { emberFrame, emberSweep, idleEmber, RIM, startEmber } from "../../components/table/ember.ts";
+import { Handoff } from "../../lib/tokens.ts";
+
+const EMBER_MS = Handoff.emberMs;
 import { seatDirection } from "../../components/seatLayout.ts";
 
 const nextInTurn = (seat: number, n: number) => (seat - 1 + n) % n;
