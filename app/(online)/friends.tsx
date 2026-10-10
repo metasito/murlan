@@ -52,7 +52,7 @@ function GroupLabel({ text }: { text: string }) {
 export default function FriendsScreen() {
   const { t, tn } = useTranslation();
   const searchHint = useA11yHint(t("friends.searchA11yHint"));
-  const { socket, onlineIds, gameInvites, dismissGameInvite } = useSocket();
+  const { socket, onlineIds, gameInvites, dismissGameInvite, hideGameInvite } = useSocket();
   const { joinRoom, room } = useOnlineRoom();
   const qc = useQueryClient();
   const [addLoading, setAddLoading] = useState(false);
@@ -222,7 +222,7 @@ export default function FriendsScreen() {
 
   function handleJoinGameInvite(roomCode: string) {
     uiFeedback("medium");
-    dismissGameInvite(roomCode);
+    hideGameInvite(roomCode);
     joinRoom(roomCode);
   }
 

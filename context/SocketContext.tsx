@@ -77,6 +77,7 @@ interface SocketContextValue {
   clearInvite: () => void;
   gameInvites: PendingInvite[];
   dismissGameInvite: (roomCode: string) => void;
+  hideGameInvite: (roomCode: string) => void;
   /**
    * The room the player has asked to be put into, set by tapping Join on an
    * invite or by opening app/join/[code].tsx (a join link, a tapped invite
@@ -469,6 +470,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       clearInvite,
       gameInvites,
       dismissGameInvite,
+      hideGameInvite,
       acceptedInvite,
       acceptInvite,
       clearAcceptedInvite,
@@ -481,6 +483,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       gameInvites,
       clearInvite,
       dismissGameInvite,
+      hideGameInvite,
       acceptedInvite,
       acceptInvite,
       clearAcceptedInvite,
