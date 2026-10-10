@@ -8,7 +8,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.t
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
