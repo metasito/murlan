@@ -5,6 +5,7 @@
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { BombFx, Dust } from "../../lib/tokens.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
+import type { FlyDirection } from "../seatLayout.ts";
 import { MOTES } from "./air.ts";
 
 export type ParticleShape = "dot" | "spark" | "soft";
@@ -46,6 +47,7 @@ export type Rng = () => number;
 /** What a draw layer hands its owner: the one way into its simulation. */
 export interface ParticleEmitter {
   emit(spawns: readonly ParticleSpawn[]): void;
+  ember(from: FlyDirection, to: FlyDirection): void;
 }
 
 export function createParticles(budget: number = TRANSIENTS): Particles {

@@ -26,6 +26,7 @@ export function idleEmber(): EmberRun {
  * clockwise on screen (`getNextActivePlayer`, `seatDirection`); the mockup's turn runs the other way.
  */
 export function emberSweep(from: FlyDirection, to: FlyDirection): [number, number] {
+  "worklet";
   const a0 = ANGLE[from];
   let a1 = ANGLE[to];
   while (a1 < a0) a1 += 360;
