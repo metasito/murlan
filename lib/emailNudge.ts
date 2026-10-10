@@ -17,5 +17,5 @@ export function shouldShowAddEmailCard(user: { email?: string | null }): boolean
  * nothing has redeemed its token yet.
  */
 export function shouldShowVerifyEmailCard(user: { email?: string | null; emailVerified?: boolean }): boolean {
-  return Boolean(user.email) && !user.emailVerified;
+  return Boolean(user.email) && user.emailVerified === false;
 }

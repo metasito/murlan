@@ -6,6 +6,7 @@ import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -38,6 +39,7 @@ import RecoverScreen from '@/app/recover';
 import AuthScreen from '@/app/auth';
 import { AuthProvider } from '@/context/AuthContext';
 import { en as locale } from '@/locales/en';
+import { AUTH_USER_KEY } from '@/lib/storageKeys';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -211,6 +213,18 @@ describe('app/verify-email', () => {
     const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'signedin@example.test');
     await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
     await view.unmount();
+  });
+
+  it('offers no resend to a cached user whose verification is unknown', async () => {
+    await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify({ id: 'u1', username: 'Ana', email: 'cached@example.test' }));
+    mockFetch.mockReturnValue(new Promise(() => {}));
+    const view = await mount();
+
+    const emailInput = screen.getByLabelText(locale['auth.emailA11yLabel']);
+    await waitFor(() => expect(emailInput.props.value).toBe('cached@example.test'));
+    expect(screen.queryByRole('button', { name: locale['verifyEmail.resend'] })).toBeNull();
+    await view.unmount();
+    await AsyncStorage.clear();
   });
 
   it('prefills the email from the signed-in user when there is no route param', async () => {

@@ -37,6 +37,7 @@ function Probe() {
   return (
     <>
       <Text testID="user">{user ? user.username : 'none'}</Text>
+      <Text testID="user-json">{JSON.stringify(user)}</Text>
       <Text testID="loading">{String(loading)}</Text>
     </>
   );
@@ -77,6 +78,21 @@ describe('the boot check', () => {
 
     expect(view.getByTestId('user').props.children).toBe('Ana');
     expect(await AsyncStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify(CACHED));
+
+    await view.unmount();
+  });
+
+  it('drops a cached field of the wrong type rather than trusting it', async () => {
+    mockFetch.mockRejectedValue(new Error('Network request failed'));
+    await AsyncStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...CACHED, email: 7, emailVerified: 'yes', tutorialSeenAt: 0 })
+    );
+
+    const view = await mount();
+    await waitFor(() => expect(view.getByTestId('loading').props.children).toBe('false'));
+
+    expect(JSON.parse(view.getByTestId('user-json').props.children)).toEqual(CACHED);
 
     await view.unmount();
   });
