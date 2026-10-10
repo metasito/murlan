@@ -9,13 +9,16 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ALL_CAPTURE_STATES,
   CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
   captureGameState,
   captureStateById,
+  LINK_STATES,
   nextTurn,
   SEAT_COUNT_STATES,
 } from "../../lib/captureStates.ts";
+import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
 import { passedSeats } from "../../components/flightPhysics.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
@@ -62,9 +65,20 @@ describe("seat count states", () => {
   });
 
   test("no id is shared with a lamp state, and each is reachable by id", () => {
-    const ids = [...CAPTURE_STATES, ...SEAT_COUNT_STATES].map((s) => s.id);
+    const ids = ALL_CAPTURE_STATES.map((s) => s.id);
     assert.equal(new Set(ids).size, ids.length, "two capture states share an id");
-    for (const state of SEAT_COUNT_STATES) assert.deepEqual(captureStateById(state.id), state);
+    for (const state of ALL_CAPTURE_STATES) assert.deepEqual(captureStateById(state.id), state);
+  });
+});
+
+describe("link states", () => {
+  test("held is the table with the viewer's own link down, at the full grey", () => {
+    const held = captureStateById("held");
+    assert.ok(held, "no held state");
+    assert.ok(LINK_STATES.includes(held));
+    assert.ok(held.link && linkHeld(held.link), `held's link is ${held.link}`);
+    assert.equal(holdGrey(held.link), 0.85);
+    assert.equal(holdGrey("up"), 0);
   });
 });
 

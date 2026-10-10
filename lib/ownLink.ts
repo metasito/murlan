@@ -27,6 +27,8 @@ export function ownLinkAt(edges: LinkEdges, now: number): OwnLink {
 /** The states that hold the table: the grey, the freeze, the stopped clock. */
 export const linkHeld = (link: OwnLink) => link === "dropped" || link === "reconnecting" || link === "lost";
 
+export const holdGrey = (link: OwnLink) => (linkHeld(link) ? Reconnect.grey : 0);
+
 export type LinkPill = "lost" | "back" | "reconnecting" | "reconnected";
 
 /** `connected` is the socket's own flag, so a socket never up still reads as reconnecting; `otherBack` is another seat's return. */

@@ -3,7 +3,7 @@ import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } fr
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
-import { linkHeld, type OwnLink } from "@/lib/ownLink";
+import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
 import type { LampRig } from "./useLampRig";
 
@@ -20,8 +20,8 @@ export function greyFilter(g: number): string {
 export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
   const reduceMotion = usePrefersReducedMotion();
   const held = linkHeld(link);
-  const grey = useSharedValue(held ? Reconnect.grey : 0);
-  const ramp = useSharedValue({ to: held ? Reconnect.grey : 0, perMs: 0, started: true });
+  const grey = useSharedValue(holdGrey(link));
+  const ramp = useSharedValue({ to: holdGrey(link), perMs: 0, started: true });
   const was = useRef(link);
 
   useEffect(() => {
