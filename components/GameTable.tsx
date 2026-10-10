@@ -739,7 +739,7 @@ export function GameTable({
 
     return describeTableForA11y(
       {
-        isMyTurn,
+        isMyTurn: turnShown,
         currentTurnName: players[gameState.currentTurnIndex]?.name ?? "",
         myCardCount: handOnTable.length,
         lastPlay,
@@ -757,7 +757,7 @@ export function GameTable({
     players,
     viewerSeat,
     handOnTable.length,
-    isMyTurn,
+    turnShown,
     spectating,
     exchange,
     tableA11yStrings,
@@ -789,7 +789,7 @@ export function GameTable({
     shakeStyle,
     tableMotion,
   } = useTableFeedback({
-    isMyTurn,
+    isMyTurn: turnShown,
     isFinished,
     canPass,
     passCount: gameState.passCount,
