@@ -93,6 +93,12 @@ test("a bot opening a both-Jokers manche waits out the deal and the ceremony it 
     assert.deepEqual(game.gameState, dealt, "the opener played over the deal or the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, dealt, "the opener never played");
+    assert.equal(game.gameState.exchangePhase?.bothJokersException, true);
+    const opened = structuredClone(game.gameState);
+    t.mock.timers.tick(botMoveDelayMs() - 1);
+    assert.deepEqual(game.gameState, opened, "the next seat moved early");
+    t.mock.timers.tick(1);
+    assert.notDeepEqual(game.gameState, opened, "the next seat waited out the exchange floor again, after the manche was played into");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);
