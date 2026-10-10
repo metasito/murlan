@@ -223,6 +223,9 @@ interface CardItemProps {
    */
   cardW: number;
   cardH: number;
+  /** Where the card's centre rests, off the hand zone's centre: a resize carries the card in from the last one. */
+  restX: number;
+  restY: number;
   /** How far the gap under a held card pushes this one aside. */
   shiftX: number;
   /** The drag's discrete equivalents, for assistive technology (WCAG 2.5.7). */
@@ -272,6 +275,8 @@ function CardItemBase({
   isStartCard,
   cardW,
   cardH,
+  restX,
+  restY,
   shiftX,
   faceDown = false,
   giveable,
@@ -401,6 +406,19 @@ function CardItemBase({
   useLayoutEffect(() => {
     arcTilt.set(arcRot);
   }, [arcTilt, arcRot]);
+  const resizeFrom = useSharedValue({ dx: 0, dy: 0, s: 1 });
+  const resizing = useSharedValue(0);
+  const restRef = useRef({ x: restX, y: restY, w: cardW });
+  useLayoutEffect(() => {
+    const was = restRef.current;
+    restRef.current = { x: restX, y: restY, w: cardW };
+    if (was.w === cardW) return;
+    const [from, k] = [resizeFrom.get(), resizing.get()];
+    resizeFrom.set({ dx: was.x + from.dx * k - restX, dy: was.y + from.dy * k - restY, s: ((1 + (from.s - 1) * k) * was.w) / cardW });
+    resizing.set(1);
+    resizing.set(withTiming(0, { duration: motionMs("shift", reduceMotion), reduceMotion: ReduceMotion.Never }));
+  }, [restX, restY, cardW, reduceMotion, resizeFrom, resizing]);
+  useEffect(() => () => cancelAnimation(resizing), [resizing]);
   // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
   const pose = (d: number, arc: number, tiltNow: number, pressNow: number, shiftNow: number, lift: number, gone: boolean, now: number) => {
     "worklet";
@@ -424,8 +442,13 @@ function CardItemBase({
       scale: 1,
     };
   };
+  const resized = (p: ReturnType<typeof pose>, from: { dx: number; dy: number; s: number }, k: number) => {
+    "worklet";
+    return { ...p, tx: p.tx + from.dx * k, ty: p.ty + from.dy * k, scale: p.scale * (1 + (from.s - 1) * k) };
+  };
   const aStyle = useAnimatedStyle(() => {
-    const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+    const at = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+    const p = resized(at, resizeFrom.value, resizing.value);
     return {
       opacity: p.opacity,
       transform: [{ translateX: p.tx }, { translateY: p.ty }, { rotate: `${p.rot}deg` }, { scale: p.scale }],
@@ -444,7 +467,8 @@ function CardItemBase({
     true,
     () => {
       "worklet";
-      const p = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+      const at = pose(dealing.value, arcTilt.value, tilt.value, press.value, shift.value, liftY.value, !!hidden?.value.includes(cardId), dealClock ? dealClock.value : 0);
+      const p = resized(at, resizeFrom.value, resizing.value);
       if (!place || p.opacity <= 0) return null;
       return rectOf(p, liftY.value, glow.value, place.pan.value, place.lift.value, place.motion.value);
     }
@@ -562,6 +586,8 @@ export function cardItemPropsEqual(a: CardItemProps, b: CardItemProps): boolean 
     a.isStartCard === b.isStartCard &&
     a.cardW === b.cardW &&
     a.cardH === b.cardH &&
+    a.restX === b.restX &&
+    a.restY === b.restY &&
     a.shiftX === b.shiftX &&
     a.a11yActions === b.a11yActions &&
     a.onMove === b.onMove &&
@@ -780,9 +806,13 @@ export const StraightHand = React.memo(function StraightHand({
   const pan = useSharedValue(0);
   const panFrom = useSharedValue(0);
   const panLimit = overhang / 2;
+  const panReach = useSharedValue(panLimit);
+  useLayoutEffect(() => {
+    panReach.set(panLimit);
+  }, [panReach, panLimit]);
   const rowShiftStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: -(panLimit + panShown(pan.value, panLimit)) },
+      { translateX: -(panReach.value + panShown(pan.value, panReach.value)) },
     ],
   }));
   const panToFocused = (e: { target: unknown; currentTarget: unknown }) => {
@@ -1292,6 +1322,8 @@ export const StraightHand = React.memo(function StraightHand({
           left={rowMid + home.x}
           shiftX={at.x - home.x + gapShift(i)}
           bottom={-crop - home.y}
+          restX={home.x + cardW / 2}
+          restY={rowBase + crop + home.y - cardH / 2}
           arcRot={home.rot}
           onActivate={onActivate}
           shown={selection.shown}

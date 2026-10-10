@@ -3,14 +3,15 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import { HAND_SCALE, HAND_SCALE_ON_TURN } from '@/components/cardFaceModel';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
-import { Colors } from '@/lib/theme';
+import { Colors, Motion } from '@/lib/theme';
 import { en } from '@/locales/en';
-import { bootFeedback } from './helpers/feedback';
+import { bootFeedback, haptics } from './helpers/feedback';
 
 const HIDDEN_TOO = { includeHiddenElements: true };
 
@@ -47,6 +48,13 @@ const handCardW = () => {
   const [card] = screen.getAllByTestId(/^hand-card-/, HIDDEN_TOO);
   return StyleSheet.flatten(card.props.style).width as number;
 };
+const handCardScale = () => {
+  const [card] = screen.getAllByTestId(/^hand-card-/, HIDDEN_TOO);
+  const { transform = [] } = getAnimatedStyle(card) as { transform?: Record<string, number>[] };
+  return transform.find((t) => 'scale' in t)?.scale ?? 1;
+};
+const chipReads = (key: keyof typeof en) => within(screen.getByTestId('game-hud-stack')).queryByText(en[key], HIDDEN_TOO) !== null;
+const tableSays = (key: keyof typeof en) => JSON.stringify(screen.toJSON()).includes(en[key]);
 
 describe("the viewer's turn waits for the deal to land", () => {
   beforeEach(async () => {
@@ -64,6 +72,9 @@ describe("the viewer's turn waits for the deal to land", () => {
     expect(chipReadsYourTurn()).toBe(false);
     expect(chipIsLit()).toBe(false);
     expect(giocaIsLit()).toBe(false);
+    expect(chipReads('gameShared.dealing')).toBe(true);
+    expect(tableSays('gameTable.a11yYourTurn')).toBe(false);
+    expect(haptics()).not.toContain('impactLight');
     const dealtW = handCardW();
 
     for (let ms = 0; dealing() && ms < 3000; ms += 160) await advance(160);
@@ -71,7 +82,13 @@ describe("the viewer's turn waits for the deal to land", () => {
     expect(chipReadsYourTurn()).toBe(true);
     expect(chipIsLit()).toBe(true);
     expect(giocaIsLit()).toBe(true);
+    expect(tableSays('gameTable.a11yYourTurn')).toBe(true);
+    await advance(0);
+    expect(haptics()).toContain('impactLight');
     expect(handCardW() / dealtW).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
+    expect(handCardScale()).toBeLessThan(0.95);
+    await advance(Motion.duration.shift + 32);
+    expect(handCardScale()).toBeCloseTo(1, 2);
     await view.unmount();
   }, 20_000);
 });
