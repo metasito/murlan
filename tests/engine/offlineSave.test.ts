@@ -34,7 +34,6 @@ const save = (over = false) => ({
     firstPlayMade: false,
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, hands: [], over, winners: [], isDraw: false },
-  rematchAnswers: {},
   players: [
     { name: "Ana", type: "human" },
     { name: "Luan", type: "ai", personality: "luan" },
@@ -107,7 +106,6 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["no match", (s) => delete s.match],
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
     ["match without hands", (s) => { (s.match as Record<string, unknown>).hands = "nope"; }],
-    ["no rematch answers", (s) => delete s.rematchAnswers],
     ["no player setup", (s) => delete s.players],
     ["setup that disagrees with the seats", (s) => { s.players = [{ name: "Ana", type: "human" }]; }],
     ["an unknown game mode", (s) => { s.gameMode = "battle_royale"; }],

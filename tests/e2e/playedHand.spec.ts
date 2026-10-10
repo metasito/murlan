@@ -114,7 +114,6 @@ function save(gameState: Record<string, unknown>) {
       winners: [],
       isDraw: false,
     },
-    rematchAnswers: {},
     players: [
       { name: "Ana", type: "human" },
       { name: "Bea", type: "ai", personality: "luan" },

@@ -17,8 +17,7 @@ const SEAT0_REST = card('s0-4', '4');
 const SEAT1_CARD = card('s1-9', '9');
 
 /** Two humans at one device; seat 0 leads a fresh round. */
-const mockTable: { state: GameState; rematchOpen: boolean } = {
-  rematchOpen: false,
+const mockTable: { state: GameState } = {
   state: {
     players: [
       { id: 'player_0', name: 'Ana', hand: [SEAT0_LEAD, SEAT0_REST], type: 'human' },
@@ -47,8 +46,6 @@ const mockPlayCards = jest.fn((_ids: string[]) => {
   };
 });
 
-const mockAnswerRematch = jest.fn();
-
 jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: mockTable.state,
@@ -61,10 +58,6 @@ jest.mock('@/context/GameContext', () => ({
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    rematchPromptOpen: mockTable.rematchOpen,
-    rematchAnswers: {},
-    rematchTally: { yes: 0, total: 0 },
-    answerRematch: mockAnswerRematch,
     match: { length: 'single', target: 21 },
   }),
 }));
@@ -126,19 +119,6 @@ describe('pass and play', () => {
     expect(
       screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS - 2)}`)
     ).toBeTruthy();
-
-    await view.unmount();
-  });
-
-  it('records a rematch tap under the seat on move', async () => {
-    mockTable.state = { ...mockTable.state, currentTurnIndex: 1 };
-    mockTable.rematchOpen = true;
-    const view = await render(screenTree());
-
-    await act(async () => {
-      await fireEvent.press(screen.getByTestId('btn-rematch-yes'));
-    });
-    expect(mockAnswerRematch).toHaveBeenCalledWith('player_1', true);
 
     await view.unmount();
   });

@@ -271,7 +271,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, nadia);
   });
 
-  test("a rejoin at the results screen is told the rematch answers and votes so far", async () => {
+  test("a rejoin at the results screen is told the votes so far", async () => {
     const [pia, remy] = await makeClients(server, ["rejoin_tally_pia", "rejoin_tally_remy"]);
     const room = await setUpRoom([pia, remy], 2);
     gameOverOf(
@@ -279,43 +279,40 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
         pia.socket.emit("room:start");
       })
     );
-    const answered = waitFor(pia.socket, "game:rematch_intents", 5_000);
-    remy.socket.emit("game:rematch_intent", { wants: true });
-    await answered;
+    const voted = waitFor(pia.socket, "game:vote_state", 5_000);
+    remy.socket.emit("game:rematch_vote");
+    await voted;
 
-    const intents = waitFor<{ answers: Record<string, boolean> }>(pia.socket, "game:rematch_intents", 5_000);
     const votes = waitFor<{ votes: string[] }>(pia.socket, "game:vote_state", 5_000);
     pia.socket.emit("game:rejoin", { roomId: room.roomId });
-    assert.deepEqual((await intents).answers, { [remy.user.id]: true });
-    assert.deepEqual((await votes).votes, []);
+    assert.deepEqual((await votes).votes, [remy.user.id]);
     remy.socket.emit("room:leave");
     await closeTable(room.roomId, pia);
   });
 
-  test("a rematch the table never answered says why, and a late answer cannot reopen it", async () => {
-    const [liam] = await makeClients(server, ["rematch_error_liam"]);
-    const room = await setUpRoom([liam], 2);
-
-    // `matchLength: "single"` ends the match with the very first manche, and
-    // nobody answered the rematch question while it was being played.
+  test("after a finished partita nobody was asked about, every seat's vote starts a new one", async () => {
+    const { matchSnapshot } = await import("../helpers/liveGame.ts");
+    const [liam, mona] = await makeClients(server, ["rematch_unasked_liam", "rematch_unasked_mona"]);
+    const room = await setUpRoom([liam, mona], 2);
     gameOverOf(
-      await driveHandToExchangeOrOver([liam], () => {
-        liam.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
+      await driveHandToExchangeOrOver([liam, mona], () => {
+        liam.socket.emit("room:start", { matchLength: "single" });
       })
     );
+    assert.equal(matchSnapshot(room.roomId)?.matchOver, true);
+    assert.notDeepEqual(matchSnapshot(room.roomId)?.cumulativeScores, {});
 
-    const refused = waitFor<{ code: string }>(liam.socket, "game:error", 5_000);
-    liam.socket.emit("game:rematch_vote");
-    assert.equal(
-      (await refused).code,
-      "REMATCH_DECLINED",
-      "a bail-out must tell the player why instead of returning silently"
+    const refused = waitFor<{ code: string }>(liam.socket, "game:error", 2_000).then(
+      (e) => e.code,
+      () => null
     );
-
-    const late = waitFor<{ code: string }>(liam.socket, "game:error", 5_000);
-    liam.socket.emit("game:rematch_intent", { wants: true });
+    const dealt = waitForDeal(liam.socket);
     liam.socket.emit("game:rematch_vote");
-    assert.equal((await late).code, "REMATCH_DECLINED", "the verdict holds once the match is over");
+    mona.socket.emit("game:rematch_vote");
+    await dealt;
+    assert.equal(await refused, null, "a vote after the partita is never refused");
+    assert.equal(matchSnapshot(room.roomId)?.matchOver, false);
+    assert.deepEqual(matchSnapshot(room.roomId)?.cumulativeScores, {}, "the deal opens a new partita");
     await closeTable(room.roomId, liam);
   });
   test("an AFK exchange is announced as an exchange, not as a pass", async () => {
@@ -431,12 +428,6 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       [clients[2].user.id]: -1_000_000,
       [clients[3].user.id]: -1_000_000,
     });
-    // Answered during the closing manche: once it is over the verdict is final.
-    for (const c of clients) {
-      const registered = waitFor<{ total: number }>(a.socket, "game:rematch_intents");
-      c.socket.emit("game:rematch_intent", { wants: true });
-      await registered;
-    }
     gameOverOf(await driveHandToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,

@@ -152,7 +152,6 @@ function tradeBetweenBots() {
       exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: card("2", "spades"), bothJokersException: false },
     },
     match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    rematchAnswers: {},
     players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -331,7 +330,6 @@ function openingWithStartCard() {
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
     match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    rematchAnswers: {},
     players: [
       { name: "Ana", type: "human" },
       { name: "Besnik", type: "ai", personality: "luan" },

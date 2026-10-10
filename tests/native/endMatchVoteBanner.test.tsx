@@ -84,11 +84,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
     handRecorded: false,
     rematchVoteState: null,
     endMatchVoteState: mockEndMatchVoteState,
-    rematchIntents: { yes: 0, total: 0, answers: {} },
-    rematchPromptOpen: false,
     voteRematch: jest.fn(),
     voteToEndMatch: mockVoteToEndMatch,
-    answerRematch: jest.fn(),
   }),
   useOnlineExchange: () => ({
     exchangeAnnouncing: false,

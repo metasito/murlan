@@ -53,7 +53,6 @@ const handJustEndedSave = () =>
       winners: [],
       isDraw: false,
     },
-    rematchAnswers: {},
     players: FOUR_PLAYERS,
     gameMode: "free_for_all",
     dealFirstSeat: 1,

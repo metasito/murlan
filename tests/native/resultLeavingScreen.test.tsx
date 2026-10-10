@@ -39,7 +39,6 @@ jest.mock('@/context/gameHooks', () => {
       const [match, setMatch] = useState<object>(mockWonByBot);
       return {
         match,
-        tableWantsRematch: true,
         startNextHand: jest.fn(),
         startNewMatch: () => {
           mockStartNewMatch();

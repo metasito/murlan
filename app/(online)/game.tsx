@@ -84,11 +84,8 @@ export default function OnlineGameScreen() {
     handRecorded,
     rematchVoteState,
     endMatchVoteState,
-    rematchIntents,
-    rematchPromptOpen,
     voteRematch,
     voteToEndMatch,
-    answerRematch,
   } = useOnlineMatch();
 
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
@@ -190,8 +187,6 @@ export default function OnlineGameScreen() {
   const anyVacatedSeat = gameState.players.some(vacatedOf);
 
   const myUserId = user?.id ?? "";
-  const myRematchAnswer =
-    myUserId in rematchIntents.answers ? rematchIntents.answers[myUserId] : null;
   const hasVotedToEndMatch = endMatchVoteState?.votes.includes(myUserId) ?? false;
 
   // The results overlay sits above the table and needs the same safe-area pads
@@ -266,13 +261,6 @@ export default function OnlineGameScreen() {
         visible: exchangeAnnouncing,
         data: exchangeAnnounceData,
         onDismiss: acknowledgeExchange,
-      }}
-      rematchPrompt={{
-        visible: rematchPromptOpen,
-        myAnswer: myRematchAnswer,
-        yesCount: rematchIntents.yes,
-        seatCount: rematchIntents.total || gameState.players.length,
-        onAnswer: answerRematch,
       }}
       railExtra={<ReactionTrigger onPress={toggleReactionPanel} />}
       error={error}

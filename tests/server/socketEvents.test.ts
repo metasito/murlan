@@ -203,7 +203,7 @@ function wrappedEventsIn(source: string): string[] {
   return [...source.matchAll(WRAPPED_RE)].map((m) => m[2]);
 }
 
-const WRAPPED_EVENT_COUNT = 19; // #840 added room:setVisibility.
+const WRAPPED_EVENT_COUNT = 18; // #1422 retired game:rematch_intent.
 
 /**
  * The files the connection handler registers from. One list, so a family split

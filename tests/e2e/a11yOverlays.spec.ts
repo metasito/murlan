@@ -76,7 +76,6 @@ function midExchangeSave() {
       winners: [],
       isDraw: false,
     },
-    rematchAnswers: {},
     players: [
       { name: "Ana", type: "human" },
       { name: "Luan", type: "ai", personality: "luan" },

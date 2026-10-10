@@ -26,7 +26,6 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     joinCode: "AAAAAA",
     playerMap: {},
     rematchVotes: new Set(),
-    rematchIntents: new Map(),
     cumulativeScores: {},
     gameMode: "free_for_all",
     maxPlayers: 4,

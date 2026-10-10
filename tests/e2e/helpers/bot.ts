@@ -479,20 +479,6 @@ async function giveExchangeCard(page: Page): Promise<boolean> {
   return false;
 }
 
-/**
- * The rematch prompt (GameTable's `RematchPromptSlot`) is asked as a
- * non-blocking side panel while the closing hand of a match is still being
- * played, independent of whose turn it is. Declining by default keeps a driven
- * match bounded — otherwise how many hands a test plays would depend on how
- * the AI seats vote.
- */
-async function answerRematchPromptIfShown(page: Page, wants: boolean): Promise<void> {
-  const answer = page.locator(`[data-testid="btn-rematch-${wants ? "yes" : "no"}"]`);
-  if ((await answer.count()) > 0 && (await answer.isVisible())) {
-    await answer.click();
-  }
-}
-
 export interface DriveOptions {
   /** Resolves true once the game has reached a terminal, checkable screen. */
   isFinished: (page: Page) => Promise<boolean>;
@@ -520,8 +506,6 @@ export interface DriveOptions {
   maxCombosTried?: number;
   /** See `SearchTimeoutError`. Overrides `DEFAULT_MAX_SEARCH_MS`. */
   maxSearchMs?: number;
-  /** The viewer's answer to the rematch prompt; the AI seats abstain, so a yes carries the table. */
-  rematch?: boolean;
   log?: (line: string) => void;
 }
 
@@ -569,7 +553,6 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       );
     }
 
-    await answerRematchPromptIfShown(page, opts.rematch ?? false);
     // Every manche opens with one, so this cannot be done once before the loop.
     await dismissStartAnnouncement(page);
 

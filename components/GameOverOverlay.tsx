@@ -134,7 +134,7 @@ export function GameOverOverlay({
     : handOutcomeFor(gameState.players, gameState.rankings, handScores, viewerId, isTeamMode) ===
       "won";
 
-  // A match the table voted down offers no way to restart it.
+  // A match closed unscored, by vote or voided, offers no way to restart it.
   const canContinue = !match.over || match.continues;
   const hasVoted = voteState?.votes.includes(myUserId) ?? false;
   const voteCount = voteState?.votes.length ?? 0;
@@ -203,7 +203,7 @@ export function GameOverOverlay({
         <HandBreakdown
           myUserId={myUserId}
           ratingDelta={ratingDelta}
-          mancheCanFollow={canContinue}
+          mancheCanFollow={!match.over || hasVoted}
           handRecorded={handRecorded}
         />
       )}

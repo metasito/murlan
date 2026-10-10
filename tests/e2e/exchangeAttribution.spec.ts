@@ -51,7 +51,6 @@ function save(winnerIdx: number, loserIdx: number, hands: string[][], over: obje
       ...over,
     },
     match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    rematchAnswers: {},
     players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,

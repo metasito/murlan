@@ -1,6 +1,6 @@
 ##
-# Rematch flow: plays a real offline "Manche secca" (single-hand) match to
-# its end and confirms the rematch offer actually starts a new match — see
+# Nuova partita flow: plays a real offline "Manche secca" (single-hand) match to
+# its end and confirms "Nuova partita" actually starts a new match — see
 # #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one manche and
 # done" (lib/game/gameEngine.ts), so a single hand is a genuine match ending, not
 # a shortcut around one: it is the cheapest length that reaches the state
@@ -86,17 +86,6 @@ appId: "${MAESTRO_APP_ID}"
           waitToSettleTimeoutMs: 500
 
 # --- Pass whenever legal, until the hand empties and the result screen replaces the table ---
-#
-# `rematchPromptOpen` (lib/game/sharedGameFlow.ts) opens the side-panel vote once
-# hand counts drop low enough for the closing manche to matter — for a
-# single-hand match that is this hand, partway through, not from the start.
-# `tableWantsRematch` (context/GameContext.tsx) is a majority of the answers
-# it actually receives, and an AI seat abstains rather than voting, so with
-# one human seat the vote is the whole tally: never answering it is a "no"
-# by default, and "btn-nuova-partita" then never renders on the result
-# screen. Answering here, inside the loop that is already running while the
-# panel can appear, rather than waiting for it separately and costing the
-# flow a wait of its own.
 - repeat:
     times: 30
     while:
@@ -104,16 +93,12 @@ appId: "${MAESTRO_APP_ID}"
         id: "btn-passa"
     commands:
       - tapOn:
-          id: "btn-rematch-yes"
-          optional: true
-          waitToSettleTimeoutMs: 500
-      - tapOn:
           id: "btn-passa"
           optional: true
           waitToSettleTimeoutMs: 500
 
 # --- Result screen: a single-hand match is over as soon as the hand is, so the primary
-# action is the rematch offer rather than "Prossima manche" ---
+# action is "Nuova partita" rather than "Prossima manche" ---
 - extendedWaitUntil:
     visible:
       id: "btn-nuova-partita"

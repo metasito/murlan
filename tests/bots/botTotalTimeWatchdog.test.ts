@@ -22,9 +22,6 @@ import { TABLE } from "../e2e/helpers/selectors.ts";
 function fakePage(): Page {
   let poll = 0;
   const locator = (selector: string) => {
-    if (selector === '[data-testid="btn-rematch-no"]') {
-      return { count: async () => 0, isVisible: async () => false };
-    }
     // No manche-opening announcement in this scenario, so the drive loop's
     // gate-clearing step has nothing to clear (#817).
     if (selector === '[data-testid="start-reason-gate"]') {

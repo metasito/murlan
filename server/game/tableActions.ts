@@ -28,7 +28,6 @@ export type TableAction =
   | (TableActionBase & { kind: "pass" })
   | (TableActionBase & { kind: "exchange"; cardId: string })
   | (TableActionBase & { kind: "reaction"; emoji: string })
-  | (TableActionBase & { kind: "rematchIntent"; wants: boolean })
   | (TableActionBase & { kind: "rematchVote" })
   /** A vote to end the match outright, once a seat has been vacated — or its withdrawal. */
   | (TableActionBase & { kind: "endMatchVote"; wants: boolean })
@@ -88,7 +87,6 @@ export function takeoverMode(kind: TableActionKind): "create" | "restore" | "for
   return kind === "play" ||
     kind === "pass" ||
     kind === "exchange" ||
-    kind === "rematchIntent" ||
     kind === "rematchVote" ||
     kind === "endMatchVote" ||
     kind === "rejoin" ||

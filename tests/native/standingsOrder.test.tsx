@@ -16,7 +16,6 @@ jest.mock('@/context/GameContext', () => ({
   useGame: () => ({
     gameState: mockState,
     match: mockMatch,
-    tableWantsRematch: false,
     startNextHand: () => {},
     startNewMatch: () => {},
     chooseExchangeCard: () => {},

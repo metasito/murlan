@@ -550,7 +550,7 @@ stall each fail the gate). Run `tests/tooling/diagnosticsGate.test.ts`,
   today's partita ending offers a rematch only through it: `app/result.tsx` shows "Nuova partita"
   only on a majority of its answers, and `rematchRefused` in `server/game/tableHandlers.ts` refuses
   the online vote otherwise, a rule recorded in `docs/GAME-RULES.md` § Decisions. Removing
-  `components/table/rematchPrompt.tsx` alone would leave no rematch at all, so #1267 removes it
+  the prompt component alone would leave no rematch at all, so #1267 removes it
   together with the rule change and the board that asks instead. The lead adds this to #1267.
 - **Old task 13 vs #1267 (the board):** leave to the ticket (dropped above).
 - **Task 7 vs #1266 (the manche ends on the table):** no conflict. "Waiting for the others" is
