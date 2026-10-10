@@ -29,6 +29,10 @@ appId: "${MAESTRO_APP_ID}"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: pile-right
+- openLink: "murlan://capture?state=play-right-landed"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: play-right-landed
 - openLink: "murlan://capture?state=held"
 - waitForAnimationToEnd:
     timeout: 3000

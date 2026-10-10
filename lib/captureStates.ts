@@ -55,8 +55,8 @@ export interface CaptureState {
 }
 
 /**
- * Four lamp positions and one pile, which is the smallest set that has ever
- * caught anything. The turn is half of a state: the felt's pool, each seat's
+ * Four lamp positions and two piles, one flown from the viewer and one from a
+ * side seat, which is the smallest set that has ever caught anything. The turn is half of a state: the felt's pool, each seat's
  * ring and name and both action buttons all key off it, and
  * every capture taken before #205 was of the viewer's own turn — so the lamp
  * was only ever photographed at the bottom edge.
@@ -100,6 +100,14 @@ export const CAPTURE_STATES: readonly CaptureState[] = [
     playerCount: 4,
     turn: 1,
     side: "right",
+    pile: true,
+  },
+  {
+    id: "play-right-landed",
+    label: "Drita's turn after Luan's combination — the right seat's play landed on the pile",
+    playerCount: 4,
+    turn: 2,
+    side: "top",
     pile: true,
   },
   {
