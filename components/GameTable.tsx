@@ -127,7 +127,7 @@ import { useHandOrder } from "@/components/useHandOrder";
 import { useSameCards } from "@/components/useSameCards";
 import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
-import { warmCourtArt } from "@/components/CardView";
+import { warmCardArt } from "@/components/CardView";
 import { BombBurst, BombFlash, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
@@ -888,7 +888,7 @@ export function GameTable({
   useEffect(() => {
     // Fast game -> result -> game navigation makes these cancel each other, and an
     // unhandled rejection here is fatal on device.
-    warmCourtArt();
+    warmCardArt();
     return () => {
       ScreenOrientation.unlockAsync().catch(() => {});
       nativeOrientation?.release().catch(() => {});

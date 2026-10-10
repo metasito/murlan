@@ -90,7 +90,7 @@ test("the felts and card backs are the lantern colours the owner kept", () => {
       oro:        { field: ["#7A5528", "#654520", "#503718", "#3B2811", "#271A0A"], ink: "#E2BE62", lattice: 7, starPoints: 8 },
       rubino:     { field: ["#5E1B28", "#4C1520", "#3A1018", "#2A0B11", "#1A060A"], ink: "#C9A84C", lattice: 7, starPoints: 8 },
       zaffiro:    { field: ["#1C3B63", "#172F50", "#12243E", "#0C192C", "#07101C"], ink: "#BFC3C8", lattice: 9, starPoints: 6 },
-      inchiostro: { field: ["#34302C", "#2A2623", "#201D1A", "#171513", "#0E0C0B"], ink: "#C9A84C", lattice: 5, starPoints: 4 },
+      inchiostro: { field: ["#34302C", "#2A2623", "#201D1A", "#171513", "#0E0C0B"], ink: "#C9A84C", lattice: 5, starPoints: 4, emboss: true },
     }
   );
 });

@@ -13,7 +13,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, G, Rect } from "react-native-svg";
 import { Card, Suit, getCardDisplayRank } from "@/lib/game/gameEngine";
 import {
-  CardFaceGradient,
   cardShadow,
   Colors,
   FontSize,
@@ -23,7 +22,7 @@ import {
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
-import { getCardBack, useCardBack, type CardBackId } from "@/lib/cosmetics";
+import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useTranslation } from "@/lib/i18n";
 import { cardSpokenName } from "@/lib/cardNames";
@@ -36,7 +35,6 @@ import {
   COURT_RANKS,
   courtArtRect,
   faceMarks,
-  getLattice,
   INDEX_SUIT_SIZE,
   INDEX_SUIT_Y,
   INDEX_TEXT_W,
@@ -292,17 +290,18 @@ const COURT_ART: Record<string, () => number> = {
   K_spades:     () => require("../assets/images/cards/king_of_spades.png") as number,
 };
 
-let courtArtWarmed: Promise<void> | null = null;
+let cardArtWarmed: Promise<void> | null = null;
 
 /**
- * Fetches the twelve court bitmaps once per session, so a J/Q/K arriving from
- * an opponent's hand is already decoded when it lands rather than popping in
- * a beat later (#838). Fire-and-forget: a rejected load leaves a card with no
- * figure, the same as before this existed, rather than throwing into the table.
+ * Fetches the court, back and stock bitmaps once per session, so a card
+ * arriving from an opponent's hand is already decoded when it lands rather
+ * than popping in a beat later (#838). Fire-and-forget: a rejected load leaves
+ * a card with no art rather than throwing into the table.
  */
-export function warmCourtArt(): void {
-  if (courtArtWarmed) return;
-  courtArtWarmed = Asset.loadAsync(Object.values(COURT_ART).map((load) => load()))
+export function warmCardArt(): void {
+  if (cardArtWarmed) return;
+  const art = [...Object.values(COURT_ART), ...Object.values(BACK_ART), STOCK_ART];
+  cardArtWarmed = Asset.loadAsync(art.map((load) => load()))
     .then(() => undefined)
     .catch(() => undefined);
 }
@@ -321,52 +320,19 @@ function CourtArt({ card, w, h }: { card: Card; w: number; h: number }) {
   );
 }
 
-// ─── Card back ────────────────────────────────────────────────────────────────
+// ─── Card back and stock ──────────────────────────────────────────────────────
 //
-// Two Paths and a medallion.
+// Baked by scripts/bake-card-art.mjs; tests/tooling/cardArt.test.ts fails on a stale one.
 
-/** A `points`-pointed star as one polygon: alternate long and short radii. */
-function starPath(cx: number, cy: number, r: number, points: number): string {
-  const verts: string[] = [];
-  for (let i = 0; i < points * 2; i++) {
-    const rad = (Math.PI * i) / points - Math.PI / 2;
-    const rr = i % 2 === 0 ? r : r * 0.46;
-    verts.push(`${(cx + Math.cos(rad) * rr).toFixed(2)},${(cy + Math.sin(rad) * rr).toFixed(2)}`);
-  }
-  return `M${verts.join(" L")} Z`;
-}
+const BACK_ART: Record<CardBackId, () => number> = {
+  smeraldo:   () => require("../assets/images/cards/back_smeraldo.webp") as number,
+  oro:        () => require("../assets/images/cards/back_oro.webp") as number,
+  rubino:     () => require("../assets/images/cards/back_rubino.webp") as number,
+  zaffiro:    () => require("../assets/images/cards/back_zaffiro.webp") as number,
+  inchiostro: () => require("../assets/images/cards/back_inchiostro.webp") as number,
+};
 
-const CardBackArt = React.memo(function CardBackArt({
-  width: w,
-  height: h,
-  back,
-}: {
-  width: number;
-  height: number;
-  back: ReturnType<typeof useCardBack>;
-}) {
-  const cx = w / 2;
-  const cy = h / 2;
-  const r = Math.min(w, h) * 0.19;
-  const ink = back.ink;
-  const field = back.field;
-  return (
-    <>
-      <LinearGradient
-        colors={[field[1], field[2], field[4]]}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <Svg width={w} height={h} style={StyleSheet.absoluteFill} pointerEvents="none">
-        <Path d={getLattice(w, h, back.lattice)} stroke={ink} strokeOpacity={0.13} strokeWidth={0.6} fill="none" />
-        <Path d={starPath(cx, cy, r, back.starPoints)} fill={ink} fillOpacity={0.55} />
-        <Circle cx={cx} cy={cy} r={r * 0.42} fill={field[4]} />
-        <Circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke={ink} strokeOpacity={0.7} strokeWidth={0.8} />
-      </Svg>
-    </>
-  );
-});
+const STOCK_ART = () => require("../assets/images/cards/stock.webp") as number;
 
 /**
  * The gold glow under a selected or catching card, until the felt draws it. Its own component: a
@@ -482,8 +448,9 @@ function CardViewBase({
     decorative ? undefined : (hint ?? (selected ? t("cardView.selectedA11yHint") : undefined))
   );
   const reduceMotion = usePrefersReducedMotion();
-  const chosenBack = useCardBack();
-  const back = backId ? getCardBack(backId) : chosenBack;
+  const chosenBack = useCardBackId();
+  const backKey = backId ? cardBackId(backId) : chosenBack;
+  const back = getCardBack(backKey);
   const translateY = useSharedValue(0);
   // Finger-down acknowledgement. Separate from the selection lift so a press
   // reads instantly even when the resulting selection is rejected.
@@ -551,7 +518,7 @@ function CardViewBase({
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
-          <CardBackArt width={w} height={h} back={back} />
+          <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
           <TopLight light={light} />
         </View>
       </Animated.View>
@@ -641,13 +608,7 @@ function CardViewBase({
           style={[styles.card, styles.stock, { width: w, height: h }, stockStyle]}
         >
           {selectedHint.node}
-          <LinearGradient
-            colors={CardFaceGradient}
-            locations={[0, 0.55, 1]}
-            start={{ x: 0.1, y: 0 }}
-            end={{ x: 0.9, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
+          <Image source={STOCK_ART()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText

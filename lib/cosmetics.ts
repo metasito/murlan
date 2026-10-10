@@ -31,8 +31,12 @@ export function isTableFeltId(value: unknown): value is TableFeltId {
 }
 
 /** Always resolves: an unknown or absent id falls back to the default. */
+export function cardBackId(id: string | undefined): CardBackId {
+  return isCardBackId(id) ? id : DEFAULT_CARD_BACK;
+}
+
 export function getCardBack(id: string | undefined) {
-  return CardBacks[isCardBackId(id) ? id : DEFAULT_CARD_BACK];
+  return CardBacks[cardBackId(id)];
 }
 
 /** Five gradient stops, light centre to dark rim — a felt's or a card back's own field. */
@@ -83,8 +87,8 @@ const readCardBack = () => currentCardBack;
 const readTableFelt = () => currentTableFelt;
 
 /** The card back the player chose. */
-export function useCardBack() {
-  return getCardBack(useSyncExternalStore(subscribe, readCardBack, readCardBack));
+export function useCardBackId(): CardBackId {
+  return useSyncExternalStore(subscribe, readCardBack, readCardBack);
 }
 
 /** The felt the player chose, as its five gradient stops. */

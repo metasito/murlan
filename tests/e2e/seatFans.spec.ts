@@ -48,11 +48,9 @@ async function seatGeometry(page: Page): Promise<SeatGeometry[]> {
       );
       if (!seat) continue;
 
-      // A back is an <svg>-bearing card with no accessible name — the ring is
-      // the only text-bearing disc in a seat, so the two never collide.
-      const backs = [...seat.querySelectorAll("svg")]
-        .map((el) => el.parentElement?.getBoundingClientRect())
-        .filter((r): r is DOMRect => !!r && r.width > 0 && r.height > 0);
+      const backs = [...seat.querySelectorAll('[data-testid="card-box-back"]')]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0 && r.height > 0);
       if (backs.length === 0) continue;
 
       const union = {

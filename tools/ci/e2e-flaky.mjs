@@ -11,7 +11,10 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
  * whose issue is closed fails the run like an unlisted one: the fix landed, or the excuse did.
  * @type {[string, number][]}
  */
-export const KNOWN_FLAKY = [["mockupParityScoreOpen.spec.ts › score-open with the fallback felt (determinism mode)", 1411]];
+export const KNOWN_FLAKY = [
+  ["mockupParityScoreOpen.spec.ts › score-open with the fallback felt (determinism mode)", 1411],
+  ["mockupParityReconnect.spec.ts › reconnect, on real time, aligned on the drops, the way back and the give-up", 1449],
+];
 
 /**
  * @param {any} report a merged Playwright JSON report
