@@ -623,7 +623,6 @@ export const TopOppSlot = memo(function TopOppSlot({
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID="top-seat"
@@ -802,7 +801,6 @@ export const SideOppSlot = memo(function SideOppSlot({
   const displayed = Math.min(held, arrived);
   const isLeft = side === "left";
   const mark = markOf(marking);
-  const lit = seatLit(isActive, mark);
   return (
     <View
       testID={`side-seat-${side}`}
