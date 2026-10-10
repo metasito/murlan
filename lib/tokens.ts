@@ -3,10 +3,6 @@
 // adds the platform-aware Shadow.
 import type { TextStyle, ViewStyle } from "react-native";
 
-// Named once because two unrelated roles want the same ink: the second-place
-// podium and the silver card back.
-const SILVER = '#C0C0C0';
-
 export const Colors = {
   bg:           '#031008',
   // `bg` at zero alpha, for the clear end of a fade over it. Spelt out rather
@@ -125,7 +121,7 @@ export const Colors = {
   bombFill:    'rgba(255,80,80,0.22)',
 
   podiumGold:   '#C9A84C',
-  podiumSilver: SILVER,
+  podiumSilver: '#C0C0C0',
   podiumBronze: '#CD7F32',
 };
 
@@ -338,9 +334,9 @@ export const Gradient = {
 // floor for all four — pinned by tests/ui-rules/cosmetics.test.ts.
 export const FeltGradients = {
   verde:    ['#2E9F62', '#23854F', '#186B41', '#0F4E31', '#093320'],
-  blu:      ['#2288C4', '#1C6FA2', '#155780', '#0F3F5E', '#092A3E'],
-  bordeaux: ['#B03D4C', '#94323F', '#782833', '#5A1E27', '#3D141B'],
-  notte:    ['#5D6874', '#4E5862', '#3F4750', '#31373E', '#23272C'],
+  blu:      ['#1F8A93', '#197279', '#135A60', '#0D4247', '#082C30'],
+  bordeaux: ['#9A3A5E', '#80304E', '#66263F', '#4C1C2F', '#331320'],
+  notte:    ['#566878', '#475765', '#394652', '#2B353F', '#1E252C'],
 } as const;
 
 /** The default felt. Anything not themed by the player's choice uses this. */
@@ -349,17 +345,16 @@ export const FeltGradient = FeltGradients.verde;
 // Card backs. Only three things survive at card size — the ink, the field
 // colour and how dense the lattice is — so a back is those plus a star count,
 // not a bespoke drawing. The field is card stock, not cloth: its own five-stop
-// gradient, dark enough to hold the ink lattice against any felt, so repainting
-// FeltGradients can never repaint a back.
+// gradient, so repainting FeltGradients can never repaint a back.
 export const CardBacks = {
   // The prototype's own back, and the default: a green field, so an opponent's
   // fan still reads as cards on the far side of the table. Every other back is
   // dark enough to vanish into the felt once the lamp is standing elsewhere.
   smeraldo:   { field: ['#1E6544', '#19583B', '#144B32', '#0F3E29', '#0A3120'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  oro:        { field: ['#3A2C13', '#2E2210', '#241A0B', '#180F06', '#0D0803'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  rubino:     { field: ['#4A1622', '#3A111A', '#2C0C13', '#1E080D', '#120507'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  zaffiro:    { field: ['#12294A', '#0E2038', '#0A182A', '#07101D', '#040A10'], ink: SILVER,      lattice: 9, starPoints: 6 },
-  inchiostro: { field: ['#2A2A2E', '#212124', '#191919', '#111112', '#0A0A0B'], ink: Colors.gold, lattice: 5, starPoints: 4 },
+  oro:        { field: ['#7A5528', '#654520', '#503718', '#3B2811', '#271A0A'], ink: '#E2BE62',   lattice: 7, starPoints: 8 },
+  rubino:     { field: ['#5E1B28', '#4C1520', '#3A1018', '#2A0B11', '#1A060A'], ink: Colors.gold, lattice: 7, starPoints: 8 },
+  zaffiro:    { field: ['#1C3B63', '#172F50', '#12243E', '#0C192C', '#07101C'], ink: '#BFC3C8',   lattice: 9, starPoints: 6 },
+  inchiostro: { field: ['#34302C', '#2A2623', '#201D1A', '#171513', '#0E0C0B'], ink: Colors.gold, lattice: 5, starPoints: 4 },
 } as const;
 
 // Ordered by value, and only the order says so: nothing in slim, snug, cosy,
