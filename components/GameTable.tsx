@@ -693,6 +693,8 @@ export function GameTable({
     entryMs,
     reduceMotion,
   });
+  // What the table shows, not what the player may do: `canPass` and the clock keep the true turn.
+  const turnShown = isMyTurn && !deal.dealing;
   const particles = useRef<ParticleEmitter>(null);
   const onDealt = useCallback(
     (x: number, y: number) => {
@@ -807,7 +809,7 @@ export function GameTable({
   });
 
   const { style: handLiftStyle, lift: handLift } = useHandLift(
-    (isMyTurn && !isFinished && !exchange.active) || exchangeIsMine,
+    (turnShown && !isFinished && !exchange.active) || exchangeIsMine,
     scale
   );
 
@@ -1032,7 +1034,8 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerOnMove = shownTurnIsMine && !isFinished && !gameState.gameOver;
+  const viewerClockShown = shownTurnIsMine && !isFinished && !gameState.gameOver;
+  const viewerOnMove = viewerClockShown && !deal.dealing;
   const onMoveName = players[shownTurnIndex]?.name ?? "";
 
   // The seat on move sweeps its own rim over the same window the viewer's chip
@@ -1172,21 +1175,25 @@ export function GameTable({
                   exchangeChip ??
                   (gameState.gameOver
                     ? t("gameShared.handOver")
-                    : viewerOnMove
-                      ? t("gameShared.yourTurn")
-                      : t("gameShared.turnOf", { name: onMoveName }))
+                    : deal.dealing
+                      ? t("gameShared.dealing")
+                      : viewerOnMove
+                        ? t("gameShared.yourTurn")
+                        : t("gameShared.turnOf", { name: onMoveName }))
                 }
                 spokenSeat={
                   exchangeChip ??
                   (gameState.gameOver
                     ? t("gameTable.a11yHandOver")
-                    : viewerOnMove
-                      ? t("gameTable.a11yYourTurn")
-                      : t("gameTable.a11yTurnOf", { name: onMoveName }))
+                    : deal.dealing
+                      ? t("gameTable.a11yDealing")
+                      : viewerOnMove
+                        ? t("gameTable.a11yYourTurn")
+                        : t("gameTable.a11yTurnOf", { name: onMoveName }))
                 }
                 seconds={turnTimer?.seconds ?? 0}
                 active={timerActive}
-                revealed={viewerOnMove}
+                revealed={viewerClockShown}
                 resetKey={`${turnToken}|${turnTimer?.resetKey ?? ""}`}
                 onExpire={turnTimer?.onExpire}
                 frozen={clockHeld}
@@ -1540,7 +1547,7 @@ export function GameTable({
                     refuseHint={t("exchange.cardA11yNotGiveable")}
                     availW={frame.handAvailW}
                     roomW={frame.handRoomW}
-                    isMyTurn={isMyTurn && !isFinished}
+                    isMyTurn={turnShown && !isFinished}
                     scale={scale}
                     // Off whenever a card is held back or lent: the fan is drawn
                     // without the state's hand, but `arrange` moves within it, so
@@ -1574,7 +1581,7 @@ export function GameTable({
                   isMyTurn={isMyTurn}
                   isFinished={isFinished}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
-                  lit={exchangeIsMine || (isMyTurn && !isFinished && !exchange.active)}
+                  lit={exchangeIsMine || (turnShown && !isFinished && !exchange.active)}
                   rejectX={giocaRejectX}
                   rejectPlay={rejectPlay}
                   onRefuse={showRefusal}
