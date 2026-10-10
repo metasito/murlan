@@ -1,14 +1,10 @@
-// tests/engine/matchState.test.ts — the seat a results board celebrates.
-//
-// Both modes draw the same board, so the name on it is derived once. What the
-// candidates are differs (offline has a third fallback the overlay does not),
-// but the rule for reading them cannot.
+// tests/engine/matchState.test.ts — the seat a finished manche or partita celebrates.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebration, isDrawnHand, handOutcomeFor } from "../../lib/game/matchState.ts";
+import { celebratesViewer, isDrawnHand, handOutcomeFor } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
@@ -20,39 +16,34 @@ const TABLE = [
   { id: "player_2", name: "Carl", team: "A" },
 ];
 
-const teamLabel = (team: string) => `Team ${team}`;
-
-describe("celebration", () => {
-  test("takes the first candidate that names a seat", () => {
-    assert.equal(celebration(TABLE, ["player_1", "player_0"], null), "Bob");
+describe("celebratesViewer", () => {
+  test("reads the first candidate that names a seat", () => {
+    assert.equal(celebratesViewer(TABLE, ["player_1", "player_0"], "player_1", false), true);
+    assert.equal(celebratesViewer(TABLE, ["player_1", "player_0"], "player_0", false), false);
   });
 
   // A client that rejoins a table which finished while it was away never
   // receives `game:over`, so it holds `over: true` with no winners at all.
-  test("passes over an undefined candidate rather than rendering nothing", () => {
-    assert.equal(celebration(TABLE, [undefined, "player_2"], null), "Carl");
+  test("passes over an undefined candidate", () => {
+    assert.equal(celebratesViewer(TABLE, [undefined, "player_2"], "player_2", false), true);
   });
 
   // The winner id outliving the seat it named is the same shape as the hole
   // above, and the one a `find(c => c !== undefined)` would swallow: the
   // candidate is present, so the fallback behind it never gets its turn.
   test("passes over a candidate that names no seat", () => {
-    assert.equal(celebration(TABLE, ["player_9", "player_0"], null), "Alice");
+    assert.equal(celebratesViewer(TABLE, ["player_9", "player_0"], "player_0", false), true);
   });
 
-  test("names the team rather than the seat when one is asked for", () => {
-    assert.equal(celebration(TABLE, ["player_1"], teamLabel), "Team B");
+  test("celebrates the winner's teammate in team mode only", () => {
+    assert.equal(celebratesViewer(TABLE, ["player_0"], "player_2", true), true);
+    assert.equal(celebratesViewer(TABLE, ["player_0"], "player_2", false), false);
+    assert.equal(celebratesViewer(TABLE, ["player_0"], "player_1", true), false);
   });
 
-  test("names the seat where a team mode table has none", () => {
-    assert.equal(celebration([{ id: "p", name: "Solo" }], ["p"], teamLabel), "Solo");
-  });
-
-  // Never the id: it reaches the screen as `player_0`, which reads as a
-  // rendering fault rather than as the missing name it is.
-  test("is empty when no candidate names a seat", () => {
-    assert.equal(celebration(TABLE, [undefined, "player_9"], null), "");
-    assert.equal(celebration(TABLE, [], null), "");
+  test("celebrates nobody when no candidate names a seat, or the viewer holds none", () => {
+    assert.equal(celebratesViewer(TABLE, [undefined, "player_9"], "player_0", false), false);
+    assert.equal(celebratesViewer(TABLE, ["player_0"], undefined, false), false);
   });
 });
 
@@ -102,10 +93,6 @@ describe("isDrawnHand", () => {
   });
 });
 
-// The one function every win/lose cue reads — the table's own sting
-// (components/useTableFeedback.ts) and the results board (celebration/
-// celebratesViewer) both, so a teams-mode 3-3 manche celebrates no seat on both
-// paths rather than each recomputing its own placement check (#777).
 describe("handOutcomeFor", () => {
   const TEAMS_TABLE = [
     { id: "player_0", team: "A" },
