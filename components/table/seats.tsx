@@ -502,12 +502,13 @@ function SeatRing({
         start={{ x: 0.3, y: 0.25 }}
         end={{ x: 1, y: 1 }}
         colors={SEAT_DISC_FILL}
+        testID="seat-disc"
         style={[
           seatStyles.disc,
           lit && seatStyles.discActive,
           { width: size, height: size, borderRadius: size / 2 },
           lit
-            ? makeShadow(Colors.goldLit, 0, 0, 0.38, SEAT_GLOW * scale, 0)
+            ? makeShadow(Colors.goldLit, 0, 0, SEAT_GLOW.opacity, mockupPx(SEAT_GLOW.blur, scale), 0)
             : makeShadow(Colors.shadow, 0, SEAT_SHADOW_Y * scale, 0.62, SEAT_SHADOW * scale, 0),
         ]}
       >
@@ -866,7 +867,7 @@ const SEAT_NAME_FS = 11;
 /** The disc's seated shadow, and the glow that replaces it on the seat on move. */
 const SEAT_SHADOW = 9;
 const SEAT_SHADOW_Y = 3;
-const SEAT_GLOW = 22;
+const SEAT_GLOW = { blur: 14, opacity: 0.35 } as const;
 /** The initial in the middle of the disc. */
 const SEAT_INITIAL_FS = 13;
 const SEAT_DISC_FILL = [Colors.seatDisc, Colors.seatDiscDeep] as const;
@@ -930,7 +931,7 @@ const seatStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.goldSoft,
   },
-  discActive: { borderColor: Colors.goldLit },
+  discActive: { borderColor: Colors.goldLitDisc },
   discInitials: {
     fontFamily: "Rajdhani_700Bold",
     color: Colors.text,

@@ -433,7 +433,9 @@ moments, each a checkable frame property rather than a claim of quality:
 - **Turn hand-off.** At the single frame nearest the midpoint of a hand-off, the outgoing
   seat's indicator and the incoming seat's indicator never both measure at full opacity —
   their combined opacity at that frame stays under a named ceiling (e.g. 140%) — so the
-  table never shows two simultaneously "current" seats even mid-transition.
+  table never shows two simultaneously "current" seats even mid-transition. The clocks go
+  further, one out before the other in, so no frame has two above zero —
+  `tests/native/clockCrossFade.test.tsx`.
 - **Win.** The manche-won and partita-won tiers currently share one shape (hold, then shake,
   then lamp/flare) at different magnitudes. A frame capture at the partita tier's peak
   should show at least one channel absent from the manche tier entirely (not merely
