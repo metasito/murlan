@@ -1,8 +1,8 @@
 // tests/native/passAndPlayHandoff.test.tsx — pass and play hands the table to
 // whichever human seat is on move (#1070).
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { activate } from './tapHelpers';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { Card, GameState } from '@/lib/game/gameEngine';
@@ -89,9 +89,16 @@ const screenTree = () => (
 );
 
 const cardShown = (c: Card) => screen.queryByLabelText(cardSpokenName(c, t)) !== null;
+const pill = () =>
+  within(screen.getByTestId('game-hud-stack')).getByText(/'s turn$/, { includeHiddenElements: true }).props.children;
 
 describe('pass and play', () => {
-  it('gives seat 1 its own hand, an enabled pass and a running clock once the turn reaches it', async () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('gives seat 1 its own hand and an enabled pass at once, and its clock once the pill turns to it', async () => {
+    jest.useFakeTimers();
     const view = await render(screenTree());
     expect(cardShown(SEAT0_REST)).toBe(true);
     expect(cardShown(SEAT1_CARD)).toBe(false);
@@ -112,8 +119,12 @@ describe('pass and play', () => {
     expect(screen.getByTestId('btn-passa').props.accessibilityState).toEqual(
       expect.objectContaining({ disabled: false })
     );
+    expect(pill()).toBe("Ana's turn");
+    await act(async () => {
+      jest.advanceTimersByTime(2100);
+    });
     expect(
-      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS)}`)
+      screen.getByLabelText(`${t('gameTable.a11yYourTurn')} ${tn('gameTable.a11ySecondsLeft', HUMAN_TURN_SECONDS - 2)}`)
     ).toBeTruthy();
 
     await view.unmount();
