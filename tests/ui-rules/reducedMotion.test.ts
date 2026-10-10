@@ -16,7 +16,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { trackedRootFiles } from "../helpers/trackedFiles.ts";
-import { Motion } from "../../lib/tokens.ts";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 

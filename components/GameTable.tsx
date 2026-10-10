@@ -1616,7 +1616,7 @@ const styles = StyleSheet.create({
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
-  partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: Colors.shadow },
+  partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
 
 
