@@ -7,11 +7,13 @@ import {
   AlphaType,
   BlurStyle,
   Canvas,
+  ColorMatrix,
   ColorType,
   type CanvasRef,
   useCanvasRef,
   Group,
   Image,
+  Paint,
   PaintStyle,
   Picture,
   RadialGradient,
@@ -24,11 +26,13 @@ import {
   type SkRRect,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
+import { GREY_VISIBLE, greyMatrix } from "./linkGrey";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
@@ -43,6 +47,8 @@ export interface FeltCanvasProps {
   /** Called once the canvas has drawn its first frame. */
   onReady?: () => void;
   cards: CardTable;
+  /** `useLinkHold`'s grey: drawn here on iOS only, where the view filter is not. */
+  grey?: SharedValue<number>;
 }
 
 const CLOTH = Skia.RuntimeEffect.Make(CLOTH_SKSL);
@@ -268,7 +274,25 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   return data instanceof Uint8Array ? { width, height, data } : null;
 }
 
-export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards }: FeltCanvasProps) {
+/** Mounted only while grey shows: a layer is an offscreen pass on every frame. */
+function useGreyLayer(grey: SharedValue<number> | undefined) {
+  const [on, setOn] = useState(false);
+  useAnimatedReaction(
+    () => IOS && grey !== undefined && grey.value > GREY_VISIBLE,
+    (now, before) => {
+      if (now !== before) scheduleOnRN(setOn, now);
+    }
+  );
+  const matrix = useDerivedValue(() => greyMatrix(grey?.value ?? 0));
+  return on ? (
+    <Paint>
+      <ColorMatrix matrix={matrix} />
+    </Paint>
+  ) : undefined;
+}
+
+export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCanvasProps) {
+  const greyLayer = useGreyLayer(grey);
   const canvas = useCanvasRef();
   const snapshot = useCallback(() => snapshotPixels(canvas.current), [canvas]);
   useBenchHandle("feltSnapshot", snapshot);
@@ -326,7 +350,7 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards }: FeltCanvasPr
   const { width, height } = DESIGN;
   return (
     <Canvas ref={canvas} opaque={opaque} style={StyleSheet.absoluteFill} testID="felt-skia" pointerEvents="none">
-      <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
+      <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Rect x={0} y={0} width={width} height={height} color={ROOM} />
         {rail && <Image image={rail} x={0} y={0} width={width} height={height} />}
         <Group clip={OUTER}>

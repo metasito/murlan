@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
+import { greyFilter } from "./linkGrey";
 import type { LampRig } from "./useLampRig";
 
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
-const GREY_VISIBLE = 0.01;
-
-export function greyFilter(g: number): string {
-  "worklet";
-  return g > GREY_VISIBLE ? `grayscale(${g}) brightness(${1 - Reconnect.darken * g})` : "none";
-}
+// iOS draws `brightness()` as a multiply-blended sublayer and the capture shows it opaque, a flat
+// sheet over the table; there the felt greys itself in Skia (`greyMatrix`) instead.
+const VIEW_FILTER = Platform.OS !== "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
 export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
@@ -67,6 +66,6 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     "grey",
     useCallback(() => grey.value, [grey])
   );
-  const greyStyle = useAnimatedStyle(() => ({ filter: greyFilter(grey.value) }));
-  return { greyStyle, frozen: held || missedInFlight };
+  const greyStyle = useAnimatedStyle(() => (VIEW_FILTER ? { filter: greyFilter(grey.value) } : {}));
+  return { grey, greyStyle, frozen: held || missedInFlight };
 }
