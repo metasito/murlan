@@ -14,6 +14,13 @@ jest.mock('expo-screen-orientation', () => ({
   addOrientationChangeListener: () => ({ remove: () => {} }),
 }));
 
+// jest-expo's stand-in answers getLastNotificationResponse with an object that is no response.
+jest.mock('expo-notifications', () => ({
+  getLastNotificationResponse: () => null,
+  clearLastNotificationResponse: () => {},
+  addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
+}));
+
 // The table is landscape-only, so the default window is the e2e phone's, on its side; a test
 // that needs portrait asks for it.
 const LANDSCAPE_PHONE = { width: 844, height: 390, scale: 2, fontScale: 2 };

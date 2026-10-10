@@ -79,7 +79,8 @@ interface SocketContextValue {
   dismissGameInvite: (roomCode: string) => void;
   /**
    * The room the player has asked to be put into, set by tapping Join on an
-   * invite and consumed by the online group, which is the only place
+   * invite or by opening app/join/[code].tsx (a join link, a tapped invite
+   * push), and consumed by the online group, which is the only place
    * `joinRoom` exists.
    *
    * Distinct from `pendingInvite`, which only says one arrived: an invite that
