@@ -435,6 +435,8 @@ export const sq: Record<keyof typeof en, string> = {
   "scorePill.a11yLabel_other": "Pikët e tua: {{count}} pikë nga {{target}}, vendi {{place}}.",
   "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} pikë.",
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} pikë.",
+  "partitaBoard.youWon": "Fitove",
+  "partitaBoard.wins": "Fiton",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Cilësimet",

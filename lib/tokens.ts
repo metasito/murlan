@@ -574,6 +574,29 @@ export const MancheEnding = {
   deal: 2500,
 } as const;
 
+/** A partita ending on the table, in ms from the landing that ends it: the mockup's `payoff` with `partita` (#1267). */
+export const PartitaEnding = {
+  open: 600,
+  openFor: 240,
+  gain: 800,
+  gainStep: 100,
+  popFor: 180,
+  countFor: 450,
+  rerank: 1350,
+  rerankFor: 300,
+  close: Infinity,
+  closeFor: 0,
+  glowFor: 0,
+  board: 1600,
+  boardFor: 600,
+  dim: 0.6,
+  dimFor: 400,
+  winnerBox: 2100,
+  winnerBoxFor: 300,
+  actions: 2600,
+  actionsFor: 300,
+} as const;
+
 /**
  * How long `step` runs for this player.
  *

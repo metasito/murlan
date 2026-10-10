@@ -432,6 +432,8 @@ export const en = {
   "scorePill.a11yLabel_other": "Your score: {{count}} points of {{target}}, place {{place}}.",
   "scorePill.a11yRow_one": "{{place}}. {{name}}, {{count}} point.",
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} points.",
+  "partitaBoard.youWon": "You won",
+  "partitaBoard.wins": "Wins",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Settings",
