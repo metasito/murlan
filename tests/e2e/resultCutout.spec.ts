@@ -1,12 +1,9 @@
-// tests/e2e/resultCutout.spec.ts — nothing on the result screen falls under
-// the display cutout, in either landscape rotation (#816).
+// tests/e2e/resultCutout.spec.ts — nothing on the end-of-partita board falls under the display
+// cutout, in either landscape rotation (#816, #1267).
 //
-// The owner lost the whole left column — winner avatar, winner name, WINS THE
-// HAND, and the Hands / Target / Mode rows — under a notched iPhone's cutout.
-// No unit test can see it: `react-test-renderer` runs no flexbox, so where a
-// column actually ended up is a question only a browser answers.
-// `tests/native/resultCutoutRail.test.tsx` pins the numbers the board hands
-// out; this pins where the boxes land once Yoga has read them.
+// The owner once lost the result screen's whole left column — winner, name, verdict — under a
+// notched iPhone's cutout. The board now sits on the felt, centred on it; this pins that its
+// boxes land clear of the cutout once Yoga has read them, which no unit test can see.
 //
 // The insets are driven the way the app really reads them, the same way
 // tests/e2e/controlRail.spec.ts drives the table's: react-native-safe-area-context
@@ -20,11 +17,9 @@ import { driveGameToCompletion } from "./helpers/bot";
 import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
-const RESULT_URL = /\/result/;
 const VIEWPORT = { width: 844, height: 390 };
 const DEAL_SEED = 1;
-/** resultActions.spec.ts's: the winner's swell is ~9s of spring time, stretched on a starved runner. */
-const REST_TIMEOUT_MS = 45_000;
+const BOARD = '[data-testid="score-pill-layer"]';
 
 /**
  * The vertical span a landscape cutout occupies — a centred bar on the short
@@ -68,120 +63,56 @@ async function setSafeArea(page: Page, side: number): Promise<void> {
   await page.waitForTimeout(600);
 }
 
-/**
- * Every box carrying something the player has to read or touch: a leaf that
- * holds text, and every control. Containers are deliberately left out — the
- * screen's own background spans the window by design, and counting it would
- * make this fail on a board that covers nothing at all.
- */
-async function contentBoxes(page: Page): Promise<Box[]> {
-  return page.evaluate(() => {
-    const out: { label: string; x: number; y: number; width: number; height: number }[] = [];
-    const seen = new Set<Element>();
+/** Every box on the board carrying something the player has to read or touch: a text leaf, and every control. */
+async function boardBoxes(page: Page): Promise<Box[]> {
+  return page.evaluate((board) => {
+    const root = document.querySelector(board);
+    if (!root) return [];
     const carriers = [
-      ...document.querySelectorAll('[role="button"], [role="heading"]'),
-      ...[...document.querySelectorAll("*")].filter(
-        (el) => el.children.length === 0 && (el.textContent ?? "").trim().length > 0
-      ),
+      ...root.querySelectorAll('[role="button"]'),
+      ...[...root.querySelectorAll("*")].filter((el) => el.children.length === 0 && (el.textContent ?? "").trim().length > 0),
     ];
-    for (const el of carriers) {
-      if (seen.has(el)) continue;
-      seen.add(el);
+    return [...new Set(carriers)].flatMap((el) => {
       const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue;
-      out.push({
-        label:
-          el.getAttribute("aria-label") ??
-          el.getAttribute("data-testid") ??
-          (el.textContent ?? "").trim().slice(0, 30),
-        x: r.x,
-        y: r.y,
-        width: r.width,
-        height: r.height,
-      });
-    }
-    return out;
-  });
+      if (r.width === 0 || r.height === 0) return [];
+      const label = el.getAttribute("aria-label") ?? el.getAttribute("data-testid") ?? (el.textContent ?? "").trim().slice(0, 30);
+      return [{ label, x: r.x, y: r.y, width: r.width, height: r.height }];
+    });
+  }, BOARD);
 }
 
-/** The rail's own laid-out width — the column the cutout lives in. */
-async function railWidth(page: Page): Promise<number> {
-  const box = await page.locator('[data-testid="control-rail"]').boundingBox();
-  if (!box) throw new Error("the result screen's control rail never rendered");
-  return box.width;
-}
-
-test("the result screen keeps its own headline out of the cutout, on either edge", async ({
-  page,
-  baseURL,
-}) => {
+test("the board keeps its content out of the cutout, on either edge", async ({ page, baseURL }) => {
   test.setTimeout(5 * 60_000);
   await page.setViewportSize(VIEWPORT);
   await seedRandomness(page, DEAL_SEED);
   await openApp(page, baseURL!);
-  await startOfflineGame(page, {
-    playerCount: 2,
-    gameMode: "free_for_all",
-    format: "single",
-  });
+  await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
   await driveGameToCompletion(page, {
-    isFinished: async (p) => RESULT_URL.test(p.url()),
+    isFinished: (p) => p.getByTestId("btn-home").isVisible(),
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
-  await expect(page).toHaveURL(RESULT_URL);
-  // The rank rows and the winner's swell enter moving, and the sweep reads the
-  // whole document, so a read taken through them measures the animation.
-  await atRest(page, "body", REST_TIMEOUT_MS);
+  await atRest(page, BOARD);
 
-  // ── A notchless phone. The rail's floor is what makes the notched layout
-  //    below identical to this one, so it is the baseline both are read from.
-  await setSafeArea(page, 0);
-  await atRest(page, "body", REST_TIMEOUT_MS);
-  const bareRail = await railWidth(page);
-  const bare = await contentBoxes(page);
-  expect(bare.length, "nothing was measured at all, so this proves nothing").toBeGreaterThan(5);
-
-  // The whole ticket: the winner's own column is what went under the cutout,
-  // so it has to be among the boxes swept, or the sweep is looking elsewhere.
-  expect(
-    bare.map((b) => b.label),
-    "the winner's name was never measured, so the covered content is not in this sweep"
-  ).toContain("winner-celebration-name");
-
-  // ── An iPhone X..14 notch. 44 + 12 clearance fits under the rail's floor,
-  //    so the cutout appearing must move nothing.
-  await setSafeArea(page, 44);
-  await atRest(page, "body", REST_TIMEOUT_MS);
-  expect(await railWidth(page), "the rail's floor did not absorb a 44pt notch").toBe(bareRail);
-
-  // ── A Dynamic Island, past the floor, so the column really does widen.
-  await setSafeArea(page, 59);
-  await atRest(page, "body", REST_TIMEOUT_MS);
-  const islandRail = await railWidth(page);
-  expect(
-    islandRail,
-    "the rail never widened past its floor, so the sweep below proves nothing"
-  ).toBeGreaterThan(bareRail);
-  expect(islandRail).toBeGreaterThanOrEqual(59);
-
-  for (const cutout of [44, 59]) {
+  for (const cutout of [0, 44, 59]) {
     await setSafeArea(page, cutout);
-    await atRest(page, "body", REST_TIMEOUT_MS);
-    const band = cutoutBand(VIEWPORT.height);
-    const boxes = await contentBoxes(page);
+    await atRest(page, BOARD);
+    const boxes = await boardBoxes(page);
+    expect(
+      boxes.map((b) => b.label),
+      "the winner's name was never measured, so the board is not in this sweep"
+    ).toContain("partita-winner-name");
 
-    const inside = boxes.filter(
+    const band = cutoutBand(VIEWPORT.height);
+    const under = boxes.filter(
       (b) =>
         b.y < band.bottom &&
         b.y + b.height > band.top &&
-        (b.x < cutout - TOLERANCE ||
-          b.x + b.width > VIEWPORT.width - cutout + TOLERANCE)
+        (b.x < cutout - TOLERANCE || b.x + b.width > VIEWPORT.width - cutout + TOLERANCE)
     );
     expect(
-      inside,
-      `these run under the ${cutout}px cutout (rail is ${await railWidth(page)}px, the ` +
-        `cutout spans y ${band.top}…${band.bottom}): ` +
-        inside.map((b) => `${b.label} at ${Math.round(b.x)},${Math.round(b.y)}`).join("; ")
+      under,
+      `these run under the ${cutout}px cutout (y ${band.top}…${band.bottom}): ` +
+        under.map((b) => `${b.label} at ${Math.round(b.x)},${Math.round(b.y)}`).join("; ")
     ).toEqual([]);
   }
 });

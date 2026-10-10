@@ -636,8 +636,8 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
 
 /**
  * Waits for the table's description to differ from `previous`, or for the
- * table to disappear entirely (a full navigation away — e.g. to /result —
- * counts as progress on its own).
+ * table to disappear entirely (a full navigation away counts as progress on
+ * its own).
  */
 async function waitForChange(page: Page, previous: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;

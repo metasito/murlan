@@ -345,7 +345,7 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
 
     const save = offlineGameSave(4, SHORT_HAND);
     await resumeSaved(page, baseURL!, { ...save, match: { ...save.match, length: "single" } });
-    await driveGameToCompletion(page, { isFinished: async (p) => /\/result/.test(p.url()) });
+    await driveGameToCompletion(page, { isFinished: (p) => p.getByTestId("btn-home").isVisible() });
     await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 15_000 });
     await settled(page, 2500);
     await sweepSizes(page, "result board");

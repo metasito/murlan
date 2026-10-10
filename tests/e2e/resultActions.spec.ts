@@ -1,91 +1,53 @@
-// tests/e2e/resultActions.spec.ts — the result screen's primary action sits
-// where reading finishes, and pairs with Home rather than sitting beside a
-// control of another shape (#588).
+// tests/e2e/resultActions.spec.ts — a partita ends on the felt (#1267): the score pill becomes the
+// board, its actions sit as a pair inside it below the rows, Home then Nuova partita, and Nuova
+// partita deals a new partita without leaving the table.
 //
-// In landscape there is no pair to make: the cutout's column is a control rail
-// there and Home is the knob at its head (#816), the same place the table's own
-// menu sat a moment earlier. The pairing is asserted where it still exists, and
-// the landscape case asserts the knob instead — a square target of at least the
-// 44pt floor, clear of the standings.
-//
-// Only a browser can answer any of it. `react-test-renderer` never runs
-// flexbox, so a native test cannot say how tall either button ended up, nor
-// where the pair landed relative to the rankings — which is the whole ticket.
-//
-// A manche ends on the table, so only a partita reaches /result: one of a
-// single manche is played, once, and the window is then resized through the
-// ticket's list. Re-playing per viewport would cost five games to measure a
-// layout that is a function of the window alone.
+// Only a browser can answer it: `react-test-renderer` never runs flexbox, so a native test cannot
+// say where the pair landed relative to the board. One single-manche partita is played, once,
+// and the window is then resized through the list.
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { driveGameToCompletion } from "./helpers/bot";
 import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
-const RESULT_URL = /\/result/;
 const PRIMARY = "btn-nuova-partita";
-const SCREEN = "body";
-/** The winner's swell rings for ~9s of spring time, and Reanimated caps a frame's step at 64ms, so a starved runner stretches it. */
-const REST_TIMEOUT_MS = 45_000;
-
-/** Nothing here reads the hand, only the screen after it; a fixed deal holds its length steady. */
+const BOARD = '[data-testid="score-pill-layer"]';
+/** Nothing here reads the hand, only the board after it; a fixed deal holds its length steady. */
 const DEAL_SEED = 1;
+/** Layout rounds; a sub-pixel overlap is not something anyone can see. */
+const TOLERANCE = 1;
 
-/** The ticket's own list — real devices, both orientations, phone and tablet. */
+/** The game screens are landscape-locked: phone, small phone and tablet. */
 const VIEWPORTS = [
-  { name: "iPhone SE portrait", width: 375, height: 667 },
-  { name: "iPhone 12 portrait", width: 390, height: 844 },
-  { name: "iPhone 14 Pro Max portrait", width: 430, height: 932 },
   { name: "phone landscape", width: 844, height: 390 },
+  { name: "small phone landscape", width: 667, height: 375 },
   { name: "iPad landscape", width: 1112, height: 834 },
 ];
 
-/**
- * All three boxes read in one frame, from the DOM rather than through
- * `boundingBox()`.
- *
- * In portrait the actions sit below the fold of react-native-web's scroll
- * container, and `boundingBox()` answers null for an element it considers not
- * visible — which is a fact about scroll position, not about the layout this
- * spec is measuring. `getBoundingClientRect` has no such opinion, and reading
- * all three together means they cannot be compared across two scroll states.
- */
-async function boxes(
-  page: import("@playwright/test").Page,
-  testIds: string[],
-  expectedWidth: number
-) {
-  const read = (ids: string[]) =>
-    ids.map((id) => {
-      const el = document.querySelector(`[data-testid="${id}"]`);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    });
+type Rect = { x: number; y: number; width: number; height: number };
 
-  // A resize swaps the whole tree: `app/result.tsx` branches on
-  // `useWindowDimensions`, so portrait and landscape are different elements,
-  // not the same ones moved. Waiting on any single locator can be satisfied by
-  // the branch that is on its way out, which is how this spec first failed —
-  // so the gate is the window reporting the new width *and* all three boxes
-  // being laid out under it.
+async function rects(page: import("@playwright/test").Page, ids: string[], width: number): Promise<Rect[]> {
   await page.waitForFunction(
     ({ ids, width }) =>
       window.innerWidth === width &&
       ids.every((id) => {
-        const el = document.querySelector(`[data-testid="${id}"]`);
-        if (!el) return false;
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
+        const r = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+        return !!r && r.width > 0 && r.height > 0;
       }),
-    { ids: testIds, width: expectedWidth }
+    { ids, width }
   );
-
-  const rects = await page.evaluate(read, testIds);
-  return rects as { x: number; y: number; width: number; height: number }[];
+  return page.evaluate(
+    (ids) =>
+      ids.map((id) => {
+        const r = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+      }),
+    ids
+  );
 }
 
-test("the result screen's actions read as a pair, below the rankings, at every supported size", async ({
+test("the board's actions read as a pair inside it, below the rows, at every landscape size", async ({
   page,
   baseURL,
 }) => {
@@ -94,98 +56,37 @@ test("the result screen's actions read as a pair, below the rankings, at every s
   await openApp(page, baseURL!);
   await startOfflineGame(page, { playerCount: 2, gameMode: "free_for_all", format: "single" });
   await driveGameToCompletion(page, {
-    isFinished: async (p) => RESULT_URL.test(p.url()),
+    isFinished: (p) => p.getByTestId("btn-home").isVisible(),
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
-  await expect(page).toHaveURL(RESULT_URL);
+  await expect(page).toHaveURL(/\/game/);
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    // The swap waits on `onLayout` (a ResizeObserver on web), so the outgoing
-    // branch can sit still at the new width; the new one then remounts whole,
-    // and the winner's swell rings past the window long after the rank rows land.
-    await expect(
-      page.getByTestId("control-rail"),
-      `at ${vp.name} the board never swapped to this orientation's layout`
-    ).toHaveCount(vp.width > vp.height ? 1 : 0);
-    await atRest(page, SCREEN, REST_TIMEOUT_MS);
-
-    const [home, primary, rankings] = await boxes(
+    await atRest(page, BOARD);
+    const [board, winnerRow, home, primary] = await rects(
       page,
-      ["btn-home", PRIMARY, "result-rankings"],
+      ["score-pill-panel", "score-pill-winner-row", "btn-home", PRIMARY],
       vp.width
     );
 
-    if (vp.width > vp.height) {
-      // Landscape: Home is the rail's knob. Square, at least the 44pt floor,
-      // and in the rail's column rather than in the standings' one.
-      expect(
-        Math.abs(home.width - home.height),
-        `at ${vp.name} Home must be a knob, not a ${home.width}x${home.height} slab`
-      ).toBeLessThanOrEqual(1);
-      expect(
-        Math.min(home.width, home.height),
-        `at ${vp.name} the Home knob is under the 44pt touch floor`
-      ).toBeGreaterThanOrEqual(44);
-      expect(
-        home.x + home.width,
-        `at ${vp.name} the Home knob must sit in the rail, clear of the standings`
-      ).toBeLessThanOrEqual(rankings.x + 1);
-    } else {
-      // A pair, which is the defect: the two used to be a square icon and a
-      // two-line label of different heights. 1px absorbs the browser's own
-      // subpixel rounding, not a real difference.
-      expect(
-        Math.abs(home.height - primary.height),
-        `at ${vp.name} Home (${home.height}px) and the primary (${primary.height}px) must be the same height`
-      ).toBeLessThanOrEqual(1);
-
-      // Side by side, so "the same height" above is about a pair rather than
-      // two stacked buttons that trivially match.
-      expect(
-        Math.abs(home.y - primary.y),
-        `at ${vp.name} the two actions must sit on the same row`
-      ).toBeLessThanOrEqual(1);
-    }
-
-    // Where reading finishes: under the rankings, and in their column rather
-    // than diagonally opposite them.
+    const inside = (r: Rect) =>
+      r.x >= board.x - TOLERANCE &&
+      r.y >= board.y - TOLERANCE &&
+      r.x + r.width <= board.x + board.width + TOLERANCE &&
+      r.y + r.height <= board.y + board.height + TOLERANCE;
+    expect(inside(home), `at ${vp.name} Home sits outside the board`).toBe(true);
+    expect(inside(primary), `at ${vp.name} Nuova partita sits outside the board`).toBe(true);
+    expect(Math.abs(home.y - primary.y), `at ${vp.name} the actions are not on one line`).toBeLessThanOrEqual(TOLERANCE);
+    expect(home.x + home.width, `at ${vp.name} Home does not lead Nuova partita`).toBeLessThanOrEqual(primary.x + TOLERANCE);
+    expect(home.y, `at ${vp.name} the actions are not below the winner's row`).toBeGreaterThan(winnerRow.y + winnerRow.height);
     expect(
-      primary.y,
-      `at ${vp.name} the primary must sit below the rankings, not beside or above them`
-    ).toBeGreaterThanOrEqual(rankings.y + rankings.height - 1);
-    expect(
-      primary.x + primary.width,
-      `at ${vp.name} the primary must be in the rankings' column`
-    ).toBeGreaterThan(rankings.x);
-
-    // The label fits on one line without being cut. `numberOfLines={1}` stops
-    // it wrapping, so the failure it can still have is an ellipsis — which the
-    // ticket asks against just as much as a wrap does.
-    const clipped = await page.evaluate((primary) => {
-      const btn = document.querySelector(`[data-testid="${primary}"]`);
-      return [...(btn?.querySelectorAll("*") ?? [])]
-        .filter((el) => (el.textContent ?? "").trim().length > 0)
-        .filter((el) => el.scrollWidth > el.clientWidth + 1)
-        .map((el) => ({
-          text: (el.textContent ?? "").trim(),
-          scrollW: el.scrollWidth,
-          clientW: el.clientWidth,
-        }));
-    }, PRIMARY);
-    expect(clipped, `at ${vp.name} the primary's label must not be cut off`).toEqual([]);
-
-    // Nothing may reach past the window: the pair is a row now, and a row of
-    // fixed-width plus flex is exactly the shape that overflows in React
-    // Native, where `flexShrink` defaults to 0.
-    const overflowing = await page.evaluate(() =>
-      [...document.querySelectorAll<HTMLElement>("*")]
-        .map((el) => ({
-          right: el.getBoundingClientRect().right,
-          text: (el.textContent ?? "").trim().slice(0, 40),
-        }))
-        .filter((n) => n.right > window.innerWidth + 1)
-    );
-    expect(overflowing, `nothing on /result may reach past ${vp.width}px`).toEqual([]);
+      board.x >= -TOLERANCE && board.x + board.width <= vp.width + TOLERANCE && board.y + board.height <= vp.height + TOLERANCE,
+      `at ${vp.name} the board reaches past the window`
+    ).toBe(true);
   }
+
+  await page.getByTestId(PRIMARY).click();
+  await expect(page.getByTestId("btn-home"), "Nuova partita left the board standing").toHaveCount(0, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/game/);
 });

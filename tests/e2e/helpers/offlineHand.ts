@@ -10,8 +10,6 @@ import { test, expect } from "../fixtures";
 import { openApp, startOfflineGame } from "./navigation";
 import { driveGameToCompletion } from "./bot";
 
-const RESULT_URL = /\/result/;
-
 export interface HandConfig {
   name: string;
   playerCount: 2 | 3 | 4;
@@ -41,13 +39,13 @@ export function offlineHandTests(configs: HandConfig[]) {
         });
 
         await driveGameToCompletion(page, {
-          isFinished: async (p) => RESULT_URL.test(p.url()),
+          isFinished: (p) => p.getByTestId("btn-home").isVisible(),
           log: (line) => test.info().annotations.push({ type: "move", description: line }),
         });
 
-        await expect(page).toHaveURL(RESULT_URL);
-        // The rankings list is the result screen's core claim: someone won.
-        await expect(page.locator('[data-testid="btn-home"]')).toBeVisible();
+        await expect(page).toHaveURL(/\/game/);
+        // The board's core claim: someone won.
+        await expect(page.getByTestId("partita-winner-name")).toBeVisible();
 
         await page.locator('[data-testid="btn-home"]').click();
         await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");

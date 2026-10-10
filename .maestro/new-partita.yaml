@@ -85,7 +85,7 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Pass whenever legal, until the hand empties and the result screen replaces the table ---
+# --- Pass whenever legal, until the hand empties and the board ends the partita on the table ---
 - repeat:
     times: 30
     while:
@@ -97,8 +97,7 @@ appId: "${MAESTRO_APP_ID}"
           optional: true
           waitToSettleTimeoutMs: 500
 
-# --- Result screen: a single-hand match is over as soon as the hand is, so the primary
-# action is "Nuova partita" rather than "Prossima manche" ---
+# --- The board on the felt: a single-hand match is over as soon as the hand is ---
 - extendedWaitUntil:
     visible:
       id: "btn-nuova-partita"
