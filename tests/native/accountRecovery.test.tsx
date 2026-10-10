@@ -2,7 +2,7 @@
 // and proves the entry points into them are actually reachable controls, not
 // just strings that happen to exist (a source scan cannot tell the two
 // apart).
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -37,7 +37,8 @@ jest.mock('@react-native-community/netinfo', () => ({
 import VerifyEmailScreen from '@/app/verify-email';
 import RecoverScreen from '@/app/recover';
 import AuthScreen from '@/app/auth';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import * as i18n from '@/lib/i18n';
 import { en as locale } from '@/locales/en';
 import { AUTH_USER_KEY } from '@/lib/storageKeys';
 
@@ -58,6 +59,41 @@ beforeEach(() => {
   mockCanGoBack.mockReturnValue(true);
   mockUseLocalSearchParams.mockReturnValue({});
   (globalThis as { fetch: unknown }).fetch = mockFetch;
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
+describe('the auth calls that send a mail', () => {
+  it('carry the active locale', async () => {
+    mockApiRequest.mockResolvedValue({ ok: true, json: async () => ({ id: 'u1', username: 'Ana' }) });
+    const auth: { current?: ReturnType<typeof useAuth> } = {};
+    function Capture() {
+      const value = useAuth();
+      React.useEffect(() => {
+        auth.current = value;
+      });
+      return null;
+    }
+    const view = await render(<AuthProvider><Capture /></AuthProvider>);
+    await waitFor(() => expect(auth.current?.loading).toBe(false));
+
+    jest.spyOn(i18n, 'getLocale').mockReturnValue('it');
+    await act(async () => {
+      await auth.current!.register('Ana', 'password123', 'ana@example.test');
+      await auth.current!.addEmail('ana@example.test');
+    });
+
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/register', {
+      username: 'Ana',
+      password: 'password123',
+      email: 'ana@example.test',
+      locale: 'it',
+    });
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/add-email', { email: 'ana@example.test', locale: 'it' });
+    await view.unmount();
+  });
 });
 
 describe('app/verify-email', () => {
@@ -205,11 +241,12 @@ describe('app/verify-email', () => {
     const emailInput = screen.getByLabelText(locale['auth.emailA11yLabel']);
     expect(emailInput.props.value).toBe('fresh@example.test');
 
+    jest.spyOn(i18n, 'getLocale').mockReturnValue('it');
     await act(async () => {
       fireEvent.press(resend);
     });
 
-    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'en' });
+    expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'it' });
     const resendSent = locale['verifyEmail.resendSent'].replace('{{email}}', 'signedin@example.test');
     await waitFor(() => expect(screen.getByText(resendSent)).toBeTruthy());
     await view.unmount();
@@ -258,6 +295,7 @@ describe('app/recover', () => {
     await act(async () => {
       fireEvent.changeText(screen.getByLabelText(locale['recover.emailA11yLabel']), 'player@example.test');
     });
+    jest.spyOn(i18n, 'getLocale').mockReturnValue('sq');
     await act(async () => {
       fireEvent.press(screen.getByRole('button', { name: locale['recover.requestSubmit'] }));
     });
@@ -265,7 +303,7 @@ describe('app/recover', () => {
     await waitFor(() =>
       expect(mockApiRequest).toHaveBeenCalledWith('POST', '/api/auth/request-password-reset', {
         email: 'player@example.test',
-        locale: 'en',
+        locale: 'sq',
       })
     );
 
