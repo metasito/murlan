@@ -1,27 +1,27 @@
 # Bundle size report
 
-Generated: 2026-10-07
+Generated: 2026-10-10
 
 Regenerate with `node scripts/bundle-report.mjs > docs/BUNDLE.md` after adding/removing assets or dependencies.
 
 ## Assets (`assets/`)
 
-Total: **8.86 MB** across 49 files.
+Total: **7.30 MB** across 83 files.
 
 | File | Size |
 |---|---|
 | assets/music/native/hand.flac | 1.79 MB |
 | assets/music/native/menu.flac | 1.59 MB |
-| assets/music/native/cue.flac | 1.38 MB |
 | assets/images/splash-icon.png | 1.19 MB |
 | assets/images/icon.png | 1.03 MB |
-| assets/music/cue.webm | 431.6 KB |
 | assets/music/hand.webm | 376.6 KB |
 | assets/music/menu.webm | 354.6 KB |
 | assets/images/android-icon-foreground.png | 66.1 KB |
 | assets/sounds/deal.mp3 | 59.2 KB |
+| assets/images/cards/gloss_spot@3x.webp | 57.3 KB |
 | assets/sounds/clock_running_out.mp3 | 51.6 KB |
 | assets/sounds/partita_won.mp3 | 48.5 KB |
+| assets/images/cards/gloss_spot@2x.webp | 33.4 KB |
 | assets/sounds/bomb.mp3 | 30.1 KB |
 | assets/images/cards/king_of_clubs.png | 30.0 KB |
 | assets/images/cards/king_of_hearts.png | 27.4 KB |
@@ -29,7 +29,7 @@ Total: **8.86 MB** across 49 files.
 | assets/images/cards/queen_of_clubs.png | 26.2 KB |
 | assets/sounds/manche_won.mp3 | 25.6 KB |
 | assets/sounds/partita_lost.mp3 | 25.6 KB |
-| assets/fonts/Ionicons.subset.ttf | 24.2 KB |
+| assets/fonts/Ionicons.subset.ttf | 24.4 KB |
 | assets/images/cards/jack_of_spades.png | 23.7 KB |
 | assets/images/cards/queen_of_hearts.png | 23.0 KB |
 | assets/images/cards/jack_of_hearts.png | 22.9 KB |
@@ -43,21 +43,55 @@ Total: **8.86 MB** across 49 files.
 | assets/sounds/turn.mp3 | 14.8 KB |
 | assets/sounds/exchange.mp3 | 14.3 KB |
 | assets/sounds/combo.mp3 | 13.8 KB |
+| assets/images/cards/back_zaffiro@3x.webp | 11.8 KB |
+| assets/images/cards/back_smeraldo@3x.webp | 10.7 KB |
+| assets/images/cards/back_rubino@3x.webp | 10.5 KB |
+| assets/images/cards/back_oro@3x.webp | 9.7 KB |
 | assets/sounds/round_start.mp3 | 9.5 KB |
-| assets/music/README.md | 6.7 KB |
+| assets/images/cards/gloss_spot.webp | 8.9 KB |
+| assets/images/cards/back_zaffiro@2x.webp | 7.3 KB |
+| assets/images/cards/back_rubino@2x.webp | 6.6 KB |
+| assets/music/README.md | 6.6 KB |
+| assets/images/cards/back_smeraldo@2x.webp | 6.4 KB |
+| assets/images/cards/foil_zaffiro@3x.webp | 6.3 KB |
 | assets/sounds/select.mp3 | 6.2 KB |
 | assets/sounds/README.md | 6.1 KB |
 | assets/images/android-icon-background.png | 6.1 KB |
+| assets/images/cards/back_oro@2x.webp | 6.0 KB |
 | assets/sounds/pass.mp3 | 5.7 KB |
 | assets/sounds/play.mp3 | 5.7 KB |
+| assets/images/cards/foil_oro@3x.webp | 5.3 KB |
+| assets/images/cards/foil_rubino@3x.webp | 5.3 KB |
+| assets/images/cards/foil_smeraldo@3x.webp | 5.3 KB |
+| assets/images/cards/back_inchiostro@3x.webp | 5.0 KB |
 | assets/sounds/round_win.mp3 | 4.6 KB |
+| assets/images/cards/foil_zaffiro@2x.webp | 4.4 KB |
 | assets/sounds/manche_neutral.mp3 | 4.0 KB |
 | assets/fonts/Feather.subset.ttf | 3.7 KB |
+| assets/images/cards/foil_oro@2x.webp | 3.7 KB |
+| assets/images/cards/foil_rubino@2x.webp | 3.7 KB |
+| assets/images/cards/foil_smeraldo@2x.webp | 3.7 KB |
 | assets/sounds/room_full.mp3 | 3.4 KB |
+| assets/images/cards/back_inchiostro@2x.webp | 3.2 KB |
 | assets/sounds/seat_fill.mp3 | 3.1 KB |
+| assets/images/cards/back_zaffiro.webp | 3.0 KB |
+| assets/images/cards/back_rubino.webp | 2.8 KB |
+| assets/images/cards/back_smeraldo.webp | 2.7 KB |
+| assets/images/cards/back_oro.webp | 2.6 KB |
+| assets/images/cards/stock@3x.webp | 2.6 KB |
 | assets/sounds/reject.mp3 | 2.4 KB |
+| assets/images/cards/foil_zaffiro.webp | 2.2 KB |
+| assets/images/cards/foil_oro.webp | 1.9 KB |
+| assets/images/cards/foil_rubino.webp | 1.9 KB |
+| assets/images/cards/foil_smeraldo.webp | 1.9 KB |
 | assets/images/android-icon-monochrome.png | 1.8 KB |
 | assets/images/cards/README.md | 1.7 KB |
+| assets/images/cards/stock@2x.webp | 1.6 KB |
+| assets/images/cards/back_inchiostro.webp | 1.6 KB |
+| assets/images/cards/foil_inchiostro@3x.webp | 1.2 KB |
+| assets/images/cards/stock.webp | 1.0 KB |
+| assets/images/cards/foil_inchiostro@2x.webp | 982 B |
+| assets/images/cards/foil_inchiostro.webp | 776 B |
 | assets/images/favicon.png | 659 B |
 
 ## Production dependencies (installed size in `node_modules/`)
