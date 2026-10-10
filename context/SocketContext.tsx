@@ -143,13 +143,20 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   // here, after this commit disabled every observer: a clear that lands first lets
   // an earlier render's pending effect refetch them with the dead session.
   const signedInRef = useRef(userId);
+  const [hiddenInvites, setHiddenInvites] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
-    if (signedInRef.current && !userId) qc.clear();
+    if (signedInRef.current && !userId) {
+      qc.clear();
+      setHiddenInvites(new Set());
+    }
     signedInRef.current = userId;
   }, [userId, qc]);
   const gameInvites = useMemo<PendingInvite[]>(
-    () => inviteRows.map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
-    [inviteRows]
+    () =>
+      inviteRows
+        .filter((row) => !hiddenInvites.has(row.roomCode))
+        .map((row) => ({ from: row.fromUsername, roomCode: row.roomCode })),
+    [inviteRows, hiddenInvites]
   );
   const [sessionReplaced, setSessionReplaced] = useState<ServerPayload | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -163,18 +170,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
+  // Filtered on read rather than spliced from the cache: an accepted invite's row
+  // stays on the server until seating, so any refetch before then would restore it.
+  const hideGameInvite = useCallback(
+    (roomCode: string) => setHiddenInvites((prev) => new Set(prev).add(roomCode)),
+    []
+  );
   /**
    * Turning an invite down deletes it rather than hiding it. A dismissal that
    * only cleared the screen would come back on the next reconnect, and would
    * leave the host waiting for someone who has already said no.
    */
-  const hideGameInvite = useCallback(
-    (roomCode: string) =>
-      qc.setQueryData<InviteRow[]>(["/api/friends/invites"], (prev) =>
-        (prev ?? []).filter((row) => row.roomCode !== roomCode)
-      ),
-    [qc]
-  );
   const dismissGameInvite = useCallback(
     (roomCode: string) => {
       hideGameInvite(roomCode);
@@ -360,6 +366,12 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
+      setHiddenInvites((prev) => {
+        if (!prev.has(roomCode)) return prev;
+        const next = new Set(prev);
+        next.delete(roomCode);
+        return next;
+      });
       qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
       showNotification({
         type: "game_invite",

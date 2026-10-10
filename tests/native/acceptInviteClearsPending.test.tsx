@@ -102,6 +102,28 @@ describe('accepting an invite', () => {
     await unmount();
   });
 
+  it('keeps an accepted invite off the list when a refetch still returns its row', async () => {
+    const client = new QueryClient();
+    const row = { fromUsername: 'ana', roomCode: 'ABC123' };
+    client.setQueryData(['/api/friends/invites'], [row]);
+    const { result, unmount } = await mount(client);
+    const serverStillReturnsRow = () =>
+      act(async () => {
+        client.setQueryData(['/api/friends/invites'], [row]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+    await serverStillReturnsRow();
+    expect(result.current.gameInvites).toEqual([]);
+
+    await invite();
+    await serverStillReturnsRow();
+    expect(result.current.gameInvites).toEqual([{ from: 'ana', roomCode: 'ABC123' }]);
+
+    await unmount();
+  });
+
   it('leaves an invite nobody answered standing', async () => {
     const { result, unmount } = await mount();
     await invite();
