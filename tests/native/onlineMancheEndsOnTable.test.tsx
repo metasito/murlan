@@ -2,7 +2,7 @@
 // overlay, the score pill holds open with the next-hand vote at its foot, and the next deal closes it.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { GameState, Player } from '@/lib/game/gameEngine';
@@ -109,6 +109,7 @@ describe('a manche ending online', () => {
     expect(overlayLeave()).toBeNull();
     expect(pillOpen()).toBe(true);
     expect(voteShown()).toBe(true);
+    expect(within(screen.getByTestId('manche-vote', HIDDEN)).getAllByText('0/4', HIDDEN).length).toBe(1);
 
     await fireEvent.press(voteButton()!);
     expect(mockVoteRematch).toHaveBeenCalledTimes(1);

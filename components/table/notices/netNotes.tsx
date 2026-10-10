@@ -25,7 +25,7 @@ export function MancheVote({ scale, voted, votes, total, onPress }: MancheVoteNo
           <TableNotice kind="mancheVote" tone={voted ? "lit" : "neutral"} scale={scale}>
             <NoticeGlyph name={voted ? "checkmark-circle" : "play-forward-outline"} px={12} />
             <NoticeText>{voted ? t("gameOverOverlay.nextHandWaiting", { count: votes, total }) : t("result.nextHand")}</NoticeText>
-            {!voted && votes > 0 && <NoticeBadge>{`${votes}/${total}`}</NoticeBadge>}
+            {!voted && <NoticeBadge>{`${votes}/${total}`}</NoticeBadge>}
           </TableNotice>
         </View>
       </Pressable>
