@@ -75,8 +75,20 @@ export const PRICE = {
 
 export const familyOf = (model) => Object.keys(PRICE).find((f) => String(model).includes(f)) ?? null;
 
+/** The 5.5 releases repriced inside their family, so a release id wins over the family word. */
+const PRICE_BY_RELEASE = {
+  "opus-5-5": [4, 5, 0.2, 20, 8],
+  "sonnet-5-5": [2, 2.5, 0.1, 10, 4],
+  "haiku-5-5": [0.1, 0.125, 0.01, 0.5, 0.2],
+};
+const rateOf = (model) =>
+  PRICE_BY_RELEASE[Object.keys(PRICE_BY_RELEASE).find((r) => String(model).includes(r)) ?? ""] ?? PRICE[familyOf(model) ?? "opus"];
+const HAIKU_LONG_PROMPT = 100_000;
+
 export const priceOf = (model, u) => {
-  const [i, w5, r, o, w1h] = PRICE[familyOf(model) ?? "opus"];
+  const prompt = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
+  const scale = String(model).includes("haiku-5-5") && prompt > HAIKU_LONG_PROMPT ? 5 : 1;
+  const [i, w5, r, o, w1h] = rateOf(model).map((p) => p * scale);
   const hour = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
   const writes = (u.cache_creation_input_tokens ?? 0) - hour;
   return ((u.input_tokens ?? 0) * i + writes * w5 + hour * w1h + (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6;

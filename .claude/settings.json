@@ -7,12 +7,14 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"],
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"],
+            "onFailure": "block"
           }
         ]
       },
@@ -22,7 +24,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-read.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-read.mjs"],
+            "onFailure": "block"
           }
         ]
       },
@@ -32,12 +35,14 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"],
+            "onFailure": "block"
           },
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-write.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-write.mjs"],
+            "onFailure": "block"
           }
         ]
       },
@@ -47,7 +52,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-agent-model.mjs"]
+            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-agent-model.mjs"],
+            "onFailure": "block"
           }
         ]
       }
