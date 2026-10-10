@@ -536,6 +536,8 @@ export const Motion = {
   mark: { enter: 100, hold: 1000, exit: 100, blink: 900 },
   /** The beaten play's turn: the lantern mockup's `.grp` transition, ease-out. Off the ladder, a hair past travel; at once under reduced motion. */
   beaten: 280,
+  /** The hand growing into its turn: the mockup's `.12s`. Off the ladder, a tap's length that travels; at once under reduced motion. */
+  handResize: 120,
 } as const;
 
 /** The viewer's own drop: the lantern mockup's `reconnect` chapter, `grayTo` and `net()` (#1268). */
@@ -605,11 +607,11 @@ export const PartitaEnding = {
  * its duration — so the step's own length stands. Every other ladder step takes
  * the answer `Motion.reduced` already wrote down, which is the point: a call site
  * that decides for itself is how "reduced" came to mean a 200ms fade in one
- * screen and an instant jump in the next. `beaten`, the one step off the ladder,
- * has its reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
+ * screen and an instant jump in the next. `beaten` and `handResize`, the steps off the ladder,
+ * have their reduced form (0) written here, since `Motion.reduced` holds ladder steps only.
  */
-export function motionMs(step: keyof typeof Motion.duration | "beaten", reduceMotion: boolean): number {
-  if (step === "beaten") return reduceMotion ? 0 : Motion.beaten;
+export function motionMs(step: keyof typeof Motion.duration | "beaten" | "handResize", reduceMotion: boolean): number {
+  if (step === "beaten" || step === "handResize") return reduceMotion ? 0 : Motion[step];
   if (!reduceMotion) return Motion.duration[step];
   return Motion.reduced[step] ?? Motion.duration[step];
 }

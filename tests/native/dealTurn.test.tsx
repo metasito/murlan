@@ -14,6 +14,12 @@ import { Colors, Motion } from '@/lib/theme';
 import { en } from '@/locales/en';
 import { bootFeedback, haptics } from './helpers/feedback';
 
+let mockReduce = false;
+jest.mock('@/lib/accessibility', () => ({
+  ...jest.requireActual<typeof import('@/lib/accessibility')>('@/lib/accessibility'),
+  usePrefersReducedMotion: () => mockReduce,
+}));
+
 const mockWindow = { width: 844, height: 390, scale: 2, fontScale: 1 };
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({ __esModule: true, default: () => mockWindow }));
 
@@ -67,6 +73,7 @@ describe("the viewer's turn waits for the deal to land", () => {
   });
   afterEach(() => {
     jest.useRealTimers();
+    mockReduce = false;
   });
 
   it('shows no turn while the cards fly, and gives it once they land', async () => {
@@ -92,7 +99,20 @@ describe("the viewer's turn waits for the deal to land", () => {
     expect(haptics()).toContain('impactLight');
     expect(handCardW() / dealtW).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
     expect(handCardScale()).toBeLessThan(0.95);
-    await advance(Motion.duration.tap + 32);
+    await advance(Motion.handResize + 32);
+    expect(handCardScale()).toBeCloseTo(1, 2);
+    await view.unmount();
+  }, 20_000);
+
+  it('with reduce motion on, the fan takes its turn size without travelling', async () => {
+    mockReduce = true;
+    const state = { ...freshDeal(), currentTurnIndex: 1 };
+    const view = await render(table(state));
+    for (let ms = 0; dealing() && ms < 3000; ms += 160) await advance(160);
+    const waitingW = handCardW();
+    await view.rerender(table({ ...state, currentTurnIndex: 0 }));
+    expect(handCardW() / waitingW).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
+    await advance(16);
     expect(handCardScale()).toBeCloseTo(1, 2);
     await view.unmount();
   }, 20_000);
@@ -118,7 +138,7 @@ describe("the viewer's turn waits for the deal to land", () => {
     expect(landed.x).toBeCloseTo(last[id].x, 0);
     expect(landed.y).toBeCloseTo(last[id].y, 0);
     expect(landed.w).toBeCloseTo(last[id].w, 0);
-    await advance(Motion.duration.tap + 32);
+    await advance(Motion.handResize + 32);
     expect(registry()[id].w / last[id].w).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
     await view.unmount();
     delete process.env.EXPO_PUBLIC_E2E_FAST;

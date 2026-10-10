@@ -416,7 +416,7 @@ function CardItemBase({
     const [from, k] = [resizeFrom.get(), resizing.get()];
     resizeFrom.set({ dx: was.x + from.dx * k - restX, dy: was.y + from.dy * k - restY, s: ((1 + (from.s - 1) * k) * was.w) / cardW });
     resizing.set(1);
-    resizing.set(withTiming(0, { duration: motionMs("tap", reduceMotion), reduceMotion: ReduceMotion.Never }));
+    resizing.set(withTiming(0, { duration: motionMs("handResize", reduceMotion), reduceMotion: ReduceMotion.Never }));
   }, [restX, restY, cardW, reduceMotion, resizeFrom, resizing]);
   useEffect(() => () => cancelAnimation(resizing), [resizing]);
   // Handed the values rather than reading them: a mapper follows only the shared values in its own closure.
