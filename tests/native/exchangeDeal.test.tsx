@@ -2,11 +2,12 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
+import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
 import { dealEndMs } from '@/lib/game/dealTimeline';
-import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
+import { LEG, choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import { emptyRankTally, type Card, type GameState, type Player, type Rank, type Suit } from '@/lib/game/gameEngine';
 import { frames } from './helpers/exchangeLegs';
 import { bootFeedback } from './helpers/feedback';
@@ -63,14 +64,18 @@ describe('an exchange manche', () => {
     expect(backs()).toHaveLength(0);
 
     await view.rerender(table(exchange));
-    await frames(32);
-    expect(backs().length).toBeGreaterThan(0);
-
-    await frames(choiceOpensAt(false) + 32);
+    let dealtUntil = -1;
+    let receivedFrom = -1;
+    await frames(dealEndMs(COUNTS, 0) + LEG.end, (t) => {
+      if (backs().length > 0) dealtUntil = t;
+      const leg = screen.queryByTestId('exchange-flier-to-winner', { includeHiddenElements: true });
+      if (receivedFrom < 0 && leg && getAnimatedStyle(leg).opacity === 1) receivedFrom = t;
+    });
+    expect(dealtUntil).toBeGreaterThan(0);
+    expect(receivedFrom).toBeGreaterThan(dealtUntil);
     expect(prompt()).toBeNull();
 
-    await frames(dealEndMs(COUNTS, 0));
-    expect(backs()).toHaveLength(0);
+    await frames(choiceOpensAt(false));
     expect(prompt()).not.toBeNull();
     await view.unmount();
   });
