@@ -51,9 +51,14 @@ const TOUCH_TARGET_LITERAL_MESSAGE =
 // the first leaves the second free to drift, which is where `FadeIn.duration(280)`
 // survived the migration that swept every object property in the same file.
 const TIMING_PROPS = 'duration|delay';
+// A particle's `life` is in seconds, so a fraction is a timing too; the `as const` it skips is
+// particles.ts's field-index table `P`, where `life` is a slot, not a time.
+const BARE_SECONDS = 'Literal[raw=/^([1-9][0-9.]*|0\\.[0-9]*[1-9][0-9]*)$/]';
+const PARTICLE_LIFE = 'ObjectExpression:not(TSAsExpression > ObjectExpression) > Property[key.name="life"]';
 const TIMING_LITERAL =
   `Property[key.name=/^(${TIMING_PROPS})$/] > ${BARE_NUMBER}, ` +
-  `CallExpression[callee.property.name=/^(${TIMING_PROPS})$/] > ${BARE_NUMBER}`;
+  `CallExpression[callee.property.name=/^(${TIMING_PROPS})$/] > ${BARE_NUMBER}, ` +
+  `${PARTICLE_LIFE} > ${BARE_SECONDS}, ${PARTICLE_LIFE} > CallExpression > ${BARE_SECONDS}`;
 const TIMING_LITERAL_MESSAGE =
   'Use a Motion step from @/lib/theme, picked by the role it plays (flash, tap, shift, travel, reveal, dwell). A duration that is not motion — how long something stays readable, a scatter that must not synchronise — takes a named module constant that says so, never a bare number.';
 

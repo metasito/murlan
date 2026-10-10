@@ -52,7 +52,7 @@ export function emberFrame(run: EmberRun, dt: number, rng: Rng): ParticleSpawn[]
   const y = RIM.cy + RIM.ry * Math.sin(a);
   const R = (lo: number, hi: number) => lo + rng() * (hi - lo);
   return [
-    { x, y, life: 0.05, size: 2.4, col: Handoff.emberHead, glow: 10 },
-    { x, y, vx: R(-15, 15), vy: R(-15, 15), drag: 0.9, life: R(0.25, 0.4), size: R(0.6, 1.3), col: Handoff.emberTrail, glow: 4 },
+    { x, y, life: Handoff.headLifeSec, size: 2.4, col: Handoff.emberHead, glow: 10 },
+    { x, y, vx: R(-15, 15), vy: R(-15, 15), drag: 0.9, life: R(...Handoff.trailLifeSec), size: R(0.6, 1.3), col: Handoff.emberTrail, glow: 4 },
   ];
 }

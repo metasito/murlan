@@ -209,6 +209,15 @@ describe("a bare millisecond is refused wherever Reanimated takes one", () => {
     assert.ok(!timed("withTiming(1, { duration: 0 });"));
     assert.ok(!timed("const meta = { title: 'x' };"));
   });
+
+  test("a particle's life in seconds, bare or drawn from a range", () => {
+    assert.ok(timed("out.push({ x, life: 0.05, col });"));
+    assert.ok(timed("out.push({ x, life: 2, col });"));
+    assert.ok(timed("out.push({ x, life: R(0.25, 0.4), col });"));
+    assert.ok(!timed("out.push({ x, life: R(...Dust.moteLifeSec), col });"));
+    assert.ok(!timed("out.push({ x, life: Handoff.headLifeSec, col });"));
+    assert.ok(!timed("const P = { x: 0, life: 6 } as const;"));
+  });
 });
 
 describe("the selectors under test are the ones that ship", () => {
