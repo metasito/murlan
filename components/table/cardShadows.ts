@@ -95,10 +95,10 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
 }
 
 /** Every field `buildShadow` reads, per card: equal for two registries whose shadow paths are equal. */
-export function shadowShape(rects: CardRects): string {
+export function shadowShape(rects: CardRects, keys: readonly string[] = Object.keys(rects)): string {
   "worklet";
   let shape = "";
-  for (const key of Object.keys(rects)) {
+  for (const key of keys) {
     const r = rects[key];
     shape += `${key}:${r.x},${r.y},${r.w},${r.h},${r.rot},${r.back},${r.seen};`;
   }
