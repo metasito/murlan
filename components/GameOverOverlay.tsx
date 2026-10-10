@@ -203,7 +203,7 @@ export function GameOverOverlay({
         <HandBreakdown
           myUserId={myUserId}
           ratingDelta={ratingDelta}
-          mancheCanFollow={canContinue}
+          mancheCanFollow={!match.over || hasVoted}
           handRecorded={handRecorded}
         />
       )}
