@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSharedValue, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
+import { ReduceMotion, useSharedValue, withDelay, withTiming, type SharedValue } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { Handoff } from "@/lib/tokens";
@@ -27,7 +27,7 @@ export function useClockFade<T>(
   const gone = useCallback(() => setHeld((h) => (h.on ? h : { ...h, leaving: false })), []);
   useEffect(() => {
     if (reduced) opacity.value = 1;
-    else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }));
+    else if (on) opacity.value = withDelay(Handoff.clockOutMs, withTiming(1, { duration: Handoff.clockInMs }), ReduceMotion.Never);
     else {
       opacity.value = withTiming(0, { duration: Handoff.clockOutMs }, (finished) => {
         if (finished) scheduleOnRN(gone);

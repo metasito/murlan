@@ -2,10 +2,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { emberFrame, emberSweep, idleEmber, RIM, startEmber } from "../../components/table/ember.ts";
 import { Handoff } from "../../lib/tokens.ts";
-
-const EMBER_MS = Handoff.emberMs;
 import { seatDirection } from "../../components/seatLayout.ts";
 
+const EMBER_MS = Handoff.emberMs;
 const nextInTurn = (seat: number, n: number) => (seat - 1 + n) % n;
 const sweep = (from: number, to: number, n: number) => {
   const [a0, a1] = emberSweep(seatDirection(from, 0, n), seatDirection(to, 0, n));
