@@ -8,7 +8,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { EmptyBlock } from "@/components/StateBlock";
 import { FormField, FormNotice, fieldStyles } from "@/components/FormField";
 import { useAuth } from "@/context/AuthContext";
-import { useTranslation } from "@/lib/i18n";
+import { getLocale, useTranslation } from "@/lib/i18n";
 import { apiRequest } from "@/lib/query-client";
 import { serverErrorMessage } from "@/lib/apiError";
 import { Colors, Spacing } from "@/lib/theme";
@@ -77,7 +77,7 @@ export default function VerifyEmailScreen() {
     setNotice(null);
     setResending(true);
     try {
-      await apiRequest("POST", "/api/auth/resend-verification", {});
+      await apiRequest("POST", "/api/auth/resend-verification", { locale: getLocale() });
       setNotice(t("verifyEmail.resendSent", { email: destination }));
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("verifyEmail.resendFailed")));

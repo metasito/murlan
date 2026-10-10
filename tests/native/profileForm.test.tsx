@@ -3,7 +3,7 @@
 // The case that ships broken is the small one. A player three matches in must
 // get something honest rather than an empty chart with axes, and a player with
 // no matches at all must not be shown a panel about matches.
-import { describe, it, expect, jest, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
@@ -16,9 +16,10 @@ jest.mock('@/context/NotificationContext', () => ({
   useBannerBottom: () => 0,
 }));
 
+let mockUser: Record<string, unknown> = { id: 'u1', username: 'Ana' };
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'u1', username: 'Ana' },
+    user: mockUser,
     logout: async () => {},
     changePassword: async () => {},
     rename: async () => {},
@@ -47,6 +48,7 @@ import { render, act, fireEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { translate, DEFAULT_LOCALE } from '@/shared/i18n';
 import type { TranslationKey, TranslationParams } from '@/shared/i18n';
+import * as i18n from '@/lib/i18n';
 
 import { SettingsProvider } from '@/context/SettingsContext';
 
@@ -100,6 +102,11 @@ function show(history: unknown[]) {
 
 beforeEach(() => {
   for (const key of Object.keys(mockData)) delete mockData[key];
+  mockUser = { id: 'u1', username: 'Ana' };
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 describe('the profile trend panels', () => {
@@ -163,6 +170,19 @@ describe('the account controls', () => {
     await fireEvent.press(view.getByLabelText(t('common.save')));
 
     expect(view.getByTestId('rename-error').props.accessibilityLiveRegion).toBe('polite');
+    await view.unmount();
+  });
+
+  it('resend the verification mail in the active locale', async () => {
+    mockUser = { id: 'u1', username: 'Ana', email: 'ana@example.test', emailVerified: false };
+    const { apiRequest } = require('@/lib/query-client') as { apiRequest: jest.Mock };
+    jest.spyOn(i18n, 'getLocale').mockReturnValue('it');
+    const view = await show([]);
+    await act(async () => {
+      fireEvent.press(view.getByLabelText(t('profile.verifyEmailResend')));
+    });
+
+    expect(apiRequest).toHaveBeenCalledWith('POST', '/api/auth/resend-verification', { locale: 'it' });
     await view.unmount();
   });
 });

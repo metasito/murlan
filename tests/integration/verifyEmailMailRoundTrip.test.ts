@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { startTestServer, hasDatabase, skipMessage, type TestServer } from "../helpers/testServer.ts";
 import { readMailToken } from "../e2e/helpers/mailSink.ts";
+import { register } from "../helpers/client.ts";
 
 // Read at call time by server/http/mail.ts, not at module load, but set here
 // before startTestServer() below dynamically imports it — same convention
@@ -42,5 +43,47 @@ describe("register -> mail -> verify-email, end to end", { skip: hasDatabase() ?
       body: JSON.stringify({ email, code }),
     });
     assert.equal(verifyRes.status, 200, await verifyRes.text());
+  });
+
+  test("the locale a request carries is the language of the mail it sends", async () => {
+    const username = "mailitaliano";
+    const email = `${username}@example.test`;
+    const post = (route: string, body: object) =>
+      fetch(`${server.url}/api/auth/${route}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const registerRes = await post("register", { username, password: "password123", email, locale: "it" });
+    assert.equal(registerRes.status, 202, await registerRes.text());
+    const code = await readMailToken(email, "Verifica la tua email Murlan");
+    const verifyRes = await post("verify-email", { email, code });
+    assert.equal(verifyRes.status, 200, await verifyRes.text());
+
+    const resetRes = await post("request-password-reset", { email, locale: "it" });
+    assert.equal(resetRes.status, 200, await resetRes.text());
+    const token = await readMailToken(email, "Reimposta la tua password Murlan");
+    assert.match(token, /\S+/);
+  });
+
+  test("add-email and resend-verification mail in the locale they carry", async () => {
+    const { user, cookie } = await register(server, "mailshqip");
+    const post = (route: string, body: object) =>
+      fetch(`${server.url}/api/auth/${route}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      });
+    const resendRes = await post("resend-verification", { locale: "sq" });
+    assert.equal(resendRes.status, 200, await resendRes.text());
+    assert.match(await readMailToken("mailshqip@example.test", "Verifiko email-in për Murlan"), /\S+/);
+
+    const { db } = await import("../../server/store/db.ts");
+    const { users } = await import("../../shared/schema.ts");
+    const { eq } = await import("drizzle-orm");
+    await db.update(users).set({ email: null, emailVerifiedAt: null }).where(eq(users.id, user.id));
+    const addRes = await post("add-email", { email: "mailitaliano2@example.test", locale: "it" });
+    assert.equal(addRes.status, 200, await addRes.text());
+    assert.match(await readMailToken("mailitaliano2@example.test", "Verifica la tua email Murlan"), /\S+/);
   });
 });

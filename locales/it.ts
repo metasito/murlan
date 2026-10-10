@@ -120,6 +120,10 @@ export const it: Record<keyof typeof en, string> = {
 
   // -------------------------------------------------------- verifyEmail.*
   "verifyEmail.title": "Verifica email",
+  "mail.verifySubject": "Verifica la tua email Murlan",
+  "mail.verifyBody": "Qualcuno ha creato un account Murlan (@{{username}}) con questo indirizzo email.\n\nSe la richiesta è tua, il tuo codice di verifica è:\n\n{{code}}\n\nIl codice scade tra {{minutes}} minuti.\n\nSe non l'hai richiesto tu, non devi fare nulla: lasciare inutilizzato questo codice non dà il tuo indirizzo a quell'account.",
+  "mail.resetSubject": "Reimposta la tua password Murlan",
+  "mail.resetBody": "Il tuo codice per reimpostare la password di Murlan è:\n\n{{token}}\n\nIl codice scade tra {{minutes}} minuti. Se non l'hai richiesto, puoi ignorare questa email.",
   "verifyEmail.body": "Inserisci il codice a 6 cifre dell'email che ti abbiamo inviato.",
   "verifyEmail.codeLabel": "Codice",
   "verifyEmail.codePlaceholder": "Codice a 6 cifre",

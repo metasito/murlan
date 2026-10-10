@@ -6,6 +6,7 @@ import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { forgetPushRegistration } from "@/lib/device/pushRegistration";
 import { ACCOUNT_KEYS, AUTH_USER_KEY as STORAGE_KEY } from "@/lib/storageKeys";
 import { parseCachedUser, type AuthUser } from "@/lib/authUser";
+import { getLocale } from "@/lib/i18n";
 
 export type { AuthUser };
 
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // unanswered, not that it was answered "no". A flaky connection right
   // after a successful POST must not read as a sign-out.
   const register = useCallback(async (username: string, password: string, email: string) => {
-    await apiRequest("POST", "/api/auth/register", { username, password, email });
+    await apiRequest("POST", "/api/auth/register", { username, password, email, locale: getLocale() });
     const data = await fetchMe();
     if (data === undefined) return undefined;
     setUser(data);
@@ -175,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // `user.email`, so the state has to update in the same place the request
   // lands, not wait for the next /api/auth/me poll.
   const addEmail = useCallback(async (email: string) => {
-    const res = await apiRequest("POST", "/api/auth/add-email", { email });
+    const res = await apiRequest("POST", "/api/auth/add-email", { email, locale: getLocale() });
     const data = await res.json();
     setUser(data);
     await cacheUser(data);

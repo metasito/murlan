@@ -29,7 +29,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { IconButton } from "@/components/IconButton";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { LookPicker } from "@/components/LookPicker";
-import { useTranslation } from "@/lib/i18n";
+import { getLocale, useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -450,7 +450,7 @@ function VerifyEmailCard({ email }: { email: string }) {
     setResending(true);
     setError(null);
     try {
-      await apiRequest("POST", "/api/auth/resend-verification");
+      await apiRequest("POST", "/api/auth/resend-verification", { locale: getLocale() });
       setResent(true);
     } catch (e: unknown) {
       setResent(false);
