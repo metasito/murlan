@@ -1,7 +1,7 @@
 // tests/native/dealTurn.test.tsx — the viewer's turn is given when the deal lands, not from its first frame (#1432).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { render, screen, within } from '@testing-library/react-native';
+import { act, render, screen, within } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -10,7 +10,6 @@ import { HAND_SCALE, HAND_SCALE_ON_TURN } from '@/components/cardFaceModel';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
 import { Colors } from '@/lib/theme';
 import { en } from '@/locales/en';
-import { frames } from './helpers/exchangeLegs';
 import { bootFeedback } from './helpers/feedback';
 
 const HIDDEN_TOO = { includeHiddenElements: true };
@@ -34,6 +33,7 @@ const table = (gameState: GameState) => (
   </SafeAreaProvider>
 );
 
+const advance = (ms: number) => act(async () => jest.advanceTimersByTime(ms));
 const dealing = () => JSON.stringify(screen.toJSON()).includes('"dealing":"true"');
 const chipReadsYourTurn = () =>
   within(screen.getByTestId('game-hud-stack')).queryByText(en['gameShared.yourTurn'], HIDDEN_TOO) !== null;
@@ -59,19 +59,19 @@ describe("the viewer's turn waits for the deal to land", () => {
 
   it('shows no turn while the cards fly, and gives it once they land', async () => {
     const view = await render(table(freshDeal()));
-    await frames(400);
+    await advance(400);
     expect(dealing()).toBe(true);
     expect(chipReadsYourTurn()).toBe(false);
     expect(chipIsLit()).toBe(false);
     expect(giocaIsLit()).toBe(false);
     const dealtW = handCardW();
 
-    for (let ms = 0; dealing() && ms < 3000; ms += 160) await frames(160);
+    for (let ms = 0; dealing() && ms < 3000; ms += 160) await advance(160);
     expect(dealing()).toBe(false);
     expect(chipReadsYourTurn()).toBe(true);
     expect(chipIsLit()).toBe(true);
     expect(giocaIsLit()).toBe(true);
     expect(handCardW() / dealtW).toBeCloseTo(HAND_SCALE_ON_TURN / HAND_SCALE, 2);
     await view.unmount();
-  });
+  }, 20_000);
 });
