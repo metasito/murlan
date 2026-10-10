@@ -11,6 +11,8 @@ import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { partitaEndingOnsets } from '@/lib/game/partitaEnding';
 import { t } from '@/lib/i18n';
+import { Layer } from '@/lib/theme';
+import { StyleSheet } from 'react-native';
 
 const seat = (i: number): Player => ({ id: `player_${i}`, name: ['Ana', 'Luan', 'Erion', 'Besa'][i], hand: [], type: i === 0 ? 'human' : 'ai' });
 const MOCK_ENDED: GameState = {
@@ -33,6 +35,7 @@ const mockStartNewMatch = jest.fn();
 const mockResetGame = jest.fn();
 const mockVoteRematch = jest.fn();
 let mockVotes: { votes: string[]; total: number } | null = null;
+let mockError: { text: string; seq: number } | null = null;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
@@ -67,7 +70,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineRoom: () => ({ isSpectator: false, entrySource: 'lobby', leaveRoom: jest.fn() }),
   useOnlineConnection: () => ({
     connected: true,
-    error: null,
+    error: mockError,
     reconnectNotice: null,
     playerLeft: false,
     rejoinFailed: false,
@@ -121,6 +124,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   mockVotes = null;
+  mockError = null;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -194,6 +198,18 @@ describe('Nuova partita on the board', () => {
     await act(async () => view.rerender(wrap(OnlineGameScreen)));
     expect(screen.getAllByText(t('gameOverOverlay.nextHandWaiting', { count: 1, total: 4 }), HIDDEN).length).toBe(1);
     expect(pressable('btn-rivincita')).toBe(false);
+    await view.unmount();
+  });
+
+  it('shows a refused rematch over the board, not under it', async () => {
+    const view = await render(wrap(OnlineGameScreen));
+    await advance(settled + 100);
+    mockError = { text: t('server.REMATCH_DECLINED'), seq: 1 };
+    await act(async () => view.rerender(wrap(OnlineGameScreen)));
+    const toast = screen.getByText(t('server.REMATCH_DECLINED'), HIDDEN);
+    let slot = toast.parent;
+    while (slot && StyleSheet.flatten(slot.props.style)?.position !== 'absolute') slot = slot.parent;
+    expect(StyleSheet.flatten(slot!.props.style).zIndex).toBeGreaterThan(Layer.moment);
     await view.unmount();
   });
 });
