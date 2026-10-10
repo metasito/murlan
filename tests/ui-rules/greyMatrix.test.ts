@@ -36,7 +36,9 @@ test("at the held grey the felt matrix desaturates and darkens as the CSS filter
   for (const input of [[1, 0, 0], [0, 1, 0], [0, 0, 1], hex(Colors.felt), hex(Colors.gold), hex(Colors.seatDisc)] as Rgb[]) {
     const out = skia(m, input);
     assert.ok(saturation(input) > 0.6, `${input} is a saturated input`);
-    assert.ok(Math.abs(saturation(out) - saturation(css(input, g))) <= 0.02, `${input}: ${saturation(out)} vs ${saturation(css(input, g))}`);
+    assert.ok(saturation(out) < saturation(input), `${input} desaturates: ${saturation(out)}`);
+    assert.ok(Math.max(...out.slice(0, 3)) < Math.max(...input), `${input} darkens: ${out}`);
+    css(input, g).forEach((want, i) => assert.ok(Math.abs(out[i] - want) <= 0.005, `${input} channel ${i}: ${out[i]} vs ${want}`));
     assert.equal(out[3], 1, "alpha passes through");
   }
 });

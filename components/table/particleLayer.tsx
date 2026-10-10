@@ -28,6 +28,7 @@ import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
+import { useGreyLayer } from "./greyLayer";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
@@ -114,13 +115,15 @@ const wingOf = (p: MothPose | null, side: number) => {
   return p ? ovalOf(p.mx + side * p.wing, p.my, p.wing, p.wingRy) : ovalOf(0, 0, 0, 0);
 };
 
-export function ParticleLayer({ ref, rig, landing }: {
+export function ParticleLayer({ ref, rig, landing, grey }: {
   ref?: Ref<ParticleEmitter>;
   rig: Pick<LampRig, "lamp" | "sx" | "sy">;
   /** The landing dust is thrown on the contact frame, on this thread. */
   landing: SharedValue<LandingSignal>;
+  grey?: SharedValue<number>;
 }) {
   const { lamp, sx, sy } = rig;
+  const greyLayer = useGreyLayer(grey);
   const [sheet] = useState(bakeSheet);
   const [initial] = useState<Field>(() => ({
     s: createParticles(),
@@ -226,8 +229,8 @@ export function ParticleLayer({ ref, rig, landing }: {
 
   if (!sheet) return null;
   return (
-    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Group transform={[{ scaleX: sx }, { scaleY: sy }]}>
+    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none" testID="particle-skia">
+      <Group transform={[{ scaleX: sx }, { scaleY: sy }]} layer={greyLayer}>
         <Atlas image={sheet} sprites={sprites} transforms={transforms} colors={colors} colorBlendMode="modulate" />
         <Group transform={shadowAt}>
           <Oval rect={shadow} color={RestAir.mothShadow} />

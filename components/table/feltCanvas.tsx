@@ -7,13 +7,11 @@ import {
   AlphaType,
   BlurStyle,
   Canvas,
-  ColorMatrix,
   ColorType,
   type CanvasRef,
   useCanvasRef,
   Group,
   Image,
-  Paint,
   PaintStyle,
   Picture,
   RadialGradient,
@@ -26,13 +24,12 @@ import {
   type SkRRect,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
 import { CardGlow, Colors, withAlpha } from "@/lib/theme";
 import { DESIGN, lightUniforms, type Lamp } from "./lampRig";
-import { GREY_VISIBLE, greyMatrix } from "./linkGrey";
+import { useGreyLayer } from "./greyLayer";
 import { CLOTH_SKSL, clothUniforms } from "./feltShader";
 import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type RingPainter } from "./rail";
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
@@ -272,23 +269,6 @@ async function snapshotPixels(canvas: CanvasRef | null): Promise<Pixels | null> 
   const data = image.readPixels(0, 0, { width, height, colorType: ColorType.RGBA_8888, alphaType: AlphaType.Unpremul });
   image.dispose();
   return data instanceof Uint8Array ? { width, height, data } : null;
-}
-
-/** Mounted only while grey shows: a layer is an offscreen pass on every frame. */
-function useGreyLayer(grey: SharedValue<number> | undefined) {
-  const [on, setOn] = useState(false);
-  useAnimatedReaction(
-    () => IOS && grey !== undefined && grey.value > GREY_VISIBLE,
-    (now, before) => {
-      if (now !== before) scheduleOnRN(setOn, now);
-    }
-  );
-  const matrix = useDerivedValue(() => greyMatrix(grey?.value ?? 0));
-  return on ? (
-    <Paint>
-      <ColorMatrix matrix={matrix} />
-    </Paint>
-  ) : undefined;
 }
 
 export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCanvasProps) {
