@@ -7,6 +7,7 @@ const root = path.resolve(import.meta.dirname, "..", "..");
 const code = (rel: string) => readFileSync(path.join(root, rel), "utf8").replace(/[ \t]*#.*$/gm, "");
 const IOS = code(".github/workflows/ios.yml");
 const FELT = ".maestro/felt-opaque.yaml";
+const CAPTURES = ".maestro/captures.yaml";
 const WARMUP = ".maestro/_warmup.yaml";
 const OWN_WORKFLOW: Record<string, string> = { "audio-soak.yaml": ".github/workflows/audio-soak.yml" };
 
@@ -32,7 +33,7 @@ const step = (source: string, name: string) => {
 };
 
 test("every flow runs in exactly one shard, bar those another workflow drives", () => {
-  const run = [...shards.flatMap((s) => s.flows), FELT].sort();
+  const run = [...shards.flatMap((s) => s.flows), FELT, CAPTURES].sort();
   assert.equal(new Set(run).size, run.length, `a flow runs twice: ${run}`);
   const expected = readdirSync(path.join(root, ".maestro"))
     .filter((f) => f.endsWith(".yaml") && !(f in OWN_WORKFLOW))
@@ -58,10 +59,13 @@ test("the warm-up runs before the flows, at most twice, and red when both attemp
   assert.doesNotMatch(job("flows"), /continue-on-error/);
   assert.equal(shards.filter((s) => s.felt).length, 1);
   assert.match(step(IOS, "Install the app on the simulator"), /\n {8}id: install\n/);
-  for (const name of ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"]) {
+  const feltSteps = ["Photograph the felt", "The felt shows no black band", "Upload the felt screenshots"];
+  for (const name of [...feltSteps, "Photograph the capture states", "Upload the capture states"]) {
     assert.match(step(IOS, name), /if: \$\{\{ !cancelled\(\) && matrix\.felt && steps\.install\.outcome == 'success' \}\}\n/, name);
   }
   assert.match(step(IOS, "Photograph the felt"), new RegExp(`test -e MAESTRO_APP_ID="\\$APP_ID" ${FELT}\\n`));
+  assert.match(step(IOS, "Photograph the capture states"), new RegExp(`test -e MAESTRO_APP_ID="\\$APP_ID" ${CAPTURES}\\n`));
+  assert.match(step(IOS, "Upload the capture states"), /\n {10}name: ios-captures\n/);
 });
 
 test("the run is green only when every shard ran and passed", () => {

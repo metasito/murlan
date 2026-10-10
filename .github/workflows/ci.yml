@@ -553,6 +553,7 @@ jobs:
           unzip -q -o "$apk" "assets/index.android.bundle" -d "$RUNNER_TEMP/apk"
           [ -f "$RUNNER_TEMP/apk/assets/index.android.bundle" ] || { echo "::error::The release APK embeds no JS bundle."; exit 1; }
           node scripts/e2eBuildMark.mjs --absent "$RUNNER_TEMP/apk" --mark diagnostics
+          node scripts/e2eBuildMark.mjs --absent "$RUNNER_TEMP/apk"
           grep -q "lib/x86_64/libreact-native-audio-api.so" "$RUNNER_TEMP/apk.txt"
           grep -q "lib/x86_64/libturbo-haptics.so" "$RUNNER_TEMP/apk.txt"
           if grep -q "libav" "$RUNNER_TEMP/apk.txt"; then echo "::error::FFmpeg shipped in the APK."; exit 1; fi
@@ -653,6 +654,7 @@ jobs:
           fi
           [ -f "$app/main.jsbundle" ] || { echo "::error::The Release .app embeds no main.jsbundle."; exit 1; }
           node scripts/e2eBuildMark.mjs --absent "$app" --mark diagnostics
+          node scripts/e2eBuildMark.mjs --absent "$app"
           if /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist" >/dev/null 2>&1; then
             echo "::error::A production build asks for the microphone."; exit 1
           fi

@@ -1,0 +1,29 @@
+##
+# Named states from lib/captureStates.ts, opened by link in the app felt-opaque.yaml left running (ios.yml).
+appId: "${MAESTRO_APP_ID}"
+---
+- openLink: "murlan://capture?state=lamp-bottom"
+- tapOn:
+    text: "Open"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: lamp-bottom
+- openLink: "murlan://capture?state=pile-right"
+- tapOn:
+    text: "Open"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: pile-right
+- openLink: "murlan://capture?state=held"
+- tapOn:
+    text: "Open"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: held

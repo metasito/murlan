@@ -348,6 +348,30 @@ jobs:
           path: ${{ runner.temp }}/felt/
           if-no-files-found: ignore
 
+      - name: Photograph the capture states
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
+        env:
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "300000"
+        run: maestro --device "$SIMULATOR_UDID" test -e MAESTRO_APP_ID="$APP_ID" .maestro/captures.yaml
+
+      - name: Collect the capture states
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/captures"
+          for shot in held pile-right lamp-bottom; do
+            found=$(find "$HOME/.maestro/tests" -path "*/captures/*" -name "$shot.png" 2>/dev/null | sort | tail -1)
+            [ -n "$found" ] || { echo "::error::The capture flow wrote no $shot.png."; exit 1; }
+            cp "$found" "$RUNNER_TEMP/captures/$shot.png"
+          done
+
+      - name: Upload the capture states
+        if: ${{ !cancelled() && matrix.felt && steps.install.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-captures
+          path: ${{ runner.temp }}/captures/
+          if-no-files-found: ignore
+
       # A simulator app's crash report lands in the host's own DiagnosticReports. Not gated on
       # failure: an app that died mid-flow can still pass the flows (see maestro.yml's crash step).
       - name: Fail if the app died of a native crash
