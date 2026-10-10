@@ -23,6 +23,7 @@ import {
   type GameState,
   type Player,
 } from "./game/gameEngine.ts";
+import type { OwnLink } from "./ownLink.ts";
 
 /** Bot names and seating as `app/lobby.tsx` fills empty seats. */
 const BOTS = ["Luan", "Drita", "Besnik"] as const;
@@ -49,6 +50,8 @@ export interface CaptureState {
   pile: boolean;
   /** What each opponent holds; "out" has finished the manche. Absent, every seat holds the whole deal. */
   counts?: Readonly<Record<"right" | "top" | "left", number | "out">>;
+  /** The viewer's own connection, as the online table reads it. Absent, it is up. */
+  link?: OwnLink;
 }
 
 /**
@@ -127,8 +130,22 @@ export const SEAT_COUNT_STATES: readonly CaptureState[] = [
   countState("counts-top-out", "The top seat out, its trophy on the ring", { right: 13, top: "out", left: 13 }),
 ];
 
+export const LINK_STATES: readonly CaptureState[] = [
+  {
+    id: "held",
+    label: "Your link down mid-hand — the whole table held in grey",
+    playerCount: 4,
+    turn: 1,
+    side: "right",
+    pile: true,
+    link: "reconnecting",
+  },
+];
+
+export const ALL_CAPTURE_STATES: readonly CaptureState[] = [...CAPTURE_STATES, ...SEAT_COUNT_STATES, ...LINK_STATES];
+
 export function captureStateById(id: string | undefined): CaptureState | null {
-  return [...CAPTURE_STATES, ...SEAT_COUNT_STATES].find((s) => s.id === id) ?? null;
+  return ALL_CAPTURE_STATES.find((s) => s.id === id) ?? null;
 }
 
 /**

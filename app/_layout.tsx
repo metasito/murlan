@@ -25,6 +25,7 @@ import { backgroundMusic, startFeedback } from "@/lib/device/feedback";
 import type { TrackId } from "@/lib/device/musicTracks";
 import { UpdateRequired } from "@/components/UpdateRequired";
 import { DIAGNOSTICS } from "@/lib/diagnostics";
+import { captureEnabled } from "@/lib/captureRoute";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import "@/lib/e2eBuildMark";
 
@@ -82,7 +83,7 @@ export function RootLayoutNav() {
         <Stack.Screen name="join/[code]" />
         <Stack.Screen name="game" />
         {/* The iOS capture harness (app/capture.tsx). Registered only in a
-            development build: the screen refuses to render in a production one
+            development or e2e build: the screen refuses to render in a production one
             either way, and a route a player can reach and be shown nothing on
             is worse than no route.
 
@@ -90,7 +91,7 @@ export function RootLayoutNav() {
             with `Children.forEach`, which does not skip a falsy child, so a
             `false` — or a `null` — arrives here as a child that is not a
             Screen and every production render warns about it. */}
-        <Stack.Protected guard={__DEV__}>
+        <Stack.Protected guard={captureEnabled()}>
           <Stack.Screen name="capture" />
         </Stack.Protected>
         <Stack.Protected guard={DIAGNOSTICS}>

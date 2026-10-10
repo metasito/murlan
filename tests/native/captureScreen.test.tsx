@@ -14,6 +14,9 @@ import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { getAnimatedStyle } from 'react-native-reanimated';
+import { greyFilter } from '@/components/table/useLinkHold';
+import { holdGrey } from '@/lib/ownLink';
 
 // The table is landscape-locked and jest-expo's own window is a fixed portrait
 // one, which is a different card scale. Everything else here is the same shape
@@ -46,7 +49,8 @@ jest.mock('expo-router', () => ({
 
 // Required after the mocks, so the screen picks them up.
 const CaptureScreen = require('@/app/capture').default as React.ComponentType;
-const { CAPTURE_STATES } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
+const { ALL_CAPTURE_STATES, captureStateById } = require('@/lib/captureStates') as typeof import('@/lib/captureStates');
+const { redirectSystemPath } = require('@/app/+native-intent') as typeof import('@/app/+native-intent');
 
 const mount = () =>
   render(
@@ -59,34 +63,57 @@ describe('the capture screen', () => {
   it('lists every named state when none is picked', async () => {
     mockParams = {};
     const view = await mount();
-    for (const state of CAPTURE_STATES) {
+    for (const state of ALL_CAPTURE_STATES) {
       expect(screen.getByLabelText(state.label)).toBeTruthy();
     }
     await view.unmount();
   });
 
-  it.each(CAPTURE_STATES.map((s) => [s.id] as const))('renders %s', async (id) => {
+  it.each(ALL_CAPTURE_STATES.map((s) => [s.id] as const))('renders %s', async (id) => {
     mockParams = { state: id };
     const view = await mount();
     expect(screen.getByTestId('game-table')).toBeTruthy();
     // The swing is the one state that needs an input rather than a route, so a
     // capture cannot be taken of the handover without it.
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
+    const link = captureStateById(id)?.link ?? 'up';
+    expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(greyFilter(holdGrey(link)));
     await view.unmount();
   });
 
-  it('outside a development build, shows only that it is unavailable', async () => {
-    mockParams = { state: CAPTURE_STATES[0].id };
+  const asBuilt = async (e2eFlag: string | undefined, body: () => Promise<void>) => {
     const g = globalThis as { __DEV__?: boolean };
-    const dev = g.__DEV__;
+    const [dev, flag] = [g.__DEV__, process.env.EXPO_PUBLIC_E2E_FAST];
     g.__DEV__ = false;
+    if (e2eFlag === undefined) delete process.env.EXPO_PUBLIC_E2E_FAST;
+    else process.env.EXPO_PUBLIC_E2E_FAST = e2eFlag;
     try {
-      const view = await mount();
-      expect(screen.getByText('The capture screen is a development build only.')).toBeTruthy();
-      expect(screen.queryByTestId('game-table')).toBeNull();
-      await view.unmount();
+      await body();
     } finally {
       g.__DEV__ = dev;
+      if (flag === undefined) delete process.env.EXPO_PUBLIC_E2E_FAST;
+      else process.env.EXPO_PUBLIC_E2E_FAST = flag;
     }
-  });
+  };
+  const HELD_LINK = { path: 'murlan://capture?state=held', initial: true };
+
+  it('a production build follows no capture link and shows only that the screen is unavailable', () =>
+    asBuilt(undefined, async () => {
+      expect(redirectSystemPath(HELD_LINK)).toBe('/');
+      mockParams = { state: 'held' };
+      const view = await mount();
+      expect(screen.getByText('The capture screen is a development or e2e build only.')).toBeTruthy();
+      expect(screen.queryByTestId('game-table')).toBeNull();
+      await view.unmount();
+    }));
+
+  it('an e2e build opens a capture state by link', () =>
+    asBuilt('1', async () => {
+      expect(redirectSystemPath(HELD_LINK)).toBe('/capture?state=held');
+      expect(redirectSystemPath({ path: 'murlan://rules', initial: true })).toBe('/');
+      mockParams = { state: 'held' };
+      const view = await mount();
+      expect(screen.getByTestId('game-table')).toBeTruthy();
+      await view.unmount();
+    }));
 });

@@ -1,0 +1,35 @@
+##
+# Named states from lib/captureStates.ts, opened by link in the app felt-opaque.yaml left running (ios.yml).
+# iOS asks "Open in Murlan?" before the first link only, and its Open button carries no label: it is
+# tapped by position, in landscape points, where run 38061909920 found it.
+appId: "${MAESTRO_APP_ID}"
+---
+- openLink: "murlan://capture?state=lamp-bottom"
+- extendedWaitUntil:
+    visible: "Cancel"
+    timeout: 5000
+    optional: true
+- runFlow:
+    when:
+      visible: "Cancel"
+    commands:
+      - tapOn:
+          point: "530,222"
+          retryTapIfNoChange: false
+          waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible:
+      id: "game-table"
+    timeout: 30000
+- assertVisible: "Move the lamp to the next seat"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: lamp-bottom
+- openLink: "murlan://capture?state=pile-right"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: pile-right
+- openLink: "murlan://capture?state=held"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: held

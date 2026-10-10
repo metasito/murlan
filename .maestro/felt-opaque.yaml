@@ -40,3 +40,4 @@ appId: "${MAESTRO_APP_ID}"
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: felt-settled
+- runFlow: captures.yaml

@@ -13,9 +13,9 @@
 // navigate to and not to photograph. Nothing here advances the turn unless the
 // swing knob is pressed.
 //
-// Development builds only, so a capture harness can never be a way into a real
-// player's app: `app/_layout.tsx`'s `Stack.Protected guard={__DEV__}` keeps the
-// route off the navigator, and `CaptureScreen`'s own `!__DEV__` return below
+// Development and e2e builds only (`captureEnabled`), so a capture harness can
+// never be a way into a real player's app: `app/_layout.tsx`'s `Stack.Protected`
+// keeps the route off the navigator, and `CaptureScreen`'s own check below
 // shows an unavailable message if the route is reached anyway.
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
@@ -24,13 +24,13 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { GameTable } from "@/components/GameTable";
 import { MenuLayout } from "@/components/MenuLayout";
 import {
-  CAPTURE_STATES,
+  ALL_CAPTURE_STATES,
   CAPTURE_VIEWER_SEAT,
   captureGameState,
   captureStateById,
   nextTurn,
-  SEAT_COUNT_STATES,
 } from "@/lib/captureStates";
+import { captureEnabled } from "@/lib/captureRoute";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
 import type { GameState } from "@/lib/game/gameEngine";
 import { a11yHidden } from "@/lib/a11y";
@@ -45,11 +45,11 @@ const COPY = {
   title: "Capture",
   body: "Pick a state, turn the device landscape, and photograph it. One shot per state.",
   swing: "Move the lamp to the next seat",
-  unavailable: "The capture screen is a development build only.",
+  unavailable: "The capture screen is a development or e2e build only.",
 } as const;
 
 export default function CaptureScreen() {
-  if (!__DEV__) {
+  if (!captureEnabled()) {
     return (
       <MenuLayout>
         <Text style={styles.body}>{COPY.unavailable}</Text>
@@ -81,6 +81,7 @@ function CaptureHarness() {
     <GameTable
       gameState={gameState}
       viewerSeat={CAPTURE_VIEWER_SEAT}
+      ownLink={picked.link}
       // A capture is of a frame, not of a hand being played: the table stays on
       // the state it was asked for until the swing knob moves it.
       onPlay={() => {}}
@@ -111,7 +112,7 @@ function CaptureList() {
       <Text style={styles.title}>{COPY.title}</Text>
       <Text style={styles.body}>{COPY.body}</Text>
       <ScrollView contentContainerStyle={styles.list}>
-        {[...CAPTURE_STATES, ...SEAT_COUNT_STATES].map((state) => (
+        {ALL_CAPTURE_STATES.map((state) => (
           <Pressable
             key={state.id}
             accessibilityRole="button"
