@@ -14,12 +14,15 @@ import { Motion } from "../../lib/tokens.ts";
 const ROOM = "exchange-rearm-room";
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 
-function exchangeTable(): OnlineGameState {
+function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
   const seats = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "ai" as const, id: `player_${i}` }));
   const deck = createDeck();
-  const hands = seats.map((_, s) => deck.filter((_, i) => i % seats.length === s));
+  const jokers = deck.filter((c) => c.isJoker);
+  const rest = loserHoldsBothJokers ? deck.filter((c) => !c.isJoker) : deck;
+  const hands = seats.map((_, s) => rest.filter((_, i) => i % seats.length === s));
+  if (loserHoldsBothJokers) hands[3].push(...jokers);
   const gameState: GameState = initializeRematch(seats, "free_for_all", ["player_0", "player_1", "player_2", "player_3"], 0, hands);
-  assert.ok(gameState.exchangePhase?.active, "the rematch opens an exchange");
+  assert.equal(gameState.exchangePhase?.active, !loserHoldsBothJokers, "the rematch opens an exchange unless the loser holds both Jokers");
   const game: OnlineGameState = {
     roomId: ROOM,
     joinCode: "AAAAAA",
@@ -71,6 +74,25 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
     assert.deepEqual(game.gameState, after, "the next seat moved during the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, after, "the next seat never moved");
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
+
+test("a bot opening a both-Jokers manche waits out the deal and the ceremony it opens with", (t) => {
+  t.mock.method(persistence, "writeActiveGame", async () => {});
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const game = exchangeTable(true);
+  try {
+    armTurn(io, ROOM);
+    const counts = game.gameState.players.map((p) => p.hand.length);
+    const shut = dealEndMs(counts, Motion.duration.reveal) + exchangeAnnounceMs(true);
+    const dealt = structuredClone(game.gameState);
+    t.mock.timers.tick(shut - 1);
+    assert.deepEqual(game.gameState, dealt, "the opener played over the deal or the ceremony");
+    t.mock.timers.tick(1);
+    assert.notDeepEqual(game.gameState, dealt, "the opener never played");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

@@ -96,6 +96,21 @@ test("the server's give floor is no earlier than the client's choice opening aft
   }
 });
 
+test("the server's give floor is within one read after the client's choice opening, on a fresh table or a standing one", () => {
+  for (const dealt of [[27, 27], [18, 18, 18], [14, 14, 13, 13]]) {
+    for (let winner = 0; winner < dealt.length; winner++) {
+      for (let loser = 0; loser < dealt.length; loser++) {
+        if (winner === loser) continue;
+        const counts = dealt.map((n, i) => n + Number(i === winner) - Number(i === loser));
+        for (const offset of [0, Motion.duration.reveal]) {
+          const late = exchangeGiveDelayMs(counts) - (dealEndMs(counts, offset) + choiceOpensAt(false));
+          assert.ok(late >= 0 && late <= X.read, `${counts} dealt at ${offset}: the floor is ${late} ms after the choice opens`);
+        }
+      }
+    }
+  }
+});
+
 test("a choice made once it opens has its give landed and read by the server's re-arm; one made before would not", () => {
   for (const reduced of [false, true]) {
     for (const choice of [choiceOpensAt(reduced), choiceOpensAt(reduced) + 1, choiceOpensAt(reduced) + 5000]) {

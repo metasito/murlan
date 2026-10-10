@@ -1025,6 +1025,19 @@ export function openingIsPending(state: {
   return state.playedRanks?.every((played) => played === 0) ?? false;
 }
 
+/**
+ * Whether the manche on the table is still as dealt: nobody has played into it.
+ * An exchange manche counts, though it carries `firstPlayMade` from the last one.
+ */
+export function mancheUnplayed(state: {
+  gameOver: boolean;
+  firstPlayMade: boolean;
+  playedRanks?: number[];
+}): boolean {
+  if (state.gameOver) return false;
+  return !state.firstPlayMade || (state.playedRanks?.every((played) => played === 0) ?? false);
+}
+
 /** Teams is 2-v-2 and only 2-v-2 (docs/GAME-RULES.md §11). */
 export const TEAMS_PLAYER_COUNT = 4;
 
