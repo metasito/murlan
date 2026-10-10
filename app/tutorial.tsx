@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn } from "react-native-reanimated";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { uiFeedback } from "@/lib/device/feedback";
+import { leaveScreen } from "@/components/ScreenHeader";
 import { Colors, Spacing, Radius, FontSize, Type, Motion, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { markTutorialSeen } from "@/lib/tutorialSeen";
@@ -510,7 +511,7 @@ export default function TutorialScreen() {
       uiFeedback("selection");
       setStepIndex((i) => i - 1);
     } else {
-      router.back();
+      leaveScreen();
     }
   }
 

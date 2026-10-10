@@ -91,4 +91,18 @@ describe('followInviteTaps', () => {
     expect(mockRouter.push).toHaveBeenCalledWith('/join/QX7K2M');
     stop();
   });
+
+  it('does not follow the launch tap again after a JS reload', () => {
+    mockLaunch.response = tap('n7', { code: 'FRIEND_INVITE', roomCode: 'QX7K2M' });
+    followInviteTaps()();
+
+    const pushes = new Set([mockRouter.push as jest.Mock]);
+    jest.isolateModules(() => {
+      const reloaded = require('@/lib/device/inviteTaps') as typeof import('@/lib/device/inviteTaps');
+      reloaded.followInviteTaps()();
+      pushes.add((require('expo-router') as typeof import('expo-router')).router.push as jest.Mock);
+    });
+
+    expect([...pushes].flatMap((push) => push.mock.calls)).toEqual([['/join/QX7K2M']]);
+  });
 });

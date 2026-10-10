@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, StyleSheet } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
-import { ScreenHeader } from "@/components/ScreenHeader";
+import { useLocalSearchParams } from "expo-router";
+import { ScreenHeader, leaveScreen } from "@/components/ScreenHeader";
 import { MenuLayout } from "@/components/MenuLayout";
 import { MenuCard } from "@/components/MenuCard";
 import { MenuButton } from "@/components/MenuButton";
@@ -85,13 +85,6 @@ export default function VerifyEmailScreen() {
     setResending(false);
   }
 
-  // Typing the URL is a way in on web, so there is not always somewhere to
-  // go back to.
-  function leave() {
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
-  }
-
   return (
     <MenuLayout scrollable centered={false}>
       <ScreenHeader title={t("verifyEmail.title")} />
@@ -105,7 +98,7 @@ export default function VerifyEmailScreen() {
                 title={t("verifyEmail.successTitle")}
                 body={t("verifyEmail.successBody")}
               />
-              <MenuButton label={t("verifyEmail.done")} onPress={leave} variant="primary" />
+              <MenuButton label={t("verifyEmail.done")} onPress={leaveScreen} variant="primary" />
             </View>
           ) : (
             <View style={styles.form}>

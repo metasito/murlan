@@ -162,15 +162,6 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
   const clearInvite = useCallback(() => setPendingInvite(null), []);
 
-  const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
-  // Answering an invite answers it for both: leaving `pendingInvite` up would
-  // reopen the code prompt over the join it just started, for the same room.
-  const acceptInvite = useCallback((roomCode: string) => {
-    setPendingInvite(null);
-    setAcceptedInvite(roomCode);
-  }, []);
-  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
-
   /**
    * Turning an invite down deletes it rather than hiding it. A dismissal that
    * only cleared the screen would come back on the next reconnect, and would
@@ -187,6 +178,19 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     },
     [qc]
   );
+
+  const [acceptedInvite, setAcceptedInvite] = useState<string | null>(null);
+  // Answering an invite answers it for both: leaving `pendingInvite` up would
+  // reopen the code prompt over the join it just started, for the same room.
+  const acceptInvite = useCallback(
+    (roomCode: string) => {
+      dismissGameInvite(roomCode);
+      setPendingInvite(null);
+      setAcceptedInvite(roomCode);
+    },
+    [dismissGameInvite]
+  );
+  const clearAcceptedInvite = useCallback(() => setAcceptedInvite(null), []);
 
   /**
    * Claims the account back on this device. The only way out of the replaced

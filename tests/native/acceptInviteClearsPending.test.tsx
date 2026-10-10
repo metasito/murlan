@@ -35,6 +35,12 @@ jest.mock('@/lib/socket', () => ({
   setSocketAuthFailureHandler: () => {},
 }));
 
+const mockApiRequest = jest.fn(async (..._args: unknown[]) => ({}));
+jest.mock('@/lib/query-client', () => ({
+  ...(jest.requireActual('@/lib/query-client') as object),
+  apiRequest: (...args: unknown[]) => mockApiRequest(...args),
+}));
+
 jest.mock('@/context/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
 }));
@@ -44,9 +50,8 @@ const { SocketProvider, useSocket } =
 const { NotificationProvider } =
   require('@/context/NotificationContext') as typeof import('@/context/NotificationContext');
 
-const mount = () => {
+const mount = (client = new QueryClient()) => {
   // Out here, not in the wrapper's body, which React re-runs on every render.
-  const client = new QueryClient();
   return renderHook(() => useSocket(), {
     wrapper: ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={client}>
@@ -79,6 +84,20 @@ describe('accepting an invite', () => {
 
     expect(result.current.acceptedInvite).toBe('ABC123');
     expect(result.current.pendingInvite).toBeNull();
+
+    await unmount();
+  });
+
+  it('deletes the invite row it answered', async () => {
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    const { result, unmount } = await mount(client);
+    expect(result.current.gameInvites).toHaveLength(1);
+
+    await act(async () => result.current.acceptInvite('ABC123'));
+
+    expect(result.current.gameInvites).toEqual([]);
+    expect(mockApiRequest).toHaveBeenCalledWith('DELETE', '/api/friends/invites/ABC123');
 
     await unmount();
   });
