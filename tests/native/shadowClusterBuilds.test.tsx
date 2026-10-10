@@ -6,7 +6,7 @@ import { makeMutable } from 'react-native-reanimated';
 
 import type { CardRect, CardRects } from '@/components/table/cardRects';
 import { TABLE_AT_REST } from '@/components/table/cardRects';
-import { shadowShape } from '@/components/table/cardShadows';
+import { SHADOW_PATHS, shadowShape } from '@/components/table/cardShadows';
 import { FeltCanvas } from '@/components/table/feltCanvas';
 import { TABLE_CENTRE, restingLamp } from '@/components/table/lampRig';
 import type { CardTable } from '@/components/table/useCardRects';
@@ -68,26 +68,38 @@ describe('the felt during a bot throw', () => {
 describe('the felt on a resize', () => {
   const rect = (over: Partial<CardRect> = {}): CardRect => ({ x: 200, y: 200, w: 64, h: 90, rot: 0, back: false, lift: 0, glow: 0, seen: 1, ...over });
 
-  it('rebuilds every cluster when the felt scale or the hand centre changes and no card moves', async () => {
-    const rects = makeMutable<CardRects>({ 'pile:a': rect(), 'pile:b': rect({ x: 600 }), 'fan:top:0': rect({ x: 400, y: 60, back: true }) });
+  it('rebuilds every cluster, of every kind, when any felt scale or the hand centre changes and no card moves', async () => {
+    const rects = makeMutable<CardRects>({
+      'pile:a': rect(),
+      'pile:b': rect({ x: 600 }),
+      'pile:c': rect({ x: 900, back: true }),
+      'fan:top:0': rect({ x: 400, y: 60, back: true }),
+    });
     const at = { x: 0, y: 0 };
-    const table = (sx: number, handX: number) =>
-      ({ rects, felt: { sx, sy: 1, s: 1, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: handX, y: 0 }, seats: {} }) as unknown as CardTable;
-    const felt = (sx: number, handX: number) => (
-      <FeltCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} sx={1} sy={1} stops={FeltGradient} cards={table(sx, handX)} />
+    type Scale = { sx: number; sy: number; s: number };
+    const table = (scale: Scale, handX: number) =>
+      ({ rects, felt: { ...scale, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: handX, y: 0 }, seats: {} }) as unknown as CardTable;
+    const felt = (scale: Scale, handX: number) => (
+      <FeltCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} sx={1} sy={1} stops={FeltGradient} cards={table(scale, handX)} />
     );
     const counts = () => Object.values(e2e.murlanShadowClusterBuilds ?? {});
+    const kinds = () => new Set(Object.keys(e2e.murlanShadowClusterBuilds ?? {}).map((cluster) => cluster.split('|')[0]));
 
-    const view = await render(felt(1, 0));
+    const view = await render(felt({ sx: 1, sy: 1, s: 1 }, 0));
     await frames(48);
-    expect(counts().length).toBeGreaterThan(1);
+    expect([...kinds()].sort()).toEqual([...SHADOW_PATHS].sort());
     expect(counts()).toEqual(counts().map(() => 1));
-    await view.rerender(felt(1.1, 0));
-    await frames(48);
-    expect(counts()).toEqual(counts().map(() => 2));
-    await view.rerender(felt(1.1, 30));
-    await frames(48);
-    expect(counts()).toEqual(counts().map(() => 3));
+    const steps: [Scale, number][] = [
+      [{ sx: 1.1, sy: 1, s: 1 }, 0],
+      [{ sx: 1.1, sy: 1.1, s: 1 }, 0],
+      [{ sx: 1.1, sy: 1.1, s: 1.1 }, 0],
+      [{ sx: 1.1, sy: 1.1, s: 1.1 }, 30],
+    ];
+    for (const [i, [scale, handX]] of steps.entries()) {
+      await view.rerender(felt(scale, handX));
+      await frames(48);
+      expect(counts()).toEqual(counts().map(() => i + 2));
+    }
     await view.unmount();
   });
 });
