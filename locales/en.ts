@@ -77,7 +77,7 @@ export const en = {
   "server.MUST_PLAY_START_CARD": "You must play the {{rank}}♠ as your first card",
   "server.INVALID_MOVE": "Invalid move",
   "server.CANNOT_PASS": "You can't pass",
-  "server.REMATCH_DECLINED": "The table chose not to play again",
+  "server.REMATCH_DECLINED": "This match was ended by vote and cannot be replayed",
   "server.UNAUTHORIZED": "Unauthorized",
   "server.SEAT_RELEASED": "The table gave your seat up, and the match carried on without you.",
   "server.GAME_NOT_FOUND": "Game not found",

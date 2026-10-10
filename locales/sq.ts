@@ -86,7 +86,7 @@ export const sq: Record<keyof typeof en, string> = {
   "server.MUST_PLAY_START_CARD": "Duhet të luash {{rank}}♠ si letrën e parë",
   "server.INVALID_MOVE": "Lëvizje e pavlefshme",
   "server.CANNOT_PASS": "Nuk mund të kalosh",
-  "server.REMATCH_DECLINED": "Tavolina zgjodhi të mos luajë përsëri",
+  "server.REMATCH_DECLINED": "Kjo ndeshje u mbyll me votim dhe nuk mund të luhet përsëri",
   "server.UNAUTHORIZED": "Nuk lejohet",
   "server.SEAT_RELEASED": "Tavolina liroi vendin tënd dhe loja vazhdoi pa ty.",
   "server.GAME_NOT_FOUND": "Loja nuk u gjet",

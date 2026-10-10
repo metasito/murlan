@@ -70,7 +70,7 @@ export const it: Record<keyof typeof en, string> = {
   "server.MUST_PLAY_START_CARD": "Devi giocare il {{rank}}♠ come prima carta",
   "server.INVALID_MOVE": "Mossa non valida",
   "server.CANNOT_PASS": "Non puoi passare",
-  "server.REMATCH_DECLINED": "Il tavolo ha rifiutato la rivincita",
+  "server.REMATCH_DECLINED": "Questa partita è stata chiusa con un voto e non si può rigiocare",
   "server.UNAUTHORIZED": "Accesso non consentito",
   "server.SEAT_RELEASED": "Il tavolo ha liberato il tuo posto e la partita è andata avanti senza di te.",
   "server.GAME_NOT_FOUND": "Partita non trovata",
