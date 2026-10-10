@@ -22,6 +22,7 @@ jest.mock('expo-notifications', () => ({
 
 import { router as mockRouter } from 'expo-router';
 import { followInviteTaps } from '@/lib/device/inviteTaps';
+import { redirectSystemPath } from '@/app/+native-intent';
 
 const tap = (identifier: string, data: Record<string, unknown>) => ({
   actionIdentifier: 'expo.modules.notifications.actions.DEFAULT',
@@ -52,6 +53,19 @@ describe('followInviteTaps', () => {
     expect(openURL).not.toHaveBeenCalled();
     stop();
     expect(mockListeners.size).toBe(0);
+  });
+
+  it('takes a tap to the very route redirectSystemPath gives the same join link', () => {
+    const stop = followInviteTaps();
+    deliver(tap('n6', { code: 'FRIEND_INVITE', roomCode: 'qx7k2m' }));
+
+    const linked = ['murlan://join/qx7k2m', '/join/QX7K2M', 'join/qx7k2m'].map((path) =>
+      redirectSystemPath({ path, initial: true }),
+    );
+    expect(linked).toEqual(['/join/QX7K2M', '/join/QX7K2M', '/join/QX7K2M']);
+    expect(mockRouter.push).toHaveBeenCalledWith(linked[0]);
+    expect(redirectSystemPath({ path: 'murlan://rules', initial: true })).toBe('/');
+    stop();
   });
 
   it('ignores a push of another kind, and an invite with no usable room code', () => {
