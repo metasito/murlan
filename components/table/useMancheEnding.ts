@@ -73,7 +73,7 @@ export function useMancheEnding({
         cancelAnimation(clock);
         clock.set(MANCHE_IDLE);
       } else if (parked.current) {
-        runFrom(clock.get(), glowEnd);
+        runFrom(reduceMotion ? Math.max(clock.get(), settled) : clock.get(), glowEnd);
       }
       started.current = false;
       return;

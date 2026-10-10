@@ -5,6 +5,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { mancheEndingOnsets } from '@/lib/game/mancheEnding';
 import { t } from '@/lib/i18n';
@@ -100,6 +101,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.useRealTimers();
+  setMotionPreference('system');
 });
 
 describe('a manche ending online', () => {
@@ -125,6 +127,19 @@ describe('a manche ending online', () => {
     await advance(settled);
     expect(pillOpen()).toBe(false);
     expect(screen.queryByTestId('manche-vote', HIDDEN)).toBeNull();
+    await view.unmount();
+  });
+
+  it('under reduced motion, the next deal closes the held pill at once', async () => {
+    setMotionPreference('on');
+    const view = await render(screenNow());
+    await advance(close + settled);
+    expect(pillOpen()).toBe(true);
+
+    mockGameState = DEALT;
+    await act(async () => view.rerender(screenNow()));
+    await advance(16);
+    expect(pillOpen()).toBe(false);
     await view.unmount();
   });
 
