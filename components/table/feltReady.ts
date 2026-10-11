@@ -19,6 +19,13 @@ export interface FeltProps {
   grey?: SharedValue<number>;
 }
 
+export interface HandShadeProps {
+  lamp: LampRig["lamp"];
+  cards: CardTable;
+  /** The Skia felt has drawn: on web, CanvasKit is loaded. */
+  ready: boolean;
+}
+
 /**
  * How a card view on the table shades itself: `felt` where the felt draws every card's shadow, else
  * today's static shadow cast at this offset. Off the table, null: a static shadow.

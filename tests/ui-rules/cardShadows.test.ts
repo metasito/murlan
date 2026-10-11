@@ -5,10 +5,10 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, handShades, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, handPaintOrder, handShades, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
-import { CardGlow, CardShadow, Colors, Motion } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Colors, Layer, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
 
 type Layer = { x: string; y: string; blur: number; rgba: number[] | null; hex: string | null; inset: boolean };
@@ -90,13 +90,21 @@ describe("the shadow paths", () => {
     assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
   });
 
-  test("a hand card shades the cards painted under it, never the ones over it or a card not drawn", () => {
-    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }), "hand:c": rect({ x: 140 }), "hand:gone": rect({ seen: 0 }) };
+  test("a hand card shades the cards painted under it, never the ones over it, a card not drawn, or a flight over the hand", () => {
+    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }), "hand:c": rect({ x: 140 }), "hand:gone": rect({ seen: 0 }), "leg:x": rect(), "deal:gone": rect({ seen: 0 }) };
     assert.deepEqual(handShades(rects, ["hand:c", "hand:gone", "hand:a", "hand:missing", "hand:b"]), [
-      { caster: "hand:a", below: ["hand:c"], above: ["hand:a", "hand:b"] },
-      { caster: "hand:b", below: ["hand:c", "hand:a"], above: ["hand:b"] },
+      { caster: "hand:a", below: ["hand:c"], above: ["hand:a", "hand:b", "leg:x"] },
+      { caster: "hand:b", below: ["hand:c", "hand:a"], above: ["hand:b", "leg:x"] },
     ]);
     assert.deepEqual(handShades({ "hand:a": rect() }, ["hand:a"]), []);
+  });
+
+  test("the hand paints in its cards' zIndex order: a giveable card over its neighbours, the held card over all", () => {
+    assert.deepEqual(handCardZ(2, 5, undefined), 2);
+    assert.deepEqual(handCardZ(2, 5, true), 7);
+    assert.ok(handCardZ(200, 500, true) < Layer.held, "a giveable lift stays under the held card");
+    assert.deepEqual(handPaintOrder(["a", "b", "c", "d"], (id) => (id === "b" ? true : id === "c" ? false : undefined), "h"), ["hand:a", "hand:c", "hand:d", "hand:b", "hand:h"]);
+    assert.deepEqual(handPaintOrder(["a", "b"], () => undefined, null), ["hand:a", "hand:b"]);
   });
 
   test("the hand's shades are rebuilt when its paint order changes, though no card moved", () => {

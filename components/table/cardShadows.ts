@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardGlow, CardShadow } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Layer } from "../../lib/tokens.ts";
 import { cardRadius } from "../cardFaceModel.ts";
 import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
@@ -111,15 +111,30 @@ export function shadowClusterId(path: ShadowPath, rects: CardRects, felt: Pick<F
   return `${path}|${felt.sx},${felt.sy},${felt.s},${midX}|${shadowShape(rects, [...keys].sort())}`;
 }
 
+/** A hand card's `zIndex` in its row: its index, or lifted past the row's while the exchange marks it giveable, always under the held card. */
+export function handCardZ(i: number, count: number, giveable: boolean | undefined): number {
+  "worklet";
+  return giveable === true ? Math.min(count + i, Layer.held - 1) : i;
+}
+
+/** The registry keys of the hand's cards in the order they paint, bottom first: the row by `handCardZ`, then the held card. */
+export function handPaintOrder(ids: readonly string[], giveable: (id: string) => boolean | undefined, held: string | null): string[] {
+  const row = ids.map((id, i) => ({ id, z: handCardZ(i, ids.length, giveable(id)) }));
+  row.sort((a, b) => a.z - b.z);
+  return [...row.map(({ id }) => `hand:${id}`), ...(held === null ? [] : [`hand:${held}`])];
+}
+
 /**
  * `order` the hand's cards bottom first, as they paint: each drawn card over another casts onto the
- * cards `below` it, except where it or a card `above` it covers them — the mockup's shadow painted
- * between its card and the one beneath.
+ * cards `below` it, except where it, a card `above` it or a card in flight covers them — the
+ * mockup's shadow painted between its card and the one beneath.
  */
 export function handShades(rects: CardRects, order: readonly string[]): { caster: string; below: string[]; above: string[] }[] {
   "worklet";
-  const drawn = order.filter((key) => rects[key] !== undefined && rects[key].seen > 0);
-  return drawn.slice(1).map((caster, i) => ({ caster, below: drawn.slice(0, i + 1), above: drawn.slice(i + 1) }));
+  const shown = (key: string) => rects[key] !== undefined && rects[key].seen > 0;
+  const drawn = order.filter(shown);
+  const flying = Object.keys(rects).filter((key) => !key.startsWith("hand:") && shown(key));
+  return drawn.slice(1).map((caster, i) => ({ caster, below: drawn.slice(0, i + 1), above: [...drawn.slice(i + 1), ...flying] }));
 }
 
 export interface GlowSink extends PathSink {

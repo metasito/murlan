@@ -25,7 +25,6 @@ import {
   type SkRRect,
 } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useDerivedValue, useSharedValue, type SharedValue } from "react-native-reanimated";
-import { scheduleOnUI } from "react-native-worklets";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useBenchHandle } from "@/lib/diagnostics";
 import type { Pixels } from "@/lib/diagnostics/lampLegibility";
@@ -38,6 +37,7 @@ import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, 
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
 import { useCardShadowsOn } from "./feltReady";
+import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 
 export interface FeltCanvasProps {
   lamp: SharedValue<Lamp>;
@@ -64,13 +64,6 @@ function ring(d: number): SkRRect {
 const OUTER = ring(0);
 const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
-// CanvasKit frees nothing itself; on native the host object's finalizer does.
-export const DISPOSE_PATHS = Platform.OS === "web";
-
-/** On web `stopMapper` waits on the UI queue, so a reaction can still run after an unmount's synchronous cleanup. */
-export function disposeAfterReactions(dispose: () => void) {
-  if (DISPOSE_PATHS) scheduleOnUI(dispose);
-}
 
 function countBuild(counter: "murlanShadowBuilds" | "murlanGlowBuilds") {
   "worklet";

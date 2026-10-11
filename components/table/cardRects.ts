@@ -45,18 +45,6 @@ const unit = (v: number) => {
   return Math.min(1, Math.max(0, v));
 };
 
-/** `designRect`'s window point as one similarity: the point `p` the table laid out lands at `(x, y) + scale × turned(p, rot)`. */
-export function movedBy(m: TableMotion, felt: Felt): { x: number; y: number; scale: number; rot: number } {
-  "worklet";
-  const at = turned(felt.shakeAt.x, felt.shakeAt.y, m.shr);
-  return {
-    x: felt.kickAt.x + m.kx + m.ks * (felt.shakeAt.x + m.shx - at.x - felt.kickAt.x),
-    y: felt.kickAt.y + m.ky + m.ks * (felt.shakeAt.y + m.shy - at.y - felt.kickAt.y),
-    scale: m.ks,
-    rot: m.shr,
-  };
-}
-
 export function designRect(d: DrawnCard, felt: Felt, m: TableMotion): CardRect {
   "worklet";
   const shaken = turned(d.cx - felt.shakeAt.x, d.cy - felt.shakeAt.y, m.shr);

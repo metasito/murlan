@@ -112,6 +112,7 @@ import { useSelection } from "@/components/table/useSelection";
 import { GiocaControl, HandStatus, settledSelection } from "@/components/table/selectionLeaves";
 import { PassaButton } from "@/components/table/actions";
 import { Felt } from "@/components/table/feltSkia";
+import { HandShade } from "@/components/table/handShade";
 import { useLampRig } from "@/components/table/useLampRig";
 import { useLinkHold } from "@/components/table/useLinkHold";
 import type { OwnLink } from "@/lib/ownLink";
@@ -184,6 +185,7 @@ const VOTE_BELOW_PILL = 7;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
+const HAND_SHADE_Z = { zIndex: Layer.handShade } as const;
 const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
  * The turn chip while the opening gate holds the table. Online the deadline is
@@ -1168,6 +1170,9 @@ export function GameTable({
           rather than whatever the window is drawn on. */}
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={flushTrigger} width={W} height={H} />
+        <View style={[StyleSheet.absoluteFill, HAND_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
+          <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
+        </View>
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
         {/* Chips over the felt where the cards never reach — the combination in
             play at the head of the field, whose turn it is at the top centre, the

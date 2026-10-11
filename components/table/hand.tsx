@@ -55,6 +55,7 @@ import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";
 import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
+import { handCardZ, handPaintOrder } from "./cardShadows";
 
 /**
  * The viewer's hand as the table draws it while a traded card is on its way in or out.
@@ -1055,6 +1056,9 @@ export const StraightHand = React.memo(function StraightHand({
     const clipHalf = scrollable ? availW / 2 : 0;
     return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, lift: handLift, motion } };
   }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
+  useEffect(() => {
+    if (cardTable) cardTable.handOrder.value = handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null);
+  }, [cardTable, rest, giveableSet, heldCard]);
   const heldPlace = handRow?.place;
   const heldRects = useCardRect(
     cardTable,
@@ -1347,7 +1351,7 @@ export const StraightHand = React.memo(function StraightHand({
           // clamped short of `HELD_Z`, which has to stay above both bands: a
           // hand this row could ever be handed is what makes the ceiling hold,
           // not an assumption about how big one gets.
-          zIndex={giveable === true ? Math.min(rest.length + i, HELD_Z - 1) : i}
+          zIndex={handCardZ(i, rest.length, giveable)}
           dealDelay={descending ? 0 : -1}
           deal={dealArmed && deal && !descending ? { clock: deal.clock, leaveMs: deal.offsetMs + dealLeaveMs(i, null), onDealt: deal.onDealt } : undefined}
           // A descending card starts at the row's own centre, where the flight

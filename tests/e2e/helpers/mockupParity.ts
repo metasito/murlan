@@ -91,9 +91,6 @@ interface Moment {
   mockupWindowMs?: number;
 }
 
-/** The app's Skia felt draws card shadows beneath every card, so none darkens a neighbour (#1466). */
-const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
-
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
 
@@ -300,7 +297,6 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
-    mockupScript: NO_CAST_ON_CARDS,
     fallbackStill: true,
   },
   {
@@ -379,8 +375,7 @@ const MOMENTS: Moment[] = [
     stripAt: glance(3200, BOMB_CHECKPOINTS),
     // The app's landing is the cards' contact, sampled from the pose (ADR 0008), not the tween's end.
     // The chapter holds the turn until 3300 and hands off anticlockwise; the table hands it on clockwise, to luan, as the bomb settles.
-    mockupScript: `${NO_CAST_ON_CARDS}
-      const fx = bombFx;
+    mockupScript: `const fx = bombFx;
       const beat = () => { window.__parityOnsets.push("moment:bombFx"); fx(); };
       bombFx = () => {};
       let flying = null;
@@ -414,8 +409,7 @@ const MOMENTS: Moment[] = [
     windowMs: 3200,
     checkpoints: PARTITA_CHECKPOINTS,
     stripAt: glance(3200, PARTITA_CHECKPOINTS),
-    mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("pwin", "partitaWon")}
+    mockupScript: `${STING_AS("pwin", "partitaWon")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("luan"),
     appTrigger: pwinTable,
@@ -437,8 +431,7 @@ const MOMENTS: Moment[] = [
     windowMs: 3200,
     checkpoints: PARTITA_CHECKPOINTS,
     stripAt: glance(3200, PARTITA_CHECKPOINTS),
-    mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("plose", "partitaLost")}
+    mockupScript: `${STING_AS("plose", "partitaLost")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("you"),
     appTrigger: ploseTable,
