@@ -362,10 +362,11 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["onset", "live", "dropped", "lamp", "flare", "kick", "brightness"],
     regions: ["pile", "pool"],
-    // Before the throw and once its light settles: the felt's scrim, flash and flare differ in between, and the
-    // fallback's light on luan reads darker (#1438's thread).
-    regionsAt: [240, 480, 2160, 2400, 2640, 2880, 3120],
-    fallbackRegionsAt: [240, 480],
+    // The table goes past the mockup with its scrim, rings, kick and shake (owner, #1263) and the fallback lights
+    // only the lamp's target (feltFallback.tsx); the times each reaches are measured in #1438's thread.
+    regionsAt: [240, 480, 960, 1040, 1920, 2160, 2400, 2640, 2880, 3120],
+    fallbackRegionsAt: [240, 480, 960, 1040],
+    regionAt: { pool: [240, 480, 2160, 2400, 2640, 2880, 3120] },
     onsets: ["moment:bombFx"],
     // When the table's lamp turns: the bomb's flight end, past its contact, plus Hold.land, a frame before its `moment:handoff`.
     actions: [{ atMs: 600, app: botMove }, { atMs: 1280, mockup: "handoff('besnik', 'luan')" }],
