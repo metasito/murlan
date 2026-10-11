@@ -1,7 +1,7 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
-import { View } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
+import { StyleSheet, View } from 'react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { CardView } from '@/components/CardView';
@@ -9,7 +9,12 @@ import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table
 import type { GlossLight } from '@/components/table/cardGloss';
 import { levelShade } from '@/components/table/rail';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
+import { stockLipHeight } from '@/components/cardFaceModel';
+import { TABLE_CENTRE } from '@/components/table/lampRig';
+import { NO_LANDING } from '@/components/table/useFlightClock';
+import { useLampRig, type LampRig } from '@/components/table/useLampRig';
 import type { Card } from '@/lib/game/gameEngine';
+import { Reconnect } from '@/lib/tokens';
 
 const at = { x: 0, y: 0 };
 const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
@@ -47,5 +52,34 @@ describe('the lamp level on the cards', () => {
     );
     const opacities = Object.fromEntries(['hand', 'pile', 'fan', 'deal', 'leg'].map((id) => [id, shadeOf(id)]));
     expect(opacities).toEqual({ hand: [levelShade(0.75)], pile: [levelShade(0.75)], fan: [levelShade(0.75)], deal: [], leg: [] });
+    const box = (testID: string, inner: string) =>
+      StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).queryAll((n) => n.props.testID === inner && typeof n.type === 'string')[0].props.style);
+    const face = box('hand', 'card-box');
+    expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) + stockLipHeight(Number(face.height)) });
+  });
+
+  it('follows the lamp rig to the reconnect hold\'s level', async () => {
+    jest.useFakeTimers();
+    let lamp: LampRig | undefined;
+    function Rigged({ children }: { children: React.ReactNode }) {
+      const rig = useLampRig({ pool: TABLE_CENTRE, deal: undefined, width: 874, height: 402, landing: useSharedValue(NO_LANDING) });
+      lamp = rig;
+      return <Table light={rig.glossLight}>{children}</Table>;
+    }
+    await render(
+      <Rigged>
+        <View testID="hand">
+          <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs')} />
+        </View>
+      </Rigged>
+    );
+    await act(async () => void jest.advanceTimersByTime(100));
+    expect(shadeOf('hand')).toEqual([levelShade(1)]);
+    await act(async () => {
+      lamp!.setLevel(Reconnect.lamp, 1000);
+      jest.advanceTimersByTime(2000);
+    });
+    expect(shadeOf('hand')[0]).toBeCloseTo(levelShade(Reconnect.lamp), 2);
+    jest.useRealTimers();
   });
 });
