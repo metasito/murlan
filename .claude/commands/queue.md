@@ -171,16 +171,16 @@ round 1, then the sha the previous round reviewed.
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
    gh run view <databaseId> --log-failed | tail -40       # if failure
    ```
-2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, whose prompt starts with the output of this,
-   verbatim. A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes it a fix round:
-   use the `fix` kind and `<landSha>` as the base. In a later round, append the previous round's
-   Blocking findings after the brief.
+2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
+   starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
+   it a fix round: the `fix` kind, based on `<landSha>`. A later round appends the previous round's
+   Blocking findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
-3. **Post the report** as one comment, first line naming the head it read; in a fix round that
-   line is `REVIEW <sha> fix`, so the round does not count toward the cap:
+3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
+   in a fix round, which the cap does not count):
    ```
    REVIEW <sha>
    ## Blocking
@@ -191,8 +191,7 @@ round 1, then the sha the previous round reviewed.
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
    LAND when the report has no Blocking finding and CI is green on this head; otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
-   `verdictFor`). Never write the report yourself (rule 29). Nits are not fixed in review: list them
-   in the PR body. Where you disagree with a Blocking finding, put one line in the commit body.
+   `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
 
 **Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`. At the cap
 it exits non-zero: do not land, say on the issue which Blocking finding is still open, and stand
