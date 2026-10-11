@@ -3,7 +3,7 @@
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { OnlineGameProvider, useOnlineGame } from '@/context/OnlineGameContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -58,6 +58,33 @@ describe('game:over', () => {
     for (const key of ['/api/stats/me', '/api/ratings/me', '/api/ratings/leaderboard']) {
       expect(invalidated).toContain(key);
     }
+    await unmount();
+  });
+
+  it('fetches the viewer rating only once a hand rated someone, past a cached one', async () => {
+    const queryFn = jest.fn(async () => ({ season: '2026-10', rating: 1014, games: 3, provisional: true }));
+    const client = new QueryClient({ defaultOptions: { queries: { queryFn, staleTime: Infinity, retry: false } } });
+    client.setQueryData(['/api/ratings/me'], { season: '2026-10', rating: 1000, games: 2, provisional: true });
+
+    const { result, unmount } = await renderHook(() => useOnlineGame(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <NotificationProvider>
+            <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
+          </NotificationProvider>
+        </QueryClientProvider>
+      ),
+    });
+    expect(queryFn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      listeners.get('game:over')?.forEach((fn) =>
+        fn({ rankings: [], scores: [], matchOver: true, matchWinnerIds: [], ratingDeltas: { u1: 14 }, recorded: true })
+      );
+    });
+
+    expect(queryFn).toHaveBeenCalled();
+    await waitFor(() => expect(result.current.myRating?.rating).toBe(1014));
     await unmount();
   });
 });

@@ -296,11 +296,8 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
-  // staleTime 0: the client's default is Infinity, and a board mounting after `game:over`'s
-  // invalidation would otherwise pair the new delta with the previous partita's rating.
   const { data: myRating } = useQuery<RatingDto>({
     queryKey: ["/api/ratings/me"],
-    staleTime: 0,
     enabled: Object.keys(ratingDeltas).length > 0,
   });
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
