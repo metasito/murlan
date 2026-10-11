@@ -1,13 +1,11 @@
-// The bomb's burst (flare + two waves) and flash, the manche's own
-// lamp lift, and the flush's sweep — one-shot celebrations. The burst and the
-// lift react to the landing signal on its contact frame; the sweep plays again
-// when `flushTrigger` (components/useTableFeedback.ts) changes. Each piece
-// decides for itself, against `usePrefersReducedMotion`, whether to animate.
+// The bomb's burst (flare + two waves) and flash, and the flush's sweep —
+// one-shot celebrations. The burst reacts to the landing signal on its contact
+// frame; the sweep plays again when `flushTrigger`
+// (components/useTableFeedback.ts) changes. Each piece decides for itself,
+// against `usePrefersReducedMotion`, whether to animate.
 //
 // Every duration, delay and value below is the prototype's own `kick` /
-// `flare` / `wave` / `sweep` keyframes (issue #200), `* scale` —
-// `LampLift` is the one exception, #765's own addition once the graduated
-// escalation (#101) gave the manche rung a reaction of its own.
+// `flare` / `wave` / `sweep` keyframes (issue #200), `* scale`.
 // CSS interpolates a `transform` list either function-by-function or by full
 // matrix decomposition depending on how the keyframes are written; neither
 // is worth reproducing bit-for-bit here, so a channel a keyframe leaves
@@ -29,9 +27,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { flareKindFor, lampLiftFor, type FlareKind } from "@/components/flightPhysics";
+import { flareKindFor, type FlareKind } from "@/components/flightPhysics";
 import { BombFx, Layer, makeShadow, withAlpha, Motion, Scrim } from "@/lib/theme";
-import type { LampRig } from "@/components/table/useLampRig";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
 import { useBombBeat } from "@/components/table/useBombBeat";
 import type { LandingSignal } from "@/components/table/useFlightClock";
@@ -41,11 +38,11 @@ import type { LandingSignal } from "@/components/table/useFlightClock";
 // are tuned for a light source rather than an event, and CLAUDE.md's invariant against a token used outside the role it was
 // named for rules those out here.
 //
-// Neither `Flare` nor `LampLift` animate an `<Svg>`. #209 recorded that
+// `Flare` does not animate an `<Svg>`. #209 recorded that
 // react-native-svg's native path paints at
 // its own laid-out bounds and does not move with a `transform` on an
 // ancestor view — a bug this codebase has already paid for twice, and one no
-// device access this session can re-verify a variant of. Both animate a
+// device access this session can re-verify a variant of. It animates a
 // plain `Animated.View`'s own `opacity`/`transform` instead, the shape
 // `Wave` already uses, with a static blurred `glow` (`makeShadow`)
 // standing outside the animated path for the outer halo.
@@ -53,10 +50,6 @@ const FLARE_GLOW = "#FFC966";
 const WAVE_STROKE = "rgba(255,236,180,.9)";
 const SWEEP_BAND = "rgba(255,240,200,.42)";
 const SWEEP_TRANSPARENT = "rgba(255,240,200,0)";
-// The lift's own glow (#765) — softer than the flare's near-white core: the
-// manche rung hands over to its own banner rather than surprising the table,
-// so it reads as the lamp itself brightening, not as a second flash.
-const LIFT_GLOW = "#FFE8B8";
 
 /**
  * A single flat fill reads as a coin, not a bloom of light — a second blind
@@ -117,22 +110,6 @@ const FLARE_LAYERS: readonly GradientLayer[] = [
   { diameterFactor: FLARE_LAYER_OUTER_DIAMETER, fill: withAlpha(FLARE_GLOW, FLARE_LAYER_OUTER_ALPHA) },
   { diameterFactor: FLARE_LAYER_MID_DIAMETER, fill: withAlpha(FLARE_LAYER_MID_COLOR, FLARE_LAYER_MID_ALPHA) },
   { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
-];
-
-/** The lift's own falloff — the same idea, softer throughout to match `LIFT_GLOW`. */
-const LIFT_LAYER_OUTER_DIAMETER = 0.85;
-const LIFT_LAYER_OUTER_ALPHA = 0.1;
-const LIFT_LAYER_MID_DIAMETER = 0.5;
-const LIFT_LAYER_MID_ALPHA = 0.22;
-const LIFT_LAYER_MID_COLOR = "#FFEEC8";
-const LIFT_LAYER_CORE_DIAMETER = 0.22;
-const LIFT_LAYER_CORE_ALPHA = 0.42;
-const LIFT_LAYER_CORE_COLOR = "#FFF5DC";
-
-const LIFT_LAYERS: readonly GradientLayer[] = [
-  { diameterFactor: LIFT_LAYER_OUTER_DIAMETER, fill: withAlpha(LIFT_GLOW, LIFT_LAYER_OUTER_ALPHA) },
-  { diameterFactor: LIFT_LAYER_MID_DIAMETER, fill: withAlpha(LIFT_LAYER_MID_COLOR, LIFT_LAYER_MID_ALPHA) },
-  { diameterFactor: LIFT_LAYER_CORE_DIAMETER, fill: withAlpha(LIFT_LAYER_CORE_COLOR, LIFT_LAYER_CORE_ALPHA) },
 ];
 
 // `mix-blend-mode` has no native equivalent; RN Web passes it straight
@@ -331,87 +308,6 @@ export function BombBurst({ landing, scale }: { landing: SharedValue<LandingSign
         <Flare landing={landing} scale={scale} />
       </View>
     </View>
-  );
-}
-
-// ─── LampLift ───────────────────────────────────────────────────────────────
-//
-// The manche rung's own reaction (#765): a lift rather than a flare, since a
-// manche closing is the expected ending and hands over to the round-winner
-// banner rather than surprising the table the way a bomb or a partita does.
-// A brightening-and-swelling pulse over the lamp's own position, read from
-// the rig rather than kept here.
-
-const LIFT_SIZE = 130;
-const LIFT_MS = 900;
-const LIFT_EASING = Easing.bezier(0.2, 0.6, 0.25, 1);
-const LIFT_Z = Layer.felt;
-const LIFT_SCALE_FROM = 0.7;
-const LIFT_SCALE_TO = 1.35;
-
-/** It glows where the rig's light stands, swayed; it keeps no lamp position of its own. */
-export function LampLift({
-  landing,
-  scale,
-  rig,
-}: {
-  landing: SharedValue<LandingSignal>;
-  scale: number;
-  rig: Pick<LampRig, "lamp" | "sx" | "sy">;
-}) {
-  const reduceMotion = usePrefersReducedMotion();
-  const opacity = useSharedValue(0);
-  const scaleV = useSharedValue(LIFT_SCALE_FROM);
-
-  useLandingReaction(landing, (l) => {
-    "worklet";
-    if (!lampLiftFor(l.tier) || reduceMotion) return;
-    const e = LIFT_EASING;
-    opacity.set(0);
-    scaleV.set(LIFT_SCALE_FROM);
-    opacity.set(
-      withSequence(
-        withTiming(0.85, { duration: LIFT_MS * 0.3, easing: e }),
-        withTiming(0, { duration: LIFT_MS * 0.7, easing: e })
-      )
-    );
-    scaleV.set(withTiming(LIFT_SCALE_TO, { duration: LIFT_MS, easing: e }));
-  });
-
-  useEffect(
-    () => () => {
-      cancelAnimation(opacity);
-      cancelAnimation(scaleV);
-    },
-    [opacity, scaleV]
-  );
-
-  const size = LIFT_SIZE * scale;
-  const { lamp, sx, sy } = rig;
-  const aStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [
-      { translateX: lamp.value.lx * sx - size / 2 },
-      { translateY: lamp.value.ly * sy - size / 2 },
-      { scale: scaleV.value },
-    ],
-  }));
-
-  // Static — see `Flare`'s own `glow` above.
-  const glow = makeShadow(LIFT_GLOW, 0, 0, 1, size * 0.5, 8);
-  return (
-    <Animated.View
-      pointerEvents="none"
-      testID="lamp-lift"
-      style={[
-        momentStyles.centered,
-        { left: 0, top: 0, width: size, height: size, zIndex: LIFT_Z },
-        glow,
-        aStyle,
-      ]}
-    >
-      <GradientLayers size={size} layers={LIFT_LAYERS} />
-    </Animated.View>
   );
 }
 

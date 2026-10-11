@@ -3,13 +3,13 @@
 // nor the visible-value tests (tests/native/bombBurstAnimatesVisibly.test.tsx)
 // actually connect `GameTable.tsx`'s own JSX to what the hook produces: the
 // wiring tests spy on `useTableFeedback`'s `burst(tier)` call, and the
-// visible-value tests mount `BombBurst`/`LampLift` directly with a hardcoded
-// `trigger={1}`. Hardcoding `trigger={0}` on both in `GameTable.tsx` — so the
+// visible-value tests mount `BombBurst` directly with a hardcoded
+// `trigger={1}`. Hardcoding `trigger={0}` in `GameTable.tsx` — so the
 // feature never fires in the real app — passed all of them.
 //
 // This file does neither: `useTableFeedback` is not mocked at all, `GameTable`
 // is mounted for real, a play lands for real, and the animated style is read
-// back off the real rendered `bomb-flare`/`bomb-flash`/`lamp-lift` nodes the way
+// back off the real rendered `bomb-flare`/`bomb-flash` nodes the way
 // tests/native/pileFlinch.test.tsx reads a rendered transform — the one path
 // a hardcoded trigger literal in GameTable's own JSX cannot survive.
 //
@@ -54,8 +54,6 @@ const BOMB_PLAY: Combination = {
 };
 const ROYAL_CARD: Card = { id: "10_hearts", rank: "10", suit: "hearts", isJoker: false };
 const ROYAL_PLAY: Combination = { type: "royal_straight", cards: [ROYAL_CARD], strength: 10 };
-const SINGLE_CARD: Card = { id: "K_hearts", rank: "K", suit: "hearts", isJoker: false };
-const WINNING_PLAY: Combination = { type: "single", cards: [SINGLE_CARD], strength: 13 };
 
 const noop = () => {};
 const table = (gameState: GameState, matchOver: boolean) => (
@@ -87,21 +85,8 @@ const inPlay = (combo: Combination): GameState => ({
   firstPlayMade: true,
 });
 
-const HAND_CLOSED: GameState = {
-  players,
-  currentTurnIndex: 0,
-  lastPlayedCombination: WINNING_PLAY,
-  lastPlayedBy: 1,
-  passCount: 0,
-  gameMode: "free_for_all",
-  roundWinner: null,
-  gameOver: true,
-  rankings: ["player_1", "player_0"],
-  firstPlayMade: true,
-};
-
 /**
- * `LampLift` lives inside `table-felt` (`components/GameTable.tsx`), which
+ * The felt's moments live inside `table-felt` (`components/GameTable.tsx`), which
  * carries `a11yHidden()`'s `importantForAccessibility="no-hide-descendants"`
  * — the felt is decoration, read by nothing assistive. `getByTestId` excludes
  * a subtree marked that way by default (`isHiddenFromAccessibility`,
@@ -119,7 +104,7 @@ function opacityOf(
   return style.opacity ?? 0;
 }
 
-describe("the lamp's flare and lift, read back off GameTable's own real render (#765)", () => {
+describe("the lamp's flare, read back off GameTable's own real render (#765)", () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -138,16 +123,6 @@ describe("the lamp's flare and lift, read back off GameTable's own real render (
     });
 
     expect(opacityOf(r, "bomb-flash")).toBeGreaterThan(0);
-
-    await r.unmount();
-  });
-
-  it("the manche rung visibly lifts the lamp through GameTable's own wiring, not a mock of it", async () => {
-    const r = await render(table(HAND_CLOSED, false));
-
-    const { frame, drawn } = await frameOfFirst(r, () => opacityOf(r, "lamp-lift") > 0);
-    expect(drawn[frame]).toBeLessThanOrEqual(1);
-    expect(drawn[frame - 1]).toBeGreaterThan(1);
 
     await r.unmount();
   });

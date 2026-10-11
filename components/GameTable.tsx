@@ -130,7 +130,7 @@ import { useSameCards } from "@/components/useSameCards";
 import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile";
 import { topPlay } from "@/components/table/trick";
 import { warmCardArt } from "@/components/CardView";
-import { BombBurst, BombFlash, FeltScrim, LampLift, Sweep } from "@/components/table/moments";
+import { BombBurst, BombFlash, FeltScrim, Sweep } from "@/components/table/moments";
 import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
@@ -1130,7 +1130,6 @@ export function GameTable({
         {...a11yHidden()}
       >
         <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} grey={grey} />
-        <LampLift landing={landingSignal} scale={scale} rig={rig} />
         <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
         <FeltScrim dim={feltDim} />
       </Animated.View>

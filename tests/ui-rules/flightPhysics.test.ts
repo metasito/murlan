@@ -56,7 +56,6 @@ import {
   seatsJustPassed,
   floatTop,
   flareKindFor,
-  lampLiftFor,
   type ImpactTier,
   type FlareKind,
 } from "../../components/flightPhysics.ts";
@@ -872,20 +871,6 @@ describe("the lamp's flare and lift (#765)", () => {
     assert.equal(flareKindFor("straightFlush"), "none");
   });
 
-  test("only the manche rung lifts the lamp — the row that hands over to the banner instead of flaring", () => {
-    for (const tier of ALL_TIERS) {
-      assert.equal(lampLiftFor(tier), tier === "mancheWon", `${tier} lamp lift`);
-    }
-  });
-
-  test("no tier both lifts and flares — the lamp does one or the other, never both", () => {
-    for (const tier of ALL_TIERS) {
-      assert.ok(
-        !(lampLiftFor(tier) && flareKindFor(tier) !== "none"),
-        `${tier} must not both lift and flare`
-      );
-    }
-  });
 });
 
 describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {

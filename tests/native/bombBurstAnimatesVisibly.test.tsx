@@ -13,12 +13,9 @@ import { act, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
 import type { ImpactTier } from "@/components/flightPhysics";
 import { Motion } from "@/lib/theme";
-import { BombBurst, LampLift } from "@/components/table/moments";
-import { TABLE_CENTRE, restingLamp } from "@/components/table/lampRig";
+import { BombBurst } from "@/components/table/moments";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { fireLanding } from "./helpers/landing";
-
-const RIG = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
 
 async function landed(ui: (landing: SharedValue<LandingSignal>) => React.ReactElement, tier: ImpactTier) {
   const landing = makeMutable(NO_LANDING);
@@ -46,7 +43,7 @@ function entry(transform: Record<string, unknown>[], key: string) {
   return transform.find((t) => key in t);
 }
 
-describe("the bomb burst and the lamp lift actually move once fired (#765)", () => {
+describe("the bomb burst actually moves once fired (#765)", () => {
   it("the flare's opacity and scale leave their rest values partway through a bomb's own window", async () => {
     jest.useFakeTimers();
     const r = await landed((landing) => <BombBurst landing={landing} scale={1} />, "bomb");
@@ -81,26 +78,6 @@ describe("the bomb burst and the lamp lift actually move once fired (#765)", () 
       expect(entry(transformOf(ring), "scale")?.scale as number).toBeGreaterThan(0.15);
     }
     expect(screen.queryAllByTestId(/^spark-/, { includeHiddenElements: true })).toHaveLength(0);
-
-    jest.useRealTimers();
-    await r.unmount();
-  });
-
-  it("the lamp's own lift leaves its rest scale and opacity once it fires", async () => {
-    jest.useFakeTimers();
-    const r = await landed((landing) => <LampLift landing={landing} scale={1} rig={RIG} />, "mancheWon");
-
-    // Partway through the lift's own 900ms window — the opacity ramp's first
-    // leg is 30% of it (270ms); the scale tween runs the whole window.
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-      jest.runOnlyPendingTimers();
-    });
-
-    expect(opacityOf("lamp-lift")).toBeGreaterThan(0);
-    const scale = entry(transformOf("lamp-lift"), "scale")?.scale as number;
-    // Rest is 0.7 (LIFT_SCALE_FROM) — a gutted effect body would leave it there.
-    expect(scale).toBeGreaterThan(0.7);
 
     jest.useRealTimers();
     await r.unmount();

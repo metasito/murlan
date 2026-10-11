@@ -1,7 +1,7 @@
 // tests/native/lampFlareReducedMotion.test.tsx — "Reduced motion lands at
 // exactly zero" (#765), pinned end to end rather than trusted from the
 // generic ungated-animation-block scan (tests/ui-rules/reducedMotion.test.ts) alone:
-// that scan can only see that `Flare`/`LampLift` each carry a
+// that scan can only see that `Flare` carries a
 // reduceMotion guard in their own source, not that a bomb landing under the
 // setting a player actually chose leaves what they draw at rest.
 // A separate file, not a second describe in lampFlareWiring.test.tsx: the
@@ -38,8 +38,6 @@ const BOMB_PLAY: Combination = {
   ],
   strength: 8,
 };
-const SINGLE_CARD: Card = { id: "K_hearts", rank: "K", suit: "hearts", isJoker: false };
-const WINNING_PLAY: Combination = { type: "single", cards: [SINGLE_CARD], strength: 13 };
 
 const noop = () => {};
 /** #1259 Q1: a mark enters in the mockup's 100 ms; under reduced motion the fade stays. */
@@ -75,21 +73,7 @@ const inPlay = (combo: Combination): GameState => ({
   firstPlayMade: true,
 });
 
-/** The hand-emptying play that closed it, exactly as `game:state` reports it. */
-const HAND_CLOSED: GameState = {
-  players,
-  currentTurnIndex: 0,
-  lastPlayedCombination: WINNING_PLAY,
-  lastPlayedBy: 1,
-  passCount: 0,
-  gameMode: "free_for_all",
-  roundWinner: null,
-  gameOver: true,
-  rankings: ["player_1", "player_0"],
-  firstPlayMade: true,
-};
-
-describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)", () => {
+describe("reduced motion holds the lamp's flare at exactly zero (#765)", () => {
   beforeEach(() => {
     jest.useFakeTimers();
   });
@@ -136,18 +120,6 @@ describe("reduced motion holds the lamp's flare and lift at exactly zero (#765)"
     const mark = within(screen.getByTestId("pile-area")).getByTestId("notice-combo", { includeHiddenElements: true });
     within(mark).getByText(/bomb/i, { includeHiddenElements: true });
     expect((getAnimatedStyle(mark) as { opacity?: number }).opacity).toBe(1);
-
-    await r.unmount();
-  });
-
-  it("the manche rung leaves the lamp lift dark", async () => {
-    const r = await render(table(HAND_CLOSED, false));
-
-    await act(async () => {
-      jest.advanceTimersByTime(100);
-    });
-
-    expect(opacityOf("lamp-lift")).toBe(0);
 
     await r.unmount();
   });

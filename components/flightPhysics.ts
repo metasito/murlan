@@ -253,12 +253,6 @@ export function flareKindFor(tier: ImpactTier): FlareKind {
   return "none";
 }
 
-/** Whether a tier's landing lifts the lamp rather than flaring it. */
-export function lampLiftFor(tier: ImpactTier): boolean {
-  "worklet";
-  return tier === "mancheWon";
-}
-
 // ─── Seat anchors ──────────────────────────────────────────────────────────────
 //
 // Where a throw starts. docs/adr/0002-a-play-leaves-the-seat-it-was-thrown-from.md §1.
