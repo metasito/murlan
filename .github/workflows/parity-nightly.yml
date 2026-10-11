@@ -85,10 +85,12 @@ jobs:
             echo "npx playwright test --config tests/e2e/playwright.parity.config.ts"
             echo '```'
           } > parity-failure.md
-          open=$(gh issue list --label noticed --state open --search "mockup-parity in:title" --limit 1 --json number --jq '.[0].number // empty')
+          title="The nightly mockup-parity run failed"
+          gh label create parity --color BFD4F2 --description "Nightly mockup-parity report" 2>/dev/null || true
+          open=$(gh issue list --label parity --state open --limit 20 --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
           if [ -n "$open" ]; then
             gh issue comment "$open" --body-file parity-failure.md
           else
-            gh issue create --title "The nightly mockup-parity run failed" \
-              --label noticed --body-file parity-failure.md
+            gh issue create --title "$title" --label parity --body-file parity-failure.md
           fi

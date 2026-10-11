@@ -129,6 +129,9 @@ export function pushVerdict(s) {
       "Phase C commits each slice as it lands.",
     ] };
   if (!s.trackerReadable) return { ok: false, why: `cannot reach the tracker to read the review of #${s.ticket}` };
+  if ((s.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
+    "A ticket never lands past the cap: stand down and leave it to the owner.",
+  ] };
   if (!s.verdict) return { ok: false, why: `no review of ${s.head.slice(0, 7)} on the issue`, lines: [
     "Phase D posts the reviewer's verdict as a comment on the issue, naming the commit it read:",
     `  VERDICT: LAND ${s.head.slice(0, 7)}   (or VERDICT: HOLD ${s.head.slice(0, 7)} — reason)`,

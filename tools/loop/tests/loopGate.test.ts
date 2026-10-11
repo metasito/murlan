@@ -380,6 +380,14 @@ describe("a LAND is only as good as the report behind it", () => {
     assert.equal(pushVerdict(state({ review: { line: "REVIEW abc1234" } })).ok, true);
   });
 
+  test("a LAND past the review cap is refused, whatever the session wrote", () => {
+    const review = { line: "REVIEW abc1234" };
+    assert.equal(pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS })).ok, true);
+    const past = pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS + 1 }));
+    assert.equal(past.ok, false);
+    assert.match(String(past.why), /past the cap/);
+  });
+
   test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
     const v = pushVerdict(state({ trackerReadable: false }));
     assert.equal(v.ok, false);

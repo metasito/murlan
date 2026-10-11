@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs";
 import { brief, MODEL_BY_KIND, parseHeader } from "./brief.mjs";
 
-const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review|(?:code|ticket) review|review round|review #\d+ round)\b|^\W*(scope issue)\b/i;
+const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue|review #\d+ round \d+)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
 const ROLE = /\b(review\w*|axis|findings?)\b/i;
 const unix = (text) => text.replace(/\r\n/g, "\n");

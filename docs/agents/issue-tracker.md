@@ -28,6 +28,7 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
+| `parity` | Filed by a red nightly mockup-parity run (`.github/workflows/parity-nightly.yml`), one open issue, commented on each red night | owner |
 | `noticed` | One open issue collecting the small defects a session saw outside its ticket, one comment each; the owner promotes what matters | owner |
 
 The **Launch** milestone holds what v1 needs, and only the owner adds to it. The picker takes its

@@ -295,7 +295,8 @@ export function reviewRounds(comments) {
   const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
   const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
   let rounds = 0;
-  for (const body of bodies) {
+  for (const [at, body] of bodies.entries()) {
+    if (at < claimed) continue;
     const v = VERDICT_RE.exec(body);
     if (!v) continue;
     const fix = bodies.some((b, i) => {

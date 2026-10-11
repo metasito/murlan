@@ -81,8 +81,7 @@ test("the check reads the doc set from git, not from a list", () => {
 
 /**
  * A repo-relative `docs/` mention in a *comment*, backticked or bare, or on any line of a
- * `PROMPT_SOURCES` file, whose prompts are prose held in string literals. `classify()` (the same
- * source `comment-budget.mjs` reads, so "is this a comment" cannot mean two things) is what
+ * `PROMPT_SOURCES` file, whose prompts are prose held in string literals. `classify()` is what
  * separates this from a runtime path: a fixture directory built with `path.resolve` sits on a
  * `code` line even though it's a string literal, so it is never scanned here — that path already
  * fails its own test if it goes stale, and this check would otherwise flag a live fixture path as

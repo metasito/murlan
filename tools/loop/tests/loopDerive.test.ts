@@ -191,6 +191,11 @@ describe("counting review rounds", () => {
     );
   });
 
+  test("a ticket claimed again starts a fresh count", () => {
+    const before = [{ body: "VERDICT: HOLD abc1234 — a" }, { body: "VERDICT: HOLD bcd2345 — b" }, { body: "VERDICT: HOLD cde3456 — c" }];
+    assert.equal(reviewRounds([...before, { body: "Claimed by `agent/1-x`." }, { body: "VERDICT: HOLD def4567 — d" }]), 1);
+  });
+
   test("a verdict quoted inside a fence does not count", () => {
     const fence = "```";
     assert.equal(reviewRounds([{ body: `see:\n${fence}\nVERDICT: LAND abc1234\n${fence}` }]), 0);

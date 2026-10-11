@@ -4,46 +4,13 @@
  */
 
 export type Line = { n: number; text: string; kind: "comment" | "code" | "blank" };
-export type Violation = { rule: "history"; line: number; text: string; why: string };
-
-/**
- * Each phrase names the code's own past, which is the one thing a comment may never do. Anchored on
- * the subject rather than the verb: "no longer" alone is ordinary prose about runtime state, so every
- * entry carries the word that makes it archeology rather than description.
- *
- * Plain phrases, never patterns — the test asserts both that each one is caught and that none holds
- * a regex metacharacter, so a phrase cannot be added that silently matches nothing or everything.
- */
-export const ARCHEOLOGY = [
-  "previously", "formerly", "renamed from", "moved from", "was changed to", "instead of the old",
-  "legacy behavior", "legacy behaviour",
-  "used to be", "used to have", "used to return", "used to call", "used to live",
-  "this used to", "this was formerly",
-  "before this fix", "before this change", "before this commit",
-  "the bug was", "the defect was", "the issue was",
-  "we now", "we changed", "we switched", "we renamed",
-  "no longer needed", "no longer used", "no longer necessary", "no longer required",
-  "as of this commit", "as of this change", "as of this fix",
-];
-
-export const HISTORY = new RegExp(`\\b(${ARCHEOLOGY.join("|")})\\b`, "i");
-
-/** What both the write hook and the branch check judge; one list, or a file one sees slips the other. */
-export const JUDGED_EXTENSIONS = ["mjs", "cjs", "js", "jsx", "ts", "tsx", "yml", "yaml", "sh"];
 
 const HASH_COMMENTED = /\.(ya?ml|sh)$/;
-
-const TEST_PATH =/(^|[\\/])tests?[\\/]|\.(test|spec)\.[jt]sx?$/;
-
-/** A test's own description says what it covers, so its prose budget is tighter than source's. */
-export function floorFor(path: string): number {
-  return TEST_PATH.test(path) ? 3 : 6;
-}
 
 /**
  * A comment marker inside a string literal is not a comment. This is what lets a file *about* the
  * comment rules be written at all — its examples are string literals holding `//`, and without this
- * the guard would refuse every edit to its own tests.
+ * its own tests' examples would read as comments.
  *
  * Known limit: a template literal spanning lines is unterminated on each of them, so a `//` opening
  * a line inside one reads as a comment. Pinned by a test rather than fixed — tracking template state
@@ -84,21 +51,4 @@ export function classify(text: string, path: string): Line[] {
     }
   });
   return out;
-}
-
-/**
- * Ratio is not here. It is a property of what a *change* adds, which needs the revision the change
- * started from — so both enforcers ask `addedCounts` against that revision and compare on
- * `floorFor`. A whole-file ratio computed here would be a third reading of one rule, and the two
- * that can be reached would not be the one under test.
- */
-export function violations(text: string, path: string): Violation[] {
-  return classify(text, path)
-    .filter((l) => l.kind === "comment" && HISTORY.test(l.text))
-    .map((c) => ({
-      rule: "history" as const,
-      line: c.n,
-      text: c.text,
-      why: "CLAUDE.md: never any history of what the code was. That belongs in the commit message.",
-    }));
 }
