@@ -63,24 +63,66 @@ test("each divergence is named for what diverged", () => {
   assert.ok(fields({ lampTo: 0.8 }).some((m) => m.startsWith("level: the lamp's level") && m.endsWith("after the lost")));
 });
 
-test("an onset a frame late on the app's grid against the mockup's virtual one passes, and two frames late fails", () => {
-  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
-  const pill = (pillAt: number) => diffReconnect({ mockup, app: side(52_345, RECONNECT_SOUND.app, { pillAt }) }).filter((f) => f.message.startsWith("the pill's"));
-  assert.deepEqual(pill(500 + 1000 / 60), []);
-  assert.equal(pill(500 + 2 * (1000 / 60) + 1).length, 1);
+const FRAME = 1000 / 60;
+const mockup16 = () => side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
+const stalled = (frames: TraceFrame[], dropped: number, before: number) => {
+  const at = frames.findIndex((f) => f.onsets.includes("moment:net-net")) - before;
+  return frames.filter((_, i) => i < at - dropped || i >= at);
+};
+const pillFailures = (app: TraceFrame[]) =>
+  diffReconnect({ mockup: mockup16(), app }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
+const pillLate = (pillAt: number, dropped = 0, before = 0, frameMs?: number) =>
+  pillFailures(stalled(side(52_345, RECONNECT_SOUND.app, { pillAt, frameMs }), dropped, before));
+
+test("an onset two frames late on a smooth app grid against the mockup's virtual one passes, and three frames late fails", () => {
+  assert.deepEqual(pillLate(500 + 2 * FRAME), []);
+  assert.equal(pillLate(500 + 3 * FRAME + 1).length, 1);
 });
 
-test("an onset stamped on a dropped frame may lie anywhere in it, and no further, and a stall fails", () => {
-  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
-  const longFrame = (frames: TraceFrame[], dropped: number) => {
-    const at = frames.findIndex((f) => f.onsets.includes("moment:net-net"));
-    return frames.filter((_, i) => i < at - dropped || i >= at);
-  };
-  const pill = (pillAt: number, dropped = 1) =>
-    diffReconnect({ mockup, app: longFrame(side(52_345, RECONNECT_SOUND.app, { pillAt }), dropped) }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
-  assert.deepEqual(pill(500 + 2 * (1000 / 60)), []);
-  assert.equal(pill(500 + 4 * (1000 / 60)).length, 1);
-  assert.equal(pill(500 + 20 * (1000 / 60), 30).length, 1);
+test("a stall over the time the pill was due excuses it while the pill lands within four frames of it, and no later", () => {
+  assert.deepEqual(pillLate(500 + 15 * FRAME, 30), []);
+  assert.deepEqual(pillLate(500 + 8 * FRAME, 6, 3), []);
+  assert.equal(pillLate(500 + 9 * FRAME, 6, 4).length, 1);
+  assert.equal(pillLate(500 + 20 * FRAME, 10).length, 1);
+});
+
+test("a stall over before the pill was due excuses nothing, and no stall excuses an early pill", () => {
+  assert.deepEqual(pillLate(500 + 6 * FRAME, 10), []);
+  assert.equal(pillLate(500 + 6 * FRAME, 10, 15).length, 1);
+  assert.equal(pillLate(500 + 8 * FRAME, 20, 6).length, 1);
+  assert.equal(pillLate(500 - 4 * FRAME, 10).length, 1);
+});
+
+test("a span counts as a stall from one and a half of the app's frames", () => {
+  assert.deepEqual(pillLate(500 + 3 * FRAME + 1, 1), []);
+  const app = side(52_345, RECONNECT_SOUND.app, { pillAt: 500 + 3 * FRAME + 1 });
+  const pill = app.findIndex((f) => f.onsets.includes("moment:net-net"));
+  app[pill - 1] = { ...app[pill - 1], t: app[pill - 1].t - 6 };
+  assert.equal(pillFailures(app).length, 1);
+});
+
+test("however long one stall at the due point is, a pill later than the ceiling fails", () => {
+  assert.deepEqual(pillLate(500 + 17 * FRAME, 18), []);
+  assert.equal(pillLate(500 + 60 * FRAME, 60).length, 1);
+  assert.equal(pillLate(500 + 19 * FRAME, 20).length, 1);
+});
+
+test("the stamping jitter is two of the app's own frames each way, and never less than two at 60 Hz", () => {
+  assert.deepEqual(pillLate(600, 0, 0, 60), []);
+  assert.deepEqual(pillLate(400, 0, 0, 60), []);
+  assert.deepEqual(pillLate(540, 0, 0, 1000 / 120), []);
+});
+
+test("an early onset past the ceiling fails on a grid slow enough to stretch the jitter beyond it", () => {
+  assert.equal(pillLate(1, 0, 0, 250).length, 1);
+});
+
+test("on a slow app grid a faithful pill passes, and one four frames late fails however long every frame is", () => {
+  for (const frameMs of [26, 1000 / 30, 60, 250]) {
+    assert.deepEqual(pillLate(500, 0, 0, frameMs), [], `${frameMs}`);
+    assert.equal(pillLate(500 + 4 * frameMs - 1, 0, 0, frameMs).length, 1, `${frameMs}`);
+    assert.equal(pillLate(1500, 0, 0, frameMs).length, 1, `${frameMs}`);
+  }
 });
 
 test("a side that never drops fails rather than comparing nothing", () => {
