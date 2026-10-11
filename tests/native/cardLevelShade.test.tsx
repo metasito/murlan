@@ -15,6 +15,7 @@ import { NO_LANDING } from '@/components/table/useFlightClock';
 import { useLampRig, type LampRig } from '@/components/table/useLampRig';
 import type { Card } from '@/lib/game/gameEngine';
 import { Reconnect } from '@/lib/tokens';
+import { flightOf, pileOf } from './helpers/landing';
 
 const at = { x: 0, y: 0 };
 const places = { felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, pile: at, hand: at, seats: { top: at, left: at, right: at } };
@@ -56,6 +57,17 @@ describe('the lamp level on the cards', () => {
       StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).queryAll((n) => n.props.testID === inner && typeof n.type === 'string')[0].props.style);
     const face = box('hand', 'card-box');
     expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) + stockLipHeight(Number(face.height)) });
+  });
+
+  it('leaves a play in flight to the pile bright and shades the play it lands on', async () => {
+    const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 0.75, r: 1, t: 0 });
+    const resting = flightOf('rest', [card('3_hearts')], [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
+    const flying = flightOf('fly', [card('A_clubs')], [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
+    await render(<Table light={light}>{pileOf({ plays: [resting, flying], flights: [flying] })}</Table>);
+    const shadesIn = (n: ReturnType<typeof screen.getByTestId>) => n.queryAll((c) => c.props.testID === 'card-level-shade' && typeof c.type === 'string').length;
+    const fliers = screen.getAllByTestId('flying-card', { includeHiddenElements: true });
+    const cards = screen.getAllByTestId('pile-card', { includeHiddenElements: true });
+    expect({ fliers: fliers.map(shadesIn), all: screen.queryAllByTestId('card-level-shade', { includeHiddenElements: true }).length }).toEqual({ fliers: [0], all: cards.length - 1 });
   });
 
   it('follows the lamp rig to the reconnect hold\'s level', async () => {
