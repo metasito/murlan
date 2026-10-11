@@ -564,25 +564,30 @@ describe("the table's own trauma escalation (#763)", () => {
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false }), "ordinary");
-      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false }), "bomb");
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying, with the match still open, is the manche rung", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false }), "mancheWon");
+    test("the hand emptying, with the match still open, is the manche rung for the viewer who won it", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: true }), "mancheWon");
+    });
+
+    test("a manche the viewer did not win lands at the play's own tier: no shake for lost, neutral or draw (#1469)", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: false }), "bomb");
     });
 
     test("the hand emptying and the match closing with it is the partita rung", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true }), "partitaWon");
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: false }), "partitaWon");
     });
 
     test("matchOver with handOver false never fires the partita rung — a match cannot close on a hand still in play", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true }), "ordinary");
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true, viewerWon: true }), "ordinary");
     });
 
     test("a bomb that also closes the manche is only as loud as its loudest rung", () => {
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false }), "bomb");
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: true }), "bomb");
     });
   });
 

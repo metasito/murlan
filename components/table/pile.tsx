@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
-import { Beaten, BombFx, CardGlow, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, BombFx, CardGlow, Colors, MancheMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -130,8 +130,10 @@ const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, asideX, flinchBy, signal, bombClock, report, cardScale, roomW }: {
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, asideX, flinchBy, signal, bombClock, report, cardScale, roomW }: {
   play: TrickPlay;
+  /** Its top card is lit. */
+  lit: boolean;
   /** Non-null while the play is in the air; a group mounted without one never flies. */
   flight: Flight | null;
   role: PlayRole;
@@ -242,7 +244,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, aside
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
             </Fragment>
           );
         })}
@@ -251,8 +253,9 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, flinchY, aside
   );
 }
 
-function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale, group, out }: {
+function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale, group, out, lit }: {
   card: Card;
+  lit: boolean;
   i: number;
   spec: FlightSpec;
   still: boolean;
@@ -316,6 +319,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
+        {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + MancheMoment.litRingPt }]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} rects={ownRects} />
         </View>
@@ -377,6 +381,8 @@ export interface PileLayerProps {
   hidden?: boolean;
   /** The whole pile's, for its fade before the next deal. */
   opacity?: SharedValue<number>;
+  /** The viewer won the manche: the top play's top card is lit. */
+  lit?: boolean;
 }
 
 /**
@@ -384,7 +390,7 @@ export interface PileLayerProps {
  * the throw to the end of its sweep, with the pile's chip, note and winner tag.
  */
 export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
-  const { trick, flights, signal, bombClock, comboLabel, roundWinner, note, roomW, scale = 1, hidden = false } = props;
+  const { trick, flights, signal, bombClock, comboLabel, roundWinner, note, roomW, scale = 1, hidden = false, lit = false } = props;
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
@@ -497,6 +503,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
             sweep={motion}
             sweepTop={sweepTop}
             hidden={hidden}
+            lit={lit && motion === null && play.key === top?.key}
             flinchY={flinchY}
             asideX={asideX}
             flinchBy={flinchBy}
@@ -561,9 +568,11 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   /**
    * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
    * second render the dedupe below skips, so a flight still in the air is
-   * re-armed with the tier it now closes on.
+   * re-armed with the tier it now closes on. `viewerWon` the same: online, a
+   * teams manche's outcome waits for `game:over`'s scores.
    */
   matchOver: boolean;
+  viewerWon: boolean;
   /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
   timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop">;
   celebrateFlush: () => void;
@@ -589,6 +598,7 @@ export function usePileFlight({
   roundWinner,
   gameOver,
   matchOver,
+  viewerWon,
   viewerSeat,
   players,
   opponents,
@@ -636,15 +646,15 @@ export function usePileFlight({
   );
   const prevComboKeyRef = useRef<string>("");
   const roundClosedRef = useRef(false);
-  const matchOverRef = useRef(matchOver);
+  const closureRef = useRef({ matchOver, viewerWon });
   const clocks = useRef(new Map<string, FlightClock>());
   useEffect(() => {
-    matchOverRef.current = matchOver;
+    closureRef.current = { matchOver, viewerWon };
     for (const f of flightsRef.current) {
       if (touched.current.has(f.key)) continue;
-      clocks.current.get(f.key)?.arm({ ...f.landing, tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver }) });
+      clocks.current.get(f.key)?.arm({ ...f.landing, tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }) });
     }
-  }, [matchOver]);
+  }, [matchOver, viewerWon]);
 
   // The bomb's flight writes its own clock here from the UI thread, so the scrim darkens on the
   // frames the bomb falls and lifts on the one it lands.
@@ -729,7 +739,7 @@ export function usePileFlight({
 
     const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
-      tier: landingTier({ comboType: combo.type, handOver: gameOver, matchOver: matchOverRef.current }),
+      tier: landingTier({ comboType: combo.type, handOver: gameOver, ...closureRef.current }),
       cards: thrown.cards.length,
       x: thrown.pile.x,
       y: thrown.pile.y,
@@ -865,6 +875,14 @@ const pileStyles = StyleSheet.create({
     zIndex: Layer.felt,
     backgroundColor: CardGlow.color,
     ...Shadow.cardGlow,
+  },
+  // Behind the card for the same reason: only the ring's edge shows around it.
+  litRing: {
+    position: "absolute",
+    top: -MancheMoment.litRingPt, left: -MancheMoment.litRingPt, right: -MancheMoment.litRingPt, bottom: -MancheMoment.litRingPt,
+    zIndex: Layer.felt,
+    backgroundColor: Colors.goldLit,
+    ...Shadow.litCard,
   },
   caughtCard: { zIndex: Layer.table },
   beatenShade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: SHADE_Z, backgroundColor: Beaten.shade },

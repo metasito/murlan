@@ -184,6 +184,9 @@ export const MancheMoment = {
   lifeSec: [0.9, 1.8],
   size: [0.6, 1.8],
   glow: 5,
+  // The won manche's top card: the card-glow mockup's `.card.hi`.
+  litRingPt: 2,
+  litGlowPt: 22,
   lostLevel: 0.8,
   lostLevelRate: 5,
   releaseRate: 3,

@@ -120,6 +120,7 @@ import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useMancheEnding } from "@/components/table/useMancheEnding";
 import { mancheVoteShown } from "@/lib/game/mancheEnding";
+import { handOutcomeFor } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -135,7 +136,8 @@ import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seat
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
-import { dealSpecks, type ParticleEmitter } from "@/components/table/particles";
+import { dealSpecks, mancheMotes, type ParticleEmitter } from "@/components/table/particles";
+import { useMancheOutcome, type ShownOutcome } from "@/components/table/useMancheOutcome";
 import { traceOnset } from "@/lib/e2eTrace";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
@@ -781,6 +783,8 @@ export function GameTable({
 
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
+  const isTeamMode = gameState.gameMode === "teams";
+  const outcome = handOutcomeFor(players, gameState.rankings, handScores, viewer?.id, isTeamMode);
   const {
     passaFlashStyle,
     kickStyle,
@@ -800,7 +804,7 @@ export function GameTable({
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
     players,
-    isTeamMode: gameState.gameMode === "teams",
+    isTeamMode,
     handScores,
     viewerId: viewer?.id,
     scale,
@@ -837,6 +841,7 @@ export function GameTable({
     roundWinner: gameState.roundWinner,
     gameOver: gameState.gameOver,
     matchOver,
+    viewerWon: outcome === "won",
     ...seatGeometry,
     timeline,
     celebrateFlush,
@@ -852,6 +857,10 @@ export function GameTable({
     pileEmpty: trick.plays.length === 0,
     onLanded: onMancheLanded,
   });
+  const mancheShown = useMancheOutcome({ ended: gameState.gameOver && !matchOver, outcome, timeline });
+  const winnerSeat = players.findIndex((p) => p.id === gameState.rankings[0]);
+  const winnerDir = winnerSeat < 0 ? null : seatDirection(winnerSeat, viewerSeat, players.length);
+  const lampToWinner = winnerDir !== null && (mancheShown === "lost" || mancheShown === "neutral");
   const partitaOnTable = gameState.gameOver && matchOver && partitaActions !== undefined;
   const partitaEnding = useMancheEnding({
     ended: partitaOnTable,
@@ -873,7 +882,7 @@ export function GameTable({
   // attention mechanism, pointed somewhere else — not a second device.
   const anchors = anchorPoints(tableGeometry(seatGeometry));
   const lampAim = lampPools(anchors, W, H)[
-    holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
+    lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
   const emberFrom = useRef(shownTurnIndex);
   const emberRuns = !holdingForStart && !trade && !gameState.gameOver && gameState.firstPlayMade;
@@ -892,7 +901,18 @@ export function GameTable({
     width: W,
     height: H,
     landing: landingSignal,
+    dim: mancheShown === "lost",
   });
+  const winnerAt = winnerDir === null ? null : anchors[winnerDir];
+  const [wx, wy] = [winnerAt?.x ?? 0, winnerAt?.y ?? 0];
+  const { sx: rigSx, sy: rigSy } = rig;
+  const motesFor = useRef<ShownOutcome | null>(null);
+  useEffect(() => {
+    if (motesFor.current === mancheShown) return;
+    motesFor.current = mancheShown;
+    if (mancheShown === null || winnerDir === null) return;
+    particles.current?.emit(mancheMotes(mancheShown, { x: wx, y: wy }, reduceMotion, rigSx, rigSy, Math.random));
+  }, [mancheShown, winnerDir, wx, wy, reduceMotion, rigSx, rigSy]);
   const cardTable = useCardTableValue(
     {
       pile: anchors.pile,
@@ -1434,6 +1454,7 @@ export function GameTable({
                   note={pileNote}
                   hidden={startCardDue}
                   opacity={mancheEnding.pileOpacity}
+                  lit={mancheShown === "won"}
                 />
 
                 {/* Centred on the same point the pile draws at, so the burst
