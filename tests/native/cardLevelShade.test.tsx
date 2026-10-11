@@ -1,5 +1,5 @@
 import { describe, it, expect, jest } from '@jest/globals';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
@@ -60,14 +60,16 @@ describe('the lamp level on the cards', () => {
 
   it('follows the lamp rig to the reconnect hold\'s level', async () => {
     jest.useFakeTimers();
-    let lamp: LampRig | undefined;
-    function Rigged({ children }: { children: React.ReactNode }) {
+    const held: { rig?: LampRig } = {};
+    function Rigged({ onRig, children }: { onRig: (rig: LampRig) => void; children: React.ReactNode }) {
       const rig = useLampRig({ pool: TABLE_CENTRE, deal: undefined, width: 874, height: 402, landing: useSharedValue(NO_LANDING) });
-      lamp = rig;
+      useEffect(() => {
+        onRig(rig);
+      }, [onRig, rig]);
       return <Table light={rig.glossLight}>{children}</Table>;
     }
     await render(
-      <Rigged>
+      <Rigged onRig={(rig) => (held.rig = rig)}>
         <View testID="hand">
           <CardView card={card('7_clubs')} rectKey="hand:7_clubs" rects={owned('hand:7_clubs')} />
         </View>
@@ -76,7 +78,7 @@ describe('the lamp level on the cards', () => {
     await act(async () => void jest.advanceTimersByTime(100));
     expect(shadeOf('hand')).toEqual([levelShade(1)]);
     await act(async () => {
-      lamp!.setLevel(Reconnect.lamp, 1000);
+      held.rig!.setLevel(Reconnect.lamp, 1000);
       jest.advanceTimersByTime(2000);
     });
     expect(shadeOf('hand')[0]).toBeCloseTo(levelShade(Reconnect.lamp), 2);
