@@ -362,10 +362,10 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["onset", "live", "dropped", "lamp", "flare", "kick", "brightness"],
     regions: ["pile", "pool"],
-    // The table goes past the mockup with its scrim, rings, kick and shake (owner, #1263) and the fallback lights
-    // only the lamp's target (feltFallback.tsx); the times each reaches are measured in #1438's thread.
-    regionsAt: [240, 480, 960, 1040, 1920, 2160, 2400, 2640, 2880, 3120],
-    fallbackRegionsAt: [240, 480, 960, 1040],
+    // Each time left out is measured, with its cause, in #1438's thread: the table's scrim, rings, flare disc, kick
+    // and shake, its sparks under the cards (#1503), the throw at 720 (#1501), and the fallback's baked light.
+    regionsAt: [240, 480, 960, 1040, 1200, 1920, 2160, 2400, 2640, 2880, 3120],
+    fallbackRegionsAt: [240, 480, 960, 1040, 1200, 1440],
     regionAt: { pool: [240, 480, 2160, 2400, 2640, 2880, 3120] },
     onsets: ["moment:bombFx"],
     // When the table's lamp turns: the bomb's flight end, past its contact, plus Hold.land, a frame before its `moment:handoff`.
