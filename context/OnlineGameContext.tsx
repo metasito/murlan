@@ -10,7 +10,7 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
@@ -31,6 +31,7 @@ import { clearReactions, pushReaction } from "@/lib/reactions";
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/game/gameEngine";
 import type { GameOverPayload, MatchVerdict } from "@/lib/game/matchState";
+import type { RatingDto } from "@/lib/wire";
 import {
   buildExchangeAnnounce,
   useExchangeAnnouncement,
@@ -105,6 +106,8 @@ interface OnlineGameContextValue {
   ratingDeltas: Record<string, number>;
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
   handRecorded: boolean;
+  /** The signed-in player's rating, fetched once a hand rated anyone; undefined until it loads. */
+  myRating: RatingDto | undefined;
   matchState: OnlineMatchState;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
@@ -198,6 +201,7 @@ type MatchSlice = Pick<
   | "handScoresCurrent"
   | "ratingDeltas"
   | "handRecorded"
+  | "myRating"
   | "rematchVoteState"
   | "endMatchVoteState"
   | "voteRematch"
@@ -292,6 +296,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
+  // staleTime 0: the client's default is Infinity, and a board mounting after `game:over`'s
+  // invalidation would otherwise pair the new delta with the previous partita's rating.
+  const { data: myRating } = useQuery<RatingDto>({
+    queryKey: ["/api/ratings/me"],
+    staleTime: 0,
+    enabled: Object.keys(ratingDeltas).length > 0,
+  });
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
@@ -1078,12 +1089,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       handScoresCurrent,
       ratingDeltas,
       handRecorded,
+      myRating,
       rematchVoteState,
       endMatchVoteState,
       voteRematch,
       voteToEndMatch,
     }),
-    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
+    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, myRating, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
   );
 
   const exchangeValue = useMemo(

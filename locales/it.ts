@@ -433,6 +433,12 @@ export const it: Record<keyof typeof en, string> = {
   "scorePill.a11yRow_other": "{{place}}° {{name}}, {{count}} punti.",
   "partitaBoard.youWon": "Hai vinto",
   "partitaBoard.wins": "Vince",
+  "partitaBoard.ratingLabel": "Il tuo punteggio",
+  "partitaBoard.provisional": "Provvisorio — altre {{n}} manche",
+  "partitaBoard.ratingSpoken": "{{delta}}, ora {{rating}}",
+  "partitaBoard.notRecorded": "Mano non registrata",
+  "partitaBoard.tooManyBots": "troppi bot al tavolo",
+  "partitaBoard.notRecordedSpoken": "Questa mano non è stata registrata: troppi bot al tavolo.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Impostazioni",

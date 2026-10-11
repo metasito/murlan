@@ -25,6 +25,8 @@ export const Colors = {
   goldLit:      '#F3E0A6',
   goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
   goldLitDisc:  'rgba(243,224,166,0.7)', // a lit disc's border: the seat on move, a notice's disc
+  // A loss that is not an error: the partita board's falling rating. Red would read as alarm on the felt.
+  copper:       '#E0A47A',
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
   // Gold alpha scale. Pick by role, not by eye.

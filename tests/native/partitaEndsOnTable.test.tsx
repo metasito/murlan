@@ -37,6 +37,9 @@ const mockVoteRematch = jest.fn();
 let mockVotes: { votes: string[]; total: number } | null = null;
 let mockError: { text: string; seq: number } | null = null;
 let mockScoresCurrent = true;
+let mockRatingDeltas: Record<string, number> = {};
+let mockRecorded = true;
+let mockMyRating: { season: string; rating: number; games: number; provisional: boolean } | undefined;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
@@ -86,8 +89,9 @@ jest.mock('@/context/onlineGameHooks', () => ({
     cumulativeScores: MOCK_SCORES,
     handScores: MOCK_HAND,
     handScoresCurrent: mockScoresCurrent,
-    ratingDeltas: {},
-    handRecorded: true,
+    ratingDeltas: mockRatingDeltas,
+    handRecorded: mockRecorded,
+    myRating: mockMyRating,
     rematchVoteState: mockVotes,
     endMatchVoteState: null,
     voteRematch: mockVoteRematch,
@@ -127,6 +131,9 @@ beforeEach(() => {
   mockVotes = null;
   mockError = null;
   mockScoresCurrent = true;
+  mockRatingDeltas = {};
+  mockRecorded = true;
+  mockMyRating = undefined;
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -224,6 +231,69 @@ describe('Nuova partita on the board', () => {
     let slot = toast.parent;
     while (slot && StyleSheet.flatten(slot.props.style)?.position !== 'absolute') slot = slot.parent;
     expect(StyleSheet.flatten(slot!.props.style).zIndex).toBeGreaterThan(Layer.moment);
+    await view.unmount();
+  });
+});
+
+describe('the viewer rating under the winner', () => {
+  const settle = async (Screen: React.ComponentType) => {
+    const view = await render(wrap(Screen));
+    await advance(board + settled);
+    expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
+    return view;
+  };
+  const spoken = () => screen.getByTestId('score-pill-panel', HIDDEN).props.accessibilityLabel as string;
+
+  it('shows the signed delta, the new rating and the provisional count for a ranked partita', async () => {
+    mockRatingDeltas = { alice: -8, luan: 14 };
+    mockMyRating = { season: '2026-10', rating: 1192, games: 3, provisional: true };
+    const view = await settle(OnlineGameScreen);
+    expect(screen.getByText(t('partitaBoard.ratingLabel'), HIDDEN)).toBeTruthy();
+    expect(screen.getByTestId('partita-rating-delta', HIDDEN)).toHaveTextContent('−8');
+    expect(screen.getByTestId('partita-rating', HIDDEN)).toHaveTextContent('1192', { exact: false });
+    expect(screen.getByText(t('partitaBoard.provisional', { n: 2 }), HIDDEN)).toBeTruthy();
+    expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
+    expect(spoken()).toContain(t('partitaBoard.ratingSpoken', { delta: '−8', rating: 1192 }));
+    await view.unmount();
+  });
+
+  it('shows the delta alone, signed, while the rating has not loaded', async () => {
+    mockRatingDeltas = { alice: 14 };
+    const view = await settle(OnlineGameScreen);
+    expect(screen.getByTestId('partita-rating', HIDDEN)).toHaveTextContent('+14');
+    expect(screen.queryByText(/provvisorio|provisional/i, HIDDEN)).toBeNull();
+    await view.unmount();
+  });
+
+  it('says when the hand was not recorded, with no delta', async () => {
+    mockRecorded = false;
+    const view = await settle(OnlineGameScreen);
+    expect(screen.getByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeTruthy();
+    expect(screen.getByText(t('partitaBoard.tooManyBots'), HIDDEN)).toBeTruthy();
+    expect(screen.queryByTestId('partita-rating-delta', HIDDEN)).toBeNull();
+    expect(spoken()).toContain(t('partitaBoard.notRecordedSpoken'));
+    await view.unmount();
+  });
+
+  it('says nothing about a partita the server closed unscored', async () => {
+    mockRecorded = false;
+    const closed = MOCK_MATCH.continues;
+    MOCK_MATCH.continues = false;
+    try {
+      const view = await settle(OnlineGameScreen);
+      expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
+      await view.unmount();
+    } finally {
+      MOCK_MATCH.continues = closed;
+    }
+  });
+
+  it('shows neither on an offline table', async () => {
+    mockRatingDeltas = { alice: 14 };
+    mockRecorded = false;
+    const view = await settle(OfflineGameScreen);
+    expect(screen.queryByTestId('partita-rating', HIDDEN)).toBeNull();
+    expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
     await view.unmount();
   });
 });

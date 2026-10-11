@@ -440,6 +440,12 @@ export const sq: Record<keyof typeof en, string> = {
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} pikë.",
   "partitaBoard.youWon": "Fitove",
   "partitaBoard.wins": "Fiton",
+  "partitaBoard.ratingLabel": "Pikët e tua",
+  "partitaBoard.provisional": "E përkohshme — edhe {{n}} manche",
+  "partitaBoard.ratingSpoken": "{{delta}}, tani {{rating}}",
+  "partitaBoard.notRecorded": "Dora nuk u regjistrua",
+  "partitaBoard.tooManyBots": "shumë botë në tavolinë",
+  "partitaBoard.notRecordedSpoken": "Kjo dorë nuk u regjistrua: shumë botë në tavolinë.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Cilësimet",

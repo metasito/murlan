@@ -20,6 +20,8 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
+import type { PartitaRating } from "@/components/table/partitaBoard";
+import { PROVISIONAL_GAMES } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
 import { computeScreenPads, railWidth } from "@/components/tableFrame";
 import { cardScale } from "@/components/cardFaceModel";
@@ -69,6 +71,9 @@ export default function OnlineGameScreen() {
     cumulativeScores,
     handScores,
     handScoresCurrent,
+    ratingDeltas,
+    handRecorded,
+    myRating,
     rematchVoteState,
     endMatchVoteState,
     voteRematch,
@@ -196,6 +201,19 @@ export default function OnlineGameScreen() {
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
   const mancheOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
+  const myDelta = isSpectator ? undefined : ratingDeltas[myUserId];
+  // `continues` is false for a partita the server closed unscored, which is unrecorded for a
+  // reason other than bots.
+  const partitaRating: PartitaRating | undefined =
+    myDelta !== undefined
+      ? {
+          delta: myDelta,
+          rating: myRating?.rating,
+          provisionalLeft: myRating?.provisional ? Math.max(PROVISIONAL_GAMES - myRating.games, 0) : undefined,
+        }
+      : !isSpectator && !handRecorded && matchState.continues
+        ? { notRecorded: true }
+        : undefined;
   const nextHandVotes = rematchVoteState?.votes ?? [];
   const voteRematchNow = () => {
     uiFeedback("medium");
@@ -228,6 +246,7 @@ export default function OnlineGameScreen() {
             }
           : undefined
       }
+      partitaRating={partitaRating}
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather
