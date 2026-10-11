@@ -69,8 +69,8 @@ const stalled = (frames: TraceFrame[], dropped: number, before: number) => {
   const at = frames.findIndex((f) => f.onsets.includes("moment:net-net")) - before;
   return frames.filter((_, i) => i < at - dropped || i >= at);
 };
-const pillLate = (pillAt: number, dropped = 0, before = 0) =>
-  diffReconnect({ mockup: mockup16(), app: stalled(side(52_345, RECONNECT_SOUND.app, { pillAt }), dropped, before) }).filter((f) =>
+const pillLate = (pillAt: number, dropped = 0, before = 0, frameMs?: number) =>
+  diffReconnect({ mockup: mockup16(), app: stalled(side(52_345, RECONNECT_SOUND.app, { pillAt, frameMs }), dropped, before) }).filter((f) =>
     f.message.startsWith("the pill's Riconnessione…,")
   );
 
@@ -79,8 +79,10 @@ test("an onset two frames late on a smooth app grid against the mockup's virtual
   assert.equal(pillLate(500 + 3 * FRAME + 1).length, 1);
 });
 
-test("a stall over the time the pill was due excuses its own length and no more", () => {
+test("a stall over the time the pill was due excuses it while the pill lands within four frames of it, and no later", () => {
   assert.deepEqual(pillLate(500 + 20 * FRAME, 30), []);
+  assert.deepEqual(pillLate(500 + 8 * FRAME, 6, 3), []);
+  assert.equal(pillLate(500 + 9 * FRAME, 6, 4).length, 1);
   assert.equal(pillLate(500 + 20 * FRAME, 10).length, 1);
 });
 
@@ -89,6 +91,18 @@ test("a stall over before the pill was due excuses nothing, and no stall excuses
   assert.equal(pillLate(500 + 6 * FRAME, 10, 15).length, 1);
   assert.equal(pillLate(500 + 8 * FRAME, 20, 6).length, 1);
   assert.equal(pillLate(500 - 4 * FRAME, 10).length, 1);
+});
+
+test("a stall after the pill excuses nothing", () => {
+  assert.equal(pillLate(500 + 3 * FRAME + 1, 10, -6).length, 1);
+});
+
+test("on a slow app grid a faithful pill passes, and a late one fails however long every frame is", () => {
+  for (const frameMs of [26, 1000 / 30]) {
+    assert.deepEqual(pillLate(500, 0, 0, frameMs), [], `${frameMs}`);
+    assert.equal(pillLate(500 + 6 * frameMs, 0, 0, frameMs).length, 1, `${frameMs}`);
+    assert.equal(pillLate(1500, 0, 0, frameMs).length, 1, `${frameMs}`);
+  }
 });
 
 test("a side that never drops fails rather than comparing nothing", () => {

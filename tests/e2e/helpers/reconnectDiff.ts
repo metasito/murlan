@@ -5,8 +5,10 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
 export const JITTER_MS = Math.ceil(1000 / 60);
-/** The app stamps an onset from a passive effect, read on the frame after the one it painted: up to two frames each way, and one of the mockup's virtual steps. */
+/** The app stamps an onset and its anchor alike from a passive effect (`useLinkHold`), each read a frame or two after it painted: up to two frames each way, and one of the mockup's virtual steps. */
 const ONSET_JITTER_MS = 2 * JITTER_MS + STEP_MS;
+/** A due timer waits out the frame in progress, renders in the next and is read the frame after it painted: four frames, however long a stall makes them. */
+const STAMP_FRAMES = 4;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 export const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */
@@ -20,12 +22,11 @@ type Side = keyof typeof RECONNECT_SOUND;
 const onsetAt = (frames: TraceFrame[], name: string, from = -Infinity) =>
   frames.find((f) => f.t >= from && f.onsets.includes(name))?.t ?? null;
 
-/** A stalled main thread holds a due timer and the frames that would show it alike, so a long frame counts only for its time after `due`. */
-const stallMs = (frames: TraceFrame[], due: number, until: number) =>
-  frames.reduce((ms, f, i) => {
-    const long = i > 0 && f.t - frames[i - 1].t > 1.5 * JITTER_MS;
-    return long && f.t > due && f.t <= until ? ms + f.t - Math.max(frames[i - 1].t, due) : ms;
-  }, 0);
+/** A stalled main thread holds a due timer and the frames that would show it alike, so a late onset is the stall's only when it still lands within `STAMP_FRAMES` of its due point. */
+const stalledFor = (frames: TraceFrame[], due: number, until: number) => {
+  const spans = frames.flatMap((f, i) => (i > 0 && f.t > due && f.t <= until ? [f.t - frames[i - 1].t] : []));
+  return spans.length <= STAMP_FRAMES && spans.some((ms) => ms > 1.5 * JITTER_MS);
+};
 
 /** The lamp eases toward 0.55 at a rate of 1: one onset's jitter of its fall, and a little. */
 const LEVEL_TOLERANCE = 0.04;
@@ -102,8 +103,8 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   for (const [what, anchor, names] of onsets) {
     const got = { mockup: offset("mockup", m[anchor], names.mockup), app: offset("app", a[anchor], names.app) };
     const late = got.mockup === null || got.app === null ? null : got.app - got.mockup;
-    const excused = late === null ? 0 : stallMs(sides.app, a[anchor] + got.mockup!, a[anchor] + got.app!);
-    if (late === null || late < -ONSET_JITTER_MS || late > ONSET_JITTER_MS + excused) {
+    const stalled = late !== null && stalledFor(sides.app, a[anchor] + got.mockup!, a[anchor] + got.app!);
+    if (late === null || late < -ONSET_JITTER_MS || (late > ONSET_JITTER_MS && !stalled)) {
       fail("onset", m[anchor] + (got.mockup ?? 0), got.mockup, got.app, `${what}, in ms after the ${anchor}`);
     }
   }
