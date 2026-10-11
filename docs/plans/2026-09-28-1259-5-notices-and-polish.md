@@ -82,13 +82,13 @@ and perfect performance. Only what a player sees goes to the owner, by eye, at a
 
 ## Design gates
 
-- **G1. The panel mockup** (rule 24: `/design`, else superdesign). The score board's plate
+- **G1. The panel mockup** (`/design`, else superdesign). The score board's plate
   (`#score`, `.hd`, `.rw`, `.bb` in the lantern fixture) as a notice panel at the table's centre,
   showing who starts with the start card as one notice (the owner settles Q6 here by eye). The
   approved HTML is committed as a fixture, *tests/e2e/fixtures/notice-panel/index.html*, with
   stable ids the pixel check reads. Waits: task 10. If the owner rejects every option, it stops
   and is reported.
-- **G2. The notices with no mockup counterpart** (rule 24). One `/design` page showing, in the
+- **G2. The notices with no mockup counterpart**. One `/design` page showing, in the
   family's shapes and tones: the reject hint beside GIOCA, the error toast, the "waiting for the
   others" line, the empty-hand line, the online end-match vote, and the offline pill off the table
   (over a menu screen). The approved HTML is committed as a fixture,
@@ -101,7 +101,7 @@ and perfect performance. Only what a player sees goes to the owner, by eye, at a
 ## Tasks
 
 Each task is one pull request against `main`, merged before a task that builds on it starts
-(rule 45). Before pushing, run every test the task adds or edits and the ones covering the code it
+Before pushing, run every test the task adds or edits and the ones covering the code it
 changes: jest files by path (`npx jest <file> …`), each Playwright spec alone with
 `npx playwright test --config tests/e2e/playwright.config.ts <spec>` (rule 3). A new test must be
 seen red first (rule 6). New files are in italics.
@@ -585,5 +585,4 @@ stall each fail the gate). Run `tests/tooling/diagnosticsGate.test.ts`,
 - **Performance (the owner's bar):** a notice's glow is a static shadow; the dot's loop runs only
   while shown; a hidden or ended notice runs no animation. G3 measures stalls on the phone.
 - **Collisions:** `GameTable.tsx`, `seats.tsx`, `chrome.tsx`, `pile.tsx`, `lib/tokens.ts` and
-  `lib/diagnostics/` are shared with plans 3 and 4; read the landed diff before touching one
-  (rule 41).
+  `lib/diagnostics/` are shared with plans 3 and 4; read the landed diff before touching one.

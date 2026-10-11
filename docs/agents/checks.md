@@ -391,7 +391,7 @@ resolves the package instead.
 
 Separately: files that type-strip fine but are run with `tsx` instead of `node --test` fail with
 `The "paths[0]" argument must be of type string`, because `import.meta.dirname` is `undefined`
-under `tsx` — reads like a bug in whatever you touched. Run these with `node --test`, per rule 4.
+under `tsx` — reads like a bug in whatever you touched. Run these with `node --test`, per rule 3.
 
 This is the only place the constraint is written down — every governed file carries a one-line
 pointer here instead of restating it, and `tests/tooling/loaderConstraintIsSingleSourced.test.ts`
