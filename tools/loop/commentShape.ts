@@ -1,11 +1,6 @@
 /**
- * CLAUDE.md's comment rules as a check rather than a paragraph, and the only place this repo
- * decides what a comment line is — `comment-budget.mjs` and the write-time hook both read it here,
- * so the rule cannot come to mean two things.
- *
- * One detector, narrow on purpose: this feeds a `PreToolUse` deny, and a false positive stops an
- * unattended ticket. "Restates the line below" is deliberately absent — it is the one that cannot
- * be decided without guessing, and the budget's ratio covers its practical case.
+ * The only place this repo decides what a comment line is — `tests/tooling/docReferences.test.ts`
+ * reads it here, so the rule cannot come to mean two things.
  */
 
 export type Line = { n: number; text: string; kind: "comment" | "code" | "blank" };
@@ -52,7 +47,7 @@ export function floorFor(path: string): number {
  *
  * Known limit: a template literal spanning lines is unterminated on each of them, so a `//` opening
  * a line inside one reads as a comment. Pinned by a test rather than fixed — tracking template state
- * costs more than the case is worth, and `comment-budget.mjs` judges committed bytes either way.
+ * costs more than the case is worth.
  */
 const blankStrings = (line: string) => line.replace(/(["'`])(?:\\.|(?!\1)[^\\])*\1/g, '""');
 
