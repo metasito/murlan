@@ -59,8 +59,9 @@ export function landingKind(m: { cards: number; bomb: boolean }): LandingKind {
   return m.bomb ? "bomb" : isCombo(m.cards) ? "combo" : "play";
 }
 
-export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean }): readonly PulseStep[] {
-  return m.bomb || m.mine ? LANDING_PULSES[landingKind(m)] : [];
+/** A landing that closes the partita pulses nothing of its own: `partitaOver`'s lead tap is on its contact. */
+export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean; closesPartita?: boolean }): readonly PulseStep[] {
+  return !m.closesPartita && (m.bomb || m.mine) ? LANDING_PULSES[landingKind(m)] : [];
 }
 
 const tap = (t: TapHaptic): Haptic[] => [{ tap: t, atMs: 0 }];

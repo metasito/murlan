@@ -121,6 +121,18 @@ export function handOutcomeFor(
   return "neutral";
 }
 
+/** What a finished partita did to `viewerId`: `"pending"` until its winners are known, `"neutral"` for a spectator. */
+export function partitaOutcomeFor(
+  players: readonly { id: string; team?: string }[],
+  matchWinners: readonly string[],
+  viewerId: string | undefined,
+  isTeamMode: boolean
+): HandOutcome {
+  if (matchWinners.length === 0) return "pending";
+  if (viewerId === undefined) return "neutral";
+  return celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) ? "won" : "lost";
+}
+
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
 export interface ScoreLine {
   seatIndex: number;

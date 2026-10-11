@@ -346,12 +346,14 @@ export function useTableFeedback({
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    if (matchOver && matchWinners.length > 0) {
-      moment({ kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }, "handoff", motionMs("shift", reduceMotion));
-    } else {
-      moment({ kind: "mancheOver", outcome }, "landing", Hold.sting);
-    }
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, reduceMotion, matchOver, matchWinners, moment]);
+    moment(
+      matchOver && matchWinners.length > 0
+        ? { kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }
+        : { kind: "mancheOver", outcome },
+      "landing",
+      Hold.sting
+    );
+  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, matchOver, matchWinners, moment]);
 
   // PASSA flash the moment passing becomes possible. `canPass` already folds in
   // whose turn it is, whether the viewer has finished, and whether the round is

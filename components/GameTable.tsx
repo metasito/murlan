@@ -120,7 +120,7 @@ import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useMancheEnding } from "@/components/table/useMancheEnding";
 import { mancheVoteShown } from "@/lib/game/mancheEnding";
-import { handOutcomeFor } from "@/lib/game/matchState";
+import { handOutcomeFor, partitaOutcomeFor } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -785,6 +785,7 @@ export function GameTable({
   const timeline = useTableTimeline();
   const isTeamMode = gameState.gameMode === "teams";
   const outcome = handOutcomeFor(players, gameState.rankings, handScores, viewer?.id, isTeamMode);
+  const partitaOutcome = partitaOutcomeFor(players, matchWinners ?? [], viewer?.id, isTeamMode);
   const {
     passaFlashStyle,
     kickStyle,
@@ -841,7 +842,7 @@ export function GameTable({
     roundWinner: gameState.roundWinner,
     gameOver: gameState.gameOver,
     matchOver,
-    viewerWon: outcome === "won",
+    viewerWon: (matchOver ? partitaOutcome : outcome) === "won",
     ...seatGeometry,
     timeline,
     celebrateFlush,
@@ -858,9 +859,13 @@ export function GameTable({
     onLanded: onMancheLanded,
   });
   const mancheShown = useMancheOutcome({ ended: gameState.gameOver && !matchOver, outcome, timeline });
-  const winnerSeat = players.findIndex((p) => p.id === gameState.rankings[0]);
+  const partitaShown = useMancheOutcome({ ended: gameState.gameOver && matchOver, outcome: partitaOutcome, timeline });
+  const shown = partitaShown ?? mancheShown;
+  // A won partita bursts from the viewer's own seat, so a teams win never lands on the partner's.
+  const winnerId = partitaShown === null ? gameState.rankings[0] : partitaShown === "won" ? viewer?.id : matchWinners?.[0];
+  const winnerSeat = players.findIndex((p) => p.id === winnerId);
   const winnerDir = winnerSeat < 0 ? null : seatDirection(winnerSeat, viewerSeat, players.length);
-  const lampToWinner = winnerDir !== null && (mancheShown === "lost" || mancheShown === "neutral");
+  const lampToWinner = winnerDir !== null && (shown === "lost" || shown === "neutral");
   const partitaOnTable = gameState.gameOver && matchOver && partitaActions !== undefined;
   const partitaEnding = useMancheEnding({
     ended: partitaOnTable,
@@ -901,18 +906,19 @@ export function GameTable({
     width: W,
     height: H,
     landing: landingSignal,
-    dim: mancheShown === "lost",
+    dim: shown === "lost",
   });
   const winnerAt = winnerDir === null ? null : anchors[winnerDir];
   const [wx, wy] = [winnerAt?.x ?? 0, winnerAt?.y ?? 0];
   const { sx: rigSx, sy: rigSy } = rig;
   const motesFor = useRef<ShownOutcome | null>(null);
   useEffect(() => {
-    if (motesFor.current === mancheShown) return;
-    motesFor.current = mancheShown;
-    if (mancheShown === null || winnerDir === null) return;
-    particles.current?.emit(mancheMotes(mancheShown, { x: wx, y: wy }, reduceMotion, rigSx, rigSy, Math.random));
-  }, [mancheShown, winnerDir, wx, wy, reduceMotion, rigSx, rigSy]);
+    if (motesFor.current === shown) return;
+    motesFor.current = shown;
+    if (shown === null || winnerDir === null) return;
+    particles.current?.emit(mancheMotes(shown, { x: wx, y: wy }, reduceMotion, rigSx, rigSy, Math.random));
+    if (partitaShown === "won") particles.current?.rain();
+  }, [shown, partitaShown, winnerDir, wx, wy, reduceMotion, rigSx, rigSy]);
   const cardTable = useCardTableValue(
     {
       pile: anchors.pile,
