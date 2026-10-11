@@ -124,17 +124,50 @@ export function handPaintOrder(ids: readonly string[], giveable: (id: string) =>
   return [...row.map(({ id }) => `hand:${id}`), ...(held === null ? [] : [`hand:${held}`])];
 }
 
+export interface HandShadeCards { hand: string[]; over: string[] }
+
 /**
- * `order` the hand's cards bottom first, as they paint: each drawn card over another casts onto the
- * cards `below` it, except where it, a card `above` it or a card in flight covers them — the
- * mockup's shadow painted between its card and the one beneath.
+ * The cards the hand shade reads: `order`'s drawn hand cards, bottom first as they paint, and every
+ * other drawn card that may overlap one of them. The shade is clipped to the hand, so no other card
+ * can cover it.
  */
-export function handShades(rects: CardRects, order: readonly string[]): { caster: string; below: string[]; above: string[] }[] {
+export function handShadeCards(rects: CardRects, order: readonly string[], felt: Pick<Felt, "sx" | "sy" | "s">): HandShadeCards {
   "worklet";
   const shown = (key: string) => rects[key] !== undefined && rects[key].seen > 0;
-  const drawn = order.filter(shown);
-  const flying = Object.keys(rects).filter((key) => !key.startsWith("hand:") && shown(key));
-  return drawn.slice(1).map((caster, i) => ({ caster, below: drawn.slice(0, i + 1), above: [...drawn.slice(i + 1), ...flying] }));
+  const hand = order.filter(shown);
+  // Half the card's width plus half its height bounds its outline from its centre at any rotation.
+  const reach = (r: CardRect) => ((r.w + r.h) * felt.s) / 2;
+  const meets = (a: CardRect, b: CardRect) => {
+    const d = reach(a) + reach(b);
+    return Math.abs(a.x - b.x) * felt.sx < d && Math.abs(a.y - b.y) * felt.sy < d;
+  };
+  const over = Object.keys(rects).filter((key) => !key.startsWith("hand:") && shown(key) && hand.some((h) => meets(rects[key], rects[h])));
+  return { hand, over };
+}
+
+/** In window points: a resting hand drifts by hundredths of one each frame, and every drift would rebuild all its outlines. */
+export const SHADE_STEP = 0.25;
+
+/** What the hand shade's outlines are built from, each outline to the nearest `SHADE_STEP`. */
+export function handShadeShape(rects: CardRects, { hand, over }: HandShadeCards, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): string {
+  "worklet";
+  const q = (v: number) => Math.round(v / SHADE_STEP);
+  let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${hand.join(",")}|`;
+  for (const key of [...hand, ...over]) {
+    const r = rects[key];
+    shape += `${key}:${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)},${r.back};`;
+  }
+  return shape;
+}
+
+/**
+ * Each drawn hand card over another casts onto the cards `below` it, except where it, a card `above`
+ * it or a card in flight over the hand covers them — the mockup's shadow painted between its card and
+ * the one beneath.
+ */
+export function handShades({ hand, over }: HandShadeCards): { caster: string; below: string[]; above: string[] }[] {
+  "worklet";
+  return hand.slice(1).map((caster, i) => ({ caster, below: hand.slice(0, i + 1), above: [...hand.slice(i + 1), ...over] }));
 }
 
 export interface GlowSink extends PathSink {
