@@ -295,7 +295,8 @@ export function reviewRounds(comments) {
   const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
   const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
   let rounds = 0;
-  for (const body of bodies) {
+  for (const [at, body] of bodies.entries()) {
+    if (at < claimed) continue;
     const v = VERDICT_RE.exec(body);
     if (!v) continue;
     const fix = bodies.some((b, i) => {
@@ -305,31 +306,6 @@ export function reviewRounds(comments) {
     if (!fix) rounds += 1;
   }
   return rounds;
-}
-
-/**
- * The size of a fix round's own diff, not the ticket's whole history. `--first-parent` keeps an
- * update-branch merge off the walk entirely — including what it carried in — and `--no-merges`
- * drops the merge commit's own (empty) entry too.
- *
- * @param {string} worktree @param {string} landSha
- * @returns {{files: number, lines: number}}
- */
-export function fixDelta(worktree, landSha) {
-  const out = run(
-    "git",
-    ["log", "--first-parent", "--no-merges", "--format=", "--numstat", `${landSha}..HEAD`],
-    worktree
-  );
-  const files = new Set();
-  let lines = 0;
-  for (const line of out.split("\n")) {
-    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
-    if (!m) continue;
-    files.add(m[3]);
-    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
-  }
-  return { files: files.size, lines };
 }
 
 /**

@@ -52,7 +52,7 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("the exact brief with material appended is allowed", () => {
-    const later = agent("Review round 2", brief("review", { n: 42, worktree: WT, base: "abc1234" }) + "\n## Blocking\n- x");
+    const later = agent("Review #42 round 2", brief("review", { n: 42, worktree: WT, base: "abc1234" }) + "\n## Blocking\n- x");
     assert.equal(run({ ...later, tool_input: { ...later.tool_input, model: "opus" } }), "");
   });
 
@@ -68,7 +68,7 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("a named review dispatch with no brief header is denied", () => {
-    for (const d of ["Completeness check 1103", "Code review #1102", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
+    for (const d of ["Completeness check 1103", "Fix review #1102", "Review #1102 round 2", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
       assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /must start with its brief/, d);
     }
   });
@@ -77,7 +77,8 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
     for (const d of ["Review: Standards axis", "spec compliance review", "refute the findings"]) {
       assert.match(run(agent(d, "Review the diff")), /must start with its brief/, d);
     }
-    for (const d of ["Implement the settings sheet", "Check spec coverage of the socket layer", "Fix the scope issue in Card.tsx"]) {
+    for (const d of ["Implement the settings sheet", "Check spec coverage of the socket layer", "Fix the scope issue in Card.tsx",
+      "Address review round 2 findings", "Trace callers for the code review fix", "Check ticket review comments"]) {
       assert.equal(run(agent(d, "anything")), "", d);
     }
   });

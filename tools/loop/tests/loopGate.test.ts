@@ -380,6 +380,14 @@ describe("a LAND is only as good as the report behind it", () => {
     assert.equal(pushVerdict(state({ review: { line: "REVIEW abc1234" } })).ok, true);
   });
 
+  test("a LAND past the review cap is refused, whatever the session wrote", () => {
+    const review = { line: "REVIEW abc1234" };
+    assert.equal(pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS })).ok, true);
+    const past = pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS + 1 }));
+    assert.equal(past.ok, false);
+    assert.match(String(past.why), /past the cap/);
+  });
+
   test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
     const v = pushVerdict(state({ trackerReadable: false }));
     assert.equal(v.ok, false);
@@ -566,13 +574,4 @@ describe("mergeCleared", () => {
     git(["switch", "-q", "-c", "agent/1-more", landed]);
     assert.equal(check(said(...cleared(landed)), edit("more.txt", "more\n")), false);
   });
-});
-
-test("--fix-delta prints the size of a fix round's own diff", () => {
-  const wt = worktree("agent/9900044-fixdelta");
-  const land = execFileSync("git", ["rev-parse", "HEAD"], { cwd: wt, encoding: "utf8" }).trim();
-  commit(wt, "docs/probe.md");
-  const { code, out } = gate(wt, [], BASE, wt, ["--fix-delta", land]);
-  assert.equal(code, 0, out);
-  assert.deepEqual(JSON.parse(out.trim()), { files: 1, lines: 2 });
 });

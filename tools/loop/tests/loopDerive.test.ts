@@ -17,7 +17,6 @@ import {
   ciRedPosted,
   derive,
   locateRun,
-  fixDelta,
   BRANCH,
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
@@ -173,6 +172,11 @@ describe("whether the review behind a verdict is on the issue", () => {
   test("a fix round's REVIEW <sha> fix still satisfies reviewFor", () => {
     assert.ok(reviewFor([{ body: reviewBody("abc1234").replace("REVIEW abc1234", "REVIEW abc1234 fix") }], "abc1234def"));
   });
+
+  test("a fix round's REVIEW <sha> fix headed Blocking satisfies reviewFor", () => {
+    const report = "REVIEW abc1234 fix\n\n## Blocking\n\nNone.\n\n## Nits\n\n## Pre-existing\n";
+    assert.ok(reviewFor([{ body: report }], "abc1234def"));
+  });
 });
 
 describe("counting review rounds", () => {
@@ -185,6 +189,11 @@ describe("counting review rounds", () => {
       reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, { body: "VERDICT: LAND def5678" }]),
       2
     );
+  });
+
+  test("a ticket claimed again starts a fresh count", () => {
+    const before = [{ body: "VERDICT: HOLD abc1234 — a" }, { body: "VERDICT: HOLD bcd2345 — b" }, { body: "VERDICT: HOLD cde3456 — c" }];
+    assert.equal(reviewRounds([...before, { body: "Claimed by `agent/1-x`." }, { body: "VERDICT: HOLD def4567 — d" }]), 1);
   });
 
   test("a verdict quoted inside a fence does not count", () => {
@@ -217,41 +226,6 @@ describe("counting review rounds", () => {
     assert.equal(reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, fixReview, hold]), 2);
     const stale = [{ body: "CI-RED 0000000" }, { body: "Claimed by `agent/42-x`" }, fixReview, hold];
     assert.equal(reviewRounds(stale), 1);
-  });
-});
-
-describe("fixDelta", () => {
-  let dir: string;
-  const git = (...args: string[]) =>
-    execFileSync(
-      "git",
-      ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
-      { cwd: dir, encoding: "utf8" }
-    ).trim();
-
-  before(() => {
-    dir = mkdtempSync(join(tmpdir(), "loop-fixdelta-"));
-    git("init", "-q", "-b", "main");
-    git("commit", "-q", "--allow-empty", "-m", "base");
-  });
-
-  after(() => {
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  test("counts a fix commit's own diff, ignoring an update-branch merge", () => {
-    const land = git("rev-parse", "HEAD");
-    git("checkout", "-qb", "work");
-    writeFileSync(join(dir, "fix.txt"), "one line\n");
-    git("add", "-A");
-    git("commit", "-qm", "fix work");
-    git("checkout", "-q", "main");
-    writeFileSync(join(dir, "main2.txt"), "main moved on\n");
-    git("add", "-A");
-    git("commit", "-qm", "main moved on");
-    git("checkout", "-q", "work");
-    git("merge", "-q", "--no-ff", "main", "-m", "update branch");
-    assert.deepEqual(fixDelta(dir, land), { files: 1, lines: 1 });
   });
 });
 

@@ -36,6 +36,7 @@ describe("every agent rule is written down exactly once", () => {
   test("rules are numbered 1..N with no gap, a retired one kept as a placeholder", () => {
     const numbers = [...read(RULES).matchAll(/^(\d+)\.\s+(?:\*\*|\*\(retired\)\*\s*$)/gm)].map((m) => Number(m[1]));
     assert.ok(numbers.length > 0, "no numbered rule found; the pattern has drifted");
+    assert.ok(numbers.length >= 46, `${numbers.length} rules: a rule is retired in place, never deleted`);
     assert.deepEqual(numbers, numbers.map((_, i) => i + 1));
   });
 

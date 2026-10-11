@@ -21,8 +21,13 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
   option space on the issue (what each option costs), park it, declare, and **exit**. Never ask
   the user a question while a run is live.
 
-  ```
+  ```sh
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
+  ```
+
+  Then declare, as text:
+
+  ```
   LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}
   ```
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds with nothing committed, commit what works
@@ -171,15 +176,16 @@ round 1, then the sha the previous round reviewed.
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
    gh run view <databaseId> --log-failed | tail -40       # if failure
    ```
-2. **Dispatch one `opus` reviewer at `medium` effort** whose prompt starts with the output of this,
-   verbatim. A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes it a fix round:
-   use the `fix` kind and `<landSha>` as the base. In a later round, append the previous round's
-   Blocking findings after the brief.
+2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
+   starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
+   it a fix round: the `fix` kind, labelled `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's
+   Blocking findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
-3. **Post the report** as one comment, first line naming the head it read:
+3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
+   in a fix round, which the cap does not count):
    ```
    REVIEW <sha>
    ## Blocking
@@ -190,14 +196,12 @@ round 1, then the sha the previous round reviewed.
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
    LAND when the report has no Blocking finding and CI is green on this head; otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
-   `verdictFor`). Never write the report yourself (rule 29). Nits are not fixed in review: list them
-   in the PR body. Where you disagree with a Blocking finding, put one line in the commit body.
+   `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
 
-**Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`. At the cap
-it exits non-zero: do not land, say on the issue which Blocking finding is still open, and stand
-down so the ticket goes to the owner.
+**Rounds.** After a `HOLD`, run `node tools/loop/loop-gate.mjs --review-round` first. At the cap it
+exits non-zero: fix nothing, say on the issue which Blocking finding is still open, and stand down.
 
-**A round is a process.** After a `HOLD`, say `PHASE C`, fix exactly the Blocking findings (no
+**A round is a process.** Otherwise say `PHASE C`, fix exactly the Blocking findings (no
 sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through phase C's steps 1–4.
 A failure only a local run showed, which neither the review nor CI named, is ruled out (rule 37)
 and named in `FIX-NOTES`. Then hand off:

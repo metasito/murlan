@@ -14,6 +14,7 @@ import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const REVIEW = /\b(spec|standards) review\b/i;
+const SINGLE_REVIEW = /\breview #\d+ round \d+\b/i;
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 
 /**
@@ -124,6 +125,7 @@ export function readTicket(allLines, ticket = "", since = null, until = null) {
   let first = null;
   let last = null;
   let reviewers = 0;
+  let singles = 0;
   const unpriced = new Set();
   const priced = new Set();
   const toolMsgs = new Map();
@@ -151,6 +153,7 @@ export function readTicket(allLines, ticket = "", since = null, until = null) {
 
     if (j.type === "system" && j.subtype === "task_started" && j.task_type === "local_agent") {
       if (REVIEW.test(j.description ?? "")) reviewers++;
+      if (SINGLE_REVIEW.test(j.description ?? "")) singles++;
       continue;
     }
     if (j.type === "result" && j.session_id) {
@@ -210,7 +213,7 @@ export function readTicket(allLines, ticket = "", since = null, until = null) {
     ticket,
     usd: [...sessions.values()].reduce((a, b) => a + b, 0),
     minutes: first && last ? (last - first) / 6e4 : 0,
-    rounds: Math.floor(reviewers / 2),
+    rounds: Math.floor(reviewers / 2) + singles,
     marked: Object.keys(phases).some((k) => k !== "pre"),
     unpriced: [...unpriced],
     phases,

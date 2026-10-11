@@ -150,7 +150,7 @@ export const PHASES = [
   ["A", "claim", "takes the ticket, makes its worktree, posts the Definition of done"],
   ["B", "scope", "one subagent maps every place the change has to touch"],
   ["C", "build", "writes the change, a commit per slice, then the local checks"],
-  ["D", "review", "two independent reviewers read the diff; LAND or HOLD"],
+  ["D", "review", "one independent reviewer reads the diff; LAND or HOLD"],
   ["E", "push", "pushes the reviewed head and readies the pull request"],
   ["F", "close", "ticks the Definition of done against the code"],
   ["G", "merge", "waits for ci.yml on that head, then merges"],

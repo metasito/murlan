@@ -406,8 +406,8 @@ export function syncCheckout(
 }
 
 /**
- * A session's own longest silence. Phase D's two review subagents emit nothing into the parent
- * stream while they read, and a large diff keeps them there past twenty minutes. Any ceiling at or
+ * A session's own longest silence. Phase D's review subagent emits nothing into the parent
+ * stream while it reads, and a large diff keeps it there past twenty minutes. Any ceiling at or
  * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
  * ceiling, which `agent:check -- --also test:native` needs and a stall must outlast.
  */
@@ -1601,7 +1601,7 @@ export function runTicket(
       }
       if (fact.declared) state.declared = fact.declared;
       // The only sign of life during phase D, which is the longest one and the one that read as a
-      // hang: its work happens entirely inside two review subagents.
+      // hang: its work happens entirely inside a review subagent.
       // Both halves, in the order a person reads them: what the session said about what it is
       // doing, then the calls it made saying it. Only two markers were ever taken out of the text
       // and the rest — the one channel that says *why* — was thrown away.

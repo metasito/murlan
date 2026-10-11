@@ -43,6 +43,10 @@ describe("readTicket", () => {
     );
   });
 
+  test("counts a round per single reviewer, labelled as queue.md names it", () => {
+    assert.equal(readTicket([spawn("Review #1424 round 1"), spawn("Review #1424 round 2"), spawn("Recon issue 5")]).rounds, 2);
+  });
+
   test("counts a review round per pair of review subagents", () => {
     assert.equal(readTicket([spawn("Spec review round 2"), spawn("Standards review round 2"), spawn("Recon issue 5")]).rounds, 1);
   });
