@@ -28,6 +28,7 @@ import type { Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
+import { coneRainFrame, idleRain, startRain, type RainRun } from "./coneRain";
 import { useGreyLayer } from "./greyLayer";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
@@ -43,6 +44,7 @@ interface Field {
   light: MoteLight;
   due: number;
   ember: EmberRun;
+  rain: RainRun;
 }
 
 // Above any display's refresh, so a device lays out every frame; jest's rAF ticks every millisecond.
@@ -87,12 +89,13 @@ function stepper(field: SharedValue<Field>, lamp: SharedValue<Lamp>, still: Shar
     const v = field.value;
     const l = lamp.value;
     v.due += (frame.timeSincePreviousFrame ?? 0) / 1000;
-    const idle = !v.s.live && !v.shown && v.ember.t < 0;
+    const idle = !v.s.live && !v.shown && v.ember.t < 0 && v.rain.t < 0;
     if (idle && v.due < AIR_TICK_S) return;
     if (idle && still.value && v.air.mothT < 0 && !relit(v.light, l)) return;
     const dt = Math.min(0.05, v.due);
     v.due = 0;
     for (const p of emberFrame(v.ember, dt, Math.random)) spawn(v.s, p);
+    for (const p of coneRainFrame(v.rain, l, dt, Math.random)) spawn(v.s, p);
     step(v.s, dt);
     if (stepAir(v.air, dt, l, still.value, Math.random)) scheduleOnRN(traceOnset, "moment", "moth");
     layout(v.s, v.d);
@@ -134,6 +137,7 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
     light: { lx: NaN, ly: NaN, level: NaN, f: NaN, r: NaN },
     due: 0,
     ember: idleEmber(),
+    rain: idleRain(),
   }));
   const field = useSharedValue(initial);
   const moth = useSharedValue<MothPose | null>(null);
@@ -189,6 +193,14 @@ export function ParticleLayer({ ref, rig, landing, grey }: {
       field.modify((v) => {
         "worklet";
         startEmber(v.ember, from, to);
+        return v;
+      }, true);
+    },
+    rain() {
+      if (reduced) return;
+      field.modify((v) => {
+        "worklet";
+        startRain(v.rain);
         return v;
       }, true);
     },

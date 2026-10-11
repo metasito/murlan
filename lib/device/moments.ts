@@ -2,12 +2,13 @@ import type { Bus } from "./audioEngine";
 import type { PulseStrength, TapHaptic } from "./hapticsEngine";
 import type { SoundId } from "./soundAssets";
 
-type Plain = "roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
+type Outcome = "won" | "lost" | "neutral" | "draw";
+type Plain ="roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
-  | { kind: "mancheOver"; outcome: "won" | "lost" | "neutral" | "draw" }
-  | { kind: "partitaOver"; won: boolean }
+  | { kind: "mancheOver"; outcome: Outcome }
+  | { kind: "partitaOver"; outcome: Outcome }
   | { [K in Plain]: { kind: K } }[Plain];
 export type MomentKind = Moment["kind"];
 export type LandingKind = "play" | "combo" | "bomb";
@@ -59,8 +60,9 @@ export function landingKind(m: { cards: number; bomb: boolean }): LandingKind {
   return m.bomb ? "bomb" : isCombo(m.cards) ? "combo" : "play";
 }
 
-export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean }): readonly PulseStep[] {
-  return m.bomb || m.mine ? LANDING_PULSES[landingKind(m)] : [];
+/** A landing that closes the partita pulses nothing of its own: `partitaOver`'s lead tap is on its contact. */
+export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean; closesPartita?: boolean }): readonly PulseStep[] {
+  return !m.closesPartita && (m.bomb || m.mine) ? LANDING_PULSES[landingKind(m)] : [];
 }
 
 const tap = (t: TapHaptic): Haptic[] => [{ tap: t, atMs: 0 }];
@@ -70,9 +72,12 @@ export const MOMENTS = {
   partitaOver: {
     priority: 100,
     cue: (m) => ({
-      sound: m.won ? "partitaWon" : "partitaLost",
+      sound: m.outcome === "won" ? "partitaWon" : m.outcome === "lost" ? "partitaLost" : "mancheNeutral",
       bus: "sting",
-      haptics: [{ tap: "medium", atMs: -PARTITA_LEAD_MS }, { tap: m.won ? "success" : "warn", atMs: 0 }],
+      haptics: [
+        { tap: "medium", atMs: -PARTITA_LEAD_MS },
+        ...(m.outcome === "won" ? tap("success") : m.outcome === "lost" ? tap("warn") : []),
+      ],
     }),
   },
   mancheOver: {

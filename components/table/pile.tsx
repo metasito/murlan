@@ -666,7 +666,11 @@ export function usePileFlight({
     closureRef.current = { matchOver, viewerWon };
     for (const f of flightsRef.current) {
       if (touched.current.has(f.key)) continue;
-      clocks.current.get(f.key)?.arm({ ...f.landing, tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }) });
+      clocks.current.get(f.key)?.arm({
+        ...f.landing,
+        tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }),
+        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesPartita: f.handOver && matchOver }),
+      });
     }
   }, [matchOver, viewerWon]);
 
@@ -761,7 +765,12 @@ export function usePileFlight({
       heavy: thrown.heavy,
       mine: thrown.dir === "bottom",
       catchUp,
-      pulses: landingPulsesFor({ cards: thrown.cards.length, bomb: thrown.heavy, mine: thrown.dir === "bottom" }),
+      pulses: landingPulsesFor({
+        cards: thrown.cards.length,
+        bomb: thrown.heavy,
+        mine: thrown.dir === "bottom",
+        closesPartita: gameOver && closureRef.current.matchOver,
+      }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
     setTrick((t) => playOnto(t, play));

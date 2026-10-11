@@ -121,6 +121,23 @@ export function handOutcomeFor(
   return "neutral";
 }
 
+/**
+ * What a finished partita did to `viewerId`: `"pending"` until its winners are known, `"neutral"` for a spectator,
+ * `"draw"` for a co-winner of a partita tied at the last target (GAME-RULES.md §12, tie escalation).
+ */
+export function partitaOutcomeFor(
+  players: readonly { id: string; team?: string }[],
+  matchWinners: readonly string[],
+  viewerId: string | undefined,
+  isTeamMode: boolean
+): HandOutcome {
+  if (matchWinners.length === 0) return "pending";
+  if (viewerId === undefined) return "neutral";
+  const celebrated = matchWinners.map((id) => celebratesViewer(players, [id], viewerId, isTeamMode));
+  if (!celebrated.includes(true)) return "lost";
+  return celebrated.includes(false) ? "draw" : "won";
+}
+
 /** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
 export interface ScoreLine {
   seatIndex: number;

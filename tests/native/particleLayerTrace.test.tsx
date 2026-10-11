@@ -155,6 +155,27 @@ describe('ParticleLayer', () => {
       await view.unmount();
     });
 
+    for (const reduced of [false, true]) {
+      it(`rains ${reduced ? 'nothing under reduced motion' : "a won partita's 60 motes through the cone over 1.2 s"}`, async () => {
+        mockReduced = reduced;
+        const ref = React.createRef<ParticleEmitter>();
+        const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
+        const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
+        await act(async () => jest.advanceTimersByTime(100));
+        await act(async () => ref.current!.rain());
+        const live: number[] = [];
+        for (let t = 0; t < 1300; t += 16) {
+          await act(async () => jest.advanceTimersByTime(16));
+          live.push((mockSources.get('live')?.() as number) - 40);
+        }
+        await view.unmount();
+
+        expect(Math.max(...live)).toBe(reduced ? 0 : 60);
+        if (!reduced) expect(live[30]).toBeGreaterThan(15);
+        if (!reduced) expect(live[30]).toBeLessThan(45);
+      });
+    }
+
     it('under reduced motion lays the motes out again only when the light moves', async () => {
       mockReduced = true;
       const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };

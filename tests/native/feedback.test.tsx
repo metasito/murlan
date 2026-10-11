@@ -55,7 +55,7 @@ describe('feedback', () => {
 
   it('the partita haptic leads its sting by 300 ms, and the sting is in the engine at once', async () => {
     const at = performance.now() + 1000;
-    event([{ kind: 'partitaOver', won: true }], at);
+    event([{ kind: 'partitaOver', outcome: 'won' }], at);
     await settle();
     expect(startsOf('partitaWon')).toEqual([expect.closeTo(ctxAt(at), 3)]);
     await settle(1000);

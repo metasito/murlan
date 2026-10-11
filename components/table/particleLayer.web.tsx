@@ -10,6 +10,7 @@ import { DESIGN, type Lamp } from "./lampRig";
 import type { LampRig } from "./useLampRig";
 import { bombFx, createParticles, landingDust, PARTICLE_BUDGET, spawn, step, type ParticleEmitter, type Particles } from "./particles";
 import { emberFrame, idleEmber, startEmber, type EmberRun } from "./ember";
+import { coneRainFrame, idleRain, startRain, type RainRun } from "./coneRain";
 import { useLandingReaction } from "./useLandingReaction";
 import { useBombBeat } from "./useBombBeat";
 import type { LandingSignal } from "./useFlightClock";
@@ -81,7 +82,7 @@ function drawMoth(c: CanvasRenderingContext2D, p: MothPose) {
 function animate(
   cv: HTMLCanvasElement,
   sim: Particles,
-  run: EmberRun,
+  run: { ember: EmberRun; rain: RainRun },
   view: AirView,
   lamp: SharedValue<Lamp>,
   reduced: boolean,
@@ -101,7 +102,8 @@ function animate(
     const dt = Math.min(0.05, (now - last) / 1000);
     const l = lamp.value;
     last = now;
-    for (const p of emberFrame(run, dt, Math.random)) spawn(sim, p);
+    for (const p of emberFrame(run.ember, dt, Math.random)) spawn(sim, p);
+    for (const p of coneRainFrame(run.rain, l, dt, Math.random)) spawn(sim, p);
     step(sim, dt);
     if (stepAir(view.air, dt, l, reduced, Math.random)) traceOnset("moment", "moth");
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -137,7 +139,7 @@ export function ParticleLayer({ ref, rig, landing }: {
 }) {
   const { lamp, sx, sy } = rig;
   const [sim] = useState(() => createParticles());
-  const [run] = useState(idleEmber);
+  const [run] = useState(() => ({ ember: idleEmber(), rain: idleRain() }));
   const [view] = useState((): AirView => ({ air: createAir(Math.random), lit: 0, moth: null }));
   const canvas = useRef<HTMLCanvasElement>(null);
   const reduced = usePrefersReducedMotion();
@@ -156,7 +158,10 @@ export function ParticleLayer({ ref, rig, landing }: {
       for (const p of spawns) spawn(sim, p);
     },
     ember(from, to) {
-      if (!reduced) startEmber(run, from, to);
+      if (!reduced) startEmber(run.ember, from, to);
+    },
+    rain() {
+      if (!reduced) startRain(run.rain);
     },
   }), [sim, run, reduced]);
 

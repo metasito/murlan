@@ -111,11 +111,11 @@ export function landingTier(input: {
   comboType: Combination["type"];
   handOver: boolean;
   matchOver: boolean;
-  /** `handOutcomeFor` answered `won`; a pending outcome is not a win. */
+  /** The viewer won what this landing closes: the partita when `matchOver`, else the manche. A pending outcome is not a win. */
   viewerWon: boolean;
 }): ImpactTier {
   const playTier = comboImpactTier(input.comboType);
-  if (!input.handOver || (!input.matchOver && !input.viewerWon)) return playTier;
+  if (!input.handOver || !input.viewerWon) return playTier;
   const closureTier: ImpactTier = input.matchOver ? "partitaWon" : "mancheWon";
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
