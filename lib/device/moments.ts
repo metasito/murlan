@@ -2,12 +2,13 @@ import type { Bus } from "./audioEngine";
 import type { PulseStrength, TapHaptic } from "./hapticsEngine";
 import type { SoundId } from "./soundAssets";
 
-type Plain = "roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
+type Outcome = "won" | "lost" | "neutral" | "draw";
+type Plain ="roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
-  | { kind: "mancheOver"; outcome: "won" | "lost" | "neutral" | "draw" }
-  | { kind: "partitaOver"; won: boolean }
+  | { kind: "mancheOver"; outcome: Outcome }
+  | { kind: "partitaOver"; outcome: Outcome }
   | { [K in Plain]: { kind: K } }[Plain];
 export type MomentKind = Moment["kind"];
 export type LandingKind = "play" | "combo" | "bomb";
@@ -71,9 +72,12 @@ export const MOMENTS = {
   partitaOver: {
     priority: 100,
     cue: (m) => ({
-      sound: m.won ? "partitaWon" : "partitaLost",
+      sound: m.outcome === "won" ? "partitaWon" : m.outcome === "lost" ? "partitaLost" : "mancheNeutral",
       bus: "sting",
-      haptics: [{ tap: "medium", atMs: -PARTITA_LEAD_MS }, { tap: m.won ? "success" : "warn", atMs: 0 }],
+      haptics: [
+        { tap: "medium", atMs: -PARTITA_LEAD_MS },
+        ...(m.outcome === "won" ? tap("success") : m.outcome === "lost" ? tap("warn") : []),
+      ],
     }),
   },
   mancheOver: {

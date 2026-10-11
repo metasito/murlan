@@ -56,10 +56,20 @@ describe("every moment maps", () => {
   });
 
   test("a partita's haptic opens 300 ms ahead of its sting", () => {
-    assert.deepEqual(cueFor({ kind: "partitaOver", won: true }), {
+    assert.deepEqual(cueFor({ kind: "partitaOver", outcome: "won" }), {
       sound: "partitaWon", bus: "sting", haptics: [tapAt("medium", -300), tapAt("success")],
     });
-    assert.deepEqual(cueFor({ kind: "partitaOver", won: false }).haptics, [tapAt("medium", -300), tapAt("warn")]);
+    assert.deepEqual(cueFor({ kind: "partitaOver", outcome: "lost" }), {
+      sound: "partitaLost", bus: "sting", haptics: [tapAt("medium", -300), tapAt("warn")],
+    });
+  });
+
+  test("a drawn partita congratulates nobody and consoles nobody: the neutral sting, only the contact's tap", () => {
+    for (const outcome of ["draw", "neutral"] as const) {
+      assert.deepEqual(cueFor({ kind: "partitaOver", outcome }), {
+        sound: "mancheNeutral", bus: "sting", haptics: [tapAt("medium", -300)],
+      });
+    }
   });
 
   test("the hand's own taps, the turn, and the sound-only moments", () => {

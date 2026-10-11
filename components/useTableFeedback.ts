@@ -346,10 +346,9 @@ export function useTableFeedback({
     // also when an online partita's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
+    const partita = matchOver ? partitaOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
     moment(
-      matchOver && matchWinners.length > 0
-        ? { kind: "partitaOver", won: partitaOutcomeFor(players, matchWinners, viewerId, isTeamMode) === "won" }
-        : { kind: "mancheOver", outcome },
+      partita !== "pending" ? { kind: "partitaOver", outcome: partita } : { kind: "mancheOver", outcome },
       "landing",
       Hold.sting
     );
