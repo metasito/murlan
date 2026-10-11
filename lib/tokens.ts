@@ -192,6 +192,20 @@ export const MancheMoment = {
   releaseRate: 3,
 } as const;
 
+// A won partita's gold through the lamp's cone, in MancheMoment's golds: the mockup's `coneRain` (#1423).
+export const ConeRain = {
+  motes: 60,
+  overMs: 1200,
+  above: [40, 130],
+  halfWidth: 130,
+  vx: 8,
+  vy: [30, 70],
+  g: 12,
+  drag: 0.99,
+  lifeSec: [1.3, 2],
+  size: [0.8, 1.8],
+} as const;
+
 // What a card landing throws up off the felt: the mockup's `landDust` (#1242).
 export const Dust = {
   mote: '#FFE2A8',
