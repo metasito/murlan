@@ -62,6 +62,8 @@ interface Moment {
   regions?: string[];
   /** Parity mode: the only times the regions are sampled, where a moment holds them only there. */
   regionsAt?: number[];
+  /** Parity mode: a region read at only these of `regionsAt`. */
+  regionAt?: Record<string, number[]>;
   /** Parity mode: the onsets held, where not every one either side fires. */
   onsets?: string[];
   /** The mockup's chapter, where it is not `key`. */
@@ -225,6 +227,8 @@ const MOMENTS: Moment[] = [
     fields: ["onset", "live", "level", "breath", "brightness"],
     regions: ["pool", "hand"],
     regionsAt: [1040, 1200],
+    // The app's hand is still brighter than at rest at 1040 and the mockup's is not (#1496).
+    regionAt: { hand: [1200] },
     onsets: ["moment:dealt"],
   },
   {
@@ -506,7 +510,8 @@ async function strip(
     if (!sampled) continue;
     // Once the hand has settled: before `fromMs` it is still being dealt.
     shape ??= await regionsNow();
-    regions.push({ t, regions: Object.keys(shape).length ? await regionBrightness(decoder, jpeg, DPR, shape) : {} });
+    const now = Object.fromEntries(Object.entries(shape).filter(([name]) => m.regionAt?.[name]?.includes(t) ?? true));
+    regions.push({ t, regions: Object.keys(now).length ? await regionBrightness(decoder, jpeg, DPR, now) : {} });
   }
   if (m.regionsAt) {
     expect(regions.map((r) => r.t), "a region sample at every time asked for").toEqual(m.regionsAt.filter((t) => t >= (m.fromMs ?? 0)));
