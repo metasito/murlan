@@ -26,7 +26,7 @@ describe("every Postgres in the project is production's major", () => {
   });
 
   test("the dev container matches it", () => {
-    const dev = majors(readRepoFile("scripts", "dev-stack.mjs"), /"postgres:(\d+)-alpine"/g);
+    const dev = majors(readRepoFile("scripts", "dev-stack.mjs"), /"(?:[\w.-]+\/)*postgres:(\d+)-alpine"/g);
 
     assert.ok(dev.length > 0, "dev-stack.mjs runs no Postgres image");
     assert.deepEqual(dev, production);
@@ -34,7 +34,7 @@ describe("every Postgres in the project is production's major", () => {
 
   test("CI's service containers and its client match it", () => {
     const ci = readRepoFile(".github", "workflows", "ci.yml");
-    const services = majors(ci, /image:\s*postgres:(\d+)-alpine/g);
+    const services = majors(ci, /image:\s*(?:[\w.-]+\/)*postgres:(\d+)-alpine/g);
     // The install command, not a mention of it: an error message naming the
     // package would otherwise satisfy this on its own.
     const clients = majors(ci, /apt-get install[^\n]*postgresql-client-(\d+)/g);

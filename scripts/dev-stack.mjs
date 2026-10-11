@@ -187,7 +187,7 @@ try {
           "-e", "POSTGRES_PASSWORD=postgres",
           "-e", "POSTGRES_DB=murlan_dev",
           "-p", `${p}:5432`,
-          "postgres:16-alpine",
+          "public.ecr.aws/docker/library/postgres:16-alpine",
         ]);
         // A run that got far enough to claim the name and then failed leaves
         // the container behind, and the next attempt cannot reuse it.
