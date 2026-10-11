@@ -418,7 +418,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # check:comments diffs each changed file against the merge base.
           fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -473,7 +472,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # check:comments diffs each changed file against the merge base.
           fetch-depth: 0
       - uses: ./.github/actions/install
         with:
@@ -772,7 +770,6 @@ jobs:
     # the only step that commits is gated on the weekly cron.
     permissions:
       contents: write
-      issues: read
       actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -824,7 +821,7 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_NAME: merged-report.json
         run: $RUNNER_TEMP/pw/node_modules/.bin/playwright merge-reports --reporter html,json ./all-blob-reports
 
-      # Both pages are screenshots, videos and trace zips, which deflate barely shrinks.
+      # The report is screenshots, videos and trace zips, which deflate barely shrinks.
       - name: Keep the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -834,25 +831,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
-
-      - name: Build the mockup side-by-side page
-        if: ${{ !cancelled() }}
-        run: node scripts/mockupParityPage.mjs playwright-report mockup-parity
-
-      - name: Keep the mockup side-by-side page
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: mockup-parity
-          path: mockup-parity/
-          if-no-files-found: error
-          retention-days: 30
-          compression-level: 0
-
-      - name: Name the tests that passed only on a retry
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node tools/ci/e2e-flaky.mjs merged-report.json
 
       # Over the numbers this run split by, so a spec this run could not price keeps the latest
       # measurement rather than the committed one.

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import BudgetReporter, { committedTimings, overBudget, RATIO, SLACK_S } from "../../tools/ci/e2e-budget.mjs";
+import BudgetReporter, { committedTimings, HARD_FACTOR, overBudget, RATIO, SLACK_S } from "../../tools/ci/e2e-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const testDir = path.join(repoRoot, "tests", "e2e");
@@ -44,11 +44,19 @@ function run(durations: Record<string, number[]>, status = "passed", skipped: st
 const timings = committedTimings();
 const [priced, seconds] = Object.entries(timings)[0]!;
 
-test("the reporter fails a green shard whose spec blew its budget, and names it", () => {
+test("a spec over its budget warns by name and leaves the shard green", () => {
   const ms = (seconds * RATIO + SLACK_S + 5) * 1000;
+  const { verdict, out } = run({ [priced]: [ms / 2, ms / 2] });
+  assert.equal(verdict, undefined);
+  assert.match(out, new RegExp(`::warning::${priced.replace(/\./g, "\\.")} took`));
+});
+
+test("the reporter fails a green shard whose spec took over HARD_FACTOR times its budget, and names it", () => {
+  const ms = ((seconds * RATIO + SLACK_S) * HARD_FACTOR + 5) * 1000;
   const { verdict, out } = run({ [priced]: [ms / 2, ms / 2] });
   assert.deepEqual(verdict, { status: "failed" });
   assert.match(out, new RegExp(`::error::${priced.replace(/\./g, "\\.")} took`));
+  assert.ok(HARD_FACTOR <= 3, `HARD_FACTOR ${HARD_FACTOR}`);
 });
 
 test("a retried test is charged its slowest attempt, not every attempt", () => {
@@ -83,6 +91,13 @@ test("the reporter leaves a spec within budget, a skipping spec and an already r
 test("CI runs the budget", () => {
   const config = readFileSync(path.join(testDir, "playwright.config.ts"), "utf8");
   assert.match(config, /process\.env\.CI\s*\?\s*\[[^\n]*tools\/ci\/e2e-budget\.mjs/);
+});
+
+test("a blocking spec is never retried, and its failure keeps its trace and video", () => {
+  const config = readFileSync(path.join(testDir, "playwright.config.ts"), "utf8");
+  assert.match(config, /^ {2}retries: 0,$/m);
+  assert.match(config, /^ {4}trace: "retain-on-failure",$/m);
+  assert.match(config, /^ {4}video: "retain-on-failure",$/m);
 });
 
 test("timings.json prices enough of the suite for the budget to mean something", () => {
