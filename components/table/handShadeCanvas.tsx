@@ -4,24 +4,17 @@
 import { useEffect, useMemo } from "react";
 import { StyleSheet } from "react-native";
 import { BlurStyle, Canvas, ClipOp, Picture, Skia, type SkPath, type SkPicture } from "@shopify/react-native-skia";
-import { useAnimatedReaction, useSharedValue, type SharedValue } from "react-native-reanimated";
+import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";
 import { CardShadow, Colors, withAlpha } from "@/lib/theme";
 import { addOutline, handShades, shadowFall, shadowPaint, shadowShape, type ShadowPath } from "./cardShadows";
-import { useCardShadowsOn } from "./feltReady";
-import type { Lamp } from "./lampRig";
+import { useCardShadowsOn, type HandShadeProps } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
-import type { CardTable } from "./useCardRects";
-
-export interface HandShadeCanvasProps {
-  lamp: SharedValue<Lamp>;
-  cards: CardTable;
-}
 
 interface Shade { caster: SkPath; below: SkPath; above: SkPath; back: boolean }
 
 const PAINTS: readonly ShadowPath[] = ["cast", "face", "back"];
 
-export function HandShadeCanvas({ lamp, cards }: HandShadeCanvasProps) {
+export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
   const { rects, handOrder, motion, felt } = cards;
   const midX = cards.hand.x;
   const pile = { x: cards.pile.x / felt.sx, y: cards.pile.y / felt.sy };
@@ -130,7 +123,7 @@ export function HandShadeCanvas({ lamp, cards }: HandShadeCanvasProps) {
   const shadows = useCardShadowsOn();
   return (
     <Canvas style={StyleSheet.absoluteFill} testID="hand-shade-skia" pointerEvents="none">
-      {shadows && <Picture picture={drawn} />}
+      {shadows && ready && <Picture picture={drawn} />}
     </Canvas>
   );
 }

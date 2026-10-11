@@ -1,17 +1,22 @@
-// Mounted only once the Skia felt has drawn: CanvasKit is loaded by then, and where it never is the
-// fallback's per-card shadows already fall on the neighbouring cards.
-import { lazy, Suspense } from "react";
+// Loaded beside the Skia felt, so it is drawing when the felt is; until then the fallback's per-card
+// shadows fall on the neighbouring cards, and this draws nothing.
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { HandShadeProps } from "./feltReady";
-import { SkiaLoadFailed } from "./feltSkia.web";
+import { drawsOnGpu, SkiaLoadFailed } from "./feltSkia.web";
 
 const SkiaHandShade = lazy(() => import("./handShadeBoundary"));
 
-export function HandShade({ lamp, cards, ready }: HandShadeProps) {
-  if (!ready) return null;
+export function HandShade(props: HandShadeProps) {
+  const [skia, setSkia] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setSkia(drawsOnGpu()));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  if (!skia) return null;
   return (
     <SkiaLoadFailed>
       <Suspense fallback={null}>
-        <SkiaHandShade lamp={lamp} cards={cards} />
+        <SkiaHandShade {...props} />
       </Suspense>
     </SkiaLoadFailed>
   );

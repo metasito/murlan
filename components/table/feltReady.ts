@@ -22,7 +22,7 @@ export interface FeltProps {
 export interface HandShadeProps {
   lamp: LampRig["lamp"];
   cards: CardTable;
-  /** The Skia felt has drawn: on web, CanvasKit is loaded. */
+  /** The Skia felt has drawn: the card views have given their own shadows up to the felt. */
   ready: boolean;
 }
 

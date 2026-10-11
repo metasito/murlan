@@ -91,6 +91,9 @@ interface Moment {
   mockupWindowMs?: number;
 }
 
+/** The app's pile cards cast no shadow on each other (#1524). */
+const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
+
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
 
@@ -375,7 +378,8 @@ const MOMENTS: Moment[] = [
     stripAt: glance(3200, BOMB_CHECKPOINTS),
     // The app's landing is the cards' contact, sampled from the pose (ADR 0008), not the tween's end.
     // The chapter holds the turn until 3300 and hands off anticlockwise; the table hands it on clockwise, to luan, as the bomb settles.
-    mockupScript: `const fx = bombFx;
+    mockupScript: `${NO_CAST_ON_CARDS}
+      const fx = bombFx;
       const beat = () => { window.__parityOnsets.push("moment:bombFx"); fx(); };
       bombFx = () => {};
       let flying = null;

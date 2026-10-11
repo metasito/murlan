@@ -1057,7 +1057,7 @@ export const StraightHand = React.memo(function StraightHand({
     return { table: cardTable, place: { felt, x: hand.x - rowMid, y: hand.y + rowBase, clipX: hand.x, clipHalf, pan, panLimit, lift: handLift, motion } };
   }, [cardTable, rowMid, rowBase, scrollable, availW, pan, panLimit]);
   useEffect(() => {
-    if (cardTable) cardTable.handOrder.value = handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null);
+    cardTable?.handOrder.set(handPaintOrder(rest.map((c) => c.id), (id) => giveableSet?.has(id), heldCard?.id ?? null));
   }, [cardTable, rest, giveableSet, heldCard]);
   const heldPlace = handRow?.place;
   const heldRects = useCardRect(
