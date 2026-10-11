@@ -62,6 +62,8 @@ interface Moment {
   regions?: string[];
   /** Parity mode: the only times the regions are sampled, where a moment holds them only there. */
   regionsAt?: number[];
+  /** `regionsAt` with the fallback felt, where it holds at fewer. */
+  fallbackRegionsAt?: number[];
   /** Parity mode: a region read at only these of `regionsAt`. */
   regionAt?: Record<string, number[]>;
   /** Parity mode: the onsets held, where not every one either side fires. */
@@ -69,6 +71,8 @@ interface Moment {
   /** The mockup's chapter, where it is not `key`. */
   chapter?: string;
   mockupScript?: string;
+  /** Run in the mockup before `mockupScript`, from the app's first traced frame. */
+  fromApp?: (first: TraceFrame) => string;
   /** Done on each side at `atMs` in chapter time: the app's by Playwright, the mockup's as a script. A side
    *  without one leaves it to the mockup's own chapter script. */
   actions?: { atMs: number; app?: (page: Page) => Promise<unknown>; mockup?: string }[];
@@ -86,6 +90,9 @@ interface Moment {
   /** Where the mockup's side stops, short of `windowMs`; no checkpoint may lie past it. */
   mockupWindowMs?: number;
 }
+
+/** The app's Skia felt draws card shadows beneath every card, so none darkens a neighbour (#1466). */
+const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
 
 const STILL_LIGHT = `const swaying = lampStep;
   lampStep = (dt) => { swaying(dt); lamp.lx = lamp.x; };`;
@@ -253,8 +260,7 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
-    // The app's Skia felt draws card shadows beneath every card, so none darkens a neighbour (#1466).
-    mockupScript: `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`,
+    mockupScript: NO_CAST_ON_CARDS,
     fallbackStill: true,
   },
   {
@@ -332,7 +338,9 @@ const MOMENTS: Moment[] = [
     checkpoints: BOMB_CHECKPOINTS,
     stripAt: glance(3200, BOMB_CHECKPOINTS),
     // The app's landing is the cards' contact, sampled from the pose (ADR 0008), not the tween's end.
-    mockupScript: `const fx = bombFx;
+    // The chapter holds the turn until 3300 and hands off anticlockwise; the table hands it on clockwise, to luan, as the bomb settles.
+    mockupScript: `${NO_CAST_ON_CARDS}
+      const fx = bombFx;
       const beat = () => { window.__parityOnsets.push("moment:bombFx"); fx(); };
       bombFx = () => {};
       let flying = null;
@@ -346,14 +354,21 @@ const MOMENTS: Moment[] = [
         flying = null;
         later(${BombFx.delayMs}, beat);
       };`,
+    // The app's restored lamp already rests on besnik, mid-sway; the chapter's would glide there from yours.
+    fromApp: ({ lamp }) => `const reset = resetLamp;
+      resetLamp = () => { reset(); [lamp.x, lamp.y] = POOL.besnik; lamp.ph = ${lamp!.ph}; simT = ${lamp!.clock}; lamp.lx = lamp.x; lamp.ly = lamp.y - 40; };`,
     appTrigger: bombTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "flare", "kick"],
-    regions: [],
+    fields: ["onset", "live", "dropped", "lamp", "flare", "kick", "brightness"],
+    regions: ["pile", "pool"],
+    // Before the throw and once its light settles: the felt's scrim, flash and flare differ in between, and the
+    // fallback's light on luan reads darker (#1438's thread).
+    regionsAt: [240, 480, 2160, 2400, 2640, 2880, 3120],
+    fallbackRegionsAt: [240, 480],
     onsets: ["moment:bombFx"],
-    // The chapter holds the turn until 3300; the table hands it on as the bomb settles, under its sparks.
-    actions: [{ atMs: 600, app: botMove }, { atMs: 1300, mockup: "handoff('besnik', 'gent')" }],
+    // When the table's lamp turns: the bomb's flight end, past its contact, plus Hold.land, a frame before its `moment:handoff`.
+    actions: [{ atMs: 600, app: botMove }, { atMs: 1280, mockup: "handoff('besnik', 'luan')" }],
   },
   {
     key: "score-open",
@@ -534,7 +549,7 @@ async function strip(
   return { trace: { frames: traced, regions }, frames, layer };
 }
 
-async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean): Promise<Capture> {
+async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRollMs: number, still: boolean, prelude: string): Promise<Capture> {
   const page = await newSidePage(browser);
   await page.goto(FIXTURE);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
@@ -550,6 +565,7 @@ async function captureMockup(browser: Browser, decoder: Page, m: Moment, preRoll
     paused = true;
     ${DEPART_SCRIPT}
     ${still ? STILL_LIGHT : ""}
+    ${prelude}
     ${m.mockupScript ?? ""}
     requestAnimationFrame(() => { paused = false; });
     start(CH.findIndex((c) => c.key === ${JSON.stringify(m.chapter ?? m.key)}));
@@ -639,7 +655,8 @@ async function openAppSide(browser: Browser, baseURL: string, m: Moment, variant
   const mounted = await traced(page, m.appOnset, `the app's onset of ${m.key}`);
   const onset = variant === "skia" ? await skiaOnset(page, mounted, loading) : mounted;
   const preRollMs = Math.ceil((onset - mounted) / STEP_MS) * STEP_MS;
-  return { page, onset, preRollMs, onsetMs: Date.now() - started };
+  const prelude = m.fromApp ? m.fromApp(await page.evaluate<TraceFrame>(TRACED_AT(mounted))) : "";
+  return { page, onset, preRollMs, prelude, onsetMs: Date.now() - started };
 }
 
 async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decoder: Page, m: Moment, variant: Variant) {
@@ -685,16 +702,17 @@ function bundle(m: Moment, variant: Variant, runs: Record<SideName, Capture>, pi
 
 /** Registers the parity test of one moment, in each of its variants or only in `only`. */
 export function parityTests(key: string, only?: Variant) {
-  const m = MOMENTS.find((x) => x.key === key);
-  if (!m) throw new Error(`no parity moment ${key}`);
-  for (const variant of (m.variants ?? (["skia", "fallback"] as const)).filter((v) => !only || v === only)) {
+  const moment = MOMENTS.find((x) => x.key === key);
+  if (!moment) throw new Error(`no parity moment ${key}`);
+  for (const variant of (moment.variants ?? (["skia", "fallback"] as const)).filter((v) => !only || v === only)) {
+    const m = variant === "fallback" && moment.fallbackRegionsAt ? { ...moment, regionsAt: moment.fallbackRegionsAt } : moment;
     test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
       test.setTimeout(15 * 60_000);
       const decoder = await browser.newPage();
       const opened = await openAppSide(browser, baseURL!, m, variant);
       const capture = async (side: SideName) =>
         side === "mockup"
-          ? captureMockup(browser, decoder, m, opened.preRollMs, variant === "fallback" && !!m.fallbackStill)
+          ? captureMockup(browser, decoder, m, opened.preRollMs, variant === "fallback" && !!m.fallbackStill, opened.prelude)
           : stripAppSide(await openAppSide(browser, baseURL!, m, variant), decoder, m, variant);
       // Side by side once the app's onset fixes the pre-roll: each side steps its own virtual clock.
       const [[app, appMs], [mockup, mockupMs]] = await Promise.all([

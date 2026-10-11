@@ -146,7 +146,7 @@ export function useLampRig({
     "lamp",
     useCallback(() => {
       const s = lamp.value;
-      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f, r: s.r, ph: s.ph, freeze: s.freeze, kick: s.kick };
+      return { x: s.lx * sx, y: s.ly * sy, level: s.level, flare: s.f, r: s.r, ph: s.ph, freeze: s.freeze, kick: s.kick, clock: s.t };
     }, [lamp, sx, sy])
   );
 
