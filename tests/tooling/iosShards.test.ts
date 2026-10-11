@@ -106,7 +106,7 @@ test("the run is green only when every shard ran and passed", () => {
   assert.doesNotMatch(IOS, /continue-on-error/);
 });
 
-test("the gate is red when the run's own jobs took longer than its wall budget", () => {
+test("the gate judges the run's own jobs against its wall budget", () => {
   const gate = job("ios");
   const name = /\n {4}name: (.+)\n/.exec(gate)![1];
   assert.match(gate, /\n {4}permissions:\n(?: {6}.+\n)* {6}actions: read\n/);

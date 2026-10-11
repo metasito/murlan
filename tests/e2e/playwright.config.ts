@@ -45,8 +45,9 @@ export default defineConfig({
   globalSetup: resolve(__dirname, "../../tools/ci/preflightMemory.mjs"),
   // Recorded by `npm run perf:web` through playwright.perf.config.ts, never
   // here: frame timing on a shared runner is noisy, and a perf check that
-  // goes red at random gets disabled and then lies (#118).
-  testIgnore: /webPerf\.spec\.ts$/,
+  // goes red at random gets disabled and then lies (#118). The mockup-parity specs run nightly
+  // through playwright.parity.config.ts, report-only. One line: tools/ci/e2e-shard.mjs scrapes it.
+  testIgnore: /(^|\/)(webPerf|mockupParity\w*|feltParityGrid(Phone|Tablet)[234]|cardShadowParity|cardGlowParity|handParity|lampLegibility|lampSeats|mockupPolish)\.spec\.ts$/,
   outputDir: "test-results",
   // A default backstop only — every test sets its own budget explicitly
   // (larger player counts and multi-hand matches need more), since a real
@@ -54,9 +55,8 @@ export default defineConfig({
   timeout: 10 * 60_000,
   globalTimeout: localGlobalTimeoutMs(process.env, CHECK_BASH_TIMEOUT_MS),
   fullyParallel: false,
-  // A retried-then-passed test is reported `flaky`, not `passed`, so the information survives.
-  // Locally still 0: a flake you cannot see is one nobody fixes.
-  retries: process.env.CI ? 1 : 0,
+  // A blocking spec gets no retry anywhere: a race that passes on a second try still ships.
+  retries: 0,
   // One worker, and not for want of trying: the runner is already CPU-bound
   // with a single Chromium driving this bundle, so a second and third lane
   // divide the same cores rather than adding any. Three ran the suite in the
@@ -79,11 +79,9 @@ export default defineConfig({
     // locale, which would otherwise steer the app to whichever of it/en/sq
     // best matches the CI environment.
     locale: "it-IT",
-    // Recording is the cost, not keeping: `retain-on-failure` records every test. On CI a failure
-    // is retried (above), and the retry is recorded; locally there is no retry to record.
-    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    video: "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

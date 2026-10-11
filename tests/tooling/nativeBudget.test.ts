@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
+import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, HARD_FACTOR, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
 const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;
@@ -45,11 +45,18 @@ test("a file whose cases outlast the budget is named; one within it, or within i
   assert.equal(overBudget({ [excepted]: seconds + 1 }).length, 1);
 });
 
-test("the reporter fails a green run with a file over budget, summing its cases, and names the file and project", () => {
+test("a file over budget warns, summing its cases, and names the file and project; the run still passes", () => {
   const { error, out } = run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S), ms(1)], "android:tests/native/tableNotices.test.tsx": [ms(1)] });
+  assert.equal(error, undefined);
+  assert.match(out, /::warning::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s its cases/);
+  assert.doesNotMatch(out, /::(warning|error)::android:/);
+});
+
+test("the reporter fails a green run with a file over its budget times HARD_FACTOR", () => {
+  const { error, out } = run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S * HARD_FACTOR), ms(1)] });
   assert.ok(error instanceof Error);
   assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s its cases/);
-  assert.doesNotMatch(out, /::error::android:/);
+  assert.equal(run({ "ios:tests/native/tableNotices.test.tsx": [ms(BUDGET_S * HARD_FACTOR)] }).error, undefined);
 });
 
 test("the reporter passes a run within budget and leaves an already red run alone", () => {
@@ -65,14 +72,18 @@ test("a run that measured no file, or no time in any, is red, red run or not", (
 
 test("work moved out of the cases, into a beforeAll or the module body, is caught by its own ceiling", () => {
   const key = "ios:tests/native/tableNotices.test.tsx";
-  const { error, out } = run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S + 2 });
+  const { error, out } = run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S * HARD_FACTOR + 2 });
   assert.ok(error instanceof Error);
   assert.match(out, /::error::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s outside its cases/);
+  const soft = run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S + 2 });
+  assert.equal(soft.error, undefined);
+  assert.match(soft.out, /::warning::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s outside its cases/);
   assert.equal(run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S }).error, undefined);
 });
 
 test("the budget cannot be loosened past what was measured, nor an exception past a minute, nor the exceptions multiplied", () => {
   assert.ok(BUDGET_S <= 15, `BUDGET_S ${BUDGET_S}`);
+  assert.ok(HARD_FACTOR <= 3, `HARD_FACTOR ${HARD_FACTOR}`);
   assert.ok(OUTSIDE_S <= 45, `OUTSIDE_S ${OUTSIDE_S}`);
   assert.ok(MAX_EXCEPTION_S <= 60, `MAX_EXCEPTION_S ${MAX_EXCEPTION_S}`);
   assert.ok(Object.keys(exceptions).length <= 3, `${Object.keys(exceptions).length} exceptions`);

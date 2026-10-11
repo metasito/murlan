@@ -114,6 +114,16 @@ describe("every browser spec reaches exactly one shard", () => {
     );
     assert.ok(!specFilesIn(E2E_DIR).includes("webPerf.spec.ts"));
   });
+
+  test("every spec the suite ignores but webPerf runs nightly under playwright.parity.config.ts", () => {
+    const parity = readFileSync(path.join(E2E_DIR, "playwright.parity.config.ts"), "utf8");
+    const match = /testMatch: \/(.+)\/,$/m.exec(parity);
+    assert.ok(match, "playwright.parity.config.ts declares no testMatch regex");
+    const all = (readdirSync(E2E_DIR, { recursive: true }) as string[]).map((f) => f.split(path.sep).join("/")).filter((f) => /\.spec\.ts$/.test(f));
+    const ignored = all.filter((f) => new RegExp(ignore[1]).test(f) && f !== "webPerf.spec.ts");
+    assert.ok(ignored.length >= 20, `only ${ignored.length} parity specs found`);
+    assert.deepEqual(all.filter((f) => new RegExp(match[1]).test(f)), ignored);
+  });
 });
 
 describe("the split is stable and even", () => {

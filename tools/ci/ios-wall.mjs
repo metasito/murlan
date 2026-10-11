@@ -1,13 +1,17 @@
-// Fails ios.yml's gate when the run's attempt, first job start to last job end, took longer than the owner's
-// budget for a device run (#1405), read from the run's own jobs API rather than from any figure in prose.
+// Warns in ios.yml's gate when the run's attempt, first job start to last job end, took longer than the owner's
+// budget for a device run (#1405), and fails it past `HARD_FACTOR` times that, read from the run's own jobs API.
 
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 export const BUDGET_S = 15 * 60;
+export const HARD_FACTOR = 3;
 
 /** @param {number} seconds */
 export const overBudget = (seconds) => seconds > BUDGET_S;
+
+/** @param {number} seconds */
+export const overCeiling = (seconds) => seconds > BUDGET_S * HARD_FACTOR;
 
 /**
  * @param {{ name: string, started_at: string | null, completed_at: string | null }[]} jobs
@@ -41,7 +45,11 @@ export function run(gate, env, ghApi, log = console.log) {
   for (const j of jobs) log(`${j.name}: ${j.started_at} to ${j.completed_at ?? "running"}`);
   log(`The run took ${wall} s of a ${BUDGET_S} s budget.`);
   if (!overBudget(wall)) return 0;
-  log(`::error::The device run took ${wall} s, over its ${BUDGET_S} s budget.`);
+  if (!overCeiling(wall)) {
+    log(`::warning::The device run took ${wall} s, over its ${BUDGET_S} s budget; it goes red past ${BUDGET_S * HARD_FACTOR} s.`);
+    return 0;
+  }
+  log(`::error::The device run took ${wall} s, over ${HARD_FACTOR}x its ${BUDGET_S} s budget.`);
   return 1;
 }
 

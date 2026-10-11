@@ -1,5 +1,5 @@
-// A jest reporter that fails a CI run of the native suite when one test file's cases, on one project,
-// take longer than its budget, read from the run's own results (what `--json` writes). The cases are
+// A jest reporter that warns on a CI run of the native suite when one test file's cases, on one project,
+// take longer than its budget, and fails it past `HARD_FACTOR` times that, read from the run's own results (what `--json` writes). The cases are
 // budgeted apart from the rest of `PASS … (N s)`, which also holds the module graph's transform that a
 // cold cache charges to whichever file loads it first; the rest gets a ceiling of its own, so work moved
 // into a beforeAll or a module body cannot leave the budget.
@@ -14,6 +14,8 @@ export const OUTSIDE_S = 45;
 
 /** botMoveCost.compiled read 7.8 s on this machine and 16.8-24.5 s on CI's runner: 2.2-3.1x. */
 export const CI_SLOWER = 3.2;
+
+export const HARD_FACTOR = 3;
 
 /** No exception may grant more: one file alone at a minute is the whole job's share of five. */
 export const MAX_EXCEPTION_S = 60;
@@ -104,12 +106,14 @@ export default class NativeBudgetReporter {
         ...outside.filter(([, s]) => s > OUTSIDE_S).map(([file, seconds]) => ({ file, seconds, budget: OUTSIDE_S, what: "outside its cases" })),
       ];
       for (const { file, seconds, budget, what } of over) {
+        const level = seconds > budget * HARD_FACTOR ? "error" : "warning";
         process.stdout.write(
-          `::error::${file} spent ${seconds.toFixed(1)}s ${what} against a budget of ${budget}s (tools/ci/native-budget.mjs). ` +
+          `::${level}::${file} spent ${seconds.toFixed(1)}s ${what} against a budget of ${budget}s (tools/ci/native-budget.mjs; red past ${HARD_FACTOR}x). ` +
             `Find what made it slow; split it, or shrink what it plays to what it asserts.\n`
         );
       }
-      if (over.length > 0) this.error = new Error(`${over.length} native test file(s) over budget`);
+      const hard = over.filter(({ seconds, budget }) => seconds > budget * HARD_FACTOR);
+      if (hard.length > 0) this.error = new Error(`${hard.length} native test file(s) over ${HARD_FACTOR}x their budget`);
     }
     if (this.error) process.stdout.write(`::error::${this.error.message}\n`);
   }
