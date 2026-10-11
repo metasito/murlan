@@ -24,7 +24,7 @@ import {
   shakeAmplitudeFor,
 } from "@/components/flightPhysics";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
-import { celebratesViewer, handOutcomeFor } from "@/lib/game/matchState";
+import { handOutcomeFor, partitaOutcomeFor } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
@@ -348,7 +348,7 @@ export function useTableFeedback({
     prevGameOverRef.current = true;
     moment(
       matchOver && matchWinners.length > 0
-        ? { kind: "partitaOver", won: celebratesViewer(players, [matchWinners[0]], viewerId, isTeamMode) }
+        ? { kind: "partitaOver", won: partitaOutcomeFor(players, matchWinners, viewerId, isTeamMode) === "won" }
         : { kind: "mancheOver", outcome },
       "landing",
       Hold.sting

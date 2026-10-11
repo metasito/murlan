@@ -56,6 +56,7 @@ const table = (gameState: GameState, matchOver: boolean) => (
     <GameTable
       gameState={gameState}
       matchOver={matchOver}
+      matchWinners={matchOver ? ["player_1"] : []}
       viewerSeat={1}
       onPlay={noop}
       onPass={noop}

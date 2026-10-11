@@ -31,7 +31,7 @@ const RANKINGS = ['player_1', 'player_2', 'player_3', 'player_0'];
 
 interface Case {
   name: string;
-  outcome: 'won' | 'lost';
+  outcome: 'won' | 'lost' | 'draw';
   teams: boolean;
   winners: string[];
   closer: number;
@@ -163,6 +163,18 @@ describe("a partita's outcome on the felt", () => {
     expect(moved).toBe(c.outcome === 'lost');
     const dims = level.mock.calls.filter(([, to, rate]) => to === MancheMoment.lostLevel && rate === MancheMoment.lostLevelRate);
     expect(dims.length > 0).toBe(c.outcome === 'lost');
+    await r.unmount();
+  });
+
+  it.each<Case>([
+    { name: 'drawn, the viewer listed first', outcome: 'draw', teams: false, winners: ['player_0', 'player_2'], closer: 3 },
+    { name: 'drawn, the viewer listed second', outcome: 'draw', teams: false, winners: ['player_2', 'player_0'], closer: 3 },
+  ])('$name: a co-winner gets neither the win nor the loss on the felt', async (c) => {
+    const { r, motes, rain, trauma, level } = await closePartita(c);
+    expect(motes.mock.calls.map(([o]) => o)).toEqual(['draw']);
+    expect(rain).not.toHaveBeenCalled();
+    expect(trauma.mock.calls.map(([tier]) => tier)).not.toContain('partitaWon');
+    expect(level.mock.calls.some(([, to]) => to === MancheMoment.lostLevel)).toBe(false);
     await r.unmount();
   });
 

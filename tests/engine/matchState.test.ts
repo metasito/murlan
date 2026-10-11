@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebratesViewer, isDrawnHand, handOutcomeFor } from "../../lib/game/matchState.ts";
+import { celebratesViewer, isDrawnHand, handOutcomeFor, partitaOutcomeFor } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
@@ -161,6 +161,36 @@ describe("handOutcomeFor", () => {
   // not stall a mode that was never waiting on one.
   test("free-for-all is never pending, even with no scores at all", () => {
     assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", false), "won");
+  });
+});
+
+describe("partitaOutcomeFor", () => {
+  const FREE_TABLE = [{ id: "player_0" }, { id: "player_1" }, { id: "player_2" }];
+  const TEAMS_TABLE = [
+    { id: "player_0", team: "A" },
+    { id: "player_1", team: "B" },
+    { id: "player_2", team: "B" },
+    { id: "player_3", team: "A" },
+  ];
+
+  test("a drawn partita is the same draw for every co-winner, whichever is listed first", () => {
+    for (const winners of [["player_0", "player_2"], ["player_2", "player_0"]]) {
+      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_0", false), "draw");
+      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_2", false), "draw");
+      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_1", false), "lost");
+    }
+  });
+
+  test("a teams partita listing both partners is won by each of them", () => {
+    const winners = ["player_3", "player_0"];
+    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_0", true), "won");
+    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_3", true), "won");
+    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_1", true), "lost");
+  });
+
+  test("is pending until its winners are known, and neutral for a spectator", () => {
+    assert.equal(partitaOutcomeFor(FREE_TABLE, [], "player_0", false), "pending");
+    assert.equal(partitaOutcomeFor(FREE_TABLE, ["player_0"], undefined, false), "neutral");
   });
 });
 
