@@ -80,7 +80,7 @@ test("an onset two frames late on a smooth app grid against the mockup's virtual
 });
 
 test("a stall over the time the pill was due excuses it while the pill lands within four frames of it, and no later", () => {
-  assert.deepEqual(pillLate(500 + 20 * FRAME, 30), []);
+  assert.deepEqual(pillLate(500 + 15 * FRAME, 30), []);
   assert.deepEqual(pillLate(500 + 8 * FRAME, 6, 3), []);
   assert.equal(pillLate(500 + 9 * FRAME, 6, 4).length, 1);
   assert.equal(pillLate(500 + 20 * FRAME, 10).length, 1);
@@ -94,13 +94,19 @@ test("a stall over before the pill was due excuses nothing, and no stall excuses
 });
 
 test("a stall after the pill excuses nothing", () => {
-  assert.equal(pillLate(500 + 3 * FRAME + 1, 10, -6).length, 1);
+  const [late] = pillLate(500 + 3 * FRAME + 1, 10, -11);
+  assert.ok(late && (late.app as number) < 600, JSON.stringify(late));
 });
 
-test("on a slow app grid a faithful pill passes, and a late one fails however long every frame is", () => {
-  for (const frameMs of [26, 1000 / 30]) {
+test("however long one stall at the due point is, a pill later than the ceiling fails", () => {
+  assert.equal(pillLate(500 + 60 * FRAME, 60).length, 1);
+  assert.equal(pillLate(500 + 19 * FRAME, 20).length, 1);
+});
+
+test("on a slow app grid a faithful pill passes, and one four frames late fails however long every frame is", () => {
+  for (const frameMs of [26, 1000 / 30, 60, 250]) {
     assert.deepEqual(pillLate(500, 0, 0, frameMs), [], `${frameMs}`);
-    assert.equal(pillLate(500 + 6 * frameMs, 0, 0, frameMs).length, 1, `${frameMs}`);
+    assert.equal(pillLate(500 + 4 * frameMs - 1, 0, 0, frameMs).length, 1, `${frameMs}`);
     assert.equal(pillLate(1500, 0, 0, frameMs).length, 1, `${frameMs}`);
   }
 });
