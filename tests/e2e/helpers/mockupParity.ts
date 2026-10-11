@@ -138,15 +138,12 @@ const bombTable = async (page: Page, baseURL: string) => {
   const deck = new Map(createDeck().map((c) => [c.id, c]));
   Object.assign(save.gameState, { lastPlayedCombination: buildCombination(SEVENS.map((id) => deck.get(id)!)), lastPlayedBy: 3 });
   await seatTable(page, baseURL, save);
-  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still. The
-  // recorder restarts behind the table's frame loops, or it samples the lamp a frame before it steps.
+  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still.
   await stepUntil(page, async () => {
     const frames = await recorded(page);
     const landed = frames.findIndex((f) => f.onsets.includes("moment:landing"));
     return landed >= 0 && frames.slice(landed + 1).some((f) => f.live <= MOTES);
   }, "the restored sevens' dust settling");
-  await page.evaluate(() => (window as unknown as { murlanTrace: { stop(): void } }).murlanTrace.stop());
-  await step(page);
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 
@@ -191,12 +188,27 @@ const LANDING_CHECKPOINTS = [1040, ...MOCKUP_LANDINGS.flatMap((t) => [t + 160, t
 /** For a moment whose strip no assertion reads, only the side-by-side page: a JPEG a step was most of its time. */
 const glance = (windowMs: number, checkpoints: number[]) => [...Array.from({ length: Math.floor(windowMs / 240) + 1 }, (_, i) => i * 240), ...checkpoints];
 
-/** The app's deal begins `reveal` into a clock that ticks on the step grid, so this far past its onset frame. */
-const DEAL_PHASE_MS = Motion.duration.reveal % STEP_MS;
+/** The deal's cue sounds `reveal` into a clock that ticks on the step grid, so its onset frame draws the breath this far in. */
+const DEAL_PHASE_MS = (STEP_MS - (Motion.duration.reveal % STEP_MS)) % STEP_MS;
 /** Mid-breath, before the first arrival, and between the ninth and tenth, where every speck thrown is still alive. */
 const DEAL_CHECKPOINTS = [48, 160, 656];
 
 const BOMB_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
+
+/** The app lands a throw at the cards' contact, sampled from the pose (ADR 0008); the mockup's `play` lands at its tween's end. */
+const LANDS_AT_CONTACT = `const throwCards = play;
+  let landing = null;
+  play = (...a) => { throwCards(...a); landing = { g: document.querySelector("#pile .grp.cur"), land: EV.pop() }; };
+  const frame = lampStep;
+  lampStep = (dt) => {
+    frame(dt);
+    if (!landing) return;
+    const poses = [...landing.g.querySelectorAll(".card")].map((c) => c.style.transform.match(/-?[\\d.]+/g).map(Number));
+    if (!poses.every(([x, y, , s]) => Math.hypot(x, y) <= 1 && Math.abs(s - 1) <= .01)) return;
+    const { land } = landing;
+    landing = null;
+    land.fn();
+  };`;
 
 const MOMENTS: Moment[] = [
   {
@@ -217,7 +229,7 @@ const MOMENTS: Moment[] = [
         sceneT = now;
       };
       const begin = start;
-      start = (i) => { begin(i); sceneT = -${DEAL_PHASE_MS}; };
+      start = (i) => { begin(i); sceneT = ${DEAL_PHASE_MS}; };
       // The chapter deals into its exchange, nobody on move; the app's fixture deals into play, as \`nextDeal\` does.
       const deal = dealRun;
       dealRun = (t0, final, then) => deal(t0, final, then ?? (() => setTurn("you")));`,
@@ -274,7 +286,8 @@ const MOMENTS: Moment[] = [
     mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
       window.__paritySeats = { luan: "left", besnik: "top", gent: "right" };
       const hand = handoff;
-      handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };`,
+      handoff = (a, b) => { window.__parityOnsets.push("moment:handoff"); hand(a, b); };
+      ${LANDS_AT_CONTACT}`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -295,7 +308,8 @@ const MOMENTS: Moment[] = [
     windowMs: 6992,
     checkpoints: LANDING_CHECKPOINTS,
     stripAt: glance(6992, LANDING_CHECKPOINTS),
-    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });`,
+    mockupScript: `Object.assign(POOL, { luan: POOL.gent, gent: POOL.luan });
+      ${LANDS_AT_CONTACT}`,
     appTrigger: pairsTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",

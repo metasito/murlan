@@ -76,41 +76,87 @@ function last<T>(reads: Set<() => T>): T | null {
   return value;
 }
 
-if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
-  const frames: TraceFrame[] = [];
-  const tick = (t: number) => {
-    if (!recording) return;
-    frames.push({
-      t,
-      onsets: pending.splice(0),
-      live: sum(sources.live),
-      dropped: sum(sources.dropped),
-      lamp: last(sources.lamp),
-      shake: last(sources.shake),
-      felt: last(sources.felt),
-      scorePill: last(sources.scorePill),
-      flight: Math.max(0, ...[...sources.flight].map((read) => read())),
-      motes: sum(sources.motes),
-      moth: last(sources.moth),
-      grey: last(sources.grey) ?? 0,
-      breath: last(sources.breath) ?? 1,
-      clocks: Object.fromEntries([...sources.clock].map((read) => read())),
+export interface FrameHost {
+  requestAnimationFrame(callback: (t: number) => void): number;
+  cancelAnimationFrame(id: number): void;
+}
+
+/**
+ * Samples a frame again after each of its frame callbacks and the microtasks it queued, replacing the last
+ * sample, so whichever callback the host runs last leaves the frame read as it ended. `sample` is handed the
+ * sample it replaces, to carry forward what it drained.
+ */
+export function recordFrames<F>(
+  host: FrameHost,
+  sample: (t: number, replacing: F | undefined) => F
+): { frames: F[]; start(): void; stop(): void } {
+  const frames: F[] = [];
+  let on = false;
+  let latest: number | null = null;
+  const request = host.requestAnimationFrame.bind(host);
+  host.requestAnimationFrame = (callback) =>
+    request((t) => {
+      try {
+        callback(t);
+      } finally {
+        queueMicrotask(() => {
+          if (!on) return;
+          if (latest === t) frames[frames.length - 1] = sample(t, frames.at(-1));
+          else frames.push(sample(t, undefined));
+          latest = t;
+        });
+      }
     });
-    requestAnimationFrame(tick);
+  const tick = () => {
+    if (on) host.requestAnimationFrame(tick);
   };
-  const recorder: TraceRecorder = {
+  return {
     frames,
     start() {
       frames.length = 0;
+      latest = null;
+      if (!on) host.requestAnimationFrame(tick);
+      on = true;
+    },
+    stop() {
+      on = false;
+    },
+  };
+}
+
+export function traceRecorder(host: FrameHost): TraceRecorder {
+  const trace = recordFrames<TraceFrame>(host, (t, replacing) => ({
+    t,
+    onsets: [...(replacing?.onsets ?? []), ...pending.splice(0)],
+    live: sum(sources.live),
+    dropped: sum(sources.dropped),
+    lamp: last(sources.lamp),
+    shake: last(sources.shake),
+    felt: last(sources.felt),
+    scorePill: last(sources.scorePill),
+    flight: Math.max(0, ...[...sources.flight].map((read) => read())),
+    motes: sum(sources.motes),
+    moth: last(sources.moth),
+    grey: last(sources.grey) ?? 0,
+    breath: last(sources.breath) ?? 1,
+    clocks: Object.fromEntries([...sources.clock].map((read) => read())),
+  }));
+  return {
+    frames: trace.frames,
+    start() {
       pending = [];
-      if (!recording) requestAnimationFrame(tick);
+      trace.start();
       recording = true;
     },
     stop() {
+      trace.stop();
       recording = false;
     },
   };
-  (globalThis as { murlanTrace?: TraceRecorder }).murlanTrace = recorder;
+}
+
+if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
+  (globalThis as { murlanTrace?: TraceRecorder }).murlanTrace = traceRecorder(globalThis as unknown as FrameHost);
 }
 
 export function traceOnset(kind: "sound" | "haptic" | "moment", name: string): void {
