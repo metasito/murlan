@@ -20,7 +20,7 @@ import {
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
-import { GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
+import { FOIL_ART, FoilGlint, GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -300,7 +300,7 @@ let cardArtWarmed: Promise<void> | null = null;
  */
 export function warmCardArt(): void {
   if (cardArtWarmed) return;
-  const art = [...Object.values(COURT_ART), ...Object.values(BACK_ART), STOCK_ART, GLOSS_SPOT_ART];
+  const art = [...Object.values(COURT_ART), ...Object.values(BACK_ART), ...Object.values(FOIL_ART), STOCK_ART, GLOSS_SPOT_ART];
   cardArtWarmed = Asset.loadAsync(art.map((load) => load()))
     .then(() => undefined)
     .catch(() => undefined);
@@ -517,6 +517,7 @@ function CardViewBase({
         >
           <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
           <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
+          <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
         <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </Animated.View>
