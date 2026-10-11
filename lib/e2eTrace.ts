@@ -82,50 +82,31 @@ export interface FrameHost {
 }
 
 /**
- * Samples each frame once every frame callback of it and the microtasks they queue have run: `host`'s
- * scheduling is wrapped, so a callback registered before a frame begins is due in it, and one registered
- * during it belongs to the next. One the host defers past its frame anyway holds that frame's sample until
- * the next frame begins.
+ * Samples a frame again after each of its frame callbacks and the microtasks it queued, replacing the last
+ * sample, so whichever callback the host runs last leaves the frame read as it ended. `sample` is handed the
+ * sample it replaces, to carry forward what it drained.
  */
-export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { frames: F[]; start(): void; stop(): void } {
+export function recordFrames<F>(
+  host: FrameHost,
+  sample: (t: number, replacing: F | undefined) => F
+): { frames: F[]; start(): void; stop(): void } {
   const frames: F[] = [];
   let on = false;
+  let latest: number | null = null;
   const request = host.requestAnimationFrame.bind(host);
-  const cancel = host.cancelAnimationFrame.bind(host);
-  let queued = new Set<number>();
-  let due = new Set<number>();
-  let frame: number | null = null;
-  const settle = () => {
-    if (frame === null || due.size > 0) return;
-    const t = frame;
-    frame = null;
-    queueMicrotask(() => {
-      if (on) frames.push(sample(t));
-    });
-  };
-  host.requestAnimationFrame = (callback) => {
-    const id = request((t) => {
-      if (frame !== t) {
-        if (frame !== null && on) frames.push(sample(frame));
-        due = new Set([...due, ...queued]);
-        queued = new Set();
-        frame = t;
-      }
-      due.delete(id);
+  host.requestAnimationFrame = (callback) =>
+    request((t) => {
       try {
         callback(t);
       } finally {
-        settle();
+        queueMicrotask(() => {
+          if (!on) return;
+          if (latest === t) frames[frames.length - 1] = sample(t, frames.at(-1));
+          else frames.push(sample(t, undefined));
+          latest = t;
+        });
       }
     });
-    queued.add(id);
-    return id;
-  };
-  host.cancelAnimationFrame = (id) => {
-    cancel(id);
-    queued.delete(id);
-    if (due.delete(id)) settle();
-  };
   const tick = () => {
     if (on) host.requestAnimationFrame(tick);
   };
@@ -133,6 +114,7 @@ export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { fr
     frames,
     start() {
       frames.length = 0;
+      latest = null;
       if (!on) host.requestAnimationFrame(tick);
       on = true;
     },
@@ -143,9 +125,9 @@ export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { fr
 }
 
 if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
-  const trace = recordFrames<TraceFrame>(globalThis as unknown as FrameHost, (t) => ({
+  const trace = recordFrames<TraceFrame>(globalThis as unknown as FrameHost, (t, replacing) => ({
     t,
-    onsets: pending.splice(0),
+    onsets: [...(replacing?.onsets ?? []), ...pending.splice(0)],
     live: sum(sources.live),
     dropped: sum(sources.dropped),
     lamp: last(sources.lamp),

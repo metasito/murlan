@@ -76,33 +76,33 @@ test("what the last frame callback hands to a microtask is read on that frame, a
   assert.deepEqual(recorder.frames, [{ t: 16, value: 16 }, { t: 32, value: 32 }]);
 });
 
-test("a cancelled frame callback does not hold back the frame's sample", async () => {
-  const { host, runFor } = fakeClock();
-  const recorder = recordFrames(host, (t) => t);
-  recorder.start();
-  host.setTimeout(() => host.cancelAnimationFrame(late), FRAME);
-  const late = host.requestAnimationFrame(() => assert.fail("cancelled"));
-  await runFor(2 * FRAME);
-  assert.deepEqual(recorder.frames, [16, 32]);
-});
-
-test("a frame callback cancelled before its frame begins does not hold back that frame's sample", async () => {
-  const { host, runFor } = fakeClock();
-  const recorder = recordFrames(host, (t) => t);
-  recorder.start();
-  host.cancelAnimationFrame(host.requestAnimationFrame(() => assert.fail("cancelled")));
-  await runFor(2 * FRAME);
-  assert.deepEqual(recorder.frames, [16, 32]);
-});
-
-test("a frame loop a timer starts on a frame's own instant is read on its first frame, and that frame is still sampled", async () => {
+test("a frame loop a timer starts on a frame's own instant leaves that frame sampled as it ended, before the next timer", async () => {
   const { host, runFor } = fakeClock();
   const source = frameLoop(host);
+  const other = { value: 0 };
   host.setTimeout(source.start, FRAME);
-  const recorder = recordFrames(host, (t) => ({ t, value: source.state.value }));
+  host.setTimeout(() => (other.value = 1), FRAME + FRAME / 2);
+  const recorder = recordFrames(host, (t) => ({ t, value: source.state.value, other: other.value }));
   recorder.start();
-  await runFor(3 * FRAME);
-  assert.deepEqual(recorder.frames, [{ t: 16, value: 0 }, { t: 32, value: 32 }, { t: 48, value: 48 }]);
+  await runFor(FRAME);
+  assert.deepEqual(recorder.frames, [{ t: 16, value: 0, other: 0 }]);
+  await runFor(2 * FRAME);
+  assert.deepEqual(recorder.frames, [
+    { t: 16, value: 0, other: 0 },
+    { t: 32, value: 32, other: 1 },
+    { t: 48, value: 48, other: 1 },
+  ]);
+});
+
+test("what each frame callback of one frame fires is kept in that frame's sample", async () => {
+  const { host, runFor } = fakeClock();
+  const fired: string[] = [];
+  const recorder = recordFrames<string[]>(host, (_, replacing) => [...(replacing ?? []), ...fired.splice(0)]);
+  recorder.start();
+  host.requestAnimationFrame(() => fired.push("a"));
+  host.requestAnimationFrame(() => fired.push("b"));
+  await runFor(2 * FRAME);
+  assert.deepEqual(recorder.frames, [["a", "b"], []]);
 });
 
 test("a stopped recorder samples nothing until it starts again", async () => {
