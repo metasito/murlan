@@ -12,7 +12,6 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
  * @type {[string, number][]}
  */
 export const KNOWN_FLAKY = [
-  ["mockupParityScoreOpen.spec.ts › score-open with the fallback felt (determinism mode)", 1411],
   ["mockupParityReconnect.spec.ts › reconnect, on real time, aligned on the drops, the way back and the give-up", 1449],
 ];
 
