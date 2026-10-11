@@ -1,0 +1,94 @@
+# The mockup-parity specs, off the pull request path: they measure pixels and onsets against the
+# mockups, report into the tracker, and gate nothing (docs/agents/checks.md).
+name: Mockup parity
+
+on:
+  schedule:
+    - cron: "29 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: parity-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  parity:
+    name: Mockup parity specs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/install
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: /tmp/metro-cache
+          key: metro-${{ hashFiles('package-lock.json', 'patches/**', 'metro.config.js', 'babel.config.js') }}
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-shell-${{ steps.pw.outputs.version }}
+      - name: Install Playwright's browser
+        run: npx playwright install --only-shell chromium
+
+      - name: Mockup parity specs
+        timeout-minutes: 50
+        run: npx playwright test --config tests/e2e/playwright.parity.config.ts
+
+      - name: Keep the Playwright report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 0
+
+      - name: Build the mockup side-by-side page
+        if: always()
+        run: node scripts/mockupParityPage.mjs tests/e2e/playwright-report mockup-parity
+
+      - name: Keep the mockup side-by-side page
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mockup-parity
+          path: mockup-parity/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Report the failure to the tracker
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "The nightly mockup-parity run failed. [Run]($RUN_URL)"
+            echo
+            echo "The side-by-side page is the run's \`mockup-parity\` artifact. Locally:"
+            echo '```'
+            echo "npx playwright test --config tests/e2e/playwright.parity.config.ts"
+            echo '```'
+          } > parity-failure.md
+          open=$(gh issue list --label noticed --state open --search "mockup-parity in:title" --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file parity-failure.md
+          else
+            gh issue create --title "The nightly mockup-parity run failed" \
+              --label noticed --body-file parity-failure.md
+          fi

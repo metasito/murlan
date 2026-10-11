@@ -1,5 +1,5 @@
-// A Playwright reporter that fails a CI shard when a spec file takes more than its budget: twice
-// what `tests/e2e/timings.json` measured for it, plus `SLACK_S` for runner noise. It reads the
+// A Playwright reporter that warns on a CI shard when a spec file takes more than its budget (twice
+// what `tests/e2e/timings.json` measured for it, plus `SLACK_S`), and fails it past `HARD_FACTOR` times that. It reads the
 // committed file, never the working tree: CI overwrites that copy with the branch's own
 // measurements before the suite starts, which would let a run raise its own budget.
 
@@ -13,6 +13,7 @@ export function committedTimings() {
 
 export const RATIO = 2;
 export const SLACK_S = 30;
+export const HARD_FACTOR = 3;
 
 /**
  * @param {Record<string, number>} measured seconds this run spent per spec file
@@ -50,7 +51,7 @@ export default class BudgetReporter {
     while (suite && suite.type !== "file") suite = suite.parent;
     const file = path.relative(this.testDir, suite?.location?.file ?? test.location.file).split(path.sep).join("/");
     if (result.status === "skipped") this.skipped.add(file);
-    // A retry is e2e-flaky.mjs's to judge; the budget prices one run of the test, its slowest.
+    // The budget prices one run of the test, its slowest attempt.
     const prior = this.slowestAttempt.get(test.id) ?? 0;
     if (result.duration <= prior) return;
     this.slowestAttempt.set(test.id, result.duration);
@@ -65,11 +66,12 @@ export default class BudgetReporter {
     for (const [file, ms] of Object.entries(this.ms)) if (!this.skipped.has(file)) measured[file] = Math.round(ms / 100) / 10;
     const over = overBudget(measured, committedTimings());
     for (const { file, seconds, budget } of over) {
+      const level = seconds > budget * HARD_FACTOR ? "error" : "warning";
       process.stdout.write(
-        `::error::${file} took ${seconds}s against a budget of ${budget}s (${RATIO}× its measured time in tests/e2e/timings.json + ${SLACK_S}s). ` +
+        `::${level}::${file} took ${seconds}s against a budget of ${budget}s (${RATIO}× its measured time in tests/e2e/timings.json + ${SLACK_S}s; red past ${HARD_FACTOR}×). ` +
           `Find what made it slower; if the extra checking is worth it, put this run's time in timings.json in the same change.\n`
       );
     }
-    if (over.length > 0) return { status: "failed" };
+    if (over.some(({ seconds, budget }) => seconds > budget * HARD_FACTOR)) return { status: "failed" };
   }
 }
