@@ -49,6 +49,7 @@ export type Rng = () => number;
 export interface ParticleEmitter {
   emit(spawns: readonly ParticleSpawn[]): void;
   ember(from: FlyDirection, to: FlyDirection): void;
+  rain(): void;
 }
 
 export function createParticles(budget: number = TRANSIENTS): Particles {
