@@ -173,6 +173,11 @@ describe("whether the review behind a verdict is on the issue", () => {
   test("a fix round's REVIEW <sha> fix still satisfies reviewFor", () => {
     assert.ok(reviewFor([{ body: reviewBody("abc1234").replace("REVIEW abc1234", "REVIEW abc1234 fix") }], "abc1234def"));
   });
+
+  test("a fix round's REVIEW <sha> fix headed Blocking satisfies reviewFor", () => {
+    const report = "REVIEW abc1234 fix\n\n## Blocking\n\nNone.\n\n## Nits\n\n## Pre-existing\n";
+    assert.ok(reviewFor([{ body: report }], "abc1234def"));
+  });
 });
 
 describe("counting review rounds", () => {

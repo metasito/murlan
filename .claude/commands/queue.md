@@ -223,7 +223,8 @@ round 1, then the sha the previous round reviewed.
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
 
-3. **Post the report** as one comment, first line naming the head it read:
+3. **Post the report** as one comment, first line naming the head it read; in a fix round that
+   line is `REVIEW <sha> fix`, so the round does not count toward the cap:
 
    ```
    REVIEW <sha>
