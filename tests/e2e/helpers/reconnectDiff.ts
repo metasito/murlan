@@ -5,8 +5,8 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 
 /** One frame of jitter, on 60 Hz frames rather than the virtual clock's 16 ms grid. */
 export const JITTER_MS = Math.ceil(1000 / 60);
-/** An onset's offset spans two of a side's frames: the app's real one that stamped it, up to one dropped frame long, and one of the mockup's virtual steps. */
-const onsetJitterMs = (appFrameMs: number) => Math.min(Math.max(JITTER_MS, appFrameMs), 2 * JITTER_MS) + STEP_MS;
+/** The app stamps an onset from a passive effect, read on the frame after the one it painted: up to two frames each way, and one of the mockup's virtual steps. */
+const ONSET_JITTER_MS = 2 * JITTER_MS + STEP_MS;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 export const GREY_TOLERANCE = 0.06;
 /** The lamp's phase runs about 0.84 rad/s; frozen, it does not move at all. */
@@ -20,10 +20,9 @@ type Side = keyof typeof RECONNECT_SOUND;
 const onsetAt = (frames: TraceFrame[], name: string, from = -Infinity) =>
   frames.find((f) => f.t >= from && f.onsets.includes(name))?.t ?? null;
 
-const frameEndingAt = (frames: TraceFrame[], t: number) => {
-  const i = frames.findIndex((f) => f.t === t);
-  return i > 0 ? t - frames[i - 1].t : 0;
-};
+/** A stalled main thread holds a due timer and the frame that would show it alike, so only frames ending after `due` count. */
+const stallMs = (frames: TraceFrame[], due: number, until: number) =>
+  frames.reduce((ms, f, i) => (i > 0 && f.t > due && f.t <= until ? ms + Math.max(0, f.t - frames[i - 1].t - JITTER_MS) : ms), 0);
 
 /** The lamp eases toward 0.55 at a rate of 1: one onset's jitter of its fall, and a little. */
 const LEVEL_TOLERANCE = 0.04;
@@ -99,8 +98,9 @@ export function diffReconnect(sides: Record<Side, TraceFrame[]>): Failure[] {
   ];
   for (const [what, anchor, names] of onsets) {
     const got = { mockup: offset("mockup", m[anchor], names.mockup), app: offset("app", a[anchor], names.app) };
-    const appFrameMs = got.app === null ? 0 : Math.max(frameEndingAt(sides.app, a[anchor] + got.app), frameEndingAt(sides.app, a[anchor]));
-    if (got.mockup === null || got.app === null || Math.abs(got.app - got.mockup) > onsetJitterMs(appFrameMs)) {
+    const late = got.mockup === null || got.app === null ? null : got.app - got.mockup;
+    const excused = late === null ? 0 : stallMs(sides.app, a[anchor] + got.mockup!, a[anchor] + got.app!);
+    if (late === null || late < -ONSET_JITTER_MS || late > ONSET_JITTER_MS + excused) {
       fail("onset", m[anchor] + (got.mockup ?? 0), got.mockup, got.app, `${what}, in ms after the ${anchor}`);
     }
   }

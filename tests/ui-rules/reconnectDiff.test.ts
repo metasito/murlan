@@ -63,24 +63,31 @@ test("each divergence is named for what diverged", () => {
   assert.ok(fields({ lampTo: 0.8 }).some((m) => m.startsWith("level: the lamp's level") && m.endsWith("after the lost")));
 });
 
-test("an onset a frame late on the app's grid against the mockup's virtual one passes, and two frames late fails", () => {
-  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
-  const pill = (pillAt: number) => diffReconnect({ mockup, app: side(52_345, RECONNECT_SOUND.app, { pillAt }) }).filter((f) => f.message.startsWith("the pill's"));
-  assert.deepEqual(pill(500 + 1000 / 60), []);
-  assert.equal(pill(500 + 2 * (1000 / 60) + 1).length, 1);
+const FRAME = 1000 / 60;
+const mockup16 = () => side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
+const stalled = (frames: TraceFrame[], dropped: number, before: number) => {
+  const at = frames.findIndex((f) => f.onsets.includes("moment:net-net")) - before;
+  return frames.filter((_, i) => i < at - dropped || i >= at);
+};
+const pillLate = (pillAt: number, dropped = 0, before = 0) =>
+  diffReconnect({ mockup: mockup16(), app: stalled(side(52_345, RECONNECT_SOUND.app, { pillAt }), dropped, before) }).filter((f) =>
+    f.message.startsWith("the pill's Riconnessione…,")
+  );
+
+test("an onset two frames late on a smooth app grid against the mockup's virtual one passes, and three frames late fails", () => {
+  assert.deepEqual(pillLate(500 + 2 * FRAME), []);
+  assert.equal(pillLate(500 + 3 * FRAME + 1).length, 1);
 });
 
-test("an onset stamped on a dropped frame may lie anywhere in it, and no further, and a stall fails", () => {
-  const mockup = side(0, RECONNECT_SOUND.mockup, { frameMs: 16 });
-  const longFrame = (frames: TraceFrame[], dropped: number) => {
-    const at = frames.findIndex((f) => f.onsets.includes("moment:net-net"));
-    return frames.filter((_, i) => i < at - dropped || i >= at);
-  };
-  const pill = (pillAt: number, dropped = 1) =>
-    diffReconnect({ mockup, app: longFrame(side(52_345, RECONNECT_SOUND.app, { pillAt }), dropped) }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
-  assert.deepEqual(pill(500 + 2 * (1000 / 60)), []);
-  assert.equal(pill(500 + 4 * (1000 / 60)).length, 1);
-  assert.equal(pill(500 + 20 * (1000 / 60), 30).length, 1);
+test("a stall over the time the pill was due excuses its own length and no more", () => {
+  assert.deepEqual(pillLate(500 + 20 * FRAME, 30), []);
+  assert.equal(pillLate(500 + 20 * FRAME, 10).length, 1);
+});
+
+test("a stall over before the pill was due excuses nothing, and no stall excuses an early pill", () => {
+  assert.deepEqual(pillLate(500 + 6 * FRAME, 10), []);
+  assert.equal(pillLate(500 + 6 * FRAME, 10, 15).length, 1);
+  assert.equal(pillLate(500 - 4 * FRAME, 10).length, 1);
 });
 
 test("a side that never drops fails rather than comparing nothing", () => {
