@@ -24,12 +24,11 @@
  *
  *        node tools/loop/loop-gate.mjs --build            exit 0 iff a cached LOCAL PASS for a clean HEAD
  *                                                         and a DOD-CHECK of HEAD with every box ticked
- *        node tools/loop/loop-gate.mjs --fix-delta <sha>  prints {"files","lines"} since <sha>
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { derive, dodCheckFor, fixDelta, locateRun, reviewFor, ticketComments, verdictFor } from "./loop-derive.mjs";
+import { derive, dodCheckFor, locateRun, reviewFor, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -208,16 +207,6 @@ function buildGate() {
   return v.ok ? 0 : 1;
 }
 
-function fixDeltaCli(landSha) {
-  const at = locateRun(undefined, process.env.LOOP_WORKTREE);
-  if (!at.ticket) {
-    console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
-    return 2;
-  }
-  console.log(JSON.stringify(fixDelta(at.cwd, landSha)));
-  return 0;
-}
-
 function main() {
   const s = derive();
   const base = s.base ?? "origin/main";
@@ -256,13 +245,6 @@ function main() {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const args = process.argv.slice(2);
-  const fixDeltaAt = args.indexOf("--fix-delta");
-  const code = args.includes("--review-round")
-    ? reviewRound()
-    : args.includes("--build")
-      ? buildGate()
-      : fixDeltaAt >= 0
-        ? fixDeltaCli(args[fixDeltaAt + 1])
-        : main();
+  const code = args.includes("--review-round") ? reviewRound() : args.includes("--build") ? buildGate() : main();
   process.exit(code);
 }

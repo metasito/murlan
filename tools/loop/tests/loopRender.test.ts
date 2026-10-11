@@ -407,7 +407,7 @@ describe("ahead", () => {
 
   test("names the next step and what is left to land, from the medians", () => {
     const [next, land] = ahead("C", typical, tPlain).map(strip);
-    assert.match(next, /next\s+review · ~6m · two independent reviewers/);
+    assert.match(next, /next\s+review · ~6m · one independent reviewer/);
     assert.match(land, /to land\s+~16m after build · then push, close, merge/);
   });
 

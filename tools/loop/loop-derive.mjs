@@ -308,31 +308,6 @@ export function reviewRounds(comments) {
 }
 
 /**
- * The size of a fix round's own diff, not the ticket's whole history. `--first-parent` keeps an
- * update-branch merge off the walk entirely — including what it carried in — and `--no-merges`
- * drops the merge commit's own (empty) entry too.
- *
- * @param {string} worktree @param {string} landSha
- * @returns {{files: number, lines: number}}
- */
-export function fixDelta(worktree, landSha) {
-  const out = run(
-    "git",
-    ["log", "--first-parent", "--no-merges", "--format=", "--numstat", `${landSha}..HEAD`],
-    worktree
-  );
-  const files = new Set();
-  let lines = 0;
-  for (const line of out.split("\n")) {
-    const m = /^(\d+|-)\t(\d+|-)\t(.+)$/.exec(line);
-    if (!m) continue;
-    files.add(m[3]);
-    lines += (m[1] === "-" ? 0 : Number(m[1])) + (m[2] === "-" ? 0 : Number(m[2]));
-  }
-  return { files: files.size, lines };
-}
-
-/**
  * The issue's comments, as `gh` returns them.
  *
  * `LOOP_GH_SCRIPT` names a node script to run instead, and exists only so the tests can drive the
