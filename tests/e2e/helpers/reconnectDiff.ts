@@ -7,7 +7,7 @@ import { STEP_MS, type Failure } from "./traceDiff.ts";
 export const JITTER_MS = Math.ceil(1000 / 60);
 /** A due timer waits out the frame in progress, renders in the next and is read the frame after it painted: four frames, however long a stall makes them. */
 const STAMP_FRAMES = 4;
-/** The floor no stall lowers: the ten red CI traces of #1449 were late by 221 ms at most. */
+/** The ceiling no stall lifts: the ten red CI traces of #1449 were late by 221 ms at most. */
 const LATE_CEILING_MS = 300;
 /** The grey moves 0.85 in 300 ms: one frame of jitter, and a little. */
 export const GREY_TOLERANCE = 0.06;

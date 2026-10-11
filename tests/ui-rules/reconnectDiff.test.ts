@@ -69,10 +69,10 @@ const stalled = (frames: TraceFrame[], dropped: number, before: number) => {
   const at = frames.findIndex((f) => f.onsets.includes("moment:net-net")) - before;
   return frames.filter((_, i) => i < at - dropped || i >= at);
 };
+const pillFailures = (app: TraceFrame[]) =>
+  diffReconnect({ mockup: mockup16(), app }).filter((f) => f.message.startsWith("the pill's Riconnessione…,"));
 const pillLate = (pillAt: number, dropped = 0, before = 0, frameMs?: number) =>
-  diffReconnect({ mockup: mockup16(), app: stalled(side(52_345, RECONNECT_SOUND.app, { pillAt, frameMs }), dropped, before) }).filter((f) =>
-    f.message.startsWith("the pill's Riconnessione…,")
-  );
+  pillFailures(stalled(side(52_345, RECONNECT_SOUND.app, { pillAt, frameMs }), dropped, before));
 
 test("an onset two frames late on a smooth app grid against the mockup's virtual one passes, and three frames late fails", () => {
   assert.deepEqual(pillLate(500 + 2 * FRAME), []);
@@ -93,14 +93,28 @@ test("a stall over before the pill was due excuses nothing, and no stall excuses
   assert.equal(pillLate(500 - 4 * FRAME, 10).length, 1);
 });
 
-test("a stall after the pill excuses nothing", () => {
-  const [late] = pillLate(500 + 3 * FRAME + 1, 10, -11);
-  assert.ok(late && (late.app as number) < 600, JSON.stringify(late));
+test("a span counts as a stall from one and a half of the app's frames", () => {
+  assert.deepEqual(pillLate(500 + 3 * FRAME + 1, 1), []);
+  const app = side(52_345, RECONNECT_SOUND.app, { pillAt: 500 + 3 * FRAME + 1 });
+  const pill = app.findIndex((f) => f.onsets.includes("moment:net-net"));
+  app[pill - 1] = { ...app[pill - 1], t: app[pill - 1].t - 6 };
+  assert.equal(pillFailures(app).length, 1);
 });
 
 test("however long one stall at the due point is, a pill later than the ceiling fails", () => {
+  assert.deepEqual(pillLate(500 + 17 * FRAME, 18), []);
   assert.equal(pillLate(500 + 60 * FRAME, 60).length, 1);
   assert.equal(pillLate(500 + 19 * FRAME, 20).length, 1);
+});
+
+test("the stamping jitter is two of the app's own frames each way, and never less than two at 60 Hz", () => {
+  assert.deepEqual(pillLate(600, 0, 0, 60), []);
+  assert.deepEqual(pillLate(400, 0, 0, 60), []);
+  assert.deepEqual(pillLate(540, 0, 0, 1000 / 120), []);
+});
+
+test("an early onset past the ceiling fails on a grid slow enough to stretch the jitter beyond it", () => {
+  assert.equal(pillLate(1, 0, 0, 250).length, 1);
 });
 
 test("on a slow app grid a faithful pill passes, and one four frames late fails however long every frame is", () => {
