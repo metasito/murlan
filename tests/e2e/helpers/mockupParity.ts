@@ -148,13 +148,18 @@ const bombTable = (page: Page, baseURL: string) => {
 const SEAT = { you: 0, luan: 1, besnik: 2, gent: 3 } as const;
 const scoresBy = (s: Record<keyof typeof SEAT, number>) =>
   Object.fromEntries(Object.entries(SEAT).map(([k, seat]) => [`player_${seat}`, s[k as keyof typeof SEAT]]));
+/** The seats already out, in their order; a seat's badge reads its `finishPosition`, not `rankings`. */
+const outInOrder = (save: ReturnType<typeof offlineGameSave>, ...seats: number[]) => {
+  seats.forEach((seat, i) => Object.assign(save.gameState.players[seat], { finishPosition: i + 1 }));
+  Object.assign(save.gameState, { rankings: seats.map((seat) => `player_${seat}`) });
+};
 
 /** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
 const pwinTable = (page: Page, baseURL: string) => {
   const save = offlineGameSave(4, 13, SEAT.luan, scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), [
     [], ["2_clubs"], [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts"],
   ]);
-  Object.assign(save.gameState, { rankings: ["player_0", "player_2"] });
+  outInOrder(save, SEAT.you, SEAT.besnik);
   return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent);
 };
 
@@ -163,8 +168,26 @@ const ploseTable = (page: Page, baseURL: string) => {
   const save = offlineGameSave(4, 13, SEAT.you, scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), [
     ["K_spades"], [], [], ["3_clubs", "4_diamonds", "5_spades"],
   ]);
-  Object.assign(save.gameState, { rankings: ["player_2", "player_1"] });
+  outInOrder(save, SEAT.besnik, SEAT.luan);
   return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent);
+};
+
+/** The mockup's `mwin`: you and gent out, besnik on move with his last card, the Kd, over luan's 8c. */
+const mwinTable = (page: Page, baseURL: string) => {
+  const save = offlineGameSave(4, 13, SEAT.besnik, scoresBy({ you: 15, besnik: 16, luan: 11, gent: 10 }), [
+    [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts", "9_spades"], ["K_diamonds"], [],
+  ]);
+  outInOrder(save, SEAT.you, SEAT.gent);
+  return pileTable(page, baseURL, save, ["8_clubs"], SEAT.luan);
+};
+
+/** The mockup's `mlose`: luan and besnik out, gent on move with his last card, the Ac, over your 7c. */
+const mloseTable = (page: Page, baseURL: string) => {
+  const save = offlineGameSave(4, 13, SEAT.gent, scoresBy({ you: 18, besnik: 17, luan: 11, gent: 12 }), [
+    ["4_diamonds", "8_diamonds", "10_hearts", "Q_diamonds"], [], [], ["A_clubs"],
+  ]);
+  outInOrder(save, SEAT.luan, SEAT.besnik);
+  return pileTable(page, baseURL, save, ["7_clubs"], SEAT.you);
 };
 
 const pileTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>, pile: string[], by: number) => {
@@ -228,6 +251,8 @@ const DEAL_CHECKPOINTS = [48, 160, 656];
 
 const BOMB_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
 const PARTITA_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
+/** Not 1920: mid-way through the motes' 0.9–1.8 s lives, each side's count is its own random draw (seed 1255: 81 against 72; 4242: 75 against 72). */
+const MANCHE_CHECKPOINTS = [1040, 1200, 1440, 2400, 2880];
 
 /** The table's restored lamp already rests on the seat on move, mid-sway; the chapter's would glide there from yours. */
 const lampFromApp = (seat: string) => ({ lamp }: TraceFrame) => `const reset = resetLamp;
@@ -455,6 +480,51 @@ const MOMENTS: Moment[] = [
       { atMs: 512, app: (page) => page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 }) },
     ],
     variants: ["skia"],
+  },
+  {
+    key: "mwin",
+    windowMs: 3200,
+    checkpoints: MANCHE_CHECKPOINTS,
+    stripAt: glance(3200, MANCHE_CHECKPOINTS),
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("mwin", "mancheWon")}
+      ${LANDS_AT_CONTACT}`,
+    fromApp: lampFromApp("besnik"),
+    appTrigger: mwinTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness", "scorePill"],
+    regions: ["pile", "rim", "rightBand"],
+    regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
+    // Not the pile at 1440: Besnik's emptying play catches (pile.tsx `CATCH_MS`, off the card-glow mockup), which lantern-table's
+    // `mwin` never does.
+    // The fallback's light is baked once at besnik, so by 2880 the mockup's sway has carried its own off the right band (58.2 against 52.1).
+    fallbackRegionsAt: [1040, 1200, 1440, 1920, 2400],
+    regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    onsets: ["sound:mancheWon"],
+    actions: [{ atMs: 512, app: botMove }],
+  },
+  {
+    key: "mlose",
+    windowMs: 3200,
+    checkpoints: MANCHE_CHECKPOINTS,
+    stripAt: glance(3200, MANCHE_CHECKPOINTS),
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("mlose", "mancheLost")}
+      ${LANDS_AT_CONTACT}`,
+    fromApp: lampFromApp("gent"),
+    appTrigger: mloseTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness", "scorePill"],
+    regions: ["pile", "rim", "rightBand"],
+    regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
+    // Not the pile at 1440, as in mwin: Gent's emptying play catches.
+    // The fallback bakes its light at luan the moment the lamp turns; the mockup's glides there until about 2400.
+    fallbackRegionsAt: [2400, 2880],
+    regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    onsets: ["sound:mancheLost"],
+    actions: [{ atMs: 512, app: botMove }],
   },
   {
     key: "score-open",

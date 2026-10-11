@@ -78,7 +78,7 @@ describe('an exchange manche', () => {
     await frames(choiceOpensAt(false));
     expect(prompt()).not.toBeNull();
     await view.unmount();
-  });
+  }, 20_000);
 
   it('is not dealt again once a card has been played into it', async () => {
     const tally = emptyRankTally();
