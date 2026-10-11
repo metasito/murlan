@@ -9,8 +9,7 @@ This file holds only what reading the code cannot tell you. Stack, layout and ga
 ## Where the rest lives
 
 - **When a rule number is cited and you cannot see the rule** — `docs/agents/RULES.md`: every
-  rule an agent follows, numbered, the only normative list; cite by number, never restate it
-  (`tests/tooling/rulesAreSingleSourced.test.ts`).
+  rule an agent follows, numbered, the only normative list; cite by number, never restate it.
 - **Before claiming, labelling or writing a ticket** — `docs/agents/issue-tracker.md`: the queue
   (GitHub Issues, `metasito/murlan`), labels, claiming, the `gh` invocations.
 - **Before any rendering, animation or test change** — `docs/agents/checks.md`: which check
@@ -55,12 +54,6 @@ Never: restating the line below, or any history of what it was or when it was fi
 already covers explaining a fix here instead of in the commit message.
 
 A change adding more comment lines than code is explaining itself instead of being clear.
-
-**That is a budget with a number, not a preference.** A change is over it when it adds more than six
-comment lines — three in a test — *and* more comment lines than code; a change that adds no code at
-all is over it at three. Counted against `origin/main`, over the whole branch, so committing between
-edits buys nothing. `tools/loop/guard-comments.mjs` refuses the write and `npm run check:comments`
-fails the branch. Write to the budget: a refused write has already cost the turn.
 
 ## Working agreement
 

@@ -1,7 +1,7 @@
 # Issue tracker: GitHub
 
 Issues live in GitHub Issues (`metasito/murlan`); `gh` infers the repo inside a clone. The rules
-for taking, claiming, reading and releasing work are `docs/agents/RULES.md` 21–28. This file is
+for taking, claiming, reading and releasing work are `docs/agents/RULES.md` 22–28. This file is
 the vocabulary, the recipes, and how to write a ticket.
 
 ## Labels
@@ -39,7 +39,7 @@ the owner decides whether it is work.
   Take `blocked` off when the dependency returns, and say so on the issue.
 - **Blocking between issues lives only in GitHub's native dependencies** — the picker gates on
   `issue_dependencies_summary.blocked_by`, and nothing else encodes it. A blocker stated in prose
-  on the *other* issue is invisible to it (rule 23).
+  on the *other* issue is invisible to it (rule 22).
 
 ## Recipes
 
@@ -75,7 +75,7 @@ their procedures, and the command files carry only this repo's specifics.
 ticket here: its frontier query drops candidates on assignee, and every session authenticates as
 the same GitHub account.
 
-- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 21). `--all` lists the
+- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22). `--all` lists the
   unblocked implement frontier in pick order; a bare issue number inspects that ticket without
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
@@ -141,7 +141,7 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
   `tests/ui-rules/layoutConstantsPinned.test.ts` source-scans for a second declaration" says both
   what not to do and what will catch it.
-- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 to 5
+- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 and 5
   leave the slow suites to the agent's judgement, and you have read the change coming; it has not.
 
   ```markdown

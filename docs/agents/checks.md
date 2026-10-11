@@ -391,7 +391,7 @@ resolves the package instead.
 
 Separately: files that type-strip fine but are run with `tsx` instead of `node --test` fail with
 `The "paths[0]" argument must be of type string`, because `import.meta.dirname` is `undefined`
-under `tsx` — reads like a bug in whatever you touched. Run these with `node --test`, per rule 4.
+under `tsx` — reads like a bug in whatever you touched. Run these with `node --test`, per rule 3.
 
 This is the only place the constraint is written down — every governed file carries a one-line
 pointer here instead of restating it, and `tests/tooling/loaderConstraintIsSingleSourced.test.ts`
@@ -477,10 +477,6 @@ is the only place they run.
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
-
-**`check:comments` rides both the `Lint` job and the `Loop harness` job**, never `npm run lint`
-itself — it's first heard from on CI unless you run it yourself. It diffs against the merge base
-via `git diff`, so an uncommitted edit counts but an untracked file doesn't show at all.
 
 **Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
 every hook):
