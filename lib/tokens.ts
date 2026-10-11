@@ -390,7 +390,7 @@ export const Layer = {
   /** Dims the felt before a bomb lands, under every card. */
   feltScrim: 1,
   table: 2,
-  /** The lamp's level over one hand, fan or pile card, its face and its lip, as the mockup's `#shade` over `#lit`. */
+  /** The lamp's level over one hand, fan or pile card, face or back, and a face's lip, as the mockup's `#shade` over `#lit`. */
   levelShade: 3,
   moment: 10,
   rail: 20,
