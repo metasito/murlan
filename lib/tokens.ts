@@ -427,6 +427,8 @@ export const Layer = {
   table: 2,
   /** The lamp's level over one hand, fan or pile card, face or back, and a face's lip, as the mockup's `#shade` over `#lit`. */
   levelShade: 3,
+  /** The hand's cards' shadows on each other, over the whole table and under its HUD, as the mockup's `.card` box-shadow on the card beneath. */
+  handShade: 4,
   moment: 10,
   rail: 20,
   hint: 30,

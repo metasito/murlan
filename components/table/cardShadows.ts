@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardGlow, CardShadow } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Layer } from "../../lib/tokens.ts";
 import { cardRadius } from "../cardFaceModel.ts";
 import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
@@ -109,6 +109,65 @@ export function shadowShape(rects: CardRects, keys: readonly string[] = Object.k
 export function shadowClusterId(path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[]): string {
   "worklet";
   return `${path}|${felt.sx},${felt.sy},${felt.s},${midX}|${shadowShape(rects, [...keys].sort())}`;
+}
+
+/** A hand card's `zIndex` in its row: its index, or lifted past the row's while the exchange marks it giveable, always under the held card. */
+export function handCardZ(i: number, count: number, giveable: boolean | undefined): number {
+  "worklet";
+  return giveable === true ? Math.min(count + i, Layer.held - 1) : i;
+}
+
+/** The registry keys of the hand's cards in the order they paint, bottom first: the row by `handCardZ`, then the held card. */
+export function handPaintOrder(ids: readonly string[], giveable: (id: string) => boolean | undefined, held: string | null): string[] {
+  const row = ids.map((id, i) => ({ id, z: handCardZ(i, ids.length, giveable(id)) }));
+  row.sort((a, b) => a.z - b.z);
+  return [...row.map(({ id }) => `hand:${id}`), ...(held === null ? [] : [`hand:${held}`])];
+}
+
+export interface HandShadeCards { hand: string[]; over: string[] }
+
+/**
+ * The cards the hand shade reads: `order`'s drawn hand cards, bottom first as they paint, and every
+ * other drawn card that may overlap one of them. The shade is clipped to the hand, so no other card
+ * can cover it.
+ */
+export function handShadeCards(rects: CardRects, order: readonly string[], felt: Pick<Felt, "sx" | "sy" | "s">): HandShadeCards {
+  "worklet";
+  const shown = (key: string) => rects[key] !== undefined && rects[key].seen > 0;
+  const hand = order.filter(shown);
+  // Half the card's width plus half its height bounds its outline from its centre at any rotation.
+  const reach = (r: CardRect) => ((r.w + r.h) * felt.s) / 2;
+  const meets = (a: CardRect, b: CardRect) => {
+    const d = reach(a) + reach(b);
+    return Math.abs(a.x - b.x) * felt.sx < d && Math.abs(a.y - b.y) * felt.sy < d;
+  };
+  const over = Object.keys(rects).filter((key) => !key.startsWith("hand:") && shown(key) && hand.some((h) => meets(rects[key], rects[h])));
+  return { hand, over };
+}
+
+/** In window points: a resting hand drifts by hundredths of one each frame, and every drift would rebuild all its outlines. */
+export const SHADE_STEP = 0.25;
+
+/** What the hand shade's outlines are built from, each outline to the nearest `SHADE_STEP`. */
+export function handShadeShape(rects: CardRects, { hand, over }: HandShadeCards, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): string {
+  "worklet";
+  const q = (v: number) => Math.round(v / SHADE_STEP);
+  let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${hand.join(",")}|`;
+  for (const key of [...hand, ...over]) {
+    const r = rects[key];
+    shape += `${key}:${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)},${r.back};`;
+  }
+  return shape;
+}
+
+/**
+ * Each drawn hand card over another casts onto the cards `below` it, except where it, a card `above`
+ * it or a card in flight over the hand covers them — the mockup's shadow painted between its card and
+ * the one beneath.
+ */
+export function handShades({ hand, over }: HandShadeCards): { caster: string; below: string[]; above: string[] }[] {
+  "worklet";
+  return hand.slice(1).map((caster, i) => ({ caster, below: hand.slice(0, i + 1), above: [...hand.slice(i + 1), ...over] }));
 }
 
 export interface GlowSink extends PathSink {

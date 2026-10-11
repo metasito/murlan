@@ -91,7 +91,7 @@ interface Moment {
   mockupWindowMs?: number;
 }
 
-/** The app's Skia felt draws card shadows beneath every card, so none darkens a neighbour (#1466). */
+/** The app's pile cards cast no shadow on each other (#1524). */
 const NO_CAST_ON_CARDS = `document.head.insertAdjacentHTML("beforeend", "<style>.card{box-shadow:0 1.5px 0 #D6D0BC !important}</style>");`;
 
 const STILL_LIGHT = `const swaying = lampStep;
@@ -300,7 +300,6 @@ const MOMENTS: Moment[] = [
     mode: "parity",
     fields: ["live", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pool", "rim", "rightBand", "scorePill", "hand"],
-    mockupScript: NO_CAST_ON_CARDS,
     fallbackStill: true,
   },
   {

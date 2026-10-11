@@ -15,7 +15,7 @@ const SOFTWARE_GL = /SwiftShader|llvmpipe|softpipe|Software|Basic Render/i;
 let onGpu: boolean | undefined;
 
 /** The felt's shader covers the table: on a software rasteriser a swaying lamp takes the main thread. */
-function drawsOnGpu(): boolean {
+export function drawsOnGpu(): boolean {
   if (onGpu !== undefined) return onGpu;
   const e2e = globalThis as { murlanSkiaOnSoftware?: boolean };
   if (process.env.EXPO_PUBLIC_E2E_FAST === "1" && e2e.murlanSkiaOnSoftware) return (onGpu = true);
