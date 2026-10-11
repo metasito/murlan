@@ -7,6 +7,21 @@ test.describe("mockup parity", () => {
 
   const lastFelt = async (page: Page) => (await recorded(page, -1))[0]?.felt;
 
+  test("every back glints through its own foil, masked by CSS", async ({ browser, baseURL }) => {
+    test.setTimeout(3 * 60_000);
+    const page = await newSidePage(browser, baseURL);
+    await heldTurnTable(page, baseURL!);
+    await stepUntil(page, async () => (await page.locator('[data-testid="card-foil-glint"]').count()) > 0, "a back on the table");
+    const masks = await page.locator('[data-testid="card-foil-glint"]').evaluateAll((els) =>
+      els.map((el) => {
+        const s = getComputedStyle(el);
+        return s.maskImage && s.maskImage !== "none" ? s.maskImage : s.webkitMaskImage;
+      })
+    );
+    for (const mask of masks) expect(mask).toMatch(/^url\(".*\/foil_[a-z]+\b[^"]*"\)$/);
+    await page.context().close();
+  });
+
   test("the table plays before Skia is ready, then shows the Skia felt", async ({ browser, baseURL }) => {
     test.setTimeout(5 * 60_000);
     const page = await newSidePage(browser, baseURL);

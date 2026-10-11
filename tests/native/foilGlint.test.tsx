@@ -2,6 +2,7 @@
 // the lamp on the UI thread, so moving the lamp re-renders no card (#1465).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
+import { Platform } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
 import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
@@ -63,6 +64,16 @@ describe('the foil glint', () => {
     expect(ink.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ backgroundColor: id === 'zaffiro' ? CardGloss.foil.silver : CardGloss.foil.gold })]));
     expect(pose(ink).opacity).toBeCloseTo(CardGloss.foil.alpha.edge, 6);
     expect(pose(screen.getByTestId('card-foil-band', opts)).opacity).toBeGreaterThan(0);
+  });
+
+  it('costs a back no more host views than its mask, ink and band need', async () => {
+    await render(
+      <Table light={makeMutable(lightAt(437, 140))}>
+        <CardView card={CARD} faceDown rectKey="fan:top:0" rects={owned('fan:top:0', backAt(437, 300))} />
+      </Table>
+    );
+    const glint = screen.getByTestId('card-foil-glint', opts);
+    expect(glint.queryAll((c) => typeof c.type === 'string').length).toBe(Platform.select({ ios: 5, default: 6 }));
   });
 
   it('draws nothing on a face-up card or off the table', async () => {
