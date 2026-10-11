@@ -42,7 +42,7 @@ env:
   # self-test must run the exact same binary, or a version bump to one and not
   # the other leaves the self-test attesting to a scanner that isn't the one
   # guarding the repo.
-  GITLEAKS_IMAGE: "zricethezav/gitleaks:v8.30.1"
+  GITLEAKS_IMAGE: "ghcr.io/gitleaks/gitleaks:v8.30.1"
 
 jobs:
   # Two reasons the suite below can be skipped, both settled here: the commit is
@@ -301,7 +301,7 @@ jobs:
     # deadlock, and a silent skip would let any of those regress unnoticed.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -940,7 +940,7 @@ jobs:
     # The boot check reaches a real database, the same way a deploy does.
     services:
       postgres:
-        image: postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

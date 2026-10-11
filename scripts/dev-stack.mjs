@@ -14,7 +14,7 @@
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { dockerDesktopPaths, dockerInfo, ensureEngine } from "./dockerEngine.mjs";
+import { dockerDesktopPaths, dockerInfo, ensureEngine, pullImage } from "./dockerEngine.mjs";
 import {
   hostPortOf,
   isPostgresReply,
@@ -23,6 +23,7 @@ import {
 } from "./devStackPort.mjs";
 
 const NAME = "murlan-dev-pg";
+const IMAGE = "public.ecr.aws/docker/library/postgres:16-alpine";
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
 const DEFAULT_PORT = 45432;
 const requested = process.env.MURLAN_DEV_PG_PORT;
@@ -174,6 +175,11 @@ try {
 
   if (port === null) {
     docker(["rm", "-f", NAME]);
+    pullImage({
+      present: () => docker(["image", "inspect", IMAGE]).status === 0,
+      pull: () => docker(["pull", "-q", IMAGE]),
+      sleep,
+    });
     port = startOnFreePort({
       start: BASE_PORT,
       explicit: requested !== undefined,
@@ -187,7 +193,7 @@ try {
           "-e", "POSTGRES_PASSWORD=postgres",
           "-e", "POSTGRES_DB=murlan_dev",
           "-p", `${p}:5432`,
-          "postgres:16-alpine",
+          IMAGE,
         ]);
         // A run that got far enough to claim the name and then failed leaves
         // the container behind, and the next attempt cannot reuse it.

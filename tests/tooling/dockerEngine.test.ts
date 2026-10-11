@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { ensureEngine, dockerDesktopPaths, dockerInfo } from "../../scripts/dockerEngine.mjs";
+import { ensureEngine, dockerDesktopPaths, dockerInfo, pullImage } from "../../scripts/dockerEngine.mjs";
 
 const probe = (upAfter: number) => { let n = 0; return () => ++n > upAfter; };
 const base = (o: Record<string, unknown> = {}) => {
@@ -86,5 +86,35 @@ describe("ensureEngine", () => {
   });
   test("LOCALAPPDATA's install is tried first", () => {
     assert.match(dockerDesktopPaths({ LOCALAPPDATA: "L", ProgramFiles: "P" } as never)[0], /^L\\Programs\\DockerDesktop\\Docker Desktop\.exe$/);
+  });
+});
+
+describe("pullImage", () => {
+  const THROTTLED = { status: 1, stderr: "docker: toomanyrequests: Rate exceeded\n" };
+  const pulls = (...said: object[]) => {
+    let n = 0;
+    return { pull: () => said[Math.min(n++, said.length - 1)] as never, count: () => n };
+  };
+  test("an image already present is not pulled", () => {
+    const p = pulls({ status: 0 });
+    assert.equal(pullImage({ present: () => true, pull: p.pull, sleep: () => {} }), "present");
+    assert.equal(p.count(), 0);
+  });
+  test("a throttled pull is retried after a growing, jittered wait", () => {
+    const p = pulls(THROTTLED, THROTTLED, { status: 0 });
+    const slept: number[] = [];
+    const result = pullImage({ present: () => false, pull: p.pull, sleep: (ms: number) => slept.push(ms), random: () => 0.5, delaysMs: [100, 400] });
+    assert.equal(result, "pulled");
+    assert.deepEqual(slept, [150, 600]);
+  });
+  test("a pull still throttled after every retry fails with the registry's message", () => {
+    const p = pulls(THROTTLED);
+    assert.throws(() => pullImage({ present: () => false, pull: p.pull, sleep: () => {}, delaysMs: [1, 1] }), /Rate exceeded/);
+    assert.equal(p.count(), 3);
+  });
+  test("any other failure is not retried", () => {
+    const p = pulls({ status: 1, stderr: "manifest unknown" });
+    assert.throws(() => pullImage({ present: () => false, pull: p.pull, sleep: () => {} }), /manifest unknown/);
+    assert.equal(p.count(), 1);
   });
 });

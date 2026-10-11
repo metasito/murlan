@@ -12,6 +12,19 @@ export const dockerInfo = (run) => (timeout) => {
   return r.error?.code === "ETIMEDOUT" || Boolean(r.signal) ? "slow" : false;
 };
 
+/** A registry throttle is per second, not a quota: shards starting together trip it, and a jittered retry gets through. */
+export function pullImage({ present, pull, sleep, random = Math.random, delaysMs = [2_000, 5_000, 10_000, 20_000] }) {
+  if (present()) return "present";
+  for (let attempt = 0; ; attempt++) {
+    const r = pull();
+    if (r.status === 0) return "pulled";
+    if (!/toomanyrequests|rate exceeded/i.test(r.stderr) || attempt >= delaysMs.length) {
+      throw new Error(r.stderr || "docker pull failed");
+    }
+    sleep(Math.round(delaysMs[attempt] * (1 + random())));
+  }
+}
+
 /** `engineUp(timeoutMs)` answers true, false (down) or "slow" (no answer in time): only a known-down engine is launched. */
 export function ensureEngine({
   engineUp,
