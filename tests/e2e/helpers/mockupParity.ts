@@ -493,7 +493,7 @@ const MOMENTS: Moment[] = [
     appTrigger: mwinTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness"],
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pile", "rim", "rightBand"],
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // Not the pile at 1440: Besnik's emptying play catches (pile.tsx `CATCH_MS`, off the card-glow mockup), which lantern-table's
@@ -516,7 +516,7 @@ const MOMENTS: Moment[] = [
     appTrigger: mloseTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
-    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness"],
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness", "scorePill"],
     regions: ["pile", "rim", "rightBand"],
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // Not the pile at 1440, as in mwin: Gent's emptying play catches.
