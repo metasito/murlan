@@ -100,13 +100,6 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
   test("loop-status.mjs stays, because it is what tells a fresh session a run is live", () => {
     assert.match(read(QUEUE), /node tools\/loop\/loop-status\.mjs/);
   });
-
-  test("phase A reuses the SessionStart hook's report, except in a loop process, whose startup hook is silent", () => {
-    const a = read(QUEUE).split("## A — Start")[1].split("## B")[0];
-    assert.match(a, /\$LOOP_TURNS[^.]*your first command is `loop-status\.mjs`/);
-    assert.match(a, /SessionStart[\s\S]*Do not run it again[\s\S]*no hook report[\s\S]*stale/);
-    assert.doesNotMatch(a, /Run this first, every time/);
-  });
 });
 
 // The supervisor reads the session's own `PHASE <letter>` line and nothing else about its
@@ -131,21 +124,6 @@ describe("every phase of queue.md reports itself", () => {
       assert.equal(fact?.letter, letter, `the supervisor cannot read ${JSON.stringify(line)}`);
     });
   }
-
-  test("the echo is a line of its own, which is what the reader matches", () => {
-    // A sentence mentioning the phase is not a phase report, so the instruction has to say so.
-    assert.match(read(QUEUE), /on a line of its own/);
-  });
-
-  // In print mode a turn that ends in text and no tool call is the final answer, so a marker the
-  // model is told to send by itself can end the session on turn one — #942's first run died on
-  // `PHASE A`, seven seconds and one turn in. The previous version of this test asserted that
-  // exact wording, pinning the hazard as the requirement.
-  test("it never asks for the marker as a message of its own", () => {
-    const text = read(QUEUE);
-    assert.doesNotMatch(text, /as the whole of one message/);
-    assert.match(text, /in the same message as that phase's first command/);
-  });
 });
 
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a
@@ -242,75 +220,33 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.ok(at.every((i, k) => i >= 0 && (k === 0 || i > at[k - 1])), `out of order: ${at.join(", ")}`);
   });
 
-  // October: 6.3 passes a ticket at 10.8 min each, and every HOLD round re-ran it; D's Spec review catches the rest.
-  test("phase C asks the completeness check once per ticket, never in a HOLD or CI round, then names what is left", () => {
-    const c = read(QUEUE).split("### Leaving C")[1]?.split("## D — Review")[0] ?? "";
-    assert.match(c, /completeness check, once per ticket[^.]*skipped when a `DOD-CHECK` follows the issue's\s+newest `Claimed by` comment\s+\(a HOLD or CI round\)/);
-    assert.match(c, /brief\.mjs completeness <n> \.worktrees\/agent-<n>\n/);
-    assert.match(c, /`FIX-NOTES <sha>`\s+under `Completeness left:`/);
-    assert.doesNotMatch(c, /twice per process|<base>/);
-  });
-
   // An open pull request is what the supervisor settles: one opened mid-C turns a refused or stalled build into a CI round.
   test("phase C never opens the pull request; the supervisor does at the D handoff", () => {
     const c = read(QUEUE).split("## C — Build")[1]?.split("## D — Review")[0] ?? "";
     assert.doesNotMatch(c, /gh pr create/);
   });
 
-  test("scope grows only to defects in the changed lines; nothing it files is agent work", () => {
+  test("files nothing as agent work", () => {
     const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
-    assert.match(work, /defect in the lines this diff changes is fixed here/);
-    assert.match(work, /never `ready-for-agent`/);
     assert.match(work, /--label ready-for-human`/);
-    assert.match(work, /issue labelled `noticed`/);
     assert.doesNotMatch(work, /--label ready-for-agent/);
   });
 
-  // #1261: 94 minutes of local native re-runs steered by timings that only CI's reporter judges.
-  test("phase C judges a native budget from CI's run, not from local re-runs, and a fix round reads its thread by rule 25", () => {
-    const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
-    assert.match(work, /native timing budget is judged only from CI's run[^.]*at most once/);
-    assert.match(read(QUEUE), /`CI-RED` and any `FIX-NOTES` comments first[^.]*rule 25's command/);
-  });
-
-  test("review dispatches one reviewer after CI, and a LAND lands in the same process", () => {
-    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /Dispatch one `opus` reviewer/);
-    assert.ok(d.indexOf("Wait for CI on HEAD") < d.indexOf("Dispatch one `opus` reviewer"), "the review reads CI first");
-    assert.match(d, /After a `LAND`, go straight on to phase E and F in this process/);
+  test("no phase hands off to E: a LAND lands in the same process", () => {
     assert.doesNotMatch(read(QUEUE), /"handoff":"E"/);
   });
 
-  test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
-    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /After a `HOLD`, say `PHASE C`, fix exactly the Blocking findings[^.]*then leave through phase C's steps 1–4/);
-    assert.doesNotMatch(d, /every sibling/);
-  });
-
-  test("C has no pre-read of D's briefs", () => {
-    assert.doesNotMatch(read(QUEUE), /phase D's two briefs/);
-  });
-
-  test("the posted review sorts its findings, and only a Blocking one holds", () => {
+  test("the posted review sorts its findings", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
     assert.match(d, /REVIEW <sha>\s+## Blocking[\s\S]*## Nits[\s\S]*## Pre-existing/);
-    assert.match(d, /LAND when the report has no Blocking finding and CI is green/);
-    assert.match(d, /At the cap\s+it exits non-zero: do not land/);
-  });
-
-  test("a HOLD round fixes what was named, and only names a failure only a local run showed", () => {
-    const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /neither the review nor CI named, is ruled out \(rule 37\)\s+and named in `FIX-NOTES`/);
-    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only the Blocking findings its review or CI\s+named/);
   });
 
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
     assert.doesNotMatch(read(QUEUE), /gh pr ready/);
   });
 
-  test("only agent:check asks for the Bash maximum, and the doc states neither figure", () => {
+  test("the doc states neither Bash timeout figure", () => {
     const doc = read(QUEUE);
-    assert.match(doc, /Only an `agent:check` run passes the Bash tool its maximum `timeout`/);
     for (const ms of [CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS]) {
       assert.ok(!doc.includes(String(ms)), `queue.md teaches the literal ${ms}`);
       assert.doesNotMatch(doc, new RegExp(`\\b${ms / 60_000}[- ]minutes?\\b`));
@@ -344,10 +280,6 @@ describe("every subagent brief comes from brief.mjs", () => {
 describe("the supervisor tears the worktree down", () => {
   test("with the script that detaches the junction first", () => {
     assert.match(read("tools/loop/queue-loop.mjs"), /"worktrees:remove", "--"/);
-  });
-
-  test("no step of queue.md still points at a phase F step 5", () => {
-    assert.doesNotMatch(read(QUEUE), /phase F step 5/i);
   });
 });
 

@@ -9,8 +9,7 @@ This file holds only what reading the code cannot tell you. Stack, layout and ga
 ## Where the rest lives
 
 - **When a rule number is cited and you cannot see the rule** — `docs/agents/RULES.md`: every
-  rule an agent follows, numbered, the only normative list; cite by number, never restate it
-  (`tests/tooling/rulesAreSingleSourced.test.ts`).
+  rule an agent follows, numbered, the only normative list; cite by number, never restate it.
 - **Before claiming, labelling or writing a ticket** — `docs/agents/issue-tracker.md`: the queue
   (GitHub Issues, `metasito/murlan`), labels, claiming, the `gh` invocations.
 - **Before any rendering, animation or test change** — `docs/agents/checks.md`: which check
