@@ -59,7 +59,7 @@ describe("the beaten pose (D4 #5)", () => {
     const group = beatenGroup();
     expect(within(group).getAllByTestId("flying-card", HIDDEN)).toHaveLength(2);
     const k = turnOf();
-    expect(k).toBeGreaterThanOrEqual(easeOut((Motion.beaten / 2 - FRAME) / Motion.beaten));
+    expect(k).toBeGreaterThanOrEqual(easeOut(Motion.beaten / 2 / Motion.beaten));
     expect(k).toBeLessThanOrEqual(easeOut((Motion.beaten / 2 + 2 * FRAME) / Motion.beaten));
     expect(styleOf(group).opacity).toBe(1);
     const shades = within(group).getAllByTestId("beaten-shade", HIDDEN);
