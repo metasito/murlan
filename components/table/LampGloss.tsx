@@ -125,8 +125,8 @@ function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rec
 
   return (
     <>
-      <Animated.View testID="card-foil-ink" style={[StyleSheet.absoluteFill, { backgroundColor: color }, inkStyle]} />
-      <Animated.View testID="card-foil-band" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, bandStyle]}>
+      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color }, inkStyle]} />
+      <Animated.View testID="card-foil-band" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, bandStyle]}>
         <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
       </Animated.View>
     </>
