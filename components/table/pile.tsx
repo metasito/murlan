@@ -38,7 +38,6 @@ import { useBombBeat } from "./useBombBeat";
 import type { TableTimeline } from "./tableTimeline";
 import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
-import { InFlight } from "./LampGloss";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -318,9 +317,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         <View style={pileStyles.caughtCard}>
-          <InFlight.Provider value={flying}>
-            <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} rects={ownRects} />
-          </InFlight.Provider>
+          <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} rects={ownRects} />
         </View>
         <Animated.View testID="beaten-shade" pointerEvents="none" style={[pileStyles.beatenShade, { borderRadius: cardRadius(CARD_W(cardScale)) }, shade]} />
       </Animated.View>

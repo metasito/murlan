@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
@@ -66,14 +66,10 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
 
 const LIT_SCOPES: readonly CardScope[] = ["hand", "fan", "pile"];
 
-/** True under a play still flying to the pile, which keeps its `pile:` key from the throw on. */
-export const InFlight = createContext(false);
-
-/** The lamp's level over one resting card; a card in flight (`deal`, `leg`, `InFlight`) stays bright, as the mockup's `#fly` above its `#shade`. */
+/** The lamp's level over a hand, fan or pile card, a play still flying to the pile included; a deal or exchange flight (`deal`, `leg`) stays bright, as the mockup's `#fly` above its `#shade`. */
 export function LevelShade({ rectKey, rects, width, height }: Props) {
   const table = useCardTable();
-  const flying = useContext(InFlight);
-  if (!table || !rectKey || !rects || flying || !LIT_SCOPES.includes(rectKey.split(":")[0] as CardScope)) return null;
+  if (!table || !rectKey || !rects || !LIT_SCOPES.includes(rectKey.split(":")[0] as CardScope)) return null;
   return <Shade light={table.glossLight} width={width} height={height} />;
 }
 

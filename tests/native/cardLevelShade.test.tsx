@@ -59,7 +59,7 @@ describe('the lamp level on the cards', () => {
     expect(box('hand', 'card-level-shade')).toMatchObject({ width: face.width, height: Number(face.height) + stockLipHeight(Number(face.height)) });
   });
 
-  it('leaves a play in flight to the pile bright and shades the play it lands on', async () => {
+  it('shades a play in flight to the pile as the play it lands on', async () => {
     const light = makeMutable<GlossLight>({ lx: 437, ly: 140, level: 0.75, r: 1, t: 0 });
     const resting = flightOf('rest', [card('3_hearts')], [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
     const flying = flightOf('fly', [card('A_clubs')], [{ x: 0, y: -100, rot: 0, scale: 0.4 }]);
@@ -67,7 +67,7 @@ describe('the lamp level on the cards', () => {
     const shadesIn = (n: ReturnType<typeof screen.getByTestId>) => n.queryAll((c) => c.props.testID === 'card-level-shade' && typeof c.type === 'string').length;
     const fliers = screen.getAllByTestId('flying-card', { includeHiddenElements: true });
     const cards = screen.getAllByTestId('pile-card', { includeHiddenElements: true });
-    expect({ fliers: fliers.map(shadesIn), all: screen.queryAllByTestId('card-level-shade', { includeHiddenElements: true }).length }).toEqual({ fliers: [0], all: cards.length - 1 });
+    expect({ fliers: fliers.map(shadesIn), all: screen.queryAllByTestId('card-level-shade', { includeHiddenElements: true }).length }).toEqual({ fliers: [1], all: cards.length });
   });
 
   it('follows the lamp rig to the reconnect hold\'s level', async () => {
