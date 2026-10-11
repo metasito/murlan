@@ -20,7 +20,7 @@ import {
   withAlpha,
 } from "@/lib/theme";
 import { CardCastContext } from "@/components/table/feltReady";
-import { GLOSS_SPOT_ART, LampGloss } from "@/components/table/LampGloss";
+import { GLOSS_SPOT_ART, LampGloss, LevelShade } from "@/components/table/LampGloss";
 import type { OwnedRects } from "@/components/table/useCardRects";
 import { cardBackId, getCardBack, useCardBackId, type CardBackId } from "@/lib/cosmetics";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
@@ -518,6 +518,7 @@ function CardViewBase({
           <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
           <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
+        <LevelShade rectKey={rectKey} rects={rects} width={w} height={h} />
       </Animated.View>
     );
   }
@@ -633,6 +634,7 @@ function CardViewBase({
           </TableText>
           <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
+        <LevelShade rectKey={rectKey} rects={rects} width={w} height={h + stockLipHeight(h)} />
       </Pressable>
     </Animated.View>
   );
