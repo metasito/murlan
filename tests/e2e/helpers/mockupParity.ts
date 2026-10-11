@@ -498,6 +498,8 @@ const MOMENTS: Moment[] = [
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // Not the pile at 1440: Besnik's emptying play catches (pile.tsx `CATCH_MS`, off the card-glow mockup), which lantern-table's
     // `mwin` never does.
+    // The fallback's light is baked once at besnik, so by 2880 the mockup's sway has carried its own off the right band (58.2 against 52.1).
+    fallbackRegionsAt: [1040, 1200, 1440, 1920, 2400],
     regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
     onsets: ["sound:mancheWon"],
     actions: [{ atMs: 512, app: botMove }],
@@ -518,6 +520,8 @@ const MOMENTS: Moment[] = [
     regions: ["pile", "rim", "rightBand"],
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // Not the pile at 1440, as in mwin: Gent's emptying play catches.
+    // The fallback bakes its light at luan the moment the lamp turns; the mockup's glides there until about 2400.
+    fallbackRegionsAt: [2400, 2880],
     regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
     onsets: ["sound:mancheLost"],
     actions: [{ atMs: 512, app: botMove }],
