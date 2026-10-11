@@ -22,7 +22,7 @@ function fakeClock() {
     cancelAnimationFrame: (id) => void timers.delete(id),
     setTimeout: (run, ms) => add(now + ms, run),
   };
-  const runFor = (ms: number) => {
+  const runFor = async (ms: number) => {
     const to = now + ms;
     for (;;) {
       const next = [...timers.entries()].filter(([, x]) => x.at <= to).sort(([, a], [, b]) => a.at - b.at || a.seq - b.seq)[0];
@@ -30,60 +30,71 @@ function fakeClock() {
       now = next[1].at;
       next[1].run();
       timers.delete(next[0]);
+      await new Promise((settled) => setImmediate(settled));
     }
     now = to;
   };
   return { host, runFor };
 }
 
-function frameLoop(host: FrameHost) {
+function frameLoop(host: FrameHost, step: (set: () => void) => void = (set) => set()) {
   const state = { value: 0 };
   const loop = (t: number) => {
-    state.value = t;
+    step(() => (state.value = t));
     host.requestAnimationFrame(loop);
   };
   return { state, start: () => host.requestAnimationFrame(loop) };
 }
 
-test("a frame loop registered after the recorder is read on the frame it stepped", () => {
+test("a frame loop registered after the recorder is read on the frame it stepped", async () => {
   const { host, runFor } = fakeClock();
   const source = frameLoop(host);
   const recorder = recordFrames(host, (t) => ({ t, value: source.state.value }));
   recorder.start();
   source.start();
-  runFor(4 * FRAME);
+  await runFor(4 * FRAME);
   assert.deepEqual(recorder.frames, [16, 32, 48, 64].map((t) => ({ t, value: t })));
 });
 
-test("a frame loop a timer starts mid-frame is read on its first frame", () => {
+test("a frame loop a timer starts mid-frame is read on its first frame", async () => {
   const { host, runFor } = fakeClock();
   const source = frameLoop(host);
   const recorder = recordFrames(host, (t) => ({ t, value: source.state.value }));
   recorder.start();
   host.setTimeout(source.start, 20);
-  runFor(3 * FRAME);
+  await runFor(3 * FRAME);
   assert.deepEqual(recorder.frames, [{ t: 16, value: 0 }, { t: 32, value: 32 }, { t: 48, value: 48 }]);
 });
 
-test("a cancelled frame callback does not hold back the frame's sample", () => {
+test("what the last frame callback hands to a microtask is read on that frame, as scheduleOnRN on web", async () => {
+  const { host, runFor } = fakeClock();
+  const recorder = recordFrames(host, (t) => ({ t, value: source.state.value }));
+  recorder.start();
+  const source = frameLoop(host, queueMicrotask);
+  source.start();
+  await runFor(2 * FRAME);
+  assert.deepEqual(recorder.frames, [{ t: 16, value: 16 }, { t: 32, value: 32 }]);
+});
+
+test("a cancelled frame callback does not hold back the frame's sample", async () => {
   const { host, runFor } = fakeClock();
   const recorder = recordFrames(host, (t) => t);
   recorder.start();
   host.setTimeout(() => host.cancelAnimationFrame(late), FRAME);
   const late = host.requestAnimationFrame(() => assert.fail("cancelled"));
-  runFor(2 * FRAME);
+  await runFor(2 * FRAME);
   assert.deepEqual(recorder.frames, [16, 32]);
 });
 
-test("a stopped recorder samples nothing until it starts again", () => {
+test("a stopped recorder samples nothing until it starts again", async () => {
   const { host, runFor } = fakeClock();
   const recorder = recordFrames(host, (t) => t);
   recorder.start();
-  runFor(FRAME);
+  await runFor(FRAME);
   recorder.stop();
-  runFor(2 * FRAME);
+  await runFor(2 * FRAME);
   assert.deepEqual(recorder.frames, [16]);
   recorder.start();
-  runFor(FRAME);
+  await runFor(FRAME);
   assert.deepEqual(recorder.frames, [64]);
 });
