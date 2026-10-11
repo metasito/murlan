@@ -24,14 +24,38 @@ function scannedFiles(): string[] {
 
 const TAGGED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*|@sha256:[0-9a-f]+)$/;
 const NAMED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*)?(?:@sha256:[0-9a-f]+)?$/;
-const DOCKER_PULLS = /\bdocker\s+(?:run|pull|create)\b/;
+const DOCKER_PULLS = /\bdocker\s+(?:run|pull|create)\b(.*)/;
+const DOCKER_ARRAY = /(?:\bdocker\s*\(\s*|["'`]docker["'`]\s*,\s*)\[\s*(["'`])(?:run|pull|create)\1\s*,/g;
+const ARRAY_ELEMENT = /\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[^,\]]+?)\s*([,\]])/y;
 const YAML_IMAGE =
   /^\s*(?:-\s+)?(?:(?:image|container|[A-Z_]*_IMAGE):\s*["']?|uses:\s*["']?docker:\/\/)([^\s"'#]+)/;
+const VALUELESS_FLAGS = new Set([
+  "-d", "--detach", "--rm", "-i", "-t", "-it", "-ti", "--interactive", "--tty", "--init", "--privileged",
+  "-P", "--publish-all", "--read-only", "-q", "--quiet", "-a", "--all-tags", "--disable-content-trust",
+]);
 
 const stripComments = (source: string) => source.replace(/^\s*(?:#|\/\/|\*|\/\*).*$/gm, "");
 
+function imageArgument(args: string[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    if (!args[i].startsWith("-")) return args[i];
+    if (!args[i].includes("=") && !VALUELESS_FLAGS.has(args[i])) i++;
+  }
+  return undefined;
+}
+
+function arrayElements(code: string, from: number): string[] {
+  const elements: string[] = [];
+  ARRAY_ELEMENT.lastIndex = from;
+  for (let m = ARRAY_ELEMENT.exec(code); m; m = m[2] === "]" ? null : ARRAY_ELEMENT.exec(code)) {
+    elements.push(/^["'`]/.test(m[1]) ? m[1].slice(1, -1) : m[1]);
+  }
+  return elements;
+}
+
 export function imageRefs(file: string, source: string): string[] {
   const code = stripComments(source);
+  const isScript = /\.m?[jt]s$/.test(file);
   const refs: string[] = [];
   if (/\.ya?ml$/.test(file)) {
     for (const line of code.split(/\r?\n/)) {
@@ -39,17 +63,15 @@ export function imageRefs(file: string, source: string): string[] {
       if (value && NAMED.test(value)) refs.push(value);
     }
   }
-  for (const line of code.split(/\r?\n/).filter((l) => DOCKER_PULLS.test(l))) {
-    for (const token of line.split(/\s+/)) {
-      const bare = token.replace(/^["'`]|["'`,]$/g, "");
-      if (TAGGED.test(bare) && !refs.includes(bare)) refs.push(bare);
-    }
+  for (const line of code.replace(/\\\r?\n/g, " ").split(/\r?\n/)) {
+    const args = DOCKER_PULLS.exec(line)?.[1].trim().split(/\s+/).map((t) => t.replace(/^["'`]|["'`,;)]+$/g, ""));
+    const image = args && imageArgument(args);
+    if (image && (!isScript || TAGGED.test(image))) refs.push(image);
   }
-  if (/\.m?[jt]s$/.test(file) && /\bdocker\b/.test(code)) {
-    for (const [, literal] of code.matchAll(/["'`]([^"'`\s]+)["'`]/g)) {
-      if (TAGGED.test(literal) &&!literal.startsWith("node:") && !refs.includes(literal)) {
-        refs.push(literal);
-      }
+  if (isScript) {
+    for (const call of code.matchAll(DOCKER_ARRAY)) {
+      const image = imageArgument(arrayElements(code, call.index + call[0].length));
+      if (image) refs.push(image);
     }
   }
   return refs;
@@ -61,6 +83,18 @@ export function isDockerHub(ref: string): boolean {
   const [first, ...rest] = ref.split("/");
   const isHost = rest.length > 0 && (/[.:]/.test(first) || first === "localhost");
   return !isHost || DOCKER_HUB_HOSTS.has(first);
+}
+
+export function hubPulls(found: { file: string; ref: string }[], yamlSources: string[]): string[] {
+  const defined = new Set(
+    yamlSources.flatMap((s) => [...stripComments(s).matchAll(/^\s*([A-Z_]*_IMAGE):/gm)].map((m) => m[1])),
+  );
+  return found
+    .filter(({ ref }) => {
+      const variable = /^\$\{?(\w+)\}?$/.exec(ref)?.[1];
+      return variable ? !defined.has(variable) : isDockerHub(ref);
+    })
+    .map(({ file, ref }) => `${file}: ${ref}`);
 }
 
 describe("no CI job pulls an image from Docker Hub", () => {
@@ -87,6 +121,16 @@ describe("no CI job pulls an image from Docker Hub", () => {
       imageRefs("s.mjs", 'import "node:fs";\ndocker(["run", "-d",\n  "-p", `${p}:5432`,\n  "postgres:16-alpine",\n]);\n'),
       ["postgres:16-alpine"],
     );
+    assert.deepEqual(imageRefs("s.mjs", 'spawnSync("docker", ["run", "--rm", "node:22-alpine", "node", "-v"]);\n'), [
+      "node:22-alpine",
+    ]);
+    assert.deepEqual(imageRefs("s.mjs", 'docker(["run",\n  "postgres",\n]);\n'), ["postgres"]);
+    assert.deepEqual(imageRefs("s.mjs", 'docker(["pull", "-q", IMAGE]);\n'), ["IMAGE"]);
+    assert.deepEqual(imageRefs("s.sh", "docker run --rm -e A=1 postgres psql\n"), ["postgres"]);
+    assert.deepEqual(imageRefs("s.sh", 'docker run -v "$d:/r" "$X_IMAGE" \\\n  detect\n'), ["$X_IMAGE"]);
+    assert.deepEqual(imageRefs("w.yml", "      - run: |\n          docker run --rm \\\n            alpine:3 sh\n"), ["alpine:3"]);
+    assert.deepEqual(imageRefs("s.mjs", 'docker(["ps"]);\nconst u = "localhost:5432";\n'), []);
+    assert.deepEqual(imageRefs("s.mjs", 'throw new Error(`docker run failed on port ${port}`);\n'), []);
     assert.deepEqual(imageRefs("s.mjs", 'import "node:fs";\n// docker run "postgres:16"\n'), []);
     assert.deepEqual(imageRefs("w.yml", "  # image: postgres:16\n"), []);
   });
@@ -102,8 +146,15 @@ describe("no CI job pulls an image from Docker Hub", () => {
     assert.ok(count("scripts/dev-stack.mjs") >= 1, "dev-stack.mjs: the Postgres it runs");
   });
 
+  test("an image variable counts only where a workflow sets it", () => {
+    const pull = [{ file: "s.sh", ref: "$X_IMAGE" }];
+    assert.deepEqual(hubPulls(pull, []), ["s.sh: $X_IMAGE"]);
+    assert.deepEqual(hubPulls(pull, ["env:\n  X_IMAGE: ghcr.io/a/b:1\n"]), []);
+    assert.deepEqual(hubPulls(pull, ["env:\n  # X_IMAGE: ghcr.io/a/b:1\n"]), ["s.sh: $X_IMAGE"]);
+  });
+
   test("none of them is on Docker Hub", () => {
-    const hub = found.filter(({ ref }) => isDockerHub(ref)).map(({ file, ref }) => `${file}: ${ref}`);
-    assert.deepEqual(hub, [], "pull from public.ecr.aws/docker/library or ghcr.io instead");
+    const yaml = scannedFiles().filter((f) => /\.ya?ml$/.test(f)).map(read);
+    assert.deepEqual(hubPulls(found, yaml), [], "pull from public.ecr.aws/docker/library or ghcr.io instead");
   });
 });
