@@ -1,7 +1,7 @@
 // tests/native/mancheOutcomeOnTheFelt.test.tsx — each manche outcome's moment on the felt, through GameTable's own wiring (#1469).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render, type RenderResult } from '@testing-library/react-native';
+import { act, render, within, type RenderResult } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import type { Combination, GameState, Player } from '@/lib/game/gameEngine';
@@ -66,6 +66,10 @@ const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean, score
 };
 
 const lit = (r: RenderResult) => r.queryAllByTestId('pile-card-lit', { includeHiddenElements: true }).length;
+const litSeats = (r: RenderResult) =>
+  ['side-seat-left', 'top-seat', 'side-seat-right'].filter(
+    (id) => within(r.getByTestId(id)).getByTestId('seat-ring').props.dataSet?.seatLit === 'true'
+  );
 
 async function closeManche(c: (typeof CASES)[number]) {
   const target = jest.spyOn(lampControls, 'setTarget');
@@ -84,8 +88,9 @@ async function closeManche(c: (typeof CASES)[number]) {
   });
   const motesBeforeLanding = motes.mock.calls.length;
   const litBeforeLanding = lit(r);
+  const seatsBeforeLanding = litSeats(r);
   await settle(1500);
-  return { r, motes, trauma, target, level, sent, aimBefore, motesBeforeLanding, litBeforeLanding };
+  return { r, motes, trauma, target, level, sent, aimBefore, motesBeforeLanding, litBeforeLanding, seatsBeforeLanding };
 }
 
 describe("a manche's outcome on the felt", () => {
@@ -123,6 +128,13 @@ describe("a manche's outcome on the felt", () => {
     await act(async () => r.rerender(table(c, false)));
     await settle(100);
     expect(lit(r)).toBe(0);
+    await r.unmount();
+  });
+
+  it.each(CASES)('$outcome: the closing seat is no longer on move once the last card lands', async (c) => {
+    const { r, seatsBeforeLanding } = await closeManche(c);
+    expect(seatsBeforeLanding).toEqual(['side-seat-left']);
+    expect(litSeats(r)).toEqual([]);
     await r.unmount();
   });
 

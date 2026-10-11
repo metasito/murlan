@@ -1141,7 +1141,7 @@ export function GameTable({
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
   const seatMark = (seat: number) => ({ marked: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
-  const onMove = (seat: number) => !trade && seat === shownTurnIndex;
+  const onMove = (seat: number) => !trade && shown === null && seat === shownTurnIndex;
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
   const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
 
