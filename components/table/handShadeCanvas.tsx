@@ -127,5 +127,3 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
     </Canvas>
   );
 }
-
-export default HandShadeCanvas;

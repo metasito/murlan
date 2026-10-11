@@ -4,7 +4,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import type { HandShadeProps } from "./feltReady";
 import { drawsOnGpu, SkiaLoadFailed } from "./feltSkia.web";
 
-const SkiaHandShade = lazy(() => import("./handShadeBoundary"));
+const SkiaHandShade = lazy(() => import("./feltSkiaBoundary").then((m) => ({ default: m.HandShadeBoundary })));
 
 export function HandShade(props: HandShadeProps) {
   const [skia, setSkia] = useState(false);
