@@ -1039,6 +1039,9 @@ export function GameTable({
 
   const top = topPlay(trick.plays);
   const onTop = top?.combo ?? null;
+  const closer = top ? players[top.playedBy] : undefined;
+  const closedByWinners =
+    mancheShown === "won" && closer !== undefined && (isTeamMode ? closer.team === viewer?.team : closer.id === viewer?.id);
   const comboLabel = getComboLabel(onTop, t);
 
   // Named off the trick, not `gameState.lastPlayedBy` — the pile lags the
@@ -1454,7 +1457,7 @@ export function GameTable({
                   note={pileNote}
                   hidden={startCardDue}
                   opacity={mancheEnding.pileOpacity}
-                  lit={mancheShown === "won"}
+                  lit={closedByWinners}
                 />
 
                 {/* Centred on the same point the pile draws at, so the burst

@@ -30,6 +30,7 @@ const LAST: Combination = { type: 'pair', cards: [card('k1', 'K', 'clubs'), card
 type Outcome = 'won' | 'lost' | 'neutral' | 'draw';
 const CASES: { outcome: Outcome; teams: boolean; rankings: string[]; motes: number }[] = [
   { outcome: 'won', teams: false, rankings: ['player_0', 'player_1', 'player_2', 'player_3'], motes: MancheMoment.motes.won },
+  { outcome: 'won', teams: true, rankings: ['player_0', 'player_3', 'player_1', 'player_2'], motes: MancheMoment.motes.won },
   { outcome: 'lost', teams: false, rankings: ['player_1', 'player_2', 'player_3', 'player_0'], motes: MancheMoment.motes.lost },
   { outcome: 'neutral', teams: false, rankings: ['player_1', 'player_0', 'player_2', 'player_3'], motes: MancheMoment.motes.lost },
   { outcome: 'draw', teams: true, rankings: ['player_0', 'player_1', 'player_2', 'player_3'], motes: 0 },
@@ -114,10 +115,11 @@ describe("a manche's outcome on the felt", () => {
     await r.unmount();
   });
 
-  it.each(CASES)('$outcome: the top card is lit only for a win, from the landing until the next deal', async (c) => {
+  // Seat 3 closes every case: the viewer's partner in teams, an opponent otherwise.
+  it.each(CASES)('$outcome (teams: $teams): the closing card is lit only for a win the winning side closed, from the landing until the next deal', async (c) => {
     const { r, litBeforeLanding } = await closeManche(c);
     expect(litBeforeLanding).toBe(0);
-    expect(lit(r)).toBe(c.outcome === 'won' ? 1 : 0);
+    expect(lit(r)).toBe(c.outcome === 'won' && c.teams ? 1 : 0);
     await act(async () => r.rerender(table(c, false)));
     await settle(100);
     expect(lit(r)).toBe(0);

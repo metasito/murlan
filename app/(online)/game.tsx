@@ -207,7 +207,8 @@ export default function OnlineGameScreen() {
       gameState={gameState}
       matchOver={matchState.over}
       matchWinners={matchState.winners}
-      handScores={handScores}
+      // Until `game:over` lands, `handScores` still holds the last manche's, and the table decides this one's outcome on them.
+      handScores={handScoresCurrent ? handScores : undefined}
       matchScore={{ scores: cumulativeScores, target: matchState.target, single: matchState.length === "single" }}
       partitaActions={
         handScoresCurrent
