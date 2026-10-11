@@ -7,6 +7,7 @@ import {
   failingTestIds,
   ghExecOptions,
   readHeadCi,
+  readVerdict,
   runForHead,
   runListArgs,
   stripLogPrefix,
@@ -256,6 +257,53 @@ describe("a cancelled run", () => {
     const none = decideVerdict(undefined);
     assert.equal(none.waiting, undefined, "an absent run would wait out the whole deadline");
     assert.equal(none.appearing, true);
+  });
+});
+
+// Measured: run 37665945841 hit verify's timeout-minutes; run 36503903790 lost to a newer push.
+// Both read job `cancelled`, run `cancelled`, a cancelled step; only the annotation differs.
+describe("a job stopped by its own timeout-minutes", () => {
+  const cancelledRun = (databaseId: number) =>
+    ({ databaseId, status: "completed", conclusion: "cancelled", headSha: "h" }) as const;
+  const fakeGh = (runId: number, jobId: number, annotation: string) => {
+    const asked: string[][] = [];
+    const gh = (args: string[]) => {
+      asked.push(args);
+      if (args[0] === "pr") return JSON.stringify({ headRefOid: "h" });
+      if (args[0] === "run" && args[1] === "list") return JSON.stringify([cancelledRun(runId)]);
+      if (args[0] === "api" && args[1] === `repos/o/r/check-runs/${jobId}/annotations`) {
+        return JSON.stringify([annotation, "The operation was canceled."]);
+      }
+      if (args.includes("--log")) return "Install postgresql-client\n##[error]The operation was canceled.";
+      if (args.includes("--log-failed")) return "";
+      return JSON.stringify([
+        { name: "Lint", conclusion: "success", status: "completed", steps: 9, id: jobId - 1 },
+        { name: "Typecheck and tests", conclusion: "cancelled", status: "completed", steps: 13, id: jobId },
+      ]);
+    };
+    return { gh, asked };
+  };
+
+  test("reaches a fix round naming the job, with that job's own log", () => {
+    const { gh } = fakeGh(37665945841, 112945168721, "The job has exceeded the maximum execution time of 20m0s");
+    const v = readVerdict("o/r", "agent/1-x", 1, Date.now() + 60_000, gh);
+    assert.equal(v.pass, false);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Typecheck and tests");
+    assert.match(v.reason, /timeout-minutes/);
+    assert.match(v.output ?? "", /Install postgresql-client/);
+  });
+
+  test("a run cancelled by a newer push still reads as infrastructure", () => {
+    const { gh, asked } = fakeGh(
+      36503903790,
+      109200926319,
+      "Canceling since a higher priority waiting request for ci-CI-refs/pull/1323/merge exists",
+    );
+    const v = readVerdict("o/r", "agent/1-x", 1, Date.now() + 60_000, gh);
+    assert.ok(asked.some((a) => a[1] === "repos/o/r/check-runs/109200926319/annotations"));
+    assert.equal(v.infrastructure, true);
+    assert.equal(v.failedStep, undefined);
   });
 });
 

@@ -1,6 +1,6 @@
 // tools/loop/mainHealth.ts
 import { execFileSync } from "node:child_process";
-import { decideVerdict, failingTestIds, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
+import { decideVerdict, failingTestIds, markTimedOut, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
 
 /**
  * Whether `main` itself is green, and filing a ticket when it is not.
@@ -158,15 +158,17 @@ const parse = <T,>(text: string, fallback: T): T => (text.trim() ? JSON.parse(te
 export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
   const [run] = parse<MainRun[]>(gh(mainRunArgs(repo)), []);
   if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
-  const raw = parse<{ jobs?: { name: string; conclusion: string | null; steps?: unknown[] }[] }>(
+  const raw = parse<{ jobs?: { name: string; conclusion: string | null; steps?: unknown[]; databaseId?: number }[] }>(
     gh(jobArgs(repo, run.databaseId)),
     {},
   );
-  const jobs = (raw.jobs ?? []).map((j) => ({
+  const jobs: JobRow[] = (raw.jobs ?? []).map((j) => ({
     name: j.name,
     conclusion: j.conclusion,
     steps: j.steps?.length ?? 0,
+    id: j.databaseId,
   }));
+  markTimedOut(jobs, gh, repo);
   return { run, jobs };
 }
 

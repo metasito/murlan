@@ -73,7 +73,7 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
   // Billing, a quota or a runner. It says nothing about the diff, so a fix round spent on it hunts
   // a defect no suite ever reported.
   if (ci.infrastructure) {
-    return { action: "recheck", reason: "a job completed having run zero steps" };
+    return { action: "recheck", reason: ci.reason ?? "a job completed having run zero steps" };
   }
 
   if (ci.pass !== true) {

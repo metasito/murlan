@@ -319,6 +319,17 @@ describe("mainFailures", () => {
     assert.equal(mainFailures(keyed(RED, stepless), REPO), null);
   });
 
+  test("a main run stopped by a job's own timeout-minutes is red, not infrastructure", () => {
+    const cancelled = { ...RED, conclusion: "cancelled" };
+    const jobs = [{ name: "Typecheck and tests", conclusion: "cancelled", steps: 13, databaseId: 112945168721 }];
+    const base = keyed(cancelled, jobs as never);
+    const gh = (args: string[]) =>
+      args[1] === `repos/${REPO}/check-runs/112945168721/annotations`
+        ? JSON.stringify(["The job has exceeded the maximum execution time of 20m0s"])
+        : base(args);
+    assert.equal(mainFailures(gh, REPO)?.runId, RED.databaseId);
+  });
+
   test("an unreachable gh is null, never a throw", () => {
     const gh = () => {
       throw new Error("gh: could not connect");
