@@ -138,15 +138,12 @@ const bombTable = async (page: Page, baseURL: string) => {
   const deck = new Map(createDeck().map((c) => [c.id, c]));
   Object.assign(save.gameState, { lastPlayedCombination: buildCombination(SEVENS.map((id) => deck.get(id)!)), lastPlayedBy: 3 });
   await seatTable(page, baseURL, save);
-  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still. The
-  // recorder restarts behind the table's frame loops, or it samples the lamp a frame before it steps.
+  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still.
   await stepUntil(page, async () => {
     const frames = await recorded(page);
     const landed = frames.findIndex((f) => f.onsets.includes("moment:landing"));
     return landed >= 0 && frames.slice(landed + 1).some((f) => f.live <= MOTES);
   }, "the restored sevens' dust settling");
-  await page.evaluate(() => (window as unknown as { murlanTrace: { stop(): void } }).murlanTrace.stop());
-  await step(page);
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 

@@ -76,37 +76,94 @@ function last<T>(reads: Set<() => T>): T | null {
   return value;
 }
 
-if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
-  const frames: TraceFrame[] = [];
-  const tick = (t: number) => {
-    if (!recording) return;
-    frames.push({
-      t,
-      onsets: pending.splice(0),
-      live: sum(sources.live),
-      dropped: sum(sources.dropped),
-      lamp: last(sources.lamp),
-      shake: last(sources.shake),
-      felt: last(sources.felt),
-      scorePill: last(sources.scorePill),
-      flight: Math.max(0, ...[...sources.flight].map((read) => read())),
-      motes: sum(sources.motes),
-      moth: last(sources.moth),
-      grey: last(sources.grey) ?? 0,
-      breath: last(sources.breath) ?? 1,
-      clocks: Object.fromEntries([...sources.clock].map((read) => read())),
-    });
-    requestAnimationFrame(tick);
+export interface FrameHost {
+  requestAnimationFrame(callback: (t: number) => void): number;
+  cancelAnimationFrame(id: number): void;
+}
+
+/**
+ * Samples each frame once every frame callback of it has run, whenever its source registered: `host`'s
+ * scheduling is wrapped, so a callback registered before a frame begins is due in it, and one registered
+ * during it belongs to the next.
+ */
+export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { frames: F[]; start(): void; stop(): void } {
+  const frames: F[] = [];
+  let on = false;
+  const request = host.requestAnimationFrame.bind(host);
+  const cancel = host.cancelAnimationFrame.bind(host);
+  let queued = new Set<number>();
+  let due = new Set<number>();
+  let frame: number | null = null;
+  const settle = () => {
+    if (frame === null || due.size > 0) return;
+    const t = frame;
+    frame = null;
+    if (on) frames.push(sample(t));
   };
-  const recorder: TraceRecorder = {
+  host.requestAnimationFrame = (callback) => {
+    const id = request((t) => {
+      if (frame !== t) {
+        due = queued;
+        queued = new Set();
+        frame = t;
+      }
+      due.delete(id);
+      try {
+        callback(t);
+      } finally {
+        settle();
+      }
+    });
+    queued.add(id);
+    return id;
+  };
+  host.cancelAnimationFrame = (id) => {
+    cancel(id);
+    queued.delete(id);
+    if (due.delete(id)) settle();
+  };
+  const tick = () => {
+    if (on) host.requestAnimationFrame(tick);
+  };
+  return {
     frames,
     start() {
       frames.length = 0;
+      if (!on) host.requestAnimationFrame(tick);
+      on = true;
+    },
+    stop() {
+      on = false;
+    },
+  };
+}
+
+if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
+  const trace = recordFrames<TraceFrame>(globalThis as unknown as FrameHost, (t) => ({
+    t,
+    onsets: pending.splice(0),
+    live: sum(sources.live),
+    dropped: sum(sources.dropped),
+    lamp: last(sources.lamp),
+    shake: last(sources.shake),
+    felt: last(sources.felt),
+    scorePill: last(sources.scorePill),
+    flight: Math.max(0, ...[...sources.flight].map((read) => read())),
+    motes: sum(sources.motes),
+    moth: last(sources.moth),
+    grey: last(sources.grey) ?? 0,
+    breath: last(sources.breath) ?? 1,
+    clocks: Object.fromEntries([...sources.clock].map((read) => read())),
+  }));
+  const recorder: TraceRecorder = {
+    frames: trace.frames,
+    start() {
       pending = [];
-      if (!recording) requestAnimationFrame(tick);
+      trace.start();
       recording = true;
     },
     stop() {
+      trace.stop();
       recording = false;
     },
   };
