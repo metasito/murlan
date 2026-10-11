@@ -1,12 +1,14 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { useAnimatedStyle, type SharedValue } from "react-native-reanimated";
+import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import { CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
+import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
+import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
-import { cardGloss, glossSpot, type GlossLight } from "./cardGloss";
+import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
 import type { CardScope } from "./cardRects";
+import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
 import { useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
@@ -61,6 +63,56 @@ function Lit({ table, rectKey, rects, width, height }: Props & { table: CardTabl
         <LinearGradient colors={STREAK} style={StyleSheet.absoluteFill} />
       </Animated.View>
     </View>
+  );
+}
+
+export const FOIL_ART: Record<CardBackId, () => number> = {
+  smeraldo:   () => require("../../assets/images/cards/foil_smeraldo.webp") as number,
+  oro:        () => require("../../assets/images/cards/foil_oro.webp") as number,
+  rubino:     () => require("../../assets/images/cards/foil_rubino.webp") as number,
+  zaffiro:    () => require("../../assets/images/cards/foil_zaffiro.webp") as number,
+  inchiostro: () => require("../../assets/images/cards/foil_inchiostro.webp") as number,
+};
+
+/** A back's foil glint: the lamp's band over the back's foil ink alone. */
+export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }) {
+  const table = useCardTable();
+  if (!table || !props.rectKey || !props.rects) return null;
+  return (
+    <FoilMask art={FOIL_ART[backKey]()}>
+      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+    </FoilMask>
+  );
+}
+
+function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
+  const { glossLight: light, felt } = table;
+  const s = felt.s;
+  const diag = Math.hypot(width, height);
+  const bandW = 2 * diag;
+  const bandH = CardGloss.foil.width * diag;
+
+  const glint = useDerivedValue(() => {
+    const rect = rects.value[rectKey];
+    return rect ? foilGlint(rect.x, rect.y, rect.rot, width / s, height / s, light.value) : null;
+  });
+  const inkStyle = useAnimatedStyle(() => ({ opacity: glint.value?.edge ?? 0 }));
+  const bandStyle = useAnimatedStyle(() => {
+    const g = glint.value;
+    if (!g) return { opacity: 0, transform: [{ translateX: 0 }, { translateY: 0 }, { rotate: "0rad" }] };
+    return {
+      opacity: (g.peak - g.edge) / (1 - g.edge),
+      transform: [{ translateX: g.band.x * s }, { translateY: g.band.y * s }, { rotate: `${g.ang}rad` }],
+    };
+  });
+
+  return (
+    <>
+      <Animated.View testID="card-foil-ink" pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color }, inkStyle]} />
+      <Animated.View testID="card-foil-band" pointerEvents="none" style={[styles.layer, { left: (width - bandW) / 2, top: (height - bandH) / 2, width: bandW, height: bandH }, bandStyle]}>
+        <LinearGradient colors={[withAlpha(color, 0), color, withAlpha(color, 0)]} style={StyleSheet.absoluteFill} />
+      </Animated.View>
+    </>
   );
 }
 

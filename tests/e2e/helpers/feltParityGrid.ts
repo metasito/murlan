@@ -39,8 +39,8 @@ const LIT_OVER_FAR = 1.5;
 
 /** The patch size `feltNap` uses, kept so the two files' numbers are comparable. */
 const PATCH_PX = 15;
-/** A card's lamp gloss: its boxes overhang the card, but the card clips its paint, so none reaches the cloth. */
-const CARD_GLOSS = '[data-testid="card-gloss"]';
+/** A card's lamp gloss and foil glint: their boxes overhang the card, but the card clips its paint, so none reaches the cloth. */
+const CARD_GLOSS = '[data-testid="card-gloss"], [data-testid="card-foil-glint"]';
 
 /**
  * Where a mirrored pair of patches may sit, best first. A fixed fraction is bare felt at one

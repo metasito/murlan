@@ -1,0 +1,373 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Felt and Card Materials</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<style>
+:root{color-scheme:dark;--bg:#0b0d0c;--panel:#121513;--line:#262c29;--ink:#e9e5da;--muted:#979d97;--brass:#cfaa5e}
+html,body{background:var(--bg);color:var(--ink)}
+body{font:15px/1.55 'Source Serif 4',Georgia,serif;padding-inline:16px;padding-block:22px 56px}
+.wrap{max-width:1320px;margin:0 auto;display:grid;gap:18px}
+.eyebrow{font:600 12px/1.3 'Barlow Condensed',Arial Narrow,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);margin:0}
+h1{font:600 clamp(28px,4.2vw,44px)/1.02 'Barlow Condensed',Arial Narrow,sans-serif;margin:6px 0 8px;text-wrap:balance}
+.lede{max-width:74ch;color:var(--muted);margin:0}
+.lede b{color:var(--ink);font-weight:600}
+.view{position:relative;width:100%;max-width:100%;border-radius:14px;overflow:hidden;background:#040605;box-shadow:0 0 0 1px var(--line),0 30px 60px -24px rgba(0,0,0,.9)}
+#main{aspect-ratio:874/402}
+#close{aspect-ratio:350/120}
+.view canvas{position:absolute;inset:0;width:100%;height:100%}
+.ctl{display:grid;gap:9px}
+.grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.grp>span{font:600 11px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);width:92px;flex:none}
+button{font:600 14px/1 'Barlow Condensed',Arial Narrow,sans-serif;letter-spacing:.07em;text-transform:uppercase;background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:8px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+button:hover{border-color:var(--brass)}
+button[aria-pressed="true"]{background:var(--brass);color:#17130a;border-color:var(--brass)}
+button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+.chip{width:22px;height:14px;border-radius:3px;display:inline-grid;place-items:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.chip i{width:5px;height:5px;border-radius:50%}
+.cap{font:500 15px/1.4 'Barlow Condensed',sans-serif;letter-spacing:.03em;color:var(--muted);margin:0;max-width:110ch}
+.cap b{color:var(--ink);font-weight:600}
+h2{font:600 13px/1.3 'Barlow Condensed',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);margin:0}
+section{display:grid;gap:12px;border-top:1px solid var(--line);padding-top:18px}
+section>p{margin:0;color:var(--muted);max-width:74ch}
+.verdict label{font:600 11px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+textarea{width:100%;box-sizing:border-box;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:14px/1.5 ui-monospace,Consolas,monospace;resize:vertical}
+#notes{font-family:'Source Serif 4',Georgia,serif}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+@media (max-width:560px){.grp>span{width:100%}}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Felt and card materials · Round two</p>
+    <h1>Cloth you can see the weave of</h1>
+    <p class="lede">Six woven cloths, each drawn thread by thread: warp and weft cross over and under, every thread varies a little in tone, and each one catches the lamp along its length the way real yarn does. Add a <b>hem stitch</b> around the felt, choose one of six <b>rails</b> and four <b>card finishes</b>. The colours are the proposed set you kept. The close-up below the table shows the same scene at 2.5× so the weave, the stitching and the card surface can be judged.</p>
+  </header>
+
+  <div id="main" class="view"><canvas></canvas><canvas aria-label="The felt"></canvas><canvas aria-label="The table with the chosen felt, rail and cards"></canvas></div>
+  <p class="cap" id="cap"></p>
+  <div class="ctl" id="ctl"></div>
+
+  <section>
+    <h2>Close up, 2.5×</h2>
+    <p>The table's bottom-right corner: the rail's curve, the hem, the cloth, a played pair and two backs, under a lamp that drifts across.</p>
+    <div id="close" class="view"><canvas></canvas><canvas aria-label="Close-up of the felt"></canvas><canvas aria-label="Close-up of the rail, hem and cards"></canvas></div>
+  </section>
+
+  <section class="verdict">
+    <h2>Your verdict</h2>
+    <label for="notes">What you like, what to change</label>
+    <textarea id="notes" rows="3" placeholder="For example: twill, but the threads a touch finer; walnut rail."></textarea>
+    <label for="out">The table as it is now, to paste on the ticket</label>
+    <textarea id="out" rows="7" readonly></textarea>
+    <div class="row"><button id="copy">Copy verdict</button><span class="cap" id="copied"></span></div>
+  </section>
+</div>
+
+<script>
+const W=874,H=402,TAU=Math.PI*2,PILE={x:457,y:231};
+const $=s=>document.querySelector(s);
+const R=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const DPR=Math.min(3,devicePixelRatio||1);
+const GOLD='#C9A84C',PEWTER='#BFC3C8';
+
+const FELTS=[
+ {id:'verde',name:'Verde',s:['#2E9F62','#23854F','#186B41','#0F4E31','#093320']},
+ {id:'blu',name:'Blu',s:['#1F8A93','#197279','#135A60','#0D4247','#082C30']},
+ {id:'bordeaux',name:'Bordeaux',s:['#9A3A5E','#80304E','#66263F','#4C1C2F','#331320']},
+ {id:'notte',name:'Notte',s:['#566878','#475765','#394652','#2B353F','#1E252C']},
+];
+const BACKS=[
+ {id:'smeraldo',name:'Smeraldo',spec:{field:['#1E6544','#19583B','#144B32','#0F3E29','#0A3120'],ink:GOLD,lattice:7,star:8}},
+ {id:'oro',name:'Oro',spec:{field:['#7A5528','#654520','#503718','#3B2811','#271A0A'],ink:'#E2BE62',lattice:7,star:8}},
+ {id:'rubino',name:'Rubino',spec:{field:['#5E1B28','#4C1520','#3A1018','#2A0B11','#1A060A'],ink:GOLD,lattice:7,star:8}},
+ {id:'zaffiro',name:'Zaffiro',spec:{field:['#1C3B63','#172F50','#12243E','#0C192C','#07101C'],ink:PEWTER,lattice:9,star:6}},
+ {id:'inchiostro',name:'Inchiostro',spec:{field:['#34302C','#2A2623','#201D1A','#171513','#0E0C0B'],ink:null,starInk:GOLD,lattice:5,star:4}},
+];
+const MATS=[
+ {id:'baize',name:'Poker felt',sub:'wool-blend plain weave with a soft fuzz, the classic home-table cloth',type:0,pitch:1.5,depth:.38,cover:.25,fuzz:.12,sheen:.5,aniso:6,jac:0,two:.02,mott:1},
+ {id:'twill',name:'Worsted twill',sub:'tight billiard cloth, a fine diagonal rib and a clean sheen',type:1,pitch:1.1,depth:.42,cover:.05,fuzz:.05,sheen:1,aniso:14,jac:0,two:.03,mott:.5},
+ {id:'speed',name:'Suited speed cloth',sub:'polyester; the suits are woven as satin floats, so they turn light or dark as the lamp moves',type:0,pitch:.9,depth:.3,cover:0,fuzz:.03,sheen:1.4,aniso:24,jac:1,two:.09,mott:.3},
+ {id:'basket',name:'Basketweave',sub:'threads paired two by two, a heavier, more tactile cloth',type:2,pitch:1.3,depth:.5,cover:.1,fuzz:.07,sheen:.7,aniso:10,jac:0,two:.03,mott:.6},
+ {id:'herring',name:'Herringbone',sub:'a twill that reverses every six threads into a quiet zigzag',type:3,pitch:1.1,depth:.42,cover:.05,fuzz:.05,sheen:1,aniso:14,jac:0,two:.03,mott:.5},
+ {id:'coarse',name:'Coarse baize',sub:'thick wool, the weave in plain view from across the table',type:0,pitch:2.4,depth:.55,cover:.15,fuzz:.14,sheen:.45,aniso:5,jac:0,two:.03,mott:1.2},
+];
+const THREADS=[{id:'fine',name:'Fine',k:.75},{id:'medium',name:'Medium',k:1},{id:'coarse',name:'Coarse',k:1.5}];
+const WALNUT=['#4a2f1c','#3a2415','#5e3d25'];
+const RAILS=[
+ {id:'oak',name:'Oak',sub:'today\'s rim with real grain and a satin coat',layers:[{k:'wood',w:14,c:['#8a5a2e','#6b4423','#a06a38'],grain:.5}]},
+ {id:'walnut',name:'Walnut, brass line',sub:'darker wood, a hairline of brass where it meets the cloth',layers:[{k:'wood',w:13,c:WALNUT,grain:.6},{k:'line',w:1,c:'#b8923f'}]},
+ {id:'padblack',name:'Black padded rail',sub:'stitched vinyl armrest over a thin walnut racetrack, the casino build',layers:[{k:'pad',w:9,c:'#2a2a2a',stitch:'#8d8676'},{k:'wood',w:5,c:WALNUT,grain:.6}]},
+ {id:'padtan',name:'Tan leather rail',sub:'saddle leather, double-stitched, a brass line inside',layers:[{k:'pad',w:11,c:'#7a4a28',stitch:'#e3cfa4',double:true},{k:'line',w:1,c:'#b8923f'},{k:'wood',w:2,c:['#2b1a0e','#22140b','#3a2415'],grain:.3}]},
+ {id:'mahogany',name:'Mahogany',sub:'red-brown, close grain, a warmer table',layers:[{k:'wood',w:14,c:['#6e2c1c','#56200f','#8a3a24'],grain:.5}]},
+ {id:'ebony',name:'Ebonised oak',sub:'near-black stain, fine grain, a bright coat that picks up the lamp',layers:[{k:'wood',w:14,c:['#2a231c','#1b1612','#3a2f24'],grain:.4}]},
+];
+const CARDS=[
+ {id:'plastic',name:'Plastic',sub:'round one\'s: a narrow streak',streak:1,hot:0,edge:0,bow:0,satin:0},
+ {id:'reflect',name:'Plastic, lamp reflected',sub:'the lamp itself shows as a soft spot that slides across the cards near it',streak:1,hot:1,edge:0,bow:0,satin:0},
+ {id:'casino',name:'Casino deck',sub:'the reflection, plus card thickness, a tight contact shadow and a slight bow',streak:1,hot:1,edge:1,bow:1,satin:0},
+ {id:'satin',name:'Satin plastic',sub:'semi-matte: a wide soft reflection, a fine texture, thickness',streak:.4,hot:.7,edge:1,bow:0,satin:1},
+];
+const MODES=[{id:'rest',name:'At rest'},{id:'swing',name:'Full swing'},{id:'far',name:'Far side'}];
+const HEMS=[{id:'on',name:'On'},{id:'off',name:'Off'}];
+const st={mat:'twill',thread:'fine',hem:'off',rail:'walnut',card:'reflect',felt:'verde',back:'smeraldo',mode:'rest'};
+const by=(list,id)=>list.find(x=>x.id===id);
+const MAT=()=>by(MATS,st.mat),RAIL=()=>by(RAILS,st.rail),CARD=()=>by(CARDS,st.card),STOPS=()=>by(FELTS,st.felt).s;
+
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const hexRgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const shade=(h,k)=>'#'+hexRgb(h).map(v=>Math.min(255,Math.round(v*(1-k))).toString(16).padStart(2,'0')).join('');
+function rr(c,x,y,w,h,r){c.beginPath();c.roundRect(x,y,w,h,r);}
+function suit(c,s,x,y,k){c.beginPath();
+ if(s==='d'){c.moveTo(x,y-k);c.lineTo(x+k*.72,y);c.lineTo(x,y+k);c.lineTo(x-k*.72,y);c.closePath();}
+ else if(s==='h'){c.moveTo(x,y+k*.9);c.bezierCurveTo(x-k*1.3,y-k*.1,x-k*.6,y-k*1.1,x,y-k*.4);c.bezierCurveTo(x+k*.6,y-k*1.1,x+k*1.3,y-k*.1,x,y+k*.9);}
+ else if(s==='s'){c.moveTo(x,y-k*.95);c.bezierCurveTo(x-k*1.3,y+k*.1,x-k*.6,y+k,x,y+k*.35);c.bezierCurveTo(x+k*.6,y+k,x+k*1.3,y+k*.1,x,y-k*.95);c.moveTo(x,y+k*.2);c.lineTo(x-k*.35,y+k);c.lineTo(x+k*.35,y+k);c.closePath();}
+ else{for(const[dx,dy]of[[0,-.42],[-.44,.12],[.44,.12]]){c.moveTo(x+dx*k+k*.36,y+dy*k);c.arc(x+dx*k,y+dy*k,k*.36,0,TAU);}c.moveTo(x,y+k*.1);c.lineTo(x-k*.3,y+k);c.lineTo(x+k*.3,y+k);c.closePath();}
+ c.fill();}
+function starPath(c,r,n){const ri=r*(n<=4?.36:.46);c.beginPath();for(let i=0;i<n*2;i++){const a=-Math.PI/2+i*Math.PI/n,q=i%2?ri:r;c.lineTo(Math.cos(a)*q,Math.sin(a)*q);}c.closePath();}
+const jacCv=document.createElement('canvas');jacCv.width=jacCv.height=128;
+{const c=jacCv.getContext('2d');c.fillStyle='#000';c.fillRect(0,0,128,128);c.fillStyle='#fff';['s','h','d','c'].forEach((s,i)=>suit(c,s,32+(i%2)*64,32+(i>>1)*64,19));}
+
+/* ---------- the cloth shader: a woven surface, thread by thread ---------- */
+const VS='attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+const FS=`precision highp float;
+uniform vec2 uRes,uO,uLamp;
+uniform float uK,uLampH,uFlare,uPitch,uType,uJacOn,uDepth,uCover,uFuzz,uSheen,uAniso,uTwo,uMott;
+uniform vec3 uS0,uS1,uS2,uS3,uS4;uniform sampler2D uJac;
+vec3 stops(float t){t=clamp(t,0.,1.)*4.;if(t<1.)return mix(uS0,uS1,t);if(t<2.)return mix(uS1,uS2,t-1.);if(t<3.)return mix(uS2,uS3,t-2.);return mix(uS3,uS4,t-3.);}
+float h21(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float h11(float n){return fract(sin(n*91.345+7.13)*47453.5453);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h21(i),h21(i+vec2(1.,0.)),f.x),mix(h21(i+vec2(0.,1.)),h21(i+vec2(1.,1.)),f.x),f.y);}
+bool warpOver(vec2 c,float jac){
+ if(jac>.5)return mod(c.y*2.+c.x,5.)>.5;
+ if(uType<.5)return mod(c.x+c.y,2.)<.5;
+ if(uType<1.5)return mod(c.x+c.y,4.)<2.;
+ if(uType<2.5)return mod(floor(c.x/2.)+floor(c.y/2.),2.)<.5;
+ float s=mod(floor(c.x/6.),2.)<.5?c.x+c.y:c.y-c.x;return mod(s,4.)<2.;}
+void main(){
+ vec2 p=uO+vec2(gl_FragCoord.x,uRes.y-gl_FragCoord.y)/uK;
+ vec2 q=abs(p-vec2(465.,201.))-vec2(389.,185.)+156.;
+ float sd=length(max(q,0.))+min(max(q.x,q.y),0.)-156.;
+ float inside=clamp(.5-sd*uK,0.,1.);
+ if(inside<=0.){gl_FragColor=vec4(0.);return;}
+ float d=length((p-uLamp)*vec2(1.,1.15)),t=clamp(d/(420.+uFlare*120.),0.,1.);
+ vec3 alb=stops(t);
+ vec2 u=p/uPitch,c=floor(u),f=fract(u);
+ float jac=uJacOn>.5?step(.5,texture2D(uJac,p/36.).r):0.;
+ bool wo=warpOver(c,jac);
+ float ac=wo?f.x:f.y,al=wo?f.y:f.x;
+ float x=(ac-.5)/.44,prof=sqrt(max(0.,1.-x*x));
+ float dA=prof>.05?-x/prof:0.;
+ float dL=.9*cos(3.14159*al)*prof;
+ vec2 gr=wo?vec2(dA,dL):vec2(dL,dA);
+ vec3 n=normalize(vec3(-gr*.5,1.));
+ float tid=wo?c.x:c.y+517.;
+ float slub=vn(vec2(tid*1.7,(wo?u.y:u.x)*.12));
+ float tv=(h11(tid)-.5)*.12+(slub-.5)*.10-(wo?0.:uTwo);
+ vec3 L=normalize(vec3(uLamp-p,uLampH)),Hv=normalize(L+vec3(0.,0.,1.));
+ float diff=clamp((dot(n,L)+.35)/1.35,0.,1.);
+ vec3 T=wo?vec3(0.,1.,0.):vec3(1.,0.,0.);
+ float th=dot(T,Hv),spec=pow(sqrt(max(0.,1.-th*th)),uAniso);
+ float I=1./(1.+pow(d/260.,2.));
+ float vis=smoothstep(1.4,3.,uK*uPitch)*(1.-uCover);
+ float ao=mix(1.-uDepth,1.,prof)*(.8+.4*diff);
+ float shade=mix(1.,ao*(1.+tv),vis);
+ float mott=((vn(p*.06)-.5)*.08+(vn(p*.25)-.5)*.05)*uMott;
+ vec3 col=alb*shade*(1.+mott);
+ col+=mix(uS0,vec3(1.,.88,.66),.4)*spec*uSheen*I*smoothstep(0.,1.,d/250.)*mix(.4,prof,vis)*.45;
+ col*=1.+(h21(floor(p*uK))-.5)*uFuzz;
+ col+=vec3(1.,.78,.45)*pow(1.-t,2.)*(.14+.35*uFlare);
+ col*=1.-.72*smoothstep(160.,540.,length(p-vec2(457.,210.)));
+ gl_FragColor=vec4(col*inside,inside);}`;
+const UNIFORMS=['uRes','uO','uLamp','uK','uLampH','uFlare','uPitch','uType','uJacOn','uDepth','uCover','uFuzz','uSheen','uAniso','uTwo','uMott','uS0','uS1','uS2','uS3','uS4','uJac'];
+function initGL(cv){const gl=cv.getContext('webgl',{premultipliedAlpha:true,antialias:false});if(!gl)return null;
+ try{const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+  const p=gl.createProgram();gl.attachShader(p,sh(gl.VERTEX_SHADER,VS));gl.attachShader(p,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(p);gl.useProgram(p);
+  gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const a=gl.getAttribLocation(p,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,gl.createTexture());gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,jacCv);
+  for(const k of[gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,k,gl.REPEAT);
+  for(const k of[gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER])gl.texParameteri(gl.TEXTURE_2D,k,gl.LINEAR);
+  const U={};for(const n of UNIFORMS)U[n]=gl.getUniformLocation(p,n);gl.uniform1i(U.uJac,0);return{gl,U};}
+ catch(e){console.error(e);return null;}}
+function drawCloth(v,lx,ly,f,stops){const{gl,U}=v.G,m=MAT();
+ gl.viewport(0,0,v.gl.width,v.gl.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+ gl.uniform2f(U.uRes,v.gl.width,v.gl.height);gl.uniform2f(U.uO,v.ox,v.oy);gl.uniform1f(U.uK,v.K);gl.uniform2f(U.uLamp,lx,ly);gl.uniform1f(U.uLampH,200);gl.uniform1f(U.uFlare,f);
+ gl.uniform1f(U.uPitch,m.pitch*by(THREADS,st.thread).k);
+ for(const[u,k]of[['uType','type'],['uJacOn','jac'],['uDepth','depth'],['uCover','cover'],['uFuzz','fuzz'],['uSheen','sheen'],['uAniso','aniso'],['uTwo','two'],['uMott','mott']])gl.uniform1f(U[u],m[k]);
+ stops.forEach((s,i)=>gl.uniform3fv(U['uS'+i],hexRgb(s).map(x=>x/255)));
+ gl.drawArrays(gl.TRIANGLE_STRIP,0,4);}
+
+/* ---------- the rail: built once per choice and size, lit per frame ---------- */
+function ringPath(c,d){c.roundRect(62+d,2+d,806-2*d,398-2*d,170-d);}
+const leatherPat=(()=>{const cv=document.createElement('canvas');cv.width=cv.height=64;const c=cv.getContext('2d'),r=rng(11);
+ for(let i=0;i<900;i++){c.fillStyle=r()<.5?'rgba(255,255,255,.05)':'rgba(0,0,0,.14)';c.fillRect(r()*64,r()*64,.5+r(),.5+r());}return cv;})();
+const worldT=v=>[v.K,0,0,v.K,-v.ox*v.K,-v.oy*v.K];
+function buildRail(v){const key=st.rail+'|'+v.bg.width;if(v.railKey===key)return v.rail;
+ const cv=document.createElement('canvas');cv.width=v.bg.width;cv.height=v.bg.height;const c=cv.getContext('2d');c.setTransform(...worldT(v));
+ const r=rng(5);let d0=0;
+ for(const L of RAIL().layers){
+  if(L.k==='wood'){const cols=L.c.map(hexRgb),step=.3;
+   for(let d=d0;d<d0+L.w-.01;d+=step){const a=r(),alt=a<.5?cols[1]:cols[2],m=Math.abs(a-.5)*2*L.grain*1.6;
+    c.beginPath();ringPath(c,d+step/2);c.lineWidth=step+.08;c.strokeStyle=`rgb(${cols[0].map((x,i)=>Math.round(x+(alt[i]-x)*Math.min(1,m)))})`;c.stroke();}
+   for(let d=d0+.2;d<d0+L.w;d+=.8){const segs=[];for(let i=0;i<6;i++)segs.push(4+r()*40,6+r()*60);
+    c.setLineDash(segs);c.lineDashOffset=r()*300;c.beginPath();ringPath(c,d);c.lineWidth=.35;c.strokeStyle=`rgba(0,0,0,${.1+.3*L.grain*r()})`;c.stroke();}
+   c.setLineDash([]);
+   for(const[dd,a]of[[d0+.3,.45],[d0+L.w-.3,.5]]){c.beginPath();ringPath(c,dd);c.lineWidth=.6;c.strokeStyle=`rgba(0,0,0,${a})`;c.stroke();}
+  }else if(L.k==='pad'){const col=hexRgb(L.c),step=.25;
+   for(let d=d0;d<d0+L.w-.01;d+=step){const s=(d-d0+step/2)/L.w,k=.3+.85*Math.pow(Math.sin(Math.PI*s),.6);
+    c.beginPath();ringPath(c,d+step/2);c.lineWidth=step+.08;c.strokeStyle=`rgb(${col.map(x=>Math.min(255,Math.round(x*k)))})`;c.stroke();}
+   c.save();c.beginPath();ringPath(c,d0);ringPath(c,d0+L.w);c.clip('evenodd');const p=c.createPattern(leatherPat,'repeat');p.setTransform(new DOMMatrix().scale(.25));c.fillStyle=p;c.fillRect(0,0,W,H);c.restore();
+   c.lineCap='round';
+   for(const s of(L.double?[.24,.76]:[.3])){c.save();c.setLineDash([1.5,1.1]);c.shadowColor='rgba(0,0,0,.7)';c.shadowBlur=.4*v.K;c.shadowOffsetX=c.shadowOffsetY=.3*v.K;
+    c.beginPath();ringPath(c,d0+L.w*s);c.lineWidth=.5;c.strokeStyle=L.stitch;c.stroke();c.restore();}
+  }else{c.beginPath();ringPath(c,d0+L.w/2);c.lineWidth=L.w;c.strokeStyle=L.c;c.stroke();}
+  d0+=L.w;}
+ v.rail=cv;v.railKey=key;return cv;}
+function lightRail(c,v,lx,ly,f){c.save();c.setTransform(...worldT(v));c.beginPath();ringPath(c,0);ringPath(c,14);c.clip('evenodd');
+ c.globalCompositeOperation='soft-light';let g=c.createRadialGradient(lx,ly,0,lx,ly,620);
+ g.addColorStop(0,`rgba(255,214,150,${.85+.15*f})`);g.addColorStop(.45,'rgba(128,112,92,.5)');g.addColorStop(1,'rgba(0,0,0,.95)');c.fillStyle=g;c.fillRect(0,0,W,H);
+ c.globalCompositeOperation='source-over';
+ g=c.createRadialGradient(lx,ly,0,lx,ly,340);g.addColorStop(0,`rgba(255,236,200,${.45+.3*f})`);g.addColorStop(1,'rgba(255,236,200,0)');
+ c.beginPath();ringPath(c,RAIL().layers[0].w*.32);c.lineWidth=1.1;c.strokeStyle=g;c.stroke();c.restore();}
+
+/* ---------- the hem: the cloth folded under and stitched ---------- */
+function hem(c,v,lx,ly,stops){if(st.hem!=='on')return;
+ rr(c,78.5,18.5,773,365,153.5);c.lineWidth=1.4;c.strokeStyle='rgba(0,0,0,.28)';c.stroke();
+ rr(c,77.4,17.4,775.2,367.2,154.6);c.lineWidth=.5;c.strokeStyle='rgba(255,240,210,.07)';c.stroke();
+ const t=hexRgb(shade(stops[0],-.35)).join(','),g=c.createRadialGradient(lx,ly,0,lx,ly,520);g.addColorStop(0,`rgba(${t},.95)`);g.addColorStop(1,`rgba(${t},.35)`);
+ c.save();c.setLineDash([2,1.4]);c.lineCap='round';c.shadowColor='rgba(0,0,0,.65)';c.shadowBlur=.5*v.K;c.shadowOffsetX=c.shadowOffsetY=.35*v.K;
+ rr(c,82,22,766,358,150);c.lineWidth=.6;c.strokeStyle=g;c.stroke();c.restore();}
+
+/* ---------- cards: baked once, lit per frame ---------- */
+function grain(c,w,h,amp){const d=c.getImageData(0,0,w,h),a=d.data,r=rng(3);
+ for(let i=0;i<a.length;i+=4){if(!a[i+3])continue;const v=(r()-.5)*amp;a[i]+=v;a[i+1]+=v;a[i+2]+=v;}c.putImageData(d,0,0);}
+const BW=336,BH=492,bakes=new Map();
+function bakeBack(spec){const key=JSON.stringify(spec)+CARD().satin;let bk=bakes.get(key);if(bk)return bk;
+ const w=BW,h=BH,f=spec.field,m=w*.14,iw=w-2*m,ih=h-2*m,lw=w*.016,sr=w*.2,si=spec.starInk||spec.ink;
+ const lattice=c=>{c.beginPath();const step=ih/spec.lattice;for(let k=-ih;k<iw+ih;k+=step){c.moveTo(-w/2+m+k,-h/2+m);c.lineTo(-w/2+m+k-ih,-h/2+m+ih);c.moveTo(-w/2+m+k-ih,-h/2+m);c.lineTo(-w/2+m+k,-h/2+m+ih);}};
+ const frame=c=>{c.beginPath();c.roundRect(-w/2+m,-h/2+m,iw,ih,w*.05);};
+ const img=document.createElement('canvas');img.width=w;img.height=h;const c=img.getContext('2d');
+ c.translate(w/2,h/2);rr(c,-w/2,-h/2,w,h,w*.09);c.clip();
+ const g=c.createRadialGradient(0,0,0,0,0,Math.hypot(w,h)/2);f.forEach((s,i)=>g.addColorStop(i/4,s));c.fillStyle=g;c.fillRect(-w/2,-h/2,w,h);
+ c.lineWidth=lw;c.lineCap='round';c.lineJoin='round';
+ c.save();frame(c);c.clip();
+ if(spec.ink){lattice(c);c.strokeStyle=shade(spec.ink,.3);c.stroke();}
+ else{c.save();c.translate(lw*.6,lw*.6);lattice(c);c.strokeStyle='rgba(0,0,0,.6)';c.stroke();c.restore();c.save();c.translate(-lw*.6,-lw*.6);lattice(c);c.strokeStyle='rgba(255,236,210,.16)';c.stroke();c.restore();}
+ c.restore();
+ frame(c);c.lineWidth=lw*1.3;c.strokeStyle=spec.ink?shade(spec.ink,.3):'rgba(0,0,0,.55)';c.stroke();
+ c.beginPath();c.arc(0,0,sr*1.15,0,TAU);c.fillStyle=f[4];c.fill();
+ starPath(c,sr,spec.star);c.fillStyle=shade(si,.3);c.fill();
+ grain(c,w,h,CARD().satin?10:4);
+ const foil=document.createElement('canvas');foil.width=w;foil.height=h;const fc=foil.getContext('2d');
+ fc.translate(w/2,h/2);fc.lineWidth=lw;fc.lineCap='round';fc.strokeStyle=fc.fillStyle='#fff';
+ if(spec.ink){fc.save();frame(fc);fc.clip();lattice(fc);fc.stroke();fc.restore();frame(fc);fc.lineWidth=lw*1.3;fc.stroke();}
+ starPath(fc,sr,spec.star);fc.fill();
+ bk={img,foil,silver:si===PEWTER};bakes.set(key,bk);return bk;}
+function bakeFace(){const key='face'+CARD().satin;let f=bakes.get(key);if(f)return f;
+ f=document.createElement('canvas');f.width=BW;f.height=BH;const c=f.getContext('2d');rr(c,0,0,BW,BH,BW*.09);c.clip();
+ const g=c.createLinearGradient(0,0,BW,BH);g.addColorStop(0,'#fdfbf6');g.addColorStop(1,'#ebe5d6');c.fillStyle=g;c.fillRect(0,0,BW,BH);
+ grain(c,BW,BH,CARD().satin?10:4);bakes.set(key,f);return f;}
+
+const tmp=document.createElement('canvas'),tc=tmp.getContext('2d');
+function slab(c,w,h,L){if(!CARD().edge)return;rr(c,-w/2-L.x*.7,-h/2-L.y*.7+.4,w,h,w*.09);c.fillStyle='#cbc4b4';c.fill();}
+function finish(c,w,h,L,b,dist){const cv=CARD(),half=Math.hypot(w,h)/2;let g;c.save();rr(c,-w/2,-h/2,w,h,w*.09);c.clip();
+ if(cv.bow){g=c.createLinearGradient(-w/2,0,w/2,0);g.addColorStop(0,'rgba(0,0,0,.13)');g.addColorStop(.5,'rgba(255,255,255,.05)');g.addColorStop(1,'rgba(0,0,0,.13)');c.fillStyle=g;c.fillRect(-w/2,-h/2,w,h);}
+ if(cv.streak){const o=Math.min(1,dist/260)*.7*half,cx=L.x*o,cy=L.y*o,bw=half*(cv.satin?.45:.2),a=(.05+.22*b)*cv.streak;
+  g=c.createLinearGradient(cx-L.x*bw,cy-L.y*bw,cx+L.x*bw,cy+L.y*bw);g.addColorStop(0,'rgba(255,246,228,0)');g.addColorStop(.5,`rgba(255,246,228,${a})`);g.addColorStop(1,'rgba(255,246,228,0)');c.fillStyle=g;c.fillRect(-w/2,-h/2,w,h);}
+ if(cv.hot){const hx=L.x*dist,hy=L.y*dist,Rr=cv.satin?150:85;g=c.createRadialGradient(hx,hy,0,hx,hy,Rr);
+  g.addColorStop(0,`rgba(255,248,232,${.3*cv.hot})`);g.addColorStop(.3,`rgba(255,244,222,${.1*cv.hot})`);g.addColorStop(1,'rgba(255,244,222,0)');c.fillStyle=g;c.fillRect(-w/2,-h/2,w,h);}
+ c.restore();}
+function edge(c,w,h,L,b){const lw=Math.max(.5,w*.022),g=c.createLinearGradient(L.x*w/2,L.y*h/2,-L.x*w/2,-L.y*h/2);
+ g.addColorStop(0,`rgba(250,248,242,${.55+.4*b})`);g.addColorStop(1,'rgba(250,248,242,.18)');rr(c,-w/2+lw/2,-h/2+lw/2,w-lw,h-lw,w*.09);c.lineWidth=lw;c.strokeStyle=g;c.stroke();}
+function drawBack(c,k,w,h,spec,L,b,dist){const bk=bakeBack(spec);slab(c,w,h,L);c.drawImage(bk.img,-w/2,-h/2,w,h);finish(c,w,h,L,b,dist);
+ const tw=Math.max(2,Math.ceil(w*k)),th=Math.max(2,Math.ceil(h*k));tmp.width=tw;tmp.height=th;tc.drawImage(bk.foil,0,0,tw,th);tc.globalCompositeOperation='source-in';
+ const half=Math.hypot(tw,th)/2,o=Math.min(1,dist/260)*.75*half,cx=tw/2+L.x*o,cy=th/2+L.y*o,bw=half*.42,col=bk.silver?'232,240,255':'255,238,190';
+ const g=tc.createLinearGradient(cx-L.x*bw,cy-L.y*bw,cx+L.x*bw,cy+L.y*bw);g.addColorStop(0,`rgba(${col},.1)`);g.addColorStop(.5,`rgba(${col},${.3+.7*b})`);g.addColorStop(1,`rgba(${col},.1)`);
+ tc.fillStyle=g;tc.fillRect(0,0,tw,th);tc.globalCompositeOperation='source-over';
+ c.save();c.globalCompositeOperation='screen';c.drawImage(tmp,-w/2,-h/2,w,h);c.restore();edge(c,w,h,L,b);}
+function drawFace(c,w,h,id,L,b,dist){const r=id.slice(0,-1),s=id.slice(-1),red=s==='h'||s==='d';
+ slab(c,w,h,L);c.drawImage(bakeFace(),-w/2,-h/2,w,h);c.fillStyle=red?'#b3242c':'#1e1a13';c.textAlign='center';c.textBaseline='middle';
+ c.font=`700 ${w*.27}px 'Barlow Condensed',sans-serif`;c.fillText(r,-w/2+w*.16,-h/2+h*.12);suit(c,s,-w/2+w*.16,-h/2+h*.27,w*.075);suit(c,s,0,h*.03,w*.2);
+ finish(c,w,h,L,b,dist);rr(c,-w/2,-h/2,w,h,w*.09);c.lineWidth=.6;c.strokeStyle='rgba(80,60,30,.35)';c.stroke();}
+function lightAt(x,y,lx,ly){return clamp(1-Math.hypot(x-lx,(y-ly)*1.2)/440,0,1);}
+function thing(c,k,x,y,rot,w,h,lx,ly,draw){const sx=clamp((x-lx)/26,-10,10),sy=clamp(2+(y-ly)/30,-6,10);
+ c.save();c.translate(x,y);c.rotate(rot);
+ c.save();c.shadowColor='rgba(0,0,0,.62)';c.shadowBlur=6*k;c.shadowOffsetX=sx*k;c.shadowOffsetY=sy*k;rr(c,-w/2,-h/2,w,h,w*.09);c.fillStyle='#000';c.fill();
+ if(CARD().edge){c.shadowColor='rgba(0,0,0,.8)';c.shadowBlur=1.2*k;c.shadowOffsetX=sx*.12*k;c.shadowOffsetY=sy*.12*k;c.fill();}c.restore();
+ const vx=lx-x,vy=ly-y,n=Math.hypot(vx,vy)||1,cs=Math.cos(-rot),sn=Math.sin(-rot);
+ draw({x:(vx*cs-vy*sn)/n,y:(vx*sn+vy*cs)/n},lightAt(x,y,lx,ly),n);c.restore();}
+
+/* ---------- views: the table, and the same world at 2.5× ---------- */
+function makeView(sel,ox,oy,ww,wh){const el=$(sel),[bg,gl,fg]=el.querySelectorAll('canvas');const v={el,bg,gl,fg,bgc:bg.getContext('2d'),fgc:fg.getContext('2d'),ox,oy,ww,wh,K:1,railKey:''};v.G=initGL(gl);return v;}
+const MAIN=makeView('#main',0,0,W,H),CLOSE=makeView('#close',506,282,350,120);
+function render(v,lx,ly,f,props){const stops=STOPS(),c=v.bgc;
+ c.setTransform(1,0,0,1,0,0);c.fillStyle='#040605';c.fillRect(0,0,v.bg.width,v.bg.height);
+ c.setTransform(...worldT(v));const g=c.createRadialGradient(lx,ly,0,lx,ly,420);stops.forEach((s,i)=>g.addColorStop(i/4,s));rr(c,76,16,778,370,156);c.fillStyle=g;c.fill();
+ c.setTransform(1,0,0,1,0,0);c.drawImage(buildRail(v),0,0);lightRail(c,v,lx,ly,f);
+ if(v.G)drawCloth(v,lx,ly,f,stops);
+ const x=v.fgc;x.setTransform(1,0,0,1,0,0);x.clearRect(0,0,v.fg.width,v.fg.height);x.setTransform(...worldT(v));
+ hem(x,v,lx,ly,stops);props(x,v.K,lx,ly);}
+
+const POOL={you:[457,292],luan:[712,196],besnik:[457,116],gent:[202,196]},ORDER=['you','luan','besnik','gent'];
+const SEATS={luan:{x:830,y:180,side:'right',n:5,nm:'Luan'},besnik:{x:457,y:77,side:'top',n:6,nm:'Besnik'},gent:{x:83,y:180,side:'left',n:5,nm:'Gent'}};
+const HAND=['3c','4d','5c','7c','8d','10s','10h','Jc','Qd','Kh','As','2c'];
+const lamp={x:457,y:292,flare:0,kick:0,seat:0,next:0,m:Array.from({length:70},()=>({x:R(70,860),y:R(10,392),r:R(.4,1.6),vx:R(-5,5),vy:R(-4,2),ph:R(0,TAU)}))};
+function tableProps(t,dt){return(c,k,lx,ly)=>{const bs=by(BACKS,st.back).spec;
+ for(const m of lamp.m){if(!RM){m.x+=m.vx*dt+Math.sin(t*.7+m.ph)*3*dt;m.y+=m.vy*dt;}if(m.y<0)m.y=H;if(m.y>H)m.y=0;if(m.x<62)m.x=860;if(m.x>870)m.x=64;
+  const a=lightAt(m.x,m.y,lx,ly)*(.5+.5*Math.sin(t*1.3+m.ph));if(a<.03)continue;c.fillStyle=`rgba(255,228,170,${a*.8})`;c.beginPath();c.arc(m.x,m.y,m.r,0,TAU);c.fill();}
+ const pair=(ids,dy,dim)=>ids.forEach((id,i)=>{const x=PILE.x+(i-.5)*36,y=PILE.y+dy;
+  thing(c,k,x,y,(i-.5)*1.2*Math.PI/180,65,95,lx,ly,(L,b,d)=>{drawFace(c,65,95,id,L,b,d);if(dim){rr(c,-32.5,-47.5,65,95,6);c.fillStyle='rgba(0,0,0,.42)';c.fill();}});});
+ c.save();c.translate(PILE.x,PILE.y);c.rotate(-7*Math.PI/180);c.translate(-PILE.x,-PILE.y);pair(['7h','7d'],9,true);c.restore();
+ pair(['9c','9s'],0,false);
+ for(const key in SEATS){const p=SEATS[key];
+  for(let i=0;i<p.n;i++){const o=i-(p.n-1)/2;let x,y,rot;
+   if(p.side==='top'){x=p.x+o*9;y=p.y+44;rot=o*5*Math.PI/180;}else{x=p.x+(p.side==='left'?45:-45);y=p.y+o*9;rot=Math.PI/2;}
+   thing(c,k,x,y,rot,26,38,lx,ly,(L,b,d)=>drawBack(c,k,26,38,bs,L,b,d));}
+  c.save();c.translate(p.x,p.y);const g=c.createRadialGradient(-3,-4,1,0,0,16.5);g.addColorStop(0,'#2d3b2e');g.addColorStop(1,'#0c140f');
+  c.beginPath();c.arc(0,0,16.5,0,TAU);c.fillStyle=g;c.fill();c.lineWidth=2;c.strokeStyle='rgba(233,196,106,.7)';c.stroke();
+  c.fillStyle='#efe3c4';c.font="700 12px 'Barlow Condensed',sans-serif";c.textAlign='center';c.textBaseline='middle';c.fillText(p.nm[0],0,1);
+  c.fillStyle='#a89c7e';c.font="600 9.5px 'Barlow Condensed',sans-serif";c.fillText(p.nm.toUpperCase().split('').join(String.fromCharCode(8202)),0,-30);
+  c.beginPath();c.roundRect(7,7,18,18,9);c.fillStyle='#15120b';c.fill();c.lineWidth=1;c.strokeStyle='rgba(233,196,106,.6)';c.stroke();c.fillStyle='#e9c46a';c.font="700 9px 'Barlow Condensed',sans-serif";c.fillText('13',16,16.5);c.restore();}
+ const mid=(HAND.length-1)/2;HAND.forEach((id,i)=>{const o=i-mid;thing(c,k,457+o*39,355+o*o*.55,o*1.4*Math.PI/180,57,84,lx,ly,(L,b,d)=>drawFace(c,57,84,id,L,b,d));});};}
+const closeProps=(c,k,lx,ly)=>{const bs=by(BACKS,st.back).spec;
+ thing(c,k,582,336,-.05,65,95,lx,ly,(L,b,d)=>drawFace(c,65,95,'Kh',L,b,d));
+ thing(c,k,620,338,.04,65,95,lx,ly,(L,b,d)=>drawFace(c,65,95,'Ks',L,b,d));
+ thing(c,k,724,330,.12,65,95,lx,ly,(L,b,d)=>drawBack(c,k,65,95,bs,L,b,d));
+ thing(c,k,748,340,-.07,65,95,lx,ly,(L,b,d)=>drawBack(c,k,65,95,bs,L,b,d));};
+
+function frame(t,dt){
+ let tgt=POOL.you;if(st.mode==='far')tgt=POOL.luan;
+ if(st.mode==='swing'){if(t>lamp.next){lamp.seat=(lamp.seat+1)%4;lamp.next=t+1.7;lamp.flare=.35;}tgt=POOL[ORDER[lamp.seat]];lamp.kick=1;}
+ const e=1-Math.exp(-dt*(st.mode==='swing'?3:2.2));lamp.x+=(tgt[0]-lamp.x)*e;lamp.y+=(tgt[1]-lamp.y)*e;
+ const amp=RM?0:20+80*lamp.kick;if(st.mode!=='swing')lamp.kick*=Math.exp(-dt*1.1);
+ const f=lamp.flare;lamp.flare*=Math.exp(-dt*2.4);
+ render(MAIN,lamp.x+Math.sin(t*.84+Math.sin(t*.21)*.9)*amp,lamp.y-40,f,tableProps(t,dt));
+ render(CLOSE,695+(RM?0:Math.sin(t*.4)*190),296,0,closeProps);}
+
+/* ---------- controls ---------- */
+const chip=(k,it)=>k==='felt'?`<span class="chip" style="background:linear-gradient(135deg,${it.s.join(',')})"></span>`:k==='back'?`<span class="chip" style="background:linear-gradient(135deg,${it.spec.field.join(',')})"><i style="background:${it.spec.starInk||it.spec.ink}"></i></span>`:'';
+const GROUPS=[['mat','Cloth',MATS],['thread','Threads',THREADS],['hem','Hem stitch',HEMS],['rail','Rail',RAILS],['card','Cards',CARDS],['felt','Felt colour',FELTS],['back','Back',BACKS],['mode','Lamp',MODES]];
+$('#ctl').innerHTML=GROUPS.map(([k,l,list])=>`<div class="grp" role="group" aria-label="${l}"><span>${l}</span>${list.map(it=>`<button id="b-${k}-${it.id}" data-k="${k}" data-v="${it.id}" aria-pressed="false"${it.sub?` title="${it.sub}"`:''}>${chip(k,it)}${it.name}</button>`).join('')}</div>`).join('');
+function sync(){document.querySelectorAll('[data-k]').forEach(b=>b.setAttribute('aria-pressed',st[b.dataset.k]===b.dataset.v));
+ const m=MAT(),r=RAIL(),cd=CARD();
+ $('#cap').innerHTML=`<b>${m.name}:</b> ${m.sub}. <b>${r.name}:</b> ${r.sub}. <b>${cd.name}:</b> ${cd.sub}.${MAIN.G?'':' This browser has no WebGL, so the cloth shows as a flat pool.'}`;
+ const n=$('#notes').value.trim();
+ $('#out').value=`Felt and card materials, round two\nCloth: ${m.name} · threads ${by(THREADS,st.thread).name.toLowerCase()} · hem stitch ${st.hem}\nRail: ${r.name}\nCards: ${cd.name}\nSeen with: ${by(FELTS,st.felt).name} felt, ${by(BACKS,st.back).name} back${n?`\nNotes: ${n}`:''}`;}
+document.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.k){st[b.dataset.k]=b.dataset.v;if(b.dataset.k==='mode'){lamp.seat=0;lamp.next=0;}}
+ else if(b.id==='copy'){const txt=$('#out').value;navigator.clipboard.writeText(txt).then(()=>$('#copied').textContent='Copied.',()=>{$('#out').select();$('#copied').textContent='Selected: press Ctrl+C or Cmd+C.';});return;}
+ else return;sync();});
+$('#notes').addEventListener('input',sync);
+
+function size(){for(const v of[MAIN,CLOSE]){v.K=v.el.clientWidth/v.ww*DPR;for(const cv of[v.bg,v.gl,v.fg]){cv.width=Math.round(v.ww*v.K);cv.height=Math.round(v.wh*v.K);}}}
+new ResizeObserver(size).observe($('#main'));
+let last=performance.now();const T0=last;
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;frame((now-T0)/1000,dt);requestAnimationFrame(loop);}
+size();sync();
+(document.fonts?document.fonts.ready:Promise.resolve()).then(()=>requestAnimationFrame(loop));
+</script>
+
+</body></html>
