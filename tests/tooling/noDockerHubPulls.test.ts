@@ -23,7 +23,8 @@ function scannedFiles(): string[] {
 }
 
 const NAMED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*)?(?:@sha256:[0-9a-f]+)?$/;
-const DOCKER_LINE = /\bdocker\s+([^;&|]*)/g;
+const DOCKER_WORD = /\bdocker\s+/g;
+export const UNREAD = "<a docker run, create or pull whose image the scan cannot read>";
 const DOCKER_CALL = /(?:\bdocker\s*\(\s*|["'`]docker["'`]\s*,\s*)/g;
 const MESSAGE = /\bnew\s+\w*Error\s*\(|\bconsole\.\w+\s*\(/g;
 const GLOBAL_VALUE_FLAGS = new Set(["-c", "--config", "--context", "-H", "--host", "-l", "--log-level", "--tlscacert", "--tlscert", "--tlskey"]);
@@ -77,7 +78,39 @@ function dockerImage(args: string[]): string | undefined {
     if (!rest[i].startsWith("-")) return rest[i];
     if (takesValue(values, rest[i])) i++;
   }
-  return undefined;
+  return UNREAD;
+}
+
+function enclosingQuote(line: string, end: number): string | undefined {
+  let quote: string | undefined;
+  for (let i = 0; i < end; i++) {
+    if (quote && line[i] === "\\") i++;
+    else if (line[i] === quote) quote = undefined;
+    else if (!quote && /["'`]/.test(line[i])) quote = line[i];
+  }
+  return quote;
+}
+
+function shellWords(line: string, from: number): string[] {
+  const enclosing = enclosingQuote(line, from);
+  const words: string[] = [];
+  let word = "";
+  let quote: string | undefined;
+  for (let i = from; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = undefined;
+      else word += c;
+    } else if (c === enclosing || /[;&|]/.test(c)) break;
+    else if (/["'`]/.test(c)) quote = c;
+    else if (c === "\\") word += line[++i] ?? "";
+    else if (/\s/.test(c)) {
+      if (word) words.push(word);
+      word = "";
+    } else word += c;
+  }
+  if (word) words.push(word);
+  return words.map((w) => w.replace(/[,)]+$/, ""));
 }
 
 function declared(code: string, name: string): string[] | undefined {
@@ -102,13 +135,20 @@ function arrayElements(code: string, from: number): string[] {
   });
 }
 
-function callArguments(code: string, from: number): string[] | undefined {
+function callArguments(code: string, from: number): string[] | "passed on" | undefined {
   if (code[from] === "[") return arrayElements(code, from + 1);
   const name = /\w+/y;
   name.lastIndex = from;
   const identifier = name.exec(code)?.[0];
-  return identifier ? declared(code, identifier) : undefined;
+  if (!identifier) return undefined;
+  if (new RegExp(String.raw`\bfunction\s+docker\s*\(\s*${identifier}\s*\)`).test(code)) return "passed on";
+  return declared(code, identifier);
 }
+
+const blank = (string: string) =>
+  string.startsWith("`")
+    ? string.replace(/\$\{((?:[^{}]|\{[^{}]*\})*)\}|[^\n]/g, (_, inner?: string) => (inner === undefined ? " " : `  ${inner} `))
+    : `"${" ".repeat(string.length - 2)}"`;
 
 function withoutMessageStrings(code: string): string {
   let out = code;
@@ -118,7 +158,7 @@ function withoutMessageStrings(code: string): string {
       literal.lastIndex = i;
       const string = /["'`]/.test(code[i]) ? literal.exec(code)?.[0] : undefined;
       if (string) {
-        if (depth === 1) out = out.slice(0, i) + `"${" ".repeat(string.length - 2)}"` + out.slice(i + string.length);
+        if (depth === 1) out = out.slice(0, i) + blank(string) + out.slice(i + string.length);
         i += string.length - 1;
       } else if (code[i] === "(") depth++;
       else if (code[i] === ")") depth--;
@@ -138,15 +178,16 @@ export function imageRefs(file: string, source: string): string[] {
     }
   }
   for (const line of code.replace(/\\\r?\n/g, " ").split(/\r?\n/)) {
-    for (const [, tail] of line.matchAll(DOCKER_LINE)) {
-      const image = dockerImage(tail.trim().split(/\s+/).map((t) => t.replace(/^["'`]|["'`,;)]+$/g, "")));
+    for (const word of line.matchAll(DOCKER_WORD)) {
+      const image = dockerImage(shellWords(line, word.index + word[0].length));
       if (image) refs.push(image);
     }
   }
   if (isScript) {
     for (const call of code.matchAll(DOCKER_CALL)) {
       const args = callArguments(code, call.index + call[0].length);
-      const image = args && dockerImage(args);
+      if (args === "passed on") continue;
+      const image = args?.length ? dockerImage(args) : UNREAD;
       if (image) refs.push(image);
     }
   }
@@ -243,6 +284,22 @@ describe("no CI job pulls an image from Docker Hub", () => {
     assert.deepEqual(imageRefs("s.mjs", 'execSync("docker run --rm postgres:16"); console.log("ok");\n'), ["postgres:16"]);
     assert.deepEqual(imageRefs("s.mjs", 'console.log(execSync("docker run --rm postgres psql").toString());\n'), [
       "postgres",
+    ]);
+    assert.deepEqual(
+      imageRefs("s.sh", `docker run -e "OPTS=a;b" postgres:16\ndocker run --rm -e 'A=x;y' redis:7\ndocker run -e "A=a&b" b:1\n`),
+      ["postgres:16", "redis:7", "b:1"],
+    );
+    assert.deepEqual(imageRefs("s.mjs", 'throw new Error(`failed: ${execSync("docker run postgres:16")}`);\n'), ["postgres:16"]);
+    assert.deepEqual(imageRefs("s.mjs", "console.log(`${execSync('docker run postgres:16')}`);\n"), ["postgres:16"]);
+    for (const source of [
+      "execSync(`docker run\n  --rm postgres:16`);\n",
+      "spawnSync('docker', buildArgs('postgres:16'));\n",
+      "const a = [];\na.push('run', 'postgres:16');\nspawnSync('docker', a);\n",
+    ]) {
+      assert.deepEqual(imageRefs("s.mjs", source), [UNREAD], source);
+    }
+    assert.deepEqual(imageRefs("s.mjs", 'function docker(args) {\n  return run("docker", args);\n}\ndocker(["pull", "a:1"]);\n'), [
+      "a:1",
     ]);
     assert.deepEqual(imageRefs("s.mjs", "throw new Error(r.stderr || `docker run failed on port ${port}`);\n"), []);
     assert.deepEqual(imageRefs("s.mjs", 'docker(["ps"]);\nconst u = "localhost:5432";\n'), []);
