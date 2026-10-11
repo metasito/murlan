@@ -414,6 +414,17 @@ describe("ciRedBody", () => {
     assert.doesNotMatch(body, /--log-failed/);
   });
 
+  test("the posted note says the job ran past its timeout-minutes, which its log reads as a cancel", async () => {
+    const written: string[][] = [];
+    const { gh } = ghFake({ script: [runRow("completed", "failure")] });
+    const verdictOf = () => ({
+      pass: false, runId: 7, head: SHA, failedStep: "Typecheck and tests",
+      output: "##[error]The operation was canceled.", reason: "Typecheck and tests ran past its timeout-minutes",
+    });
+    await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), verdictOf });
+    assert.match(written[1]?.[1] ?? "", /^why: Typecheck and tests ran past its timeout-minutes$/m);
+  });
+
   test("with no id parsed the excerpt is the only signal, so it stays and is fenced", () => {
     const body = ciRedBody({ sha: SHA, runUrl, testIds: [], excerpt: "error TS2322: nope", runId: 7 });
     assert.deepEqual(body.split("\n").slice(-3), ["```", "error TS2322: nope", "```"]);
