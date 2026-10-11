@@ -15,6 +15,12 @@ const A = flightOf("a", [card("a1", "3", "clubs"), card("a2", "3", "hearts")], [
 const B = flightOf("b", [card("b1", "4", "clubs"), card("b2", "4", "hearts")], [FROM, FROM]);
 const C = flightOf("c", [card("c1", "5", "clubs"), card("c2", "5", "hearts")], [FROM, FROM]);
 const easeOut = Easing.bezierFn(0, 0, 0.58, 1);
+const cssEase = Easing.bezierFn(0.25, 0.1, 0.25, 1);
+const inverse = (f: (x: number) => number, y: number) => {
+  let [lo, hi] = [0, 1];
+  for (let i = 0; i < 40; i++) [lo, hi] = f((lo + hi) / 2) < y ? [(lo + hi) / 2, hi] : [lo, (lo + hi) / 2];
+  return (lo + hi) / 2;
+};
 const RESTING = { opacity: 1, rotate: Beaten.rotateDeg, drop: Beaten.drop };
 
 function styleOf(node: Parameters<typeof getAnimatedStyle>[0]) {
@@ -54,11 +60,12 @@ describe("the beaten pose (D4 #5)", () => {
     expect(within(group).getAllByTestId("flying-card", HIDDEN)).toHaveLength(2);
     const k = turnOf();
     expect(k).toBeGreaterThanOrEqual(easeOut((Motion.beaten / 2 - FRAME) / Motion.beaten));
-    expect(k).toBeLessThanOrEqual(easeOut((Motion.beaten / 2 + FRAME) / Motion.beaten));
+    expect(k).toBeLessThanOrEqual(easeOut((Motion.beaten / 2 + 2 * FRAME) / Motion.beaten));
     expect(styleOf(group).opacity).toBe(1);
     const shades = within(group).getAllByTestId("beaten-shade", HIDDEN);
     expect(shades).toHaveLength(2);
-    for (const s of shades) expect(styleOf(s).opacity).toBeCloseTo(k, 6);
+    const progress = inverse(easeOut, k);
+    for (const s of shades) expect(styleOf(s).opacity).toBeCloseTo(cssEase(progress), 4);
 
     await step(Motion.beaten / 2 - 2 * FRAME);
     expect(turnOf()).toBeLessThan(1);

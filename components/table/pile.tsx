@@ -74,12 +74,17 @@ interface SweepMotion {
 }
 
 const SWEEP_SCALE = 0.6;
+// Above `groupPose`: a worklet takes its closure where it is declared, before a later `const` is set.
+const BEATEN_EASING = Easing.bezierFn(0, 0, 0.58, 1);
+// CSS's default `ease`, as the mockup's `.grp` filter takes it: the darkening runs ahead of the ease-out turn.
+const SHADE_EASING = Easing.bezierFn(0.25, 0.1, 0.25, 1);
 
 interface GroupMotion { sweep: SweepMotion | null; flinchY: SharedValue<number>; asideX: SharedValue<number>; flinchBy: SharedValue<string>; beaten: boolean; key: string }
 
 /** A play is knocked only by a later play's contact, and only while it is the beaten one (#764). */
-function groupPose(g: GroupMotion, turned: number): GroupPose & { opacity: number } {
+function groupPose(g: GroupMotion, turn: number): GroupPose & { opacity: number } {
   "worklet";
+  const turned = BEATEN_EASING(turn);
   const t = g.sweep ? g.sweep.travel.value : 0;
   const fade = g.sweep ? g.sweep.fade.value : 0;
   const flinch = g.beaten && g.flinchBy.value !== g.key ? g.flinchY.value : 0;
@@ -115,7 +120,9 @@ function catchLift(catching: number, cardScale: number): number {
 
 const CATCH_EASING = Easing.out(Easing.cubic);
 
-const BEATEN_EASING = Easing.bezier(0, 0, 0.58, 1);
+// The flight clock counts from the throw (`useFlightClock`), a timing from its first frame after: the turn
+// starts a frame in, in step with the throw that beats it.
+const TURN_LEAD_MS = 1000 / 60;
 // Over the card, never a `filter` on the group: on iOS that darkens the felt beneath.
 const SHADE_Z = Layer.table + 1;
 
@@ -211,7 +218,13 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     if (buried) return;
     const to = beaten ? 1 : 0;
     const ms = motionMs("beaten", reduced);
-    turned.set(ms === 0 ? to : withTiming(to, { duration: ms, easing: BEATEN_EASING, reduceMotion: ReduceMotion.Never }));
+    if (ms === 0) {
+      turned.set(to);
+      return;
+    }
+    const from = turned.get();
+    turned.set(from + (to - from) * Math.min(1, TURN_LEAD_MS / ms));
+    turned.set(withTiming(to, { duration: Math.max(0, ms - TURN_LEAD_MS), easing: Easing.linear, reduceMotion: ReduceMotion.Never }));
   }, [beaten, buried, reduced, turned]);
   useEffect(() => () => cancelAnimation(turned), [turned]);
   const key = play.key;
@@ -314,7 +327,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   // at render, so resizing the table cannot read as a fresh catch.
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catchLift(catching?.value ?? 0, cardScale) }] }));
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
-  const shade = useAnimatedStyle(() => ({ opacity: turned.value }));
+  const shade = useAnimatedStyle(() => ({ opacity: SHADE_EASING(turned.value) }));
   return (
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
