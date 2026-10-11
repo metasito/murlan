@@ -138,12 +138,38 @@ const dealTable = (page: Page, baseURL: string) => {
 /** The mockup's `bomb`: luan's sevens on the pile, besnik across on move with four sixes. */
 const BOMB = ["6_spades", "6_hearts", "6_diamonds", "6_clubs", "3_clubs", "4_diamonds"];
 const SEVENS = ["7_hearts", "7_diamonds"];
-const bombTable = async (page: Page, baseURL: string) => {
+const bombTable = (page: Page, baseURL: string) => {
   const rest = createDeck().map((c) => c.id).filter((id) => !BOMB.includes(id) && !SEVENS.includes(id));
   const [you, luan, gent] = [0, 1, 2].map((s) => rest.filter((_, i) => i % 3 === s).slice(0, 13));
-  const save = offlineGameSave(4, 13, 2, MOCKUP_SCORES, [you, gent, BOMB, luan]);
+  return pileTable(page, baseURL, offlineGameSave(4, 13, 2, MOCKUP_SCORES, [you, gent, BOMB, luan]), SEVENS, 3);
+};
+
+/** The app's seats by the mockup's names: luan right, besnik across, gent left. */
+const SEAT = { you: 0, luan: 1, besnik: 2, gent: 3 } as const;
+const scoresBy = (s: Record<keyof typeof SEAT, number>) =>
+  Object.fromEntries(Object.entries(SEAT).map(([k, seat]) => [`player_${seat}`, s[k as keyof typeof SEAT]]));
+
+/** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
+const pwinTable = (page: Page, baseURL: string) => {
+  const save = offlineGameSave(4, 13, SEAT.luan, scoresBy({ you: 19, besnik: 17, luan: 14, gent: 13 }), [
+    [], ["2_clubs"], [], ["3_clubs", "4_diamonds", "5_spades", "6_hearts"],
+  ]);
+  Object.assign(save.gameState, { rankings: ["player_0", "player_2"] });
+  return pileTable(page, baseURL, save, ["9_hearts"], SEAT.gent);
+};
+
+/** The mockup's `plose`: besnik and luan out, your last card the Ks, over gent's Jh. */
+const ploseTable = (page: Page, baseURL: string) => {
+  const save = offlineGameSave(4, 13, SEAT.you, scoresBy({ you: 19, besnik: 19, luan: 14, gent: 13 }), [
+    ["K_spades"], [], [], ["3_clubs", "4_diamonds", "5_spades"],
+  ]);
+  Object.assign(save.gameState, { rankings: ["player_2", "player_1"] });
+  return pileTable(page, baseURL, save, ["J_hearts"], SEAT.gent);
+};
+
+const pileTable = async (page: Page, baseURL: string, save: ReturnType<typeof offlineGameSave>, pile: string[], by: number) => {
   const deck = new Map(createDeck().map((c) => [c.id, c]));
-  Object.assign(save.gameState, { lastPlayedCombination: buildCombination(SEVENS.map((id) => deck.get(id)!)), lastPlayedBy: 3 });
+  Object.assign(save.gameState, { lastPlayedCombination: buildCombination(pile.map((id) => deck.get(id)!)), lastPlayedBy: by });
   await seatTable(page, baseURL, save);
   // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still.
   await stepUntil(page, async () => {
@@ -201,6 +227,20 @@ const DEAL_PHASE_MS = (STEP_MS - (Motion.duration.reveal % STEP_MS)) % STEP_MS;
 const DEAL_CHECKPOINTS = [48, 160, 656];
 
 const BOMB_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
+const PARTITA_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
+
+/** The table's restored lamp already rests on the seat on move, mid-sway; the chapter's would glide there from yours. */
+const lampFromApp = (seat: string) => ({ lamp }: TraceFrame) => `const reset = resetLamp;
+  resetLamp = () => {
+    reset();
+    [lamp.x, lamp.y] = POOL.${seat}; lamp.ph = ${lamp!.ph}; simT = ${lamp!.clock}; lamp.lx = lamp.x; lamp.ly = lamp.y - 40;
+    const aim = lampTo;
+    lampTo = (k) => { aim(k); lamp.r = lamp.tr; lampTo = aim; };
+  };`;
+
+/** Each side's sting under one name: the table's sound ids are not the mockup's. */
+const STING_AS = (mockup: string, app: string) => `const said = sfx;
+  sfx = (k) => said(k === "${mockup}" ? "${app}" : k);`;
 
 /** The app lands a throw at the cards' contact, sampled from the pose (ADR 0008); the mockup's `play` lands at its tween's end. */
 const LANDS_AT_CONTACT = `const throwCards = play;
@@ -354,9 +394,7 @@ const MOMENTS: Moment[] = [
         flying = null;
         later(${BombFx.delayMs}, beat);
       };`,
-    // The app's restored lamp already rests on besnik, mid-sway; the chapter's would glide there from yours.
-    fromApp: ({ lamp }) => `const reset = resetLamp;
-      resetLamp = () => { reset(); [lamp.x, lamp.y] = POOL.besnik; lamp.ph = ${lamp!.ph}; simT = ${lamp!.clock}; lamp.lx = lamp.x; lamp.ly = lamp.y - 40; };`,
+    fromApp: lampFromApp("besnik"),
     appTrigger: bombTable,
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
@@ -370,6 +408,54 @@ const MOMENTS: Moment[] = [
     onsets: ["moment:bombFx"],
     // When the table's lamp turns: the bomb's flight end, past its contact, plus Hold.land, a frame before its `moment:handoff`.
     actions: [{ atMs: 600, app: botMove }, { atMs: 1280, mockup: "handoff('besnik', 'luan')" }],
+  },
+  {
+    key: "pwin",
+    windowMs: 3200,
+    checkpoints: PARTITA_CHECKPOINTS,
+    stripAt: glance(3200, PARTITA_CHECKPOINTS),
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("pwin", "partitaWon")}
+      ${LANDS_AT_CONTACT}`,
+    fromApp: lampFromApp("luan"),
+    appTrigger: pwinTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness"],
+    regions: ["pile", "rim", "rightBand"],
+    regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
+    // No pool: it is placed off your hand, empty here. The pile under the flare's first 400 ms, as in bomb (#1438); the right band as
+    // the table's score panel opens over it (#1267).
+    regionAt: { pile: [1440, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    onsets: ["sound:partitaWon"],
+    // The chapter's `at(500)` runs on the frame at 512.
+    actions: [{ atMs: 512, app: botMove }],
+    variants: ["skia"],
+  },
+  {
+    key: "plose",
+    windowMs: 3200,
+    checkpoints: PARTITA_CHECKPOINTS,
+    stripAt: glance(3200, PARTITA_CHECKPOINTS),
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("plose", "partitaLost")}
+      ${LANDS_AT_CONTACT}`,
+    fromApp: lampFromApp("you"),
+    appTrigger: ploseTable,
+    appOnset: (f) => f.lamp !== null,
+    mode: "parity",
+    fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness"],
+    regions: ["pile", "rim", "rightBand"],
+    regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
+    // No pool: it is placed off your hand, empty once the Ks is down. The right band as the table's score panel opens over it (#1267).
+    regionAt: { rightBand: [1040, 1200, 1920, 2400, 2880] },
+    onsets: ["sound:partitaLost"],
+    // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
+    actions: [
+      { atMs: 208, app: (page) => page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true, position: { x: 8, y: 30 } }) },
+      { atMs: 512, app: (page) => page.getByRole("button", { name: GIOCA_VALID_LABEL }).click({ force: true, timeout: 10_000 }) },
+    ],
+    variants: ["skia"],
   },
   {
     key: "score-open",
