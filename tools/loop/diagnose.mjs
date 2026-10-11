@@ -185,7 +185,7 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
       }
       run.result = { cost: json.total_cost_usd ?? 0, turns: json.num_turns ?? 0 };
       if (state(cwd) !== before) return done({ ok: false, error: "it changed the worktree it was only to read" });
-      if (json.is_error) return done({ ok: false, error: `it ended ${json.subtype ?? "in an error"}` });
+      if (json.is_error) return done({ ok: false, error: `it ended ${json.terminal_reason ?? json.subtype ?? "in an error"}` });
       done({ ...parseDiagnosis(json.result, stop.runId ?? null), reply: String(json.result ?? "") });
     });
     child.stdin.on("error", () => {});

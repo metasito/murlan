@@ -463,13 +463,16 @@ export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_a
 
 /**
  * The API status a session died on, when it is one that passes on its own — an overload, an outage,
- * a 429 — or null. Not a verdict on the ticket, so it is held and respawned, never parked.
+ * a 429, or no answer at all (a dropped connection carries no status) — or null. Not a verdict on
+ * the ticket, so it is held and respawned, never parked.
  * A session that declared its ending chose it, whatever its last turn met. A spent usage window
  * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
  */
 export function apiFailure(run) {
-  const s = run.result?.isError && !run.declared && !run.blocked ? run.result.apiStatus : null;
-  return s >= 500 || s === 429 ? s : null;
+  if (!run.result?.isError || run.declared || run.blocked || run.accountError) return null;
+  const s = run.result.apiStatus;
+  if (s >= 500 || s === 429) return s;
+  return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
 }
 
 /**
@@ -1492,6 +1495,7 @@ export function runTicket(
     wrongModel: null,
     strayPlugin: null,
     accountError: null,
+    apiErrorCode: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1630,6 +1634,7 @@ export function runTicket(
     if (fact.kind === "api_error") {
       screen.said(thought(fact.text));
       if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
+      state.apiErrorCode = fact.code;
     }
     if (fact.kind === "result" && !fact.origin) state.result = fact;
     if (fact.kind === "rate_limit") {
@@ -1712,6 +1717,7 @@ export function runTicket(
           wrongModel: state.wrongModel,
           strayPlugin: state.strayPlugin,
           accountError: state.accountError,
+          apiErrorCode: state.apiErrorCode,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
@@ -2350,7 +2356,7 @@ export async function runOnce(io, pinned = null, at = null) {
   const status = apiFailure(run);
   if (status) {
     keepWip();
-    const why = `the API answered ${status}`;
+    const why = status === "unreachable" ? "the API could not be reached" : `the API answered ${status}`;
     io.record({ number: route.number, outcome: "overloaded", why, run, counts: false });
     return { outcome: "overloaded", ticket: route.number, why, run };
   }

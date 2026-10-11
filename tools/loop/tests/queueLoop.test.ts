@@ -571,6 +571,16 @@ describe("runTicket", () => {
     assert.equal(apiFailure(run), null);
   });
 
+  test("a session whose connection dropped is held like an outage, not parked (#1466)", async () => {
+    const text = "API Error: Unable to connect to API: SSL certificate hostname mismatch";
+    const apiError = JSON.stringify({ type: "assistant", error: "server_error", message: { content: [{ type: "text", text }] } });
+    const end = result({ is_error: true, api_error_status: null, terminal_reason: "api_error" });
+    const run = await runTicket(fakeSpawn([apiError, end], 1), opts());
+    assert.equal(apiFailure(run), "unreachable");
+    const refused = apiError.replace('"server_error"', '"invalid_request"');
+    assert.equal(apiFailure(await runTicket(fakeSpawn([refused, end], 1), opts())), null);
+  });
+
   for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
     test(`a ${code} api_error is narrated, and is neither an account error nor a change to apiFailure`, async () => {
       const text = `API Error: ${status} ${code} — the line the session printed`;
