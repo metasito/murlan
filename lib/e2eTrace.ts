@@ -124,8 +124,8 @@ export function recordFrames<F>(
   };
 }
 
-if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
-  const trace = recordFrames<TraceFrame>(globalThis as unknown as FrameHost, (t, replacing) => ({
+export function traceRecorder(host: FrameHost): TraceRecorder {
+  const trace = recordFrames<TraceFrame>(host, (t, replacing) => ({
     t,
     onsets: [...(replacing?.onsets ?? []), ...pending.splice(0)],
     live: sum(sources.live),
@@ -141,7 +141,7 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
     breath: last(sources.breath) ?? 1,
     clocks: Object.fromEntries([...sources.clock].map((read) => read())),
   }));
-  const recorder: TraceRecorder = {
+  return {
     frames: trace.frames,
     start() {
       pending = [];
@@ -153,7 +153,10 @@ if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
       recording = false;
     },
   };
-  (globalThis as { murlanTrace?: TraceRecorder }).murlanTrace = recorder;
+}
+
+if (process.env.EXPO_PUBLIC_E2E_FAST === "1") {
+  (globalThis as { murlanTrace?: TraceRecorder }).murlanTrace = traceRecorder(globalThis as unknown as FrameHost);
 }
 
 export function traceOnset(kind: "sound" | "haptic" | "moment", name: string): void {

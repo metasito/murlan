@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recordFrames, type FrameHost } from "../../lib/e2eTrace.ts";
+import { recordFrames, traceOnset, traceRecorder, type FrameHost } from "../../lib/e2eTrace.ts";
 
 const FRAME = 16;
 
@@ -94,15 +94,18 @@ test("a frame loop a timer starts on a frame's own instant leaves that frame sam
   ]);
 });
 
-test("what each frame callback of one frame fires is kept in that frame's sample", async () => {
+test("every onset a frame's callbacks fire is in that frame's trace", async () => {
   const { host, runFor } = fakeClock();
-  const fired: string[] = [];
-  const recorder = recordFrames<string[]>(host, (_, replacing) => [...(replacing ?? []), ...fired.splice(0)]);
+  const recorder = traceRecorder(host);
   recorder.start();
-  host.requestAnimationFrame(() => fired.push("a"));
-  host.requestAnimationFrame(() => fired.push("b"));
+  host.requestAnimationFrame(() => traceOnset("sound", "a"));
+  host.requestAnimationFrame(() => traceOnset("sound", "b"));
   await runFor(2 * FRAME);
-  assert.deepEqual(recorder.frames, [["a", "b"], []]);
+  recorder.stop();
+  assert.deepEqual(
+    recorder.frames.map((frame) => frame.onsets),
+    [["sound:a", "sound:b"], []]
+  );
 });
 
 test("a stopped recorder samples nothing until it starts again", async () => {
