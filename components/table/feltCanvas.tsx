@@ -37,6 +37,7 @@ import { levelShade, paintRail, RAIL_BAND, RAIL_LIGHT, ringRect, ROOM, type Ring
 import { buildGlow, buildShadow, SHADOW_PATHS, shadowClusterId, shadowClusters, shadowFall, shadowShape, shadowPaint, shadowTransform, type GlowSink, type ShadowPath } from "./cardShadows";
 import type { CardRects } from "./cardRects";
 import type { CardTable } from "./useCardRects";
+import { useCardShadowsOn } from "./feltReady";
 
 export interface FeltCanvasProps {
   lamp: SharedValue<Lamp>;
@@ -64,10 +65,10 @@ const OUTER = ring(0);
 const FELT_EDGE = ring(RAIL_BAND);
 const COAT = ring(RAIL_LIGHT.coatInset);
 // CanvasKit frees nothing itself; on native the host object's finalizer does.
-const DISPOSE_PATHS = Platform.OS === "web";
+export const DISPOSE_PATHS = Platform.OS === "web";
 
 /** On web `stopMapper` waits on the UI queue, so a reaction can still run after an unmount's synchronous cleanup. */
-function disposeAfterReactions(dispose: () => void) {
+export function disposeAfterReactions(dispose: () => void) {
   if (DISPOSE_PATHS) scheduleOnUI(dispose);
 }
 
@@ -334,15 +335,13 @@ export function FeltCanvas({ lamp, sx, sy, stops, onReady, cards, grey }: FeltCa
   const contact = shadowTransform(shadowFall("face", pile, pile), felt);
   const flat = shadowTransform({ x: 0, y: 0 }, felt);
   // State, not a group's opacity: a picture is drawn without the group's paint.
-  const [shadows, setShadows] = useState(true);
+  const shadows = useCardShadowsOn();
   const [glows, setGlows] = useState(true);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
-    const e2e = globalThis as { murlanCardShadows?: (on: boolean) => void; murlanCardGlow?: (on: boolean) => void };
-    e2e.murlanCardShadows = setShadows;
+    const e2e = globalThis as { murlanCardGlow?: (on: boolean) => void };
     e2e.murlanCardGlow = setGlows;
     return () => {
-      delete e2e.murlanCardShadows;
       delete e2e.murlanCardGlow;
     };
   }, []);

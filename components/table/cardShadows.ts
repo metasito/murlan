@@ -111,6 +111,17 @@ export function shadowClusterId(path: ShadowPath, rects: CardRects, felt: Pick<F
   return `${path}|${felt.sx},${felt.sy},${felt.s},${midX}|${shadowShape(rects, [...keys].sort())}`;
 }
 
+/**
+ * `order` the hand's cards bottom first, as they paint: each drawn card over another casts onto the
+ * cards `below` it, except where it or a card `above` it covers them — the mockup's shadow painted
+ * between its card and the one beneath.
+ */
+export function handShades(rects: CardRects, order: readonly string[]): { caster: string; below: string[]; above: string[] }[] {
+  "worklet";
+  const drawn = order.filter((key) => rects[key] !== undefined && rects[key].seen > 0);
+  return drawn.slice(1).map((caster, i) => ({ caster, below: drawn.slice(0, i + 1), above: drawn.slice(i + 1) }));
+}
+
 export interface GlowSink extends PathSink {
   /** Fills the outline added since the last fill. */
   fill(alpha: number): unknown;

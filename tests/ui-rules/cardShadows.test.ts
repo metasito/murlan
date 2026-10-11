@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, handShades, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Motion } from "../../lib/tokens.ts";
@@ -88,6 +88,20 @@ describe("the shadow paths", () => {
     assert.deepEqual(shadowClusters("fan", rects, felt, 0, 3), [["fan:right:0"], ["fan:top:0"], ["fan:left:1", "fan:left:0", "fan:left:2"]]);
     const gap = (g: number) => shadowClusters("fan", { "fan:left:0": at(100), "fan:left:1": at(164 + g) }, felt, 0, 3).length;
     assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
+  });
+
+  test("a hand card shades the cards painted under it, never the ones over it or a card not drawn", () => {
+    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }), "hand:c": rect({ x: 140 }), "hand:gone": rect({ seen: 0 }) };
+    assert.deepEqual(handShades(rects, ["hand:c", "hand:gone", "hand:a", "hand:missing", "hand:b"]), [
+      { caster: "hand:a", below: ["hand:c"], above: ["hand:a", "hand:b"] },
+      { caster: "hand:b", below: ["hand:c", "hand:a"], above: ["hand:b"] },
+    ]);
+    assert.deepEqual(handShades({ "hand:a": rect() }, ["hand:a"]), []);
+  });
+
+  test("the hand's shades are rebuilt when its paint order changes, though no card moved", () => {
+    const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }) };
+    assert.notEqual(shadowShape(rects, ["hand:a", "hand:b"]), shadowShape(rects, ["hand:b", "hand:a"]));
   });
 
   test("are rebuilt for a change of any field they read, and not for a lift or glow alone", () => {

@@ -10,6 +10,7 @@ import {
   fanBacks,
   handCard,
   legCard,
+  movedBy,
   panShown,
   pileCard,
   type DrawnCard,
@@ -44,6 +45,20 @@ test("the kick scales about its own point and moves; the shake turns about the t
   close(r.x * FELT.sx, FELT.shakeAt.x + 2, "x");
   close(r.y * FELT.sy, FELT.shakeAt.y + 3 + 10, "y");
   close(r.rot, 90, "the shake's turn is the card's");
+});
+
+test("the table's motion is one turn, scale and move of every point, the one each card's rect takes", () => {
+  for (const m of [TABLE_AT_REST, { kx: 9, ky: -5, ks: 1.012, shx: 2, shy: 3, shr: 0.7 }, { kx: -3, ky: 4, ks: 0.97, shx: -1, shy: 0, shr: -1.4 }]) {
+    const by = movedBy(m, FELT);
+    for (const [cx, cy] of [[0, 0], [100, 300], [FELT.kickAt.x, FELT.shakeAt.y]]) {
+      const r = designRect(card(cx, cy), FELT, m);
+      const t = (by.rot * Math.PI) / 180;
+      close(by.x + by.scale * (cx * Math.cos(t) - cy * Math.sin(t)), r.x * FELT.sx, `x of ${cx},${cy}`);
+      close(by.y + by.scale * (cx * Math.sin(t) + cy * Math.cos(t)), r.y * FELT.sy, `y of ${cx},${cy}`);
+    }
+    close(by.scale, m.ks, "scale");
+    close(by.rot, m.shr, "turn");
+  }
 });
 
 test("a hand card sits at its box in the row, moved by its transform, the pan and the zone's lift", () => {
