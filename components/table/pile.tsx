@@ -569,7 +569,8 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
    * second render the dedupe below skips, so a flight still in the air is
    * re-armed with the tier it now closes on. `viewerWon` the same: online, a
-   * teams manche's outcome waits for `game:over`'s scores.
+   * teams manche's outcome waits for `game:over`'s scores, and a win scored
+   * after the contact never shakes, the shake being the contact's.
    */
   matchOver: boolean;
   viewerWon: boolean;

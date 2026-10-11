@@ -43,7 +43,7 @@ const seat = (i: number, teams: boolean): Player => ({
   ...(teams ? { team: i === 0 || i === 3 ? 'A' : 'B' } : {}),
 });
 
-const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean) => {
+const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean, scored = over) => {
   const state: GameState = {
     players: [0, 1, 2, 3].map((i) => seat(i, teams)),
     currentTurnIndex: 3,
@@ -56,7 +56,7 @@ const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean) => {
     rankings: over ? rankings : [],
     firstPlayMade: true,
   };
-  const handScores = over ? Object.fromEntries(rankings.map((id, i) => [id, 3 - i])) : {};
+  const handScores = scored ? Object.fromEntries(rankings.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable gameState={state} handScores={handScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
@@ -141,6 +141,45 @@ describe("a manche's outcome on the felt", () => {
     expect(released).toBe(c.outcome === 'lost');
     expect((target.mock.calls.at(-1)?.[1] ?? aimBefore!).slice(0, 2)).toEqual(aimBefore!.slice(0, 2));
     await r.unmount();
+  });
+
+  // Online, a teams manche's scores (`game:over`) trail the state that ends it: the outcome is pending until they come.
+  describe('a teams win scored after the throw', () => {
+    const TEAMS_WON = { outcome: 'won' as const, teams: true, rankings: ['player_0', 'player_3', 'player_1', 'player_2'], motes: MancheMoment.motes.won };
+
+    async function scoredAfter(ms: number) {
+      const r = await render(table(TEAMS_WON, false));
+      await settle(2000);
+      await bootFeedback();
+      const motes = jest.spyOn(particles, 'mancheMotes');
+      const trauma = jest.spyOn(flightPhysics, 'traumaFor');
+      await act(async () => r.rerender(table(TEAMS_WON, true, false)));
+      await act(async () => {
+        jest.advanceTimersByTime(ms);
+      });
+      const motesUnscored = motes.mock.calls.length;
+      await act(async () => r.rerender(table(TEAMS_WON, true, true)));
+      await settle(1500);
+      return { r, motes, trauma, motesUnscored };
+    }
+
+    it('scored while the card flies: it lands as the win, shaking', async () => {
+      const { r, motes, trauma, motesUnscored } = await scoredAfter(16);
+      expect(motesUnscored).toBe(0);
+      expect(trauma.mock.calls.map(([tier]) => tier)).toContain('mancheWon');
+      expect(motes.mock.calls.map(([o]) => o)).toEqual(['won']);
+      expect(lit(r)).toBe(1);
+      await r.unmount();
+    });
+
+    it('scored after it landed: the motes and the lit card wait for the score, and the landing that passed does not shake', async () => {
+      const { r, motes, trauma, motesUnscored } = await scoredAfter(1500);
+      expect(motesUnscored).toBe(0);
+      expect(trauma.mock.calls.map(([tier]) => tier)).not.toContain('mancheWon');
+      expect(motes.mock.calls.map(([o]) => o)).toEqual(['won']);
+      expect(lit(r)).toBe(1);
+      await r.unmount();
+    });
   });
 
   it.each(CASES)('$outcome under reduced motion: no motes and no shake, and the sting still plays', async (c) => {
