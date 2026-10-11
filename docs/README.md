@@ -21,7 +21,6 @@ row is the condition that should send you to that file, not just its subject.
 | [`agents/checks.md`](agents/checks.md) | You need to know which check catches a given class of bug, what it costs, or which React Native Web trap passes every check and renders nothing. |
 | [`agents/issue-tracker.md`](agents/issue-tracker.md) | You're taking, claiming, or releasing a ticket — the queue, labels and `gh` invocations. |
 | [`agents/RULES.md`](agents/RULES.md) | You need the numbered rule a citation elsewhere points at, or you're about to break an invariant and want to check first. |
-| [`agents/smell-baseline.md`](agents/smell-baseline.md) | You're running a code-review pass and need the vendored smell checklist it's judged against. |
 | [`DEPLOY-RUNBOOK.md`](DEPLOY-RUNBOOK.md) | You're deploying, or a schema change means reading the `db:push` rename-or-drop prompt before accepting it. |
 
 ## Reference

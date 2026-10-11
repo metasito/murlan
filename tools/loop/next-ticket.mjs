@@ -5,6 +5,7 @@ import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs"
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
+export const LAUNCH_MILESTONE = "Launch";
 function trusted(issueOrComment) {
   return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
 }
@@ -33,7 +34,7 @@ export function sizeOf(issue) {
  * wins over `ready-for-agent`: releasing a ticket takes `ready-for-agent` off (RULES.md rule 28),
  * but one left carrying both must still not be taken.
  *
- * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string }} Issue
+ * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string, milestone?: { title: string } | null }} Issue
  * @param {Issue} issue
  */
 export function routeOf(issue) {
@@ -90,8 +91,9 @@ export function classify(openIssues, io = realClassifyIo()) {
     if (ls.includes("blocked")) continue;
     buckets[BUCKET[routeOf(issue)] ?? "owner"].push(issue);
   }
-  // Oldest first: sorting by size put every self-filed size:S follow-up at the head.
-  for (const b of [...Object.values(BUCKET), "stranded"]) buckets[b].sort((a, x) => a.number - x.number);
+  // A red main first, then the Launch milestone, each oldest first. Never by size: that put every
+  // self-filed size:S follow-up at the head.
+  for (const b of [...new Set([...Object.values(BUCKET), "owner", "stranded"])]) buckets[b].sort((a, x) => rank(a) - rank(x) || a.number - x.number);
   // A branch already pushed and already reviewed is the cheapest work in the queue, and leaving it
   // is the one outcome nothing else recovers from.
   buckets.frontier = [...buckets.stranded, ...buckets.frontier];
@@ -164,6 +166,18 @@ function takeable(frontier, limit) {
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/** @param {Issue} issue */
+export function rank(issue) {
+  if (labelNames(issue).includes("main-red")) return 0;
+  return issue.milestone?.title === LAUNCH_MILESTONE ? 1 : 2;
+}
+
+/** The owner's open asks, as the handoff line names them: what the loop is waiting on. */
+export function waitingOn(owner, max = 8) {
+  const asks = owner.filter((i) => labelNames(i).some((l) => l === "ready-for-human" || l === "needs-info"));
+  return asks.length ? `nothing agent-takeable; waiting on you: ${asks.slice(0, max).map((i) => `#${i.number}`).join(", ")}` : "nothing agent-takeable";
 }
 
 export function pickRoute(buckets, take = takeable) {
@@ -267,7 +281,7 @@ if (invokedDirectly) {
   const chosen = pickRoute(buckets);
   console.log(
     `ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}` +
-      `\t${chosen.ticket?.title ?? "nothing agent-takeable"}` +
+      `\t${chosen.ticket?.title ?? waitingOn(buckets.owner)}` +
       `\t${chosen.ticket ? (sizeOf(chosen.ticket) ?? "") : ""}`,
   );
   console.log(

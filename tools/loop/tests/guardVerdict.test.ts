@@ -35,8 +35,8 @@ function run(rows: object[], command = LAND, extra: object = {}, loop = true): s
 const denied = (out: string) => out !== "" && JSON.parse(out).hookSpecificOutput.permissionDecision === "deny";
 
 describe("a LAND follows this round's own reviewers", () => {
-  test("the standards and spec briefs allow it", () => {
-    assert.equal(run([say("PHASE D"), review("standards"), review("spec"), review("refute")]), "");
+  test("the review brief allows it", () => {
+    assert.equal(run([say("PHASE D"), review("review")]), "");
   });
 
   test("a fix brief allows it", () => {
@@ -49,26 +49,21 @@ describe("a LAND follows this round's own reviewers", () => {
     assert.match(out, /rule 29/);
   });
 
-  test("one axis alone is not a review", () => {
-    assert.ok(denied(run([say("PHASE D"), review("standards")])));
+  test("a scope or completeness brief is not a review", () => {
+    assert.ok(denied(run([say("PHASE D"), review("scope"), review("completeness")])));
   });
 
   test("an earlier round's reviewers do not count", () => {
-    assert.ok(denied(run([say("PHASE D"), review("standards"), review("spec"), say("PHASE C"), say("PHASE D")])));
+    assert.ok(denied(run([say("PHASE D"), review("review"), say("PHASE C"), say("PHASE D")])));
   });
 
   test("another ticket's reviewers do not count", () => {
-    assert.ok(denied(run([say("PHASE D"), review("standards", 8), review("spec", 8)])));
+    assert.ok(denied(run([say("PHASE D"), review("review", 8)])));
   });
 
-  test("the gate's cap allows the session's own LAND, and an echo of it does not", () => {
-    const cap = "loop-gate: #7 — cap\n\n  Do not park for this. Fix anything that is an actual blocker";
+  test("the round cap never allows a LAND of the session's own", () => {
     const gate = call("g", "Bash", { command: "node tools/loop/loop-gate.mjs --review-round" });
-    assert.equal(run([say("PHASE D"), gate, result("g", cap)]), "");
-    const worded = call("w", "Bash", { command: "cd .worktrees/agent-7 && node tools/loop/loop-gate.mjs --review-round 2>&1" });
-    assert.equal(run([say("PHASE D"), worded, result("w", cap)]), "");
-    const echo = call("e", "Bash", { command: `echo "${cap}"` });
-    assert.ok(denied(run([say("PHASE D"), echo, result("e", cap)])));
+    assert.ok(denied(run([say("PHASE D"), gate, result("g", "loop-gate: #7 — the cap is 3")])));
   });
 
   test("a body file is read", () => {

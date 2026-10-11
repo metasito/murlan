@@ -211,7 +211,7 @@ chat with free text (moderation burden), cross-promotion.
 
 ## 6. Definition of done
 
-The work is complete when all of the following hold:
+Done for v1 means the Launch milestone is closed and all of the following hold:
 
 1. `npx tsc --noEmit` is clean and `npm run lint` reports no errors.
 2. The engine test suite covers every combination type, the exchange phase, joker rules,

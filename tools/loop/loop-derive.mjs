@@ -226,7 +226,8 @@ export function verdictFor(comments, head) {
  * comment — `VERDICT: LAND` — over four rounds and went out red: the reports existed, and reached
  * nothing that could refuse the push.
  *
- * **Its ceiling, stated:** both headings carrying no findings satisfies this. It is a check against
+ * **Its ceiling, stated:** a `## Blocking` heading carrying no findings satisfies this, as do the
+ * `## Standards` and `## Spec` pair a ticket reviewed before the single reviewer still carries. It is a check against
  * omission, which is the measured failure, not against a forged report.
  *
  * @param {{body: string}[]} comments @param {string} head
@@ -236,7 +237,8 @@ export function reviewFor(comments, head) {
     const body = fenceStripped(comments[i].body);
     const m = REVIEW_RE.exec(body);
     if (!m || !covers(head, m[1])) continue;
-    if (!/^##\s+Standards\s*$/m.test(body) || !/^##\s+Spec\s*$/m.test(body)) continue;
+    const legacy = /^##\s+Standards\s*$/m.test(body) && /^##\s+Spec\s*$/m.test(body);
+    if (!/^##\s+Blocking\s*$/m.test(body) && !legacy) continue;
     return { line: m[0].trim() };
   }
   return null;

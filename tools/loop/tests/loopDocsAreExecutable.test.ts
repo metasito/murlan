@@ -257,11 +257,13 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.doesNotMatch(c, /gh pr create/);
   });
 
-  test("scope grows only to defects in the changed lines; the rest is filed, not built", () => {
+  test("scope grows only to defects in the changed lines; nothing it files is agent work", () => {
     const work = read(QUEUE).split("### How to work")[1]?.split("### Leaving C")[0] ?? "";
     assert.match(work, /defect in the lines this diff changes is fixed here/);
-    assert.match(work, /A defect in your own tools, checks or worktree\s+is rule 34's\. Anything else in the product is filed, not built/);
-    assert.doesNotMatch(work, /Scope grows to what you find in its area/);
+    assert.match(work, /never `ready-for-agent`/);
+    assert.match(work, /--label ready-for-human`/);
+    assert.match(work, /issue labelled `noticed`/);
+    assert.doesNotMatch(work, /--label ready-for-agent/);
   });
 
   // #1261: 94 minutes of local native re-runs steered by timings that only CI's reporter judges.
@@ -271,33 +273,35 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.match(read(QUEUE), /`CI-RED` and any `FIX-NOTES` comments first[^.]*rule 25's command/);
   });
 
-  test("review dispatches its two reviewers together, and a LAND lands in the same process", () => {
+  test("review dispatches one reviewer after CI, and a LAND lands in the same process", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /two fresh `opus` subagents[^.]*dispatched in one\s+message/);
+    assert.match(d, /Dispatch one `opus` reviewer/);
+    assert.ok(d.indexOf("Wait for CI on HEAD") < d.indexOf("Dispatch one `opus` reviewer"), "the review reads CI first");
     assert.match(d, /After a `LAND`, go straight on to phase E and F in this process/);
     assert.doesNotMatch(read(QUEUE), /"handoff":"E"/);
   });
 
   test("a HOLD fix is checked locally before it goes back to review, as the supervisor requires", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /After a `HOLD`, say `PHASE C`, fix what it named and every sibling of it[^.]*then leave through\s+phase C's steps 1–4/);
+    assert.match(d, /After a `HOLD`, say `PHASE C`, fix exactly the Blocking findings[^.]*then leave through phase C's steps 1–4/);
+    assert.doesNotMatch(d, /every sibling/);
   });
 
   test("C has no pre-read of D's briefs", () => {
     assert.doesNotMatch(read(QUEUE), /phase D's two briefs/);
   });
 
-  test("the posted review leads with the refuter's survivors", () => {
+  test("the posted review sorts its findings, and only a Blocking one holds", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /REVIEW <sha>\s+## Survivors[\s\S]*## Standards[\s\S]*## Spec/);
-    assert.match(d, /any refuter's\s+survivors first/);
+    assert.match(d, /REVIEW <sha>\s+## Blocking[\s\S]*## Nits[\s\S]*## Pre-existing/);
+    assert.match(d, /LAND when the report has no Blocking finding and CI is green/);
+    assert.match(d, /At the cap\s+it exits non-zero: do not land/);
   });
 
-  test("a HOLD round fixes what was named, and files a failure only a local run showed", () => {
+  test("a HOLD round fixes what was named, and only names a failure only a local run showed", () => {
     const d = read(QUEUE).split("## D — Review")[1]?.split("## E — Land")[0] ?? "";
-    assert.match(d, /neither the review nor CI named[\s\S]{0,60}not the round's to fix/);
-    assert.match(d, /rule 37[\s\S]{0,80}rule 35/);
-    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only what its review or CI named\s+and each sibling of it/);
+    assert.match(d, /neither the review nor CI named, is ruled out \(rule 37\)\s+and named in `FIX-NOTES`/);
+    assert.match(read("docs/agents/RULES.md"), /outside a review round, which fixes only the Blocking findings its review or CI\s+named/);
   });
 
   test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
@@ -327,16 +331,13 @@ describe("every subagent brief comes from brief.mjs", () => {
     assert.doesNotMatch(queue(), /^> (Investigate issue|For each Definition-of-done box|For each finding below)/m);
   });
   test("phases B, C and D each name brief.mjs with their kinds", () => {
-    for (const kind of ["scope", "completeness", "standards", "spec", "refute", "fix"]) {
+    for (const kind of ["scope", "completeness", "review", "fix"]) {
       assert.match(queue(), new RegExp(`brief\\.mjs ${kind}\\b`), kind);
     }
   });
-  test("phase B splits a size:L ticket with three or more independent feature groups, or any past 10 files with two", () => {
+  test("phase B never splits a ticket into new ones", () => {
     const b = queue().split("## B — Scope")[1]?.split("## C — Build")[0] ?? "";
-    assert.match(b, /size:L/);
-    assert.match(b, /three or more independent feature groups/);
-    assert.match(b.replace(/\s+/g, " "), /any ticket whose scope report names more than 10 files to change[^.]*two or more/);
-    assert.match(b, /gh issue create/);
+    assert.doesNotMatch(b, /gh issue create|split/);
   });
 });
 

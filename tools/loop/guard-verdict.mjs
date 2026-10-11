@@ -1,18 +1,15 @@
 /**
  * PreToolUse guard for the loop's main session: `VERDICT: LAND` goes up only after this round's own
- * reviewers ran (rule 29 of docs/agents/RULES.md), or after `loop-gate --review-round` said the cap
- * is reached, which asks for a LAND of the session's own. A round starts at its last `PHASE D`.
+ * reviewer ran (rule 29 of docs/agents/RULES.md). A round starts at its last `PHASE D`.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { parseHeader } from "./brief.mjs";
-import { commands } from "./guard-bash.mjs";
 import { located, native } from "./guard-read.mjs";
 import { PHASE } from "./loop-stream.mjs";
 
 const LAND = /(^|["'])[ \t]*VERDICT:[ \t]*LAND\b/m;
-const CAP = "Do not park for this.";
 const PHASES = new RegExp(PHASE.source, "gm");
 
 const readOr = (read, file) => {
@@ -47,19 +44,11 @@ const parts = (row) => (Array.isArray(row?.message?.content) ? row.message.conte
 const startsD = (row) =>
   row.type === "assistant" &&
   parts(row).some((p) => p.type === "text" && [...String(p.text).matchAll(PHASES)].some((m) => m[1] === "D"));
-const runsGate = (command) =>
-  commands(String(command ?? "")).some(
-    (c) => c.cmd === "node" && /(^|[\\/])tools[\\/]loop[\\/]loop-gate\.mjs$/.test(c.args[0] ?? "") && c.args.includes("--review-round"),
-  );
 
 export function denial(transcript, n) {
   const all = rows(transcript);
   const round = all.slice(Math.max(0, all.findLastIndex(startsD))).flatMap(parts);
   const uses = round.filter((p) => p.type === "tool_use");
-  const gate = new Set(uses.filter((p) => runsGate(p.input?.command)).map((p) => p.id));
-  if (round.some((p) => p.type === "tool_result" && gate.has(p.tool_use_id) && JSON.stringify(p.content).includes(CAP))) {
-    return null;
-  }
   const kinds = new Set(
     uses
       .filter((p) => p.name === "Agent" || p.name === "Task")
@@ -67,11 +56,11 @@ export function denial(transcript, n) {
       .filter((h) => h?.n === n)
       .map((h) => h.kind),
   );
-  if (kinds.has("fix") || (kinds.has("standards") && kinds.has("spec"))) return null;
+  if (kinds.has("review") || kinds.has("fix")) return null;
   return (
     `No VERDICT: LAND on #${n} before this round's own reviewers (rule 29 of docs/agents/RULES.md). ` +
-    "Dispatch the standards and spec briefs, or the fix brief, as queue.md phase D says, and post their REVIEW first. " +
-    "At the round cap, run `node tools/loop/loop-gate.mjs --review-round` and follow what it prints."
+    "Dispatch the review brief, or the fix brief, as queue.md phase D says, and post its REVIEW first. " +
+    "A ticket never lands at the round cap: `node tools/loop/loop-gate.mjs --review-round` says what to do there."
   );
 }
 

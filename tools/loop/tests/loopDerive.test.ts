@@ -151,6 +151,12 @@ describe("whether the review behind a verdict is on the issue", () => {
     assert.equal(reviewFor([{ body: reviewBody("0000000") }], "abc1234def"), null);
   });
 
+  test("a single reviewer's report, headed Blocking, is a review", () => {
+    const report = "REVIEW abc1234\n\n## Blocking\n\nNone.\n\n## Nits\n\n## Pre-existing\n";
+    assert.ok(reviewFor([{ body: report }], "abc1234def"));
+    assert.equal(reviewFor([{ body: "REVIEW abc1234\n\n## Nits\n\nfine." }], "abc1234def"), null);
+  });
+
   test("a report missing an axis is not a review", () => {
     assert.equal(reviewFor([{ body: "REVIEW abc1234\n\n## Standards\n\nfine." }], "abc1234def"), null);
   });

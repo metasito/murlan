@@ -28,6 +28,11 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
+| `noticed` | One open issue collecting the small defects a session saw outside its ticket, one comment each; the owner promotes what matters | owner |
+
+The **Launch** milestone holds what v1 needs, and only the owner adds to it. The picker takes its
+issues before any other `ready-for-agent`. An issue a session files is never `ready-for-agent`:
+the owner decides whether it is work.
 
 - **`blocked` sits alongside `ready-for-agent`, never instead of it.** That label carries a
   decision the owner already made, and removing it to stop the picker is how the decision is lost.
@@ -74,10 +79,12 @@ the same GitHub account.
   unblocked implement frontier in pick order; a bare issue number inspects that ticket without
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
-  supervisor died between CI rounds), then the oldest open `ready-for-agent` issue with no open
+  supervisor died between CI rounds), then a `main-red` issue, then the oldest in the Launch
+  milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
-  commands when it is.
+  commands when it is. With nothing takeable, its handoff line names the owner's issues the loop
+  is waiting on, the Launch milestone's first.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
   phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
   prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment

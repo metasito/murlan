@@ -1,7 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 
@@ -120,6 +120,28 @@ describe("the frontier's order", () => {
   test("the oldest ticket comes first, whatever its size", () => {
     const b = classify([issue(995, ["ready-for-agent", "size:S"]), issue(70, ["ready-for-agent", "size:L"])]);
     assert.deepEqual(b.frontier.map((i) => i.number), [70, 995]);
+  });
+
+  test("a red main comes first, then the Launch milestone, then the rest, each oldest first", () => {
+    const launch = (n: number) => ({ ...issue(n, ["ready-for-agent"]), milestone: { title: LAUNCH_MILESTONE } });
+    const b = classify([
+      issue(10, ["ready-for-agent"]),
+      launch(900),
+      issue(1500, ["ready-for-agent", "main-red"]),
+      launch(300),
+      { ...issue(5, ["ready-for-agent"]), milestone: { title: "Later" } },
+    ]);
+    assert.deepEqual(b.frontier.map((i) => i.number), [1500, 300, 900, 5, 10]);
+  });
+
+  test("with nothing takeable, the handoff names the owner's asks, the Launch milestone's first", () => {
+    const b = classify([
+      issue(44, ["ready-for-human"]),
+      { ...issue(1107, ["ready-for-human"]), milestone: { title: LAUNCH_MILESTONE } },
+      issue(60, ["deferred"]),
+    ]);
+    assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #44");
+    assert.equal(waitingOn([]), "nothing agent-takeable");
   });
 });
 
