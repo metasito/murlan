@@ -121,7 +121,7 @@ function catchLift(catching: number, cardScale: number): number {
 const CATCH_EASING = Easing.out(Easing.cubic);
 
 // The flight clock counts from the throw (`useFlightClock`), a timing from its first frame after: the turn
-// starts a frame in, in step with the throw that beats it.
+// starts a frame in, in step with the throw that beats it. A frame's length, so off the Motion scale.
 const TURN_LEAD_MS = 1000 / 60;
 // Over the card, never a `filter` on the group: on iOS that darkens the felt beneath.
 const SHADE_Z = Layer.table + 1;
