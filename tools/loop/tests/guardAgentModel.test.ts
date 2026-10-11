@@ -68,7 +68,7 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("a named review dispatch with no brief header is denied", () => {
-    for (const d of ["Completeness check 1103", "Code review #1102", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
+    for (const d of ["Completeness check 1103", "Code review #1102", "Review #1102 round 2", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
       assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /must start with its brief/, d);
     }
   });

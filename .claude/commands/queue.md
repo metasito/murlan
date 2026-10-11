@@ -213,7 +213,7 @@ round 1, then the sha the previous round reviewed.
    gh run view <databaseId> --log-failed | tail -40       # if failure
    ```
 
-2. **Dispatch one `opus` reviewer at `medium` effort** whose prompt starts with the output of this,
+2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, whose prompt starts with the output of this,
    verbatim. A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes it a fix round:
    use the `fix` kind and `<landSha>` as the base. In a later round, append the previous round's
    Blocking findings after the brief.
