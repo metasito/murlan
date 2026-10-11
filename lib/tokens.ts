@@ -170,6 +170,8 @@ export const CardGloss = {
   squash: 1.2,
   spot: { radius: 85, color: '#FFF8E8', alpha: 0.3, mid: { at: 0.3, color: '#FFF4DE', alpha: 0.1 } },
   streak: { color: '#FFF6E4', reach: 260, travel: 0.7, width: 0.2, alpha: { floor: 0.05, lit: 0.22 } },
+  // The materials mockup's `drawBack` glint, over a back's foil ink only (`foilGlint`).
+  foil: { gold: '#FFEEBE', silver: '#E8F0FF', reach: 260, travel: 0.75, width: 0.42, alpha: { edge: 0.1, floor: 0.3, lit: 0.7 } },
 } as const;
 
 // What a card landing throws up off the felt: the mockup's `landDust` (#1242).
@@ -332,13 +334,14 @@ export const FeltGradient = FeltGradients.verde;
 // colour and how dense the lattice is — so a back is those plus a star count,
 // not a bespoke drawing. The field is card stock, not cloth: its own five-stop
 // gradient, so repainting FeltGradients can never repaint a back.
+export const Pewter = '#BFC3C8';
 export const CardBacks = {
   // The prototype's own back, and the default: a green field, so an opponent's
   // fan still reads as cards on the far side of the table.
   smeraldo:   { field: ['#1E6544', '#19583B', '#144B32', '#0F3E29', '#0A3120'], ink: Colors.gold, lattice: 7, starPoints: 8 },
   oro:        { field: ['#7A5528', '#654520', '#503718', '#3B2811', '#271A0A'], ink: '#E2BE62',   lattice: 7, starPoints: 8 },
   rubino:     { field: ['#5E1B28', '#4C1520', '#3A1018', '#2A0B11', '#1A060A'], ink: Colors.gold, lattice: 7, starPoints: 8 },
-  zaffiro:    { field: ['#1C3B63', '#172F50', '#12243E', '#0C192C', '#07101C'], ink: '#BFC3C8',   lattice: 9, starPoints: 6 },
+  zaffiro:    { field: ['#1C3B63', '#172F50', '#12243E', '#0C192C', '#07101C'], ink: Pewter,      lattice: 9, starPoints: 6 },
   // Blind embossed: the lattice and frame are pressed, not inked, and only the star is gold.
   inchiostro: { field: ['#34302C', '#2A2623', '#201D1A', '#171513', '#0E0C0B'], ink: Colors.gold, lattice: 5, starPoints: 4, emboss: true },
 } as const;

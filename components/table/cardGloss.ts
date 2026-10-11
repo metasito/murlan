@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import { CardGloss } from "../../lib/tokens.ts";
+import { CardGloss, Pewter } from "../../lib/tokens.ts";
 import type { Point } from "./cardRects.ts";
 import type { Lamp } from "./lampRig.ts";
 
@@ -78,4 +78,38 @@ export function cardGloss(cx: number, cy: number, w: number, h: number, lamp: Pi
     a: (streak.alpha.floor + streak.alpha.lit * b) * lamp.level,
     band: { x: Math.sin(ang) * peak, y: -Math.cos(ang) * peak, half: half * streak.width },
   };
+}
+
+/** A back's glint, the materials mockup's `drawBack`: a band over the foil ink alone, `edge` alpha off it and `peak` along its axis. */
+export interface FoilGlint {
+  ang: number;
+  /** The band's axis from the card's centre and its half-width, in the card's own turned frame, in design points. */
+  band: { x: number; y: number; half: number };
+  edge: number;
+  peak: number;
+}
+
+/** `rot` the card's turn in degrees, clockwise on screen; the rest as `cardGloss`'s. */
+export function foilGlint(cx: number, cy: number, rot: number, w: number, h: number, lamp: Pick<Lamp, "lx" | "ly" | "level" | "r">): FoilGlint {
+  "worklet";
+  const { falloff, squash, foil } = CardGloss;
+  const vx = lamp.lx - cx;
+  const vy = lamp.ly - cy;
+  const d = Math.sqrt(vx * vx + vy * vy) || 1;
+  const t = (-rot * Math.PI) / 180;
+  const ux = (vx * Math.cos(t) - vy * Math.sin(t)) / d;
+  const uy = (vx * Math.sin(t) + vy * Math.cos(t)) / d;
+  const b = clamp01(1 - Math.sqrt(vx * vx + vy * squash * vy * squash) / (falloff * lamp.r));
+  const half = Math.sqrt(w * w + h * h) / 2;
+  const peak = Math.min(1, d / foil.reach) * foil.travel * half;
+  return {
+    ang: Math.atan2(ux, -uy),
+    band: { x: ux * peak, y: uy * peak, half: half * foil.width },
+    edge: foil.alpha.edge * lamp.level,
+    peak: (foil.alpha.floor + foil.alpha.lit * b) * lamp.level,
+  };
+}
+
+export function foilGlintColor(ink: string): string {
+  return ink === Pewter ? CardGloss.foil.silver : CardGloss.foil.gold;
 }
