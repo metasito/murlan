@@ -23,9 +23,10 @@ function scannedFiles(): string[] {
 }
 
 const NAMED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*)?(?:@sha256:[0-9a-f]+)?$/;
-const DOCKER_LINE = /\bdocker\s+(.*)/;
+const DOCKER_LINE = /\bdocker\s+([^;&|]*)/g;
 const DOCKER_CALL = /(?:\bdocker\s*\(\s*|["'`]docker["'`]\s*,\s*)/g;
-const MESSAGE = /\bnew\s+\w*Error\s*\(|\bconsole\.\w+\s*\(/;
+const MESSAGE = /\bnew\s+\w*Error\s*\(|\bconsole\.\w+\s*\(/g;
+const GLOBAL_VALUE_FLAGS = new Set(["-c", "--config", "--context", "-H", "--host", "-l", "--log-level", "--tlscacert", "--tlscert", "--tlskey"]);
 const STRING = String.raw`"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|` + "`(?:[^`\\\\]|\\\\.)*`";
 const ARRAY_ELEMENT = new RegExp(String.raw`\s*(${STRING}|[^,\]]+?)\s*([,\]])`, "y");
 const YAML_IMAGE =
@@ -66,7 +67,10 @@ function takesValue(values: Set<string>, flag: string): boolean {
 }
 
 function dockerImage(args: string[]): string | undefined {
-  const [command, ...rest] = ["container", "image"].includes(args[0]) ? args.slice(1) : args;
+  let at = 0;
+  while (args[at]?.startsWith("-")) at += takesValue(GLOBAL_VALUE_FLAGS, args[at]) ? 2 : 1;
+  if (["container", "image"].includes(args[at])) at++;
+  const [command, ...rest] = args.slice(at);
   const values = VALUE_FLAGS.get(command);
   if (!values) return undefined;
   for (let i = 0; i < rest.length; i++) {
@@ -106,9 +110,26 @@ function callArguments(code: string, from: number): string[] | undefined {
   return identifier ? declared(code, identifier) : undefined;
 }
 
+function withoutMessageStrings(code: string): string {
+  let out = code;
+  for (const call of code.matchAll(MESSAGE)) {
+    const literal = new RegExp(STRING, "y");
+    for (let i = call.index + call[0].length, depth = 1; depth > 0 && i < code.length; i++) {
+      literal.lastIndex = i;
+      const string = /["'`]/.test(code[i]) ? literal.exec(code)?.[0] : undefined;
+      if (string) {
+        if (depth === 1) out = out.slice(0, i) + `"${" ".repeat(string.length - 2)}"` + out.slice(i + string.length);
+        i += string.length - 1;
+      } else if (code[i] === "(") depth++;
+      else if (code[i] === ")") depth--;
+    }
+  }
+  return out;
+}
+
 export function imageRefs(file: string, source: string): string[] {
-  const code = stripComments(source);
   const isScript = /\.m?[jt]s$/.test(file);
+  const code = isScript ? withoutMessageStrings(stripComments(source)) : stripComments(source);
   const refs: string[] = [];
   if (/\.ya?ml$/.test(file)) {
     for (const line of code.split(/\r?\n/)) {
@@ -117,10 +138,10 @@ export function imageRefs(file: string, source: string): string[] {
     }
   }
   for (const line of code.replace(/\\\r?\n/g, " ").split(/\r?\n/)) {
-    if (isScript && MESSAGE.test(line)) continue;
-    const args = DOCKER_LINE.exec(line)?.[1].trim().split(/\s+/).map((t) => t.replace(/^["'`]|["'`,;)]+$/g, ""));
-    const image = args && dockerImage(args);
-    if (image) refs.push(image);
+    for (const [, tail] of line.matchAll(DOCKER_LINE)) {
+      const image = dockerImage(tail.trim().split(/\s+/).map((t) => t.replace(/^["'`]|["'`,;)]+$/g, "")));
+      if (image) refs.push(image);
+    }
   }
   if (isScript) {
     for (const call of code.matchAll(DOCKER_CALL)) {
@@ -148,12 +169,14 @@ export function hubPulls(found: { file: string; ref: string }[], yamlSources: st
         .map(([, name]) => name),
     ),
   );
-  return found
-    .filter(({ ref }) => {
-      const variable = /^\$\{?(\w+)\}?$|^\$\{\{\s*env\.(\w+)\s*\}\}$/.exec(ref);
-      return variable ? !safe.has(variable[1] ?? variable[2]) : isDockerHub(ref);
-    })
-    .map(({ file, ref }) => `${file}: ${ref}`);
+  const pullsFromHub = (ref: string): boolean => {
+    if (!ref.startsWith("$")) return isDockerHub(ref);
+    const variable = /^\$(?:(\w+)|\{(\w+)(?::?[-=](.+))?\}|\{\{\s*env\.(\w+)\s*\}\})$/.exec(ref);
+    if (!variable) return true;
+    const [, bare, braced, fallback, env] = variable;
+    return !safe.has(bare ?? braced ?? env) || (fallback !== undefined && pullsFromHub(fallback));
+  };
+  return found.filter(({ ref }) => pullsFromHub(ref)).map(({ file, ref }) => `${file}: ${ref}`);
 }
 
 describe("no CI job pulls an image from Docker Hub", () => {
@@ -207,6 +230,21 @@ describe("no CI job pulls an image from Docker Hub", () => {
       ["ghcr.io/a/b:1"],
     );
     assert.deepEqual(imageRefs("w.yml", "        image: ${{ matrix.pg }}\n"), ["${{ matrix.pg }}"]);
+    assert.deepEqual(imageRefs("s.sh", "if command -v docker >/dev/null; then docker run --rm postgres:16; fi\n"), [
+      "postgres:16",
+    ]);
+    assert.deepEqual(imageRefs("w.yml", "      - run: docker info && docker run --rm postgres:16\n"), ["postgres:16"]);
+    assert.deepEqual(imageRefs("s.sh", "echo docker up; docker pull redis:7\n"), ["redis:7"]);
+    assert.deepEqual(
+      imageRefs("s.sh", "docker --context x run a:1\ndocker -H tcp://x run b:1\ndocker --log-level debug -D pull c:1\n"),
+      ["a:1", "b:1", "c:1"],
+    );
+    assert.deepEqual(imageRefs("s.mjs", 'spawnSync("docker", ["--context", "x", "run", "postgres:16"]);\n'), ["postgres:16"]);
+    assert.deepEqual(imageRefs("s.mjs", 'execSync("docker run --rm postgres:16"); console.log("ok");\n'), ["postgres:16"]);
+    assert.deepEqual(imageRefs("s.mjs", 'console.log(execSync("docker run --rm postgres psql").toString());\n'), [
+      "postgres",
+    ]);
+    assert.deepEqual(imageRefs("s.mjs", "throw new Error(r.stderr || `docker run failed on port ${port}`);\n"), []);
     assert.deepEqual(imageRefs("s.mjs", 'docker(["ps"]);\nconst u = "localhost:5432";\n'), []);
     assert.deepEqual(imageRefs("s.mjs", 'throw new Error(`docker run failed on port ${port}`);\n'), []);
     assert.deepEqual(imageRefs("s.mjs", 'import "node:fs";\n// docker run "postgres:16"\n'), []);
@@ -233,6 +271,11 @@ describe("no CI job pulls an image from Docker Hub", () => {
     assert.deepEqual(hubPulls(pull, ["env:\n  X_IMAGE: postgres:16\n"]), ["s.sh: $X_IMAGE"]);
     assert.deepEqual(hubPulls([{ file: "w.yml", ref: "${{ env.X_IMAGE }}" }], ['  X_IMAGE: "ghcr.io/a/b:1"\n']), []);
     assert.deepEqual(hubPulls([{ file: "w.yml", ref: "${{ matrix.pg }}" }], []), ["w.yml: ${{ matrix.pg }}"]);
+    const safe = ["env:\n  X_IMAGE: ghcr.io/a/b:1\n"];
+    const withDefault = (fallback: string) => hubPulls([{ file: "s.sh", ref: `\${X_IMAGE:-${fallback}}` }], safe);
+    assert.deepEqual(withDefault("zricethezav/gitleaks:v8"), ["s.sh: ${X_IMAGE:-zricethezav/gitleaks:v8}"]);
+    assert.deepEqual(withDefault("ghcr.io/a/b:1"), []);
+    assert.deepEqual(hubPulls([{ file: "s.sh", ref: "$(cat image.txt)" }], safe), ["s.sh: $(cat image.txt)"]);
   });
 
   test("none of them is on Docker Hub", () => {
