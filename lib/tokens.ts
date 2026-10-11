@@ -174,6 +174,24 @@ export const CardGloss = {
   foil: { gold: '#FFEEBE', silver: '#E8F0FF', reach: 260, travel: 0.75, width: 0.42, alpha: { edge: 0.1, floor: 0.3, lit: 0.7 } },
 } as const;
 
+// A manche's outcome on the felt: the mockup's `burstMotes`, `mwin` and `mlose` (#1469).
+export const MancheMoment = {
+  golds: ['#FFE2A8', '#E9C46A', '#FFF6D8'],
+  motes: { won: 46, lost: 20 },
+  lostScale: 0.7,
+  ringPt: 14,
+  speed: [30, 150],
+  lifeSec: [0.9, 1.8],
+  size: [0.6, 1.8],
+  glow: 5,
+  // The won manche's top card: the card-glow mockup's `.card.hi`.
+  litRingPt: 2,
+  litGlowPt: 22,
+  lostLevel: 0.8,
+  lostLevelRate: 5,
+  releaseRate: 3,
+} as const;
+
 // What a card landing throws up off the felt: the mockup's `landDust` (#1242).
 export const Dust = {
   mote: '#FFE2A8',

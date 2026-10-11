@@ -5,6 +5,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import { getAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as particles from '@/components/table/particles';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 import { mancheEndingOnsets } from '@/lib/game/mancheEnding';
@@ -27,6 +28,7 @@ const ENDED: GameState = {
 const DEALT: GameState = { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false };
 let mockGameState: GameState = ENDED;
 let mockScoresCurrent = true;
+let mockHandScores: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
 let mockVotes: { votes: string[]; total: number } | null = null;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
@@ -57,7 +59,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, handsPlayed: 1 },
     cumulativeScores: { player_0: 10, player_1: 4, player_2: 2, player_3: 1 },
-    handScores: { player_0: 3, player_1: 1, player_2: 0, player_3: 0 },
+    handScores: mockHandScores,
     handScoresCurrent: mockScoresCurrent,
     ratingDeltas: {},
     handRecorded: true,
@@ -93,6 +95,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockGameState = ENDED;
   mockScoresCurrent = true;
+  mockHandScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
   mockVotes = null;
   mockVoteRematch.mockClear();
 });
@@ -151,6 +154,30 @@ describe('a manche ending online', () => {
     await act(async () => view.rerender(screenNow()));
     await advance(close);
     expect(pillOpen()).toBe(true);
+    await view.unmount();
+  });
+
+  it("decides a teams manche's outcome on its own scores, never the last manche's", async () => {
+    const teamOf = (i: number) => (i === 0 || i === 3 ? 'A' : 'B');
+    mockGameState = {
+      ...ENDED,
+      gameMode: 'teams',
+      players: [0, 1, 2, 3].map((i) => ({ ...seat(i), team: teamOf(i) })),
+      rankings: ['player_0', 'player_3', 'player_1', 'player_2'],
+    };
+    mockHandScores = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
+    mockScoresCurrent = false;
+    const motes = jest.spyOn(particles, 'mancheMotes');
+    const view = await render(screenNow());
+    await advance(close + settled);
+    expect(motes).not.toHaveBeenCalled();
+
+    mockHandScores = { player_0: 3, player_3: 2, player_1: 1, player_2: 0 };
+    mockScoresCurrent = true;
+    await act(async () => view.rerender(screenNow()));
+    await advance(close + settled);
+    expect(motes.mock.calls.map(([outcome]) => outcome)).toEqual(['won']);
+    motes.mockRestore();
     await view.unmount();
   });
 });

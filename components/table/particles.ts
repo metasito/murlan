@@ -3,7 +3,8 @@
 // 874 × 402 points. It draws nothing, and game information never passes through it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { BombFx, Dust } from "../../lib/tokens.ts";
+import { BombFx, Dust, MancheMoment } from "../../lib/tokens.ts";
+import type { HandOutcome } from "../../lib/game/matchState.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 import { MOTES } from "./air.ts";
@@ -168,6 +169,33 @@ export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | 
   "worklet";
   if (reduced || l.catchUp) return [];
   return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
+}
+
+/** The mockup's `burstMotes` at the manche winner's seat `at`: the full burst for a win, a smaller one for any other decided finish. */
+export function mancheMotes(outcome: HandOutcome, at: { x: number; y: number }, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
+  "worklet";
+  if (reduced || outcome === "draw" || outcome === "pending") return [];
+  const M = MancheMoment;
+  const R = (a: number, b: number) => a + rng() * (b - a);
+  const big = outcome === "won" ? 1 : M.lostScale;
+  const x0 = at.x / sx;
+  const y0 = at.y / sy;
+  return Array.from({ length: outcome === "won" ? M.motes.won : M.motes.lost }, (_, i) => {
+    const a = R(0, TAU);
+    const s = R(M.speed[0], M.speed[1]) * big;
+    return {
+      x: x0 + Math.cos(a) * M.ringPt,
+      y: y0 + Math.sin(a) * M.ringPt,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      g: -14,
+      drag: 0.95,
+      life: R(M.lifeSec[0], M.lifeSec[1]),
+      size: R(M.size[0], M.size[1]) * big,
+      col: M.golds[i % 3],
+      glow: M.glow,
+    };
+  });
 }
 
 /** The mockup's `bombFx` sparks and embers, thrown `BombFx.delayMs` after a bomb's landing at `x`, `y`. */

@@ -3,8 +3,8 @@
 // budget", and "a test pins the count rather than trusting the
 // implementation to stay honest." A source scan can only read the source;
 // it cannot see what mounting `BombBurst` actually costs, so this mounts the
-// real tree and counts what react-test-renderer actually built. `Flare` and
-// `LampLift` are a plain filled+shadowed circle rather than an `<Svg>` (a
+// real tree and counts what react-test-renderer actually built. `Flare` is a
+// plain filled+shadowed circle rather than an `<Svg>` (a
 // blind critique on #765's own review found that shape's `transform: scale`
 // wrapping an `<Svg>` unverifiable on native — see `moments.tsx`'s own
 // comment), so every node here is a paint node; there is no gradient-definition
@@ -13,8 +13,7 @@ import { describe, it, expect } from "@jest/globals";
 import React from "react";
 import { render } from "@testing-library/react-native";
 import { makeMutable } from "react-native-reanimated";
-import { BombBurst, LampLift } from "@/components/table/moments";
-import { TABLE_CENTRE, restingLamp } from "@/components/table/lampRig";
+import { BombBurst } from "@/components/table/moments";
 import { NO_LANDING } from "@/components/table/useFlightClock";
 
 const IDLE = makeMutable(NO_LANDING);
@@ -62,7 +61,7 @@ function directChildren(node: TestJson | null): TestJson[] {
  * The alpha channel of a static style colour — 0 for a fully transparent
  * `rgba(...)`, 1 for anything else resolvable (a solid `rgb()`/hex/named
  * colour has no alpha channel to be zero). A third blind critique on #765
- * set every `GradientLayers` fill's alpha to 0 — the flare and lift firing
+ * set every `GradientLayers` fill's alpha to 0 — the flare firing
  * on schedule and completely invisible — and nothing that only reads the
  * wrapper's own `opacity`/`transform` or counts child nodes catches that.
  */
@@ -101,20 +100,6 @@ describe("the bomb burst's own node budget (#765)", () => {
 
     const flare = findByTestID(r.toJSON(), "bomb-flare");
     const layers = directChildren(flare);
-    expect(layers.length).toBeGreaterThan(0);
-    for (const layer of layers) {
-      const style = layer.props?.style as { backgroundColor?: unknown } | undefined;
-      expect(alphaOf(style?.backgroundColor)).toBeGreaterThan(0);
-    }
-
-    await r.unmount();
-  });
-
-  it("the lamp lift's own layers actually paint something, not a transparent fill", async () => {
-    const r = await render(<LampLift landing={IDLE} scale={1} rig={{ lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 }} />);
-
-    const lift = findByTestID(r.toJSON(), "lamp-lift");
-    const layers = directChildren(lift);
     expect(layers.length).toBeGreaterThan(0);
     for (const layer of layers) {
       const style = layer.props?.style as { backgroundColor?: unknown } | undefined;

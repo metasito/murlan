@@ -111,9 +111,11 @@ export function landingTier(input: {
   comboType: Combination["type"];
   handOver: boolean;
   matchOver: boolean;
+  /** `handOutcomeFor` answered `won`; a pending outcome is not a win. */
+  viewerWon: boolean;
 }): ImpactTier {
   const playTier = comboImpactTier(input.comboType);
-  if (!input.handOver) return playTier;
+  if (!input.handOver || (!input.matchOver && !input.viewerWon)) return playTier;
   const closureTier: ImpactTier = input.matchOver ? "partitaWon" : "mancheWon";
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
@@ -251,12 +253,6 @@ export function flareKindFor(tier: ImpactTier): FlareKind {
   if (tier === "bomb") return "brief";
   if (tier === "partitaWon") return "settle";
   return "none";
-}
-
-/** Whether a tier's landing lifts the lamp rather than flaring it. */
-export function lampLiftFor(tier: ImpactTier): boolean {
-  "worklet";
-  return tier === "mancheWon";
 }
 
 // ─── Seat anchors ──────────────────────────────────────────────────────────────

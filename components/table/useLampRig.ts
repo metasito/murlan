@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAnimatedReaction, useFrameCallback, useSharedValue, type FrameInfo, type SharedValue } from "react-native-reanimated";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { Motion } from "@/lib/theme";
+import { MancheMoment, Motion } from "@/lib/theme";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { flareKindFor } from "@/components/flightPhysics";
 import { designScale, lampControls, lampMoved, restingLamp, stepLamp, type Lamp, type Pool } from "./lampRig";
@@ -45,8 +45,11 @@ export function useLampRig({
   width,
   height,
   landing,
+  dim = false,
 }: {
   pool: Pool;
+  /** Held at `MancheMoment.lostLevel` while true, back to 1 after. */
+  dim?: boolean;
   /** A deal under way, `offsetMs` its onset on its clock: the lamp comes up a lead after it. */
   deal: { offsetMs: number; clock: SharedValue<number> } | undefined;
   width: number;
@@ -77,6 +80,16 @@ export function useLampRig({
       return s;
     }, true);
   }, [px, py, reach, lamp, reduced]);
+
+  // Before the deal's breath, which takes the level over when both start in one commit.
+  useEffect(() => {
+    lamp.modify((s) => {
+      "worklet";
+      if (dim) lampControls.setLevel(s, MancheMoment.lostLevel, MancheMoment.lostLevelRate);
+      else if (s.lvlT === MancheMoment.lostLevel) lampControls.setLevel(s, 1, MancheMoment.releaseRate);
+      return s;
+    }, true);
+  }, [dim, lamp]);
 
   const dealClock = deal?.clock;
   const riseAt = (deal?.offsetMs ?? 0) + Motion.deal.lead;

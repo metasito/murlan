@@ -1,6 +1,6 @@
-// tests/native/lampFlareWiring.test.tsx — the lamp's flare and lift (#765),
+// tests/native/lampFlareWiring.test.tsx — the lamp's flare (#765),
 // mounted rather than grepped: the tier a real landing writes onto the one
-// signal the shake, the burst and the lift all react to, on its contact frame.
+// signal the shake and the burst both react to, on its contact frame.
 import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
 import React from "react";
 import { act, render } from "@testing-library/react-native";
@@ -108,7 +108,7 @@ async function landingOf(state: GameState, matchOver = false) {
   return { seq, tier };
 }
 
-describe("the lamp's flare and lift, wired off the same tier the shake reads (#765)", () => {
+describe("the lamp's flare, wired off the same tier the shake reads (#765)", () => {
   beforeEach(() => {
     mockLanding.current = null;
     jest.useFakeTimers();

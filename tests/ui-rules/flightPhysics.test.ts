@@ -56,7 +56,6 @@ import {
   seatsJustPassed,
   floatTop,
   flareKindFor,
-  lampLiftFor,
   type ImpactTier,
   type FlareKind,
 } from "../../components/flightPhysics.ts";
@@ -565,25 +564,30 @@ describe("the table's own trauma escalation (#763)", () => {
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false }), "ordinary");
-      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false }), "bomb");
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying, with the match still open, is the manche rung", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false }), "mancheWon");
+    test("the hand emptying, with the match still open, is the manche rung for the viewer who won it", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: true }), "mancheWon");
+    });
+
+    test("a manche the viewer did not win lands at the play's own tier: no shake for lost, neutral or draw (#1469)", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: false }), "bomb");
     });
 
     test("the hand emptying and the match closing with it is the partita rung", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true }), "partitaWon");
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: false }), "partitaWon");
     });
 
     test("matchOver with handOver false never fires the partita rung — a match cannot close on a hand still in play", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true }), "ordinary");
+      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true, viewerWon: true }), "ordinary");
     });
 
     test("a bomb that also closes the manche is only as loud as its loudest rung", () => {
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false }), "bomb");
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: true }), "bomb");
     });
   });
 
@@ -850,7 +854,7 @@ describe("the beaten pile's flinch (#764)", () => {
   });
 });
 
-describe("the lamp's flare and lift (#765)", () => {
+describe("the lamp's flare (#765)", () => {
   const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
 
   test("the graduated table #101 settled: only the bomb and the partita flare", () => {
@@ -872,20 +876,6 @@ describe("the lamp's flare and lift (#765)", () => {
     assert.equal(flareKindFor("straightFlush"), "none");
   });
 
-  test("only the manche rung lifts the lamp — the row that hands over to the banner instead of flaring", () => {
-    for (const tier of ALL_TIERS) {
-      assert.equal(lampLiftFor(tier), tier === "mancheWon", `${tier} lamp lift`);
-    }
-  });
-
-  test("no tier both lifts and flares — the lamp does one or the other, never both", () => {
-    for (const tier of ALL_TIERS) {
-      assert.ok(
-        !(lampLiftFor(tier) && flareKindFor(tier) !== "none"),
-        `${tier} must not both lift and flare`
-      );
-    }
-  });
 });
 
 describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () => {
