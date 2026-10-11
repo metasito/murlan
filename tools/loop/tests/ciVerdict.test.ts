@@ -294,6 +294,15 @@ describe("a job stopped by its own timeout-minutes", () => {
     assert.match(v.output ?? "", /Install postgresql-client/);
   });
 
+  test("names the timed-out job when the run itself concluded failure", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" }, [
+      { name: "Lint", conclusion: "success", steps: 9 },
+      { name: "iOS compiles", conclusion: "cancelled", steps: 12, timedOut: true },
+    ]);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "iOS compiles");
+  });
+
   test("a run cancelled by a newer push still reads as infrastructure", () => {
     const { gh, asked } = fakeGh(
       36503903790,

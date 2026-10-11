@@ -35,6 +35,14 @@ export function markTimedOut(jobs: JobRow[], gh: (args: string[]) => string, rep
   }
 }
 
+export function failedLogArgs(repo: string, runId: number, jobs: JobRow[], failedStep?: string): string[] {
+  const timedOut = jobs.find((j) => j.timedOut && j.name === failedStep);
+  // `--log-failed` prints only failed steps, and a timed-out job's step reads cancelled.
+  return timedOut
+    ? ["run", "view", "--job", String(timedOut.id), "--repo", repo, "--log"]
+    : ["run", "view", String(runId), "--repo", repo, "--log-failed"];
+}
+
 /** How far a run still going has got, for the board. It says nothing about the verdict. */
 export interface CiProgress {
   done: number;
@@ -279,13 +287,8 @@ function jobsAndLog(
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (withLog && !verdict.pass && !verdict.infrastructure) {
-    const timedOut = jobs.find((j) => j.timedOut && j.name === verdict.failedStep);
-    // `--log-failed` prints only failed steps, and a timed-out job's step reads cancelled.
-    const logArgs = timedOut
-      ? ["run", "view", "--job", String(timedOut.id), "--repo", repo, "--log"]
-      : ["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"];
     try {
-      const strippedLines = gh(logArgs, until)
+      const strippedLines = gh(failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep), until)
         .split("\n")
         .map(stripLogPrefix);
       testIds = failingTestIds(strippedLines.join("\n"));
