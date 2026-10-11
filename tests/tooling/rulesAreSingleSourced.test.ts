@@ -141,10 +141,9 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
-  test("phase D runs the real two-axis code-review, not a hand-rolled single subagent", () => {
+  test("phase D runs one reviewer whose report sorts Blocking from the rest", () => {
     const queue = read(".claude/commands/queue.md");
-    assert.match(queue, /mattpocock-skills:code-review/);
-    assert.match(queue, /## Standards.{0,80}## Spec/s);
+    assert.match(queue, /## Blocking.{0,40}## Nits.{0,40}## Pre-existing/s);
   });
 
   // The floor: with a rule genuinely duplicated, the check above must fail. A pattern that no
@@ -163,7 +162,7 @@ describe("every agent rule is written down exactly once", () => {
   // empty file, which is clean under every assertion here. Without this, moving
   // one of these files takes it out of the guard silently.
   test("every instruction file is still where the list says", () => {
-    assert.ok(INSTRUCTION_FILES.length >= 8, `only ${INSTRUCTION_FILES.length} instruction files found`);
+    assert.ok(INSTRUCTION_FILES.length >= 7, `only ${INSTRUCTION_FILES.length} instruction files found`);
     const gone = INSTRUCTION_FILES.filter((f) => !existsSync(f));
     assert.deepEqual(gone, [], `listed but missing: ${gone.join(", ")}`);
   });
@@ -298,7 +297,7 @@ const NEW_RULE_PHRASES: NewPhraseEntry[] = [
   ["release removes in-progress and says why", 26, "remove `in-progress`, say why"],
   ["a routed implement goes through /queue", 27, "a routed `implement` goes through `/queue`"],
   ["ready-for-agent comes off with ready-for-human", 28, "`ready-for-agent` comes off at the same time"],
-  ["a false or missed finding costs a whole round", 29, "a false or missed finding costs a whole round"],
+  ["a nit never costs a round", 29, "a nit never costs a round"],
   ["a gap named beats a green report", 30, "a gap named is worth more than a green report"],
   ["preflight blocks a run starting on an uncommitted one", 31, "blocks a run that would start on top of one"],
   ["outstanding work is a GitHub issue, never a TODO", 33, "never a `TODO` or a markdown backlog"],

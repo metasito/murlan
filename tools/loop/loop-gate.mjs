@@ -93,11 +93,10 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
  * Phase D's ceiling, here rather than in `queue.md`'s prose, because that is the difference
  * between a bound a test can fail and a sentence.
  *
- * It is the largest cost lever in the loop: phase D is 78% of a run's clock and every round is two
- * sonnet reviewers, so this one number multiplied out is 126 of the last 144 subagents. A ceiling,
- * never a target — phase D stops earlier when a round raises nothing new.
+ * The full review, then at most two reviews of a fix. A third review that still blocks means each fix
+ * is making the next defect (#1424), which a reviewer owes the owner, not another round.
  */
-export const MAX_REVIEW_ROUNDS = 4;
+export const MAX_REVIEW_ROUNDS = 3;
 
 /** @param {{reviewRounds?: number|null}} s */
 export function roundVerdict({ reviewRounds }) {
@@ -138,11 +137,11 @@ export function pushVerdict(s) {
   ] };
   if (s.verdict.decision !== "LAND") return { ok: false, why: "the reviewer held this diff", lines: [s.verdict.line] };
   if (!s.review) return { ok: false, why: `no review report for ${s.head.slice(0, 7)} on the issue`, lines: [
-    "A verdict is the session's read of two reports, and those reports are the record. Post them",
-    "as their own comment before the verdict, first line the head they read:",
+    "A verdict is the session's read of the reviewer's report, and that report is the record. Post",
+    "it as its own comment before the verdict, first line the head it read:",
     `  REVIEW ${s.head.slice(0, 7)}`,
-    "then `## Standards` and `## Spec`, unmerged. A LAND with nothing behind it is what put two",
-    "red branches on origin.",
+    "then `## Blocking`, `## Nits` and `## Pre-existing`. A LAND with nothing behind it is what put",
+    "two red branches on origin.",
   ] };
   return { ok: true };
 }
@@ -192,8 +191,8 @@ function reviewRound() {
   }
   console.error(
     `loop-gate: #${s.ticket} — ${round.why}\n\n` +
-      "  Do not park for this. Fix anything that is an actual blocker, then post your own\n" +
-      "  VERDICT: LAND <sha> naming what you are accepting, and go to phase E on that head.",
+      "  Do not review again and do not land. Say on the issue which Blocking finding is still open,\n" +
+      '  then stand down: LOOP-RESULT {"ticket":<n>,"phase":"D","stoodDown":true,"why":"<the finding>"}',
   );
   return 1;
 }

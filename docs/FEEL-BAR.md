@@ -5,6 +5,9 @@ with `WebFetch`, never `curl`) is the floor for every moment below, never the ce
 critic can `WebFetch` and compare us against, plus ideas past any reference for what "even
 cooler" means, stated as frame properties rather than adjectives.
 
+No new moments before launch: the owner's device pass (#1393) decides which visual fixes ship,
+and a visual issue outside the Launch milestone waits until after it.
+
 Every entry below cites what was checked, and how, at that entry — a per-line claim, not a
 blanket one. Where a source publishes no number for a quality we needed, that is stated
 rather than invented.

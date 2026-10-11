@@ -108,19 +108,7 @@ derives it from git and the tracker.
    node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>
    ```
 
-2. **A `size:L` ticket with three or more independent feature groups, or any ticket whose scope
-   report names more than 10 files to change in two or more, is split before it is built.** The
-   scope report lists the groups. Keep the first group here; file each other group
-   as its own ticket, carrying its boxes and any owner ruling word for word:
-
-   ```sh
-   gh issue create --title "<group> (split from #<n>)" --body-file <file> --label ready-for-agent --label size:<S|M>
-   ```
-
-   Then post a new Definition of done on #<n> naming only the first group's boxes and each child
-   ticket; build only that group.
-
-3. No file is out of scope. If the report names the schema, socket protocol, deploy runtime
+2. No file is out of scope. If the report names the schema, socket protocol, deploy runtime
    contract or a workflow, the PR body says what getting it wrong costs.
 
 ## C — Build
@@ -174,11 +162,10 @@ Then leave through **Leaving C**.
 - **A diff that describes code is traced here, not in phase D** (rule 20).
 - **A defect in the lines this diff changes is fixed here** (outside a HOLD round): add a
   Definition-of-done box, name it in the PR body. A defect in your own tools, checks or worktree
-  is rule 34's. Anything else in the product is filed, not built:
-  `gh issue create --title "<what>" --body-file <file> --label <label> --label size:<size>` —
-  `ready-for-agent` when its Definition of done has no open box, `ready-for-human` only when it
-  needs an account, a device, a design or a policy call. If it cannot start until this lands,
-  block it on this ticket with `docs/agents/issue-tracker.md`'s `blocked_by` recipe.
+  is rule 34's. Anything else is not built here. A security, data-loss or player-visible defect gets
+  its own issue for the owner, never `ready-for-agent`:
+  `gh issue create --title "<what>" --body-file <file> --label ready-for-human`. Anything smaller is
+  one comment on the open issue labelled `noticed` (create it with that label if none is open).
 - **A ticket's prescribed form is a proposal.** If a test rules it out, build its intent; say
   why in the commit.
 - **Commit each slice as you finish it**, by pathspec (rule 11), the message ending in
@@ -214,90 +201,60 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","w
 
 `PHASE D`
 
-The review is `mattpocock-skills:code-review`'s two axes. `<base>` is
-`origin/main` in round 1, then the sha the previous round reviewed.
+One reviewer reads the change; only a Blocking finding sends it back. `<base>` is `origin/main` in
+round 1, then the sha the previous round reviewed.
 
-1. **Size the round.** A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes this
-   a fix round. Run:
-
-   ```sh
-   node tools/loop/loop-gate.mjs --fix-delta <landSha>
-   ```
-
-   If its `lines` is at most 80: one `opus` reviewer, no refuter, whose prompt starts with the
-   output of this, verbatim. Its comment's first line is `REVIEW <sha> fix`, still with both
-   headings. Skip to step 3.
-
-   ```sh
-   node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>
-   ```
-
-2. **The full review**: two fresh `opus` subagents at `medium` effort, dispatched in one message, each whose prompt
-   starts with the output of one of these, verbatim:
-
-   ```sh
-   node tools/loop/brief.mjs standards <n> .worktrees/agent-<n> <base>
-   node tools/loop/brief.mjs spec <n> .worktrees/agent-<n> <base>
-   ```
-
-   **When the diff changes a contract** — what a function promises beyond its types — append this
-   to the Spec brief: `The diff changes this promise: <old> → <new>. Find every caller that still
-   assumes the old one, and every test that would pass either way.`
-
-   Then an `opus` refuter at `medium` effort, given both reports, whose prompt starts with the output of this,
-   verbatim:
-
-   ```sh
-   node tools/loop/brief.mjs refute <n> .worktrees/agent-<n> <base>
-   ```
-
-3. **Post the reports** as one comment, first line naming the head they read: any refuter's
-   survivors first, then the reports unmerged.
-
-   ```
-   REVIEW <sha>
-
-   ## Survivors
-   ...
-   ## Standards
-   ...
-   ## Spec
-   ...
-   ```
-
-4. **CI has been running on this head since the handoff**; if it already failed, that is a finding:
+1. **Wait for CI on HEAD** with `node tools/loop/await-run.mjs <run-id>`. A red run this change
+   caused is a Blocking finding; a red run it did not cause is ruled out (rule 37) and named in the
+   verdict.
 
    ```sh
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
    gh run view <databaseId> --log-failed | tail -40       # if failure
    ```
 
-5. **Post the verdict** as its own comment, after reading the reports yourself. `<sha>` is
-   `git rev-parse --short HEAD`:
+2. **Dispatch one `opus` reviewer at `medium` effort** whose prompt starts with the output of this,
+   verbatim. A `CI-RED` comment newer than the last `VERDICT: LAND <landSha>` makes it a fix round:
+   use the `fix` kind and `<landSha>` as the base. In a later round, append the previous round's
+   Blocking findings after the brief.
+
+   ```sh
+   node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
+   node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
+   ```
+
+3. **Post the report** as one comment, first line naming the head it read:
+
+   ```
+   REVIEW <sha>
+
+   ## Blocking
+   ...
+   ## Nits
+   ...
+   ## Pre-existing
+   ...
+   ```
+
+4. **Post the verdict** as its own comment. `<sha>` is `git rev-parse --short HEAD`:
 
    ```sh
    gh issue comment <n> --body-file <file>   # first line: VERDICT: LAND <sha>
    ```
 
-   or `VERDICT: HOLD <sha> — <one sentence>`. HOLD on any hard Standards violation or any missing
-   or wrong Spec finding; a baseline smell alone is a note. Close evidence gaps (an unrun CI or
-   device job, an open question; wait with `node tools/loop/await-run.mjs <run-id>…`) before the
-   verdict; HOLD only for what needs a commit: a HOLD is final for its head (`loop-derive.mjs`
-   `verdictFor`). Never write a round's review yourself (rule 29); only the cap's LAND has no new
-   review. Where you disagree with a finding, put one line in the commit body. Reinstate a refuted
-   finding only with the input that breaks the code.
+   LAND when the report has no Blocking finding and CI is green on this head; otherwise
+   `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
+   `verdictFor`). Never write the report yourself (rule 29). Nits are not fixed in review: list them
+   in the PR body. Where you disagree with a Blocking finding, put one line in the commit body.
 
-**Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`;
-it exits non-zero at the cap, with guidance. **Stop before the cap when a round earns nothing**: a
-round raising nothing new ends the review with `VERDICT: LAND`. At the cap, fix any actual blocker
-without spending a round; for the rest, follow its guidance and say what you accepted in phase
-F's Definition-of-done comment. Park only for a decision only the owner can make.
+**Rounds.** Before each later round, run `node tools/loop/loop-gate.mjs --review-round`. At the cap
+it exits non-zero: do not land, say on the issue which Blocking finding is still open, and stand
+down so the ticket goes to the owner.
 
-**A round is a process.** After a `HOLD`, say `PHASE C`, fix what it named and every sibling of it
-(`FIX-NOTES` lists each site, fixed or ruled out), then leave through
-phase C's steps 1–4. A failure only a local run showed, which neither the review nor CI named,
-is not the round's to fix: rule it out (rule 37), file what survives (rule 35), name it in `FIX-NOTES`.
-Then hand off:
+**A round is a process.** After a `HOLD`, say `PHASE C`, fix exactly the Blocking findings (no
+sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through phase C's steps 1–4.
+A failure only a local run showed, which neither the review nor CI named, is ruled out (rule 37)
+and named in `FIX-NOTES`. Then hand off:
 
 ```
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}

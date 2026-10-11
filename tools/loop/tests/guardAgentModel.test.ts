@@ -52,14 +52,14 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("the exact brief with material appended is allowed", () => {
-    const refute = agent("Refute findings", brief("refute", { n: 42, worktree: WT }) + "\n## Standards\n- x");
-    assert.equal(run({ ...refute, tool_input: { ...refute.tool_input, model: "opus" } }), "");
+    const later = agent("Review round 2", brief("review", { n: 42, worktree: WT, base: "abc1234" }) + "\n## Blocking\n- x");
+    assert.equal(run({ ...later, tool_input: { ...later.tool_input, model: "opus" } }), "");
   });
 
   test("a brief dispatched on another model than its kind's is denied", () => {
-    const spec = agent("Spec review", brief("spec", { n: 42, worktree: WT }));
-    assert.match(run(spec), /spec brief runs on `opus`/);
-    assert.equal(run({ ...spec, tool_input: { ...spec.tool_input, model: "claude-opus-5-5" } }), "");
+    const review = agent("Code review", brief("review", { n: 42, worktree: WT }));
+    assert.match(run(review), /review brief runs on `opus`/);
+    assert.equal(run({ ...review, tool_input: { ...review.tool_input, model: "claude-opus-5-5" } }), "");
   });
 
   test("an edited brief is denied", () => {
@@ -68,7 +68,7 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   });
 
   test("a named review dispatch with no brief header is denied", () => {
-    for (const d of ["Completeness check 1103", "Standards review #1102", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
+    for (const d of ["Completeness check 1103", "Code review #1102", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
       assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /must start with its brief/, d);
     }
   });

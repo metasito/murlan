@@ -17,7 +17,7 @@ describe("brief", () => {
   });
 
   test("base defaults to origin/main", () => {
-    assert.match(brief("spec", { n: 7, worktree: WT }), /^BRIEF spec #7 \S+ origin\/main$/m);
+    assert.match(brief("review", { n: 7, worktree: WT }), /^BRIEF review #7 \S+ origin\/main$/m);
   });
 
   test("every brief forbids spawning a subagent", () => {
@@ -30,7 +30,7 @@ describe("brief", () => {
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);
-      if (["scope", "completeness", "spec", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+      if (["scope", "completeness", "review", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
     }
   });
 
@@ -42,13 +42,24 @@ describe("brief", () => {
     assert.match(text, /git -C \S+ grep/);
   });
 
-  test("the standards brief asks a test-quality finding for the change that leaves the test green (rule 6)", () => {
-    const text = brief("standards", { n: 1293, worktree: WT });
-    assert.match(text, /rule 6\) names a change to the code under test that leaves the test green/);
-    assert.doesNotMatch(text, /DOD-CHECK/);
+  test("a review sorts findings so that only a bug, an unmet box, a regression or a security risk blocks", () => {
+    for (const kind of ["review", "fix"]) {
+      const text = brief(kind, { n: 1, worktree: WT });
+      assert.match(text, /## Blocking`, `## Nits` and `## Pre-existing/, kind);
+      assert.match(text, /A rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
+    }
   });
 
-  test("the completeness brief asks for the covering test, and leaves test strength to D's Standards", () => {
+  test("a later round reviews only the fix and checks the earlier Blocking findings", () => {
+    const first = brief("review", { n: 1, worktree: WT });
+    const later = brief("review", { n: 1, worktree: WT, base: "abc1234" });
+    assert.match(first, /does it do what the Definition of done asks/);
+    assert.match(later, /Review only the fix `git -C \S+ diff abc1234\.\.\.HEAD`/);
+    assert.match(later, /each earlier Blocking finding listed after this brief fixed/);
+    assert.match(later, /Report Blocking findings only/);
+  });
+
+  test("the completeness brief asks for the covering test, and leaves test strength to the builder", () => {
     const text = brief("completeness", { n: 1, worktree: WT });
     assert.match(text, /the test that covers it/);
     assert.doesNotMatch(text, /line is deleted|either way|recheck/);
@@ -59,14 +70,8 @@ describe("brief", () => {
     assert.match(text, /git -C \S+ grep -n -F <old value> -- tests/);
   });
 
-  test("the standards brief carries the vendored baseline and points at RULES.md", () => {
-    const text = brief("standards", { n: 1, worktree: WT });
-    assert.match(text, /docs\/agents\/RULES\.md/);
-    assert.match(text, /Feature Envy/);
-  });
-
-  test("the scope brief asks for independent feature groups", () => {
-    assert.match(brief("scope", { n: 1, worktree: WT }), /independent feature groups/);
+  test("the scope brief no longer asks for feature groups to split", () => {
+    assert.doesNotMatch(brief("scope", { n: 1, worktree: WT }), /feature groups/);
   });
 
   test("an unknown kind throws, and a non-header first line parses to null", () => {
@@ -76,8 +81,8 @@ describe("brief", () => {
   });
 
   test("the CLI prints the brief, and refuses bad arguments with exit 2", () => {
-    assert.equal(execFileSync(process.execPath, [SCRIPT, "spec", "9", WT], { encoding: "utf8" }).trimEnd(), brief("spec", { n: 9, worktree: WT }).trimEnd());
+    assert.equal(execFileSync(process.execPath, [SCRIPT, "review", "9", WT], { encoding: "utf8" }).trimEnd(), brief("review", { n: 9, worktree: WT }).trimEnd());
     assert.equal(spawnSync(process.execPath, [SCRIPT, "nope", "9", WT]).status, 2);
-    assert.equal(spawnSync(process.execPath, [SCRIPT, "spec", "x", WT]).status, 2);
+    assert.equal(spawnSync(process.execPath, [SCRIPT, "review", "x", WT]).status, 2);
   });
 });

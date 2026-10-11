@@ -5,34 +5,28 @@
  *
  * Usage: node tools/loop/brief.mjs <kind> <n> <worktree> [base]
  */
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { TRUSTED_AUTHORS } from "./loop-derive.mjs";
 
-export const KINDS = ["scope", "completeness", "standards", "spec", "refute", "fix"];
+export const KINDS = ["scope", "completeness", "review", "fix"];
 
 /** Rule 29's model for each kind; `guard-agent-model.mjs` denies a dispatch on any other. */
-export const MODEL_BY_KIND = { scope: "sonnet", completeness: "sonnet", standards: "opus", spec: "opus", refute: "opus", fix: "opus" };
+export const MODEL_BY_KIND = { scope: "sonnet", completeness: "sonnet", review: "opus", fix: "opus" };
 
 const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
-
-const BASELINE = join(import.meta.dirname, "..", "..", "docs", "agents", "smell-baseline.md");
-
-/** Never throws: a brief that cannot be built is one the guard cannot compare against, and passes. */
-function baseline() {
-  try {
-    return readFileSync(BASELINE, "utf8").trim();
-  } catch {
-    return "(docs/agents/smell-baseline.md is missing: review against RULES.md alone.)";
-  }
-}
 
 const TAIL =
   "Do not spawn any subagent. Report findings only — what checked out is not reported. Every " +
   "finding names a file:line and either the rule number it breaks, a quoted line of the issue, or " +
   "the input that makes it go wrong. A finding carrying none of those three is a note, and notes " +
   "are not reported.";
+
+const LABELS =
+  "\n\nAnswer under `## Blocking`, `## Nits` and `## Pre-existing`. Blocking is only: a bug, with the " +
+  "input or sequence that makes it go wrong; a Definition-of-done box left unmet, quoted; a regression " +
+  "or red CI run this change causes; a security or data-loss risk. A rule breach, a name, a comment, " +
+  "an untested branch or a style preference is a Nit. A defect this change did not introduce is " +
+  "Pre-existing. Every finding names a file:line.";
 
 const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
@@ -47,9 +41,7 @@ const BODIES = {
     "the change has to touch as `path:start-end — what that range does`, never a bare file name; " +
     "existing patterns worth reusing, the same way; the risks; and whether the ticket makes sense " +
     "at all. If it is ambiguous, its premise is wrong, or the codebase already does it, say so " +
-    "plainly. Then list the ticket's independent feature groups: sets of Definition-of-done boxes " +
-    "that share no file and no behaviour with any other set, each as its box texts. Do not run " +
-    "`npm run agent:check`.",
+    "plainly. Do not run `npm run agent:check`.",
   completeness: ({ n, worktree, base }) =>
     `Read issue #${n} with ${issue(n)} (a later comment overrides the body) and the change with ` +
     `${diff(worktree, base)}. For each Definition-of-done box, answer done, partial or missing. ` +
@@ -62,29 +54,19 @@ const BODIES = {
     " Then, for every literal value the diff changes — a number, string or colour on a `-` line whose " +
     `\`+\` line carries a new one — run \`git -C ${worktree} grep -n -F <old value> -- tests tools/loop/tests\` and ` +
     "report each test still asserting the old value.",
-  standards: ({ worktree, base }) =>
-    `Review the change ${diff(worktree, base)} against \`docs/agents/RULES.md\` (read it in the ` +
-    "worktree) and the smell baseline below. Report only what affects correctness or breaks a " +
-    "documented rule, by number, quoted. Skip what tooling enforces. A baseline smell alone is a " +
-    "judgement call, never a hard violation.\n\n" +
-    "A test-quality finding (rule 6) names a change to the code under test that leaves the test " +
-    "green; without one it is not a finding.\n\n" +
-    baseline(),
-  spec: ({ n, worktree, base }) =>
-    `Review the change ${diff(worktree, base)} against issue #${n} (${issue(n)}, body and ` +
-    "comments; a later comment overrides the body). Report requirements missing or partial, " +
-    "behaviour not asked for, and anything implemented but wrong, quoting the issue.",
-  refute: ({ worktree, base }) =>
-    `The change is ${diff(worktree, base)}. For each finding below, try to kill it. A finding ` +
-    "survives only if you can state the input or the sequence that makes the code wrong, or quote " +
-    "the rule or the issue line it breaks. Answer with the surviving findings and one sentence " +
-    "each on what killed the rest. Do not review the change for anything the reports did not raise.",
+  review: ({ n, worktree, base }) =>
+    (base === "origin/main"
+      ? `Review the change ${diff(worktree, base)} against issue #${n} (${issue(n)}, body and comments; ` +
+        "a later comment overrides the body): does it do what the Definition of done asks, and is it " +
+        "correct? Read the code it calls and every caller of what it changes."
+      : `Review only the fix ${diff(worktree, base)} on issue #${n} (${issue(n)}): is each earlier ` +
+        "Blocking finding listed after this brief fixed, and does the fix break anything? Read every " +
+        "caller of what it changes. Report Blocking findings only.") + LABELS,
   fix: ({ n, worktree, base }) =>
     `A CI fix round on issue #${n}. The fix is ${diff(worktree, base)}; the failure it answers is ` +
-    `the newest \`CI-RED\` comment in ${issue(n)}. Review it on two axes, reported under ` +
-    "`## Standards` and `## Spec`: Standards against `docs/agents/RULES.md`, only what affects " +
-    "correctness or breaks a rule by number; Spec against the issue and the CI-RED — does the fix " +
-    "answer every failing test it names, without changing what the ticket asked for.",
+    `the newest \`CI-RED\` comment in ${issue(n)}. Does it answer every failing test the CI-RED names, ` +
+    "without changing what the ticket asked for, and break nothing else? Report Blocking findings only." +
+    LABELS,
 };
 
 /** @param {string} kind @param {{n: number, worktree: string, base?: string}} opts */

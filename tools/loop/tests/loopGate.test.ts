@@ -435,6 +435,8 @@ describe("the review-round cap", () => {
     const at = gate(root, verdict(MAX_REVIEW_ROUNDS), BASE, wt, ["--review-round"]);
     assert.equal(at.code, 1, at.out);
     assert.match(at.out, /the cap is/);
+    assert.match(at.out, /do not land/);
+    assert.match(at.out, /"stoodDown":true/);
   });
 });
 
