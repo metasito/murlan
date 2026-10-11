@@ -51,8 +51,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     use a token in the role it was named for.
 19. **Every user-facing string goes through `t()`, keyed in `en`, `it` and `sq`.**
 20. **Default to no comment, and never explain the bug you just fixed** — that is the commit
-    message. `CLAUDE.md` § Comments says what earns one and the budget `npm run check:comments`
-    enforces. Verify each claim against the file it names as you write it, never in review.
+    message. `CLAUDE.md` § Comments says what earns one. Verify each claim against the file it names as you write it, never in review.
 
 ## Taking work
 
@@ -113,6 +112,6 @@ Another agent is working in this repository, on this machine, right now.
     made.
 43. **A change that moves, renames or deletes a file updates every doc that names it, and a change to behaviour updates every document describing it, in the same change.**
     `tests/tooling/docReferences.test.ts` fails on the path a rename left behind.
-44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, `guard-comments.mjs` among them, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.
+44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.
 45. *(retired)*
 46. **The whole CI run stays under 5 minutes, first job to last: `TARGET_RUN_SECONDS` in `tools/ci/e2e-shard.mjs` is 300.** That bounds a pull request's ordinary `ci.yml` run. `Android compiles` and `iOS compiles` run only on a native-touching change, `-f native=true` and the weekly cron, under a budget of their own: `timeout-minutes: 35` on each, the slowest measured compile plus about 20%. The owner's rulings (2026-10-07, 2026-10-09), and only the owner changes them. When the suite outgrows the shards, make specs faster or split them; never raise the target to turn a check green.

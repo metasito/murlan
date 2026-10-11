@@ -100,20 +100,12 @@ describe("the floor both enforcers compare on", () => {
     assert.equal(floorFor("tests/native/Hand.test.tsx"), 3);
   });
 
-  /**
-   * Ratio is a property of what a change adds, so it needs a base revision and is judged by
-   * `comment-budget.mjs` and the write-time hook, never here. Nothing but history is reported.
-   */
   test("a file that is nothing but prose raises no violation of its own", () => {
     const prose = Array.from({ length: 40 }, (_, i) => `// line ${i} of prose`);
     assert.deepEqual(rules([...prose, "const x = 1;"].join("\n")), []);
   });
 });
 
-/**
- * It reads one write. A comment arriving any other way is `comment-budget.mjs`'s to catch from
- * committed bytes — which is what keeps the pair from being a guard that passes by not looking.
- */
 test("code alone is clean", () => {
   assert.deepEqual(rules("const x = 1;"), []);
 });

@@ -478,10 +478,6 @@ the repository itself, so npm's cwd sends every one of them looking in the wrong
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
 
-**`check:comments` rides both the `Lint` job and the `Loop harness` job**, never `npm run lint`
-itself — it's first heard from on CI unless you run it yourself. It diffs against the merge base
-via `git diff`, so an uncommitted edit counts but an untracked file doesn't show at all.
-
 **Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
 every hook):
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`

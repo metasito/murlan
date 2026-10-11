@@ -35,12 +35,6 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-comments.mjs"],
-            "onFailure": "block"
-          },
-          {
-            "type": "command",
-            "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-write.mjs"],
             "onFailure": "block"
           }

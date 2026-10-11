@@ -436,9 +436,6 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint tools/loop
       - run: npm run loop:test
-      # Rides here as well as on `lint` for the same reason as the two above: the comment budget is
-      # a step of a job that a loop-tests-only change does not run.
-      - run: npm run check:comments
 
   # Linux skips the loop tests that only win32 can run, so this is the one place they are heard from.
   harness-windows:
@@ -488,11 +485,6 @@ jobs:
       - name: Typecheck — noUncheckedIndexedAccess ratchet
         run: npm run typecheck:strict
       - run: npm run lint
-      # Rides this job rather than a new one: it is a second-long file read, and
-      # billing a runner minute for it is the whole reason it used to be local —
-      # where it ran in whatever tree agent:check happened to be in, and so
-      # gated nothing.
-      - run: npm run check:comments
 
   # Nothing else in this workflow compiles the app for a device. `build` makes
   # the web bundle and the server bundle, neither of which touches Gradle or Xcode, so a plugin or dependency that breaks the

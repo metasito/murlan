@@ -106,7 +106,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    They are not this diff's: fix their root cause here in a commit of its own, naming main's run
    in `FIX-NOTES`. `none` means every failure is this diff's.
 4. Fix what CI named, then run the suite it named as well as the usual check:
-   `npm run agent:check -- --also test:native` (or `loop:test`, `comments`; `test` always runs).
+   `npm run agent:check -- --also test:native` (or `loop:test`; `test` always runs).
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
    HEAD`). Then leave through **Leaving C**.
