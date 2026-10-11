@@ -1905,9 +1905,9 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
  * fit one into a comment dropped the part that mattered. `onMain` is `onMainLine`'s answer.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   onMain?: string, runId?: number}} args
+ *   onMain?: string, runId?: number, logArgs?: string[]}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", runId }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", runId, logArgs }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -1918,7 +1918,7 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
       ? `failing: ${files.length} failing files, ${testIds.length} tests — read them, do not guess:`
       : "failing: no test id parsed — this step's own output is the count. Read the run:",
     "```sh",
-    `gh run view ${runId} --log-failed | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
+    `gh ${logArgs?.join(" ") ?? `run view ${runId} --log-failed`} | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
     "```",
     ...files.map((f) => `- ${f}`),
     `on main: ${onMain}`,
@@ -1968,6 +1968,7 @@ function postCiRedOnce(ticket, verdict, onMain, comments, run, write, log) {
     excerpt: verdict.output,
     onMain,
     runId: verdict.runId,
+    logArgs: verdict.logArgs,
   });
   try {
     const file = ciRedNotePath(ticket);

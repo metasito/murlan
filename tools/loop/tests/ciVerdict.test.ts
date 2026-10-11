@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   ciProgress,
   decideVerdict,
+  failedLogArgs,
   failingTestIds,
   ghExecOptions,
   readHeadCi,
@@ -292,6 +293,17 @@ describe("a job stopped by its own timeout-minutes", () => {
     assert.equal(v.failedStep, "Typecheck and tests");
     assert.match(v.reason, /timeout-minutes/);
     assert.match(v.output ?? "", /Install postgresql-client/);
+    assert.deepEqual(v.logArgs, ["run", "view", "--job", "112945168721", "--repo", "o/r", "--log"]);
+  });
+
+  test("a job that failed outranks a timed-out one listed before it", () => {
+    const jobs = [
+      { name: "Typecheck and tests", conclusion: "cancelled", steps: 13, id: 1, timedOut: true },
+      { name: "Browser tests 1/4", conclusion: "failure", steps: 11, id: 2 },
+    ];
+    const v = decideVerdict({ databaseId: 9, status: "completed", conclusion: "failure" }, jobs);
+    assert.equal(v.failedStep, "Browser tests 1/4");
+    assert.deepEqual(failedLogArgs("o/r", 9, jobs, v.failedStep), ["run", "view", "9", "--repo", "o/r", "--log-failed"]);
   });
 
   test("names the timed-out job when the run itself concluded failure", () => {

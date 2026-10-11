@@ -76,6 +76,8 @@ export interface Verdict {
   head?: string | null;
   /** Every failing test id the full log named — never just the tail `output` carries. */
   testIds?: string[];
+  /** The `gh` arguments that read the log `output` and `testIds` came from. */
+  logArgs?: string[];
   progress?: CiProgress;
   reason: string;
 }
@@ -109,7 +111,7 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // job — hiding a real red `Secret scan` for two rounds, which is exactly the fix round the
   // infrastructure verdict exists to prevent being wasted. A cancelled run is the same case:
   // rereading it never changes its jobs, so a red among them must reach the fix round.
-  const realFailure = jobs.find((j) => (j.conclusion === "failure" && j.steps > 0) || j.timedOut);
+  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0) ?? jobs.find((j) => j.timedOut);
 
   // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
   // is the common path, not an edge. Asked through the jobs instead, the ones that never started
@@ -287,8 +289,9 @@ function jobsAndLog(
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (withLog && !verdict.pass && !verdict.infrastructure) {
+    verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
-      const strippedLines = gh(failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep), until)
+      const strippedLines = gh(verdict.logArgs, until)
         .split("\n")
         .map(stripLogPrefix);
       testIds = failingTestIds(strippedLines.join("\n"));

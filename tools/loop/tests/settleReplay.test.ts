@@ -407,6 +407,13 @@ describe("ciRedBody", () => {
     assert.match(ciRedBody({ sha: SHA, runUrl, testIds: long, runId: 7 }), /gh run view 7 --log-failed/);
   });
 
+  test("a timed-out job's command reads that job's own log, which --log-failed leaves empty", () => {
+    const logArgs = ["run", "view", "--job", "9", "--repo", "o/r", "--log"];
+    const body = ciRedBody({ sha: SHA, runUrl, testIds: long, runId: 7, logArgs });
+    assert.match(body, /^gh run view --job 9 --repo o\/r --log \| grep/m);
+    assert.doesNotMatch(body, /--log-failed/);
+  });
+
   test("with no id parsed the excerpt is the only signal, so it stays and is fenced", () => {
     const body = ciRedBody({ sha: SHA, runUrl, testIds: [], excerpt: "error TS2322: nope", runId: 7 });
     assert.deepEqual(body.split("\n").slice(-3), ["```", "error TS2322: nope", "```"]);
