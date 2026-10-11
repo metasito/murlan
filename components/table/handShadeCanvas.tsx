@@ -56,7 +56,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
   useAnimatedReaction(
     () => [rects.value, handOrder.value] as const,
     ([all, order]) => {
-      const shape = `${order.join(",")}|${shadowShape(all)}`;
+      const shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${order.join(",")}|${shadowShape(all)}`;
       if (shape === last.value) return;
       last.value = shape;
       const outline = (keys: readonly string[]) => {
