@@ -1,31 +1,32 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (file: string) => readFileSync(path.join(repoRoot, file), "utf8");
-const list = (dir: string, keep: (name: string) => boolean) =>
-  readdirSync(path.join(repoRoot, dir))
-    .filter(keep)
-    .map((name) => `${dir}/${name}`);
+function walk(dir: string, keep: (file: string) => boolean): string[] {
+  return readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+    const file = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) return entry.name === "tests" ? [] : walk(file, keep);
+    return keep(file) ? [file] : [];
+  });
+}
 
 function scannedFiles(): string[] {
-  const actions = readdirSync(path.join(repoRoot, ".github/actions"))
-    .map((action) => `.github/actions/${action}/action.yml`)
-    .filter((file) => existsSync(path.join(repoRoot, file)));
   return [
-    ...list(".github/workflows", (n) => /\.ya?ml$/.test(n)),
-    ...actions,
-    ...list(".github/scripts", () => true),
-    ...list("scripts", (n) => /\.(mjs|sh)$/.test(n)),
+    ...walk(".github", (f) => /\.(ya?ml|sh|mjs|js|ts)$/.test(f)),
+    ...walk("scripts", (f) => /\.(mjs|sh|ts)$/.test(f)),
+    ...walk("tools", (f) => /\.(mjs|sh|ts)$/.test(f)),
   ];
 }
 
-const IMAGE = /^[a-z][\w.-]*(?:\/[\w.-]+)*:[\w][\w.-]*$/;
+const TAGGED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*|@sha256:[0-9a-f]+)$/;
+const NAMED = /^[a-z][\w.-]*(?:\/[\w.-]+)*(?::[\w][\w.-]*)?(?:@sha256:[0-9a-f]+)?$/;
 const DOCKER_PULLS = /\bdocker\s+(?:run|pull|create)\b/;
-const YAML_IMAGE = /^\s*(?:-\s+)?(?:image|container|[A-Z_]*_IMAGE):\s*["']?([^\s"'#]+)/;
+const YAML_IMAGE =
+  /^\s*(?:-\s+)?(?:(?:image|container|[A-Z_]*_IMAGE):\s*["']?|uses:\s*["']?docker:\/\/)([^\s"'#]+)/;
 
 const stripComments = (source: string) => source.replace(/^\s*(?:#|\/\/|\*|\/\*).*$/gm, "");
 
@@ -35,18 +36,18 @@ export function imageRefs(file: string, source: string): string[] {
   if (/\.ya?ml$/.test(file)) {
     for (const line of code.split(/\r?\n/)) {
       const value = YAML_IMAGE.exec(line)?.[1];
-      if (value && IMAGE.test(value)) refs.push(value);
+      if (value && NAMED.test(value)) refs.push(value);
     }
   }
   for (const line of code.split(/\r?\n/).filter((l) => DOCKER_PULLS.test(l))) {
     for (const token of line.split(/\s+/)) {
       const bare = token.replace(/^["'`]|["'`,]$/g, "");
-      if (IMAGE.test(bare) && !refs.includes(bare)) refs.push(bare);
+      if (TAGGED.test(bare) && !refs.includes(bare)) refs.push(bare);
     }
   }
   if (/\.m?[jt]s$/.test(file) && /\bdocker\b/.test(code)) {
     for (const [, literal] of code.matchAll(/["'`]([^"'`\s]+)["'`]/g)) {
-      if (IMAGE.test(literal) && !literal.startsWith("node:") && !refs.includes(literal)) {
+      if (TAGGED.test(literal) &&!literal.startsWith("node:") && !refs.includes(literal)) {
         refs.push(literal);
       }
     }
@@ -75,6 +76,10 @@ describe("no CI job pulls an image from Docker Hub", () => {
   test("every place an image can be named is read", () => {
     assert.deepEqual(imageRefs("w.yml", "    services:\n      pg:\n        image: postgres:16\n"), ["postgres:16"]);
     assert.deepEqual(imageRefs("w.yml", "    container: node:24\n"), ["node:24"]);
+    assert.deepEqual(imageRefs("w.yml", "        image: postgres\n"), ["postgres"]);
+    assert.deepEqual(imageRefs("w.yml", "        image: postgres@sha256:ab12\n"), ["postgres@sha256:ab12"]);
+    assert.deepEqual(imageRefs("w.yml", "      - uses: docker://alpine:3\n"), ["alpine:3"]);
+    assert.deepEqual(imageRefs("w.yml", "    container:\n      image: node:24\n"), ["node:24"]);
     assert.deepEqual(imageRefs("w.yml", 'env:\n  SCAN_IMAGE: "a/b:1"\n'), ["a/b:1"]);
     assert.deepEqual(imageRefs("w.yml", "      - run: docker pull redis:7 -q\n"), ["redis:7"]);
     assert.deepEqual(imageRefs("s.sh", 'docker run --rm -p 5432:5432 -v "$d:/r" mysql:8 x\n'), ["mysql:8"]);
