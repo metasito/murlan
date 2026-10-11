@@ -413,7 +413,8 @@ const MOMENTS: Moment[] = [
     windowMs: 3200,
     checkpoints: PARTITA_CHECKPOINTS,
     stripAt: glance(3200, PARTITA_CHECKPOINTS),
-    mockupScript: `${STING_AS("pwin", "partitaWon")}
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("pwin", "partitaWon")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("luan"),
     appTrigger: pwinTable,
@@ -435,7 +436,8 @@ const MOMENTS: Moment[] = [
     windowMs: 3200,
     checkpoints: PARTITA_CHECKPOINTS,
     stripAt: glance(3200, PARTITA_CHECKPOINTS),
-    mockupScript: `${STING_AS("plose", "partitaLost")}
+    mockupScript: `${NO_CAST_ON_CARDS}
+      ${STING_AS("plose", "partitaLost")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("you"),
     appTrigger: ploseTable,
