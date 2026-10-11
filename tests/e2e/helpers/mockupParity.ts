@@ -223,8 +223,7 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.onsets.includes("sound:deal"),
     mode: "parity",
     fields: ["onset", "live", "level", "breath", "brightness"],
-    // Not the hand: the mockup's level shade dims it and the app's does not (#1433).
-    regions: ["pool"],
+    regions: ["pool", "hand"],
     regionsAt: [1040, 1200],
     onsets: ["moment:dealt"],
   },
