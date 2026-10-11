@@ -14,6 +14,33 @@ export interface JobRow {
   conclusion: string | null;
   steps: number;
   status?: string;
+  id?: number;
+  timedOut?: boolean;
+}
+
+/**
+ * GitHub reports a job stopped by its own `timeout-minutes` exactly as one cancelled by a newer
+ * push: job and run `cancelled`, a cancelled step. Only its check-run annotation tells them apart.
+ */
+export function markTimedOut(jobs: JobRow[], gh: (args: string[]) => string, repo: string): void {
+  for (const job of jobs) {
+    if (job.conclusion !== "cancelled" || job.steps === 0 || job.id === undefined) continue;
+    try {
+      const messages = JSON.parse(gh(["api", `repos/${repo}/check-runs/${job.id}/annotations`, "--jq", "[.[].message]"]));
+      job.timedOut = messages.some((m: string) => /exceeded the maximum execution time/.test(m));
+    } catch {
+      job.timedOut = false;
+    }
+    if (job.timedOut) return;
+  }
+}
+
+export function failedLogArgs(repo: string, runId: number, jobs: JobRow[], failedStep?: string): string[] {
+  const timedOut = jobs.find((j) => j.timedOut && j.name === failedStep);
+  // `--log-failed` prints only failed steps, and a timed-out job's step reads cancelled.
+  return timedOut
+    ? ["run", "view", "--job", String(timedOut.id), "--repo", repo, "--log"]
+    : ["run", "view", String(runId), "--repo", repo, "--log-failed"];
 }
 
 /** How far a run still going has got, for the board. It says nothing about the verdict. */
@@ -49,6 +76,8 @@ export interface Verdict {
   head?: string | null;
   /** Every failing test id the full log named — never just the tail `output` carries. */
   testIds?: string[];
+  /** The `gh` arguments that read the log `output` and `testIds` came from. */
+  logArgs?: string[];
   progress?: CiProgress;
   reason: string;
 }
@@ -82,7 +111,7 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // job — hiding a real red `Secret scan` for two rounds, which is exactly the fix round the
   // infrastructure verdict exists to prevent being wasted. A cancelled run is the same case:
   // rereading it never changes its jobs, so a red among them must reach the fix round.
-  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0);
+  const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0) ?? jobs.find((j) => j.timedOut);
 
   // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
   // is the common path, not an edge. Asked through the jobs instead, the ones that never started
@@ -119,7 +148,9 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
     pass: false,
     runId: run.databaseId,
     failedStep: realFailure?.name,
-    reason: `ci.yml concluded ${run.conclusion}`,
+    reason: realFailure?.timedOut
+      ? `${realFailure.name} ran past its timeout-minutes`
+      : `ci.yml concluded ${run.conclusion}`,
   };
 }
 
@@ -246,7 +277,7 @@ function jobsAndLog(
       "--json",
       "jobs",
       "--jq",
-      "[.jobs[] | {name, conclusion, status, steps: (.steps | length)}]",
+      "[.jobs[] | {name, conclusion, status, steps: (.steps | length), id: .databaseId}]",
     ],
     [],
     until
@@ -254,11 +285,13 @@ function jobsAndLog(
   if (run.status !== "completed") {
     return { verdict: { ...decideVerdict(run, []), progress: ciProgress(jobs) }, testIds: [] };
   }
+  markTimedOut(jobs, (args) => gh(args, until), repo);
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
   if (withLog && !verdict.pass && !verdict.infrastructure) {
+    verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
-      const strippedLines = gh(["run", "view", String(run.databaseId), "--repo", repo, "--log-failed"], until)
+      const strippedLines = gh(verdict.logArgs, until)
         .split("\n")
         .map(stripLogPrefix);
       testIds = failingTestIds(strippedLines.join("\n"));

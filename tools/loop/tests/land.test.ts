@@ -93,6 +93,13 @@ const cases: Case[] = [
     reason: /zero steps/,
   },
   {
+    name: "a cancelled run says it was cancelled, not that it ran no steps",
+    pr: pr(),
+    ci: { ...CANCELLED, reason: "the run was cancelled" },
+    action: "recheck",
+    reason: /^the run was cancelled$/,
+  },
+  {
     name: "CONFLICTING is the owner's even when CI is green",
     pr: pr({ mergeable: "CONFLICTING" }),
     ci: GREEN,
