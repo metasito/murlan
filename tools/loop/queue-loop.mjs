@@ -472,7 +472,7 @@ export function apiFailure(run) {
   if (!run.result?.isError || run.declared || run.blocked || run.accountError) return null;
   const s = run.result.apiStatus;
   if (s >= 500 || s === 429) return s;
-  return s == null && run.result.terminalReason === "api_error" ? "unreachable" : null;
+  return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
 }
 
 /**
@@ -1495,6 +1495,7 @@ export function runTicket(
     wrongModel: null,
     strayPlugin: null,
     accountError: null,
+    apiErrorCode: null,
     stderr: "",
     /** Turns spent in phase C, and whether any of them committed. */
     buildTurns: 0,
@@ -1633,6 +1634,7 @@ export function runTicket(
     if (fact.kind === "api_error") {
       screen.said(thought(fact.text));
       if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
+      state.apiErrorCode = fact.code;
     }
     if (fact.kind === "result" && !fact.origin) state.result = fact;
     if (fact.kind === "rate_limit") {
@@ -1715,6 +1717,7 @@ export function runTicket(
           wrongModel: state.wrongModel,
           strayPlugin: state.strayPlugin,
           accountError: state.accountError,
+          apiErrorCode: state.apiErrorCode,
           ms: Date.now() - startedAt,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the

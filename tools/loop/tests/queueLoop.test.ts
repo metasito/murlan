@@ -577,7 +577,8 @@ describe("runTicket", () => {
     const end = result({ is_error: true, api_error_status: null, terminal_reason: "api_error" });
     const run = await runTicket(fakeSpawn([apiError, end], 1), opts());
     assert.equal(apiFailure(run), "unreachable");
-    assert.equal(apiFailure(await runTicket(fakeSpawn([end.replace('"api_error"', '"completed"')], 1), opts())), null);
+    const refused = apiError.replace('"server_error"', '"invalid_request"');
+    assert.equal(apiFailure(await runTicket(fakeSpawn([refused, end], 1), opts())), null);
   });
 
   for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
