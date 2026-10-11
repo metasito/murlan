@@ -2,14 +2,14 @@
 // the lamp on the UI thread, so moving the lamp re-renders no card (#1465).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { act, render, screen } from '@testing-library/react-native';
 import type { TestInstance } from 'test-renderer';
 import { getAnimatedStyle, makeMutable, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import { CardView } from '@/components/CardView';
 import { TABLE_AT_REST, type CardRect, type CardRects } from '@/components/table/cardRects';
-import type { GlossLight } from '@/components/table/cardGloss';
+import { foilGlint, type GlossLight } from '@/components/table/cardGloss';
 import { CardTableProvider, useCardTableValue, type OwnedRects } from '@/components/table/useCardRects';
 import { CARD_BACK_IDS } from '@/lib/cosmetics';
 import type { Card } from '@/lib/game/gameEngine';
@@ -60,10 +60,12 @@ describe('the foil glint', () => {
     );
     const glint = screen.getByTestId('card-foil-glint', opts);
     expect(imageUris(glint)).toEqual([expect.stringMatching(new RegExp(`foil_${id}\\.webp$`))]);
+    expect(StyleSheet.flatten(glint.props.style)).toEqual(expect.objectContaining({ mixBlendMode: 'screen' }));
     const ink = screen.getByTestId('card-foil-ink', opts);
     expect(ink.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ backgroundColor: id === 'zaffiro' ? CardGloss.foil.silver : CardGloss.foil.gold })]));
-    expect(pose(ink).opacity).toBeCloseTo(CardGloss.foil.alpha.edge, 6);
-    expect(pose(screen.getByTestId('card-foil-band', opts)).opacity).toBeGreaterThan(0);
+    const g = foilGlint(437, 300, 0, 40, 58, lightAt(437, 140));
+    expect(pose(ink).opacity).toBeCloseTo(g.edge, 6);
+    expect(pose(screen.getByTestId('card-foil-band', opts)).opacity).toBeCloseTo((g.peak - g.edge) / (1 - g.edge), 6);
   });
 
   it('costs a back no more host views than its mask, ink and band need', async () => {
@@ -73,7 +75,7 @@ describe('the foil glint', () => {
       </Table>
     );
     const glint = screen.getByTestId('card-foil-glint', opts);
-    expect(glint.queryAll((c) => typeof c.type === 'string').length).toBe(Platform.select({ ios: 5, default: 6 }));
+    expect(glint.queryAll((c) => typeof c.type === 'string').length).toBe(Platform.select({ ios: 6, default: 7 }));
   });
 
   it('draws nothing on a face-up card or off the table', async () => {

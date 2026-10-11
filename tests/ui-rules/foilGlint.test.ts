@@ -50,6 +50,7 @@ describe("a back's foil glint is the mockup's", () => {
       close(g.edge, m.edge, "edge alpha");
       close(g.edge, m.end, "far edge alpha");
       close(Math.sin(g.ang) * Math.hypot(m.x, m.y), m.x, "band axis x");
+      close(-Math.cos(g.ang) * Math.hypot(m.x, m.y), m.y, "band axis y");
     });
   }
 

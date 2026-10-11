@@ -15,10 +15,13 @@ test.describe("mockup parity", () => {
     const masks = await page.locator('[data-testid="card-foil-glint"]').evaluateAll((els) =>
       els.map((el) => {
         const s = getComputedStyle(el);
-        return s.maskImage && s.maskImage !== "none" ? s.maskImage : s.webkitMaskImage;
+        return { mask: s.maskImage && s.maskImage !== "none" ? s.maskImage : s.webkitMaskImage, blend: s.mixBlendMode };
       })
     );
-    for (const mask of masks) expect(mask).toMatch(/^url\(".*\/foil_[a-z]+\b[^"]*"\)$/);
+    for (const { mask, blend } of masks) {
+      expect(mask).toMatch(/^url\(".*\/foil_[a-z]+\b[^"]*"\)$/);
+      expect(blend).toBe("screen");
+    }
     await page.context().close();
   });
 

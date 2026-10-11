@@ -1,15 +1,14 @@
 import React from "react";
-import { Image, Platform, StyleSheet, View, type ViewStyle } from "react-native";
+import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useDerivedValue, type SharedValue } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import MaskedView from "@react-native-masked-view/masked-view";
-import { Asset } from "expo-asset";
 import { CardBacks, CardGloss, Layer, Scrim, withAlpha } from "@/lib/theme";
 import { a11yHidden } from "@/lib/a11y";
 import type { CardBackId } from "@/lib/cosmetics";
 import { cardRadius } from "@/components/cardFaceModel";
 import { cardGloss, foilGlint, foilGlintColor, glossSpot, type GlossLight } from "./cardGloss";
 import type { CardScope } from "./cardRects";
+import { FoilMask } from "./FoilMask";
 import { levelShade } from "./rail";
 import { useCardTable, type CardTable, type OwnedRects } from "./useCardRects";
 
@@ -79,27 +78,11 @@ export const FOIL_ART: Record<CardBackId, () => number> = {
 export function FoilGlint({ backKey, ...props }: Props & { backKey: CardBackId }) {
   const table = useCardTable();
   if (!table || !props.rectKey || !props.rects) return null;
-  const glint = <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />;
-  // react-native-masked-view's web build renders its mask as a plain child and masks nothing.
-  if (Platform.OS === "web") {
-    return <View testID="card-foil-glint" pointerEvents="none" style={[StyleSheet.absoluteFill, cssMask(FOIL_ART[backKey]())]} {...a11yHidden()}>{glint}</View>;
-  }
   return (
-    <MaskedView
-      testID="card-foil-glint"
-      pointerEvents="none"
-      style={StyleSheet.absoluteFill}
-      maskElement={<Image source={FOIL_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" />}
-      {...a11yHidden()}
-    >
-      {glint}
-    </MaskedView>
+    <FoilMask art={FOIL_ART[backKey]()}>
+      <Glint table={table} rectKey={props.rectKey} rects={props.rects} width={props.width} height={props.height} color={foilGlintColor(CardBacks[backKey].ink)} />
+    </FoilMask>
   );
-}
-
-function cssMask(art: number): ViewStyle {
-  const image = `url(${Asset.fromModule(art).uri})`;
-  return { maskImage: image, maskSize: "100% 100%", maskRepeat: "no-repeat" } as ViewStyle;
 }
 
 function Glint({ table, rectKey, rects, width, height, color }: Omit<Props, "rectKey" | "rects"> & { table: CardTable; rectKey: string; rects: OwnedRects; color: string }) {
