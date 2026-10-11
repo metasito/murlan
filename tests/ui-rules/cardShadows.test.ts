@@ -8,7 +8,7 @@ import path from "node:path";
 import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, handPaintOrder, handShades, restingCast, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
-import { CardGlow, CardShadow, Colors, Layer, Motion } from "../../lib/tokens.ts";
+import { CardGlow, CardShadow, Colors, Layer as Layers, Motion } from "../../lib/tokens.ts";
 import { fixtureLine } from "../helpers/lanternFixture.ts";
 
 type Layer = { x: string; y: string; blur: number; rgba: number[] | null; hex: string | null; inset: boolean };
@@ -102,7 +102,7 @@ describe("the shadow paths", () => {
   test("the hand paints in its cards' zIndex order: a giveable card over its neighbours, the held card over all", () => {
     assert.deepEqual(handCardZ(2, 5, undefined), 2);
     assert.deepEqual(handCardZ(2, 5, true), 7);
-    assert.ok(handCardZ(200, 500, true) < Layer.held, "a giveable lift stays under the held card");
+    assert.ok(handCardZ(200, 500, true) < Layers.held, "a giveable lift stays under the held card");
     assert.deepEqual(handPaintOrder(["a", "b", "c", "d"], (id) => (id === "b" ? true : id === "c" ? false : undefined), "h"), ["hand:a", "hand:c", "hand:d", "hand:b", "hand:h"]);
     assert.deepEqual(handPaintOrder(["a", "b"], () => undefined, null), ["hand:a", "hand:b"]);
   });
