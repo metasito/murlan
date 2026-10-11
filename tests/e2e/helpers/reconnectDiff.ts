@@ -20,9 +20,12 @@ type Side = keyof typeof RECONNECT_SOUND;
 const onsetAt = (frames: TraceFrame[], name: string, from = -Infinity) =>
   frames.find((f) => f.t >= from && f.onsets.includes(name))?.t ?? null;
 
-/** A stalled main thread holds a due timer and the frame that would show it alike, so only frames ending after `due` count. */
+/** A stalled main thread holds a due timer and the frames that would show it alike, so a long frame counts only for its time after `due`. */
 const stallMs = (frames: TraceFrame[], due: number, until: number) =>
-  frames.reduce((ms, f, i) => (i > 0 && f.t > due && f.t <= until ? ms + Math.max(0, f.t - frames[i - 1].t - JITTER_MS) : ms), 0);
+  frames.reduce((ms, f, i) => {
+    const long = i > 0 && f.t - frames[i - 1].t > 1.5 * JITTER_MS;
+    return long && f.t > due && f.t <= until ? ms + f.t - Math.max(frames[i - 1].t, due) : ms;
+  }, 0);
 
 /** The lamp eases toward 0.55 at a rate of 1: one onset's jitter of its fall, and a little. */
 const LEVEL_TOLERANCE = 0.04;

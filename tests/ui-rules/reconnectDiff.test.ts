@@ -87,6 +87,7 @@ test("a stall over the time the pill was due excuses its own length and no more"
 test("a stall over before the pill was due excuses nothing, and no stall excuses an early pill", () => {
   assert.deepEqual(pillLate(500 + 6 * FRAME, 10), []);
   assert.equal(pillLate(500 + 6 * FRAME, 10, 15).length, 1);
+  assert.equal(pillLate(500 + 8 * FRAME, 20, 6).length, 1);
   assert.equal(pillLate(500 - 4 * FRAME, 10).length, 1);
 });
 
