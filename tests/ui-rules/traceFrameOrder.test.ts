@@ -86,6 +86,25 @@ test("a cancelled frame callback does not hold back the frame's sample", async (
   assert.deepEqual(recorder.frames, [16, 32]);
 });
 
+test("a frame callback cancelled before its frame begins does not hold back that frame's sample", async () => {
+  const { host, runFor } = fakeClock();
+  const recorder = recordFrames(host, (t) => t);
+  recorder.start();
+  host.cancelAnimationFrame(host.requestAnimationFrame(() => assert.fail("cancelled")));
+  await runFor(2 * FRAME);
+  assert.deepEqual(recorder.frames, [16, 32]);
+});
+
+test("a frame loop a timer starts on a frame's own instant is read on its first frame, and that frame is still sampled", async () => {
+  const { host, runFor } = fakeClock();
+  const source = frameLoop(host);
+  host.setTimeout(source.start, FRAME);
+  const recorder = recordFrames(host, (t) => ({ t, value: source.state.value }));
+  recorder.start();
+  await runFor(3 * FRAME);
+  assert.deepEqual(recorder.frames, [{ t: 16, value: 0 }, { t: 32, value: 32 }, { t: 48, value: 48 }]);
+});
+
 test("a stopped recorder samples nothing until it starts again", async () => {
   const { host, runFor } = fakeClock();
   const recorder = recordFrames(host, (t) => t);

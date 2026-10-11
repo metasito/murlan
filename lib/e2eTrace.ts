@@ -84,7 +84,8 @@ export interface FrameHost {
 /**
  * Samples each frame once every frame callback of it and the microtasks they queue have run: `host`'s
  * scheduling is wrapped, so a callback registered before a frame begins is due in it, and one registered
- * during it belongs to the next.
+ * during it belongs to the next. One the host defers past its frame anyway holds that frame's sample until
+ * the next frame begins.
  */
 export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { frames: F[]; start(): void; stop(): void } {
   const frames: F[] = [];
@@ -105,7 +106,8 @@ export function recordFrames<F>(host: FrameHost, sample: (t: number) => F): { fr
   host.requestAnimationFrame = (callback) => {
     const id = request((t) => {
       if (frame !== t) {
-        due = queued;
+        if (frame !== null && on) frames.push(sample(frame));
+        due = new Set([...due, ...queued]);
         queued = new Set();
         frame = t;
       }
