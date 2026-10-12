@@ -29,11 +29,12 @@ const LABELS =
   "an untested branch or a style preference is a Nit. A defect this change did not introduce is " +
   "Pre-existing. Every finding names a file:line.";
 
-// A later round's delta follows the first parent, so a merge of main shows only its own edits.
 const diff = (wt, base) =>
   base === "origin/main"
     ? `\`git -C ${wt} diff ${base}...HEAD\``
-    : `\`git -C ${wt} log -p --first-parent --diff-merges=remerge ${base}..HEAD\``;
+    : `\`git -C ${wt} diff ${base}..HEAD\`, with ` +
+      `\`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${base}..HEAD\` for a merge's own ` +
+      "edits (what a merge brought in from main is not the fix)";
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
