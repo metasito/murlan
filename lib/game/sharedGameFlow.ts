@@ -16,6 +16,9 @@ export interface ExchangeAnnounceData {
   cardReceived?: Card;
 }
 
+/** How long an offline e2e build holds the exchange overlay: milliseconds, or until the overlay is tapped. */
+export type ExchangeHold = number | "untilTapped";
+
 /**
  * The announce, described the same way whether the exchange happened on a
  * server or in this process.
