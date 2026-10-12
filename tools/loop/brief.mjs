@@ -5,8 +5,9 @@
  *
  * Usage: node tools/loop/brief.mjs <kind> <n> <worktree> [base]
  */
+import { spawnSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { TRUSTED_AUTHORS } from "./loop-derive.mjs";
+import { TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
 
 export const KINDS = ["scope", "completeness", "review", "fix"];
 
@@ -28,7 +29,11 @@ const LABELS =
   "an untested branch or a style preference is a Nit. A defect this change did not introduce is " +
   "Pre-existing. Every finding names a file:line.";
 
-const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
+// A later round's delta follows the first parent, so a merge of main shows only its own edits.
+const diff = (wt, base) =>
+  base === "origin/main"
+    ? `\`git -C ${wt} diff ${base}...HEAD\``
+    : `\`git -C ${wt} log -p --first-parent --diff-merges=remerge ${base}..HEAD\``;
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
@@ -111,10 +116,29 @@ export function parseHeader(prompt) {
   return m && KINDS.includes(m[1]) ? { kind: m[1], n: Number(m[2]), worktree: m[3], base: m[4] } : null;
 }
 
+/** Why the delta cannot be read from these arguments, or null when it can. */
+function unreadable(n, worktree, base) {
+  if (!new RegExp(`(^|/)\\${WORKTREE_DIR}/agent-${n}$`).test(worktree.replace(/\\/g, "/").replace(/\/+$/, ""))) {
+    return `the worktree must be ${WORKTREE_DIR}/agent-${n}, not ${worktree}`;
+  }
+  if (base && base !== "origin/main") {
+    const ancestor = spawnSync("git", ["-C", worktree, "merge-base", "--is-ancestor", base, "HEAD"], { stdio: "ignore" });
+    if (ancestor.status !== 0) {
+      return `${base} is not an ancestor of HEAD in ${worktree}: a rebase moved the branch, so the delta would carry the whole ticket and main`;
+    }
+  }
+  return null;
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [kind, n, worktree, base] = process.argv.slice(2);
   if (!KINDS.includes(kind) || !/^\d+$/.test(n ?? "") || !worktree) {
     process.stderr.write(`usage: node tools/loop/brief.mjs <${KINDS.join("|")}> <n> <worktree> [base]\n`);
+    process.exit(2);
+  }
+  const refused = unreadable(n, worktree, base);
+  if (refused) {
+    process.stderr.write(`brief: ${refused}\n`);
     process.exit(2);
   }
   process.stdout.write(brief(kind, { n: Number(n), worktree, base }));
