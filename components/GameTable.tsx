@@ -944,7 +944,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { grey, greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
+  const { greyStyle, scrim, held: linkHeldNow, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1163,8 +1163,8 @@ export function GameTable({
         pointerEvents="none"
         {...a11yHidden()}
       >
-        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} grey={grey} />
-        <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
+        <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} />
+        <ParticleLayer ref={particles} rig={rig} landing={landingSignal} />
         <FeltScrim dim={feltDim} />
       </Animated.View>
 
@@ -1200,7 +1200,7 @@ export function GameTable({
           style={[
             styles.hudCentre,
             { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
-            holdingForStart && HELD_CLOCK_Z,
+            (holdingForStart || (scrim && linkHeldNow)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
         >
@@ -1346,6 +1346,13 @@ export function GameTable({
             }
           />
         </Animated.View>
+
+        {scrim && (
+          <>
+            <Animated.View testID="grey-scrim" pointerEvents="none" {...a11yHidden()} style={[styles.greyScrim, scrim.desaturateStyle]} />
+            <Animated.View pointerEvents="none" {...a11yHidden()} style={[styles.darkScrim, scrim.darkenStyle]} />
+          </>
+        )}
 
         {settingsOpen && (
           <GameSettingsSheet
@@ -1662,6 +1669,9 @@ const styles = StyleSheet.create({
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
+  // A saturation blend takes only the source's saturation, and black has none.
+  greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow, mixBlendMode: "saturation" },
+  darkScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
 

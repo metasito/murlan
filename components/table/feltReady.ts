@@ -1,6 +1,5 @@
 import { createContext, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Platform } from "react-native";
-import type { SharedValue } from "react-native-reanimated";
 import type { FeltStops } from "@/lib/cosmetics";
 import { useTraceSource } from "@/lib/e2eTrace";
 import type { CardTable } from "./useCardRects";
@@ -16,7 +15,6 @@ export interface FeltProps {
   ready: boolean;
   onReady: () => void;
   cards: CardTable;
-  grey?: SharedValue<number>;
 }
 
 export interface HandShadeProps {

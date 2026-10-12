@@ -12,7 +12,8 @@ import type { LampRig } from "./useLampRig";
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
 // iOS draws `brightness()` as a multiply-blended sublayer and the capture shows it opaque, a flat
-// sheet over the table; there the felt greys itself in Skia (`greyMatrix`) instead.
+// sheet over the table; there one scrim over every greyed layer desaturates by blending and a
+// second darkens, which is `greyFilter` composited rather than filtered.
 const VIEW_FILTER = Platform.OS !== "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
@@ -67,5 +68,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => (VIEW_FILTER ? { filter: greyFilter(grey.value) } : {}));
-  return { grey, greyStyle, frozen: held || missedInFlight };
+  const desaturateStyle = useAnimatedStyle(() => ({ opacity: grey.value }));
+  const darkenStyle = useAnimatedStyle(() => ({ opacity: Reconnect.darken * grey.value }));
+  return { grey, greyStyle, scrim: VIEW_FILTER ? null : { desaturateStyle, darkenStyle }, held, frozen: held || missedInFlight };
 }

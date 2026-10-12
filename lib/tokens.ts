@@ -433,6 +433,8 @@ export const Layer = {
   handShade: 4,
   moment: 10,
   rail: 20,
+  /** Greys the table and its HUD on iOS while the viewer's link is held, where a view cannot filter: over the rail, under every hint. */
+  greyScrim: 25,
   hint: 30,
   /** The bomb's flash: over the table, its hand and chips, as the mockup's `#flash`. */
   flash: 35,
