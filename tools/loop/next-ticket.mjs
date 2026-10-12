@@ -70,12 +70,16 @@ export function stranded(issue, { openPr, liveWorktree }) {
 }
 
 /**
+ * `launch` is the Launch milestone's open issues in any bucket: zero means launch-first ordering is
+ * ordering nothing.
+ *
  * @param {Issue[]} openIssues
- * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[] }}
+ * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[], launch: number }}
  */
 export function classify(openIssues, io = realClassifyIo()) {
-  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[]}} */
-  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [] };
+  const launch = openIssues.filter((i) => i.milestone?.title === LAUNCH_MILESTONE).length;
+  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[], launch: number}} */
+  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [], launch };
   // Asked once, and only if a ticket that could be stranded is here at all: it costs a subprocess.
   let live;
   const evidence = (issue) => {
@@ -298,7 +302,8 @@ if (invokedDirectly) {
     `STATUS\timplement:${buckets.frontier.length}` +
     `\ttriage:${buckets.triage.length}` +
     `\twayfinder:${buckets.wayfinder.length}` +
-    `\towner:${buckets.owner.length}`,
+    `\towner:${buckets.owner.length}` +
+    `\tlaunch:${buckets.launch}`,
   );
 
   if (chosen.ticket) {

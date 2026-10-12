@@ -116,12 +116,15 @@ export function parseRoute(stdout) {
 /** The bucket depths the picker already prints, for the header's "how much is behind this one". */
 export function parseStatus(stdout) {
   const line = stdout.split("\n").find((l) => l.startsWith("STATUS\t"));
-  const read = (name) =>
-    Number(/:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(name)) ?? "")?.[1] ?? 0);
+  const read = (name) => {
+    const n = /:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(`${name}:`)) ?? "")?.[1];
+    return n === undefined ? null : Number(n);
+  };
   return {
-    implement: read("implement"),
-    triage: read("triage"),
-    wayfinder: read("wayfinder"),
+    implement: read("implement") ?? 0,
+    triage: read("triage") ?? 0,
+    wayfinder: read("wayfinder") ?? 0,
+    launch: read("launch"),
   };
 }
 
@@ -2919,10 +2922,12 @@ export async function main({
     for (const kind of Object.keys(since)) if (since[kind] != null) since[kind] = Math.min(now, since[kind] + slept);
   }, tick);
   sleepWatch.unref();
+  /** The Launch milestone's open count as the last picker run read it; null until one has. */
+  let launch = null;
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
     runRecap(
-      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, utc },
+      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, launch, utc },
       t,
     );
   screen.board?.({ recap: recapOf });
@@ -2942,6 +2947,7 @@ export async function main({
     pick: (p, at) => {
       const route = io.pick(p, at);
       claimed = typeof route?.number === "number" ? route.number : null;
+      if (route?.queue) launch = route.queue.launch ?? null;
       return route;
     },
     settle: (pending) => timed("ci", () => io.settle(pending)),
