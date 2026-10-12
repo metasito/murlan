@@ -39,12 +39,13 @@ export function markTimedOut(jobs: JobRow[], gh: (args: string[]) => string, rep
   }
 }
 
-export function failedLogArgs(repo: string, runId: number, jobs: JobRow[], failedStep?: string): string[] {
+export function failedLogArgs(repo: string, runId: number, jobs: JobRow[], failedStep?: string, attempt?: number): string[] {
   const timedOut = jobs.find((j) => j.timedOut && j.name === failedStep);
-  // `--log-failed` prints only failed steps, and a timed-out job's step reads cancelled.
+  // `--log-failed` prints only failed steps, and a timed-out job's step reads cancelled. A job id
+  // names one attempt already; a run id names its latest unless asked.
   return timedOut
     ? ["run", "view", "--job", String(timedOut.id), "--repo", repo, "--log"]
-    : ["run", "view", String(runId), "--repo", repo, "--log-failed"];
+    : ["run", "view", String(runId), "--repo", repo, "--log-failed", ...(attempt ? ["--attempt", String(attempt)] : [])];
 }
 
 /** How far a run still going has got, for the board. It says nothing about the verdict. */

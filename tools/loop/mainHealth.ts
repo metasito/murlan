@@ -154,14 +154,9 @@ const ghCli: Gh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuff
 
 const parse = <T,>(text: string, fallback: T): T => (text.trim() ? JSON.parse(text) : fallback);
 
-/** Jobs are fetched only when the answer can turn on them. */
-export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
-  const [run] = parse<MainRun[]>(gh(mainRunArgs(repo)), []);
-  if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
-  const raw = parse<{ jobs?: { name: string; conclusion: string | null; steps?: unknown[]; databaseId?: number }[] }>(
-    gh(jobArgs(repo, run.databaseId)),
-    {},
-  );
+type RawJobs = { jobs?: { name: string; conclusion: string | null; steps?: unknown[]; databaseId?: number }[] };
+
+function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
   const jobs: JobRow[] = (raw.jobs ?? []).map((j) => ({
     name: j.name,
     conclusion: j.conclusion,
@@ -169,7 +164,14 @@ export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] 
     id: j.databaseId,
   }));
   markTimedOut(jobs, gh, repo);
-  return { run, jobs };
+  return jobs;
+}
+
+/** Jobs are fetched only when the answer can turn on them. */
+export function readMain(gh: Gh, repo: string): { run?: MainRun; jobs: JobRow[] } {
+  const [run] = parse<MainRun[]>(gh(mainRunArgs(repo)), []);
+  if (!run || run.status !== "completed" || run.conclusion === "success") return { run, jobs: [] };
+  return { run, jobs: jobRows(gh, repo, parse<RawJobs>(gh(jobArgs(repo, run.databaseId)), {})) };
 }
 
 /**
@@ -201,15 +203,54 @@ export function checkMain({ repo, gh = ghCli }: { repo: string; gh?: Gh }): Main
   }
 }
 
-/** Main's latest completed red run and its failing test ids; null when main has none to give, never a throw. */
-export function mainFailures(gh: Gh, repo: string): { runId: number; url?: string; ids: string[] } | null {
+export interface MainFailures {
+  runId: number;
+  url?: string;
+  ids: string[];
+  /** The ids failed attempt 1 of the pull-request run a green main inherited: flakes, not main's reds. */
+  flaky?: true;
+}
+
+function failuresOf(gh: Gh, repo: string, run: RunRow, jobs: JobRow[], attempt?: number): string[] | null {
+  const verdict = decideVerdict(run, jobs);
+  if (verdict.pass || verdict.infrastructure) return null;
+  const log = gh(failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep, attempt));
+  return failingTestIds(log.split("\n").map(stripLogPrefix).join("\n"));
+}
+
+const treeOf = (gh: Gh, repo: string, sha: string) => gh(["api", `repos/${repo}/commits/${sha}`, "--jq", ".commit.tree.sha"]).trim();
+
+/**
+ * ci.yml's scope job skips main's suite when main's tree is a pull-request head's that already has a
+ * green run, so main's green is that run's — and a rerun's green says nothing of its attempt 1.
+ */
+function inheritedFlakes(gh: Gh, repo: string, main: MainRun): MainFailures | null {
+  if (!main.headSha) return null;
+  const head = gh(["api", `repos/${repo}/commits/${main.headSha}/pulls`, "--jq", ".[0].head.sha // empty"]).trim();
+  if (!head || treeOf(gh, repo, main.headSha) !== treeOf(gh, repo, head)) return null;
+  // prettier-ignore
+  const [source] = parse<{ databaseId: number; attempt?: number; url?: string }[]>(gh([
+    "run", "list", "--repo", repo, "--workflow", "ci.yml", "--commit", head,
+    "--status", "success", "--limit", "1", "--json", "databaseId,attempt,url",
+  ]), []);
+  if (!source || (source.attempt ?? 1) < 2) return null;
+  const first = parse<RawJobs & { status?: string; conclusion?: string | null }>(
+    gh(["run", "view", String(source.databaseId), "--repo", repo, "--attempt", "1", "--json", "status,conclusion,jobs"]),
+    {},
+  );
+  const run: RunRow = { databaseId: source.databaseId, status: first.status ?? "", conclusion: first.conclusion ?? null };
+  const ids = failuresOf(gh, repo, run, jobRows(gh, repo, first), 1);
+  return ids ? { runId: source.databaseId, url: source.url && `${source.url}/attempts/1`, ids, flaky: true } : null;
+}
+
+/** Main's latest completed red run and its failing test ids, or a green main's inherited flakes; null when main has none to give, never a throw. */
+export function mainFailures(gh: Gh, repo: string): MainFailures | null {
   try {
     const { run, jobs } = readMain(gh, repo);
-    if (!run || run.status !== "completed" || run.conclusion === "success") return null;
-    const verdict = decideVerdict(run, jobs);
-    if (verdict.infrastructure) return null;
-    const log = gh(failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep));
-    return { runId: run.databaseId, url: run.url, ids: failingTestIds(log.split("\n").map(stripLogPrefix).join("\n")) };
+    if (!run || run.status !== "completed") return null;
+    if (run.conclusion === "success") return inheritedFlakes(gh, repo, run);
+    const ids = failuresOf(gh, repo, run, jobs);
+    return ids && { runId: run.databaseId, url: run.url, ids };
   } catch {
     return null;
   }
