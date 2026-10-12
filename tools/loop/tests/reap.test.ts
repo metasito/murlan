@@ -709,6 +709,18 @@ describe("readProcessTable", () => {
     assert.match(logged.join("\n"), /pwsh/, "the skip names which binary produced it, not just that one happened");
   });
 
+  test("a PowerShell that answered nothing is said, never read as a machine with no processes", () => {
+    const logged: string[] = [];
+    const original = console.error;
+    console.error = (msg: string) => logged.push(msg);
+    try {
+      assert.deepEqual(readProcessTable("", "pwsh"), []);
+    } finally {
+      console.error = original;
+    }
+    assert.match(logged.join("\n"), /pwsh.*no process table/);
+  });
+
   test("still reads a well-formed table", () => {
     const rows = readProcessTable(
       '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1,"Cpu":1}]',
