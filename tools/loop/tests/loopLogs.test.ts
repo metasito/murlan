@@ -705,7 +705,7 @@ describe("schema 9 rows", () => {
 
   test("a process that died before its result event is a row of no spend, not a throw", () => {
     const r = proc({ run: null, outcome: "parked", why: "the session exited 1 in phase C" });
-    assert.deepEqual([r.cost, r.turns, r.session_id, r.subtype, r.why], [0, 0, null, null, "the session exited 1 in phase C"]);
+    assert.deepEqual([r.cost, r.turns, r.session_id, r.subtype, r.why], [0, 0, "s1", null, "the session exited 1 in phase C"]);
     assert.deepEqual(r.phases, {});
   });
 

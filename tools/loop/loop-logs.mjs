@@ -280,17 +280,19 @@ export const startRow = ({ number, phase = null, runId = null, loopSha = null, a
 
 /**
  * One spawned session. `at` is the phase it was spawned at and `model` its own session's model
- * from `init`, so a model is judged per row; `run` is the `result` event, null when the session
- * died before writing one. `error` is `errorOf`'s.
+ * from `init`, so a model is judged per row; `run` is what `runTicket` returned, its `result` the
+ * `readEvent` reading of the `result` event and null when the session died before writing one.
+ * `fix` is left unwritten when the supervisor does not know, so a reader falls back on the window's
+ * order. `error` is `errorOf`'s.
  *
  * @param {{n: number, runId?: string|null, loopSha?: string|null, started: string, ms: number,
  *   asleepMs?: number|null, at: string|null, fix?: boolean, size?: string|null, model?: string|null,
- *   version?: string|null, maxTurns?: number|null, outcome: string, why?: string|null,
- *   handoff?: {phase: string, why: string|null, said: string|null}|null, pr?: number|null,
- *   head?: string|null, error?: object|null, run?: {session_id?: string, total_cost_usd?: number,
- *   num_turns?: number, subtype?: string, phases?: Record<string, number>}|null}} p
+ *   sessionId?: string|null, version?: string|null, maxTurns?: number|null, outcome: string,
+ *   why?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
+ *   pr?: number|null, head?: string|null, error?: object|null,
+ *   run?: {result?: Record<string, any>|null, phases?: Record<string, number>}|null}} p
  */
-export const processRow = ({ n, runId = null, loopSha = null, started, ms, asleepMs = null, at, fix = false, size = null, model = null, version = null, maxTurns = null, run = null, outcome, why = null, handoff = null, pr = null, head = null, error = null }) => ({
+export const processRow = ({ n, runId = null, loopSha = null, started, ms, asleepMs = null, at, fix = undefined, size = null, model = null, sessionId = null, version = null, maxTurns = null, run = null, outcome, why = null, handoff = null, pr = null, head = null, error = null }) => ({
   schema: SCHEMA,
   kind: "process",
   n,
@@ -300,15 +302,15 @@ export const processRow = ({ n, runId = null, loopSha = null, started, ms, aslee
   ms,
   asleep_ms: asleepMs,
   at,
-  fix: Boolean(fix),
+  fix,
   size,
   model,
   claude_version: version,
-  session_id: run?.session_id ?? null,
-  cost: run?.total_cost_usd ?? 0,
-  turns: run?.num_turns ?? 0,
+  session_id: sessionId,
+  cost: run?.result?.cost ?? 0,
+  turns: run?.result?.turns ?? 0,
   max_turns: maxTurns,
-  subtype: run?.subtype ?? null,
+  subtype: run?.result?.subtype ?? null,
   phases: run?.phases ?? {},
   outcome,
   why,
