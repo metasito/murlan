@@ -192,6 +192,11 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
       }
       run.result = { cost: json.total_cost_usd ?? 0, turns: json.num_turns ?? 0 };
       if (state(cwd) !== before) return done({ ok: false, error: "it changed the worktree it was only to read" });
+      // An API failure ends `is_error` under subtype "success", and the CLI does not always name
+      // `terminal_reason` beside it: #1465's and #1466's diagnoses both read only "success".
+      if (json.is_error && (json.terminal_reason === "api_error" || json.subtype === "success")) {
+        return done({ ok: false, apiDown: true, error: `it could not reach the API — ${String(json.result ?? "").split("\n")[0]}` });
+      }
       if (json.is_error) return done({ ok: false, error: `it ended ${json.terminal_reason ?? json.subtype ?? "in an error"}` });
       done({ ...parseDiagnosis(json.result, stop.runId ?? null), reply: String(json.result ?? "") });
     });

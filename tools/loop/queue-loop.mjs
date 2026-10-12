@@ -2448,6 +2448,14 @@ export async function runOnce(io, pinned = null, at = null) {
     if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
     const cwd = after?.cwd ?? null;
     const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
+    // Held, and no `diagnosed` row: that row is what marks the head as read, and this one was not.
+    if (d.apiDown) {
+      keepWip();
+      const down = "the diagnosis could not reach the API";
+      io.record({ number: route.number, outcome: "overloaded", why: `${down} — ${d.error}`, run: d.run, counts: false });
+      io.record({ number: route.number, outcome: "overloaded", why, run: billed, counts: false });
+      return { pass: { outcome: "overloaded", ticket: route.number, why: down, run } };
+    }
     const tail = d.reply ? ` — it ended: "${d.reply.slice(-300).replace(/\s+/g, " ").trim()}"` : "";
     const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}${tail}`;
     io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
