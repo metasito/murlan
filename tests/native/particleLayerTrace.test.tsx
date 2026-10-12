@@ -91,10 +91,12 @@ describe('ParticleLayer', () => {
   });
 
   describe('at rest, frame by frame', () => {
+    const display = globalThis.requestAnimationFrame;
     beforeEach(() => {
       jest.useFakeTimers();
     });
     afterEach(() => {
+      globalThis.requestAnimationFrame = display;
       jest.useRealTimers();
       mockReduced = false;
     });
@@ -136,7 +138,8 @@ describe('ParticleLayer', () => {
       expect(idle).toBe(0);
     });
 
-    it('lays the air out at most 240 times a second, every frame while dust is live', async () => {
+    it('lays the air out at most 240 times a second on a 1000 Hz display, every frame while dust is live', async () => {
+      globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 1) as unknown as number;
       const ref = React.createRef<ParticleEmitter>();
       const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };
       const view = await render(<ParticleLayer ref={ref} rig={rig} landing={makeMutable(NO_LANDING)} />);
@@ -237,8 +240,10 @@ describe('ParticleLayer', () => {
       mockOnsets.length = 0;
       const { lit, moths } = await atRest(10_500);
 
-      expect(lit.size).toBe(1);
-      expect([...lit][0]).toBeGreaterThan(0);
+      const [beforeFirstFrame, ...held] = [...lit];
+      expect(beforeFirstFrame).toBe(0);
+      expect(held).toHaveLength(1);
+      expect(held[0]).toBeGreaterThan(0);
       expect(moths).toBe(0);
       expect(mockOnsets).toEqual([]);
     });

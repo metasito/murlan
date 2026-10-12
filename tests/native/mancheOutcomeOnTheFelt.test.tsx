@@ -10,7 +10,6 @@ import * as particles from '@/components/table/particles';
 import * as flightPhysics from '@/components/flightPhysics';
 import { lampControls, type Pool } from '@/components/table/lampRig';
 import { MancheMoment } from '@/lib/tokens';
-import { displayFrames } from './helpers/displayFrames';
 import { bootFeedback, settle } from './helpers/feedback';
 import { card, PAIR } from './helpers/landing';
 
@@ -95,15 +94,12 @@ async function closeManche(c: (typeof CASES)[number]) {
 }
 
 describe("a manche's outcome on the felt", () => {
-  let restoreFrames: () => void;
   beforeEach(async () => {
     mockReduceMotion = false;
     jest.useFakeTimers();
-    restoreFrames = displayFrames();
     await bootFeedback();
   });
   afterEach(() => {
-    restoreFrames();
     jest.restoreAllMocks();
     jest.useRealTimers();
   });

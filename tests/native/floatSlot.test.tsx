@@ -50,7 +50,7 @@ describe('the float slot', () => {
     expect(drawn()).toEqual({ opacity: 1, rise: 0 });
     await advance(hold - 32);
     expect(drawn().opacity).toBe(1);
-    await advance(exit + 32);
+    await advance(exit + 48);
     expect(drawn().opacity).toBe(0);
     await advance(5000);
     expect(drawn().opacity).toBe(0);

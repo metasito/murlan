@@ -47,7 +47,7 @@ interface Field {
   rain: RainRun;
 }
 
-// Above any display's refresh, so a device lays out every frame; jest's rAF ticks every millisecond.
+// Above any display's refresh, so a device lays out every frame.
 const AIR_TICK_S = 1 / 240;
 
 function bakeSheet(): SkImage | null {

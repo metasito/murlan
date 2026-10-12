@@ -83,7 +83,7 @@ const MARK_ENTER_MS = 100;
 const STAR = String.fromCodePoint(Number(Ionicons.glyphMap.star));
 const tagShown = async () => {
   await act(async () => {
-    jest.advanceTimersByTime(MARK_ENTER_MS);
+    jest.advanceTimersByTime(MARK_ENTER_MS + 16);
   });
   expect((getAnimatedStyle(plate()) as { opacity?: number }).opacity).toBe(1);
   within(plate()).getByText(WINNER, { includeHiddenElements: true });

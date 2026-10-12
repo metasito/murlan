@@ -1,12 +1,17 @@
 import { afterEach, beforeAll, beforeEach, jest } from '@jest/globals';
 
 import { assertWholeNumbers } from './fabricIntProps';
+import { FRAME_MS } from './helpers/frames';
 
 // Reanimated v4 drives animations from worklets on the UI thread. Under Jest
 // there is no UI thread, so its own test shim stands in and makes withTiming &c
 // resolve synchronously. Without it every component that animates throws on
 // render rather than reporting a real failure.
 require('react-native-reanimated').setUpTests?.();
+
+// After setUpTests, which loads worklets' own jest rAF: a 0 ms setTimeout that fake timers fire every
+// millisecond, a thousand frames of every running animation per second settled.
+globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), FRAME_MS) as unknown as number;
 
 // jest-expo's stand-in answers addListener with a promise, where the real module returns a subscription.
 jest.mock('expo-screen-orientation', () => ({

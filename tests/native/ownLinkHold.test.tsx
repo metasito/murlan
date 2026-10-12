@@ -5,6 +5,7 @@ import { useOwnLink } from '@/lib/useOwnLink';
 import { useLinkHold } from '@/components/table/useLinkHold';
 import type { OwnLink } from '@/lib/ownLink';
 import { Reconnect } from '@/lib/theme';
+import { FRAME_MS } from './helpers/frames';
 
 const mockSteps: ((frame: FrameInfo) => void)[] = [];
 jest.mock('react-native-reanimated', () => {
@@ -160,10 +161,18 @@ describe('the table holding its breath', () => {
     const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
     const greyAfter = async (ms: number) => (await wait(ms), mockReaders.grey());
     await view.rerender({ link: 'dropped' });
-    expect(await greyAfter(Reconnect.greyIn / 2)).toBeCloseTo(Reconnect.grey / 2, 1);
+    // The ramp starts on the first frame after the change, and the frame clock may be a frame behind that.
+    const halfway = (ms: number) => [Reconnect.grey * (0.5 - (2 * FRAME_MS) / ms), Reconnect.grey / 2];
+    const [inLow, inHigh] = halfway(Reconnect.greyIn);
+    const greyIn = await greyAfter(Reconnect.greyIn / 2);
+    expect(greyIn).toBeGreaterThanOrEqual(inLow);
+    expect(greyIn).toBeLessThanOrEqual(inHigh);
     expect(await greyAfter(Reconnect.greyIn)).toBe(Reconnect.grey);
     await view.rerender({ link: 'back' });
-    expect(await greyAfter(Reconnect.greyOut / 2)).toBeCloseTo(Reconnect.grey / 2, 1);
+    const [outHigh, outLow] = halfway(Reconnect.greyOut).map((g) => Reconnect.grey - g);
+    const greyOut = await greyAfter(Reconnect.greyOut / 2);
+    expect(greyOut).toBeGreaterThanOrEqual(outLow);
+    expect(greyOut).toBeLessThanOrEqual(outHigh);
     expect(await greyAfter(Reconnect.greyOut)).toBe(0);
     await view.unmount();
   });

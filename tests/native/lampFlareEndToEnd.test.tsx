@@ -116,8 +116,9 @@ describe("the lamp's flare, read back off GameTable's own real render (#765)", (
     const r = await render(table(inPlay(BOMB_PLAY), false));
 
     const { frame, drawn } = await frameOfFirst(r, () => opacityOf(r, "bomb-flare") > 0);
-    expect(drawn[frame]).toBeLessThanOrEqual(1);
-    expect(drawn[frame - 1]).toBeGreaterThan(1);
+    // The flare's timing starts from 0 on the contact frame, so its first lit frame is the one after.
+    expect(drawn[frame - 1]).toBeLessThanOrEqual(1);
+    expect(drawn[frame - 2]).toBeGreaterThan(1);
     await act(async () => {
       jest.advanceTimersByTime(100);
     });
