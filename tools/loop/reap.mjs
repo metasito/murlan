@@ -122,18 +122,15 @@ export function parseWindowsProcessJson(json) {
 
 /**
  * `parseWindowsProcessJson`, but a PowerShell that did not answer as one degrades this one sweep
- * instead of crashing every unattended run after it.
+ * instead of crashing every unattended run after it. `blind` says why it saw nothing, since an
+ * empty table otherwise reads as a machine with nothing to take.
  */
 export function readProcessTable(json, exeName) {
-  if (!json.trim()) {
-    console.error(`reap: ${exeName} answered with no process table, so this sweep takes nothing`);
-    return [];
-  }
+  if (!json.trim()) return { rows: [], blind: `${exeName} gave no process table (missing, or it failed), so this sweep takes nothing` };
   try {
-    return parseWindowsProcessJson(json);
+    return { rows: parseWindowsProcessJson(json), blind: null };
   } catch (err) {
-    console.error(`reap: ${exeName} did not answer as PowerShell, skipping this sweep's process table: ${err.message}`);
-    return [];
+    return { rows: [], blind: `${exeName} did not answer as PowerShell, so this sweep takes nothing: ${err.message}` };
   }
 }
 
@@ -150,7 +147,7 @@ function processTable() {
     return readProcessTable(json, POWERSHELL);
   }
   const now = Date.now();
-  return sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
+  const rows = sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
     .split("\n")
     .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
     .filter(Boolean)
@@ -161,6 +158,7 @@ function processTable() {
       commandLine: args,
       startedAt: now - Number(etimes) * 1000,
     }));
+  return { rows, blind: rows.length ? null : "ps gave no process table, so this sweep takes nothing" };
 }
 
 /** This process and everything that launched it, so the reaper cannot kill its own caller. */
@@ -216,7 +214,7 @@ export function isSessionHost(commandLine, { platform = process.platform, system
 
 function killPid(pid, dryRun, say = console.log) {
   if (dryRun) return;
-  if (wouldTakeSelf(processTable(), pid, process.pid)) {
+  if (wouldTakeSelf(processTable().rows, pid, process.pid)) {
     // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
     // process that joined it since the sweep began is as fatal as one that was always there.
     say(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
@@ -292,7 +290,7 @@ export function stalePortHolders(pids, table) {
 
 /** `stalePortHolders` against this machine's own process table. */
 export function staleAmong(pids) {
-  return stalePortHolders(pids, processTable());
+  return stalePortHolders(pids, processTable().rows);
 }
 
 export function clearPort(port, { dryRun = false } = {}) {
@@ -302,13 +300,15 @@ export function clearPort(port, { dryRun = false } = {}) {
 }
 
 /**
- * One sweep, said a line at a time through `say`. Returns how many it named to take; a port left to
- * a live run is somebody else working, not a leftover, so it is not counted.
+ * One sweep, said a line at a time through `say`. `took` is how many it named to take; a port left
+ * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
+ * could not see the processes, or null.
  */
 export async function reap({ dryRun = false, stale: takeStale = false, say = console.log } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
   const now = Date.now();
-  const table = processTable();
+  const { rows: table, blind } = processTable();
+  if (blind) say(`reap: ${blind}`);
   const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);
@@ -360,7 +360,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   }
   if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
-  return staleHolders.length + parentless.length + stale.length;
+  return { took: staleHolders.length + parentless.length + stale.length, blind };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {

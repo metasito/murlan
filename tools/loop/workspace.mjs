@@ -373,9 +373,10 @@ function installDrift(drift, primary) {
 /** `--stale` takes only what is orphaned *and* old, so the sweep cannot reach a peer's live run. */
 async function reapRow(reap) {
   const said = [];
-  const found = await reap({ say: (l) => said.push(l) });
-  if (!found) return null;
-  return { state: "done", detail: `took ${found}`, note: said.join("\n") };
+  const { took, blind } = await reap({ say: (l) => said.push(l) });
+  if (blind) return { state: "warned", detail: blind, note: said.join("\n") };
+  if (!took) return null;
+  return { state: "done", detail: `took ${took}`, note: said.join("\n") };
 }
 
 function namedWorktrees(primary) {
