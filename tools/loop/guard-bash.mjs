@@ -11,7 +11,7 @@
  *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a device workflow rerun, or a dispatch anywhere but a ticket's own agent/<n>- branch
+ *   a loop session's second rerun of a run, or a rerun of a run it cannot name
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -33,18 +33,6 @@ import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands
 /** A failure's first line — enough to name it on stderr without dumping a stack there. */
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
-/** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
-const DEVICE_WORKFLOW = /maestro|\bios\b/i;
-
-/** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
-function dispatchesOnTicketBranch(c, vars = {}) {
-  const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
-  const raw = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
-  const name = /^\$\{?(\w+)\}?$/.exec(raw)?.[1];
-  const ref = name ? (vars[name] ?? "") : raw;
-  return c.cmd === "gh" && c.args[0] === "workflow" && /^(?:agent|claude)\/\d+-/.test(ref);
-}
-
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
 /** The only `gh run rerun` flags that consume the token after them. */
@@ -56,7 +44,7 @@ const JOB_FLAG = /^(?:--job|-j)$/;
  * variable, or absent, or something this cannot read — nothing identifiable.
  *
  * A job id is not a run id: `gh run view <job-id>` answers 404, so reading one as the other
- * resolves to nothing and waves through the ~25 minute simulator job it names.
+ * resolves to nothing and waves through a second rerun of the job it names.
  */
 function target(tokens) {
   for (let i = 0; i < tokens.length; i++) {
@@ -80,19 +68,6 @@ function rerunOf(c) {
   if (!rest) return null;
   if (!/^\d+$/.test(rest[2])) return {};
   return rest[1].toLowerCase() === "jobs" ? { job: rest[2] } : { run: rest[2] };
-}
-
-/** The workflow this command dispatches, or null when it dispatches none. */
-function dispatchOf(c) {
-  if (c.cmd === "gh" && c.args[0] === "workflow" && c.args[1] === "run") {
-    for (let i = 2; i < c.args.length; i++) {
-      if (/^(-r|--ref|-f|--raw-field|-F|--field|-R|--repo)$/.test(c.args[i])) i += 1;
-      else if (!c.args[i].startsWith("-")) return c.args[i];
-    }
-    return "";
-  }
-  const rest = HTTP_CLIENT.test(c.cmd) && /actions\/workflows\/([^\s/?]+)\/dispatches/i.exec(c.args.join(" "));
-  return rest ? rest[1] : null;
 }
 
 /**
@@ -434,46 +409,19 @@ const RULES = [
           "--prune, a delete and a ref write through `gh api` are refused.",
   },
   {
-    // A numeric workflow id cannot be read, so it is treated as the device one.
-    test: (c, { workflowOf, vars }) => {
-      const dispatched = dispatchOf(c);
-      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c, vars);
-      const t = rerunOf(c);
-      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t)?.workflowName ?? ""));
-    },
-    message:
-      "A ticket dispatches the iOS and Android device workflows only on its own branch (agent/<n>-… or claude/<n>-…), " +
-      "and only when its work needs a device run:\n" +
-      "  gh workflow run ios.yml --ref agent/<n>-<slug>\n" +
-      "A red device run is diagnosed from its maestro-debug artifacts and dispatched again after a " +
-      "change, never rerun.\n" +
-      "Not a device workflow? Name it by its file (ci.yml), not a numeric id.",
-  },
-  {
-    // The rule above allows a rerun once GitHub says the run is not a device one. A target it
-    // cannot read is not an answer, and defaulting to allow there would make `$RUN` the way
-    // past the rule rather than a way to write it.
-    test: (c) => {
-      const t = rerunOf(c);
-      return Boolean(t && !t.run && !t.job);
-    },
-    message:
-      "This rerun does not name a run this guard can look up, and a rerun it cannot identify " +
-      "might be the ~25 minute device job.\n" +
-      "Name the run by its literal id so the workflow can be read:\n" +
-      "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
-      "  gh run rerun <that id> --failed\n" +
-      "Rerunning one job? `--job <job-id>` is read too. Device runs are never rerun.",
-  },
-  {
+    // A target it cannot read is not an answer: allowing there would make `$RUN` the way past
+    // the rule rather than a way to write it.
     test: (c, { workflowOf, loop }) => {
       const t = loop && rerunOf(c);
-      return Boolean(t && (t.run || t.job) && workflowOf(t)?.attempt >= 2);
+      return Boolean(t && (!(t.run || t.job) || workflowOf(t)?.attempt >= 2));
     },
     message:
-      "This run was already rerun: a loop session reruns a run at most once.\n" +
-      "A red that survives its rerun is a Blocking finding if this change caused it; otherwise the " +
-      "verdict names the test and the attempt (queue.md phase D).",
+      "A loop session reruns a run at most once, so a rerun names its run by literal id, which is how its attempt is read:\n" +
+      "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
+      "  gh run rerun <that id> --failed\n" +
+      "Rerunning one job? `--job <job-id>` is read too.\n" +
+      "A run already rerun is not rerun again: a red that survives its rerun is a Blocking finding if this change caused it; " +
+      "otherwise the verdict names the test and the attempt (queue.md phase D).",
   },
   {
     test: (c, { loop }) => loop && c.cmd === "gh" && untrustedRead(c.args),

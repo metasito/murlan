@@ -93,7 +93,9 @@ can read only its own cache and main's, so a branch's first run restores main's 
 instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
 that build on every push to main whose native fingerprint has none yet, and looks it up in about a
 minute when it has; it drives no device (`tests/tooling/iosAppCache.test.ts`). By the owner's decision; a
-red run is diagnosed from its artifacts, never rerun. A red scheduled run files or comments on
+red run is diagnosed from its artifacts, never rerun: every job in both workflows runs only on attempt 1
+of a schedule or an `agent/`/`claude/` branch, so a rerun or a dispatch anywhere else skips them all
+(`tests/tooling/deviceWorkflowsGate.test.ts`). A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
@@ -489,7 +491,7 @@ every hook):
   replaces with `await-run.mjs`. It refuses a push anywhere but the session's own
   `agent/<LOOP_TICKET>-…`, named by an explicit `HEAD:agent/<n>-<slug>` refspec, and every push
   when `LOOP_TICKET` is unset. It refuses a `gh run rerun` of a run already past its first
-  attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  attempt or not named by its literal id, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
   or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
   resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
   created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and
