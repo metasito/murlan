@@ -433,8 +433,12 @@ export function syncCheckout(
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 
-/** Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the ceiling. */
-export const BASH_DEFAULT_TIMEOUT_MS = 5 * 60_000;
+/**
+ * Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the
+ * ceiling. `await-run` waits a minute less, and each re-issue of it is a turn at full context, so
+ * this stays well past the CI run's target.
+ */
+export const BASH_DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
