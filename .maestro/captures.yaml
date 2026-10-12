@@ -17,11 +17,10 @@ appId: "${MAESTRO_APP_ID}"
           point: "530,222"
           retryTapIfNoChange: false
           waitToSettleTimeoutMs: 500
+# Not `game-table`: the table felt-opaque.yaml left open already matches it, before the link lands.
 - extendedWaitUntil:
-    visible:
-      id: "game-table"
-    timeout: 30000
-- assertVisible: "Move the lamp to the next seat"
+    visible: "Move the lamp to the next seat"
+    timeout: 60000
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: lamp-bottom

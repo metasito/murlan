@@ -181,7 +181,7 @@ describe("every child of the game table's root answers to the veil", () => {
     const feltStyles = /style=\{\[([^\]]*)\]\}/.exec(feltTag)?.[1].split(",").map((s) => s.trim()) ?? [];
     assert.ok(felt > open && feltStyles.length > 0, "the root's other child is no longer a View with a style list");
     assert.deepEqual(
-      feltStyles.filter((s) => !["StyleSheet.absoluteFill", "FELT_Z", "greyStyle", "breathStyle"].includes(s)),
+      feltStyles.filter((s) => !["StyleSheet.absoluteFill", "FELT_Z", "edgeGreyStyle", "breathStyle"].includes(s)),
       [],
       "the felt carries a style that may move it; only the reconnect grey and the deal's breath may animate it"
     );

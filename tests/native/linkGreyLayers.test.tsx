@@ -34,8 +34,8 @@ jest.mock('@shopify/react-native-skia', () => {
 });
 
 import { GameTable } from '@/components/GameTable';
-import { greyFilter, greyMatrix } from '@/components/table/linkGrey';
-import { Layer, Reconnect } from '@/lib/tokens';
+import { greyFilter, greyMatrix, iosGrey } from '@/components/table/linkGrey';
+import { Colors, Layer, Reconnect } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
 
@@ -81,6 +81,8 @@ const table = (ownLink: OwnLink) => (
 );
 
 const LAYERS = ['table-felt', 'game-top-bar', 'score-pill-layer', 'control-rail-layer', 'game-table'];
+// Unfiltered on iOS: the felt greys in Skia, and SwiftUI would inset the rail off its cutout column.
+const EDGE = ['table-felt', 'control-rail-layer'];
 const filters = () =>
   LAYERS.map((id) => (getAnimatedStyle(screen.getByTestId(id, { includeHiddenElements: true })) as { filter?: string }).filter);
 
@@ -97,12 +99,29 @@ describe("the table while the viewer's own link is down", () => {
   it.each<[OwnLink, string]>([
     ['lost', greyFilter(Reconnect.grey)],
     ['up', 'none'],
-  ])('with the link %s, every layer of the table and its HUD reads %s off iOS', async (link, filter) => {
+  ])('with the link %s, every layer of the table and its HUD reads %s off iOS; on iOS the HUD its grayscale alone, the felt and rail none', async (link, filter) => {
     const view = await render(table(link));
     await act(async () => {
       jest.advanceTimersByTime(16);
     });
-    expect(filters()).toEqual(LAYERS.map(() => (Platform.OS === 'ios' ? undefined : filter)));
+    const ios = iosGrey(link === 'up' ? 0 : Reconnect.grey).filter;
+    expect(filters()).toEqual(LAYERS.map((id) => (Platform.OS !== 'ios' ? filter : EDGE.includes(id) ? undefined : ios)));
+    await view.unmount();
+  });
+
+  it.each<[OwnLink, number]>([
+    ['lost', iosGrey(Reconnect.grey).darken],
+    ['up', 0],
+  ])('with the link %s, on iOS alone a black scrim over every greyed layer darkens them by %s', async (link, darken) => {
+    const view = await render(table(link));
+    const scrim = screen.queryByTestId('grey-scrim', { includeHiddenElements: true });
+    if (Platform.OS !== 'ios') {
+      expect(scrim).toBeNull();
+    } else {
+      expect(scrim).not.toBeNull();
+      expect(StyleSheet.flatten(scrim!.props.style)).toMatchObject({ zIndex: Layer.greyScrim, backgroundColor: Colors.shadow });
+      expect(getAnimatedStyle(scrim!)).toMatchObject({ opacity: darken });
+    }
     await view.unmount();
   });
 

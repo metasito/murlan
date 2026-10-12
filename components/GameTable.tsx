@@ -944,7 +944,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { grey, greyStyle, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
+  const { grey, greyStyle, edgeGreyStyle, darkenStyle, greyed: linkGreyed, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1159,7 +1159,7 @@ export function GameTable({
           information (#1244), lit by the one lamp rig. */}
       <Animated.View
         testID="table-felt"
-        style={[StyleSheet.absoluteFill, FELT_Z, greyStyle, breathStyle]}
+        style={[StyleSheet.absoluteFill, FELT_Z, edgeGreyStyle, breathStyle]}
         pointerEvents="none"
         {...a11yHidden()}
       >
@@ -1200,7 +1200,7 @@ export function GameTable({
           style={[
             styles.hudCentre,
             { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
-            holdingForStart && HELD_CLOCK_Z,
+            (holdingForStart || (darkenStyle && linkGreyed)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
         >
@@ -1323,7 +1323,7 @@ export function GameTable({
         {/* The cutout's own column. A cutout can never sit on a card, but it sits
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
-        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, greyStyle]}>
+        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, edgeGreyStyle]}>
           <ControlRail
             veiled={behindCoverOnly}
             width={frame.rail}
@@ -1346,6 +1346,8 @@ export function GameTable({
             }
           />
         </Animated.View>
+
+        {darkenStyle && <Animated.View testID="grey-scrim" pointerEvents="none" {...a11yHidden()} style={[styles.greyScrim, darkenStyle]} />}
 
         {settingsOpen && (
           <GameSettingsSheet
@@ -1662,6 +1664,7 @@ const styles = StyleSheet.create({
   hudLeft: { position: "absolute", zIndex: Layer.moment },
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
+  greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
   partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
 

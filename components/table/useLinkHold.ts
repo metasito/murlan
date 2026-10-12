@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
-import { greyFilter } from "./linkGrey";
+import { greyFilter, iosGrey } from "./linkGrey";
 import type { LampRig } from "./useLampRig";
 
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
-// iOS draws `brightness()` as a multiply-blended sublayer and the capture shows it opaque, a flat
-// sheet over the table; there the felt greys itself in Skia (`greyMatrix`) instead.
-const VIEW_FILTER = Platform.OS !== "ios";
+// iOS draws `grayscale()` only through the SwiftUI filters `plugins/withSwiftUIFilters.js` turns on,
+// and `brightness()` as a blend that cannot see the Skia felt: the felt greys in Skia, a scrim darkens.
+const IOS = Platform.OS === "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
 export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
@@ -22,6 +23,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   const grey = useSharedValue(holdGrey(link));
   const ramp = useSharedValue({ to: holdGrey(link), perMs: 0, started: true });
   const was = useRef(link);
+  // Outlasts `held` until the grey has faded out: whatever iOS lifts over the scrim must stay lifted while it fades.
+  const [greyed, setGreyed] = useState(held);
+  if (greyed !== held && (held || reduceMotion)) setGreyed(held);
 
   useEffect(() => {
     const to = held ? Reconnect.grey : 0;
@@ -34,14 +38,17 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     "worklet";
     const { to, perMs, started } = ramp.value;
     const g = grey.value;
-    if (g === to) return;
     // The first frame's interval began before the change, so it only starts the ramp.
     if (!started) {
       ramp.value = { to, perMs, started: true };
+      if (g === 0 && to === 0) scheduleOnRN(setGreyed, false);
       return;
     }
+    if (g === to) return;
     const d = perMs * (frame.timeSincePreviousFrame ?? 0);
-    grey.value = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
+    const next = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
+    grey.value = next;
+    if (next === 0) scheduleOnRN(setGreyed, false);
   });
   useFrameCallback(step);
 
@@ -66,6 +73,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     "grey",
     useCallback(() => grey.value, [grey])
   );
-  const greyStyle = useAnimatedStyle(() => (VIEW_FILTER ? { filter: greyFilter(grey.value) } : {}));
-  return { grey, greyStyle, frozen: held || missedInFlight };
+  const greyStyle = useAnimatedStyle(() => ({ filter: IOS ? iosGrey(grey.value).filter : greyFilter(grey.value) }));
+  // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail would leave the cutout's column.
+  const edgeGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
+  const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
+  return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, greyed, frozen: held || missedInFlight };
 }

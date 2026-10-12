@@ -183,4 +183,41 @@ describe('the table holding its breath', () => {
   it('applies and removes the grey at once under reduced motion', async () => {
     expect(await holdGrey(true)).toEqual([Reconnect.grey, 0]);
   });
+
+  it.each([false, true])('stays greyed until the grey has faded out, not only while the link is held (reduced motion %s)', async (reduced) => {
+    mockReduceMotion = reduced;
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
+    const seen = [view.result.current.greyed];
+    await view.rerender({ link: 'lost' });
+    seen.push(view.result.current.greyed);
+    await wait(Reconnect.greyIn + 50);
+    await view.rerender({ link: 'back' });
+    seen.push(view.result.current.greyed);
+    await wait(Reconnect.greyOut / 2);
+    seen.push(view.result.current.greyed);
+    await wait(Reconnect.greyOut);
+    seen.push(view.result.current.greyed);
+    mockReduceMotion = false;
+    await view.unmount();
+    expect(seen).toEqual(reduced ? [false, true, false, false, false] : [false, true, true, true, false]);
+  });
+
+  it('stops being greyed after a hold that ended before the grey ever moved', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
+    const frame = (ms: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: ms, timestamp: 0, timeSinceFirstFrame: 0 });
+    await view.rerender({ link: 'dropped' });
+    frame(16);
+    const during = [view.result.current.greyed, mockReaders.grey()];
+    await view.rerender({ link: 'up' });
+    await act(async () => {
+      frame(16);
+      frame(16);
+    });
+    await wait(Reconnect.greyOut);
+    const after = [view.result.current.greyed, mockReaders.grey()];
+    await view.unmount();
+    expect({ during, after }).toEqual({ during: [true, 0], after: [false, 0] });
+  });
 });

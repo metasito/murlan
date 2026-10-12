@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { greyMatrix } from "../../components/table/linkGrey.ts";
+import { greyFilter, greyMatrix, iosGrey } from "../../components/table/linkGrey.ts";
 import { Colors, Reconnect } from "../../lib/tokens.ts";
 
 type Rgb = readonly [number, number, number];
@@ -22,23 +22,24 @@ function skia(m: readonly number[], c: Rgb, a = 1): number[] {
   return [0, 1, 2, 3].map((row) => v.reduce((sum, x, i) => sum + m[row * 5 + i] * x, 0));
 }
 
-const saturation = (c: readonly number[]) => {
-  const max = Math.max(c[0], c[1], c[2]);
-  return max === 0 ? 0 : (max - Math.min(c[0], c[1], c[2])) / max;
-};
-
 const hex = (h: string): Rgb => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as unknown as Rgb;
 
-test("at the held grey the felt matrix desaturates and darkens as the CSS filter does", () => {
+test("on iOS the felt's matrix, then the black scrim at its opacity, is the CSS filter the other platforms draw", () => {
   const g = Reconnect.grey;
+  const { filter, darken } = iosGrey(g);
+  assert.equal(filter, `grayscale(${g})`, "the HUD's view filter is the grayscale half alone");
+  assert.ok(greyFilter(g).startsWith(filter), "and is the same grayscale the CSS filter starts with");
   const m = greyMatrix(g);
   assert.equal(m.length, 20);
   for (const input of [[1, 0, 0], [0, 1, 0], [0, 0, 1], hex(Colors.felt), hex(Colors.gold), hex(Colors.seatDisc)] as Rgb[]) {
-    const out = skia(m, input);
-    assert.ok(saturation(input) > 0.6, `${input} is a saturated input`);
-    assert.ok(saturation(out) < saturation(input), `${input} desaturates: ${saturation(out)}`);
-    assert.ok(Math.max(...out.slice(0, 3)) < Math.max(...input), `${input} darkens: ${out}`);
+    const greyed = skia(m, input);
+    assert.equal(greyed[3], 1, "alpha passes through");
+    const out = greyed.slice(0, 3).map((x) => (1 - darken) * x);
     css(input, g).forEach((want, i) => assert.ok(Math.abs(out[i] - want) <= 0.005, `${input} channel ${i}: ${out[i]} vs ${want}`));
-    assert.equal(out[3], 1, "alpha passes through");
   }
+});
+
+test("below the visible grey iOS draws no filter, so the SwiftUI wrapper comes off", () => {
+  assert.equal(iosGrey(0).filter, "none");
+  assert.equal(iosGrey(0).darken, 0);
 });
