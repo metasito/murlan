@@ -1034,11 +1034,22 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: No test file this pull request touches ran over its budget
+      # Which step fails is the verdict's: this one is infrastructure (exit 2), the next a finding.
+      # The name is budget-gate.mjs's UNREAD_STEP (tests/tooling/ciGate.test.ts).
+      - name: The run's over-budget lists were read
+        id: budget
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
-        run: node tools/ci/budget-gate.mjs
+        run: |
+          code=0
+          node tools/ci/budget-gate.mjs || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" != 2 ]
+      - name: No test file this pull request touches ran over its budget
+        env:
+          CODE: ${{ steps.budget.outputs.code }}
+        run: '[ "$CODE" = 0 ]'
 
   # The one required check. `always()`: a required check that is skipped reports success, so this
   # runs whatever its needs concluded, and it needs every other job (tests/tooling/ciGate.test.ts).

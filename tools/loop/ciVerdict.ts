@@ -1,8 +1,10 @@
 // tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { budgetListArgs, budgetReport, overBudget } from "../ci/budget-gate.mjs";
+import { budgetListArgs, budgetReport, overBudget, UNREAD_STEP } from "../ci/budget-gate.mjs";
 
 export { budgetReport, overBudget };
+
+const CI_GATE = "CI gate";
 
 export interface RunRow {
   databaseId: number;
@@ -19,6 +21,7 @@ export interface JobRow {
   status?: string;
   id?: number;
   timedOut?: boolean;
+  failedSteps?: string[];
 }
 
 /**
@@ -109,8 +112,12 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   if (run.conclusion === "success") {
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
-  // `CI gate` runs under `always()` and fails whenever another job did not pass: its red is never the cause.
-  jobs = jobs.filter((j) => j.name !== "CI gate");
+  // `CI gate` runs under `always()` and fails whenever another job did not pass: its red is the
+  // cause only when no other job's is.
+  const gate = jobs.find((j) => j.name === CI_GATE && j.conclusion === "failure");
+  // Lists storage never served say nothing about the diff, as `gated()` below calls them.
+  const unread = jobs.find((j) => j.conclusion === "failure" && j.failedSteps?.length && j.failedSteps.every((s) => s === UNREAD_STEP));
+  jobs = jobs.filter((j) => j.name !== CI_GATE && j !== unread);
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
   // stepless. Asked the other way round, this reported `infrastructure` and named the cancelled
@@ -147,6 +154,24 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
       infrastructure: true,
       failedStep: stepless[0].name,
       reason: `${stepless[0].name} ran no steps, so the run says nothing about the diff`,
+    };
+  }
+  if (!realFailure && unread) {
+    return {
+      pass: false,
+      runId: run.databaseId,
+      infrastructure: true,
+      failedStep: unread.name,
+      reason: `${unread.name} could not read the run's over-budget lists, so the run says nothing about the diff`,
+    };
+  }
+  if (!realFailure && gate) {
+    return {
+      pass: false,
+      runId: run.databaseId,
+      infrastructure: true,
+      failedStep: CI_GATE,
+      reason: `${CI_GATE} failed while no other job did, so the run says nothing about the diff`,
     };
   }
 
@@ -283,7 +308,7 @@ function jobsAndLog(
       "--json",
       "jobs",
       "--jq",
-      "[.jobs[] | {name, conclusion, status, steps: (.steps | length), id: .databaseId}]",
+      '[.jobs[] | {name, conclusion, status, steps: (.steps | length), id: .databaseId, failedSteps: [.steps[] | select(.conclusion == "failure") | .name]}]',
     ],
     [],
     until

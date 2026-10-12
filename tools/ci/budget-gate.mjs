@@ -117,6 +117,12 @@ export function overBudget(repo, prNumber, runId, gh, until) {
   return budgetFinding(listed, prFiles);
 }
 
+/**
+ * ci.yml's step that fails when the lists cannot be read, which ciVerdict reads as infrastructure;
+ * a finding fails the step after it.
+ */
+export const UNREAD_STEP = "The run's over-budget lists were read";
+
 /** Storage answers a burst of downloads with `503 Egress is over the account limit` (run 37784854605). */
 const RETRY_WAITS_S = [5, 10, 20];
 const READ_DEADLINE_MS = 5 * 60_000;
@@ -126,8 +132,8 @@ const realGh = (args, until) =>
   execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, timeout: Math.max(1_000, until - Date.now()) });
 
 /**
- * The gate over the pull request and run `env` names: 0 to pass, 1 on a finding, and 1 when the
- * lists cannot be read, since a list that never arrived is not an empty one.
+ * The gate over the pull request and run `env` names: 0 to pass, 1 on a finding or an `env` naming
+ * no run, and 2 when the lists cannot be read, since a list that never arrived is not an empty one.
  * @param {Record<string, string | undefined>} env
  * @param {GhExec} gh
  * @param {(seconds: number) => Promise<void>} sleep
@@ -154,7 +160,7 @@ export async function run(env, gh = realGh, sleep = (s) => new Promise((r) => se
       const why = String(/** @type {Error} */ (err)?.message ?? err).split("\n")[0];
       if (attempt >= RETRY_WAITS_S.length) {
         log(`The run's over-budget lists could not be read: ${why}`);
-        return 1;
+        return 2;
       }
       log(`Reading the over-budget lists failed (${why}); trying again in ${RETRY_WAITS_S[attempt]} s.`);
       await sleep(RETRY_WAITS_S[attempt]);
