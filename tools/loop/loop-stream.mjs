@@ -3,63 +3,23 @@
  *
  * Everything here is pure: a line in, a fact or null out. The supervisor does the IO.
  */
+// guard-bash imports `readLine` from here: the cycle holds only while neither module calls into the
+// other while it loads.
+import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
 // The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
 // same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
-const ECHO = /^[ \t]*echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/;
-const HEREDOC = /^<<(-?)[ \t]*(["']?)([\w.-]+)\2/;
-
 /**
- * The same report as a statement of its own in a main-session command — at its head or after a
- * `&&`, `;` or newline, never inside a quoted string or a heredoc's body, which is text the command
- * writes rather than runs.
+ * The same report as a command of its own in a main-session call: `… && echo "PHASE C" && …`. Read
+ * by the shell parser the supervisor already runs on these commands, so a quoted string or a
+ * heredoc's body, text a command writes rather than runs, is never one.
  * @param {string} command
  */
 export function echoedPhase(command) {
-  let quote = "";
-  let start = true;
-  const heredocs = [];
-  for (let i = 0; i < command.length; i++) {
-    if (start && !quote) {
-      const m = ECHO.exec(command.slice(i));
-      if (m) return m[2];
-      start = false;
-    }
-    const c = command[i];
-    if (quote) {
-      if (c === "\\" && quote === '"') i++;
-      else if (c === quote) quote = "";
-    } else if (c === "\\") i++;
-    else if (c === '"' || c === "'") quote = c;
-    else if (command.startsWith("<<<", i)) i += 2;
-    else if (c === "<" && HEREDOC.test(command.slice(i))) {
-      const m = HEREDOC.exec(command.slice(i));
-      heredocs.push({ word: m[3], tabs: m[1] === "-" });
-      i += m[0].length - 1;
-    } else if (c === ";" || c === "\n" || (c === "&" && command[i + 1] === "&")) {
-      if (c === "&") i++;
-      if (c === "\n") i = bodiesEnd(command, i + 1, heredocs.splice(0)) - 1;
-      start = true;
-    }
-  }
-  return null;
-}
-
-/** Where the bodies of the heredocs a line opened end, each at its delimiter's own line. */
-function bodiesEnd(command, from, heredocs) {
-  let at = from;
-  for (const { word, tabs } of heredocs) {
-    while (at < command.length) {
-      const nl = command.indexOf("\n", at);
-      const end = nl < 0 ? command.length : nl;
-      const line = command.slice(at, end).replace(/\r$/, "");
-      at = end + 1;
-      if ((tabs ? line.replace(/^\t+/, "") : line) === word) break;
-    }
-  }
-  return Math.min(at, command.length);
+  const echo = commands(withoutQuotedBodies(command)).find((c) => c.cmd === "echo" && /^PHASE [A-F]$/.test(c.args.join(" ")));
+  return echo ? echo.args.join(" ").slice(-1) : null;
 }
 
 /**
