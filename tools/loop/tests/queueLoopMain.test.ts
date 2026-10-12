@@ -740,6 +740,30 @@ describe("runOnce", () => {
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
   });
 
+  test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const picked: number[] = [];
+    const picker = () => {
+      picked.push(1);
+      return "ROUTE\timplement\t77\tother\tsize:S\nSTATUS\timplement:3\ttriage:0\twayfinder:0\towner:1\tlaunch:0\n";
+    };
+    const route = (labels: string[] | null) =>
+      nextRoute(42, null, {
+        read: () => ({ onTicket: false, phase: "A" }),
+        facts: () => ({ title: "t", url: "", size: "size:S", labels, reviewRounds: 1, ciRounds: 0 }),
+        ledger,
+        picker,
+      } as never);
+    for (const labels of [["in-progress", "ready-for-human"], ["ready-for-agent"], ["in-progress", "deferred"]]) {
+      const r: any = route(labels);
+      assert.deepEqual([r.skill, r.number, r.resuming], ["implement", 77, false], labels.join(","));
+    }
+    assert.equal(picked.length, 3);
+    const unread: any = route(null);
+    assert.deepEqual([unread.number, unread.resuming, unread.phase], [42, true, "A"], "an unreadable tracker keeps resuming");
+    assert.equal(picked.length, 3);
+  });
+
   test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
