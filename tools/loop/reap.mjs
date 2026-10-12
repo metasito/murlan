@@ -203,6 +203,10 @@ export function parseWindowsProcessJson(json) {
  * guarantee) degrades this one sweep instead of crashing every unattended run after it.
  */
 export function readProcessTable(json, exeName) {
+  if (!json.trim()) {
+    console.error(`reap: ${exeName} answered with no process table, so this sweep takes nothing`);
+    return [];
+  }
   try {
     return parseWindowsProcessJson(json);
   } catch (err) {
