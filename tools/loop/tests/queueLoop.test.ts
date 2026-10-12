@@ -879,6 +879,52 @@ describe("runTicket", () => {
     assert.equal(run.status, "stalled");
   });
 
+  /** A child that says nothing until told to, and closes when killed. */
+  const quiet = () => {
+    const child: any = new EventEmitter();
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.kill = () => {
+      child.stdout.push(null);
+      setImmediate(() => child.emit("close", null));
+    };
+    child.finish = (lines: string[]) => {
+      for (const l of lines) child.stdout.push(`${l}\n`);
+      child.stdout.push(null);
+      setImmediate(() => child.emit("close", 0));
+    };
+    return child;
+  };
+  const HOURS_2 = 2 * 3_600_000;
+
+  // Only `Date` is mocked: the watchdog's own interval stays real, as it does across a standby.
+  test("a session the machine slept through is not stalled, and the sleep is booked as asleep", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const spawned = () => {
+      const child = quiet();
+      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
+      setTimeout(() => child.finish([RESULT]), 80);
+      return child;
+    };
+    const run = await runTicket(spawned, opts({ tick: 10 }));
+    assert.equal(run.status, 0, "a tick two hours late is the machine asleep, not the session silent");
+    assert.equal(run.asleepMs, HOURS_2 - 10);
+  });
+
+  test("a hung session whose every tick arrives late is still killed", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const late = setInterval(() => t.mock.timers.setTime(Date.now() + HOURS_2), 5);
+    try {
+      const run = await Promise.race([
+        runTicket(quiet, opts({ stallMs: 20, tick: 10 })),
+        new Promise((r) => setTimeout(() => r({ status: "never killed" }), 2_000)),
+      ]);
+      assert.equal((run as { status: unknown }).status, "stalled");
+    } finally {
+      clearInterval(late);
+    }
+  });
+
   test("a talking session is never killed, however long it runs", async () => {
     const killed: string[] = [];
     const chatty = () => {
