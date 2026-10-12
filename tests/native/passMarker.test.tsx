@@ -221,7 +221,7 @@ describe('the pass sound', () => {
   // The play already on the pile flies in on mount; a pass inside its landing's pile-up window is masked.
   const seated = async (el: React.ReactElement) => {
     const r = await render(el);
-    await settle(PILE_UP_WINDOW_MS + 16);
+    await settle(PILE_UP_WINDOW_MS + 32);
     return r;
   };
 

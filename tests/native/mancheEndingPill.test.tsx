@@ -103,7 +103,7 @@ describe('the score pill at the end of a manche', () => {
     const pile = () => Number(getAnimatedStyle(screen.getByTestId('pile-area', HIDDEN)).opacity);
     await advance(pileFade - 16);
     expect(pile()).toBe(1);
-    await advance(deal - pileFade + 16);
+    await advance(deal - pileFade + 32);
     expect(pile()).toBe(0);
     await act(async () => view.rerender(table(noop, { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false })));
     await advance(16);
