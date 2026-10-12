@@ -155,13 +155,17 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     codes: NO_HIDDEN_INVITES,
   });
   const hiddenInvites = hidden.userId === userId ? hidden.codes : NO_HIDDEN_INVITES;
+  // A callback can settle after the account it was made for has signed out
+  // (a decline's rejection): it must not write over the next account's set.
   const updateHiddenInvites = useCallback(
-    (update: (codes: Set<string>) => void) =>
+    (update: (codes: Set<string>) => void) => {
+      if (signedInRef.current !== userId) return;
       setHidden((prev) => {
         const codes = new Set(prev.userId === userId ? prev.codes : NO_HIDDEN_INVITES);
         update(codes);
         return { userId, codes };
-      }),
+      });
+    },
     [userId]
   );
   const gameInvites = useMemo<PendingInvite[]>(
