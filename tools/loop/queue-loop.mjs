@@ -1646,7 +1646,6 @@ export function runTicket(
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
       LOOP_TICKET: String(number),
-      LOOP_CONTEXT: String(contextFor(size)),
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
