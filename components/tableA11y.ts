@@ -44,6 +44,7 @@ export interface TableA11yStrings {
   exchangeGiveCard: (loserName: string) => string;
   exchangeWaitForCard: (winnerName: string) => string;
   handOver: string;
+  matchOver: string;
   dealing: string;
 }
 
@@ -59,6 +60,8 @@ export interface TableA11yInput {
   exchange?: TableA11yExchange;
   /** The manche is over and its ending still holds the table: nobody is on move. */
   handOver?: boolean;
+  /** Read only with `handOver`: that manche was the partita's last. */
+  matchOver?: boolean;
   dealing?: boolean;
 }
 
@@ -73,7 +76,7 @@ export function describeTableForA11y(input: TableA11yInput, strings: TableA11ySt
   const parts: string[] = [];
 
   if (input.handOver) {
-    parts.push(strings.handOver);
+    parts.push(input.matchOver ? strings.matchOver : strings.handOver);
   } else if (input.dealing) {
     parts.push(strings.dealing);
   } else if (input.exchange?.active && (input.exchange.viewerIsWinner || input.exchange.viewerIsLoser)) {

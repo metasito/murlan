@@ -365,6 +365,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.dealing": "Shpërndarja",
   "gameShared.turnOf": "Radha e {{name}}",
   "gameShared.handOver": "Dora mbaroi",
+  "gameShared.matchOver": "Ndeshja mbaroi",
   "gameShared.passedLabel": "KALOI",
 
   // -------------------------------------------------------------- game.*
@@ -409,6 +410,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11yDealing": "Letrat po shpërndahen.",
   "gameTable.a11yTurnOf": "Radha e {{name}}.",
   "gameTable.a11yHandOver": "Dora mbaroi.",
+  "gameTable.a11yMatchOver": "Ndeshja mbaroi.",
   "gameTable.a11yEmptyTable": "Asnjë letër në tavolinë.",
   "gameTable.a11yYouPlayed": "Ke luajtur {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} luajti {{label}}.",
