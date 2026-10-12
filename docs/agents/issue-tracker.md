@@ -79,8 +79,9 @@ the same GitHub account.
 - **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22). `--all` lists the
   unblocked implement frontier in pick order; a bare issue number inspects that ticket without
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
-  tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
-  supervisor died between CI rounds), then a `main-red` issue, then the oldest in the Launch
+  tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
+  branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
+  owner sent back), then a `main-red` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
