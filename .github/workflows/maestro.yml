@@ -1,6 +1,6 @@
 name: Android UI (Maestro)
 
-# A ticket whose work needs a device run dispatches it on its own branch (`tools/loop/guard-bash.mjs`);
+# A ticket whose work needs a device run dispatches it on its own branch (the job's `if` below);
 # twice a week main runs it, so branches restore main's native-build cache, which GitHub evicts
 # after 7 days unread. Never on `push` or `pull_request` (owner, 2026-09-24).
 #
@@ -38,6 +38,8 @@ permissions:
 jobs:
   android:
     name: Drive the app on a real Android emulator
+    # No rerun, and no dispatch off a ticket's branch (owner, 2026-10-12; tests/tooling/deviceWorkflowsGate.test.ts).
+    if: github.run_attempt == 1 && (github.event_name == 'schedule' || startsWith(github.ref_name, 'agent/') || startsWith(github.ref_name, 'claude/'))
     runs-on: ubuntu-latest
     # Two boot waits fit inside this, which is the point: at 900s each, plus
     # the Gradle build before the first, a double timeout lands near 55 min and
