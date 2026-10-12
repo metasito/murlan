@@ -21,7 +21,7 @@ function seeded(state: CaptureState): Record<OpponentSide, { backs: number; out:
   game.players.forEach((p, seat) => {
     const dir = seatDirection(seat, CAPTURE_VIEWER_SEAT, game.players.length);
     if (dir === "bottom") return;
-    const done = p.finishPosition !== undefined;
+    const done = p.finishPosition !== undefined && p.hand.length === 0;
     out[dir] = { backs: done ? 0 : Math.min(p.hand.length, FAN_DRAWN_CARDS[dir]), out: done };
   });
   return out;
