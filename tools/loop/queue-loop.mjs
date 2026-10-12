@@ -64,6 +64,7 @@ import {
   ledger as openLedger,
   parkNotePath,
   parkReasonOf,
+  pendingReparks,
   prune as pruneLogs,
   readLedger,
   streamLog,
@@ -79,7 +80,8 @@ import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { CHECK_BASH_TIMEOUT_MS, STALL_MS } from "./limits.mjs";
+import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
+import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -467,9 +469,12 @@ export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_a
  * the ticket, so it is held and respawned, never parked.
  * A session that declared its ending chose it, whatever its last turn met. A spent usage window
  * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
+ * A session the watchdog killed mid-retry never wrote a result, and is the same outage.
  */
 export function apiFailure(run) {
-  if (!run.result?.isError || run.declared || run.blocked || run.accountError) return null;
+  if (run.declared || run.blocked || run.accountError) return null;
+  if (run.status === "stalled" && run.lastFact === "api_retry") return "unreachable";
+  if (!run.result?.isError) return null;
   const s = run.result.apiStatus;
   if (s >= 500 || s === 429) return s;
   return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
@@ -744,21 +749,7 @@ export function park(
     });
   }
 
-  step("label", () =>
-    run("gh", [
-      "issue",
-      "edit",
-      String(number),
-      "--remove-label",
-      "in-progress",
-      // Left on, a park is absorbing: classify() sends any issue carrying an owner label to the
-      // owner bucket whatever else it carries, so the ticket never returns to the frontier.
-      "--remove-label",
-      "ready-for-agent",
-      "--add-label",
-      "ready-for-human",
-    ]),
-  );
+  step("label", () => PARK_STEPS.label(number, run));
 
   const body = [
     `Parked by the queue loop in **phase ${phase}**.`,
@@ -774,15 +765,68 @@ export function park(
     "**To send it back:** deal with the reason above, then swap `ready-for-human` for `ready-for-agent`." +
       " The next run resumes from the branch as it stands.",
   ].join("\n");
-  const file = parkNotePath(number);
   step("comment", () => {
-    write(file, body, "utf8");
-    run("gh", ["issue", "comment", String(number), "--body-file", file]);
+    write(parkNotePath(number), body, "utf8");
+    PARK_STEPS.comment(number, run);
   });
 
   if (cwd) step("worktree", () => removeWorktree(cwd, run));
 
   return { ok: failed.length === 0, failed };
+}
+
+/** The tracker's half of a park, each a step a later pass can apply again on its own. */
+const PARK_STEPS = {
+  label: (number, run) =>
+    run("gh", [
+      "issue",
+      "edit",
+      String(number),
+      "--remove-label",
+      "in-progress",
+      // Left on, a park is absorbing: classify() sends any issue carrying an owner label to the
+      // owner bucket whatever else it carries, so the ticket never returns to the frontier.
+      "--remove-label",
+      "ready-for-agent",
+      "--add-label",
+      "ready-for-human",
+    ]),
+  comment: (number, run) => run("gh", ["issue", "comment", String(number), "--body-file", parkNotePath(number)]),
+};
+
+/**
+ * The park steps that failed, applied again from what the park left on disk — only while the park
+ * still stands. `why` says why a debt closed without being applied; `failed` is what is still owed.
+ *
+ * @param {number} number @param {string[]} steps
+ * @returns {{failed: string[], why: string|null}}
+ */
+export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)) {
+  let issue;
+  try {
+    issue = JSON.parse(run("gh", ["issue", "view", String(number), "--json", "state,labels"], { timeout: CI_RED_TIMEOUT_MS }));
+  } catch (err) {
+    console.error(`  ⚠️ park #${number}: the issue could not be read — ${String(err.message).split("\n")[0]}`);
+    return { failed: steps, why: null };
+  }
+  // The label step owed leaves `in-progress` on; once it landed, `ready-for-human` is the park's own.
+  // Anything else is the owner's doing, which a retry must not undo.
+  const mark = steps.includes("label") ? "in-progress" : "ready-for-human";
+  if (issue.state !== "OPEN" || !issue.labels.some((l) => l.name === mark)) {
+    return { failed: [], why: "the owner already acted on the issue" };
+  }
+  const pruned = steps.includes("comment") && !exists(parkNotePath(number));
+  const failed = steps.filter((s) => {
+    if (s === "comment" && pruned) return false;
+    try {
+      PARK_STEPS[s](number, run);
+      return false;
+    } catch (err) {
+      console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
+      return true;
+    }
+  });
+  return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
 }
 
 /** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
@@ -1439,6 +1483,13 @@ export function watchBuild(state, fact, budget, warn) {
   );
 }
 
+/** The `gh run rerun` commands the session itself ran — parsed, so a comment quoting one is not one. */
+const rerunsIn = (calls) =>
+  calls
+    .filter((c) => !c.parent && (c.name === "Bash" || c.name === "PowerShell"))
+    .flatMap((c) => commands(withoutQuotedBodies(c.command)))
+    .filter((c) => c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun").length;
+
 /**
  * Spawns one session and reports what it did.
  *
@@ -1489,6 +1540,9 @@ export function runTicket(
     declared: null,
     version: null,
     lastFactAt: Date.now(),
+    asleepMs: 0,
+    lastFact: null,
+    reruns: 0,
     blocked: false,
     blockedUntil: 0,
     stalled: false,
@@ -1578,6 +1632,7 @@ export function runTicket(
     state.lastFactAt = Date.now();
     const fact = readLine(line);
     if (!fact) return;
+    state.lastFact = fact.kind;
     if (fact.kind === "init") {
       state.version = fact.version;
       screen.set({ session: fact.sessionId });
@@ -1604,6 +1659,7 @@ export function runTicket(
         screen.start(letter, round());
       }
       if (fact.declared) state.declared = fact.declared;
+      state.reruns += rerunsIn(fact.calls);
       // The only sign of life during phase D, which is the longest one and the one that read as a
       // hang: its work happens entirely inside a review subagent.
       // Both halves, in the order a person reads them: what the session said about what it is
@@ -1666,8 +1722,13 @@ export function runTicket(
     // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
     // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
     // SIGINT only ends the turn, and a session with nothing to end ignores it.
+    const clock = sleepClock(tick);
     const watchdog = setInterval(() => {
-      if (Date.now() - state.lastFactAt <= stallMs) return;
+      const slept = clock.lap();
+      const now = Date.now();
+      state.asleepMs += slept;
+      state.lastFactAt = Math.min(now, state.lastFactAt + slept);
+      if (now - state.lastFactAt <= stallMs) return;
       state.stalled = true;
       clearInterval(watchdog);
       // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
@@ -1718,7 +1779,11 @@ export function runTicket(
           strayPlugin: state.strayPlugin,
           accountError: state.accountError,
           apiErrorCode: state.apiErrorCode,
+          started: new Date(startedAt).toISOString(),
           ms: Date.now() - startedAt,
+          asleepMs: state.asleepMs,
+          lastFact: state.lastFact,
+          reruns: state.reruns,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
           // file is complete and nothing is writing to it.
@@ -1987,6 +2052,9 @@ function postCiRedOnce(ticket, verdict, onMain, comments, run, write, log) {
   }
 }
 
+/** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
+const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
+
 /** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
 const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
 
@@ -2010,9 +2078,17 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     },
   } = io;
   const left = { ...SETTLE_ROUNDS };
-  const until = Date.now() + deadline;
-  // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
-  const wait = () => new Promise((r) => setTimeout(r, pause));
+  let until = Date.now() + deadline;
+  let woke = false;
+  // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
+  const wait = async () => {
+    const clock = sleepClock(pause);
+    // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
+    await new Promise((r) => setTimeout(r, pause));
+    const slept = clock.lap();
+    until += slept;
+    woke ||= slept > 0;
+  };
   let verdict = {};
   const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head: verdict.head ?? null });
 
@@ -2042,10 +2118,18 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         const onMain = onMainLine(failing, failing.length ? mainFailures() : null);
         postCiRedOnce(pending.ticket, verdict, onMain, comments, run, write, log);
       }
+      woke = false;
     } catch (err) {
+      const why = String(err.message).split("\n")[0];
+      // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
+      if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
+        log(`could not read CI since the machine woke — ${why}; asking again`);
+        await wait();
+        continue;
+      }
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this goes to the owner rather than ending the night.
-      return owner(`could not read CI — ${String(err.message).split("\n")[0]}`);
+      return owner(`could not read CI — ${why}`);
     }
 
     if (next.action === "update-branch" && left.update > 0) {
@@ -2191,7 +2275,8 @@ function worktreeOf(io, number) {
  */
 export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
   io.bell();
-  io.park(number, { ...ctx, error: run ? errorOf(run) : null });
+  const failed = io.park(number, { ...ctx, error: run ? errorOf(run) : null })?.failed ?? [];
+  if (failed.length) io.log(`#${number}'s park did not reach the tracker (${failed.join(", ")}) — applied again at the start of each pass`, "park");
   io.record({
     number,
     outcome: "parked",
@@ -2200,6 +2285,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
     pr,
     files,
     counts: true,
+    parkFailed: failed.length ? failed : null,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
@@ -2418,6 +2504,14 @@ export async function runOnce(io, pinned = null, at = null) {
     if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
     const cwd = after?.cwd ?? null;
     const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
+    // Held, and no `diagnosed` row: that row is what marks the head as read, and this one was not.
+    if (d.apiDown) {
+      keepWip();
+      const down = "the diagnosis could not reach the API";
+      io.record({ number: route.number, outcome: "overloaded", why: `${down} — ${d.error}`, run: d.run, counts: false });
+      io.record({ number: route.number, outcome: "overloaded", why, run: billed, counts: false });
+      return { pass: { outcome: "overloaded", ticket: route.number, why: down, run } };
+    }
     const tail = d.reply ? ` — it ended: "${d.reply.slice(-300).replace(/\s+/g, " ").trim()}"` : "";
     const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}${tail}`;
     io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
@@ -2688,7 +2782,9 @@ function realIo(book, screen) {
       const last = killedStarts(readLedger(undefined, { starts: true }), lastSeen).at(-1);
       return last?.trailing ? last : null;
     },
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null }) => {
+    ledgerRows: () => readLedger(),
+    repark: (number, steps) => repark(number, steps),
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null }) => {
       const error = errorOf(run);
       const facts = ticketFacts(number);
       const rows = readLedger();
@@ -2700,7 +2796,7 @@ function realIo(book, screen) {
         : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
-      if (!["handoff", "retry", "pushed"].includes(outcome)) {
+      if (!["handoff", "retry", "pushed", "reparked"].includes(outcome)) {
         screen.say(
           closing(
             {
@@ -2729,14 +2825,18 @@ function realIo(book, screen) {
           // Named for what the loop knows: whether it merged, not a CI verdict it never read.
           merged,
           reviewRounds: facts.reviewRounds,
-          startedAt: new Date(Date.now() - run.ms).toISOString(),
+          // A session's own start: a park recorded hours after its session ended is not `now - ms`.
+          startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
           ms: run.ms,
+          asleepMs: run.asleepMs ?? null,
+          reruns: run.reruns ?? null,
           version: run.version,
           usage: run.usage ?? null,
           committed: run.committed ?? null,
           head,
           handoff,
           error,
+          parkFailed,
         },
         {
           runId: RUN_ID,
@@ -2777,6 +2877,7 @@ export async function main({
   io = null,
   install = trapSignals,
   runId = RUN_ID,
+  tick = 30_000,
 } = {}) {
   let failures = 0;
   let waits = 0;
@@ -2808,9 +2909,22 @@ export async function main({
     }
   };
   const sofar = (kind) => spent[kind] + (since[kind] == null ? 0 : Date.now() - since[kind]);
+  // Whatever the run was doing when the machine slept, the sleep comes out of that bucket.
+  let asleepMs = 0;
+  const clock = sleepClock(tick);
+  const sleepWatch = setInterval(() => {
+    const slept = clock.lap();
+    const now = Date.now();
+    asleepMs += slept;
+    for (const kind of Object.keys(since)) if (since[kind] != null) since[kind] = Math.min(now, since[kind] + slept);
+  }, tick);
+  sleepWatch.unref();
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
-    runRecap({ startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), utc }, t);
+    runRecap(
+      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, utc },
+      t,
+    );
   screen.board?.({ recap: recapOf });
 
   /**
@@ -2835,6 +2949,7 @@ export async function main({
 
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
   const finish = (code, why) => {
+    clearInterval(sleepWatch);
     const total = runTotal(book.totals);
     const t = screen.theme ?? PLAIN();
     if (why) {
@@ -2865,7 +2980,19 @@ export async function main({
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
-    screen.board?.({ typical: typicalMs(readLedger()) });
+    const rows = io.ledgerRows();
+    screen.board?.({ typical: typicalMs(rows) });
+    // From the ledger, not memory: the outage that failed a park outlasts any backoff, and a restart.
+    for (const { n, steps } of pendingReparks(rows)) {
+      const { failed, why: moot = null } = io.repark(n, steps);
+      if (!moot && failed.length === steps.length) {
+        screen.notice("park", `#${n}'s park has still not reached the tracker (${steps.join(", ")})`);
+        continue;
+      }
+      const why = [moot ?? "the park reached the tracker", ...(failed.length ? [`still owed: ${failed.join(", ")}`] : [])].join(" — ");
+      io.record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, counts: false, parkFailed: failed.length ? failed : null });
+      io.log(`#${n}: ${why}`, "park");
+    }
 
     let pass;
     claimed = null;

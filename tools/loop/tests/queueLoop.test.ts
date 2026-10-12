@@ -21,6 +21,7 @@ import {
   runTicket,
   ticker,
   park,
+  repark,
   shouldHalt,
   BREAKER,
   takeStopFile,
@@ -581,6 +582,27 @@ describe("runTicket", () => {
     assert.equal(apiFailure(await runTicket(fakeSpawn([refused, end], 1), opts())), null);
   });
 
+  // `.loop-logs/1465.jsonl` lines 969–998: a phase D session whose last line is an `api_retry`, after
+  // which the stream went silent until the watchdog killed it (K2).
+  test("a session that stalls mid-retry is held as unreachable, not parked", async () => {
+    const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-retry-stall.jsonl"), "utf8").trim().split("\n");
+    const replayed = () => {
+      const child: any = new EventEmitter();
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      for (const l of lines) child.stdout.push(`${l}\n`);
+      child.kill = () => {
+        child.stdout.push(null);
+        setImmediate(() => child.emit("close", null));
+      };
+      return child;
+    };
+    const run = await runTicket(replayed, opts({ at: "D", stallMs: 50, tick: 10 }));
+    assert.equal(run.status, "stalled");
+    assert.equal(run.wrongModel, null);
+    assert.equal(apiFailure(run), "unreachable");
+  });
+
   for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
     test(`a ${code} api_error is narrated, and is neither an account error nor a change to apiFailure`, async () => {
       const text = `API Error: ${status} ${code} — the line the session printed`;
@@ -879,6 +901,65 @@ describe("runTicket", () => {
     assert.equal(run.status, "stalled");
   });
 
+  /** A child that says nothing until told to, and closes when killed. */
+  const quiet = () => {
+    const child: any = new EventEmitter();
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.kill = () => {
+      child.stdout.push(null);
+      setImmediate(() => child.emit("close", null));
+    };
+    child.finish = (lines: string[]) => {
+      for (const l of lines) child.stdout.push(`${l}\n`);
+      child.stdout.push(null);
+      setImmediate(() => child.emit("close", 0));
+    };
+    return child;
+  };
+  const HOURS_2 = 2 * 3_600_000;
+
+  // Only `Date` is mocked: the watchdog's own interval stays real, as it does across a standby.
+  test("a session the machine slept through is not stalled, and the sleep is booked as asleep", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const spawned = () => {
+      const child = quiet();
+      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
+      setTimeout(() => child.finish([RESULT]), 80);
+      return child;
+    };
+    const run = await runTicket(spawned, opts({ tick: 10 }));
+    assert.equal(run.status, 0, "a tick two hours late is the machine asleep, not the session silent");
+    assert.equal(run.asleepMs, HOURS_2 - 10);
+  });
+
+  // #1466's parked row read 16:33Z for a session that started 13:39Z: it was dated now − ms, hours later.
+  test("a session carries the instant it was spawned, which its ledger row is dated from", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-11T13:39:32Z") });
+    const spawned = () => {
+      const child = quiet();
+      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
+      setTimeout(() => child.finish([RESULT]), 60);
+      return child;
+    };
+    const run = await runTicket(spawned, opts({ tick: 10 }));
+    assert.equal(run.started, "2026-10-11T13:39:32.000Z");
+  });
+
+  test("a hung session whose every tick arrives late is still killed", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const late = setInterval(() => t.mock.timers.setTime(Date.now() + HOURS_2), 5);
+    try {
+      const run = await Promise.race([
+        runTicket(quiet, opts({ stallMs: 20, tick: 10 })),
+        new Promise((r) => setTimeout(() => r({ status: "never killed" }), 2_000)),
+      ]);
+      assert.equal((run as { status: unknown }).status, "stalled");
+    } finally {
+      clearInterval(late);
+    }
+  });
+
   test("a talking session is never killed, however long it runs", async () => {
     const killed: string[] = [];
     const chatty = () => {
@@ -904,6 +985,31 @@ describe("runTicket", () => {
     assert.equal(run.status, 0);
   });
 
+  // F2: six of eleven landings in the audit window rode an attempt-2 green the session itself rerun.
+  test("counts the CI reruns the session itself ran, not ones it only quoted", async () => {
+    const bash = (command: string, parent: string | null = null) =>
+      JSON.stringify({
+        type: "assistant",
+        parent_tool_use_id: parent,
+        message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] },
+      });
+    const lines = [
+      bash("RUN=38166186124 && gh run rerun $RUN --failed && echo rerun"),
+      bash(`gh issue comment 1466 --body "I will not run gh run rerun 1 again"`),
+      bash("gh run rerun 2 --failed", "toolu_sub"),
+      RESULT,
+    ];
+    const run = await runTicket(fakeSpawn(lines), opts());
+    assert.equal(run.reruns, 1);
+  });
+
+  test("a rerun behind gh's own --repo flag is counted too", async () => {
+    const bash = (command: string) =>
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] } });
+    const lines = [bash("gh -R metasito/murlan run rerun 1 --failed"), bash("gh --repo=metasito/murlan run rerun 2"), RESULT];
+    assert.equal((await runTicket(fakeSpawn(lines), opts())).reruns, 2);
+  });
+
   test("a non-zero exit is reported, not thrown", async () => {
     const run = await runTicket(fakeSpawn([RESULT], 1), opts());
     assert.equal(run.status, 1);
@@ -920,6 +1026,50 @@ describe("runTicket", () => {
     );
     assert.ok(readFileSync(run.log, "utf8").includes('"type":"result"'));
     rmSync(run.log, { force: true });
+  });
+});
+
+describe("repark", () => {
+  /** A `gh` that answers `issue view` with this issue and records every other call. */
+  const tracker = (state: string, labels: string[]) => {
+    const edits: string[] = [];
+    return {
+      edits,
+      run: (_file: string, args: string[]) => {
+        if (args[1] === "view") return JSON.stringify({ state, labels: labels.map((name) => ({ name })) });
+        edits.push(args.slice(0, 2).join(" "));
+        return "";
+      },
+    };
+  };
+  const noted = () => true;
+
+  test("applies the owed label while the issue is open and still claimed", () => {
+    const gh = tracker("OPEN", ["in-progress", "ready-for-agent"]);
+    assert.deepEqual(repark(42, ["label"], gh.run, noted).failed, []);
+    assert.deepEqual(gh.edits, ["issue edit"]);
+  });
+
+  test("undoes nothing the owner did since: a requeued or closed issue closes the debt untouched", () => {
+    for (const [state, labels] of [["OPEN", ["ready-for-agent"]], ["CLOSED", ["in-progress"]]] as const) {
+      const gh = tracker(state, [...labels]);
+      const r = repark(42, ["label", "comment"], gh.run, noted);
+      assert.deepEqual(gh.edits, [], `${state} ${labels}`);
+      assert.deepEqual(r.failed, []);
+      assert.match(String(r.why), /owner already acted/);
+    }
+  });
+
+  test("a park note the pruner removed closes the comment's debt instead of failing every pass", () => {
+    const gh = tracker("OPEN", ["ready-for-human"]);
+    const r = repark(42, ["comment"], gh.run, () => false);
+    assert.deepEqual([gh.edits, r.failed], [[], []]);
+    assert.match(String(r.why), /park note .* pruned/);
+  });
+
+  test("a tracker it cannot read leaves every step owed", () => {
+    const r = repark(42, ["label"], () => { throw new Error("error connecting to api.github.com"); }, noted);
+    assert.deepEqual(r.failed, ["label"]);
   });
 });
 

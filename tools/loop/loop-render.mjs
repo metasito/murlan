@@ -423,11 +423,13 @@ const hhmm = (ms, utc) => {
  * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
  *   ciMs: number, waitMs: number, utc?: boolean}} run
  */
-export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleepMs = 0, utc = false }, t) {
   const wall = now - startedAt;
   const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
   const stuck = tickets.filter((r) => r.outcome !== "landed" && r.outcome !== "closed");
-  const working = Math.max(0, wall - ciMs - waitMs);
+  const working = Math.max(0, wall - ciMs - waitMs - asleepMs);
+  // A row of its own: on the line above it is clamped to the width and loses its figure.
+  const asleep = asleepMs > 0 ? [stepRow({ label: "", detail: `asleep ${elapsed(asleepMs)}, in standby`, state: "skipped" }, t)] : [];
   return [
     head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
     row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
@@ -435,6 +437,7 @@ export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = 
     "",
     head("where the time went"),
     stepRow({ label: "", detail: `working ${elapsed(working)} · CI ${elapsed(ciMs)} · waiting ${elapsed(waitMs)}`, state: "skipped" }, t),
+    ...asleep,
   ];
 }
 

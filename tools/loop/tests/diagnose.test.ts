@@ -112,6 +112,83 @@ describe("diagnose", () => {
     assert.match(empty.error, /exited 1 with no result/);
   });
 
+  test("a diagnosis the API refused is apiDown; one cut off by its turns is not", async () => {
+    const run = (over: object) => diagnose(stop, { spawnFn: () => child(reply("", { is_error: true, ...over })), state: () => "" });
+    const marked: any = await run({ subtype: "success", terminal_reason: "api_error", result: "API Error: Connection error." });
+    assert.deepEqual([marked.ok, marked.apiDown], [false, true]);
+    // The shape #1465's and #1466's diagnoses ended in — "it ended success" — with no terminal_reason.
+    const unmarked: any = await run({ subtype: "success", result: "API Error: Unable to connect to API" });
+    assert.deepEqual([unmarked.ok, unmarked.apiDown], [false, true]);
+    const turns: any = await run({ subtype: "error_max_turns" });
+    assert.equal(turns.apiDown, undefined);
+  });
+
+  test("an error no wait cures is a plain failure, not a hold", async () => {
+    const run = (over: object) => diagnose(stop, { spawnFn: () => child(reply("", { is_error: true, subtype: "success", ...over })), state: () => "" });
+    for (const over of [
+      { result: "Prompt is too long" },
+      { result: "Credit balance is too low" },
+      { result: "API Error: 401 Invalid authentication credentials", terminal_reason: "api_error", api_error_status: 401 },
+      { result: "API Error: 400 invalid_request_error", terminal_reason: "api_error" },
+    ]) {
+      const d: any = await run(over);
+      assert.deepEqual([d.ok, d.apiDown], [false, undefined], JSON.stringify(over));
+    }
+    for (const over of [
+      { result: "API Error: 529 Overloaded", terminal_reason: "api_error", api_error_status: 529 },
+      { result: "API Error: 429 rate_limit_error", api_error_status: 429 },
+    ]) {
+      const d: any = await run(over);
+      assert.equal(d.apiDown, true, JSON.stringify(over));
+    }
+  });
+
+  const realTimeout = globalThis.setTimeout;
+  const HOURS_2 = 2 * 3_600_000;
+  const silent = () => {
+    const c: any = new EventEmitter();
+    c.stdout = new PassThrough();
+    c.stderr = new PassThrough();
+    c.stdin = new PassThrough();
+    c.kill = () => {};
+    return c;
+  };
+
+  // `setTimeout` is mocked with `Date` because a timer whose time passed during a standby fires at
+  // once on wake; `setInterval` is left real, since a mocked one replays every interval missed.
+  test("a standby inside the budget is not counted against it", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const spawnFn = () => {
+      const c = silent();
+      realTimeout(() => {
+        t.mock.timers.setTime(Date.now() + HOURS_2);
+        t.mock.timers.tick(0);
+      }, 15);
+      realTimeout(() => {
+        c.stdout.end(reply("DIAGNOSIS: park\nCAUSE: x"));
+        c.emit("close", 0);
+      }, 60);
+      return c;
+    };
+    const d: any = await diagnose(stop, { spawnFn, state: () => "same", timeoutMs: 20 * 60_000, tick: 10 } as never);
+    assert.equal(d.error, undefined, "a diagnosis the machine slept through has not run past its budget");
+    assert.equal(d.action, "park");
+  });
+
+  test("a diagnosis whose every tick arrives late still runs out of budget", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const late = setInterval(() => t.mock.timers.setTime(Date.now() + HOURS_2), 5);
+    try {
+      const d: any = await Promise.race([
+        diagnose(stop, { spawnFn: silent, state: () => "same", timeoutMs: 30, tick: 10 } as never),
+        new Promise((r) => setTimeout(() => r({ error: "never timed out" }), 2_000)),
+      ]);
+      assert.match(d.error, /ran past/);
+    } finally {
+      clearInterval(late);
+    }
+  });
+
   test("is not a queue session", async () => {
     let env: any = null;
     const spawnFn = (_c: string, _a: string[], o: any) => ((env = o.env), child(reply("x")));

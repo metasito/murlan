@@ -112,6 +112,9 @@ export function readLine(line) {
       plugins: (e.plugins ?? []).map((p) => p.source ?? p.name),
     };
   }
+  if (e.type === "system" && e.subtype === "api_retry") {
+    return { kind: "api_retry", attempt: e.attempt ?? null, status: e.error_status ?? null, error: e.error ?? null };
+  }
   if (e.type === "system" && TASK_EVENT[e.subtype]) {
     if (!e.task_id) return null;
     return taskFact(TASK_EVENT[e.subtype], e);

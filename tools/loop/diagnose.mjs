@@ -7,6 +7,7 @@ import { execFileSync, spawn as spawnChild } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readIssue } from "./brief.mjs";
+import { sleepClock } from "./limits.mjs";
 
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
@@ -125,6 +126,17 @@ export function parseDiagnosis(text, runId = null) {
   return { ok: true, action, cause };
 }
 
+/**
+ * An API failure a wait cures: no connection, a 5xx, or a 429. The CLI does not always name
+ * `terminal_reason` beside an `API Error:` result, so the text is read too; a 4xx other than 429 —
+ * a bad key, a refused request — is not waited out.
+ */
+function apiDown(terminalReason, status, said) {
+  const code = status ?? (Number(/^API Error: (\d{3})\b/.exec(said)?.[1]) || null);
+  const waitable = code == null || code >= 500 || code === 429;
+  return waitable && (terminalReason === "api_error" || /^API Error\b/.test(said));
+}
+
 /** HEAD and the tree's status together, so a diagnosis that wrote anything is caught either way. */
 export function treeState(cwd, run = (args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })) {
   try {
@@ -140,7 +152,7 @@ export function treeState(cwd, run = (args) => execFileSync("git", ["-C", cwd, .
  * @returns {Promise<({ok: true, action: string, phase?: string, cause: string}|{ok: false, error: string})
  *   & {reply?: string, run: {result: {cost: number, turns: number}|null, ms: number, log: string|null, phases: {}}}>}
  */
-export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeoutMs = DIAGNOSIS.TIMEOUT_MS } = {}) {
+export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeoutMs = DIAGNOSIS.TIMEOUT_MS, tick = 30_000 } = {}) {
   const cwd = stop.cwd ?? ROOT;
   const before = state(cwd);
   const startedAt = Date.now();
@@ -150,7 +162,7 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
     const done = (answer) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearInterval(timer);
       run.ms = Date.now() - startedAt;
       resolve({ ...answer, run });
     };
@@ -167,10 +179,14 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
         LOOP_REASON: undefined,
       },
     });
-    const timer = setTimeout(() => {
+    const clock = sleepClock(tick);
+    let asleep = 0;
+    const timer = setInterval(() => {
+      asleep += clock.lap();
+      if (Date.now() - startedAt - asleep < timeoutMs) return;
       child.kill("SIGTERM");
       done({ ok: false, error: `it ran past ${Math.round(timeoutMs / 60_000)}m` });
-    }, timeoutMs);
+    }, tick);
     timer.unref?.();
     let out = "";
     child.stdout.on("data", (chunk) => (out += chunk));
@@ -185,6 +201,10 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
       }
       run.result = { cost: json.total_cost_usd ?? 0, turns: json.num_turns ?? 0 };
       if (state(cwd) !== before) return done({ ok: false, error: "it changed the worktree it was only to read" });
+      const said = String(json.result ?? "");
+      if (json.is_error && apiDown(json.terminal_reason, json.api_error_status, said)) {
+        return done({ ok: false, apiDown: true, error: `it could not reach the API — ${said.split("\n")[0]}` });
+      }
       if (json.is_error) return done({ ok: false, error: `it ended ${json.terminal_reason ?? json.subtype ?? "in an error"}` });
       done({ ...parseDiagnosis(json.result, stop.runId ?? null), reply: String(json.result ?? "") });
     });
