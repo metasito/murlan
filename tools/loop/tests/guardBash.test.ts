@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { check, fromMsys, gitAt } from "../guard-bash.mjs";
+import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -461,6 +462,29 @@ describe("a loop session reruns a run once", () => {
     check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
     assert.equal(asked, 1);
   });
+});
+
+describe("a loop session reads comments only through rule 25's filter", () => {
+  const none = () => null;
+  for (const cmd of [
+    "gh issue view 5 --comments",
+    "gh pr view 5 -c",
+    `gh issue view 5 --json comments --jq '.comments[]|select(.body|startswith("DOD-CHECK"))|.body'`,
+    "gh issue view 5 --json=title,comments",
+    "cd .worktrees/agent-5 && gh -R o/r pr view 5 --json body,comments",
+  ]) {
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, none, repo, true)), /--json title,body,comments --jq/));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, false), null));
+  }
+  for (const cmd of [
+    readIssue(5),
+    `gh pr view 5 --json comments --jq '.comments[]|${TRUSTED_SELECT}|.body'`,
+    "gh issue comment 5 --body 'read it with gh issue view 5 --comments'",
+    "gh issue view 5 --json title,body",
+    "gh pr view 5 --json state,mergeStateStatus",
+  ]) {
+    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, true), null));
+  }
 });
 
 describe("a dispatch ref through a variable", () => {
