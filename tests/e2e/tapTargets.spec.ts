@@ -309,7 +309,7 @@ for (const size of SIZES) {
     browser,
     baseURL,
   }) => {
-    test.setTimeout(3 * 60_000);
+    test.setTimeout(4 * 60_000);
     const other = await browser.newContext({ locale: "it-IT" });
     try {
       const target = uniqueUsername("tapft");
@@ -347,6 +347,23 @@ for (const size of SIZES) {
       await otherPage.getByRole("button", { name: accept }).scrollIntoViewIfNeeded({ timeout: 15_000 });
       await settled(otherPage, 2500);
       await sweepSizes(otherPage, "friends, incoming request", [], [accept, decline]);
+
+      await otherPage.getByRole("button", { name: accept }).click();
+      const remove = copy["friends.removeA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: remove }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, a friend", [], [remove]);
+
+      await openApp(page, baseURL!);
+      await goToOnlineLobby(page);
+      await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+      await page
+        .getByRole("button", { name: copy["room.inviteA11yLabel"].replace("{{username}}", target) })
+        .click({ timeout: 15_000 });
+      const dismiss = copy["friends.dismissInviteA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: dismiss }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, a game invite", [], [dismiss]);
     } finally {
       await other.close();
     }
