@@ -81,7 +81,11 @@ export function report(s, reason = process.env.LOOP_REASON) {
  */
 export const silentAt = (argv, env) => argv.includes("--startup") && Boolean(env.LOOP_TURNS);
 
-/** An owner's session shares the checkout with a run it does not own: it is told, never ordered. */
+/**
+ * An owner's session shares the checkout with a run it does not own: it is told, never ordered.
+ *
+ * @param {{number: number, since: string}|null} [parity] `parityRed()`'s answer
+ */
 export function inform(s, at = new Date(), parity = null) {
   const where = s.phase === "?" ? `stuck (${s.why})` : `at phase ${s.phase}`;
   const run = s.onTicket
@@ -95,6 +99,7 @@ export function inform(s, at = new Date(), parity = null) {
   return said.length ? `loop-status, derived ${at.toISOString()}, for information: ${said.join("; ")}.` : "";
 }
 
+/** @param {{number: number, since: string}|null} [parity] */
 export const statusFor = (s, env, at = new Date(), parity = null) =>
   env.LOOP_TURNS ? report(s, env.LOOP_REASON) : inform(s, at, parity);
 
