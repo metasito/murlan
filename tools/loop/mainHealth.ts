@@ -12,6 +12,7 @@ import { decideVerdict, failedLogArgs, failingTestIds, markTimedOut, stripLogPre
 
 export interface MainRun extends RunRow {
   url?: string;
+  attempt?: number;
 }
 
 export interface FiledIssue {
@@ -97,7 +98,7 @@ export function mainRunArgs(repo: string): string[] {
   return [
     "run", "list", "--repo", repo, "--branch", "main",
     "--workflow", "ci.yml", "--limit", "1",
-    "--json", "databaseId,conclusion,status,headSha,url",
+    "--json", "databaseId,conclusion,status,headSha,url,attempt",
   ];
 }
 
@@ -207,7 +208,7 @@ export interface MainFailures {
   runId: number;
   url?: string;
   ids: string[];
-  /** The ids failed attempt 1 of the pull-request run a green main inherited: flakes, not main's reds. */
+  /** The ids failed attempt 1 of a green main's run, or of the pull-request run it inherited: flakes, not main's reds. */
   flaky?: true;
 }
 
@@ -233,22 +234,27 @@ function inheritedFlakes(gh: Gh, repo: string, main: MainRun): MainFailures | nu
     "run", "list", "--repo", repo, "--workflow", "ci.yml", "--commit", head,
     "--status", "success", "--limit", "1", "--json", "databaseId,attempt,url",
   ]), []);
-  if (!source || (source.attempt ?? 1) < 2) return null;
-  const first = parse<RawJobs & { status?: string; conclusion?: string | null }>(
-    gh(["run", "view", String(source.databaseId), "--repo", repo, "--attempt", "1", "--json", "status,conclusion,jobs"]),
-    {},
-  );
-  const run: RunRow = { databaseId: source.databaseId, status: first.status ?? "", conclusion: first.conclusion ?? null };
-  const ids = failuresOf(gh, repo, run, jobRows(gh, repo, first), 1);
-  return ids ? { runId: source.databaseId, url: source.url && `${source.url}/attempts/1`, ids, flaky: true } : null;
+  return source ? firstAttemptFlakes(gh, repo, source) : null;
 }
 
-/** Main's latest completed red run and its failing test ids, or a green main's inherited flakes; null when main has none to give, never a throw. */
+/** A green run won on a rerun: attempt 1's failing ids, as flakes. */
+function firstAttemptFlakes(gh: Gh, repo: string, green: { databaseId: number; attempt?: number; url?: string }): MainFailures | null {
+  if ((green.attempt ?? 1) < 2) return null;
+  const first = parse<RawJobs & { status?: string; conclusion?: string | null }>(
+    gh(["run", "view", String(green.databaseId), "--repo", repo, "--attempt", "1", "--json", "status,conclusion,jobs"]),
+    {},
+  );
+  const run: RunRow = { databaseId: green.databaseId, status: first.status ?? "", conclusion: first.conclusion ?? null };
+  const ids = failuresOf(gh, repo, run, jobRows(gh, repo, first), 1);
+  return ids ? { runId: green.databaseId, url: green.url && `${green.url}/attempts/1`, ids, flaky: true } : null;
+}
+
+/** Main's latest completed red run and its failing test ids, or a green main's rerun-hidden flakes; null when main has none to give, never a throw. */
 export function mainFailures(gh: Gh, repo: string): MainFailures | null {
   try {
     const { run, jobs } = readMain(gh, repo);
     if (!run || run.status !== "completed") return null;
-    if (run.conclusion === "success") return inheritedFlakes(gh, repo, run);
+    if (run.conclusion === "success") return firstAttemptFlakes(gh, repo, run) ?? inheritedFlakes(gh, repo, run);
     const ids = failuresOf(gh, repo, run, jobs);
     return ids && { runId: run.databaseId, url: run.url, ids };
   } catch {

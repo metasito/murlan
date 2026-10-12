@@ -431,7 +431,7 @@ describe("a red head's failures that main has too", () => {
     assert.deepEqual(out, HAND_BACK);
     const body = String(bodyOf(asked, written));
     assert.match(body, /^on main: none$/m);
-    assert.match(body, /^flaky on main: 1 of \d+ failed attempt 1 of the run main inherited \(https:\/\/example\.test\/runs\/1\/attempts\/1\): /m);
+    assert.match(body, /^flaky on main: 1 of \d+ failed attempt 1 of main's rerun-won green \(https:\/\/example\.test\/runs\/1\/attempts\/1\): /m);
   });
 
   test("a main with nothing to give says none", async () => {

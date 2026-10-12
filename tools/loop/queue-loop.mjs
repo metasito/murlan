@@ -2048,7 +2048,7 @@ export function onMainLine(failing, main) {
   const onMain = new Set(main?.ids ?? []);
   const ids = failing.filter((id) => onMain.has(id));
   if (!main || ids.length === 0) return "none";
-  const how = main.flaky ? "failed attempt 1 of the run main inherited" : "also fail on main";
+  const how = main.flaky ? "failed attempt 1 of main's rerun-won green" : "also fail on main";
   return `${ids.length} of ${failing.length} ${how} (${main.url ?? "main's latest run"}): ${ids.join(", ")}`;
 }
 
