@@ -373,12 +373,13 @@ export default function FriendsScreen() {
                   <View style={styles.actionRow}>
                     <Pressable
                       onPress={() => dismissGameInvite(invite.roomCode)}
-                      style={styles.declineBtn}
+                      style={styles.iconBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.dismissInviteA11yLabel", { username: invite.from })}
-                      hitSlop={Spacing.sm}
                     >
-                      <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
+                      <View style={styles.declineBtn}>
+                        <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
+                      </View>
                     </Pressable>
                     <Pressable
                       onPress={() => handleJoinGameInvite(invite.roomCode)}
@@ -441,21 +442,23 @@ export default function FriendsScreen() {
                   <View style={styles.actionRow}>
                     <Pressable
                       onPress={() => declineMutation.mutate(r.id)}
-                      style={styles.declineBtn}
+                      style={styles.iconBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.declineRequestA11yLabel", { username: r.username })}
-                      hitSlop={Spacing.sm}
                     >
-                      <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
+                      <View style={styles.declineBtn}>
+                        <Ionicons name="close" size={16} color={Colors.textMuted} {...a11yHidden()} />
+                      </View>
                     </Pressable>
                     <Pressable
                       onPress={() => acceptMutation.mutate(r.id)}
-                      style={styles.acceptBtn}
+                      style={styles.iconBtn}
                       accessibilityRole="button"
                       accessibilityLabel={t("friends.acceptRequestA11yLabel", { username: r.username })}
-                      hitSlop={Spacing.sm}
                     >
-                      <Ionicons name="checkmark" size={16} color={Colors.bgCard} {...a11yHidden()} />
+                      <View style={styles.acceptBtn}>
+                        <Ionicons name="checkmark" size={16} color={Colors.bgCard} {...a11yHidden()} />
+                      </View>
                     </Pressable>
                   </View>
                 </View>
@@ -573,7 +576,7 @@ const styles = StyleSheet.create({
 
   iconBtn: { width: TOUCH_TARGET_MIN, height: TOUCH_TARGET_MIN, alignItems: "center", justifyContent: "center" },
 
-  actionRow: { flexDirection: "row", gap: Spacing.sm },
+  actionRow: { flexDirection: "row" },
   declineBtn: {
     width: 36,
     height: 36,

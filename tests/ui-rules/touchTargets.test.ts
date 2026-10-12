@@ -134,7 +134,8 @@ export function pressableBoxes(files: string[], read: (rel: string) => string): 
       ) {
         continue;
       }
-      const slop = hitSlopGrowth(node.tag, Spacing);
+      // react-native-web's Pressable ignores hitSlop.
+      const slop = /\.(native|ios|android)\.tsx$/.test(file) ? hitSlopGrowth(node.tag, Spacing) : 0;
       const grown = (n: number | null) => (n === null ? null : n + slop);
       const boxes = bodies.map((b) => declaredBox(b, TOUCH_TARGET_MIN));
       const widest = (side: "width" | "height") => {
@@ -277,6 +278,23 @@ test("a pressable cannot borrow a same-named style from a file it does not impor
   ]);
   const found = pressableBoxes([...seeded.keys()], (f) => seeded.get(f)!);
   assert.deepEqual(found, [{ file: "components/Small.tsx", line: 2, width: null, height: null }]);
+});
+
+test("hitSlop counts only in a file that never renders on web", () => {
+  const tag = `export const S = () => <Pressable style={styles.btn} hitSlop={Spacing.sm} onPress={go} />;\n`;
+  const sheet = `const styles = StyleSheet.create({ btn: { height: 36, width: 36 } });\n`;
+  const files = ["components/A.tsx", "components/A.native.tsx", "components/A.ios.tsx", "components/A.android.tsx"];
+  const found = pressableBoxes(files, () => sheet + tag);
+  const grown = 36 + Spacing.sm * 2;
+  assert.deepEqual(
+    found.map((c) => [c.file, c.width, c.height]),
+    [
+      ["components/A.tsx", 36, 36],
+      ["components/A.native.tsx", grown, grown],
+      ["components/A.ios.tsx", grown, grown],
+      ["components/A.android.tsx", grown, grown],
+    ]
+  );
 });
 
 test("a control nobody has ruled on fails, naming itself", () => {
