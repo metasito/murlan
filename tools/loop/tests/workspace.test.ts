@@ -60,9 +60,14 @@ function ticketTree(repo: string, n: number, { detached = false } = {}) {
 
 type Issue = { state: string; labels: string[] } | Error;
 
-function fakeGh(issues: Record<number, Issue>) {
+/** `prs` is each branch's newest pull request state; a branch absent from it has none. */
+function fakeGh(issues: Record<number, Issue>, prs: Record<string, string> = {}) {
   const asked: number[] = [];
   const gh = (args: string[]) => {
+    if (args[0] === "pr") {
+      const state = prs[args[args.indexOf("--head") + 1]];
+      return JSON.stringify(state ? [{ state }] : []);
+    }
     const n = Number(args[2]);
     asked.push(n);
     const issue = issues[n];
@@ -106,13 +111,51 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.match(row?.detail ?? "", /removed agent-7/);
   });
 
-  test("an open issue that lost its claim is removed, and its held work ref is kept", () => {
+  test("an open issue that lost its claim, with a pull request, is removed, and its held work ref is kept", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 8);
     run(repo, "update-ref", "refs/loop/wip/8", "HEAD");
-    sweep({ git: spyGit(repo).git, gh: fakeGh({ 8: { state: "OPEN", labels: ["ready-for-human"] } }).gh });
+    sweep({ git: spyGit(repo).git, gh: fakeGh({ 8: { state: "OPEN", labels: ["ready-for-human"] } }, { "agent/8-x": "CLOSED" }).gh });
     assert.equal(fs.existsSync(dir), false);
     assert.ok(hasRef(repo, "refs/loop/wip/8"), "an open ticket's ref is parked work");
+  });
+
+  test("an open issue that lost its claim, its branch merged into origin/main, is removed", () => {
+    const { repo } = scratchRepo();
+    const dir = ticketTree(repo, 24);
+    run(repo, "update-ref", "refs/remotes/origin/main", "HEAD");
+    sweep({ git: spyGit(repo).git, gh: fakeGh({ 24: { state: "OPEN", labels: [] } }).gh });
+    assert.equal(fs.existsSync(dir), false);
+  });
+
+  test("an open issue that lost its claim, unmerged and with no pull request, is kept and named", () => {
+    const { repo } = scratchRepo();
+    const dir = ticketTree(repo, 25);
+    run(repo, "-C", dir, "commit", "--quiet", "--allow-empty", "-m", "unmerged work");
+    run(repo, "update-ref", "refs/remotes/origin/main", "main");
+    const { git, removals } = spyGit(repo);
+    const row = sweep({ git, gh: fakeGh({ 25: { state: "OPEN", labels: ["ready-for-agent"] } }).gh });
+    assert.deepEqual(removals(), []);
+    assert.ok(fs.existsSync(dir));
+    assert.match(row?.note ?? "", /agent-25: kept — unmerged, no pull request found/);
+  });
+
+  test("a worktree git cannot read is kept with git's reason, and the sweep goes on to the next", () => {
+    const { repo } = scratchRepo();
+    const held = ticketTree(repo, 26);
+    const next = ticketTree(repo, 27);
+    const { git: real } = spyGit(repo);
+    const git = (args: string[]) => {
+      if (args.includes("status") && args.some((a) => a.endsWith("agent-26"))) {
+        throw Object.assign(new Error("Command failed: git status"), { stderr: "fatal: detected dubious ownership in repository" });
+      }
+      return real(args);
+    };
+    const row = sweep({ git, gh: fakeGh({ 26: CLOSED, 27: CLOSED }).gh });
+    assert.ok(fs.existsSync(held));
+    assert.equal(fs.existsSync(next), false);
+    assert.equal(row?.state, "warned");
+    assert.match(row?.note ?? "", /agent-26: kept — fatal: detected dubious ownership/);
   });
 
   test("a claimed ticket's worktree is kept, and says nothing", () => {
@@ -133,13 +176,23 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.ok(fs.existsSync(dir));
   });
 
-  test("a detached HEAD is kept without asking the tracker", () => {
+  test("a detached HEAD has no branch to keep and is removed, without asking the tracker", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 11, { detached: true });
     const { gh, asked } = fakeGh({ 11: CLOSED });
-    assert.equal(sweep({ git: spyGit(repo).git, gh }), null);
+    const row = sweep({ git: spyGit(repo).git, gh });
     assert.deepEqual(asked, []);
+    assert.equal(fs.existsSync(dir), false);
+    assert.match(row?.note ?? "", /agent-11: removed, detached HEAD/);
+  });
+
+  test("a detached HEAD holding uncommitted work is kept", () => {
+    const { repo } = scratchRepo();
+    const dir = ticketTree(repo, 28, { detached: true });
+    fs.writeFileSync(path.join(dir, "notes.txt"), "unsaved");
+    const row = sweep({ git: spyGit(repo).git, gh: fakeGh({}).gh });
     assert.ok(fs.existsSync(dir));
+    assert.match(row?.note ?? "", /agent-28: kept — .*uncommitted/);
   });
 
   test("an issue that cannot be read keeps its worktree, and the row says so", () => {
@@ -252,6 +305,17 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.deepEqual(removals(), []);
     assert.ok(fs.existsSync(dir));
     assert.match(row?.detail ?? "", /would remove agent-21/);
+  });
+
+  test("--dry-run keeps what the real run would keep, and says why", () => {
+    const { repo } = scratchRepo();
+    const dirtyDir = ticketTree(repo, 29);
+    fs.writeFileSync(path.join(dirtyDir, "notes.txt"), "unsaved");
+    run(repo, "worktree", "lock", ticketTree(repo, 30));
+    const row = sweep({ dryRun: true, git: spyGit(repo).git, gh: fakeGh({ 29: CLOSED, 30: CLOSED }).gh });
+    assert.doesNotMatch(row?.detail ?? "", /would remove/);
+    assert.match(row?.note ?? "", /agent-29: kept — .*uncommitted/);
+    assert.match(row?.note ?? "", /agent-30: kept — .*locked/);
   });
 });
 
