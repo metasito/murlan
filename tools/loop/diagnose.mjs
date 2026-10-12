@@ -7,6 +7,7 @@ import { execFileSync, spawn as spawnChild } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readIssue } from "./brief.mjs";
+import { suspended } from "./limits.mjs";
 
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
@@ -140,7 +141,7 @@ export function treeState(cwd, run = (args) => execFileSync("git", ["-C", cwd, .
  * @returns {Promise<({ok: true, action: string, phase?: string, cause: string}|{ok: false, error: string})
  *   & {reply?: string, run: {result: {cost: number, turns: number}|null, ms: number, log: string|null, phases: {}}}>}
  */
-export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeoutMs = DIAGNOSIS.TIMEOUT_MS } = {}) {
+export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeoutMs = DIAGNOSIS.TIMEOUT_MS, tick = 30_000 } = {}) {
   const cwd = stop.cwd ?? ROOT;
   const before = state(cwd);
   const startedAt = Date.now();
@@ -150,7 +151,7 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
     const done = (answer) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearInterval(timer);
       run.ms = Date.now() - startedAt;
       resolve({ ...answer, run });
     };
@@ -167,10 +168,16 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
         LOOP_REASON: undefined,
       },
     });
-    const timer = setTimeout(() => {
+    let tickAt = startedAt;
+    let awake = 0;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      awake += now - tickAt - suspended(tickAt, now, tick);
+      tickAt = now;
+      if (awake < timeoutMs) return;
       child.kill("SIGTERM");
       done({ ok: false, error: `it ran past ${Math.round(timeoutMs / 60_000)}m` });
-    }, timeoutMs);
+    }, tick);
     timer.unref?.();
     let out = "";
     child.stdout.on("data", (chunk) => (out += chunk));
