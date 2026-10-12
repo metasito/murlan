@@ -5,14 +5,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { parseHeader } from "./brief.mjs";
+import { apiMethod, parseHeader } from "./brief.mjs";
 import { located, native } from "./guard-read.mjs";
 import { PHASE } from "./loop-stream.mjs";
 
 const LAND = /(^|["'=])[ \t]*VERDICT:[ \t]*LAND\b/m;
 const ISSUE_URL = /\/issues\/(\d+)(?:[/?#]|$)/;
 const API_COMMENTS = /(?:^|\/)issues\/(\d+)\/comments$/;
-const API_BODY = /^(-f|-F|--field|--raw-field|--input|--(raw-)?field=.*)$/;
 
 /** The issue a `gh issue comment` or a `gh api …/issues/<n>/comments` post names, and its body file. */
 function postOf(c) {
@@ -24,7 +23,7 @@ function postOf(c) {
     return { n: Number(ISSUE_URL.exec(target)?.[1] ?? target) || null, file };
   }
   const endpoint = c.args[0] === "api" && c.args.map((a) => API_COMMENTS.exec(a)).find(Boolean);
-  if (!endpoint || !c.args.some((a) => API_BODY.test(a))) return null;
+  if (!endpoint || apiMethod(c.args) !== "POST") return null;
   const field = c.args.find((a) => a.startsWith("body=@"))?.slice(6);
   const input = c.args.includes("--input") ? c.args[c.args.indexOf("--input") + 1] : null;
   return { n: Number(endpoint[1]), file: field ?? input };
@@ -41,8 +40,7 @@ const readOr = (read, file) => {
 
 export function landOn(payload, read = (p) => readFileSync(p, "utf8")) {
   const raw = String(payload?.tool_input?.command ?? "");
-  // gh's own `{owner}`/`{repo}` placeholders would otherwise split the endpoint at the braces.
-  for (const { c, at: dir } of located(raw.replace(/\{(owner|repo|branch)\}/g, "$1"), payload.cwd ?? process.cwd())) {
+  for (const { c, at: dir } of located(raw, payload.cwd ?? process.cwd())) {
     const post = postOf(c);
     if (!post) continue;
     const body = post.file && post.file !== "-" ? readOr(read, resolve(dir, native(post.file))) : "";
@@ -88,12 +86,14 @@ if (isInvokedDirectly(process.argv[1], import.meta.url) && process.env.LOOP_TURN
     const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
     const shell = payload.tool_name === "Bash" || payload.tool_name === "PowerShell";
     const n = shell && !payload.agent_id ? landOn(payload) : null;
-    const transcript = n ? readOr((p) => readFileSync(p, "utf8"), payload.transcript_path) : null;
-    const reason = !n
+    const path = payload.transcript_path;
+    if (n && !path) process.stderr.write(`guard-verdict: the payload names no transcript, so the LAND on #${n} goes unchecked.\n`);
+    const transcript = n && path ? readOr((p) => readFileSync(p, "utf8"), path) : null;
+    const reason = !n || !path
       ? null
       : transcript
         ? denial(transcript, n)
-        : `No VERDICT: LAND on #${n} while this session's transcript cannot be read (${payload.transcript_path ?? "none given"}): ` +
+        : `No VERDICT: LAND on #${n} while this session's transcript cannot be read (${path}): ` +
           "whether this round's reviewer ran is unknown, so it is refused rather than guessed.";
     if (reason) {
       process.stdout.write(

@@ -36,9 +36,21 @@ export const readIssue = (n) =>
 const issue = (n) => `\`${readIssue(n)}\``;
 
 const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\bcomments\b/;
-/** `gh`'s arguments, verb first, read an issue's or pull request's thread. */
+const API_BODY = /^(-f|-F|--field|--raw-field|--input)$|^--(raw-)?field=/;
+const API_THREAD = /(?:^|\/)(?:issues|pulls)\/(?:\d+\/)?(?:comments|reviews)(?:[/?]|$)/;
+
+/** The method a `gh api` call sends: its `-X`/`--method`, else POST once it carries a field or input, as gh does. */
+export function apiMethod(args) {
+  const at = args.findIndex((a) => a === "-X" || a === "--method");
+  const joined = args.find((a) => /^-X.|^--method=/.test(a))?.replace(/^-X|^--method=/, "");
+  const named = at >= 0 ? args[at + 1] : joined;
+  return (named || (args.some((a) => API_BODY.test(a)) ? "POST" : "GET")).toUpperCase();
+}
+
+/** `gh`'s arguments, verb first, read an issue's or pull request's thread or reviews. */
 export const readsComments = (args) =>
-  /^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "));
+  (/^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "))) ||
+  (args[0] === "api" && apiMethod(args) === "GET" && args.some((a) => API_THREAD.test(a)));
 /** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
 export const untrustedRead = (args) => readsComments(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
 /** Each thread read a document gives, as `gh`'s arguments; a `\` continuation joins its lines. */

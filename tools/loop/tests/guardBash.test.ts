@@ -6,8 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import * as guardBash from "../guard-bash.mjs";
-import { check, fromMsys, gitAt } from "../guard-bash.mjs";
+import { check, fromMsys, gitAt, implementRoute } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
@@ -658,7 +657,7 @@ describe("an implement session is known by its own phase, not by a worktree", ()
   };
   const say = (text: string) => ({ type: "assistant", message: { content: [{ type: "text", text }] } });
   const bash = (command: string) => ({ type: "assistant", message: { content: [{ type: "tool_use", id: "x", name: "Bash", input: { command } }] } });
-  const route = (env: Record<string, string>, file?: string) => (guardBash as any).implementRoute?.(env, file);
+  const route = (env: Record<string, string>, file?: string) => implementRoute(env, file);
 
   test("a resumed implement session says so in LOOP_PHASE", () => {
     assert.equal(route({ LOOP_PHASE: "D" }, join(dir, "missing.jsonl")), true);
@@ -672,6 +671,33 @@ describe("an implement session is known by its own phase, not by a worktree", ()
   test("a triage or wayfinder session never reports past A", () => {
     assert.equal(route({}, transcript(say("PHASE A"), say("Routing to /triage"))), false);
     assert.equal(route({ LOOP_PHASE: "" }, transcript(say("PHASE A"))), false);
+  });
+
+  test("only with no transcript to read does a standing ticket worktree decide, and it says so", () => {
+    let stands = false;
+    const stderr = captureStderr(() => {
+      stands = implementRoute({}, join(dir, "missing.jsonl"), () => true);
+    });
+    assert.equal(stands, true);
+    assert.match(stderr, /cannot read this session's transcript/);
+    assert.equal(implementRoute({}, transcript(say("PHASE A")), () => true), false);
+  });
+});
+
+describe("gitAt.onTicket, the fallback, against real worktrees", () => {
+  test("is true from the shared checkout or the worktree while an agent-<n> worktree is on its ticket branch", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-ticket-"));
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, stdio: "ignore" });
+    try {
+      git("init", "-q", "-b", "main");
+      git("commit", "-q", "--allow-empty", "-m", "base");
+      assert.equal(gitAt(dir).onTicket(), false);
+      git("worktree", "add", "-q", "-b", "agent/7-x", join(".worktrees", "agent-7"));
+      assert.equal(gitAt(dir).onTicket(), true);
+      assert.equal(gitAt(join(dir, ".worktrees", "agent-7")).onTicket(), true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

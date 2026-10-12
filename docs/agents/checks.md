@@ -485,15 +485,17 @@ every hook):
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
   replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
-  attempt, a `gh issue|pr view` of the comments without rule 25's trusted-author filter, and,
-  while a ticket's worktree stands, a `gh issue create` labelled neither `ready-for-human` nor
-  `noticed` or an added `ready-for-agent`, `ci-flake` or `main-red` (rule 33).
+  attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
+  resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
+  created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and
+  an added `ready-for-agent`, `ci-flake` or `main-red` (rule 33).
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
 - `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND`, posted by `gh issue comment` or
   `gh api …/issues/<n>/comments`, until that round's own reviewer has run (rule 29), and whenever
-  the session's transcript cannot be read. There is no LAND at the round cap: the ticket goes to the owner.
+  the transcript the payload names cannot be read; a payload naming none is allowed with a warning. There is no LAND at the round cap: the ticket goes to the owner.
 
 ## Owner decisions
 
