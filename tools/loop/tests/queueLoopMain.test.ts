@@ -740,6 +740,34 @@ describe("runOnce", () => {
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
   });
 
+  test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const picked: number[] = [];
+    const picker = () => {
+      picked.push(1);
+      return "ROUTE\timplement\t77\tother\tsize:S\nSTATUS\timplement:3\ttriage:0\twayfinder:0\towner:1\tlaunch:0\n";
+    };
+    const route = (labels: string[] | null) =>
+      nextRoute(42, null, {
+        read: () => ({ onTicket: false, phase: "A" }),
+        facts: () => ({ title: "t", url: "", size: "size:S", labels, reviewRounds: 1, ciRounds: 0 }),
+        ledger,
+        picker,
+      } as never);
+    for (const labels of [["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]]) {
+      const r: any = route(labels);
+      assert.deepEqual([r.skill, r.number, r.resuming], ["implement", 77, false], labels.join(","));
+    }
+    assert.equal(picked.length, 3);
+    const unread: any = route(null);
+    assert.deepEqual([unread.number, unread.resuming, unread.phase], [42, true, "A"], "an unreadable tracker keeps resuming");
+    // An overloaded hold of a session the API failed before its phase-A claim: still ours, and its
+    // kept worktree is waiting for it.
+    const unclaimed: any = route(["ready-for-agent", "size:S"]);
+    assert.deepEqual([unclaimed.number, unclaimed.resuming, unclaimed.phase], [42, true, "A"], "a pre-claim hold keeps resuming");
+    assert.equal(picked.length, 3);
+  });
+
   test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
@@ -1491,6 +1519,26 @@ describe("the run recap", () => {
     const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
     await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t", tick: TICK } as never);
     assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00\n.*asleep 2:00:00/);
+  });
+
+  test("says so when the picker read no open Launch tickets", async () => {
+    const recapFor = async (launch: number) => {
+      let text = "";
+      let passes = 0;
+      const book = {
+        totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+        tickets: [],
+        record: () => {},
+        close: (_id: string, _line: string, t: string) => void (text = t),
+      };
+      const pick = () => ({ ...(io() as any).pick(), queue: { implement: 1, triage: 0, wayfinder: 0, launch } });
+      const spy = { ...(io() as any), stopFile: () => passes++ > 0, pick };
+      const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+      await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+      return text;
+    };
+    assert.match(await recapFor(0), /no open Launch tickets/);
+    assert.doesNotMatch(await recapFor(2), /Launch/);
   });
 });
 

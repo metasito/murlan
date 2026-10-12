@@ -19,12 +19,13 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `wayfinder:research` / `prototype` / `grilling` / `task` | A child of a wayfinder map | route `wayfinder` |
 | `wayfinder:map` | The map issue itself | never routed |
 | `ready-for-human` / `needs-info` / `rejected` | The owner's; wins over `ready-for-agent`. `rejected` stays open (`docs/BRIEF.md`) | owner |
-| `deferred` | Decided against for now; the owner can lift it | owner |
+| `deferred` | Decided against for now; the owner can lift it. Wins over `ready-for-agent` | owner, never named as waiting |
 | `in-progress` | Claimed | skipped, unless *stranded* (below) |
 | `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
-| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | — |
+| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | ranked first |
+| `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it) | ranked with `main-red` |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
@@ -79,13 +80,15 @@ the same GitHub account.
 - **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22). `--all` lists the
   unblocked implement frontier in pick order; a bare issue number inspects that ticket without
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
-  tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
-  supervisor died between CI rounds), then a `main-red` issue, then the oldest in the Launch
+  tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
+  branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
+  owner sent back), then a `main-red` or `ci-flake` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
-  commands when it is. With nothing takeable, its handoff line names the owner's issues the loop
-  is waiting on, the Launch milestone's first.
+  commands when it is. With nothing takeable, its handoff line names the owner's live asks
+  (`ready-for-human` or `needs-info`, never `deferred`), the Launch milestone's first, then the
+  newest.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
   phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
   prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment

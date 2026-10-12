@@ -456,15 +456,17 @@ describe("syncCheckout", () => {
 
 describe("parseStatus", () => {
   test("reads the bucket depths the picker prints beside the route", () => {
-    const stdout = "ROUTE\timplement\t824\tx\nSTATUS\timplement:7\ttriage:2\twayfinder:1\towner:4\n";
-    assert.deepEqual(parseStatus(stdout), { implement: 7, triage: 2, wayfinder: 1 });
+    const stdout = "ROUTE\timplement\t824\tx\nSTATUS\timplement:7\ttriage:2\twayfinder:1\towner:4\tlaunch:3\n";
+    assert.deepEqual(parseStatus(stdout), { implement: 7, triage: 2, wayfinder: 1, launch: 3 });
+    assert.equal(parseStatus(stdout.replace("launch:3", "launch:0")).launch, 0);
   });
 
-  test("no STATUS line reads as an empty queue rather than throwing", () => {
+  test("no STATUS line reads as an empty queue rather than throwing, and says nothing about Launch", () => {
     assert.deepEqual(parseStatus("ROUTE\thandoff\t0\tnothing\n"), {
       implement: 0,
       triage: 0,
       wayfinder: 0,
+      launch: null,
     });
   });
 });

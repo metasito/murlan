@@ -82,6 +82,7 @@ import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_P
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
+import { OWNER_LABELS } from "./next-ticket.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -116,12 +117,15 @@ export function parseRoute(stdout) {
 /** The bucket depths the picker already prints, for the header's "how much is behind this one". */
 export function parseStatus(stdout) {
   const line = stdout.split("\n").find((l) => l.startsWith("STATUS\t"));
-  const read = (name) =>
-    Number(/:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(name)) ?? "")?.[1] ?? 0);
+  const read = (name) => {
+    const n = /:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(`${name}:`)) ?? "")?.[1];
+    return n === undefined ? null : Number(n);
+  };
   return {
-    implement: read("implement"),
-    triage: read("triage"),
-    wayfinder: read("wayfinder"),
+    implement: read("implement") ?? 0,
+    triage: read("triage") ?? 0,
+    wayfinder: read("wayfinder") ?? 0,
+    launch: read("launch"),
   };
 }
 
@@ -168,7 +172,16 @@ export function liveRoute(status, labels = null) {
  *
  * @param {number|null} [pinned]
  */
-export function nextRoute(pinned = null, at = null, { read = derive, facts = ticketFacts, ledger = readLedger } = {}) {
+export function nextRoute(
+  pinned = null,
+  at = null,
+  {
+    read = derive,
+    facts = ticketFacts,
+    ledger = readLedger,
+    picker = () => execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" }),
+  } = {},
+) {
   const status = read({ ci: true });
   const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
   if (known?.state === "CLOSED") {
@@ -199,10 +212,15 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
     };
   }
   if (pinned) {
-    const { title, size, ciRounds } = facts(pinned);
-    return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
+    const { title, size, ciRounds, labels } = facts(pinned);
+    // A handoff here would stop the run over one ticket the owner took back; the picker decides.
+    // `ready-for-agent` alone is still ours: an API failure before phase A's claim holds it pinned.
+    const released =
+      labels &&
+      (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
+    if (!released) return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
-  const stdout = execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" });
+  const stdout = picker();
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
@@ -2919,10 +2937,12 @@ export async function main({
     for (const kind of Object.keys(since)) if (since[kind] != null) since[kind] = Math.min(now, since[kind] + slept);
   }, tick);
   sleepWatch.unref();
+  /** The Launch milestone's open count as the last picker run read it; null until one has. */
+  let launch = null;
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
     runRecap(
-      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, utc },
+      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, launch, utc },
       t,
     );
   screen.board?.({ recap: recapOf });
@@ -2942,6 +2962,7 @@ export async function main({
     pick: (p, at) => {
       const route = io.pick(p, at);
       claimed = typeof route?.number === "number" ? route.number : null;
+      if (route?.queue) launch = route.queue.launch ?? null;
       return route;
     },
     settle: (pending) => timed("ci", () => io.settle(pending)),

@@ -421,9 +421,9 @@ const hhmm = (ms, utc) => {
  * One text for the `r` key, a long wait, the exit, and the top of `run-*.md`.
  *
  * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
- *   ciMs: number, waitMs: number, utc?: boolean}} run
+ *   ciMs: number, waitMs: number, asleepMs?: number, launch?: number|null, utc?: boolean}} run
  */
-export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleepMs = 0, utc = false }, t) {
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleepMs = 0, launch = null, utc = false }, t) {
   const wall = now - startedAt;
   const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
   const stuck = tickets.filter((r) => r.outcome !== "landed" && r.outcome !== "closed");
@@ -433,6 +433,7 @@ export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleep
   return [
     head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
     row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
+    ...(launch === 0 ? [row([{ t: ` ${clamp("no open Launch tickets: the picker takes the oldest first", t.width - 1)}`, c: "muted" }], null, t)] : []),
     ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
     "",
     head("where the time went"),
