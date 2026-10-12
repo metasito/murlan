@@ -69,7 +69,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
+29. **Name a model and an effort on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
     at `medium` effort, and only a Blocking finding holds (a nit never costs a round).
     Recon and verification: sonnet at `medium`. Mechanical: haiku. Give every dispatch a label.
 
