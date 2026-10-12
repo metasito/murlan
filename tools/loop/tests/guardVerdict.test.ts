@@ -85,12 +85,37 @@ describe("a LAND follows this round's own reviewers", () => {
   });
 });
 
+describe("a LAND by any other spelling is still a LAND", () => {
+  test("an issue named by its URL", () => {
+    assert.ok(denied(run([say("PHASE D")], "gh issue comment https://github.com/metasito/murlan/issues/7 --body 'VERDICT: LAND abc1234'")));
+  });
+
+  test("a gh api post to the issue's comments, inline or from a file", () => {
+    fs.writeFileSync(path.join(dir, "api.md"), "VERDICT: LAND abc1234\n");
+    for (const command of [
+      "gh api repos/metasito/murlan/issues/7/comments -f body='VERDICT: LAND abc1234'",
+      'gh api -X POST repos/{owner}/{repo}/issues/7/comments -f "body=VERDICT: LAND abc1234"',
+      "gh api repos/metasito/murlan/issues/7/comments -F body=@api.md",
+    ]) {
+      assert.ok(denied(run([say("PHASE D")], command)), command);
+      assert.equal(run([say("PHASE D"), review("review")], command), "", `${command} after the review`);
+    }
+  });
+
+  test("a transcript it cannot read denies, and says so", () => {
+    const out = run([], LAND, { transcript_path: path.join(dir, "missing.jsonl") });
+    assert.ok(denied(out));
+    assert.match(out, /transcript/);
+  });
+});
+
 describe("what it leaves alone", () => {
   for (const command of [
     "gh issue comment 7 --body 'VERDICT: HOLD abc1234 — spec gap'",
     "gh issue comment 7 --body 'REVIEW abc1234'",
     "gh issue comment 7 --body 'DOD-CHECK abc1234'",
     "git log --grep 'VERDICT: LAND'",
+    "gh api repos/metasito/murlan/issues/7/comments --jq '.[].body'",
   ]) {
     test(command, () => assert.equal(run([say("PHASE D")], command), ""));
   }
