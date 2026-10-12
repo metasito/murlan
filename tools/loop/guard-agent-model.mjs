@@ -6,15 +6,39 @@
  * Exit 0 always. stdout carries the deny, or nothing.
  */
 import { readFileSync } from "node:fs";
-import { brief, MODEL_BY_KIND, parseHeader } from "./brief.mjs";
+import { brief, KINDS, MODEL_BY_KIND, parseHeader } from "./brief.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue|review #\d+ round \d+)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
 const ROLE = /\b(review\w*|axis|findings?)\b/i;
 const unix = (text) => text.replace(/\r\n/g, "\n");
 
+/** A `loop-<kind>` agent's file sets its model and effort, so the dispatch may not; its prompt is still that kind's brief. */
+function namedDenial(input, prompt) {
+  const type = String(input.subagent_type);
+  const kind = type.slice("loop-".length);
+  if (!KINDS.includes(kind)) {
+    return `There is no loop agent \`${type}\`. Dispatch one of ${KINDS.map((k) => `\`loop-${k}\``).join(", ")}.`;
+  }
+  if ("model" in input || "effort" in input) {
+    return `\`${type}\` sets its own model and effort in .claude/agents/${type}.md. Dispatch it again without a per-call override.`;
+  }
+  const header = parseHeader(prompt);
+  if (header?.kind !== kind) {
+    return `\`${type}\` runs a ${kind} brief: start its prompt with the output of \`node tools/loop/brief.mjs ${kind} <n> <worktree> [base]\`, verbatim.`;
+  }
+  return verbatim(prompt, header);
+}
+
+const verbatim = (prompt, header) =>
+  prompt.startsWith(brief(header.kind, header).trimEnd())
+    ? null
+    : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
+      "verbatim as the start of the prompt; add anything else (the earlier round's Blocking findings) after it.";
+
 function denial(payload) {
   const input = payload.tool_input ?? {};
+  if (String(input.subagent_type ?? "").startsWith("loop-")) return namedDenial(input, unix(String(input.prompt ?? "")));
   if (!input.model) {
     return "This dispatch names no model. Add `model` (see rule 29 of docs/agents/RULES.md) and dispatch it again.";
   }
@@ -28,10 +52,7 @@ function denial(payload) {
     if (!String(input.model).includes(want)) {
       return `A ${header.kind} brief runs on \`${want}\` (rule 29 of docs/agents/RULES.md). Dispatch it again with that model.`;
     }
-    return prompt.startsWith(brief(header.kind, header).trimEnd())
-      ? null
-      : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
-          "verbatim as the start of the prompt; add anything else (the earlier round's Blocking findings) after it.";
+    return verbatim(prompt, header);
   }
   const d = String(input.description ?? "");
   const named = NAMED.exec(d)?.slice(1).find(Boolean) ?? (KIND.test(d) && ROLE.test(d) ? KIND.exec(d)[1] : null);
