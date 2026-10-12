@@ -159,8 +159,8 @@ state, hold landscape, and ask for it verbatim: *"send one landscape screenshot 
 - A Maestro step name is not evidence of what was on screen when it ran — the next assertion can
   pass against whatever hierarchy Maestro already read if the app died mid-flow; the screenshot
   beside a failing step is the evidence. Both device workflows fail a run in which the app itself
-  died of a native crash — a tombstone in the logcat, a report in the simulator host's
-  DiagnosticReports (`tools/ci/find-native-crash.mjs`, #629, #1293). `node tools/ci/analyze-maestro-run.mjs
+  died of a native crash — a tombstone or an `ANR in <app>` in the logcat, a report in the simulator host's
+  DiagnosticReports (`tools/ci/find-native-crash.mjs`, #629, #1293, #1557). `node tools/ci/analyze-maestro-run.mjs
   <maestro.log> <logcat.txt>` separates a command starved by animation from one paying a flat
   per-fetch cost (#823), from the `maestro-debug`/`maestro-debug-ios-<shard>` artefact.
 
