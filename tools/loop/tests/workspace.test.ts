@@ -465,6 +465,13 @@ describe("housekeeping", () => {
     assert.deepEqual((await housekeeping(base(repo, { reap: async ({ say }: { say: (l: string) => void }) => (say("reap: e2e port 5199 is free"), SAW_NOTHING) }))).rows, []);
   });
 
+  test("a kill reap refused for want of a table is a warning row", async () => {
+    const { repo } = scratchRepo();
+    const r = await housekeeping(base(repo, { reap: async () => ({ took: 1, blind: "refused to kill pid 7 — no process table shows this reaper" }) }));
+    const row = r.rows.at(-1) as Row;
+    assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+  });
+
   test("a reap that could not see the processes is a warning row, never silence", async () => {
     const { repo } = scratchRepo();
     const r = await housekeeping(base(repo, { reap: async () => ({ took: 0, blind: "pwsh gave no process table, so this sweep takes nothing" }) }));

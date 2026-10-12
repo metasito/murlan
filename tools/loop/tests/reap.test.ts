@@ -321,6 +321,12 @@ describe("wouldTakeSelf", () => {
     assert.equal(wouldTakeSelf(table, 700, REAP_PID), false);
   });
 
+  test("a table that does not describe the reaper proves nothing safe, so it refuses", () => {
+    assert.equal(wouldTakeSelf([], 700, REAP_PID), true, "no table");
+    const blindToSelf = [{ pid: 700, ppid: 99999, name: "node.exe", commandLine: "x", startedAt: NOW }];
+    assert.equal(wouldTakeSelf(blindToSelf, 700, REAP_PID), true, "a table missing the reaper's own pid");
+  });
+
   /**
    * The whole point of reading the tree downward rather than walking parents upward: the walk
    * stops at the first pid the snapshot is missing, and on Windows the launcher above a
