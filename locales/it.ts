@@ -353,6 +353,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.dealing": "Distribuzione",
   "gameShared.turnOf": "Turno di {{name}}",
   "gameShared.handOver": "Manche finita",
+  "gameShared.matchOver": "Partita finita",
   // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
   // È la dichiarazione del giocatore, non il pulsante ("PASSA") che il
   // giocatore preme, e non concorda con il genere di chi la pronuncia.
@@ -402,6 +403,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.a11yDealing": "Si distribuiscono le carte.",
   "gameTable.a11yTurnOf": "Turno di {{name}}.",
   "gameTable.a11yHandOver": "Manche finita.",
+  "gameTable.a11yMatchOver": "Partita finita.",
   "gameTable.a11yEmptyTable": "Nessuna carta sul tavolo.",
   "gameTable.a11yYouPlayed": "Hai giocato {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} ha giocato {{label}}.",

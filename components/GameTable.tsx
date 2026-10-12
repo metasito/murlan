@@ -754,12 +754,14 @@ export function GameTable({
         opponents: opponentsA11y,
         exchange: exchangeA11y,
         handOver: gameState.gameOver,
+        matchOver,
         dealing: deal.dealing,
       },
       tableA11yStrings
     );
   }, [
     gameState.gameOver,
+    matchOver,
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
     gameState.currentTurnIndex,
@@ -1215,7 +1217,7 @@ export function GameTable({
                 chipText={
                   exchangeChip ??
                   (gameState.gameOver
-                    ? t("gameShared.handOver")
+                    ? t(matchOver ? "gameShared.matchOver" : "gameShared.handOver")
                     : deal.dealing
                       ? t("gameShared.dealing")
                       : viewerOnMove
@@ -1225,7 +1227,7 @@ export function GameTable({
                 spokenSeat={
                   exchangeChip ??
                   (gameState.gameOver
-                    ? t("gameTable.a11yHandOver")
+                    ? t(matchOver ? "gameTable.a11yMatchOver" : "gameTable.a11yHandOver")
                     : deal.dealing
                       ? t("gameTable.a11yDealing")
                       : viewerOnMove

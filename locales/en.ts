@@ -362,6 +362,7 @@ export const en = {
   "gameShared.dealing": "Dealing",
   "gameShared.turnOf": "{{name}}'s turn",
   "gameShared.handOver": "Hand over",
+  "gameShared.matchOver": "Match over",
   "gameShared.passedLabel": "PASSED",
 
   // -------------------------------------------------------------- game.*
@@ -406,6 +407,7 @@ export const en = {
   "gameTable.a11yDealing": "The cards are being dealt.",
   "gameTable.a11yTurnOf": "{{name}}'s turn.",
   "gameTable.a11yHandOver": "The hand is over.",
+  "gameTable.a11yMatchOver": "The match is over.",
   "gameTable.a11yEmptyTable": "No cards on the table.",
   "gameTable.a11yYouPlayed": "You played {{label}}.",
   "gameTable.a11yPlayerPlayed": "{{name}} played {{label}}.",
