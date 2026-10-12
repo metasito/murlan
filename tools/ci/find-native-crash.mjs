@@ -114,7 +114,7 @@ function main([platform, appId, ...rest]) {
       mkdirSync(copyTo, { recursive: true });
       copyFileSync(file, path.join(copyTo, path.basename(file)));
     }
-    console.log(`::error::The app died during this run:${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
+    console.log(`::error::The app died during this run: ${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
   }
   return 1;
 }

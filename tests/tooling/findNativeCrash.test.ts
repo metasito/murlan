@@ -101,7 +101,7 @@ describe("the command a device run calls", () => {
     const dir = dirWith({ "maestro/run/maestro.log": "Tap on id: btn-prossima-manche COMPLETED", "logcat.txt": [flood, anr(APP)].join("\n") });
     const result = run("android", APP, path.join(dir, "maestro"), path.join(dir, "logcat.txt"));
     assert.equal(result.status, 1, result.stdout + result.stderr);
-    assert.match(result.stdout, /^::error::.*not responding.*E ActivityManager: ANR in com\.murlan\.cardgame.*logcat\.txt/m);
+    assert.match(result.stdout, /^::error::The app died during this run: com\.murlan\.cardgame was not responding.*E ActivityManager: ANR in com\.murlan\.cardgame.*logcat\.txt/m);
   });
 
   test("iOS: a report for our app fails the step and is copied out for upload", () => {
