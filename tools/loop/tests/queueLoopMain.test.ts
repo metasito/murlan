@@ -1492,6 +1492,26 @@ describe("the run recap", () => {
     await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t", tick: TICK } as never);
     assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00\n.*asleep 2:00:00/);
   });
+
+  test("names an empty Launch milestone the picker read", async () => {
+    const recapFor = async (launch: number) => {
+      let text = "";
+      let passes = 0;
+      const book = {
+        totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+        tickets: [],
+        record: () => {},
+        close: (_id: string, _line: string, t: string) => void (text = t),
+      };
+      const pick = () => ({ ...(io() as any).pick(), queue: { implement: 1, triage: 0, wayfinder: 0, launch } });
+      const spy = { ...(io() as any), stopFile: () => passes++ > 0, pick };
+      const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+      await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+      return text;
+    };
+    assert.match(await recapFor(0), /no Launch milestone/);
+    assert.doesNotMatch(await recapFor(2), /Launch/);
+  });
 });
 
 describe("a handoff", () => {

@@ -460,6 +460,13 @@ describe("runRecap", () => {
   test("a run with nothing parked has no needs-you heading", () => {
     assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
   });
+
+  test("an empty Launch milestone is said, and a known or unread one is not", () => {
+    assert.match(runRecap({ ...run, launch: 0 }, tPlain).map(strip).join("\n"), /no Launch milestone/);
+    for (const launch of [4, null, undefined]) {
+      assert.ok(!runRecap({ ...run, launch }, tPlain).join("\n").includes("Launch"), String(launch));
+    }
+  });
 });
 
 describe("keybar", () => {

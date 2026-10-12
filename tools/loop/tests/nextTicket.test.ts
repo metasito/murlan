@@ -168,6 +168,18 @@ describe("the frontier's order", () => {
     assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #1536, #1529, #44");
   });
 
+  test("counts the Launch milestone's open issues in every bucket, so an empty one is visible", () => {
+    const launch = (n: number, labels: string[]) => ({ ...issue(n, labels), milestone: { title: LAUNCH_MILESTONE } });
+    const b = classify([
+      issue(10, ["ready-for-agent"]),
+      launch(300, ["ready-for-agent"]),
+      launch(900, ["in-progress", "ready-for-agent"]),
+      launch(1107, ["ready-for-human"]),
+    ], noPrs);
+    assert.equal(b.launch, 3);
+    assert.equal(classify([issue(10, ["ready-for-agent"])], noPrs).launch, 0);
+  });
+
   test("a deferred ticket is the owner's even when it is ready-for-agent", () => {
     const b = classify([issue(61, ["ready-for-agent", "deferred"])], noPrs);
     assert.deepEqual([b.frontier, b.owner.map((i) => i.number)], [[], [61]]);
