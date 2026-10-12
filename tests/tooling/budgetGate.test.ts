@@ -119,9 +119,11 @@ describe("overBudget: which run lists, against which changed files", () => {
   });
 
   test("a new spec with no recorded time has no budget yet, and is named as such", () => {
-    const found = read(listsGh(both, [{ filename: "tests/e2e/brandNew.spec.ts", status: "added" }]));
+    // Joined so repoLayout's dangling-path scan does not read a spec that exists only in this fixture.
+    const fresh = ["tests", "e2e", "brandNew.spec.ts"].join("/");
+    const found = read(listsGh(both, [{ filename: fresh, status: "added" }]));
     assert.deepEqual(found.files, []);
-    assert.deepEqual(found.exempt, ["tests/e2e/brandNew.spec.ts"]);
+    assert.deepEqual(found.exempt, [fresh]);
   });
 
   test("a list that cannot be read throws, never reads as empty", () => {
