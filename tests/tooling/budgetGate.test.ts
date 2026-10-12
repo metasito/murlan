@@ -44,7 +44,7 @@ test("a touched test file over its budget reddens the run, naming it", async () 
 
 test("no touched file over budget, and no timings change, is a pass", async () => {
   assert.equal((await gate(fakeGh([{ filename: "lib/x.ts", status: "modified" }]))).code, 0);
-  assert.equal((await gate(fakeGh([{ filename: "tests/e2e/a.spec.ts", status: "modified" }]))).code, 0);
+  assert.equal((await gate(fakeGh([{ filename: "tests/e2e/ariaTwins.spec.ts", status: "modified" }]))).code, 0);
 });
 
 test("a download storage refuses is retried, and the lists it then reads decide", async () => {

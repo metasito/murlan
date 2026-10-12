@@ -52,9 +52,11 @@ describe("maestro.yml reuses the native build", () => {
     const build = code(step("Build the app"));
     assert.match(build, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
     assert.doesNotMatch(build, /-x createBundleReleaseJsAndAssets/, "packageReleaseResources reads its output");
-    const job = src.slice(src.indexOf("\n  android:"), src.indexOf("\n    steps:"));
+    const at = src.indexOf("\n  android:");
+    assert.ok(at >= 0, "maestro.yml has no android job");
+    const job = src.slice(at, src.indexOf("\n    steps:", at));
     assert.match(job, /\n    env:[\s\S]*EXPO_PUBLIC_E2E_FAST: "1"/);
-    assert.doesNotMatch(src.slice(src.indexOf("\n    steps:")), /EXPO_PUBLIC_E2E_FAST:/);
+    assert.doesNotMatch(src.replace(job, ""), /EXPO_PUBLIC_E2E_FAST:/);
     const save = src.slice(src.indexOf("actions/cache/save"), src.indexOf("actions/cache/save") + 300);
     assert.match(save, /if: steps\.cached\.outputs\.cache-hit != 'true'/);
   });
