@@ -214,7 +214,10 @@ export function nextRoute(
   if (pinned) {
     const { title, size, ciRounds, labels } = facts(pinned);
     // A handoff here would stop the run over one ticket the owner took back; the picker decides.
-    const released = labels && (!labels.includes("in-progress") || labels.some((l) => OWNER_LABELS.has(l)));
+    // `ready-for-agent` alone is still ours: an API failure before phase A's claim holds it pinned.
+    const released =
+      labels &&
+      (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
     if (!released) return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
   const stdout = picker();
