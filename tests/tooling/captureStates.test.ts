@@ -5,7 +5,7 @@
 // while both are of the same named state. What this pins is the part of that
 // contract a renderer cannot check — that each state's stated side is where its
 // seat actually renders, that the four lamp positions are all covered, and that
-// a card still appears exactly once once the pile has taken two out of a hand.
+// a card still appears exactly once once the pile has taken its cards out of the deck.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {

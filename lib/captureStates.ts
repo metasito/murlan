@@ -217,7 +217,7 @@ function takeOfARank(deck: Card[], size: number): Combination | null {
 }
 
 /**
- * The table as a capture wants it: mid-hand, nothing in flight, no deal
+ * The table as a capture wants it: mid-hand, only the pile in flight, no deal
  * running, and the turn pinned where the state says.
  *
  * Pinned is the point. `app/game.tsx` runs the AI turn loop, so a seeded save
