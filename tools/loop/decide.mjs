@@ -200,7 +200,7 @@ function capped(action, { asked, route, run, after, tally, limits, step }) {
   return action;
 }
 
-function tallied(action, { loop, limits }) {
+function tallied(action, { loop, limits, step }) {
   const { failures, transients, pinned } = loop;
   const breaker = (f) => (f >= limits.BREAKER ? `${f} tickets in a row did not land` : null);
   switch (action.kind) {
@@ -208,9 +208,10 @@ function tallied(action, { loop, limits }) {
     case "closed":
       return { ...action, label: RELEASE, loop: { failures: 0, transients: 0, pinned: null } };
     case "park": {
-      // The owner's own park is not a ticket failing.
+      // The owner's own park is not a ticket failing. A throw's park leaves the pin to `nextRoute`,
+      // which passes over a pinned ticket whose labels say it was released.
       const f = failures + (action.byOwner ? 0 : 1);
-      return { ...action, label: PARK, halt: action.byOwner ? null : breaker(f), loop: { failures: f, transients, pinned: null } };
+      return { ...action, label: PARK, halt: action.byOwner ? null : breaker(f), loop: { failures: f, transients, pinned: step === "threw" ? pinned : null } };
     }
     case "fail":
       return { ...action, halt: breaker(failures + 1), loop: { failures: failures + 1, transients, pinned } };
