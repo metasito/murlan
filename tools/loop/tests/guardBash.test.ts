@@ -37,7 +37,8 @@ const repo = {
   top: (dir?: string | null): string | null => resolve("/r", dir?.startsWith(".worktrees") ? dir : "."),
   cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
 };
-const device = () => "iOS UI (Maestro)";
+const firstRun = (workflowName: string) => ({ workflowName, attempt: 1 });
+const device = () => firstRun("iOS UI (Maestro)");
 const guard = (cmd: string) => check(cmd, device, repo);
 
 const ADD = /pathspec/;
@@ -299,7 +300,7 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
   // `gh run rerun <id>` names a run, not a workflow, so the command alone cannot say whether
   // it costs 25 minutes on a simulator or four on a browser shard. Asking is the only way to
   // know, and a guard that blocks the honest path teaches people to route around the marker.
-  const asWorkflow = (name: string | null) => () => name;
+  const asWorkflow = (name: string | null) => () => (name === null ? null : firstRun(name));
 
   test("blocks a rerun of a device run", () => {
     const message = check("gh run rerun 33428375221 --failed", asWorkflow("iOS UI (Maestro)"));
@@ -335,7 +336,7 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
       let asked = 0;
       check(cmd, () => {
         asked += 1;
-        return "iOS UI (Maestro)";
+        return firstRun("iOS UI (Maestro)");
       });
       assert.equal(asked, 0, `${cmd} spent a round trip it could not have acted on`);
     });
@@ -345,8 +346,8 @@ describe("a rerun is gated on the workflow it would re-dispatch, not on being a 
 describe("a rerun is read as its own command, with its own arguments", () => {
   // Each of these reached the guard as a way past it. A rerun that cannot be read is refused
   // rather than allowed: `$RUN` must not be the spelling that gets through.
-  const device = () => "iOS UI (Maestro)";
-  const ci = () => "CI";
+  const device = () => firstRun("iOS UI (Maestro)");
+  const ci = () => firstRun("CI");
 
   test("reads --job, which is not a run id", () => {
     // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing —
@@ -354,7 +355,7 @@ describe("a rerun is read as its own command, with its own arguments", () => {
     let asked: unknown = null;
     const message = check("gh run rerun --job 99710945601", (t) => {
       asked = t;
-      return "iOS UI (Maestro)";
+      return device();
     });
     assert.ok(message, "expected a device job rerun to be blocked");
     assert.deepEqual(asked, { job: "99710945601" });
@@ -367,7 +368,7 @@ describe("a rerun is read as its own command, with its own arguments", () => {
   test("looks at every rerun on the line, not only the first", () => {
     for (const separator of [" && ", "; ", "\n"]) {
       const cmd = `gh run rerun 33495876524${separator}gh run rerun 33428375221`;
-      const message = check(cmd, (t) => (t.run === "33428375221" ? "iOS UI (Maestro)" : "CI"));
+      const message = check(cmd, (t) => (t.run === "33428375221" ? device() : ci()));
       assert.ok(message, `expected the device rerun after a ${JSON.stringify(separator)} to block`);
     }
   });
@@ -376,7 +377,7 @@ describe("a rerun is read as its own command, with its own arguments", () => {
     let asked: unknown = null;
     check("gh run rerun -R metasito/murlan 33428375221", (t) => {
       asked = t;
-      return "CI";
+      return ci();
     });
     assert.deepEqual(asked, { run: "33428375221" }, "the repo was read as the run");
   });
@@ -388,7 +389,7 @@ describe("a rerun is read as its own command, with its own arguments", () => {
       'gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios',
       (t) => {
         asked = t;
-        return "iOS UI (Maestro)";
+        return device();
       }
     );
     assert.equal(asked, null, "the download's id was read as the rerun's");

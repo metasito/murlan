@@ -168,20 +168,19 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","w
 One reviewer reads the change; only a Blocking finding sends it back. `<base>` is `origin/main` in
 round 1, then the sha the previous round reviewed.
 
-1. **Wait for CI on HEAD** with `node tools/loop/await-run.mjs <run-id>`. A red run this change
-   caused is a Blocking finding; a red run it did not cause is ruled out (rule 37) and named in the
-   verdict.
-   ```sh
-   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
-   gh run view <databaseId> --log-failed | tail -40       # if failure
-   ```
-2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
+1. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
    starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
    it a fix round: the `fix` kind, labelled `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's
    Blocking findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
+   ```
+2. **Then wait for CI on HEAD** with `node tools/loop/await-run.mjs <run-id>`; the verdict needs
+   both. A red this change caused is Blocking; one it did not may be rerun once, the verdict
+   naming the test and attempt.
+   ```sh
+   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
    ```
 3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
    in a fix round, which the cap does not count):
@@ -193,7 +192,8 @@ round 1, then the sha the previous round reviewed.
    ```
 4. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
-   LAND when the report has no Blocking finding and CI is green on this head; otherwise
+   LAND when the report has no Blocking finding and CI is green on this head, or its only red is
+   one already rerun once and named; otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
    `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
 

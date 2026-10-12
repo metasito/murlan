@@ -312,7 +312,7 @@ function dispatchOf(c) {
 }
 
 /**
- * The workflow a target belongs to. Throws when `gh` cannot say — network, auth, rate limit —
+ * The run a target belongs to, as `{ workflowName, attempt }`. Throws when `gh` cannot say — network, auth, rate limit —
  * and leaves that to `check()`'s wrapper, which is the one place deciding to allow and saying
  * why, rather than this function choosing to allow silently.
  *
@@ -323,12 +323,12 @@ function dispatchOf(c) {
  */
 function askGitHub({ run, job }) {
   const which = job ? [`--job=${job}`] : [run];
-  return (
-    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName", "-q", ".workflowName"], {
+  return JSON.parse(
+    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName,attempt"], {
       encoding: "utf8",
       timeout: 15_000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim() || null
+    }),
   );
 }
 
@@ -665,7 +665,7 @@ const RULES = [
       const dispatched = dispatchOf(c);
       if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c, vars);
       const t = rerunOf(c);
-      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
+      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t)?.workflowName ?? ""));
     },
     message:
       "A ticket dispatches the iOS and Android device workflows only on its own branch (agent/<n>-… or claude/<n>-…), " +
@@ -690,6 +690,16 @@ const RULES = [
       "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
       "  gh run rerun <that id> --failed\n" +
       "Rerunning one job? `--job <job-id>` is read too. Device runs are never rerun.",
+  },
+  {
+    test: (c, { workflowOf, loop }) => {
+      const t = loop && rerunOf(c);
+      return Boolean(t && (t.run || t.job) && workflowOf(t)?.attempt >= 2);
+    },
+    message:
+      "This run was already rerun: a loop session reruns a run at most once.\n" +
+      "A red that survives its rerun is a Blocking finding if this change caused it; otherwise the " +
+      "verdict names the test and the attempt (queue.md phase D).",
   },
   {
     test: (c) => c.cmd === "find" && /^(\/|\/(mnt\/)?[a-z]\/?|[A-Za-z]:[\\/]?)$/.test(c.args[0] ?? ""),
@@ -775,7 +785,13 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/.test(c.cmd));
   let warned = false;
+  const known = new Map();
   const workflowOf = (t) => {
+    const key = JSON.stringify(t);
+    if (!known.has(key)) known.set(key, lookUp(t));
+    return known.get(key);
+  };
+  const lookUp = (t) => {
     try {
       return workflowOfRun(t);
     } catch (err) {

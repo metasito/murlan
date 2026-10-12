@@ -484,7 +484,8 @@ every hook):
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
-  replaces with `await-run.mjs`.
+  replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
+  attempt.
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
