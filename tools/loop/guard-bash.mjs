@@ -35,61 +35,9 @@ const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
-/** The only `gh run rerun` flags that consume the token after them. */
-const TAKES_A_VALUE = /^(-j|--job|-R|--repo)$/;
-const JOB_FLAG = /^(?:--job|-j)$/;
-
-/**
- * What one `gh run rerun` would re-dispatch: a run, a single job, or — when the id is a
- * variable, or absent, or something this cannot read — nothing identifiable.
- *
- * A job id is not a run id: `gh run view <job-id>` answers 404, so reading one as the other
- * resolves to nothing and waves through a second rerun of the job it names.
- */
-function target(tokens) {
-  for (let i = 0; i < tokens.length; i++) {
-    const inlineJob = /^(?:--job|-j)=(.+)$/.exec(tokens[i]);
-    if (inlineJob) return { job: inlineJob[1] };
-    if (TAKES_A_VALUE.test(tokens[i])) {
-      if (JOB_FLAG.test(tokens[i])) return tokens[i + 1] ? { job: tokens[i + 1] } : {};
-      i += 1;
-      continue;
-    }
-    if (tokens[i].startsWith("-")) continue;
-    return /^\d+$/.test(tokens[i]) ? { run: tokens[i] } : {};
-  }
-  return {};
-}
-
-/** The run or job this command would re-dispatch, or null when it reruns nothing. */
-function rerunOf(c) {
-  if (c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun") return target(c.args.slice(2));
-  const rest = HTTP_CLIENT.test(c.cmd) && /actions\/(runs|jobs)\/([^\s/?]+)\/rerun/i.exec(c.args.join(" "));
-  if (!rest) return null;
-  if (!/^\d+$/.test(rest[2])) return {};
-  return rest[1].toLowerCase() === "jobs" ? { job: rest[2] } : { run: rest[2] };
-}
-
-/**
- * The run a target belongs to, as `{ workflowName, attempt }`. Throws when `gh` cannot say — network, auth, rate limit —
- * and leaves that to `check()`'s wrapper, which is the one place deciding to allow and saying
- * why, rather than this function choosing to allow silently.
- *
- * Allowing on that failure is deliberate: `gh` is also how the rerun would be dispatched, so a
- * guard that blocked here would forbid the honest path and protect nothing. That reasoning
- * covers a `gh` which cannot answer — never a question this asked wrongly, which is why an
- * unreadable id is refused before it gets here rather than resolved to null.
- */
-function askGitHub({ run, job }) {
-  const which = job ? [`--job=${job}`] : [run];
-  return JSON.parse(
-    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName,attempt"], {
-      encoding: "utf8",
-      timeout: 15_000,
-      stdio: ["ignore", "pipe", "ignore"],
-    }),
-  );
-}
+const isRerun = (c) =>
+  (c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun") ||
+  (HTTP_CLIENT.test(c.cmd) && /actions\/(runs|jobs)\/[^\s/?]+\/rerun/i.test(c.args.join(" ")));
 
 /** Git as the discard rule asks it, from the directory the tool call runs in. */
 export function gitAt(base) {
@@ -411,7 +359,7 @@ const RULES = [
           `agent/${loopTicket()}-<slug>; --all, --mirror, --tags, --prune and a ref write through \`gh api\` are refused.`,
   },
   {
-    test: (c, { loop }) => loop && rerunOf(c) !== null,
+    test: (c, { loop }) => loop && isRerun(c),
     message: "The supervisor reruns a red once per head; a session does not rerun.",
   },
   {
@@ -494,14 +442,8 @@ const RULES = [
   },
 ];
 
-/**
- * Wraps whatever resolves a rerun's workflow so a failure there — `gh` down, or a fault this
- * asked wrongly — allows and says so, instead of taking the whole hook down with it. Logged
- * once per call to `check()` even when a rule asks more than once for one command line.
- */
 export function check(
   command,
-  workflowOfRun = askGitHub,
   repo = gitAt(process.cwd()),
   loop = Boolean(process.env.LOOP_TURNS),
   session = { implementing: () => implementRoute(process.env, null, () => repo.onTicket()) },
@@ -511,28 +453,8 @@ export function check(
   const vars = literalAssignments(runnable);
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => MOVES.test(c.cmd));
-  let warned = false;
-  const known = new Map();
-  const workflowOf = (t) => {
-    const key = JSON.stringify(t);
-    if (!known.has(key)) known.set(key, lookUp(t));
-    return known.get(key);
-  };
-  const lookUp = (t) => {
-    try {
-      return workflowOfRun(t);
-    } catch (err) {
-      if (!warned) {
-        warned = true;
-        process.stderr.write(
-          `guard-bash: could not look up the rerun's workflow (${firstLine(err)}); allowing it unchecked.\n`
-        );
-      }
-      return null;
-    }
-  };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
       return typeof rule.message === "function" ? rule.message() : rule.message;
     }
   }
@@ -556,7 +478,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   }
   const repo = gitAt(cwd);
   const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
-  const message = check(command, askGitHub, repo, Boolean(process.env.LOOP_TURNS), session);
+  const message = check(command, repo, Boolean(process.env.LOOP_TURNS), session);
   if (message) {
     process.stderr.write(message + "\n");
     process.exit(2);
