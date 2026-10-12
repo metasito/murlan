@@ -182,6 +182,8 @@ function ancestry(table, pid) {
  * or it is not.
  */
 export function wouldTakeSelf(table, pid, selfPid) {
+  // A table that cannot see the reaper cannot see its tree either: no answer is a refusal.
+  if (!table.some((p) => p.pid === selfPid)) return true;
   const children = new Map();
   for (const p of table) {
     if (!children.has(p.ppid)) children.set(p.ppid, []);
@@ -212,13 +214,20 @@ export function isSessionHost(commandLine, { platform = process.platform, system
   );
 }
 
+/** @returns {string | null} why the kill was refused for want of a table, else null */
 function killPid(pid, dryRun, say = console.log) {
-  if (dryRun) return;
-  if (wouldTakeSelf(processTable().rows, pid, process.pid)) {
-    // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
-    // process that joined it since the sweep began is as fatal as one that was always there.
+  if (dryRun) return null;
+  // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
+  // process that joined it since the sweep began is as fatal as one that was always there.
+  const { rows } = processTable();
+  if (!rows.some((p) => p.pid === process.pid)) {
+    const why = `refused to kill pid ${pid} — no process table shows this reaper, so its tree cannot be checked`;
+    say(`reap: ${why}`);
+    return why;
+  }
+  if (wouldTakeSelf(rows, pid, process.pid)) {
     say(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
-    return;
+    return null;
   }
   if (process.platform === "win32") sh("taskkill", ["/PID", String(pid), "/T", "/F"]);
   else {
@@ -228,6 +237,7 @@ function killPid(pid, dryRun, say = console.log) {
       /* already gone */
     }
   }
+  return null;
 }
 
 /** LISTENING pids in `netstat -ano` output — every one, or only those bound to `port`. */
@@ -309,6 +319,10 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   const now = Date.now();
   const { rows: table, blind } = processTable();
   if (blind) say(`reap: ${blind}`);
+  let refused = null;
+  const kill = (pid) => {
+    refused = killPid(pid, dryRun, say) ?? refused;
+  };
   const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
   const keep = ancestry(table, process.pid);
@@ -325,7 +339,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   const staleHolders = stalePortHolders(holders, table);
   for (const pid of staleHolders) {
     say(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
-    killPid(pid, dryRun, say);
+    kill(pid);
   }
   for (const pid of holders.filter((p) => !staleHolders.includes(p))) {
     const held = byPid.get(pid);
@@ -344,7 +358,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   });
   for (const p of parentless) {
     say(`reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, parent ${p.ppid} is gone`);
-    killPid(p.pid, dryRun, say);
+    kill(p.pid);
   }
   if (!parentless.length) say("reap: nothing of ours lost its parent");
 
@@ -356,11 +370,11 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
       `reap: ${takeStale && !dryRun ? "killed" : "would kill"} ${labelOf(p)}, ${hoursOf(p)}h old` +
         (takeStale ? "" : " — pass --stale to take it")
     );
-    if (takeStale) killPid(p.pid, dryRun, say);
+    if (takeStale) kill(p.pid);
   }
   if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
-  return { took: staleHolders.length + parentless.length + stale.length, blind };
+  return { took: staleHolders.length + parentless.length + stale.length, blind: blind ?? refused };
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
