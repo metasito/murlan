@@ -202,4 +202,41 @@ describe('hidden invites across accounts', () => {
 
     await unmount();
   });
+
+  it('hides an invite accepted by a child in the commit that signs the account in', async () => {
+    const { useAuth } = require('@/context/AuthContext') as typeof import('@/context/AuthContext');
+    mockUser = null;
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
+    const { result, rerender, unmount } = await renderHook(
+      () => {
+        const socket = useSocket();
+        const { acceptInvite } = socket;
+        const signedIn = useAuth().user !== null;
+        React.useEffect(() => {
+          if (signedIn) acceptInvite('XYZ789');
+        }, [signedIn, acceptInvite]);
+        return socket;
+      },
+      {
+        wrapper: ({ children }: { children: React.ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <NotificationProvider>
+              <SocketProvider>{children}</SocketProvider>
+            </NotificationProvider>
+          </QueryClientProvider>
+        ),
+      }
+    );
+
+    expect(result.current.gameInvites).toEqual([{ from: 'cleo', roomCode: 'XYZ789' }]);
+
+    mockUser = { id: 'u2', username: 'Ben' };
+    await act(async () => rerender({}));
+
+    expect(result.current.acceptedInvite).toBe('XYZ789');
+    expect(result.current.gameInvites).toEqual([]);
+
+    await unmount();
+  });
 });
