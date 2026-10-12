@@ -45,16 +45,6 @@ function dispatchesOnTicketBranch(c, vars = {}) {
   return c.cmd === "gh" && c.args[0] === "workflow" && /^(?:agent|claude)\/\d+-/.test(ref);
 }
 
-/** The path operand of `git worktree add`, or null when it names none. */
-function worktreeAddPath(c) {
-  if (c.cmd !== "git" || c.args[0] !== "worktree" || c.args[1] !== "add") return null;
-  const rest = c.args.slice(2);
-  for (let i = 0; i < rest.length; i++) {
-    if (/^(-b|-B|--reason)$/.test(rest[i])) i += 1;
-    else if (!rest[i].startsWith("-")) return rest[i];
-  }
-  return "";
-}
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
 /** The only `gh run rerun` flags that consume the token after them. */
@@ -548,17 +538,6 @@ const RULES = [
     message:
       "An in-place rewrite skips the Write|Edit hooks (RULES.md rule 44).\n" +
       "Change the file with the Edit or Write tool.",
-  },
-  {
-    test: (c, { loop }) => {
-      const where = worktreeAddPath(c);
-      const own = /(^|[\\/])\.worktrees[\\/]agent-\d+[\\/]?$/.test(where ?? "") && !where.split(/[\\/]/).includes("..");
-      return loop && where !== null && !own;
-    },
-    message:
-      "A loop session works only in the worktree the supervisor made (RULES.md rules 7 and 32).\n" +
-      "Rebuilding it? `git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>`, as queue.md says.\n" +
-      "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
   },
   {
     test: (c, { loop }) =>

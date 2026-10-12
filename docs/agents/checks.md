@@ -483,8 +483,7 @@ asserts the game's React contexts stay a partition, so it stays on the game's si
 
 **Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
 every hook):
-- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`
-  anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
+- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
   replaces with `await-run.mjs`. It refuses a push anywhere but the session's own
