@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { housekeeping, sweep } from "../workspace.mjs";
+import { checkoutRoot, reap as realReap } from "../reap.mjs";
 
 // Named for the shape rather than the case: a test file joining the install's literal name trips
 // the scanner in tests/tooling/handBuiltNodeModulesPaths.test.ts.
@@ -488,6 +489,23 @@ describe("housekeeping", () => {
     const r = await housekeeping(base(repo, { reap: async () => ({ took: 1, blind: "refused to kill pid 7 — no process table shows this reaper" }) }));
     const row = r.rows.at(-1) as Row;
     assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+  });
+
+  test("the real reap's refusal to kill without a table reaches the row as its blind reason", async () => {
+    const { repo } = scratchRepo();
+    // Never a live pid on either platform, so a regressed refusal cannot take anything real.
+    const pid = 999_999_996;
+    const orphan = { pid, ppid: pid - 4, name: "node", commandLine: `node ${checkoutRoot()}/node_modules/jest/bin/jest.js`, startedAt: Date.now() - 3 * 3_600_000 };
+    let reads = 0;
+    const readTable = () => ({
+      rows: reads++ === 0 ? [{ pid: process.pid, ppid: 0, name: "node", commandLine: "node reap", startedAt: Date.now() }, orphan] : [orphan],
+      blind: null,
+    });
+    const r = await housekeeping(base(repo, { reap: (io: object) => realReap({ stale: true, ...io, readTable }) }));
+    const row = r.rows.at(-1) as Row;
+    assert.ok(reads >= 2, "killPid re-reads the table before it kills");
+    assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+    assert.match(row.detail ?? "", new RegExp(`refused to kill pid ${pid} — no process table shows this reaper`));
   });
 
   test("a reap that could not see the processes is a warning row, never silence", async () => {

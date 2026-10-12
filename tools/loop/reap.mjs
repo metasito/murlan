@@ -215,11 +215,11 @@ export function isSessionHost(commandLine, { platform = process.platform, system
 }
 
 /** @returns {string | null} why the kill was refused for want of a table, else null */
-function killPid(pid, dryRun, say = console.log) {
+function killPid(pid, dryRun, say = console.log, readTable = processTable) {
   if (dryRun) return null;
   // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
   // process that joined it since the sweep began is as fatal as one that was always there.
-  const { rows } = processTable();
+  const { rows } = readTable();
   if (!rows.some((p) => p.pid === process.pid)) {
     const why = `refused to kill pid ${pid} — no process table shows this reaper, so its tree cannot be checked`;
     say(`reap: ${why}`);
@@ -314,14 +314,14 @@ export function clearPort(port, { dryRun = false } = {}) {
  * to a live run is somebody else working, not a leftover, so it is not counted. `blind` is why it
  * could not see the processes, or null.
  */
-export async function reap({ dryRun = false, stale: takeStale = false, say = console.log } = {}) {
+export async function reap({ dryRun = false, stale: takeStale = false, say = console.log, readTable = processTable } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
   const now = Date.now();
-  const { rows: table, blind } = processTable();
+  const { rows: table, blind } = readTable();
   if (blind) say(`reap: ${blind}`);
   let refused = null;
   const kill = (pid) => {
-    refused = killPid(pid, dryRun, say) ?? refused;
+    refused = killPid(pid, dryRun, say, readTable) ?? refused;
   };
   const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
   const ours = table.filter((p) => ownedByTooling(p.commandLine, roots));
