@@ -664,6 +664,14 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     assert.ok(asked.every((a) => a[0] === "pr" || a.includes("38295085768")), JSON.stringify(asked));
   });
 
+  test("a red gate carries its run's attempt, which is what a rerun is counted by", () => {
+    const red = fixture("red");
+    const { state, asked } = read({ ...red, run: { ...red.run, attempt: 2 } });
+    assert.equal(state.ci.attempt, 2);
+    const runView = asked.find((a) => a[0] === "run" && a.includes("--json") && !a.includes("jobs"))!;
+    assert.match(runView[runView.indexOf("--json") + 1], /\battempt\b/);
+  });
+
   test("autoMergeRequest set is armed", () => {
     const { state } = read(fixture("red"), { autoMergeRequest: { mergeMethod: "MERGE", enabledAt: "2026-10-12T19:05:00Z" } });
     assert.equal(state.pr.armed, true);
