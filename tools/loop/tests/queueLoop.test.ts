@@ -1673,7 +1673,7 @@ describe("afterRefusal", () => {
   });
 });
 
-// What this function returns reaches `gh pr merge --merge --delete-branch`, unattended. Every
+// What this function returns reaches `gh pr merge --auto --merge`, unattended. Every
 // path through it therefore checks the head ref, including the one that trusts the number the
 // session declared — a number a model wrote into a line of text.
 describe("pushedPr only ever answers with this ticket's own pull request", () => {

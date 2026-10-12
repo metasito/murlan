@@ -416,7 +416,7 @@ describe("poll posts CI-RED once per red head", () => {
   });
 
   test("the same head red twice posts once", async () => {
-    const { gh, asked } = redFake([{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z\non main: none` }]);
+    const { gh, asked } = redFake([{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }]);
     await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 0);
   });
