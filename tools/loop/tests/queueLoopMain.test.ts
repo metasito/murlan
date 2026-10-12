@@ -754,13 +754,17 @@ describe("runOnce", () => {
         ledger,
         picker,
       } as never);
-    for (const labels of [["in-progress", "ready-for-human"], ["ready-for-agent"], ["in-progress", "deferred"]]) {
+    for (const labels of [["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]]) {
       const r: any = route(labels);
       assert.deepEqual([r.skill, r.number, r.resuming], ["implement", 77, false], labels.join(","));
     }
     assert.equal(picked.length, 3);
     const unread: any = route(null);
     assert.deepEqual([unread.number, unread.resuming, unread.phase], [42, true, "A"], "an unreadable tracker keeps resuming");
+    // An overloaded hold of a session the API failed before its phase-A claim: still ours, and its
+    // kept worktree is waiting for it.
+    const unclaimed: any = route(["ready-for-agent", "size:S"]);
+    assert.deepEqual([unclaimed.number, unclaimed.resuming, unclaimed.phase], [42, true, "A"], "a pre-claim hold keeps resuming");
     assert.equal(picked.length, 3);
   });
 
