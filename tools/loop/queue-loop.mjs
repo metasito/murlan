@@ -82,6 +82,7 @@ import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_P
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
+import { OWNER_LABELS } from "./next-ticket.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -171,7 +172,16 @@ export function liveRoute(status, labels = null) {
  *
  * @param {number|null} [pinned]
  */
-export function nextRoute(pinned = null, at = null, { read = derive, facts = ticketFacts, ledger = readLedger } = {}) {
+export function nextRoute(
+  pinned = null,
+  at = null,
+  {
+    read = derive,
+    facts = ticketFacts,
+    ledger = readLedger,
+    picker = () => execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" }),
+  } = {},
+) {
   const status = read({ ci: true });
   const known = status.onTicket && status.ticket ? facts(status.ticket) : null;
   if (known?.state === "CLOSED") {
@@ -202,10 +212,12 @@ export function nextRoute(pinned = null, at = null, { read = derive, facts = tic
     };
   }
   if (pinned) {
-    const { title, size, ciRounds } = facts(pinned);
-    return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
+    const { title, size, ciRounds, labels } = facts(pinned);
+    // A handoff here would stop the run over one ticket the owner took back; the picker decides.
+    const released = labels && (!labels.includes("in-progress") || labels.some((l) => OWNER_LABELS.has(l)));
+    if (!released) return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
-  const stdout = execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" });
+  const stdout = picker();
   return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
 }
 
