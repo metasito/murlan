@@ -110,8 +110,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 3. The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
    They are not this diff's: fix their root cause here in a commit of its own, naming main's run
    in `FIX-NOTES`. `none` means every failure is this diff's.
-4. Fix what CI named, then run the suite it named as well as the usual check:
-   `npm run agent:check -- --also test:native` (or `loop:test`; `test` always runs).
+4. Fix what CI named, then run `npm run agent:check`.
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
    HEAD`). Then leave through **Leaving C**.
@@ -202,7 +201,8 @@ round 1, then the sha the previous round reviewed.
 exits non-zero: fix nothing, say on the issue which Blocking finding is still open, and stand down.
 
 **A round is a process.** Otherwise say `PHASE C`, fix exactly the Blocking findings (no
-sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through phase C's steps 1–4.
+sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through **Leaving C**. A
+product decision goes to the owner (**Never stall**), never into `FIX-NOTES`.
 A failure only a local run showed, which neither the review nor CI named, is ruled out (rule 37)
 and named in `FIX-NOTES`. Then hand off:
 
