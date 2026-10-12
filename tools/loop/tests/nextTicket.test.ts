@@ -1,7 +1,10 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import * as picker from "../next-ticket.mjs";
 import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+
+const takeableReasons = (i: object) => picker.takeableReasons(i);
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -299,7 +302,7 @@ describe("the open issues, from one query", () => {
       data: {
         repository: {
           issues: {
-            pageInfo: { hasNextPage },
+            pageInfo: { hasNextPage, endCursor: hasNextPage ? "c1" : null },
             nodes: [
               {
                 number: 12,
@@ -337,8 +340,27 @@ describe("the open issues, from one query", () => {
     ]);
   });
 
-  test("a second page is refused, never truncated", () => {
-    assert.throws(() => openIssues(answer(true)), /more than 100 open issues; the picker will not guess/);
+  test("a second page is read from the first page's cursor, never truncated", () => {
+    const calls: string[][] = [];
+    const run = (args: string[]) => {
+      calls.push(args);
+      return args.includes("after=c1") ? answer(false)() : answer(true)();
+    };
+    assert.deepEqual(openIssues(run).map((i: { number: number }) => i.number), [12, 13, 12, 13]);
+    assert.equal(calls.length, 2);
+    assert.ok(!calls[0].some((a) => a.startsWith("after=")), "the first page has no cursor");
+  });
+
+  test("an inspected ticket says why it is not takeable", () => {
+    assert.deepEqual(takeableReasons({ ...issue(1, ["ready-for-agent"]), issue_dependencies_summary: { blocked_by: 0 } }), []);
+    const gated = { ...issue(2, ["ready-for-human", "in-progress", "blocked"], "NONE"), issue_dependencies_summary: { blocked_by: 1 } };
+    assert.deepEqual(takeableReasons(gated), [
+      "has open blockers",
+      "labelled in-progress",
+      "labelled blocked",
+      "owner-gated (ready-for-human)",
+      "opened from outside the repo (NONE)",
+    ]);
   });
 
   test("a candidate with an open native blocker is passed over for the next", () => {
