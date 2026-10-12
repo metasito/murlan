@@ -371,22 +371,33 @@ describe("ledgerSummary", () => {
     assert.equal(out.fixShare, 25);
   });
 
-  test("HOLD rounds per ticket are its verdicts less its landings, from the total the cap does not reset", () => {
-    const rounds = (n: number, fields: object[], landed = true) => [
-      ...fields.map((f) => ({ ...row(n, "handoff", 1, { D: 60 }, {}), ...f })),
-      ...(landed ? [{ ...row(n, "landed", 0, {}, {}), ...fields.at(-1) }] : []),
-    ];
+  const rounds = (n: number, fields: object[], landed = true) => [
+    ...fields.map((f) => ({ ...row(n, "handoff", 1, { D: 60 }, {}), ...f })),
+    ...(landed ? [{ ...row(n, "landed", 0, {}, {}), ...fields.at(-1) }] : []),
+  ];
+
+  test("HOLD rounds per ticket are its HOLD total, or before it its verdicts less its landings", () => {
     const rows = [
-      ...rounds(1, [{ review_rounds_total: 0 }, { review_rounds_total: 1 }, { review_rounds_total: 2 }]),
-      ...rounds(2, [{ review_rounds: 1, review_rounds_total: 3 }]),
+      ...rounds(1, [{ review_holds_total: 0 }, { review_holds_total: 1 }, { review_holds_total: 1 }]),
+      ...rounds(2, [{ review_rounds: 1, review_holds_total: 2 }]),
       ...rounds(3, [{ review_rounds: 0 }, { review_rounds: 2 }]),
       ...rounds(4, [{}]),
-      ...rounds(5, [{ review_rounds_total: null, review_rounds: null }], false),
+      ...rounds(5, [{ review_holds_total: null, review_rounds: null }], false),
     ];
     const out = ledgerSummary(rows);
     assert.deepEqual(out.holds, { 1: 1, 2: 2, 3: 1, 4: 0, 5: 0 });
     assert.equal(out.holdsMean, 0.8);
     assert.match(report([readTicket([say("PHASE C", 0), result(1)], "1")], rows), /HOLD rounds: 0\.80 per ticket/);
+  });
+
+  // A CI fix round's `REVIEW <sha> fix` LAND, still settling, is a verdict and no HOLD.
+  test("a ticket whose HOLD total is 0 has no HOLDs, whatever its verdicts and landings", () => {
+    const rows = [
+      ...rounds(6, [{ review_holds_total: 0, review_rounds: 1 }], false),
+      { n: 6, outcome: "retry", cost: 0, phases: {}, turns: 0 },
+      { ...row(6, "pushed", 1, { C: 60, D: 60 }, {}), review_holds_total: 0, review_rounds: 1 },
+    ];
+    assert.deepEqual(ledgerSummary(rows).holds, { 6: 0 });
   });
 
   // 101 of the ledger's rows are a settle's `landed` with no turns, and 14 a supervisor's `retry`.
