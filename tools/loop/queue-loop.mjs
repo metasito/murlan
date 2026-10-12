@@ -439,7 +439,7 @@ export function syncCheckout(
  * A session's own longest silence. Phase D's review subagent emits nothing into the parent
  * stream while it reads, and a large diff keeps it there past twenty minutes. Any ceiling at or
  * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
- * ceiling, which `agent:check -- --also test:native` needs and a stall must outlast.
+ * ceiling, which `agent:check` needs and a stall must outlast.
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 

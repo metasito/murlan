@@ -1,16 +1,15 @@
 /**
- * The pre-push check, run once per tree state. The verdict is keyed on a hash of the working
- * tree, so an unchanged tree replays instead of re-running.
+ * The pre-push check. A clean tree's verdict is keyed on HEAD's sha, so an unchanged commit
+ * replays instead of re-running; a tree with anything uncommitted always runs and records nothing.
  *
  * Usage: npm run agent:check          run, or replay a cached verdict
  *        npm run agent:check -- --force   ignore the cache
  */
-import { createHash } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
-import { STEPS, LOCAL, DELEGATED, byName, cmd, BANNER } from "./check-steps.mjs";
+import { STEPS, LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import preflightMemory from "../ci/preflightMemory.mjs";
 
@@ -132,7 +131,7 @@ export async function runStep(step, spawn = spawnAsync, write = (s) => void proc
 }
 
 /** The light steps at once; whole suites after them, one at a time, since they compete for memory. */
-export async function runAll(local, also, run = runStep, roomFor = async () => true) {
+export async function runAll(local, run = runStep, roomFor = async () => true) {
   const runs = await Promise.all(local.filter((s) => !s.after).map((step) => run(step)));
   for (const step of local.filter((s) => s.after)) {
     // Without the memory it goes back to CI, where it always ran, and the verdict says so; failing
@@ -140,12 +139,27 @@ export async function runAll(local, also, run = runStep, roomFor = async () => t
     if (await roomFor(step)) runs.push(await run(step));
     else runs.push({ failed: null, deferred: step, text: `${BANNER}${step.name} === deferred: not enough memory\n` });
   }
-  for (const step of also) runs.push(await run(step));
   return runs;
 }
 
+/**
+ * HEAD alone would call an edited tree unchanged, which is the one case that must never replay a
+ * stale pass — so only a clean tree has a key at all.
+ */
+export async function judge({ head, clean, force, cache, run }) {
+  const key = clean ? head : null;
+  if (key && !force && replays(cache[key])) return { replayed: cache[key] };
+  const runs = await run();
+  const entry = cacheEntry({
+    failed: runs.flatMap((r) => (r.failed ? [r.failed] : [])),
+    head,
+    clean,
+    deferred: runs.flatMap((r) => (r.deferred ? [r.deferred.name] : [])),
+  });
+  return { runs, entry, cache: key ? { ...cache, [key]: entry } : null };
+}
+
 let subject;
-let extra = [];
 let deferred = [];
 
 // What this left out is part of its verdict, named as a command so nobody has to invent one, and
@@ -161,55 +175,18 @@ const verdict = (outcome) =>
   ].join("\n");
 
 function ran() {
-  return [...LOCAL, ...extra].filter((s) => !deferred.includes(s));
+  return LOCAL.filter((s) => !deferred.includes(s));
 }
 function skipped() {
-  return [...DELEGATED.filter((s) => !extra.includes(s)), ...deferred];
+  return [...DELEGATED, ...deferred];
 }
 
 function git(...args) {
   return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-/**
- * Identifies the working tree by content, not by commit: HEAD alone would call an edited tree
- * unchanged, which is the one case that must never replay a stale pass.
- *
- * `write-tree` hashes tracked content including staged changes; unstaged and untracked files are
- * added by their own blob hashes. A file listed but unreadable hashes as its name plus the error,
- * so it still changes the key rather than silently dropping out of it.
- */
-function treeHash() {
-  const parts = [git("rev-parse", "HEAD").trim()];
-  try {
-    // Writing the index into the object store needs a temporary index, or a caller's staged state
-    // would be rewritten by a read-only check.
-    const tmpIndex = path.join(gitDir(), "agent-check-index");
-    fs.copyFileSync(path.join(gitDir(), "index"), tmpIndex);
-    parts.push(
-      execFileSync("git", ["add", "-A", "--", "."], {
-        env: { ...process.env, GIT_INDEX_FILE: tmpIndex },
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      }) || "",
-      execFileSync("git", ["write-tree"], {
-        env: { ...process.env, GIT_INDEX_FILE: tmpIndex },
-        encoding: "utf8",
-      }).trim()
-    );
-    fs.rmSync(tmpIndex, { force: true });
-  } catch (err) {
-    parts.push(`unhashable:${err.message}`);
-  }
-  return createHash("sha256").update(parts.join("\n")).digest("hex").slice(0, 16);
-}
-
-function gitDir() {
-  return git("rev-parse", "--absolute-git-dir").trim();
-}
-
 function cachePath() {
-  return path.join(gitDir(), "agent-check-cache.json");
+  return path.join(git("rev-parse", "--absolute-git-dir").trim(), "agent-check-cache.json");
 }
 
 function readCache() {
@@ -221,16 +198,22 @@ function readCache() {
 }
 
 async function main() {
+  // Refused, not dropped: a mistyped flag that fell away would print the same LOCAL PASS.
+  const unknown = process.argv.slice(2).filter((a) => a !== "--force");
+  if (unknown.length) {
+    console.error(`agent:check: unknown flag ${unknown.join(" ")}; the only one is --force`);
+    process.exit(1);
+  }
   subject = readSubject(process.cwd());
   if (subject.refuse) {
     console.error(`agent:check: ${subject.refuse}`);
     process.exit(1);
   }
-  // Everything below — the tree hash, the cache, the steps — reads the tree being judged rather than
+  // Everything below — HEAD, the cache, the steps — reads the tree being judged rather than
   // wherever the invoker happened to be standing. Moving once is what keeps them from disagreeing.
   process.chdir(subject.root);
 
-  // The cache key is tree content only (see `treeHash` above), so it cannot see a node_modules-only
+  // The cache key is HEAD only, so it cannot see a node_modules-only
   // drift — a peer session's `npm install` mid-run would otherwise keep replaying a stale PASS.
   const sharedRoot = parseWorktreeList(git("worktree", "list", "--porcelain"))[0]?.path ?? null;
   if (!sharedRoot) {
@@ -248,54 +231,36 @@ async function main() {
     process.exit(1);
   }
 
-  const force = process.argv.includes("--force");
+  const head = git("rev-parse", "HEAD").trim();
+  const clean = git("status", "--porcelain").trim() === "";
+  const roomFor = () => preflightMemory().then(() => true, () => false);
+  const out = await judge({
+    head,
+    clean,
+    force: process.argv.includes("--force"),
+    cache: readCache(),
+    run: () => runAll(LOCAL, runStep, roomFor),
+  });
 
-  // A red CI round knows which suite failed, and running only that one here is the difference between
-  // fixing it and pushing again to find out. Named, never a wildcard: `--also` picking up every
-  // delegated step is `npm run verify` behind a memory preflight this machine refuses.
-  const also = process.argv.indexOf("--also");
-  extra = also >= 0 ? [byName(process.argv[also + 1])] : [];
-  // Refused, not dropped: a mistyped suite that fell out of the list would print the same LOCAL PASS,
-  // and the fix round would believe it had run the one CI named.
-  if (extra.some((s) => !s || s.where === "local")) {
-    console.error(
-      `agent:check  --also ${process.argv[also + 1] ?? ""} is not a delegated step. One of: ` +
-        DELEGATED.map((s) => s.name).join(", "),
-    );
-    process.exit(1);
-  }
-
-  // Keyed with them, so a `--also` run cannot replay as a plain one — or a plain one as a `--also`.
-  const key = treeHash() + (extra.length ? `+${extra.map((s) => s.name).join(",")}` : "");
-  const cache = readCache();
-
-  if (!force && replays(cache[key])) {
-    console.log(verdict(`agent:check  CACHED LOCAL PASS for tree ${key} (${cache[key].at})`));
+  if (out.replayed) {
+    console.log(verdict(`agent:check  CACHED LOCAL PASS for ${head.slice(0, 7)} (${out.replayed.at})`));
     console.log("Nothing changed since that run. Use --force to run the suites anyway.");
     process.exit(0);
   }
 
-  const head = git("rev-parse", "HEAD").trim();
-  const clean = git("status", "--porcelain").trim() === "";
-  const roomFor = () => preflightMemory().then(() => true, () => false);
-  const runs = await runAll(LOCAL, extra, runStep, roomFor);
-  for (const run of runs) process.stdout.write(run.text);
-  const failed = runs.flatMap((run) => (run.failed ? [run.failed] : []));
-  deferred = runs.flatMap((run) => (run.deferred ? [run.deferred] : []));
+  for (const run of out.runs) process.stdout.write(run.text);
+  deferred = out.runs.flatMap((run) => (run.deferred ? [run.deferred] : []));
+  // A failure is recorded too, and never replayed (`replays`): a red verdict replayed would tell an
+  // agent its fix did not work.
+  if (out.cache) fs.writeFileSync(cachePath(), JSON.stringify(out.cache, null, 2));
 
-  // Only a pass is cached. A failure has to re-run: the fix for it lands in the same tree the
-  // failure was recorded against only when nothing else moved, and replaying a red verdict would
-  // tell an agent its fix did not work.
-  cache[key] = cacheEntry({ failed, head, clean, deferred: deferred.map((s) => s.name) });
-  fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
-
+  const { failed } = out.entry;
   if (failed.length) {
     console.error(verdict(`\nagent:check  FAIL — ${failed.join(", ")}`));
     process.exit(1);
   }
-  console.log(
-    verdict(`\nagent:check  LOCAL PASS  (tree ${key}) — ${ran().length} of ${STEPS.length} suites`)
-  );
+  const what = clean ? head.slice(0, 7) : "uncommitted tree, not recorded";
+  console.log(verdict(`\nagent:check  LOCAL PASS  (${what}) — ${ran().length} of ${STEPS.length} suites`));
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) main();

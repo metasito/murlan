@@ -7,7 +7,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 ## Checking your work
 
 1. **Run `npm run agent:check` before you push.** `tools/loop/check-steps.mjs` is the list of what
-   runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
+   runs there and what `ci.yml` carries; the check prints both and replays on an unchanged, committed HEAD.
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
