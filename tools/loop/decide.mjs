@@ -3,7 +3,8 @@ import { STALL_MS } from "./limits.mjs";
 const PARK = { remove: ["in-progress", "ready-for-agent"], add: ["ready-for-human"] };
 const RELEASE = { remove: ["in-progress"], add: [] };
 const RESUMABLE = new Set(["B", "C", "D"]);
-const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
+/** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
+export const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
 const exhausted = (run) => run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");

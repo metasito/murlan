@@ -93,6 +93,7 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./shell.mjs";
 import { OWNER_LABELS } from "./next-ticket.mjs";
+import { LOCATED } from "./decide.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -2113,10 +2114,6 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
-
-/** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
-const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
-
 export async function poll(pending, log, pause, deadline, io = {}) {
   const {
     run = sh,
