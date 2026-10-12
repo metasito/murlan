@@ -6,9 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkSubject, readSubject } from "../preflight.mjs";
 import { BANNER } from "../check-steps.mjs";
-import { cacheEntry, cleanPassFor, replays, runAll, runStep } from "../agent-check.mjs";
+import { cacheEntry, checkSubject, cleanPassFor, judge, readSubject, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
 // A refusal exits at once; a regression that stops short-circuiting would otherwise run the real
@@ -123,6 +122,41 @@ describe("the refusal is the script's, not only the helper's", () => {
       fs.rmSync(outside, REAP);
     }
   });
+
+  test("a flag it does not know is refused before anything is read or run", () => {
+    const run = spawnSync(process.execPath, [SCRIPT, "--also", "test:native"], { ...SPAWN, cwd: os.tmpdir() });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /unknown flag --also/);
+    assert.ok(!run.stdout.includes(BANNER));
+  });
+});
+
+describe("what the cache is keyed on", () => {
+  const passing = async () => [{ failed: null, text: "ok" }];
+
+  test("a pass on a clean tree is recorded under HEAD's sha", async () => {
+    const out = await judge({ head: "h1", clean: true, force: false, cache: {}, run: passing });
+    assert.equal(out.replayed, undefined);
+    assert.equal(out.cache?.h1?.pass, true);
+    assert.equal(out.cache?.h1?.head, "h1");
+  });
+
+  test("a clean HEAD that already passed replays without running", async () => {
+    let ran = 0;
+    const cache = { h1: cacheEntry({ failed: [], head: "h1", clean: true }) };
+    const out = await judge({ head: "h1", clean: true, force: false, cache, run: async () => (ran++, []) });
+    assert.equal(ran, 0);
+    assert.equal(out.replayed, cache.h1);
+  });
+
+  test("a dirty tree runs every step, though its HEAD passed, and records nothing", async () => {
+    let ran = 0;
+    const cache = { h1: cacheEntry({ failed: [], head: "h1", clean: true }) };
+    const out = await judge({ head: "h1", clean: false, force: false, cache, run: async () => (ran++, passing()) });
+    assert.equal(ran, 1);
+    assert.equal(out.replayed, undefined);
+    assert.equal(out.cache, null);
+  });
 });
 
 type Spawn = NonNullable<Parameters<typeof runStep>[1]>;
@@ -161,12 +195,12 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(cleanPassFor({ k: entry }, "h1"), entry);
   });
 
-  test("a whole suite with no memory for it is deferred, not failed, and an --also one still runs", async () => {
+  test("a whole suite with no memory for it is deferred, not failed", async () => {
     const ran: string[] = [];
     const run = async (step: { name: string }) => (ran.push(step.name), { failed: null, text: step.name });
-    const runs = await runAll([{ name: "a" }, { name: "t", after: true }], [{ name: "x" }], run as never, async () => false);
-    assert.deepEqual(ran, ["a", "x"]);
-    assert.deepEqual(runs.map((r: any) => [r.failed, r.deferred?.name ?? null]), [[null, null], [null, "t"], [null, null]]);
+    const runs = await runAll([{ name: "a" }, { name: "t", after: true }], run as never, async () => false);
+    assert.deepEqual(ran, ["a"]);
+    assert.deepEqual(runs.map((r: any) => [r.failed, r.deferred?.name ?? null]), [[null, null], [null, "t"]]);
   });
 
   const numbered = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join("\n");
@@ -211,7 +245,7 @@ describe("the cached verdict and what a failure prints", () => {
     assert.equal(run.failed, "lint (timed out)");
   });
 
-  test("the local steps start together, and an --also suite only after they end", async () => {
+  test("a local whole suite waits for the light steps, which start together", async () => {
     const events: string[] = [];
     const run = async (step: { name: string }) => {
       events.push(`start ${step.name}`);
@@ -219,21 +253,9 @@ describe("the cached verdict and what a failure prints", () => {
       events.push(`end ${step.name}`);
       return { failed: null, text: step.name };
     };
-    const runs = await runAll([{ name: "a" }, { name: "b" }], [{ name: "x" }], run as never);
-    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start x", "end x"]);
-    assert.deepEqual(runs.map((r) => r.text), ["a", "b", "x"]);
-  });
-
-  test("a local whole suite waits for the light steps, then goes before an --also one", async () => {
-    const events: string[] = [];
-    const run = async (step: { name: string }) => {
-      events.push(`start ${step.name}`);
-      await new Promise((r) => setImmediate(r));
-      events.push(`end ${step.name}`);
-      return { failed: null, text: step.name };
-    };
-    await runAll([{ name: "a" }, { name: "t", after: true }, { name: "b" }], [{ name: "x" }], run as never);
-    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start t", "end t", "start x", "end x"]);
+    const runs = await runAll([{ name: "a" }, { name: "t", after: true }, { name: "b" }], run as never);
+    assert.deepEqual(events, ["start a", "start b", "end a", "end b", "start t", "end t"]);
+    assert.deepEqual(runs.map((r) => r.text), ["a", "b", "t"]);
   });
 
   // Run under `npm run -s`, as the suite often is: the silent level must not reach the step.

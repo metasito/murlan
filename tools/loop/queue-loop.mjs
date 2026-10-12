@@ -45,6 +45,7 @@ import {
   help,
   keybar,
   LAND,
+  note,
   notice,
   phaseRow,
   progress,
@@ -85,8 +86,7 @@ import {
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { DIAGNOSED, diagnose } from "./diagnose.mjs";
-import { checkLockDrift } from "./preflight.mjs";
-import { listWorktreeDirNames } from "./prune-worktrees.mjs";
+import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -415,7 +415,7 @@ export function syncCheckout(
 
   // Keyed on the installed stamp, not the fast-forward's own diff: a diff seen once and skipped
   // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
-  // its only chance to notice. `preflight` refuses to start a ticket on top of a drifted install,
+  // its only chance to notice. `housekeeping` refuses to start a ticket on top of a drifted install,
   // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
   // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
   // junction into this install, so reinstalling under a live session empties the tree it is in.
@@ -445,7 +445,7 @@ export function syncCheckout(
  * A session's own longest silence. Phase D's review subagent emits nothing into the parent
  * stream while it reads, and a large diff keeps it there past twenty minutes. Any ceiling at or
  * under that reads a working run as a stalled one. `CHECK_BASH_TIMEOUT_MS` is the session's Bash
- * ceiling, which `agent:check -- --also test:native` needs and a stall must outlast.
+ * ceiling, which `agent:check` needs and a stall must outlast.
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 
@@ -867,7 +867,7 @@ export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)
   return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
 }
 
-/** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
+/** From the main checkout: `removeWorktree` in workspace.mjs refuses a caller standing inside the tree it removes. */
 export function removeWorktree(cwd, run = sh) {
   return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
 }
@@ -2370,15 +2370,9 @@ export async function runOnce(io, pinned = null, at = null) {
   if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
   const moved = io.loopMoved?.();
   if (moved) return { outcome: "restart", why: `tools/loop moved on main (now ${moved})` };
-  // Exit 2 is "this machine cannot start a ticket *now*" — drift, a peer's dirt, memory. Every one
-  // of those clears on its own, including the drift the loop's own merge of a lockfile creates.
-  const pre = await io.queuePre();
-  if (pre.status === 2) return { outcome: "hold", why: "queue-pre is not ready for a ticket yet" };
-  if (pre.status !== 0) {
-    const rows = pre.said.split("\n").map((l) => l.trim()).filter(Boolean);
-    const refused = rows.filter((l) => l.includes("✗")).join("; ") || rows.at(-1) || "queue-pre printed nothing";
-    return { outcome: "stop", why: `a pre-flight check refused: ${refused}` };
-  }
+  const pre = await io.housekeeping(pinned);
+  if (pre.verdict === "hold") return { outcome: "hold", why: pre.why };
+  if (pre.verdict !== "ok") return { outcome: "stop", why: `a pre-flight check refused: ${pre.why}` };
 
   let route = io.pick(pinned, at);
   if (route.skill === "closed") {
@@ -2688,21 +2682,6 @@ export async function runOnce(io, pinned = null, at = null) {
   return { outcome: "landed", ticket: route.number };
 }
 
-export function queuePreStreamed({ spawnFn = spawn, out = process.stderr } = {}) {
-  return new Promise((resolve) => {
-    const child = spawnFn(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"] });
-    let said = "";
-    child.stderr.setEncoding?.("utf8");
-    child.stderr.on("data", (chunk) => {
-      out.write(chunk);
-      said += chunk;
-    });
-    const done = (status) => resolve({ status: status ?? 1, said: said.replace(/\x1b\[[0-9;]*m/g, "") });
-    child.on("error", (err) => ((said += `queue-pre ✗ could not start — ${err.message}\n`), done(1)));
-    child.on("close", done);
-  });
-}
-
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
 function realIo(book, screen) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
@@ -2715,7 +2694,11 @@ function realIo(book, screen) {
     loopMoved: () => loopMoved(started),
     snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
-    queuePre: () => queuePreStreamed(),
+    housekeeping: (pinned) =>
+      housekeeping({
+        pinned,
+        say: (row) => screen.say([stepRow(row, screen.theme), ...(row.note?.trim() ? [note(row.note, screen.theme)] : [])].join("\n")),
+      }),
     parity: () => parityRed(),
     issueState: (n) => {
       const f = ticketFacts(n);

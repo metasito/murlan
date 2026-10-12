@@ -128,7 +128,7 @@ export default async function preflightMemory({
 //
 // `.catch` and not `await`: the suites import this module through a transform that compiles to CJS,
 // where a top-level await is a build error rather than a slower path.
-// It says what it decided even when it decides nothing, the way `preflight.mjs` does. A guard that
+// It says what it decided even when it decides nothing. A guard that
 // is silent when it passes cannot be told from a guard that never ran — which is the failure this
 // one is most exposed to, since it is reached through an npm lifecycle name rather than a call.
 //

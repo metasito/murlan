@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { detachReparsePoints, reparsePointNames } from "../prune-worktrees.mjs";
+import { detachLinks, reparsePointNames } from "../workspace.mjs";
 
 describe("naming the links at a worktree's top level", () => {
   const dirent = (name: string, link: boolean) =>
@@ -53,7 +53,7 @@ describe("detaching a link before a worktree is deleted", () => {
       return; // A platform that will not make one has nothing to prove here.
     }
 
-    assert.deepEqual(detachReparsePoints(worktree), [LINK]);
+    assert.deepEqual(detachLinks(worktree), [LINK]);
     assert.equal(fs.existsSync(path.join(worktree, LINK)), false, "the link should be gone");
     assert.equal(
       fs.readFileSync(path.join(target, "typescript", "tsc"), "utf8"),
@@ -66,13 +66,13 @@ describe("detaching a link before a worktree is deleted", () => {
   test("a directory with no links is left exactly as it was", () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "murlan-links-"));
     fs.writeFileSync(path.join(root, "a.txt"), "x", "utf8");
-    assert.deepEqual(detachReparsePoints(root), []);
+    assert.deepEqual(detachLinks(root), []);
     assert.ok(fs.existsSync(path.join(root, "a.txt")));
   });
 
   // Called on the path of a worktree whose directory is already gone, which is the ordinary case
   // for the orphan pass.
   test("a directory that does not exist is not an error", () => {
-    assert.deepEqual(detachReparsePoints(path.join(os.tmpdir(), "murlan-not-here-at-all")), []);
+    assert.deepEqual(detachLinks(path.join(os.tmpdir(), "murlan-not-here-at-all")), []);
   });
 });

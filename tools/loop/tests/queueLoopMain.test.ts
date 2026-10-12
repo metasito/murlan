@@ -7,11 +7,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import {
   parkAsked,
-  queuePreStreamed,
   runOnce,
   afterSession,
   main,
@@ -47,7 +44,7 @@ const rowOf = (x: any) => ({
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
-  queuePre: () => ({ status: 0, said: "" }),
+  housekeeping: () => ({ verdict: "ok", rows: [] }),
   pick: () => ({
     skill: "implement",
     number: 42,
@@ -320,38 +317,26 @@ describe("runOnce", () => {
     assert.deepEqual(picks, []);
   });
 
-  // The loop's own merges move package-lock.json, and preflight refuses to start on an install
+  // The loop's own merges move package-lock.json, and housekeeping refuses to start on an install
   // that has drifted from it. Read as "stop", the first such ticket ended the night.
-  test("queue-pre exit 2 holds; anything else still stops", async () => {
-    assert.equal((await runOnce(io({ queuePre: () => ({ status: 2, said: "" }) }))).outcome, "hold");
-    assert.equal((await runOnce(io({ queuePre: () => ({ status: 1, said: "…" }) }))).outcome, "stop");
+  test("a housekeeping hold holds, saying why; a stop still stops", async () => {
+    const held = await runOnce(io({ housekeeping: () => ({ verdict: "hold", why: "node_modules has drifted", rows: [] }) }));
+    assert.deepEqual([held.outcome, held.why], ["hold", "node_modules has drifted"]);
+    assert.equal((await runOnce(io({ housekeeping: () => ({ verdict: "stop", why: "…", rows: [] }) }))).outcome, "stop");
   });
 
-  test("a refusal carries queue-pre's refused row into why", async () => {
-    const out = await runOnce(io({ queuePre: () => ({ status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop — remove to start\n" }) }));
+  test("a refusal carries housekeeping's reason into why", async () => {
+    const out = await runOnce(io({ housekeeping: () => ({ verdict: "stop", why: "worktrees: 1 not made by the loop — remove to start", rows: [] }) }));
     assert.equal(out.outcome, "stop");
     assert.match(String(out.why), /1 not made by the loop/);
-    assert.doesNotMatch(String(out.why), /GB free/);
   });
 
-  test("a queue-pre that answers later is waited for", async () => {
-    assert.equal((await runOnce(io({ queuePre: async () => ({ status: 0, said: "" }) }))).outcome, "landed");
-    assert.equal((await runOnce(io({ queuePre: async () => ({ status: 2, said: "" }) }))).outcome, "hold");
-  });
-
-  test("queue-pre's rows reach the terminal as they are written, and the refusal is kept", async () => {
-    const child: any = new EventEmitter();
-    child.stderr = new PassThrough();
-    const shown: string[] = [];
-    const out = { write: (s: string) => shown.push(String(s)) };
-    const pending = queuePreStreamed({ spawnFn: () => child, out: out as never });
-    child.stderr.write("memory   \x1b[32m✓\x1b[0m 6.1 GB free\n");
-    await new Promise((r) => setImmediate(r));
-    assert.deepEqual(shown, ["memory   \x1b[32m✓\x1b[0m 6.1 GB free\n"], "the first row is on screen before queue-pre exits");
-    child.stderr.end("worktrees ✗ 1 not made by the loop\n");
-    await new Promise((r) => setImmediate(r));
-    child.emit("close", 1);
-    assert.deepEqual(await pending, { status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop\n" });
+  test("housekeeping is asked about the pinned ticket, and waited for", async () => {
+    const asked: unknown[] = [];
+    const later = (verdict: string) => async (pinned: unknown) => (asked.push(pinned), { verdict, rows: [] });
+    assert.equal((await runOnce(io({ housekeeping: later("ok") }), 42)).outcome, "landed");
+    assert.equal((await runOnce(io({ housekeeping: later("hold") }))).outcome, "hold");
+    assert.deepEqual(asked, [42, null]);
   });
 
   test("a pinned ticket is what the picker is asked for", async () => {
@@ -657,11 +642,11 @@ describe("runOnce", () => {
     assert.match(String(r.why), /log in/);
   });
 
-  test("the prune in queue-pre runs before the pick", async () => {
+  test("the sweep in housekeeping runs before the pick", async () => {
     const order: string[] = [];
     await runOnce(
       io({
-        queuePre: () => (order.push("pre"), { status: 0, said: "" }),
+        housekeeping: () => (order.push("pre"), { verdict: "ok", rows: [] }),
         pick: () => (order.push("pick"), { skill: "implement", number: 42, title: "t", size: null, queue: null }),
       }),
     );
@@ -1413,8 +1398,8 @@ describe("a throw mid-iteration", () => {
     const parked: number[] = [];
     const spy = {
       ...(io() as any),
-      queuePre: () => {
-        throw new Error("queue-pre blew up");
+      housekeeping: () => {
+        throw new Error("housekeeping blew up");
       },
       park: (n: number) => parked.push(n),
     };
@@ -1490,7 +1475,7 @@ describe("the run recap", () => {
       },
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const spy = { ...(io() as any), stopFile: () => passes++ > 0, queuePre: () => ({ status: 2, said: "" }) };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, housekeeping: () => ({ verdict: "hold", why: "drift", rows: [] }) };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });

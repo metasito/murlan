@@ -25,12 +25,12 @@ const SKIP_DIRS = new Set([
 ]);
 
 /**
- * tools/loop/tests/preflight.test.ts's `install()` helper builds a fake install under a
+ * tools/loop/tests/lockDrift.test.ts's `install()` helper builds a fake install under a
  * `mkdtempSync` root it created itself, to give `checkLockDrift` a real disk
  * fixture — it is not locating an existing package relative to a worktree,
  * so the flat-layout assumption this scan protects against never applies.
  *
- * tools/loop/preflight.mjs's `installedVersion` reads an arbitrary root's own
+ * tools/loop/workspace.mjs's `installedVersion` reads an arbitrary root's own
  * node_modules from outside — the shared checkout, inspected for drift, not
  * this process's own dependency graph — so Node's resolver is the wrong
  * tool, not just an unproven one: `require.resolve` rejects a bare
@@ -40,8 +40,8 @@ const SKIP_DIRS = new Set([
  * #938.
  */
 const IGNORE_LIST = new Set([
-  "tools/loop/tests/preflight.test.ts",
-  "tools/loop/preflight.mjs",
+  "tools/loop/tests/lockDrift.test.ts",
+  "tools/loop/workspace.mjs",
 ]);
 
 function sourceFiles(dir: string): string[] {

@@ -1,7 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, launchOpen, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -290,6 +290,81 @@ describe("claimedElsewhere", () => {
   test("a claim is live only while its pull request is open", () => {
     assert.equal(claimedElsewhere(42, () => [{ number: 984, state: "OPEN" }]), true);
     assert.equal(claimedElsewhere(42, () => []), false);
+  });
+});
+
+describe("the open issues, from one query", () => {
+  const answer = (hasNextPage: boolean) => () =>
+    JSON.stringify({
+      data: {
+        repository: {
+          issues: {
+            pageInfo: { hasNextPage, endCursor: hasNextPage ? "c1" : null },
+            nodes: [
+              {
+                number: 12,
+                title: "a ticket",
+                authorAssociation: "OWNER",
+                labels: { nodes: [{ name: "ready-for-agent" }, { name: "size:S" }] },
+                milestone: { title: LAUNCH_MILESTONE },
+                issueDependenciesSummary: { blockedBy: 2 },
+              },
+              {
+                number: 13,
+                title: "another",
+                authorAssociation: "NONE",
+                labels: { nodes: [] },
+                milestone: null,
+                issueDependenciesSummary: { blockedBy: 0 },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+  test("each node arrives in the shape the policy reads", () => {
+    assert.deepEqual(openIssues(answer(false)), [
+      {
+        number: 12,
+        title: "a ticket",
+        author_association: "OWNER",
+        labels: [{ name: "ready-for-agent" }, { name: "size:S" }],
+        milestone: { title: LAUNCH_MILESTONE },
+        blocked: true,
+      },
+      { number: 13, title: "another", author_association: "NONE", labels: [], milestone: null, blocked: false },
+    ]);
+  });
+
+  test("a second page is read from the first page's cursor, never truncated", () => {
+    const calls: string[][] = [];
+    const run = (args: string[]) => {
+      calls.push(args);
+      return args.includes("after=c1") ? answer(false)() : answer(true)();
+    };
+    assert.deepEqual(openIssues(run).map((i: { number: number }) => i.number), [12, 13, 12, 13]);
+    assert.equal(calls.length, 2);
+    assert.ok(!calls[0].some((a) => a.startsWith("after=")), "the first page has no cursor");
+  });
+
+  test("an inspected ticket says why it is not takeable", () => {
+    assert.deepEqual(takeableReasons({ ...issue(1, ["ready-for-agent"]), issue_dependencies_summary: { blocked_by: 0 } }), []);
+    const gated = { ...issue(2, ["ready-for-human", "in-progress", "blocked"], "NONE"), issue_dependencies_summary: { blocked_by: 1 } };
+    assert.deepEqual(takeableReasons(gated), [
+      "has open blockers",
+      "labelled in-progress",
+      "labelled blocked",
+      "owner-gated (ready-for-human)",
+      "opened from outside the repo (NONE)",
+    ]);
+  });
+
+  test("a candidate with an open native blocker is passed over for the next", () => {
+    const blocked = { ...issue(5, ["ready-for-agent"]), blocked: true };
+    const free = { ...issue(6, ["ready-for-agent"]), blocked: false };
+    const unclaimed = () => false;
+    assert.deepEqual(takeable([blocked, free], 1, unclaimed).map((i: { number: number }) => i.number), [6]);
   });
 });
 

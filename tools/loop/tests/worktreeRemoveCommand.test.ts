@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SCRIPT = fileURLToPath(new URL("../prune-worktrees.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../workspace.mjs", import.meta.url));
 
 // Named for the shape rather than the case. The real link is the install junction, but a test
 // file joining that literal name trips the scanner in handBuiltNodeModulesPaths.test.ts.
@@ -75,7 +75,7 @@ describe("removing one named worktree", () => {
     const alias = path.join(root!, "alias");
     fs.symlinkSync(t.repo, alias, "junction");
 
-    execFileSync(process.execPath, [SCRIPT, "--remove", path.join(alias, ".worktrees", "w1")], {
+    execFileSync(process.execPath, [SCRIPT, "remove",path.join(alias, ".worktrees", "w1")], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -88,7 +88,7 @@ describe("removing one named worktree", () => {
     const t = makeJunctionedWorktree();
     if (!t) return;
 
-    execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+    execFileSync(process.execPath, [SCRIPT, "remove",t.worktree], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -151,7 +151,7 @@ describe("removing one named worktree", () => {
 
     assert.throws(
       () =>
-        execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+        execFileSync(process.execPath, [SCRIPT, "remove",t.worktree], {
           cwd: t.worktree,
           encoding: "utf8",
           stdio: "pipe",
@@ -167,7 +167,7 @@ describe("removing one named worktree", () => {
     if (!t) return;
     git(t.repo, "worktree", "lock", t.worktree);
 
-    execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree, "--force"], {
+    execFileSync(process.execPath, [SCRIPT, "remove",t.worktree, "--force"], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -181,7 +181,7 @@ describe("removing one named worktree", () => {
     const t = makeJunctionedWorktree();
     if (!t) return;
 
-    const out = execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree, "--dry-run"], {
+    const out = execFileSync(process.execPath, [SCRIPT, "remove",t.worktree, "--dry-run"], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -196,7 +196,7 @@ describe("removing one named worktree", () => {
     const t = makeJunctionedWorktree();
     if (!t) return;
 
-    execFileSync(process.execPath, [SCRIPT, "--remove", "--force", t.worktree], {
+    execFileSync(process.execPath, [SCRIPT, "remove","--force", t.worktree], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -212,7 +212,7 @@ describe("removing one named worktree", () => {
 
     assert.throws(
       () =>
-        execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+        execFileSync(process.execPath, [SCRIPT, "remove",t.worktree], {
           cwd: t.repo,
           encoding: "utf8",
           stdio: "pipe",
@@ -228,7 +228,7 @@ describe("removing one named worktree", () => {
     if (!t) return;
     fs.writeFileSync(path.join(t.worktree, "unsaved.txt"), "work", "utf8");
 
-    execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree, "--force"], {
+    execFileSync(process.execPath, [SCRIPT, "remove",t.worktree, "--force"], {
       cwd: t.repo,
       encoding: "utf8",
       stdio: "pipe",
@@ -280,7 +280,7 @@ describe("removing one named worktree", () => {
 
     const restore = await makeUndeletable(t.worktree);
     try {
-      const out = execFileSync(process.execPath, [SCRIPT, "--remove", t.worktree], {
+      const out = execFileSync(process.execPath, [SCRIPT, "remove",t.worktree], {
         cwd: t.repo,
         encoding: "utf8",
         stdio: "pipe",
@@ -308,7 +308,7 @@ describe("removing one named worktree", () => {
 
     assert.throws(
       () =>
-        execFileSync(process.execPath, [SCRIPT, "--remove", stranger], {
+        execFileSync(process.execPath, [SCRIPT, "remove",stranger], {
           cwd: t.repo,
           encoding: "utf8",
           stdio: "pipe",
