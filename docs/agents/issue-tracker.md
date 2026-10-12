@@ -19,7 +19,7 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `wayfinder:research` / `prototype` / `grilling` / `task` | A child of a wayfinder map | route `wayfinder` |
 | `wayfinder:map` | The map issue itself | never routed |
 | `ready-for-human` / `needs-info` / `rejected` | The owner's; wins over `ready-for-agent`. `rejected` stays open (`docs/BRIEF.md`) | owner |
-| `deferred` | Decided against for now; the owner can lift it | owner |
+| `deferred` | Decided against for now; the owner can lift it. Wins over `ready-for-agent` | owner, never named as waiting |
 | `in-progress` | Claimed | skipped, unless *stranded* (below) |
 | `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
@@ -86,8 +86,9 @@ the same GitHub account.
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
-  commands when it is. With nothing takeable, its handoff line names the owner's issues the loop
-  is waiting on, the Launch milestone's first.
+  commands when it is. With nothing takeable, its handoff line names the owner's live asks
+  (`ready-for-human` or `needs-info`, never `deferred`), the Launch milestone's first, then the
+  newest.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
   phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
   prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment

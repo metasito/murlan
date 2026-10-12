@@ -4,7 +4,7 @@ import { readIssue } from "./brief.mjs";
 import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
-const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
+export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
 export const LAUNCH_MILESTONE = "Launch";
 function trusted(issueOrComment) {
   return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
@@ -181,7 +181,12 @@ export function rank(issue) {
 
 /** The owner's open asks, as the handoff line names them: what the loop is waiting on. */
 export function waitingOn(owner, max = 8) {
-  const asks = owner.filter((i) => labelNames(i).some((l) => l === "ready-for-human" || l === "needs-info"));
+  const asks = owner
+    .filter((i) => {
+      const ls = labelNames(i);
+      return !ls.includes("deferred") && ls.some((l) => l === "ready-for-human" || l === "needs-info");
+    })
+    .sort((a, x) => rank(a) - rank(x) || x.number - a.number);
   return asks.length ? `nothing agent-takeable; waiting on you: ${asks.slice(0, max).map((i) => `#${i.number}`).join(", ")}` : "nothing agent-takeable";
 }
 
