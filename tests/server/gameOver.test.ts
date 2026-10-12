@@ -211,6 +211,27 @@ describe("handleGameOver — the broadcast", () => {
     ]);
   });
 
+  test("game:over carries each rated seat's rating after the hand beside its delta", async () => {
+    const s = stubServer();
+    const writers = {
+      ...s.writers,
+      previewRatedDeltas: async () =>
+        new Map([
+          ["u_alice", { delta: 14, rating: 1014, games: 3 }],
+          ["u_bob", { delta: -14, rating: 986, games: 7 }],
+        ]),
+    };
+
+    await handleGameOver(s.io, ROOM, makeGame(), writers);
+
+    const payload = s.emitted[0].payload as Record<string, unknown>;
+    assert.deepEqual(payload.ratingDeltas, { u_alice: 14, u_bob: -14 });
+    assert.deepEqual(payload.ratingsAfter, {
+      u_alice: { rating: 1014, games: 3 },
+      u_bob: { rating: 986, games: 7 },
+    });
+  });
+
   test("a single-manche game names the manche winner as the match winner", async () => {
     const s = stubServer();
     const game = makeGame({ matchLength: "single" });
@@ -382,7 +403,11 @@ describe("handleGameOver — the ladder and history chain", () => {
     const s = stubServer();
     const writers = {
       ...s.writers,
-      previewRatedDeltas: async () => new Map([["u_alice", 8], ["u_bob", -8]]),
+      previewRatedDeltas: async () =>
+        new Map([
+          ["u_alice", { delta: 8, rating: 1008, games: 1 }],
+          ["u_bob", { delta: -8, rating: 992, games: 1 }],
+        ]),
     };
     const game = makeGame();
 

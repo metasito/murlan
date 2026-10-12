@@ -9,6 +9,7 @@ import type { GameOverPayload } from "../../lib/game/matchState.ts";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
+import type { RatedPreview } from "./ratings.ts";
 
 /**
  * The database writes a finished hand performs, taken as an argument rather
@@ -38,7 +39,7 @@ export interface GameOverWriters {
     seatResults: { userId: string; placement: number }[],
     gameMode: string,
     finishedAt: Date
-  ) => Promise<Map<string, number>>;
+  ) => Promise<Map<string, RatedPreview>>;
   /** Resolves to the deltas it committed, empty when it rated nobody. */
   recordRatedResult: (
     seatResults: { userId: string; placement: number }[],
@@ -103,14 +104,15 @@ export async function handleGameOver(
   // current rating, so once the rated write lands nothing can reconstruct what
   // the hand changed. A failure here costs the panel its number, never the
   // hand — hence the empty map rather than a throw.
-  const ratingDeltasByUser = result.recordable
+  const ratedPreview = result.recordable
     ? await writers
         .previewRatedDeltas(result.gameResults, game.gameMode, finishedAt)
         .catch((err) => {
           logger.warn({ err, roomId }, "Could not read the hand's rating deltas");
-          return new Map<string, number>();
+          return new Map<string, RatedPreview>();
         })
-    : new Map<string, number>();
+    : new Map<string, RatedPreview>();
+  const ratingDeltasByUser = new Map([...ratedPreview].map(([userId, p]) => [userId, p.delta]));
 
   const over: GameOverPayload = {
     rankings: state.rankings,
@@ -127,6 +129,9 @@ export async function handleGameOver(
     // shows its empty state on absence rather than on a zero, which is a real
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
+    ratingsAfter: Object.fromEntries(
+      [...ratedPreview].map(([userId, { rating, games }]) => [userId, { rating, games }])
+    ),
     recorded: result.recordable,
     voided: false,
   };
@@ -264,6 +269,7 @@ async function closeMatchWithoutScoring(
     matchContinues: false,
     isDraw: false,
     ratingDeltas: {},
+    ratingsAfter: {},
     recorded: false,
     voided,
   };

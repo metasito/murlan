@@ -250,6 +250,9 @@ const ON_TABLE: Record<string, Backdrop> = {
   "table/partitaBoard.tsx:styles.label": SCORE_PILL,
   "table/partitaBoard.tsx:styles.name": SCORE_PILL,
   "table/partitaBoard.tsx:styles.nameMine": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.ratingLine": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.ratingGain": SCORE_PILL,
+  "table/partitaBoard.tsx:styles.ratingLoss": SCORE_PILL,
   "table/partitaBoard.tsx:styles.btnText": { plate: "styles.btn" },
   "table/partitaBoard.tsx:styles.btnTextPrimary": { gradient: Gradient.playButton },
   "table/rotateOverlay.tsx:portraitOverlayStyles.title": { plate: "portraitOverlayStyles.overlay" },
@@ -374,6 +377,7 @@ const BODY_TEXT_COLORS: Record<string, string> = {
   gold: Colors.gold,
   goldLight: Colors.goldLight,
   goldLit: Colors.goldLit,
+  copper: Colors.copper,
   accent: Colors.accent,
 };
 

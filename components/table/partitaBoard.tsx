@@ -16,7 +16,11 @@ export interface PartitaWinner {
   mine: boolean;
   draw: boolean;
   line: string;
+  /** Online only: what the partita did to the viewer's rating, or that the hand went unrecorded. */
+  rating?: PartitaRating;
 }
+
+export type PartitaRating = { delta: number; rating?: number; provisionalLeft?: number } | { notRecorded: true };
 
 export interface PartitaBoardActions {
   onHome: () => void;
@@ -38,12 +42,63 @@ const PX = {
   btnPadH: 16,
   btnGap: 10,
   btnTracking: 2,
+  rating: 118,
+  ratingAround: 9,
+  ratingGap: 5,
 };
 
 export const BOARD_ACTIONS_AT = { x: 162, y: 206 };
 
 export function partitaWinnerSpoken(winner: PartitaWinner, t: ReturnType<typeof useTranslation>["t"]): string {
-  return [winnerLabel(winner, t), winner.name, winner.line].filter(Boolean).join(". ");
+  return [winnerLabel(winner, t), winner.name, winner.line, ...ratingSpoken(winner.rating, t)].filter(Boolean).join(". ");
+}
+
+const signed = (delta: number) => (delta < 0 ? `−${-delta}` : `+${delta}`);
+
+function ratingSpoken(rating: PartitaRating | undefined, t: ReturnType<typeof useTranslation>["t"]): string[] {
+  if (!rating) return [];
+  if ("notRecorded" in rating) return [t("partitaBoard.notRecordedSpoken")];
+  return [
+    t("partitaBoard.ratingLabel"),
+    rating.rating === undefined
+      ? signed(rating.delta)
+      : t("partitaBoard.ratingSpoken", { delta: signed(rating.delta), rating: rating.rating }),
+    rating.provisionalLeft ? t("partitaBoard.provisional", { n: rating.provisionalLeft }) : "",
+  ];
+}
+
+function PartitaRatingSlot({ rating, unit: u }: { rating: PartitaRating; unit: number }) {
+  const { t } = useTranslation();
+  const small = { fontSize: tableFontSize(FontSize.xxs, u), letterSpacing: PX.labelTracking * u };
+  return (
+    <View
+      testID="partita-rating-slot"
+      style={[
+        styles.rating,
+        { width: PX.rating * u, gap: PX.ratingGap * u, marginTop: (PX.ratingAround - PX.between) * u, paddingTop: PX.ratingAround * u },
+      ]}
+    >
+      {"notRecorded" in rating ? (
+        <>
+          <TableText style={[styles.label, small]}>{t("partitaBoard.notRecorded")}</TableText>
+          <TableText style={[styles.label, small]}>{t("partitaBoard.tooManyBots")}</TableText>
+        </>
+      ) : (
+        <>
+          <TableText style={[styles.label, small]}>{t("partitaBoard.ratingLabel")}</TableText>
+          <TableText testID="partita-rating" style={[styles.ratingLine, { fontSize: tableFontSize(FontSize.md, u) }]}>
+            <TableText testID="partita-rating-delta" style={rating.delta < 0 ? styles.ratingLoss : styles.ratingGain}>
+              {signed(rating.delta)}
+            </TableText>
+            {rating.rating === undefined ? null : ` → ${rating.rating}`}
+          </TableText>
+          {rating.provisionalLeft ? (
+            <TableText style={[styles.label, small]}>{t("partitaBoard.provisional", { n: rating.provisionalLeft })}</TableText>
+          ) : null}
+        </>
+      )}
+    </View>
+  );
 }
 
 function winnerLabel(winner: PartitaWinner, t: ReturnType<typeof useTranslation>["t"]): string {
@@ -88,6 +143,7 @@ export function PartitaWinnerBox({ winner, unit: u, height }: { winner: PartitaW
         </TableText>
       ) : null}
       <TableText style={[styles.label, { fontSize: label, letterSpacing: PX.labelTracking * u }]}>{winner.line}</TableText>
+      {winner.rating ? <PartitaRatingSlot rating={winner.rating} unit={u} /> : null}
     </View>
   );
 }
@@ -188,6 +244,10 @@ const styles = StyleSheet.create({
   label: { fontFamily: "Rajdhani_600SemiBold", color: Colors.textMuted, textTransform: "uppercase", textAlign: "center" },
   name: { fontFamily: "Rajdhani_700Bold", color: Colors.text, textTransform: "uppercase", textAlign: "center" },
   nameMine: { color: Colors.goldLit, textShadowColor: withAlpha(Colors.goldLit, 0.5) },
+  rating: { alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.goldMuted },
+  ratingLine: { fontFamily: "Rajdhani_700Bold", color: Colors.text, textAlign: "center" },
+  ratingGain: { color: Colors.goldLit },
+  ratingLoss: { color: Colors.copper },
   actions: { flexDirection: "row", alignItems: "center" },
   btn: {
     overflow: "hidden",

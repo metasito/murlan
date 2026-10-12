@@ -78,7 +78,7 @@ import {
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
-import type { PartitaBoardActions } from "@/components/table/partitaBoard";
+import type { PartitaBoardActions, PartitaRating } from "@/components/table/partitaBoard";
 import { partitaDim } from "@/lib/game/partitaEnding";
 import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
@@ -277,6 +277,7 @@ export interface GameTableProps {
   matchScore?: { scores: Record<string, number>; target: number; single?: boolean };
   /** Present where a partita ends on the table: the score pill becomes the board, with these. */
   partitaActions?: PartitaBoardActions;
+  partitaRating?: PartitaRating;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -353,6 +354,7 @@ export function GameTable({
   handScores = {},
   matchScore,
   partitaActions,
+  partitaRating,
   viewerSeat,
   spectating = false,
   onPlay,
@@ -657,6 +659,7 @@ export function GameTable({
         mine: won.length === 1 && won[0].mine,
         draw: won.length > 1,
         line: won.length === 1 ? `${race} · ${won[0].total}` : race,
+        rating: partitaRating,
       },
     };
   })();

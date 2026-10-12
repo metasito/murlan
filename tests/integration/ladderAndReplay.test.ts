@@ -21,6 +21,7 @@ import { whileUserLocked } from "../helpers/userLock.ts";
 import { driveHumansToGameOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
+import type { GameOverPayload } from "../../lib/game/matchState.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.
@@ -55,11 +56,11 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     bob.socket.emit("room:join", { code: room.code });
     await joined;
 
-    await driveHumansToGameOver([alice.socket, bob.socket], () => {
+    const over = (await driveHumansToGameOver([alice.socket, bob.socket], () => {
       alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
-    });
+    })) as GameOverPayload;
 
-    return { alice, bob, room };
+    return { alice, bob, room, over };
   }
 
   // Each of these plays its own hand under its own `playOneHand` prefix, so
@@ -114,7 +115,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     });
 
     test("a rated hand moves both humans and never creates a row for a bot", async () => {
-      const { alice, bob } = await playOneHand("lad");
+      const { alice, bob, over } = await playOneHand("lad");
       try {
         const season = seasonKey(new Date());
 
@@ -132,6 +133,11 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
             Number(row.rating),
             START_RATING,
             "a finished hand must actually move the rating"
+          );
+          assert.deepEqual(
+            over.ratingsAfter[user.id],
+            { rating: Number(row.rating), games: Number(row.games) },
+            "game:over announces the standing the ladder then writes"
           );
         }
 

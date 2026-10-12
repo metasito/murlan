@@ -62,6 +62,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     handScores: mockHandScores,
     handScoresCurrent: mockScoresCurrent,
     ratingDeltas: {},
+    ratingsAfter: {},
     handRecorded: true,
     rematchVoteState: mockVotes,
     endMatchVoteState: null,

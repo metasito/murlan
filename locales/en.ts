@@ -437,6 +437,12 @@ export const en = {
   "scorePill.a11yRow_other": "{{place}}. {{name}}, {{count}} points.",
   "partitaBoard.youWon": "You won",
   "partitaBoard.wins": "Wins",
+  "partitaBoard.ratingLabel": "Your rating",
+  "partitaBoard.provisional": "Provisional — {{n}} more hands",
+  "partitaBoard.ratingSpoken": "{{delta}}, now {{rating}}",
+  "partitaBoard.notRecorded": "Hand not recorded",
+  "partitaBoard.tooManyBots": "too many bots at the table",
+  "partitaBoard.notRecordedSpoken": "This hand was not recorded: too many bots at the table.",
 
   // ----------------------------------------------------- gameSettingsSheet.*
   "gameSettingsSheet.title": "Settings",

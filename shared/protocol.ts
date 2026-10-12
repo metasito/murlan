@@ -8,7 +8,7 @@ import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.t
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const MIN_PROTOCOL_VERSION = 1;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
@@ -164,6 +164,7 @@ export const gameOverSchema = z
     matchOver: z.boolean(),
     matchWinnerIds: z.array(z.string()),
     ratingDeltas: z.record(z.number()),
+    ratingsAfter: z.record(z.object({ rating: z.number(), games: z.number() })).optional(),
   })
   .passthrough();
 

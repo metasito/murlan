@@ -60,4 +60,37 @@ describe('game:over', () => {
     }
     await unmount();
   });
+
+  it('takes the rating after the hand from game:over, not from a ladder read that can predate its write', async () => {
+    const queryFn = jest.fn(async () => ({ season: '2026-10', rating: 1000, games: 2, provisional: true }));
+    const client = new QueryClient({ defaultOptions: { queries: { queryFn, staleTime: Infinity, retry: false } } });
+
+    const { result, unmount } = await renderHook(() => useOnlineGame(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <NotificationProvider>
+            <OnlineGameProvider userId="u1">{children}</OnlineGameProvider>
+          </NotificationProvider>
+        </QueryClientProvider>
+      ),
+    });
+
+    await act(async () => {
+      listeners.get('game:over')?.forEach((fn) =>
+        fn({
+          rankings: [],
+          scores: [],
+          matchOver: true,
+          matchWinnerIds: [],
+          ratingDeltas: { u1: 14 },
+          ratingsAfter: { u1: { rating: 1014, games: 3 } },
+          recorded: true,
+        })
+      );
+    });
+
+    expect(result.current.ratingsAfter).toEqual({ u1: { rating: 1014, games: 3 } });
+    expect(queryFn).not.toHaveBeenCalled();
+    await unmount();
+  });
 });
