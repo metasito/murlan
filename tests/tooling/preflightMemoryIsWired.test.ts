@@ -20,7 +20,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const at = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 /** What a command has to mention to be running a suite rather than describing one. */
-const RUNNERS = /\bnode --test\b|\bjest\b|\bplaywright test\b/;
+const RUNNERS = /\bnode (--\S+ \S+ )*--test\b|\bjest\b|\bplaywright test\b/;
 
 /**
  * A Playwright config may inherit its `globalSetup` by spreading another one — the perf config is

@@ -381,6 +381,6 @@ describe("no CI job pulls an image from Docker Hub", () => {
 
   test("none of them is on Docker Hub", () => {
     const yaml = scannedFiles().filter((f) => /\.ya?ml$/.test(f)).map(read);
-    assert.deepEqual(hubPulls(found, yaml), [], "pull from public.ecr.aws/docker/library or ghcr.io instead");
+    assert.deepEqual(hubPulls(found, yaml), [], "pull Postgres from mirror.gcr.io, anything else from ghcr.io");
   });
 });

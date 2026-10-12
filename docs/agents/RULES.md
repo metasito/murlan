@@ -12,7 +12,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
 3. **Before you push, run every test your change adds or edits, one file at a time**, which is where rule 6's red-then-green is watched:
-   `node --test tests/x.test.ts` (`node --test tools/loop/tests/x.test.ts` for the loop's own), `npx jest tests/native/a.test.tsx`,
+   `node --test tests/x.test.ts` (`node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test tools/loop/tests/x.test.ts` for the loop's own, so it runs without the caller's `LOOP_*`), `npx jest tests/native/a.test.tsx`,
    a browser spec alone with `npx playwright test --config tests/e2e/playwright.config.ts one.spec.ts`. The tests covering the code it changed are CI's:
    `npm run agent:check` runs the nearest ten native ones, and the pull request runs the rest. A test you add and push unrun is named in the PR body with the reason.
 4. *(retired)*

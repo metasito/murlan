@@ -18,7 +18,7 @@ import { A11yStatus, a11yHidden } from "@/lib/a11y";
 import { cardSpokenName } from "@/lib/cardNames";
 import { event, withdraw } from "@/lib/device/feedback";
 import type { Card } from "@/lib/game/gameEngine";
-import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import type { ExchangeAnnounceData, ExchangeHold } from "@/lib/game/sharedGameFlow";
 import { ceremonyEndsAt, choiceOpensAt, legPose, legShows, legStage, legTimes, type LegPoints, type LegStage } from "@/lib/game/exchangeTimeline";
 import { useTranslation } from "@/lib/i18n";
 import { inBackground } from "./useFlightClock";
@@ -184,8 +184,8 @@ export function ExchangeLegs({
   onStage: (key: string, leg: LegName, stage: LegStage) => void;
   onReady: (key: string) => void;
   onDismiss: () => void;
-  /** Replaces the ceremony's end: this long after the choice, or after mount for both Jokers (#915, offline e2e only). */
-  holdMsOverride?: number;
+  /** Replaces the ceremony's end, from the choice or from mount for both Jokers: this many ms, or until the overlay is tapped (offline e2e only). */
+  holdMsOverride?: ExchangeHold;
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
@@ -275,10 +275,11 @@ export function ExchangeLegs({
 
   useEffect(() => {
     holdRef.current = holdMsOverride;
-    if (holdMsOverride === undefined || !(chosen || jokers)) return;
+    if (typeof holdMsOverride !== "number" || !(chosen || jokers)) return;
     const done = setTimeout(() => calls.current.onDismiss(), holdMsOverride);
     return () => clearTimeout(done);
   }, [holdMsOverride, chosen, jokers]);
+  const tapToRelease = holdMsOverride === "untilTapped" && (chosen || jokers);
 
   const nameOf = (seat: number) => (seat === trade.winnerIdx ? trade.winnerName : trade.loserName);
   const shown = (stage: LegStage) => stage !== "waiting" && stage !== "flying";
@@ -297,7 +298,13 @@ export function ExchangeLegs({
     <LegCard key={testID} card={c} leg={leg} show={show} points={pointsValue} clock={clock} shows={shows} reduced={reduced} drawn={drawn} scale={scale} testID={testID} />
   );
   return (
-    <View testID="exchange-announce" pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View
+      testID="exchange-announce"
+      pointerEvents={tapToRelease ? "auto" : "none"}
+      onStartShouldSetResponder={() => tapToRelease}
+      onResponderRelease={() => calls.current.onDismiss()}
+      style={StyleSheet.absoluteFill}
+    >
       <A11yStatus label={a11yLabel} role="alert" live="assertive" />
       <View style={StyleSheet.absoluteFill} {...a11yHidden()}>
         {jokers
