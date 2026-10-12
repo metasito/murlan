@@ -377,9 +377,10 @@ jobs:
       # next assertion still matches the hierarchy it had already read, so it
       # passes, and the failure surfaces a step later against whatever is on
       # screen by then - once, the emulator's own launcher. The step name is
-      # then actively misleading, and the only honest record is the tombstone,
-      # twenty minutes into an artefact nobody downloads. So the run fails on
-      # it itself (#629, #1293). Not gated on failure: a crash that did not
+      # then actively misleading, and the only honest record is the tombstone
+      # or the ActivityManager's `ANR in <app>` line, twenty minutes into an
+      # artefact nobody downloads. So the run fails on either itself (#629,
+      # #1293, #1557). Not gated on failure: a crash that did not
       # manage to fail the run is the one this exists for.
       - name: Fail if the app died of a native crash
         id: crash
