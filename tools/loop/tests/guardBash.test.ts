@@ -759,15 +759,18 @@ describe("the entrypoint fails open on a payload it cannot read", () => {
   }
 });
 
-describe("the hooks settings.json registers", () => {
-  type Hook = { command: string; args?: string[] };
-  type Entry = { matcher: string; hooks: Hook[] };
-  const settings = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"));
-  const entries = (event: string) => settings.hooks[event] as Entry[];
-  const allHooks = () => Object.values(settings.hooks as Record<string, Entry[]>).flat().flatMap((e) => e.hooks);
+describe("the hooks the project's settings and the loop's own register", () => {
+  type Hook = { command: string; args?: string[]; onFailure?: string; if?: unknown };
+  type Entry = { matcher: string; hooks: Hook[]; if?: unknown };
+  type Hooks = Record<string, Entry[]>;
+  const hooksIn = (file: string) => (JSON.parse(readFileSync(join(ROOT, file), "utf8")).hooks ?? {}) as Hooks;
+  const PROJECT = hooksIn(".claude/settings.json");
+  const LOOP = hooksIn("tools/loop/loop-settings.json");
+  const entriesOf = (hooks: Hooks) => Object.values(hooks).flat();
+  const allHooks = () => [PROJECT, LOOP].flatMap(entriesOf).flatMap((e) => e.hooks);
   const text = (h: Hook) => [h.command, ...(h.args ?? [])].join(" ");
-  const matched = (event: string, script: string) =>
-    entries(event)
+  const matched = (event: string, script: string, hooks: Hooks = PROJECT) =>
+    (hooks[event] ?? [])
       .filter((e) => e.hooks.some((h) => text(h).includes(script)))
       .flatMap((e) => e.matcher.split("|"));
   const hookOf = (script: string) => allHooks().find((h) => text(h).includes(script))!;
@@ -785,20 +788,36 @@ describe("the hooks settings.json registers", () => {
     }
   });
 
+  test("every PreToolUse hook blocks when it fails, and none is filtered by an `if`", () => {
+    for (const hooks of [PROJECT, LOOP]) {
+      for (const hook of (hooks.PreToolUse ?? []).flatMap((e) => e.hooks)) assert.equal(hook.onFailure, "block", text(hook));
+      for (const entry of entriesOf(hooks)) {
+        assert.equal(entry.if, undefined, entry.matcher);
+        for (const hook of entry.hooks) assert.equal(hook.if, undefined, text(hook));
+      }
+    }
+  });
+
+  test("the loop-only guards load from the loop's own settings, never every session's", () => {
+    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs", LOOP).includes(tool), tool);
+    for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs", LOOP).includes(tool), tool);
+    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs", LOOP).includes(tool), tool);
+    for (const script of ["guard-write.mjs", "guard-agent-model.mjs", "guard-verdict.mjs"]) {
+      assert.deepEqual(matched("PreToolUse", script, PROJECT), [], `${script} still starts in every owner session`);
+    }
+  });
+
   test("a relative script path is what the subdirectory run catches", () => {
     const relative = { command: "node", args: ["tools/loop/guard-bash.mjs"] };
     const fromSubdir = runAsWritten(CWDS[1], relative, { cwd: ROOT, tool_input: { command: "git add -A" } });
     assert.notEqual(fromSubdir.status, 2, "the planted relative hook must not block from a subdirectory");
   });
 
-  test("cover every tool and every session start they guard", () => {
+  test("the project's cover every tool and every session start they guard", () => {
     for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
-    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs").includes(tool), tool);
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
-    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
-    for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
     assert.deepEqual(
       matched("PostToolUse", "guard-context.mjs"),
       ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch", "Edit", "Write"],
@@ -812,12 +831,7 @@ describe("the hooks settings.json registers", () => {
       assert.equal(bash.status, 2, bash.stderr);
       assert.match(bash.stderr, ADD);
 
-      const agent = runAsWritten(
-        cwd,
-        hookOf("guard-agent-model.mjs"),
-        { tool_name: "Agent", tool_input: { prompt: "x" } },
-        { ...process.env, LOOP_TURNS: "120" },
-      );
+      const agent = runAsWritten(cwd, hookOf("guard-agent-model.mjs"), { tool_name: "Agent", tool_input: { prompt: "x" } });
       assert.match(agent.stdout, /"permissionDecision":\s*"deny"/, agent.stderr);
     });
 
