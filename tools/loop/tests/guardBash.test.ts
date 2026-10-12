@@ -28,6 +28,23 @@ function captureStderr(fn: () => void): string {
   return out;
 }
 
+/** Runs a function with the given environment keys set (undefined deletes one), then restores them. */
+function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  const put = (from: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(from)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  put(vars);
+  try {
+    return fn();
+  } finally {
+    put(saved);
+  }
+}
+
 const REFS = new Set(["main", "HEAD", "origin/main", "HEAD~1"]);
 const repo = {
   branch: () => "agent/1-x",
@@ -462,6 +479,58 @@ describe("a loop session reruns a run once", () => {
     let asked = 0;
     check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
     assert.equal(asked, 1);
+  });
+});
+
+describe("a loop session pushes only its own ticket's branch", () => {
+  const none = () => null;
+  const inLoop = (cmd: string, ticket: string | undefined = "1529") => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, none, repo, true));
+  const OWN_ONLY = /agent\/1529-<slug>/;
+
+  for (const ok of [
+    "git push origin HEAD:agent/1529-guard",
+    "git push -u origin HEAD:agent/1529-guard",
+    "git push -u origin agent/1529-x:agent/1529-x",
+    "git push --force-with-lease origin +HEAD:agent/1529-x",
+    "git -C .worktrees/agent-1529 push origin HEAD:refs/heads/agent/1529-x",
+    "git push -o ci.skip origin HEAD:agent/1529-x",
+  ]) test(`allows: ${ok}`, () => assert.equal(inLoop(ok), null));
+
+  for (const no of [
+    "git push",
+    "git push origin",
+    "git push origin HEAD",
+    "git push -u origin agent/1529-x",
+    "git push origin HEAD:agent/1438-other",
+    "git push origin HEAD:agent/15290-other",
+    "git push origin HEAD:agent/1529-x HEAD:agent/1438-y",
+    "git push --all origin",
+    "git push --mirror origin",
+    "git push --tags origin",
+    "git push origin :agent/1438-other",
+    "git push origin --delete agent/1438-other",
+    "git push -d origin agent/1529-x",
+    "cd .worktrees/agent-1529 && git push origin HEAD:agent/1438-x",
+    "gh api -X PATCH repos/metasito/murlan/git/refs/heads/agent/1438-x -f sha=abc",
+    "gh api repos/o/r/git/refs -f ref=refs/heads/agent/1438-x -f sha=abc",
+  ]) test(`refuses: ${no}`, () => assert.match(String(inLoop(no)), OWN_ONLY));
+
+  test("with no ticket to name, a loop session pushes nothing", () => {
+    for (const ticket of [undefined, "", "abc"]) {
+      const said = String(inLoop("git push origin HEAD:agent/1529-x", ticket));
+      assert.match(said, /LOOP_TICKET/, String(ticket));
+      assert.doesNotMatch(said, /agent\/undefined-/);
+    }
+  });
+
+  test("an owner session is not bound by it", () => {
+    for (const cmd of ["git push origin HEAD:agent/1438-x", "git push", "git push origin --delete side/x"]) {
+      assert.equal(withEnv({ LOOP_TICKET: "1529" }, () => check(cmd, none, repo, false)), null, cmd);
+    }
+  });
+
+  test("push to main is still the main rule's refusal", () => {
+    assert.match(String(inLoop("git push origin HEAD:main")), /Pushing to main is blocked/);
   });
 });
 
