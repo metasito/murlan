@@ -144,7 +144,7 @@ export function usageSplit(text) {
  * `run_id`, both null on rows written before it. 6 drops `solo_bash_turns`, adds `loop_sha`,
  * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session. 7 adds
  * `park_failed` and the `reparked` row, which closes it, `asleep_ms`, the part of `ms` the
- * machine spent in standby, and `reruns`. 8 adds `review_rounds_total`, every verdict on the
+ * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
  * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads.
  */
 export const SCHEMA = 8;
@@ -176,7 +176,7 @@ export const errorLine = (error) =>
  *
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
- *   reviewRounds: number|null, totalReviewRounds?: number|null, startedAt: string, ms: number, version: string|null,
+ *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
  *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null}} session
@@ -191,7 +191,7 @@ export function sessionRow({
   result,
   merged,
   reviewRounds,
-  totalReviewRounds = null,
+  totalHolds = null,
   startedAt,
   ms,
   asleepMs = null,
@@ -231,7 +231,7 @@ export function sessionRow({
     // 74 edits and no commits, and the record it left said only "parked".
     committed,
     review_rounds: reviewRounds ?? null,
-    review_rounds_total: totalReviewRounds,
+    review_holds_total: totalHolds,
     claude_version: version ?? null,
     started: startedAt,
     head,
