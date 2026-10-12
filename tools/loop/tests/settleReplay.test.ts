@@ -295,7 +295,6 @@ describe("a red no test names is rerun once per head", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.deepEqual(reruns(asked), [["run", "rerun", String(RED_RUN), "--failed", "--repo", REPO]]);
     assert.equal(out.action, "hand-back");
-    assert.equal((out as { unnamed?: boolean }).unnamed, true);
   });
 
   test("a rerun that goes green is armed and lands", async () => {
@@ -461,7 +460,7 @@ describe("poll posts CI-RED once per red head", () => {
 
 describe("a red head's failures that main has too", () => {
   const ID = "tests/e2e/x.spec.ts › some test";
-  const HAND_BACK = { action: "hand-back", reason: "CI failed at Typecheck and tests", head: SHA, runId: RED_RUN, unnamed: false };
+  const HAND_BACK = { action: "hand-back", reason: "CI failed at Typecheck and tests", head: SHA, runId: RED_RUN };
   const red = (line = "1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test") =>
     rollupFake({ views: [RED], log: `Typecheck and tests\tTest\t2026-10-12T19:07:30Z   ${line}` });
   const bodyOf = (asked: string[][], written: string[][]) => {

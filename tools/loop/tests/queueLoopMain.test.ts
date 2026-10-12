@@ -26,7 +26,6 @@ import {
   WAIT,
 } from "../queue-loop.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { failingTestIds } from "../ciVerdict.ts";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 
@@ -84,8 +83,6 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   buildPassed: () => true,
   publish: () => {},
   announce: () => {},
-  diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
-  rerun: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
   ledgerRows: () => ledger,
   repark: () => ({ failed: [], why: null }),
@@ -620,10 +617,9 @@ describe("runOnce", () => {
     assert.match(said.join("\n"), /index\.lock exists/);
   });
 
-  test("an expired login stops the run, and neither diagnoses nor parks the ticket it met", async () => {
+  test("an expired login stops the run, and does not park the ticket it met", async () => {
     const parked: string[] = [];
     const ledger: any[] = [];
-    let diagnoses = 0;
     const r = await runOnce(
       io(
         {
@@ -634,12 +630,11 @@ describe("runOnce", () => {
           }),
           pushedPr: () => null,
           park: (_n: number, c: { why: string }) => parked.push(c.why),
-          diagnose: async () => (diagnoses++, { ok: false, error: "x", run: { result: null, ms: 0, log: "l", phases: {} } }),
         },
         ledger,
       ),
     );
-    assert.deepEqual([r.outcome, parked, diagnoses, ledger.map((x) => x.outcome)], ["stop", [], 0, ["halted"]]);
+    assert.deepEqual([r.outcome, parked, ledger.map((x) => x.outcome)], ["stop", [], ["halted"]]);
     assert.match(String(r.why), /log in/);
   });
 
@@ -1180,7 +1175,6 @@ const closedIo = (over: Record<string, unknown> = {}) => {
     spawn: async () => ({ status: 0, blocked: false, result: { cost: 1, turns: 9 }, ms: 1000, log: "l", phase: "F",
       declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: false, why: null } }),
     issueState: () => ({ state: "CLOSED", stateReason: "COMPLETED" }),
-    diagnose: async () => (calls.push("diagnose"), { ok: false, error: "x", run: { result: null, ms: 0, log: null, phases: {} } }),
     park: () => calls.push("park"),
     ...over,
   });
@@ -1188,7 +1182,7 @@ const closedIo = (over: Record<string, unknown> = {}) => {
 };
 
 describe("a ticket closed as done with no diff", () => {
-  test("is recorded closed, with no diagnosis and no park", async () => {
+  test("is recorded closed, with no park", async () => {
     const ledger: any[] = [];
     const { fake, calls } = closedIo({ record: (x: unknown) => ledger.push(rowOf(x)) });
     assert.equal((await runOnce(fake)).outcome, "closed");
@@ -2015,14 +2009,12 @@ describe("a park that never reached the tracker", () => {
 
 describe("a stop no rule names parks; a red no test names was rerun before it came back", () => {
   const RUN = 35661862241;
-  const ciLog = readFileSync(path.join(import.meta.dirname, "fixtures", "ci-red-1100.txt"), "utf8");
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
   const redAt1100 = async () => ({
     action: "hand-back",
     reason: "CI failed at Browser test report",
     head: "2f2a885",
     runId: RUN,
-    unnamed: failingTestIds(ciLog).length === 0,
   });
 
   test("#1100's report-upload red, back from its one rerun, is a fix round", async () => {
@@ -2038,7 +2030,6 @@ describe("a stop no rule names parks; a red no test names was rerun before it ca
     const r = await runOnce(io({ spawn: silent, pushedPr: () => null, park: (_n: number, c: { why: string }) => whys.push(c.why) }, ledger));
     assert.equal(r.outcome, "parked");
     assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
-    assert.ok(!ledger.some((x) => x.outcome === "diagnosed"));
   });
 
   test("a settle that is the owner's parks with its own reason", async () => {
@@ -2081,23 +2072,14 @@ describe("a stop no rule names parks; a red no test names was rerun before it ca
     assert.equal(r.outcome, "overloaded");
   });
 
-  test("nextRoute: a diagnosis handoff outranks the pushed head until a session has run on it", () => {
+  test("nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const row = (outcome: string, park_reason: string | null = null) => ({ n: 42, outcome, cost: 0, park_reason, head: "a" });
-    const route = (rows: object[], derived = "G", fix = false): any =>
-      nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
-        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: derived, fix, ci: { pushed: true } }),
-        facts,
-        ledger: () => rows,
-      } as never);
-    const toC = [row("diagnosed", "resume C — conflicts with main"), row("handoff", "phase C next — diagnosis: conflicts with main")];
-    assert.equal(route(toC).phase, "C");
-    assert.equal(route([...toC, row("pushed")]).phase, "G", "the resumed session pushed, so its head settles");
-    assert.equal(route([row("handoff", "phase C next — a declared one")]).phase, "G");
-    const toD = [row("diagnosed", "resume D — no LAND"), row("handoff", "phase D next — diagnosis: no LAND")];
-    assert.deepEqual([route(toD, "C", true).phase, route(toD, "C", true).fix], ["D", false], "a red head does not turn it into a fix round");
-    assert.equal(route(toD, "E").phase, "D");
-    const rerun = [row("diagnosed", "rerun — 403"), row("handoff", "phase G next — diagnosis: rerun of 1: 403")];
-    assert.deepEqual([route(rerun, "C", true).phase, route(rerun, "C", true).fix], ["G", false]);
+    const rows = [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase C next — a declared one", head: "a" }];
+    const route: any = nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
+      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
+      facts,
+      ledger: () => rows,
+    } as never);
+    assert.equal(route.phase, "G");
   });
 });

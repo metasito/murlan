@@ -85,7 +85,6 @@ import {
   windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
-import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
@@ -200,18 +199,15 @@ export function nextRoute(
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const tally = ticketTally(live.number, ledger());
-    // A diagnosis reads the pushed head and hands off after it, so until a session has run on its
-    // brief, its handoff outranks everything the head says.
-    const diagnosed = tally.brief !== null && Boolean(tally.handoffWhy?.startsWith(DIAGNOSED));
-    const handed = diagnosed ? tally.lastHandoff : (at ?? (status.fix ? "C" : null) ?? tally.lastHandoff);
-    const settles = live.phase === "G" && status.ci?.pushed === true && !diagnosed;
+    const handed = at ?? (status.fix ? "C" : null) ?? tally.lastHandoff;
+    const settles = live.phase === "G" && status.ci?.pushed === true;
     const derived = live.phase === "G" ? "E" : live.phase;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
-    const phase = settles ? "G" : handed === "D" && derived === "E" && !diagnosed ? "E" : (handed ?? derived);
+    const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
-      fix: Boolean(status.fix) && phase !== "G" && !diagnosed,
+      fix: Boolean(status.fix) && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
@@ -2210,7 +2206,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       } catch (err) {
         log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
       }
-      return { ...next, head, runId: verdict.runId ?? null, unnamed };
+      return { ...next, head, runId: verdict.runId ?? null };
     }
 
     if (next.action === "update-branch" && left.update > 0) {
@@ -2450,7 +2446,7 @@ export async function runOnce(io, pinned = null, at = null) {
     : await io.spawn({
         ...route,
         retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
-        reason: tally.brief ?? (route.phase === tally.lastHandoff ? tally.handoffWhy : null),
+        reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
       });
 
   const dirtied = io.sharedCheckoutDirty?.();
@@ -2567,44 +2563,6 @@ export async function runOnce(io, pinned = null, at = null) {
       pr: decided.pr ?? null,
       files,
     });
-
-  const handTo = (phase, why) => {
-    const handed = { phase, why: `${DIAGNOSED}${why}`, said: null };
-    io.record({ number: route.number, outcome: "handoff", why: `phase ${phase} next — ${handed.why}`, run: billed, counts: false, handoff: handed });
-    return { outcome: "handoff", ticket: route.number, phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null };
-  };
-
-  /**
-   * A stop no rule names, diagnosed once per head. `pass` is the pass to return; `resume` is the
-   * phase the diagnosis sends the ticket to, which each caller hands on its own way.
-   *
-   * @returns {Promise<{pass: object}|{resume: string, cause: string}>}
-   */
-  const diagnosed = async (why, phase, { runId = null, head = after?.head ?? null, ciLog = null } = {}) => {
-    if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
-    const cwd = after?.cwd ?? null;
-    const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
-    // Held, and no `diagnosed` row: that row is what marks the head as read, and this one was not.
-    if (d.apiDown) {
-      keepWip();
-      const down = "the diagnosis could not reach the API";
-      io.record({ number: route.number, outcome: "overloaded", why: `${down} — ${d.error}`, run: d.run, counts: false });
-      io.record({ number: route.number, outcome: "overloaded", why, run: billed, counts: false });
-      return { pass: { outcome: "overloaded", ticket: route.number, why: down, run } };
-    }
-    const tail = d.reply ? ` — it ended: "${d.reply.slice(-300).replace(/\s+/g, " ").trim()}"` : "";
-    const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}${tail}`;
-    io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
-    if (!d.ok) return { pass: handBack(why, phase) };
-    if (d.action === "park") return { pass: handBack(d.cause, phase) };
-    if (d.action === "resume") return { resume: d.phase, cause: d.cause };
-    try {
-      io.rerun(runId);
-    } catch (err) {
-      return { pass: handBack(`${d.cause} — the rerun failed: ${String(err.message).split("\n")[0]}`, phase) };
-    }
-    return { pass: handTo("G", `rerun of ${runId}: ${d.cause}`) };
-  };
 
   if (decided.action === "closed") {
     io.teardown(after?.cwd ?? null, route.number);
@@ -2789,14 +2747,6 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
-    diagnose: async (stop) => {
-      screen.start(UNNAMED);
-      screen.said(`diagnosing #${stop.ticket}'s stop in phase ${stop.phase}: ${stop.why}`);
-      const d = await diagnose(stop);
-      screen.close(d.ok ? "done" : "failed", d.ok ? `diagnosis: ${d.action}${d.phase ? ` ${d.phase}` : ""}` : d.error);
-      return d;
-    },
-    rerun: (runId) => sh("gh", ["run", "rerun", String(runId), "--failed", "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS }),
     queue: () => before,
     park,
     /**
