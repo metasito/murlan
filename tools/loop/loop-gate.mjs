@@ -30,6 +30,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
+import { parseHeader } from "./brief.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 function git(args, cwd) {
@@ -156,38 +157,91 @@ export function pushVerdict(s) {
   return { ok: true };
 }
 
-/** How many update-branch merges `mergeCleared` walks back through before it gives up. */
+/** How many update-branch merges `landable` walks back through before it gives up. */
 const MERGE_WALK = 8;
 
 /**
- * Whether the merge may take `sha`. The branch is pushed when review starts, so the push is no
- * longer the gate: a LAND and its report must cover `sha`, or `sha` must be a merge of a commit on
- * `main` into a head they cover whose tree is exactly what a clean merge gives — which is what
- * `gh pr update-branch` makes, and not a merge carrying edits of its own. The review cap holds
- * here as at the push, since a session that dies past it never runs the push gate. Fails closed.
+ * Whether `sha` may be pushed, armed or merged, and why not. A LAND and its report must cover
+ * `sha`, or `sha` must be a merge of a commit on `main` into a head they cover whose tree is
+ * exactly what a clean merge gives — which is what `gh pr update-branch` makes, and not a merge
+ * carrying edits of its own. Fails closed on every unknown. A refusal without `lines` is "cannot
+ * judge", which the CLI exits 2 on.
  *
- * @param {{body: string}[]} comments
+ * @param {{body: string}[] | null} comments null when the tracker could not be read
  * @param {string} sha
  * @param {(args: string[]) => string} git trimmed stdout; throws on a non-zero exit
+ * @returns {{ok: boolean, why: string, lines?: string[]}}
  */
-export function mergeCleared(comments, sha, git, main = "origin/main") {
-  if (reviewRounds(comments) > MAX_REVIEW_ROUNDS) return false;
+export function landable(comments, sha, git, main = "origin/main") {
+  const head = String(sha).slice(0, 7);
   try {
+    const commits = Number(git(["rev-list", "--count", `${main}..${sha}`]));
+    if (commits === 0 || !git(["diff", "--name-only", `${main}...${sha}`])) {
+      return { ok: false, why: "nothing was built on this branch", lines: [
+        `${commits} commit(s) against ${main} at ${head}`,
+        "Phase C commits each slice as it lands.",
+      ] };
+    }
+    if (!comments) return { ok: false, why: `cannot reach the tracker to read the review of ${head}` };
+    const rounds = reviewRounds(comments);
+    if (rounds > MAX_REVIEW_ROUNDS) return { ok: false, why: `${rounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
+      "A ticket never lands past the cap: stand down and leave it to the owner.",
+    ] };
     let at = sha;
     for (let i = 0; i < MERGE_WALK; i++) {
       const verdict = verdictFor(comments, at);
-      if (verdict) return verdict.decision === "LAND" && reviewFor(comments, at) !== null;
+      if (verdict) return verdictOn(comments, at, verdict);
       const [, mine, theirs, ...more] = git(["rev-list", "--parents", "-n", "1", at]).split(" ");
-      if (!theirs || more.length) return false;
+      if (!theirs || more.length) break;
       git(["merge-base", "--is-ancestor", theirs, main]);
       const clean = git(["merge-tree", "--write-tree", mine, theirs]).split("\n")[0];
-      if (clean !== git(["rev-parse", `${at}^{tree}`])) return false;
+      if (clean !== git(["rev-parse", `${at}^{tree}`])) break;
       at = mine;
     }
-    return false;
-  } catch {
-    return false;
+    return { ok: false, why: `no review of ${head} on the issue`, lines: [
+      "Phase D posts the reviewer's verdict as a comment on the issue, naming the commit it read:",
+      `  VERDICT: LAND ${head}   (or VERDICT: HOLD ${head} — reason)`,
+      "A commit made after a review moves the head, so that review no longer covers this diff.",
+    ] };
+  } catch (err) {
+    return { ok: false, why: `cannot read ${head} against ${main}: ${String(err?.message ?? err).split("\n")[0]}` };
   }
+}
+
+function verdictOn(comments, at, verdict) {
+  const short = at.slice(0, 7);
+  if (verdict.decision !== "LAND") return { ok: false, why: "the reviewer held this diff", lines: [verdict.line] };
+  if (!reviewFor(comments, at)) return { ok: false, why: `no review report for ${short} on the issue`, lines: [
+    "A verdict is the session's read of the reviewer's report, and that report is the record. Post",
+    "it as its own comment before the verdict, first line the head it read:",
+    `  REVIEW ${short}`,
+    "then `## Blocking`, `## Nits` and `## Pre-existing`. A LAND with nothing behind it is what put",
+    "two red branches on origin.",
+  ] };
+  return { ok: true, why: `reviewed at ${short}: ${verdict.line}` };
+}
+
+/** Whether the merge may take `sha`: `landable`'s answer alone. */
+export function mergeCleared(comments, sha, git, main = "origin/main") {
+  return landable(comments, sha, git, main).ok;
+}
+
+const REVIEWERS = new Set(["loop-review", "loop-fix"]);
+
+/**
+ * Whether this D round's own reviewer ran to completion for ticket `n`, read from the ticket's
+ * stream facts. The round is everything after the last `PHASE C`, so it spans a D handoff and
+ * never reaches a reviewer of a build since superseded.
+ *
+ * @param {ReturnType<import("./loop-stream.mjs").readLine>[]} facts
+ * @param {number} n
+ */
+export function reviewerRan(facts, n) {
+  const round = facts.slice(facts.findLastIndex((f) => f?.kind === "assistant" && f.letter === "C") + 1);
+  const mine = new Set(
+    round.filter((f) => f?.kind === "task" && REVIEWERS.has(f.agent) && parseHeader(f.brief)?.n === n).map((f) => f.id),
+  );
+  return round.some((f) => f?.kind === "task" && mine.has(f.id) && f.status === "completed");
 }
 
 function reviewRound() {
@@ -240,10 +294,10 @@ function main() {
     return 2;
   }
 
-  const v = pushVerdict({ ...s, base });
+  const v = landable(ticketComments(s.ticket, s.cwd), s.head, (args) => git(args, s.cwd), base);
   if (!v.ok) {
     if (!v.lines) {
-      console.error(`loop-gate: ${v.why}`);
+      console.error(`loop-gate: #${s.ticket} — ${v.why}`);
       return 2;
     }
     return refuse(v.why, v.lines);
@@ -251,7 +305,7 @@ function main() {
 
   console.log(
     `loop-gate: #${s.ticket} — ${s.commits} commit(s), ${s.changed.length} file(s), ` +
-      `${s.reviewRounds ?? "?"} review round(s), reviewed at ${s.head.slice(0, 7)}: ${s.verdict.line}`
+      `${s.reviewRounds ?? "?"} review round(s), ${v.why}`
   );
   return 0;
 }
