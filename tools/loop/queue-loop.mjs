@@ -93,7 +93,18 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./shell.mjs";
 import { OWNER_LABELS } from "./next-ticket.mjs";
-import { LOCATED } from "./decide.mjs";
+import {
+  afterRefusal,
+  afterSession,
+  apiFailure,
+  exhausted,
+  handoffOf,
+  LOCATED,
+  outcomeOf,
+  reasonFor,
+  resumePhase,
+  WAIT,
+} from "./decide.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -449,6 +460,7 @@ export function syncCheckout(
  * ceiling, which `agent:check` needs and a stall must outlast.
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
+export { afterRefusal, afterSession, apiFailure, exhausted, handoffOf, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "./decide.mjs";
 
 /**
  * Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the
@@ -477,99 +489,8 @@ export const CI_ROUNDS = 3;
 export const MAX_HANDOFFS = 8;
 export const overHandoffs = (n) => n >= MAX_HANDOFFS;
 
-/** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
-export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
-
-/** Cut off by the turn cap or the dollar cap. */
-export const exhausted = (run) =>
-  run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
-
-/** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
-const RESUMABLE = new Set(["B", "C", "D"]);
-
-/**
- * Where a cut-off session's successor resumes, or null. `declared` is the whole test of being cut
- * off: a session that said anything — a handoff, a stand-down, a finished `LOOP-RESULT` — chose its
- * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
- * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
- */
-export function resumePhase(run, after, ticket) {
-  if (run.declared || !exhausted(run)) return null;
-  if (!after?.cwd || after.ticket !== ticket) return null;
-  return RESUMABLE.has(after.phase) ? after.phase : null;
-}
-
 /** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
 export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
-
-/**
- * The API status a session died on, when it is one that passes on its own — an overload, an outage,
- * a 429, or no answer at all (a dropped connection carries no status) — or null. Not a verdict on
- * the ticket, so it is held and respawned, never parked.
- * A session that declared its ending chose it, whatever its last turn met. A spent usage window
- * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
- * A session the watchdog killed mid-retry never wrote a result, and is the same outage.
- */
-export function apiFailure(run) {
-  if (run.declared || run.blocked || run.accountError) return null;
-  if (run.status === "stalled" && run.lastFact === "api_retry") return "unreachable";
-  if (!run.result?.isError) return null;
-  const s = run.result.apiStatus;
-  if (s >= 500 || s === 429) return s;
-  return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
-}
-
-/**
- * How long to wait out a spent usage window.
- *
- * The loop must not exit on a refusal: the owner is away, and an exit that nothing recovers costs
- * every remaining ticket of the night. `CAP` bounds one hold against a wrong clock, not the total
- * — a gap longer than it is held in pieces and asked again, so a seven-day window resumes within
- * `CAP` of its reset rather than never. `TRIES` is the floor under all of it: that many refusals
- * in a row, each after a full wait, is an account that is not coming back on its own.
- */
-export const WAIT = {
-  CAP: 12 * 60 * 60_000,
-  FLOOR: 60_000,
-  MARGIN: 30_000,
-  TRIES: 20,
-};
-
-/** @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run */
-export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
-  if (!blocked || done) return 0;
-  if (!blockedUntil) return WAIT.FLOOR;
-  const gap = blockedUntil - now;
-  if (gap <= 0) return 0;
-  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
-}
-
-/**
- * What a refused session costs the run: a wait, and nothing else.
- *
- * A usage refusal is a property of the *account*, so the counter is the run's, not the ticket's.
- * Keyed per ticket it was inert — twenty tickets refused once each never reached the ceiling — and
- * cruel when it did fire, parking one ticket for a limit it had no part in.
- *
- * @param {{waits: number, blocked?: boolean, blockedUntil?: number, done?: boolean}} run
- * @returns {{action: "proceed"|"wait"|"give-up", hold: number, waits: number, why?: string}}
- */
-export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.now()) {
-  if (!blocked || done) return { action: "proceed", hold: 0, waits: 0 };
-  if (waits >= WAIT.TRIES) {
-    return {
-      action: "give-up",
-      hold: 0,
-      waits,
-      why: `refused ${waits} times running, each after waiting out the window it named`,
-    };
-  }
-  // Floored, always: a reset timestamp already in the past — clock skew, a stale window, a
-  // seven-day limit reported with an expired short-window reset — makes `waitFor` answer 0, and a
-  // hold of 0 is a knob with no floor, spawning back to back until the ceiling stops it.
-  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now), WAIT.FLOOR);
-  return { action: "wait", hold, waits: waits + 1 };
-}
 
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync — measured here: `execFileSync("npx", ["--version"])` throws ENOENT while `gh`
@@ -619,67 +540,6 @@ export function settleOutcome({ action }) {
   // claim nor its silence. Recording the row and tearing the worktree down without releasing
   // `in-progress` leaves an issue the picker skips for good.
   return { countsAsFailure: true, recorded: "parked", handBack: true };
-}
-
-/**
- * What the session's exit leaves the supervisor to do.
- *
- * **The pull request outranks every reason the session's exit gives, bar two.** A branch that was
- * pushed is a fact, and how the session ended is not a fact about it: a session that ran out of
- * turns after pushing has done its half, and from there CI and the merge are the supervisor's.
- * Reading the exit first parked eleven tickets whose pull requests merged anyway, throwing away the
- * work and the claim together.
- *
- * The two exceptions are the two things only the session can know: it stood the ticket down, or it
- * worked a different one. Both make its branch not this ticket's answer, so neither yields.
- *
- * @param {{pr: {number: number, state: string}|null,
- *   reason: {why: string|null, hard: boolean},
- *   issue?: {state: string|null, stateReason: string|null}|null, commits?: number|null}} run
- * @returns {{action: "settle"|"landed"|"closed"|"park", pr?: number, why?: string}}
- */
-export function outcomeOf({ pr, reason, issue = null, commits = null }) {
-  if (reason.hard && reason.why) return { action: "park", why: reason.why, pr: pr?.number };
-  if (!pr && commits === 0 && issue?.state === "CLOSED" && issue?.stateReason === "COMPLETED")
-    return { action: "closed", why: "the session closed the issue as done, with no diff to land" };
-  if (pr?.state === "MERGED")
-    return { action: "landed", pr: pr.number, why: `pull request #${pr.number} was already merged` };
-  if (pr?.state === "OPEN") return { action: "settle", pr: pr.number };
-  if (pr)
-    return { action: "park", pr: pr.number, why: `pull request #${pr.number} is ${String(pr.state).toLowerCase()}` };
-  return { action: "park", why: reason.why ?? "the session pushed no pull request" };
-}
-
-/**
- * Why this session did not finish its ticket, and whether that reason outranks a pushed branch.
- *
- * `hard` is the short list of things that make the session's own work not this ticket's answer.
- * Everything else is a reason the *session* ended, which says nothing about whether the branch it
- * left behind is good — that is CI's question, and `outcomeOf` lets the pull request answer first.
- *
- * @param {{status: number|string, phase?: string|null, stderr?: string, result?: object|null,
- *   declared?: {pr: number|null, stoodDown: boolean, why: string|null}|null}} run
- * @returns {{why: string|null, hard: boolean}}
- */
-export function reasonFor(run, after, ticket) {
-  const said = run.declared;
-  const hard = (why) => ({ why, hard: true });
-  const soft = (why) => ({ why, hard: false });
-
-  if (said?.stoodDown) return hard(said.why ?? "the session stood down");
-  if (after?.ticket && after.ticket !== ticket) return hard(`the session worked #${after.ticket}, not #${ticket}`);
-  // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
-  // said — the result event for that session still reads subtype "success".
-  if (/Budget limit reached/.test(run.stderr ?? "")) return soft("the session spent its budget mid-phase");
-  if (run.result?.subtype === "error_max_turns") return soft("the session ran out of turns");
-  if (run.status === "stalled")
-    return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
-  if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
-  // Phase F's LOOP-RESULT is not optional, and this is where its absence becomes visible rather than
-  // absorbed. A session that exits clean without declaring has left every fact about itself to be
-  // inferred.
-  if (!said) return soft("the session exited without a LOOP-RESULT");
-  return soft(null);
 }
 
 /** `.loop-stop` drains the loop. Left on disk, so a scheduled restart sees it too. */
@@ -2282,32 +2142,6 @@ const standing = () => {
       }
     : null;
 };
-
-/**
- * What the supervisor knows about the session that just exited.
- *
- * The session's own `LOOP-RESULT` first, `derive()` second, which is all there is when the
- * declaration is missing.
- *
- * @param {{declared: object|null, phase: string|null}} run
- * @param {object|null} derived
- */
-export function afterSession(run, derived) {
-  const said = run.declared;
-  if (!said && !derived) return null;
-  return {
-    ticket: said?.ticket ?? derived?.ticket ?? null,
-    branch: said?.branch ?? derived?.branch ?? null,
-    cwd: derived?.cwd ?? null,
-    head: derived?.head ?? null,
-    dirty: derived?.dirty ?? false,
-    changed: derived?.changed ?? [],
-    commits: derived?.commits ?? null,
-    // The session's own marker, not derive()'s: derive computes a phase from commit count and
-    // verdict, so it can only ever answer C, D, E or ?.
-    phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
-  };
-}
 
 /** The ticket's worktree as git has it now: a retry or refused pass carries none of it. */
 function worktreeOf(io, number) {
