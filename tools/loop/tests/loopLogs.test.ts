@@ -160,6 +160,11 @@ describe("sessionRow", () => {
     assert.equal(r.asleep_ms, null);
   });
 
+  test("carries the CI reruns the session ran itself", () => {
+    assert.equal(sessionRow(session({ reruns: 1 })).reruns, 1);
+    assert.equal(r.reruns, null);
+  });
+
   test("carries the park steps the tracker never received", () => {
     assert.deepEqual(sessionRow(session({ parkFailed: ["label"] })).park_failed, ["label"]);
     assert.equal(r.park_failed, null);
