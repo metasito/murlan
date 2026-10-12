@@ -1,5 +1,5 @@
 /**
- * PreToolUse deny for Agent/Task inside a loop session: a dispatch with no `model` or no `effort`
+ * PreToolUse deny for Agent/Task, registered by loop-settings.json alone: a dispatch with no `model` or no `effort`
  * inherits the session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. Also denies a
  * dispatch that claims to be one of `brief.mjs`'s kinds without starting with its exact output.
  *
@@ -44,7 +44,7 @@ function denial(payload) {
 try {
   const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
   const dispatch = payload?.tool_name === "Agent" || payload?.tool_name === "Task";
-  const reason = process.env.LOOP_TURNS && dispatch && !payload.agent_id ? denial(payload) : null;
+  const reason = dispatch && !payload.agent_id ? denial(payload) : null;
   if (reason) {
     process.stdout.write(
       JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } })

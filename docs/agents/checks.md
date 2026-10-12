@@ -485,8 +485,10 @@ the repository itself, so npm's cwd sends every one of them looking in the wrong
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
 
-**Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
-every hook):
+**Some hooks act only in a loop session.** `.claude/settings.json` registers guard-bash for every
+session, and these rules of it act only with `LOOP_TURNS` set; `tools/loop/loop-settings.json`
+alone registers guard-write, guard-verdict and guard-agent-model (rule 29's model and effort), so
+no other session starts them:
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs

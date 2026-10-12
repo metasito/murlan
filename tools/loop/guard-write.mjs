@@ -1,5 +1,5 @@
 /**
- * PreToolUse for Write|Edit|NotebookEdit in a loop session: the shared checkout is another
+ * PreToolUse for Write|Edit|NotebookEdit, registered by loop-settings.json alone: the shared checkout is another
  * session's (RULES.md rules 8 and 31), and nothing outside the repo is scratch (rule 32). Only
  * `.worktrees/` and `.loop-logs/` are writable. Exit 0 always; stdout carries the deny, or nothing.
  */
@@ -29,7 +29,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   try {
     const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
     const file = payload?.tool_input?.file_path ?? payload?.tool_input?.notebook_path;
-    if (process.env.LOOP_TURNS && file) {
+    if (file) {
       const cwd = payload.cwd ?? process.cwd();
       const common = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
         encoding: "utf8",

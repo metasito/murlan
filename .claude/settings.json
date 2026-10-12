@@ -9,12 +9,6 @@
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-bash.mjs"],
             "onFailure": "block"
-          },
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"],
-            "onFailure": "block"
           }
         ]
       },
@@ -25,28 +19,6 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-read.mjs"],
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-write.mjs"],
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent|Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-agent-model.mjs"],
             "onFailure": "block"
           }
         ]
