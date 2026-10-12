@@ -1780,7 +1780,7 @@ describe("the land phase", () => {
 
   test("a merge closes it green, naming the pull request that landed", async () => {
     const screen = board();
-    await settle(pending, screen as never, { watch: async () => ({ action: "merge" }) });
+    await settle(pending, screen as never, { watch: async () => ({ action: "already-merged" }) });
     assert.equal(screen.rows.at(-1), "close done #1049 merged");
   });
 
