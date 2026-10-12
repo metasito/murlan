@@ -13,6 +13,7 @@ import {
   reviewFor,
   handoffFor,
   reviewRounds,
+  totalReviewRounds,
   ciRedRounds,
   ciRedPosted,
   derive,
@@ -21,7 +22,7 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody, snapshotWip } from "../queue-loop.mjs";
+import { ciRedBody, park, reasonFor, snapshotWip } from "../queue-loop.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 const callersPhase = process.env.LOOP_PHASE;
@@ -208,9 +209,52 @@ describe("counting review rounds", () => {
     );
   });
 
-  test("a ticket claimed again starts a fresh count", () => {
-    const before = [{ body: "VERDICT: HOLD abc1234 — a" }, { body: "VERDICT: HOLD bcd2345 — b" }, { body: "VERDICT: HOLD cde3456 — c" }];
-    assert.equal(reviewRounds([...before, { body: "Claimed by `agent/1-x`." }, { body: "VERDICT: HOLD def4567 — d" }]), 1);
+  const claim = { body: "Claimed by `agent/1-x`." };
+  const parkedFor = (run: object) => {
+    let body = "";
+    park(1, {
+      phase: "D",
+      why: String(reasonFor({ status: 0, ...run }, { ticket: 1 }, 1).why),
+      log: "l",
+      cwd: null,
+      branch: "agent/1-x",
+      dirty: false,
+      run: () => "",
+      write: (_path: string, text: string) => (body = text),
+    });
+    assert.match(body, /^Parked by the queue loop/);
+    return { body };
+  };
+  const stoodDown = () => parkedFor({ declared: { stoodDown: true, why: "round 3 still blocks on the race" } });
+  const crashed = () => parkedFor({ status: 1, phase: "D" });
+  const holds = [{ body: "VERDICT: HOLD abc1234 — a" }, { body: "VERDICT: HOLD bcd2345 — b" }];
+
+  test("a stranded re-claim keeps the rounds already spent", () => {
+    assert.equal(reviewRounds([...holds, claim]), 2);
+    assert.equal(reviewRounds([...holds, crashed(), claim]), 2);
+    assert.equal(reviewRounds([...holds, crashed(), claim, { body: "VERDICT: HOLD def4567 — d" }]), 3);
+  });
+
+  test("a claim after a stand-down park starts a fresh count", () => {
+    const capped = [...holds, { body: "VERDICT: HOLD cde3456 — c" }, stoodDown()];
+    assert.equal(reviewRounds([...capped, claim]), 0);
+    assert.equal(reviewRounds([...capped, claim, { body: "VERDICT: HOLD def4567 — d" }]), 1);
+    assert.equal(reviewRounds(capped), 3);
+  });
+
+  test("the total counts every verdict, across claims and fix rounds", () => {
+    const comments = [
+      ...holds,
+      stoodDown(),
+      claim,
+      { body: "VERDICT: LAND cde3456" },
+      { body: "CI-RED cde3456" },
+      { body: "REVIEW def5678 fix\n\n## Blocking\n" },
+      { body: "VERDICT: LAND def5678" },
+    ];
+    assert.equal(reviewRounds(comments), 1);
+    assert.equal(totalReviewRounds(comments), 4);
+    assert.equal(totalReviewRounds([]), 0);
   });
 
   test("a verdict quoted inside a fence does not count", () => {
@@ -238,10 +282,10 @@ describe("counting review rounds", () => {
     assert.equal(reviewRounds(comments), 1);
   });
 
-  test("a fix label with no CI-RED before it, since the latest claim, still counts", () => {
+  test("a fix label with no CI-RED before it, since the count last started, still counts", () => {
     const hold = { body: "VERDICT: HOLD def5678 — no" };
     assert.equal(reviewRounds([{ body: "VERDICT: HOLD abc1234 — no" }, fixReview, hold]), 2);
-    const stale = [{ body: "CI-RED 0000000" }, { body: "Claimed by `agent/42-x`" }, fixReview, hold];
+    const stale = [{ body: "CI-RED 0000000" }, stoodDown(), { body: "Claimed by `agent/42-x`" }, fixReview, hold];
     assert.equal(reviewRounds(stale), 1);
   });
 });

@@ -224,6 +224,11 @@ describe("sessionRow", () => {
 
   test("a count nobody could take is null, never zero", () => {
     assert.equal(sessionRow(session({ reviewRounds: null })).review_rounds, null);
+    assert.equal(sessionRow(session({ totalReviewRounds: null })).review_rounds_total, null);
+  });
+
+  test("carries every verdict on the issue beside the count the cap reads", () => {
+    assert.equal(sessionRow(session({ reviewRounds: 1, totalReviewRounds: 5 })).review_rounds_total, 5);
   });
 
   test("collapses modelUsage to cost per model", () => {
