@@ -305,6 +305,8 @@ export function ledgerSummary(rows) {
  * statement about the log rather than about the loop — eleven of thirty-one such logs put `pre` at
  * 27% of a table whose job is to say which phase to attack. They are dropped and counted, because
  * the gate this feeds compares a before against an after and only marked runs are in both.
+ *
+ * @param {any[]} tickets what `readTicket` returns @param {object[]} [ledgerRows] @param {Record<string, number>} [caps]
  */
 export function report(tickets, ledgerRows = [], caps = TURNS_BY_SIZE) {
   const priceable = tickets.filter((t) => t.usd > 0);
