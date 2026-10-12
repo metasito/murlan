@@ -64,6 +64,7 @@ import {
   ledger as openLedger,
   parkNotePath,
   parkReasonOf,
+  pendingReparks,
   prune as pruneLogs,
   readLedger,
   streamLog,
@@ -747,21 +748,7 @@ export function park(
     });
   }
 
-  step("label", () =>
-    run("gh", [
-      "issue",
-      "edit",
-      String(number),
-      "--remove-label",
-      "in-progress",
-      // Left on, a park is absorbing: classify() sends any issue carrying an owner label to the
-      // owner bucket whatever else it carries, so the ticket never returns to the frontier.
-      "--remove-label",
-      "ready-for-agent",
-      "--add-label",
-      "ready-for-human",
-    ]),
-  );
+  step("label", () => PARK_STEPS.label(number, run));
 
   const body = [
     `Parked by the queue loop in **phase ${phase}**.`,
@@ -777,14 +764,51 @@ export function park(
     "**To send it back:** deal with the reason above, then swap `ready-for-human` for `ready-for-agent`." +
       " The next run resumes from the branch as it stands.",
   ].join("\n");
-  const file = parkNotePath(number);
   step("comment", () => {
-    write(file, body, "utf8");
-    run("gh", ["issue", "comment", String(number), "--body-file", file]);
+    write(parkNotePath(number), body, "utf8");
+    PARK_STEPS.comment(number, run);
   });
 
   if (cwd) step("worktree", () => removeWorktree(cwd, run));
 
+  return { ok: failed.length === 0, failed };
+}
+
+/** The tracker's half of a park, each a step a later pass can apply again on its own. */
+const PARK_STEPS = {
+  label: (number, run) =>
+    run("gh", [
+      "issue",
+      "edit",
+      String(number),
+      "--remove-label",
+      "in-progress",
+      // Left on, a park is absorbing: classify() sends any issue carrying an owner label to the
+      // owner bucket whatever else it carries, so the ticket never returns to the frontier.
+      "--remove-label",
+      "ready-for-agent",
+      "--add-label",
+      "ready-for-human",
+    ]),
+  comment: (number, run) => run("gh", ["issue", "comment", String(number), "--body-file", parkNotePath(number)]),
+};
+
+/**
+ * The park steps that failed, applied again from what the park left on disk.
+ *
+ * @param {number} number @param {string[]} steps
+ * @returns {{ok: boolean, failed: string[]}}
+ */
+export function repark(number, steps, run = sh) {
+  const failed = steps.filter((s) => {
+    try {
+      PARK_STEPS[s](number, run);
+      return false;
+    } catch (err) {
+      console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
+      return true;
+    }
+  });
   return { ok: failed.length === 0, failed };
 }
 
@@ -2221,7 +2245,8 @@ function worktreeOf(io, number) {
  */
 export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
   io.bell();
-  io.park(number, { ...ctx, error: run ? errorOf(run) : null });
+  const failed = io.park(number, { ...ctx, error: run ? errorOf(run) : null })?.failed ?? [];
+  if (failed.length) io.log(`#${number}'s park did not reach the tracker (${failed.join(", ")}) — applied again at the start of each pass`, "park");
   io.record({
     number,
     outcome: "parked",
@@ -2230,6 +2255,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
     pr,
     files,
     counts: true,
+    parkFailed: failed.length ? failed : null,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
@@ -2726,7 +2752,9 @@ function realIo(book, screen) {
       const last = killedStarts(readLedger(undefined, { starts: true }), lastSeen).at(-1);
       return last?.trailing ? last : null;
     },
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null }) => {
+    ledgerRows: () => readLedger(),
+    repark: (number, steps) => repark(number, steps),
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null }) => {
       const error = errorOf(run);
       const facts = ticketFacts(number);
       const rows = readLedger();
@@ -2738,7 +2766,7 @@ function realIo(book, screen) {
         : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
-      if (!["handoff", "retry", "pushed"].includes(outcome)) {
+      if (!["handoff", "retry", "pushed", "reparked"].includes(outcome)) {
         screen.say(
           closing(
             {
@@ -2775,6 +2803,7 @@ function realIo(book, screen) {
           head,
           handoff,
           error,
+          parkFailed,
         },
         {
           runId: RUN_ID,
@@ -2904,6 +2933,17 @@ export async function main({
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
     screen.board?.({ typical: typicalMs(readLedger()) });
+    // From the ledger, not memory: the outage that failed a park outlasts any backoff, and a restart.
+    for (const { n, steps } of pendingReparks(io.ledgerRows())) {
+      const { failed } = io.repark(n, steps);
+      if (failed.length === steps.length) {
+        screen.notice("park", `#${n}'s park has still not reached the tracker (${steps.join(", ")})`);
+        continue;
+      }
+      const why = failed.length ? `the park reached the tracker but for ${failed.join(", ")}` : "the park reached the tracker";
+      io.record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, counts: false, parkFailed: failed.length ? failed : null });
+      io.log(`#${n}: ${why}`, "park");
+    }
 
     let pass;
     claimed = null;

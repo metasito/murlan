@@ -18,6 +18,7 @@ import {
   readLedger,
   sessionRow,
   ticketTally,
+  pendingReparks,
   typicalMs,
   usageSplit,
   windowCost,
@@ -151,7 +152,12 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 6);
+    assert.equal(r.schema, 7);
+  });
+
+  test("carries the park steps the tracker never received", () => {
+    assert.deepEqual(sessionRow(session({ parkFailed: ["label"] })).park_failed, ["label"]);
+    assert.equal(r.park_failed, null);
   });
 
   test("carries the loop's sha, a structured handoff and the error, and no solo_bash_turns", () => {
@@ -424,6 +430,22 @@ describe("the run report's recap", () => {
     });
     book.close("r", "0 tickets", "run   21:40 → 21:41");
     assert.deepEqual([...files.values()], ["\n0 tickets\n"]);
+  });
+});
+
+describe("pendingReparks", () => {
+  const parked = (n: number, park_failed: string[] | null) => ({ n, outcome: "parked", park_failed });
+  test("owes the tracker's steps of a ticket's last park, and nothing once a reparked row clears them", () => {
+    assert.deepEqual(pendingReparks([parked(1, ["label", "worktree"]), parked(2, null)]), [{ n: 1, steps: ["label"] }]);
+    const partly = { n: 1, outcome: "reparked", park_failed: ["comment"] };
+    assert.deepEqual(pendingReparks([parked(1, ["label", "comment"]), partly]), [{ n: 1, steps: ["comment"] }]);
+    assert.deepEqual(pendingReparks([parked(1, ["label"]), { n: 1, outcome: "reparked", park_failed: null }]), []);
+    assert.deepEqual(pendingReparks([parked(1, ["label"]), { n: 1, outcome: "handoff" }]), [], "a ticket the owner sent back has moved on");
+  });
+
+  test("a reparked row closes a window as the park did, so it is not a session of the next", () => {
+    const t = ticketTally(1, [{ n: 1, outcome: "parked", cost: 2 }, { n: 1, outcome: "reparked", cost: 0 }]);
+    assert.equal(t.sessions, 0);
   });
 });
 

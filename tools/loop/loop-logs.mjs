@@ -142,9 +142,10 @@ export function usageSplit(text) {
  *
  * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
  * `run_id`, both null on rows written before it. 6 drops `solo_bash_turns`, adds `loop_sha`,
- * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session.
+ * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session. 7 adds
+ * `park_failed` and the `reparked` row, which closes it.
  */
-export const SCHEMA = 6;
+export const SCHEMA = 7;
 
 export const STDERR_CAP = 2000;
 
@@ -198,6 +199,7 @@ export function sessionRow({
   loopSha = null,
   handoff = null,
   error = null,
+  parkFailed = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -229,7 +231,27 @@ export function sessionRow({
     loop_sha: loopSha,
     handoff,
     error,
+    park_failed: parkFailed,
   };
+}
+
+/** The park steps a later pass can apply again: the tracker's half, not the worktree's. */
+const REPARKABLE = new Set(["label", "comment"]);
+
+/**
+ * Each ticket whose last row is a park the tracker did not receive, with the steps still owed. A
+ * `reparked` row carries what its retry left failed, so an empty list there closes it.
+ *
+ * @param {object[]} rows
+ * @returns {{n: number, steps: string[]}[]}
+ */
+export function pendingReparks(rows) {
+  const last = new Map();
+  for (const r of rows) if (r.outcome !== "started") last.set(r.n, r);
+  return [...last.values()].flatMap((r) => {
+    const steps = (r.park_failed ?? []).filter((s) => REPARKABLE.has(s));
+    return (r.outcome === "parked" || r.outcome === "reparked") && steps.length ? [{ n: r.n, steps }] : [];
+  });
 }
 
 /** A spawn, written before the session can die with its supervisor and leave no row of its own. */
@@ -420,7 +442,7 @@ export function ticketTally(n, rows) {
   const forTicket = rows.filter((r) => r.n === n && r.outcome !== "started");
   let start = 0;
   forTicket.forEach((r, i) => {
-    if (r.outcome === "landed" || r.outcome === "closed" || r.outcome === "parked") start = i + 1;
+    if (["landed", "closed", "parked", "reparked"].includes(r.outcome)) start = i + 1;
   });
   const since = forTicket.slice(start);
 
