@@ -488,6 +488,14 @@ describe("the table's refusals and lines", () => {
     await r.unmount();
   });
 
+  it('a seat the manche placed last keeps its hand and is not told it finished', async () => {
+    const r = await render(at(withAna({ finishPosition: 4 })));
+    expect(screen.queryByTestId('notice-waitingOthers', hidden)).toBeNull();
+    expect(screen.queryByText(t('gameTable.waitingOthers'), hidden)).toBeNull();
+    expect(screen.getAllByTestId(/^hand-card-/, hidden).length).toBe(STATE.players[0].hand.length);
+    await r.unmount();
+  });
+
   it('an empty hand not yet out is the same gold pill', async () => {
     const r = await render(at(withAna({ hand: [] })));
     expect(edge('notice-emptyHand')).toBe(NoticePalette.pill.gold.edge);

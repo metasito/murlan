@@ -66,6 +66,8 @@ interface Moment {
   fallbackRegionsAt?: number[];
   /** Parity mode: a region read at only these of `regionsAt`. */
   regionAt?: Record<string, number[]>;
+  /** `regionAt` with the fallback felt, where it holds at fewer. */
+  fallbackRegionAt?: Record<string, number[]>;
   /** Parity mode: the onsets held, where not every one either side fires. */
   onsets?: string[];
   /** The mockup's chapter, where it is not `key`. */
@@ -518,12 +520,18 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.lamp !== null,
     mode: "parity",
     fields: ["onset", "live", "dropped", "lamp", "level", "flare", "brightness", "scorePill"],
-    regions: ["pile", "rim", "rightBand"],
+    regions: ["pile", "pool", "rim", "rightBand"],
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
-    // Not the pile at 1440, as in mwin: Gent's emptying play catches.
+    // Not the pile at 1440, as in mwin: Gent's emptying play catches. Nor the pool: the app's lamp shaft crosses it there.
     // The fallback bakes its light at luan the moment the lamp turns; the mockup's glides there until about 2400.
+    // That baked felt reads darker over the hand than the mockup's, so the fallback holds no pool.
     fallbackRegionsAt: [2400, 2880],
-    regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
+    regionAt: {
+      pile: [1040, 1200, 1920, 2400, 2880],
+      pool: [1040, 1200, 1920, 2400, 2880],
+      rightBand: [1040, 1200, 1920, 2400, 2880],
+    },
+    fallbackRegionAt: { pool: [] },
     onsets: ["sound:mancheLost"],
     actions: [{ atMs: 512, app: botMove }],
   },
@@ -615,7 +623,7 @@ const MOCKUP_LAYOUT = `(() => {
     };
   };
   const fans = { top: centre("besnik"), left: centre("gent"), right: centre("luan") };
-  return { pile: { x: PILE[0], y: PILE[1] }, light: { x: lamp.x, y: lamp.ly }, handTop: Math.min(...tops), fans };
+  return { pile: { x: PILE[0], y: PILE[1] }, light: { x: POOL.you[0], y: POOL.you[1] - 40 }, handTop: Math.min(...tops), fans };
 })()`;
 
 async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<number, PillBox>> {
@@ -880,7 +888,14 @@ export function parityTests(key: string, only?: Variant) {
   const moment = MOMENTS.find((x) => x.key === key);
   if (!moment) throw new Error(`no parity moment ${key}`);
   for (const variant of (moment.variants ?? (["skia", "fallback"] as const)).filter((v) => !only || v === only)) {
-    const m = variant === "fallback" && moment.fallbackRegionsAt ? { ...moment, regionsAt: moment.fallbackRegionsAt } : moment;
+    const m =
+      variant === "fallback"
+        ? {
+            ...moment,
+            regionsAt: moment.fallbackRegionsAt ?? moment.regionsAt,
+            regionAt: { ...moment.regionAt, ...moment.fallbackRegionAt },
+          }
+        : moment;
     test(`${m.key} with the ${variant} felt (${m.mode} mode)`, async ({ browser, baseURL }) => {
       test.setTimeout(15 * 60_000);
       const decoder = await browser.newPage();
