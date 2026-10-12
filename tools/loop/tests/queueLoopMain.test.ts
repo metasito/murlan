@@ -1521,7 +1521,7 @@ describe("the run recap", () => {
     assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00\n.*asleep 2:00:00/);
   });
 
-  test("names an empty Launch milestone the picker read", async () => {
+  test("says so when the picker read no open Launch tickets", async () => {
     const recapFor = async (launch: number) => {
       let text = "";
       let passes = 0;
@@ -1537,7 +1537,7 @@ describe("the run recap", () => {
       await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
       return text;
     };
-    assert.match(await recapFor(0), /no Launch milestone/);
+    assert.match(await recapFor(0), /no open Launch tickets/);
     assert.doesNotMatch(await recapFor(2), /Launch/);
   });
 });

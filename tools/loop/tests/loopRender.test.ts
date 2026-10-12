@@ -461,8 +461,8 @@ describe("runRecap", () => {
     assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
   });
 
-  test("an empty Launch milestone is said, and a known or unread one is not", () => {
-    assert.match(runRecap({ ...run, launch: 0 }, tPlain).map(strip).join("\n"), /no Launch milestone/);
+  test("no open Launch tickets is said, and a known or unread count is not", () => {
+    assert.match(runRecap({ ...run, launch: 0 }, tPlain).map(strip).join("\n"), /no open Launch tickets: the picker takes the oldest first/);
     for (const launch of [4, null, undefined]) {
       assert.ok(!runRecap({ ...run, launch }, tPlain).join("\n").includes("Launch"), String(launch));
     }

@@ -433,7 +433,7 @@ export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleep
   return [
     head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
     row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
-    ...(launch === 0 ? [stepRow({ label: "", detail: "no Launch milestone: the picker takes the oldest first", state: "skipped" }, t)] : []),
+    ...(launch === 0 ? [row([{ t: ` ${clamp("no open Launch tickets: the picker takes the oldest first", t.width - 1)}`, c: "muted" }], null, t)] : []),
     ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
     "",
     head("where the time went"),
