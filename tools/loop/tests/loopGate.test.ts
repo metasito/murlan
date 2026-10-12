@@ -561,7 +561,7 @@ describe("--build gates review on a cached local pass", () => {
       "- [x] `tests/e2e/flip.spec.ts` covers the flip — n/a: covered elsewhere",
       "- [x] a regression test pins the clamp — n/a: too small",
       "- [x] the e2e flow lands the card — n/a: CI runs it",
-      "- [x] the fan is centred in `lib/fan.ts` — n/a: obvious",
+      "- [x] the fan is centred in `tools/loop/brief.mjs` — n/a: obvious",
       "- [x] flip.spec.ts is green — n/a: CI",
       "- [x] tools/loop/brief.test.ts covers it — n/a: done",
     ]) {

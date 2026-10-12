@@ -227,7 +227,7 @@ describe("counting review rounds", () => {
     return { body };
   };
   const stoodDown = () =>
-    parkedFor(String(reasonFor({ status: 0, declared: { stoodDown: true, why: "round 3 still blocks" } }, { ticket: 1 }, 1).why));
+    parkedFor(String(reasonFor({ status: 0, declared: { pr: null, stoodDown: true, why: "round 3 still blocks" } }, { ticket: 1 }, 1).why));
   const parkedBeforeThisChange = {
     body: [
       "Parked by the queue loop in **phase D**.",
