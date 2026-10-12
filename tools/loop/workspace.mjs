@@ -184,8 +184,14 @@ export function removeWorktree(target, { force = false, dryRun = false, git = gi
     return { removed: false, why: `${match.path} is the worktree this command is running in; run it from the main checkout.` };
   }
   if (!force && match.locked) return { removed: false, why: `${match.path} is locked; pass --force to remove it anyway.` };
-  if (!force && fs.existsSync(match.path) && dirty(git, match.path)) {
-    return { removed: false, why: `${match.path} has uncommitted changes; commit them, or pass --force to remove it anyway.` };
+  if (!force && fs.existsSync(match.path)) {
+    let unsaved;
+    try {
+      unsaved = dirty(git, match.path);
+    } catch (err) {
+      return { removed: false, why: `${match.path} could not be read, so it is kept: ${firstLine(err)}` };
+    }
+    if (unsaved) return { removed: false, why: `${match.path} has uncommitted changes; commit them, or pass --force to remove it anyway.` };
   }
   if (dryRun) return { removed: false, would: true, why: `(dry run - would detach the links in ${match.path} and remove it)` };
   const detached = detachLinks(match.path);
@@ -232,10 +238,37 @@ function primaryOf(git) {
  *   what a step found, or `null` for nothing worth a row.
  */
 
+const merged = (git, branch) => {
+  try {
+    git(["merge-base", "--is-ancestor", branch, "origin/main"]);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /**
- * Removes the loop's leftover ticket worktrees: `.worktrees/agent-<n>` whose issue is closed or
- * no longer `in-progress`. Never forced, so uncommitted, locked or otherwise refused work stays;
- * the branch survives every removal, and `claim.mjs` rebuilds from it.
+ * What the sweep does with one ticket worktree: `{remove}` or `{keep}` with the reason, or `null`
+ * for a live run that says nothing. Decided before anything is touched, so a dry run says what the
+ * real one would. A process may be standing in an unmerged tree nobody has a pull request for, so
+ * that one is kept.
+ */
+function judgeWorktree(entry, ticket, { git, gh }) {
+  if (entry.locked) return { keep: "locked" };
+  if (dirty(git, entry.path)) return { keep: "uncommitted changes" };
+  if (entry.branch === null) return { remove: "detached HEAD, no branch to keep" };
+  const issue = JSON.parse(gh(["issue", "view", String(ticket), "--json", "state,labels"], { timeout: 30_000 }));
+  if (issue.state === "CLOSED") return { remove: "its issue is closed", state: issue.state };
+  if (issue.labels.some((l) => l.name === "in-progress")) return null;
+  const [pr] = JSON.parse(gh(["pr", "list", "--head", entry.branch, "--state", "all", "--json", "state", "--limit", "1"], { timeout: 30_000 }));
+  if (pr) return { remove: `its issue is no longer in-progress and its pull request is ${pr.state.toLowerCase()}`, state: issue.state };
+  if (merged(git, entry.branch)) return { remove: "its issue is no longer in-progress and its branch is merged", state: issue.state };
+  return { keep: "unmerged, no pull request found" };
+}
+
+/**
+ * Removes the loop's leftover ticket worktrees under `.worktrees/agent-<n>` (`judgeWorktree` says
+ * which). Never forced; the branch survives every removal, and `claim.mjs` rebuilds from it.
  *
  * Then removes the directories under `.worktrees/` git has no registration for (#377). There is
  * no branch or issue left to check for one of these, so non-empty is not a reason to keep it.
@@ -250,28 +283,31 @@ export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = fal
   const gone = [];
   const kept = [];
   const notes = [];
+  const keep = (name, why) => {
+    kept.push(name);
+    notes.push(`${name}: kept — ${why}`);
+  };
   for (const entry of entries.slice(1)) {
     const name = path.basename(entry.path);
     if (!AGENT_DIR.test(name) || !samePath(path.dirname(entry.path), dir)) continue;
     const ticket = Number(name.slice("agent-".length));
-    if (ticket === pinned || entry.branch === null || isAtOrUnder(process.cwd(), entry.path)) continue;
-    let issue;
+    if (ticket === pinned || isAtOrUnder(process.cwd(), entry.path)) continue;
     try {
-      issue = JSON.parse(gh(["issue", "view", String(ticket), "--json", "state,labels"], { timeout: 30_000 }));
-    } catch (err) {
-      kept.push(name);
-      notes.push(`${name}: kept, its issue could not be read — ${firstLine(err)}`);
-      continue;
-    }
-    if (issue.state !== "CLOSED" && issue.labels.some((l) => l.name === "in-progress")) continue;
-    const why = issue.state === "CLOSED" ? "its issue is closed" : "its issue is no longer in-progress";
-    const out = dryRun ? { removed: true } : removeWorktree(entry.path, { git, stateOf: () => issue.state });
-    if (out.removed) {
+      const verdict = judgeWorktree(entry, ticket, { git, gh });
+      if (!verdict) continue;
+      if (verdict.keep) {
+        keep(name, verdict.keep);
+        continue;
+      }
+      const out = dryRun ? { removed: true } : removeWorktree(entry.path, { git, stateOf: () => verdict.state ?? "OPEN" });
+      if (!out.removed) {
+        keep(name, out.why);
+        continue;
+      }
       gone.push(name);
-      notes.push(`${name}: ${verb}, ${why}`);
-    } else {
-      kept.push(name);
-      notes.push(`${name}: kept — ${out.why}`);
+      notes.push(`${name}: ${verb}, ${verdict.remove}`);
+    } catch (err) {
+      keep(name, firstLine(err));
     }
   }
 
