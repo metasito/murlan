@@ -28,6 +28,9 @@ export function openIssues(run = gh) {
     if (after) args.push("-f", `after=${after}`);
     const { issues } = JSON.parse(run(args)).data.repository;
     nodes.push(...issues.nodes);
+    if (issues.pageInfo.hasNextPage && !issues.pageInfo.endCursor) {
+      throw new Error(`after ${nodes.length} open issues, GraphQL reads hasNextPage with no endCursor; the rest are unreachable`);
+    }
     after = issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null;
   } while (after);
   return nodes.map((n) => ({

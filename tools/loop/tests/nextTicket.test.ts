@@ -348,6 +348,11 @@ describe("the open issues, from one query", () => {
     assert.ok(!calls[0].some((a) => a.startsWith("after=")), "the first page has no cursor");
   });
 
+  test("a next page with no cursor to reach it throws, never drops the pages after it", () => {
+    const noCursor = () => answer(false)().replace('"hasNextPage":false', '"hasNextPage":true');
+    assert.throws(() => openIssues(noCursor), /hasNextPage.*endCursor/);
+  });
+
   test("an inspected ticket says why it is not takeable", () => {
     assert.deepEqual(takeableReasons({ ...issue(1, ["ready-for-agent"]), issue_dependencies_summary: { blocked_by: 0 } }), []);
     const gated = { ...issue(2, ["ready-for-human", "in-progress", "blocked"], "NONE"), issue_dependencies_summary: { blocked_by: 1 } };

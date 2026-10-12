@@ -445,10 +445,10 @@ the spec count, not the colour).
   `worktrees:remove` (rule 39); `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the
   defect and pins the version where it changed, on the Windows CI leg. `npm run worktrees:prune`
   (`-- --dry-run` to only list) cleans up one left by a killed/crashed session the same way, and
-  the loop runs it before every ticket. It only ever removes a `.worktrees/agent-<n>` on a
-  detached HEAD, or whose issue is closed, or no longer `in-progress` with a pull request or a
-  branch merged into `origin/main` — never with `--force`, so uncommitted, locked or unmerged
-  work with no pull request stays, and the row says why; one registered anywhere else, or named otherwise, is a person's, and
+  the loop runs it before every ticket. It only ever removes a `.worktrees/agent-<n>` whose issue
+  is closed, or no longer `in-progress` with a pull request or a branch merged into
+  `origin/main` — never with `--force`, so uncommitted, locked, detached or unmerged work with no
+  pull request stays, and the row says why; one registered anywhere else, or named otherwise, is a person's, and
   only `worktrees:remove` takes it.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
   with `Cannot find package 'typescript'` through one, while `tsc`/`eslint` keep working, which

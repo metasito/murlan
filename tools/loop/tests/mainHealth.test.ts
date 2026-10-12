@@ -232,6 +232,16 @@ describe("decideMainHealth", () => {
     assert.equal(decideMainHealth(RED, jobs, none).state, "unknown");
   });
 
+  test("a CI gate red with no other job red is main being broken, and files naming the gate", () => {
+    const jobs: JobRow[] = [
+      { name: "Typecheck and tests", conclusion: "success", steps: 9 },
+      { name: "CI gate", conclusion: "failure", steps: 3 },
+    ];
+    const health = decideMainHealth(RED, jobs, none);
+    assert.equal(health.state, "file");
+    assert.match(health.why, /CI gate/);
+  });
+
   test("no run at all is unknown rather than red", () => {
     assert.equal(decideMainHealth(undefined, [], none).state, "unknown");
   });

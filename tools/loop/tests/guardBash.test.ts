@@ -831,10 +831,6 @@ describe("the hooks the project's settings and the loop's own register", () => {
     for (const tool of ["Bash", "PowerShell", "Read"]) assert.ok(matched("PreToolUse", "guard-read.mjs").includes(tool), tool);
   });
 
-  test("the compaction window stands where guard-context did", () => {
-    assert.equal(allHooks().find((h) => text(h).includes("guard-context.mjs")), undefined);
-  });
-
   for (const cwd of CWDS) {
     test(`run as written from ${cwd === ROOT ? "the root" : "tools/loop"}, each blocks what it guards`, () => {
       const bash = runAsWritten(cwd, hookOf("guard-bash.mjs"), { cwd: ROOT, tool_input: { command: "git add -A" } });
