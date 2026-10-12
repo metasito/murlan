@@ -176,14 +176,18 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.ok(fs.existsSync(dir));
   });
 
-  test("a detached HEAD has no branch to keep and is removed, without asking the tracker", () => {
+  test("a detached HEAD is kept and named for a person, without asking the tracker", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 11, { detached: true });
+    run(repo, "-C", dir, "commit", "--quiet", "--allow-empty", "-m", "reachable only from this HEAD");
     const { gh, asked } = fakeGh({ 11: CLOSED });
-    const row = sweep({ git: spyGit(repo).git, gh });
+    const { git, removals } = spyGit(repo);
+    const row = sweep({ git, gh });
     assert.deepEqual(asked, []);
-    assert.equal(fs.existsSync(dir), false);
-    assert.match(row?.note ?? "", /agent-11: removed, detached HEAD/);
+    assert.deepEqual(removals(), []);
+    assert.ok(fs.existsSync(dir));
+    assert.equal(row?.state, "warned");
+    assert.match(row?.note ?? "", /agent-11: kept — detached HEAD/);
   });
 
   test("a detached HEAD holding uncommitted work is kept", () => {
