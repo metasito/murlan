@@ -2,8 +2,11 @@
 // take longer than its budget, and fails it past `HARD_FACTOR` times that, read from the run's own results (what `--json` writes). The cases are
 // budgeted apart from the rest of `PASS … (N s)`, which also holds the module graph's transform that a
 // cold cache charges to whichever file loads it first; the rest gets a ceiling of its own, so work moved
-// into a beforeAll or a module body cannot leave the budget.
+// into a beforeAll or a module body cannot leave the budget. A green run also writes the files over budget
+// on their cases to `out`, which ci.yml uploads for the loop's land gate (`overBudget` in tools/loop/ciVerdict.ts).
 
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 /** Under twice the slowest file outside the exceptions, exchangeOnTable's 8.5 s in run 36817916976. */
@@ -77,9 +80,10 @@ export default class NativeBudgetReporter {
   /** @type {Error | undefined} */
   error;
 
-  /** @param {any} globalConfig */
-  constructor(globalConfig) {
+  /** @param {any} globalConfig @param {{ out?: string }} [options] */
+  constructor(globalConfig, options) {
     this.rootDir = globalConfig?.rootDir ?? process.cwd();
+    this.out = options?.out ?? path.join(process.env.RUNNER_TEMP ?? tmpdir(), "over-budget.json");
   }
 
   /** @param {any} test @param {any} result */
@@ -101,8 +105,10 @@ export default class NativeBudgetReporter {
       process.stdout.write(`Native budget, slowest cases per file:\n${slowest.slice(0, 12).map(([f, s]) => `  ${s.toFixed(1)}s ${f}`).join("\n")}\n`);
       const outside = Object.entries(this.outside).sort(([, a], [, b]) => b - a);
       process.stdout.write(`Native budget, most time outside the cases:\n${outside.slice(0, 6).map(([f, s]) => `  ${s.toFixed(1)}s ${f}`).join("\n")}\n`);
+      const cases = overBudget(this.measured);
+      writeFileSync(this.out, JSON.stringify(cases.map((o) => ({ ...o, file: o.file.slice(o.file.indexOf(":") + 1) }))));
       const over = [
-        ...overBudget(this.measured).map((o) => ({ ...o, what: "its cases" })),
+        ...cases.map((o) => ({ ...o, what: "its cases" })),
         ...outside.filter(([, s]) => s > OUTSIDE_S).map(([file, seconds]) => ({ file, seconds, budget: OUTSIDE_S, what: "outside its cases" })),
       ];
       for (const { file, seconds, budget, what } of over) {
