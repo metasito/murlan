@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, mergeCleared } from "../loop-gate.mjs";
+import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, dodVerdict, mergeCleared } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -520,12 +520,24 @@ describe("--build gates review on a cached local pass", () => {
       [check("no boxes at all"), 1, /ticks no box/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1\n- [X] sheen — package.json:3"), 0, /2 box\(es\) ticked/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1 · red: AssertionError: expected 1 got 0"), 0, /1 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2\n- [x] `npm run agent:check` green"), 0, /2 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2\n- [x] the owner signs the copy off — n/a: no code site, a decision"), 0, /2 box\(es\) ticked/],
+      [check("- [x] the owner signs the copy off — n/a:"), 1, /leaves open/],
+      [check("- [ ] the owner signs the copy off — n/a: not mine"), 1, /leaves open/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);
       assert.equal(code, want, out);
       assert.match(out, says);
     }
+  });
+
+  test("the agent:check box is closed by the cached pass, never by its own word", () => {
+    const comments = [{ body: "DOD-CHECK abc1234\n\n- [x] `npm run agent:check` green" }];
+    assert.equal(dodVerdict(comments, "abc1234def", () => false, true).ok, true);
+    const unbuilt = dodVerdict(comments, "abc1234def", () => false, false);
+    assert.equal(unbuilt.ok, false);
+    assert.match(unbuilt.why, /leaves open: - \[x\] `npm run agent:check` green/);
   });
 
   test("a dirty tree refuses even with a passing cache entry for HEAD", () => {

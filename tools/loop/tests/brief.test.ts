@@ -110,7 +110,15 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
     git("commit", "-qm", file);
     return git("rev-parse", "HEAD");
   };
-  const cli = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" });
+  const tracker = (comments: { body: string }[] = []) => {
+    const js = join(root, `gh-${Math.random().toString(36).slice(2)}.mjs`);
+    const owned = comments.map((c) => ({ authorAssociation: "OWNER", ...c }));
+    writeFileSync(js, `console.log(${JSON.stringify(JSON.stringify({ comments: owned }))});`);
+    return js;
+  };
+  const cli = (...args: string[]) => cliReading([], ...args);
+  const cliReading = (comments: { body: string }[], ...args: string[]) =>
+    spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", env: { ...process.env, LOOP_GH_SCRIPT: tracker(comments) } });
   let reviewed = "";
   let rebased = "";
 
@@ -139,6 +147,19 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
     assert.equal(r.status, 2, r.stdout);
     assert.match(r.stderr, /not an ancestor of HEAD/);
     assert.equal(cli("fix", "7", wt, rebased.slice(0, 7)).status, 2);
+  });
+
+  test("the review brief lists every n/a box of this head's DOD-CHECK for the reviewer to judge", () => {
+    const head = git("rev-parse", "--short", "HEAD");
+    const na = "- [x] the owner signs the copy off — n/a: no code site, a decision";
+    const check = `DOD-CHECK ${head}\n\n- [x] chip enters — package.json:2\n${na}\n- [x] \`npm run agent:check\` green`;
+    const older = `DOD-CHECK ${reviewed.slice(0, 7)}\n\n- [x] stale — n/a: an older head`;
+    const r = cliReading([{ body: older }, { body: check }], "review", "7", wt);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.stdout.startsWith(brief("review", { n: 7, worktree: wt }).trimEnd()), r.stdout);
+    assert.ok(r.stdout.includes(na), r.stdout);
+    assert.doesNotMatch(r.stdout, /chip enters|stale — n\/a/);
+    assert.match(brief("review", { n: 7, worktree: wt }), /n\/a: <reason>/);
   });
 
   test("a worktree that is not .worktrees/agent-<n> exits 2", () => {
