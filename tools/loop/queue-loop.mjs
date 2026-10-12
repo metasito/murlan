@@ -302,6 +302,8 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
     "--settings",
     LOOP_SETTINGS,
+    "--setting-sources",
+    "project",
     "--tools",
     readAllowedTools().join(","),
     "--max-turns",
@@ -1639,7 +1641,9 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
+      LOOP_TICKET: String(number),
       LOOP_CONTEXT: String(contextFor(size)),
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
       LOOP_REASON: reason ?? undefined,

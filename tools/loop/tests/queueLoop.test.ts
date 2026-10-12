@@ -212,12 +212,10 @@ describe("queueLoopArgs", () => {
     assert.ok(Number.isInteger(TURNS_DEFAULT) && TURNS_DEFAULT > 0);
   });
 
-  test("a ticket's context ceiling follows its size, and every one leaves room below auto-compaction", () => {
+  test("a ticket's context ceiling follows its size", () => {
     assert.equal(contextFor(null), CONTEXT_DEFAULT);
     assert.equal(contextFor("size:S"), CONTEXT_DEFAULT);
     assert.ok(contextFor("size:M") > contextFor("size:S"));
-    // Auto-compaction fired at 366-368k in all five loop sessions it reached.
-    for (const c of [CONTEXT_DEFAULT, ...Object.values(CONTEXT_BY_SIZE)]) assert.ok(c < 340_000, `${c}`);
   });
 
   test("a raised ceiling keeps a turn cap that reaches it", () => {

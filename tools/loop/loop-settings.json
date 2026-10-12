@@ -5,5 +5,23 @@
     "frontend-design@claude-plugins-official": false,
     "cowork-plugin-management@synced": false,
     "ponytail@ponytail": false
+  },
+  "outputStyle": "Concise",
+  "disableClaudeAiConnectors": true,
+  "autoContinueAtUsageLimit": true,
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "**Repository visibility**: public (metasito/murlan)",
+      "**Host**: Windows 11 with Docker Desktop"
+    ],
+    "allow": [
+      "$defaults",
+      "In the murlan repo (C:\\Users\\roton\\murlan, its .worktrees\\agent-* and its side worktrees): temporarily editing source code to plant a defect, then running the tests that cover it to watch them fail, is the repo's required red-first step (docs/agents/RULES.md rule 6), not test removal or sabotage. The plant is reverted with Edit immediately after the run."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Bash(npm run db:reset:*) in this repo — package.json db:reset already bundles --yes per CLAUDE.md's own self-defeating-safeguard warning; treat as a destructive footgun requiring explicit confirmation each time"
+    ]
   }
 }
