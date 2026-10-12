@@ -11,7 +11,7 @@
  *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a loop session's second rerun of a run, or a rerun of a run it cannot name
+ *   a rerun of a run it cannot name, or a loop session's second rerun of one
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -294,20 +294,22 @@ function pushesMain(c, repo) {
 /** The ticket the supervisor spawned this session for, or null when its env names none. */
 const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
 
-/** A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an explicit `src:dst`. */
+/**
+ * A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an
+ * explicit `src:dst`. A delete names the branch alone, and only its own.
+ */
 function pushesElsewhere(c, ticket) {
   if (c.cmd === "gh" && c.args[0] === "api" && has(c.args, /\/git\/refs\b/)) return true;
   if (c.cmd !== "git" || c.args[0] !== "push") return false;
-  if (ticket === null || has(c.args, /^(--all|--mirror|--tags|--delete|-d|--prune)$/)) return true;
+  if (ticket === null || has(c.args, /^(--all|--mirror|--tags|--prune)$/)) return true;
   const own = new RegExp(`^(refs/heads/)?agent/${ticket}-`);
   const refs = operands(c.args.slice(1), PUSH_TAKES_A_VALUE).slice(1);
-  return (
-    !refs.length ||
-    refs.some((ref) => {
-      const [src, dst] = ref.replace(/^\+/, "").split(":");
-      return dst === undefined || src === "" || !own.test(dst);
-    })
-  );
+  if (!refs.length) return true;
+  if (has(c.args, /^(--delete|-d)$/)) return refs.some((ref) => !own.test(ref) || ref.includes(":"));
+  return refs.some((ref) => {
+    const dst = ref.replace(/^\+/, "").split(":")[1];
+    return dst === undefined || !own.test(dst);
+  });
 }
 
 function deletesWorktree(c) {
@@ -395,7 +397,7 @@ const RULES = [
     message:
       "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
       "Push your ticket branch and open a pull request:\n" +
-      "  git push -u origin agent/<n>-<slug>",
+      "  git push -u origin HEAD:agent/<n>-<slug>",
   },
   {
     test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
@@ -405,22 +407,22 @@ const RULES = [
           "Nothing can be pushed: say so on the issue and park it for the owner."
         : "A loop session pushes only its own ticket's branch, named explicitly:\n" +
           `  git push -u origin HEAD:agent/${loopTicket()}-<slug>\n` +
-          "Without the colon, the remote's push config decides where it lands. --all, --mirror, --tags, " +
-          "--prune, a delete and a ref write through `gh api` are refused.",
+          "Without the colon, the remote's push config decides where it lands. A delete names only " +
+          `agent/${loopTicket()}-<slug>; --all, --mirror, --tags, --prune and a ref write through \`gh api\` are refused.`,
   },
   {
     // A target it cannot read is not an answer: allowing there would make `$RUN` the way past
     // the rule rather than a way to write it.
     test: (c, { workflowOf, loop }) => {
-      const t = loop && rerunOf(c);
-      return Boolean(t && (!(t.run || t.job) || workflowOf(t)?.attempt >= 2));
+      const t = rerunOf(c);
+      return Boolean(t && (!(t.run || t.job) || (loop && workflowOf(t)?.attempt >= 2)));
     },
     message:
-      "A loop session reruns a run at most once, so a rerun names its run by literal id, which is how its attempt is read:\n" +
+      "A rerun names its run by literal id, so the run it reruns can be read:\n" +
       "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
       "  gh run rerun <that id> --failed\n" +
       "Rerunning one job? `--job <job-id>` is read too.\n" +
-      "A run already rerun is not rerun again: a red that survives its rerun is a Blocking finding if this change caused it; " +
+      "A loop session does not rerun a run already rerun: a red that survives its rerun is a Blocking finding if this change caused it; " +
       "otherwise the verdict names the test and the attempt (queue.md phase D).",
   },
   {
