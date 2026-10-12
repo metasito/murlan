@@ -9,7 +9,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { readLine, scopeEnds } from "./loop-stream.mjs";
+import { readEvent, scopeEnds } from "./loop-stream.mjs";
 import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -173,7 +173,7 @@ export function readTicket(allLines, ticket = "", since = null, until = null) {
     // reassign every turn after it.
     if (!j.parent_tool_use_id) {
       const blocks = j.message.content ?? [];
-      const marked = readLine(line)?.letter;
+      const marked = readEvent(j)?.letter;
       if (marked) advance(marked, t);
       else if (phase === "B" || phase === "D" || phase === "E") {
         const calls = blocks

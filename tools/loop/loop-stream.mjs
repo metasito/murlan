@@ -114,6 +114,11 @@ export function readLine(line) {
   } catch {
     return null;
   }
+  return readEvent(e);
+}
+
+/** `readLine` for a line already parsed. */
+export function readEvent(e) {
   if (e.type === "system" && e.subtype === "init") {
     return {
       kind: "init",
