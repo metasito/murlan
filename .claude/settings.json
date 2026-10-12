@@ -52,18 +52,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Bash|Read|Grep|Glob|Agent|Task|WebFetch|Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-context.mjs"]
-          }
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "matcher": "compact|resume|clear",

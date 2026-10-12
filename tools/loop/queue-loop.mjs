@@ -30,7 +30,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
+import { COMMITTING, overLine, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   activity,
@@ -272,6 +272,7 @@ export const contextFor = (size) => CONTEXT_BY_SIZE[size ?? ""] ?? CONTEXT_DEFAU
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
 
 const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
+const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
 
 /** `loop-settings.json` can only switch off what it names; a plugin it does not turn on is stray. */
 export const strayPlugins = (loaded, allowed = JSON.parse(fs.readFileSync(LOOP_SETTINGS, "utf8")).enabledPlugins) =>
@@ -294,6 +295,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Print mode refuses stream-json without it: "Error: When using --print,
     // --output-format=stream-json requires --verbose".
     "--verbose",
+    "--include-hook-events",
     // Without it a fresh process reuses ~8k of a ~33k prefix even from an identical twin (2.1.274).
     // With it the twin reuses all of it — once the git status is gone too (the env below) and the
     // startup hook says nothing (loop-status.mjs), since both land ahead of the static rest.
@@ -302,8 +304,12 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // loses 2.3k. The prompt itself cannot move later — the ticket number is what stops a second pick.
     "--settings",
     LOOP_SETTINGS,
+    "--setting-sources",
+    "project",
     "--tools",
     readAllowedTools().join(","),
+    "--json-schema",
+    RESULT_SCHEMA,
     "--max-turns",
     String(turnsFor(size)),
     "--max-budget-usd",
@@ -1639,7 +1645,9 @@ export function runTicket(
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
+      LOOP_TICKET: String(number),
       LOOP_CONTEXT: String(contextFor(size)),
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
       LOOP_REASON: reason ?? undefined,
@@ -1651,6 +1659,15 @@ export function runTicket(
       // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
       // and each of its writes moves the cached prefix.
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+      CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
+      CLAUDE_CODE_DISABLE_CRON: "1",
+      CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+      CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
+      // Every brief says "Do not spawn any subagent"; this is what holds it.
+      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
+      CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: "6000",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
@@ -1728,7 +1745,10 @@ export function runTicket(
       if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
       state.apiErrorCode = fact.code;
     }
-    if (fact.kind === "result" && !fact.origin) state.result = fact;
+    if (fact.kind === "result" && !fact.origin) {
+      state.result = fact;
+      if (fact.declared) state.declared = overLine(state.declared, fact.declared);
+    }
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers
       // and pushes has done its work, and a sticky flag pre-empts every other reading of it.
