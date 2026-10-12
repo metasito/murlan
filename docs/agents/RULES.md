@@ -80,10 +80,11 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog: a new one labelled
+    `ready-for-human`, or a comment on the open `noticed` issue. A ticket's session never adds `ready-for-agent`.
 34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
     worktree is yours to close, not to hand on — outside a review round, which fixes only the Blocking findings its review or CI
-    named. File an issue only for what you tried and could
+    named. File an issue (rule 33's channels) only for what you tried and could
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
