@@ -12,8 +12,7 @@ import type { LampRig } from "./useLampRig";
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
 // iOS draws `grayscale()` only through the SwiftUI filters `plugins/withSwiftUIFilters.js` turns on,
-// and `brightness()` as a blend that cannot see the Skia felt (#1481): there the felt greys in Skia
-// and the darkening is a scrim.
+// and `brightness()` as a blend that cannot see the Skia felt: the felt greys in Skia, a scrim darkens.
 const IOS = Platform.OS === "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
@@ -68,8 +67,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => ({ filter: IOS ? iosGrey(grey.value).filter : greyFilter(grey.value) }));
-  // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail, laid out
-  // in the cutout's column, moved a cutout's width inward (#1481). The felt filters in Skia.
+  // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail would leave the cutout's column.
   const edgeGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
   const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
   return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, frozen: held || missedInFlight };
