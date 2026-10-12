@@ -337,6 +337,20 @@ export function trustedComments(comments) {
   return comments.filter((c) => TRUSTED_AUTHORS.includes(c.authorAssociation));
 }
 
+/**
+ * The open issue `parity-nightly.yml` files on a red, as `{number, since}`; null when there is none
+ * or the tracker cannot say. The owner's to read, never the picker's to route.
+ */
+export function parityRed(read = (args) => gh(args, undefined, CI_BUDGET_MS)) {
+  try {
+    const open = JSON.parse(read(["issue", "list", "--repo", REPO, "--label", "parity", "--state", "open", "--json", "number,createdAt"]));
+    const [oldest] = open.sort((a, b) => a.number - b.number);
+    return oldest ? { number: oldest.number, since: oldest.createdAt } : null;
+  } catch {
+    return null;
+  }
+}
+
 function readComments(ticket, cwd, exec) {
   return trustedComments(JSON.parse(exec(["issue", "view", String(ticket), "--json", "comments"], cwd, CI_BUDGET_MS)).comments);
 }

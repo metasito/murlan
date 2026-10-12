@@ -19,7 +19,7 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
+import { ciRedPosted, ciRedRounds, derive, parityRed, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
 import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
@@ -2679,6 +2679,7 @@ function realIo(book, screen) {
     snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     queuePre: () => queuePreStreamed(),
+    parity: () => parityRed(),
     issueState: (n) => {
       const f = ticketFacts(n);
       return { state: f.state ?? null, stateReason: f.stateReason ?? null };
@@ -2946,6 +2947,7 @@ export async function main({
   sleepWatch.unref();
   /** The Launch milestone's open count as the last picker run read it; null until one has. */
   let launch = null;
+  let parity = null;
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
     runRecap(
@@ -2958,6 +2960,7 @@ export async function main({
         waitMs: sofar("wait"),
         asleepMs,
         launch,
+        parity,
         utc,
         headroom: turnHeadroom(book.rows ?? []),
       },
@@ -3019,6 +3022,7 @@ export async function main({
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
+    parity = io.parity?.() ?? null;
     const rows = io.ledgerRows();
     screen.board?.({ typical: typicalMs(rows) });
     // From the ledger, not memory: the outage that failed a park outlasts any backoff, and a restart.
