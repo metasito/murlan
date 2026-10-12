@@ -57,7 +57,8 @@
           "disableStaticExternalLibs": true
         }
       ],
-      "./modules/murlan-diagnostics/app.plugin.js"
+      "./modules/murlan-diagnostics/app.plugin.js",
+      "./plugins/withSwiftUIFilters.js"
     ],
     "experiments": {
       "typedRoutes": true,

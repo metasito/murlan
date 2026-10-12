@@ -6,15 +6,15 @@ import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
-import { greyFilter, greyScrims } from "./linkGrey";
+import { greyFilter, iosGrey } from "./linkGrey";
 import type { LampRig } from "./useLampRig";
 
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
 const PILL_CLASS: Record<OwnLink, string> = { up: "", dropped: "", reconnecting: "net", back: "ok", lost: "bad" };
-// iOS draws `brightness()` as a multiply-blended sublayer and the capture shows it opaque, a flat
-// sheet over the table; there one scrim over every greyed layer desaturates by blending and a
-// second darkens, which is `greyFilter` composited rather than filtered.
-const VIEW_FILTER = Platform.OS !== "ios";
+// iOS draws `grayscale()` only through the SwiftUI filters `plugins/withSwiftUIFilters.js` turns on,
+// and `brightness()` as a blend that cannot see the Skia felt (#1481): there the felt greys in Skia
+// and the darkening is a scrim.
+const IOS = Platform.OS === "ios";
 
 /** The table holding its breath while the viewer's own link is down: the grey, the freeze, the dimmed lamp and the chime back. */
 export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLevel">, missedInFlight = false) {
@@ -67,8 +67,8 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     "grey",
     useCallback(() => grey.value, [grey])
   );
-  const greyStyle = useAnimatedStyle(() => (VIEW_FILTER ? { filter: greyFilter(grey.value) } : {}));
-  const desaturateStyle = useAnimatedStyle(() => ({ opacity: greyScrims(grey.value).desaturate }));
-  const darkenStyle = useAnimatedStyle(() => ({ opacity: greyScrims(grey.value).darken }));
-  return { grey, greyStyle, scrim: VIEW_FILTER ? null : { desaturateStyle, darkenStyle }, held, frozen: held || missedInFlight };
+  const greyStyle = useAnimatedStyle(() => ({ filter: IOS ? iosGrey(grey.value).filter : greyFilter(grey.value) }));
+  const feltGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
+  const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
+  return { grey, greyStyle, feltGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, frozen: held || missedInFlight };
 }
