@@ -7,7 +7,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { ciRedBody, onMainLine, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
+import { ciRedBody, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
 import { readLine } from "../loop-stream.mjs";
@@ -128,7 +128,6 @@ const io = (gh: (args: string[], file?: string) => string, written: string[][] =
   write: (p: string, body: string) => written.push([p, body]),
   mkdir: () => undefined,
   cleared,
-  mainFailures: () => null,
 });
 
 const DEADLINE = 60_000;
@@ -452,67 +451,26 @@ describe("poll posts CI-RED once per red head", () => {
       calls.push({ args, opts });
       return gh(args, file);
     };
-    await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["issue view", "run list", "issue comment"]);
+    await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run });
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["issue view", "issue comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
 });
 
-describe("a red head's failures that main has too", () => {
-  const ID = "tests/e2e/x.spec.ts › some test";
-  const HAND_BACK = { action: "hand-back", reason: "CI failed at Typecheck and tests", head: SHA, runId: RED_RUN };
-  const red = (line = "1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test") =>
-    rollupFake({ views: [RED], log: `Typecheck and tests\tTest\t2026-10-12T19:07:30Z   ${line}` });
-  const bodyOf = (asked: string[][], written: string[][]) => {
-    const post = asked.find(isComment);
-    return post ? String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]) : null;
-  };
-
-  test("onMainLine names the overlap and main's run, in the branch's order", () => {
-    assert.equal(onMainLine(["b", "a"], { url: "u", ids: ["a", "b", "c"] }), "2 of 2 also fail on main (u): b, a");
-    assert.equal(onMainLine(["a", "z"], { url: "u", ids: ["a"] }), "1 of 2 also fail on main (u): a");
-    assert.equal(onMainLine(["z"], { url: "u", ids: ["a"] }), "none");
-    assert.equal(onMainLine(["a"], null), "none");
-  });
-
-  test("a failure main's latest run has too is named on CI-RED with main's run, and nothing blocks", async () => {
+describe("a red head's CI-RED is the head's alone", () => {
+  test("a red naming a test reads no run of main's and carries no on-main line", async () => {
     const written: string[][] = [];
-    const { gh, asked } = red();
-    const main = { runId: 1, url: "https://example.test/runs/1", ids: [ID] };
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
-    assert.deepEqual(out, HAND_BACK);
-    assert.match(String(bodyOf(asked, written)), /^on main: 1 of \d+ also fail on main \(https:\/\/example\.test\/runs\/1\): /m);
-  });
-
-  test("a failure the inherited run had at attempt 1 goes on its own flaky line, and on main: stays none", async () => {
-    const written: string[][] = [];
-    const { gh, asked } = red();
-    const main = { runId: 1, url: "https://example.test/runs/1/attempts/1", ids: [ID], flaky: true };
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
-    assert.deepEqual(out, HAND_BACK);
-    const body = String(bodyOf(asked, written));
-    assert.match(body, /^on main: none$/m);
-    assert.match(body, /^flaky on main: 1 of \d+ failed attempt 1 of main's rerun-won green \(https:\/\/example\.test\/runs\/1\/attempts\/1\): /m);
-  });
-
-  test("a main with nothing to give says none", async () => {
-    const written: string[][] = [];
-    const { gh, asked } = red();
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => null });
-    assert.deepEqual(out, HAND_BACK);
-    assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
-    assert.doesNotMatch(String(bodyOf(asked, written)), /flaky on main/);
-  });
-
-  test("a red with no failing test id never reads main", async () => {
-    const written: string[][] = [];
-    const { gh, asked } = red("error TS2322: Type 'string' is not assignable to type 'number'.");
-    let reads = 0;
-    const main = () => (reads++, { runId: 1, ids: [ID] });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
-    assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
-    assert.equal(reads, 0);
-    assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
+    const { gh, asked } = rollupFake({
+      views: [RED],
+      log: "Typecheck and tests\tTest\t2026-10-12T19:07:30Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test",
+    });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    assert.deepEqual(out, { action: "hand-back", reason: "CI failed at Typecheck and tests", head: SHA, runId: RED_RUN });
+    assert.ok(!asked.some((a) => a[0] === "run" && a[1] === "list"), JSON.stringify(asked));
+    const post = asked.find(isComment)!;
+    const body = String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]);
+    assert.match(body, /^- tests\/e2e\/x\.spec\.ts$/m);
+    assert.doesNotMatch(body, /on main/);
   });
 });
 
@@ -531,7 +489,7 @@ describe("ciRedBody", () => {
     const lines = body.split("\n");
     assert.equal(lines[0], `CI-RED ${SHA}`);
     assert.match(lines[1], /^run: .+ · step: Native tests$/);
-    assert.match(body, /^on main: none$/m);
+    assert.doesNotMatch(body, /on main/);
   });
 
   test("no failing file is dropped, however long the others are", () => {

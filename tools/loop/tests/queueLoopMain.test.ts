@@ -2046,7 +2046,7 @@ describe("a stop no rule names parks; a red no test names was rerun before it ca
       progress: { done: 1, total: 1, running: null, failed: "Typecheck and tests" },
     };
     const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "issue" && args[1] === "view" ? JSON.stringify({ comments: [] }) : "");
-    const settle = (p: any) => poll(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
+    const settle = (p: any) => poll(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {} });
     const r = await runOnce(
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
