@@ -177,7 +177,7 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: "Impostazioni" }).first().click();
     await expect(page.getByRole("button", { name: "Chiudi impostazioni" })).toBeVisible();
     await settled(page, 1500);
-    await sweepSizes(page, "settings");
+    await sweepSizes(page, "settings", [], [copy["settings.closeA11yLabel"]]);
     await page.getByRole("button", { name: "Chiudi impostazioni" }).click();
     await settled(page, 1500);
 
@@ -190,10 +190,16 @@ for (const size of SIZES) {
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
 
     await sweepSizes(page, "offline lobby", UNDERSIZED_BY_DESIGN);
+    await page.getByRole("button", { name: copy["lobby.start"], exact: true }).scrollIntoViewIfNeeded();
+    await settled(page, 1200);
+    await sweepSizes(page, "offline lobby, start", UNDERSIZED_BY_DESIGN, [copy["lobby.start"]]);
 
     await page.goto(`${baseURL!}/rules`);
     await settled(page, 2500);
     await sweepSizes(page, "rules");
+    await page.getByRole("button", { name: copy["rules.faq.q1"] }).scrollIntoViewIfNeeded();
+    await settled(page, 1200);
+    await sweepSizes(page, "rules, questions", [], [copy["rules.faq.q1"]]);
   });
 
   // The table forces landscape (components/GameTable.tsx), so in portrait the
@@ -274,7 +280,7 @@ for (const size of SIZES) {
     await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
     await settled(page, 2500);
     await expectNoBuriedControls(page, "room, waiting for players", 4);
-    await sweepSizes(page, "room, waiting for players");
+    await sweepSizes(page, "room, waiting for players", [], [copy["common.copy"], copy["room.share"]]);
   });
 
   test(`no control is buried on the profile and ladder — ${size.name}`, async ({ page, baseURL }) => {
@@ -303,7 +309,7 @@ for (const size of SIZES) {
     browser,
     baseURL,
   }) => {
-    test.setTimeout(3 * 60_000);
+    test.setTimeout(4 * 60_000);
     const other = await browser.newContext({ locale: "it-IT" });
     try {
       const target = uniqueUsername("tapft");
@@ -313,7 +319,8 @@ for (const size of SIZES) {
 
       await page.setViewportSize({ width: size.width, height: size.height });
       await openApp(page, baseURL!);
-      await registerNewAccount(page, uniqueUsername("tapfs"));
+      const sender = uniqueUsername("tapfs");
+      await registerNewAccount(page, sender);
       await page.getByRole("button", { name: /^Amici/ }).first().click();
       await page.waitForURL(/\/friends/);
       await settled(page, 2500);
@@ -325,8 +332,38 @@ for (const size of SIZES) {
         .getByRole("button", { name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", target) })
         .click();
       await expect(page.locator(BANNER)).toContainText(copy["friends.requestSentTitle"], { timeout: 15_000 });
+      const cancel = copy["friends.cancelRequestA11yLabel"].replace("{{username}}", target);
       await settled(page, Reading.notice / 4, BANNER);
       await sweepSizes(page, "notification banner");
+      await page.getByRole("button", { name: cancel }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(page, 1500);
+      await sweepSizes(page, "friends, request sent", [], [cancel]);
+
+      await otherPage.setViewportSize({ width: size.width, height: size.height });
+      await otherPage.getByRole("button", { name: /^Amici/ }).first().click();
+      await otherPage.waitForURL(/\/friends/);
+      const accept = copy["friends.acceptRequestA11yLabel"].replace("{{username}}", sender);
+      const decline = copy["friends.declineRequestA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: accept }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, incoming request", [], [accept, decline]);
+
+      await otherPage.getByRole("button", { name: accept }).click();
+      const remove = copy["friends.removeA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: remove }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, a friend", [], [remove]);
+
+      await openApp(page, baseURL!);
+      await goToOnlineLobby(page);
+      await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
+      await page
+        .getByRole("button", { name: copy["room.inviteA11yLabel"].replace("{{username}}", target) })
+        .click({ timeout: 15_000 });
+      const dismiss = copy["friends.dismissInviteA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: dismiss }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, a game invite", [], [dismiss]);
     } finally {
       await other.close();
     }
