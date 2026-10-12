@@ -388,6 +388,12 @@ describe("a LAND is only as good as the report behind it", () => {
     assert.match(String(past.why), /past the cap/);
   });
 
+  test("a round count nobody could take is refused, never read as zero", () => {
+    const v = pushVerdict(state({ review: { line: "REVIEW abc1234" }, reviewRounds: null }));
+    assert.equal(v.ok, false);
+    assert.match(String(v.why), /count the review rounds/);
+  });
+
   test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
     const v = pushVerdict(state({ trackerReadable: false }));
     assert.equal(v.ok, false);
@@ -568,6 +574,20 @@ describe("mergeCleared", () => {
     git(["switch", "-q", "-c", "agent/1-side", landed]);
     git(["merge", "-q", "--no-edit", side]);
     assert.equal(check(said(...cleared(landed)), git(["rev-parse", "HEAD"])), false);
+  });
+
+  const holds = (n: number) => Array.from({ length: n }, (_, i) => `VERDICT: HOLD ${"abcdef0".slice(0, 6)}${i} — round ${i + 1}`);
+
+  test("a LAND past the review cap is not cleared, though its report covers it", () => {
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS - 1), ...cleared(landed)), landed), true);
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), landed), false);
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), merged), false);
+  });
+
+  test("a CI fix round's LAND after the cap's last round is cleared", () => {
+    const fixed = (sha: string) => [`REVIEW ${sha.slice(0, 7)} fix\n\n## Blocking\n`, `VERDICT: LAND ${sha.slice(0, 7)}`];
+    const capped = [...holds(MAX_REVIEW_ROUNDS - 1), "REVIEW 1234567\n\n## Blocking\n", "VERDICT: LAND 1234567"];
+    assert.equal(check(said(...capped, "CI-RED 1234567", ...fixed(landed)), landed), true);
   });
 
   test("an unreviewed commit on a cleared head is not cleared", () => {
