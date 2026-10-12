@@ -129,6 +129,14 @@ describe("queueLoopArgs", () => {
     assert.ok(!args[at + 1].includes("\n"), "one argument, one line");
   });
 
+  test("the schema makes the session state every control field, none as a gap a stale line could fill", () => {
+    const args = queueLoopArgs(1);
+    const schema = JSON.parse(args[args.indexOf("--json-schema") + 1]);
+    for (const field of ["handoff", "stoodDown"]) assert.ok(schema.required.includes(field), field);
+    assert.ok(schema.properties.handoff.enum.includes(null), "no handoff must be sayable");
+    assert.equal(schema.properties.stoodDown.type, "boolean");
+  });
+
   test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
     const args = queueLoopArgs(1529, "size:M", "C");
     const at = args.indexOf("--setting-sources");
@@ -771,16 +779,16 @@ describe("runTicket", () => {
     assert.equal(alone.declared?.handoff, "C");
   });
 
-  test("a field the structured declaration leaves out keeps the line's value", async () => {
+  test("a stale earlier line does not survive a structured declaration", async () => {
     const line = JSON.stringify({
       type: "assistant",
-      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"C","stoodDown":true,"why":"lost the claim"}' }] },
+      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"D","stoodDown":true,"why":"lost the claim"}' }] },
     });
-    const partial = result({ structured_output: { ticket: 953, phase: "D" } });
-    const run = await runTicket(fakeSpawn([phase("C"), line, partial]), opts());
+    const finished = result({ structured_output: { ticket: 953, phase: "F", handoff: null, stoodDown: false } });
+    const run = await runTicket(fakeSpawn([phase("C"), line, finished]), opts());
     assert.deepEqual(
       [run.declared?.phase, run.declared?.handoff, run.declared?.stoodDown, run.declared?.why],
-      ["D", "C", true, "lost the claim"],
+      ["F", null, false, null],
     );
   });
 
