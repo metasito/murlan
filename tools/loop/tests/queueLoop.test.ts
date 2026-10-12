@@ -771,6 +771,19 @@ describe("runTicket", () => {
     assert.equal(alone.declared?.handoff, "C");
   });
 
+  test("a field the structured declaration leaves out keeps the line's value", async () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"C","stoodDown":true,"why":"lost the claim"}' }] },
+    });
+    const partial = result({ structured_output: { ticket: 953, phase: "D" } });
+    const run = await runTicket(fakeSpawn([phase("C"), line, partial]), opts());
+    assert.deepEqual(
+      [run.declared?.phase, run.declared?.handoff, run.declared?.stoodDown, run.declared?.why],
+      ["D", "C", true, "lost the claim"],
+    );
+  });
+
   // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and
   // pushed at minute 40 was reported refused, and its pull request was never looked for.
   test("a refusal the session recovers from does not survive to the caller", async () => {
