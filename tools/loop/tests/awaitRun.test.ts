@@ -83,6 +83,7 @@ test("with --pr, a green run whose over-budget list names a file the pull reques
   assert.match(said.join("\n"), /mancheOutcomeOnTheFelt\.test\.tsx: 32\.9s against a budget of 15s/);
   assert.equal(await awaitRuns(["1"], { view: () => done("success"), ...clock(), say: quiet, pr: 7, gh: gh("lib/x.ts") }), 0);
   assert.deepEqual(runArgs(["--pr", "7", "1", "2"]), { pr: 7, ids: ["1", "2"] });
+  assert.deepEqual(runArgs(["--pr=7", "1"]), { pr: 7, ids: ["1"] });
   assert.deepEqual(runArgs(["1"]), { pr: undefined, ids: ["1"] });
   assert.equal(runArgs(["--pr", "1"]), null);
 });

@@ -176,7 +176,7 @@ round 1, then the sha the previous round reviewed.
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
-2. **Then wait for CI** with `node tools/loop/await-run.mjs <run-id>`; the verdict needs
+2. **Then wait for CI** with `node tools/loop/await-run.mjs --pr=<pr> <run-id>`; the verdict needs
    both. A red this change caused is Blocking; one it did not may be rerun once, the verdict
    naming the test and attempt.
    ```sh

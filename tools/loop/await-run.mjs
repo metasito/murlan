@@ -37,6 +37,7 @@ function look(view, id) {
 
 /** @returns {{ pr: number | undefined, ids: string[] } | null} */
 export function runArgs(argv) {
+  argv = argv.flatMap((a) => (a.startsWith("--pr=") ? ["--pr", a.slice("--pr=".length)] : [a]));
   const at = argv.indexOf("--pr");
   const pr = at === -1 ? undefined : argv[at + 1];
   const ids = at === -1 ? argv : argv.filter((_, i) => i !== at && i !== at + 1);
