@@ -156,6 +156,22 @@ describe("the frontier's order", () => {
     assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #44");
     assert.equal(waitingOn([]), "nothing agent-takeable");
   });
+
+  test("the handoff names live asks only, the Launch milestone's first and then the newest", () => {
+    const b = classify([
+      issue(44, ["ready-for-human"]),
+      issue(60, ["ready-for-human", "deferred"]),
+      { ...issue(1107, ["ready-for-human"]), milestone: { title: LAUNCH_MILESTONE } },
+      issue(1529, ["needs-info"]),
+      issue(1536, ["ready-for-human"]),
+    ], noPrs);
+    assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #1536, #1529, #44");
+  });
+
+  test("a deferred ticket is the owner's even when it is ready-for-agent", () => {
+    const b = classify([issue(61, ["ready-for-agent", "deferred"])], noPrs);
+    assert.deepEqual([b.frontier, b.owner.map((i) => i.number)], [[], [61]]);
+  });
 });
 
 describe("a ticket stranded between CI rounds", () => {
