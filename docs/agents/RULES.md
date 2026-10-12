@@ -71,8 +71,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     `ready-for-agent` comes off at the same time.
 29. **Name a model and an effort on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
     at `medium` effort, and only a Blocking finding holds (a nit never costs a round).
-    Recon and verification: sonnet at `medium`. Mechanical: haiku, outside the loop (ADR 0010 decision 5). Give every dispatch a label.
-    A `loop-<kind>` agent (`.claude/agents/`) names both in its own file, so its dispatch names neither.
+    Recon and verification: sonnet at `medium`. Mechanical: haiku, outside the loop (ADR 0010 decision 5). Give every dispatch a label. A `loop-<kind>` agent (`.claude/agents/`) names both in its own file, so its dispatch names neither.
 
 ## Finishing
 
