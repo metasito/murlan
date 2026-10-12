@@ -264,6 +264,29 @@ describe("a cancelled run", () => {
   });
 });
 
+// `CI gate` runs under `always()` and fails whenever another job did not pass, so its own red is
+// never the failure: it would name itself, or call a cancelled run a red one.
+describe("the CI gate job", () => {
+  const gate = { name: "CI gate", conclusion: "failure", steps: 3 };
+
+  test("is never the failing job a red run names", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never, [
+      gate,
+      { name: "Lint", conclusion: "failure", steps: 5 },
+    ] as never[]);
+    assert.equal(v.failedStep, "Lint");
+  });
+
+  test("does not turn a cancelled run into a red one", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "cancelled" } as never, [
+      { name: "Native tests 1/2", conclusion: "cancelled", steps: 4 },
+      gate,
+    ] as never[]);
+    assert.equal(v.infrastructure, true);
+    assert.match(v.reason, /cancelled/);
+  });
+});
+
 // Measured: run 37665945841 hit verify's timeout-minutes; run 36503903790 lost to a newer push.
 // Both read job `cancelled`, run `cancelled`, a cancelled step; only the annotation differs.
 describe("a job stopped by its own timeout-minutes", () => {
