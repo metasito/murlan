@@ -5,6 +5,8 @@ export interface PrState {
   mergeStateStatus: string;
   mergeable: string;
   isDraft?: boolean;
+  /** `autoMergeRequest != null`: GitHub merges this head once `CI gate` passes. */
+  armed?: boolean;
 }
 
 export interface CiVerdict {
@@ -18,7 +20,7 @@ export interface CiVerdict {
 }
 
 export type Landing =
-  | { action: "merge"; reason: string }
+  | { action: "arm"; reason: string }
   | { action: "already-merged"; reason: string }
   | { action: "update-branch"; reason: string }
   | { action: "recheck"; reason: string }
@@ -33,7 +35,7 @@ export type Landing =
  * What to do with a pushed pull request, over the pull request and the CI verdict together.
  *
  * Six arms rather than four, because the caller genuinely does something different for
- * `already-merged` (skip the merge call), `update-branch` (`gh pr update-branch`) and `recheck`
+ * `already-merged` (nothing to arm), `update-branch` (`gh pr update-branch`) and `recheck`
  * (wait and ask again) — collapsing them and re-splitting downstream rebuilds the same fan-out one
  * layer lower.
  *
@@ -97,25 +99,43 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
     return { action: "update-branch", reason: "main moved; update the branch and read CI on that tree" };
   }
 
+  // The ruleset holds an armed pull request at BLOCKED until GitHub merges it.
+  if (pr.armed && pr.mergeStateStatus === "BLOCKED") {
+    return { action: "recheck", reason: "auto-merge is armed and the required check has not passed yet" };
+  }
+
   // Reaching for `--admin` is a decision, not a step.
   if (pr.mergeStateStatus === "BLOCKED" || pr.mergeStateStatus === "DIRTY") {
     return { action: "owner", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
   }
 
   if (pr.mergeStateStatus === "CLEAN" || pr.mergeStateStatus === "HAS_HOOKS") {
-    return { action: "merge", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
+    return { action: "arm", reason: `mergeStateStatus is ${pr.mergeStateStatus}` };
   }
 
-  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes queued — gh
-  // merges it on the spot either way. Reaching here means the verdict above passed the run for this
-  // head, which is the only reading under which a pending check is ignorable.
+  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes queued.
+  // Reaching here means the verdict above passed the gate for this head, which is the only reading
+  // under which a pending check is ignorable.
   if (pr.mergeStateStatus === "UNSTABLE") {
-    return { action: "merge", reason: "mergeStateStatus is UNSTABLE; ciVerdict already passed this head" };
+    return { action: "arm", reason: "mergeStateStatus is UNSTABLE; ciVerdict already passed this head" };
   }
 
   // "I have never seen this value" is not a verdict, and a verdict here is a ticket nobody can pick
   // up again: the caller's stall path leaves `in-progress` on the issue.
   return { action: "recheck", reason: `unrecognised mergeStateStatus ${pr.mergeStateStatus}` };
+}
+
+/**
+ * `--merge`, never `--squash`. `--match-head-commit` sends `expectedHeadOid`, which GitHub checks
+ * when it arms: a head that moved past the cleared commit is refused. It is not documented to be
+ * checked again at merge time, so the caller disarms before anything can push.
+ */
+export function armArgs(repo: string, prNumber: number, sha: string): string[] {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha];
+}
+
+export function disarmArgs(repo: string, prNumber: number): string[] {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--disable-auto"];
 }
 
 /**

@@ -2166,6 +2166,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
       next = readLanding(pending.pr, verdict, run);
+      if (next.action === "arm") next = { ...next, action: "merge" };
       // Written before it is handed back, because the session that fixes it is a fresh process
       // with no way to ask this one anything. Never when `output` is the reason rather than the log:
       // round one's real failure is already in that file, and this would paint over it.
