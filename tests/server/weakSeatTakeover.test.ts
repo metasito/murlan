@@ -20,6 +20,7 @@ import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { GameOverWriters } from "../../server/game/gameOver.ts";
+import type { RatedPreview } from "../../server/game/ratings.ts";
 
 const ROOM = "weak-seat-room";
 
@@ -218,7 +219,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
         saveReplay: record("saveReplay"),
         previewRatedDeltas: async () => {
           reached.push("previewRatedDeltas");
-          return new Map<string, number>();
+          return new Map<string, RatedPreview>();
         },
         // Copied here, not read from `game` after the call: the stub is handed
         // the live table by reference, and what the row must carry is what

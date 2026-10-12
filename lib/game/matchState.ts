@@ -155,6 +155,11 @@ export interface ScoreLine {
   vacated: boolean;
 }
 
+export interface RatingAfter {
+  rating: number;
+  games: number;
+}
+
 /**
  * `game:over`, as the server states it and the client reads it.
  *
@@ -179,6 +184,12 @@ export interface GameOverPayload {
    * that write lands (server/game/ratings.ts).
    */
   ratingDeltas: Record<string, number>;
+  /**
+   * Each rated seat's standing once this hand is written, keyed as
+   * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
+   * `game:over`, so `/api/ratings/me` read on it can still be the old rating.
+   */
+  ratingsAfter: Record<string, RatingAfter>;
   /**
    * Whether this hand wrote a `/api/stats/history` row — a bot-majority
    * table writes none. Wider than `ratingDeltas` being empty: a teams hand

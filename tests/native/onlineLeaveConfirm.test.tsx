@@ -86,6 +86,9 @@ jest.mock('@/context/onlineGameHooks', () => ({
     endMatchVoteState: null,
     voteRematch: jest.fn(),
     voteToEndMatch: jest.fn(),
+    ratingDeltas: {},
+    ratingsAfter: {},
+    handRecorded: true,
   }),
   useOnlineExchange: () => ({
     exchangeAnnouncing: false,

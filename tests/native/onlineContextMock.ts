@@ -8,15 +8,19 @@
 // naming them here means a seventh slice is one edit rather than one per test.
 //
 // Each slice hook destructures only its own fields, so one wide value answers
-// all seven.
+// all seven. The rating fields are filled in because the real provider never
+// leaves them undefined, and the screen indexes them by user id.
+const RATING_DEFAULTS = { ratingDeltas: {}, ratingsAfter: {}, handRecorded: true };
+
 export function onlineContextMock(value: () => unknown) {
+  const wide = () => ({ ...RATING_DEFAULTS, ...(value() as object) });
   return {
-    useOnlineGame: value,
-    useConnectionSlice: value,
-    useRoomSlice: value,
-    useTableSlice: value,
-    useTurnClockSlice: value,
-    useMatchSlice: value,
-    useExchangeSlice: value,
+    useOnlineGame: wide,
+    useConnectionSlice: wide,
+    useRoomSlice: wide,
+    useTableSlice: wide,
+    useTurnClockSlice: wide,
+    useMatchSlice: wide,
+    useExchangeSlice: wide,
   };
 }

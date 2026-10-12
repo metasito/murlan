@@ -164,6 +164,7 @@ export const gameOverSchema = z
     matchOver: z.boolean(),
     matchWinnerIds: z.array(z.string()),
     ratingDeltas: z.record(z.number()),
+    ratingsAfter: z.record(z.object({ rating: z.number(), games: z.number() })).optional(),
   })
   .passthrough();
 

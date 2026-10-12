@@ -39,7 +39,7 @@ let mockError: { text: string; seq: number } | null = null;
 let mockScoresCurrent = true;
 let mockRatingDeltas: Record<string, number> = {};
 let mockRecorded = true;
-let mockMyRating: { season: string; rating: number; games: number; provisional: boolean } | undefined;
+let mockRatingsAfter: Record<string, { rating: number; games: number }> = {};
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
@@ -91,7 +91,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
     handScoresCurrent: mockScoresCurrent,
     ratingDeltas: mockRatingDeltas,
     handRecorded: mockRecorded,
-    myRating: mockMyRating,
+    ratingsAfter: mockRatingsAfter,
     rematchVoteState: mockVotes,
     endMatchVoteState: null,
     voteRematch: mockVoteRematch,
@@ -133,7 +133,7 @@ beforeEach(() => {
   mockScoresCurrent = true;
   mockRatingDeltas = {};
   mockRecorded = true;
-  mockMyRating = undefined;
+  mockRatingsAfter = {};
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -246,7 +246,7 @@ describe('the viewer rating under the winner', () => {
 
   it('shows the signed delta, the new rating and the provisional count for a ranked partita', async () => {
     mockRatingDeltas = { alice: -8, luan: 14 };
-    mockMyRating = { season: '2026-10', rating: 1192, games: 3, provisional: true };
+    mockRatingsAfter = { alice: { rating: 1192, games: 3 }, luan: { rating: 1214, games: 9 } };
     const view = await settle(OnlineGameScreen);
     expect(screen.getByText(t('partitaBoard.ratingLabel'), HIDDEN)).toBeTruthy();
     expect(screen.getByTestId('partita-rating-delta', HIDDEN)).toHaveTextContent('−8');
@@ -257,7 +257,7 @@ describe('the viewer rating under the winner', () => {
     await view.unmount();
   });
 
-  it('shows the delta alone, signed, while the rating has not loaded', async () => {
+  it('shows the delta alone, signed, when no rating came with it', async () => {
     mockRatingDeltas = { alice: 14 };
     const view = await settle(OnlineGameScreen);
     expect(screen.getByTestId('partita-rating', HIDDEN)).toHaveTextContent('+14');

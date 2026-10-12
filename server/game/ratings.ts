@@ -11,6 +11,7 @@ import {
   START_RATING,
   type RatedSeat,
 } from "../../lib/game/rating.ts";
+import type { RatingAfter } from "../../lib/game/matchState.ts";
 
 /** How many players the public ladder shows. */
 export const LEADERBOARD_SIZE = 50;
@@ -21,6 +22,10 @@ export interface RatingView {
   games: number;
   /** True until the record is long enough to list publicly. */
   provisional: boolean;
+}
+
+export interface RatedPreview extends RatingAfter {
+  delta: number;
 }
 
 export interface LeaderboardEntry {
@@ -115,14 +120,24 @@ async function ratedSeatsOf(
  *
  * A table that earns no rating returns an empty map, which is the panel's
  * empty state rather than a row of zeroes.
+ *
+ * `rating` and `games` are what the write will leave, so a client can show the
+ * new standing without reading the ladder before that write commits.
  */
 export async function previewRatedDeltas(
   seatResults: { userId: string; placement: number }[],
   gameMode: string,
   finishedAt: Date
-): Promise<Map<string, number>> {
+): Promise<Map<string, RatedPreview>> {
   const seats = await ratedSeatsOf(seatResults, gameMode, seasonKey(finishedAt), db);
-  return seats.length < 2 ? new Map() : ratingDeltas(seats);
+  if (seats.length < 2) return new Map();
+  const deltas = ratingDeltas(seats);
+  return new Map(
+    seats.map((seat) => {
+      const delta = deltas.get(seat.userId) ?? 0;
+      return [seat.userId, { delta, rating: seat.rating + delta, games: seat.games + 1 }];
+    })
+  );
 }
 
 /**

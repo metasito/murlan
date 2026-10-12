@@ -73,7 +73,7 @@ export default function OnlineGameScreen() {
     handScoresCurrent,
     ratingDeltas,
     handRecorded,
-    myRating,
+    ratingsAfter,
     rematchVoteState,
     endMatchVoteState,
     voteRematch,
@@ -202,6 +202,7 @@ export default function OnlineGameScreen() {
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
   const mancheOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
   const myDelta = isSpectator ? undefined : ratingDeltas[myUserId];
+  const myRating = ratingsAfter[myUserId];
   // `continues` is false for a partita the server closed unscored, which is unrecorded for a
   // reason other than bots.
   const partitaRating: PartitaRating | undefined =
@@ -209,7 +210,8 @@ export default function OnlineGameScreen() {
       ? {
           delta: myDelta,
           rating: myRating?.rating,
-          provisionalLeft: myRating?.provisional ? Math.max(PROVISIONAL_GAMES - myRating.games, 0) : undefined,
+          provisionalLeft:
+            myRating && myRating.games < PROVISIONAL_GAMES ? PROVISIONAL_GAMES - myRating.games : undefined,
         }
       : !isSpectator && !handRecorded && matchState.continues
         ? { notRecorded: true }

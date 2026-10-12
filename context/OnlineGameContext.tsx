@@ -10,7 +10,7 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
@@ -30,8 +30,7 @@ import { reportError } from "@/lib/errorReporting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/game/gameEngine";
-import type { GameOverPayload, MatchVerdict } from "@/lib/game/matchState";
-import type { RatingDto } from "@/lib/wire";
+import type { GameOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
   buildExchangeAnnounce,
   useExchangeAnnouncement,
@@ -106,8 +105,8 @@ interface OnlineGameContextValue {
   ratingDeltas: Record<string, number>;
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
   handRecorded: boolean;
-  /** The signed-in player's rating, fetched once a hand rated anyone; undefined until it loads. */
-  myRating: RatingDto | undefined;
+  /** Each rated seat's standing after the hand just played, by user id; empty when it rated nobody. */
+  ratingsAfter: Record<string, RatingAfter>;
   matchState: OnlineMatchState;
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
@@ -201,7 +200,7 @@ type MatchSlice = Pick<
   | "handScoresCurrent"
   | "ratingDeltas"
   | "handRecorded"
-  | "myRating"
+  | "ratingsAfter"
   | "rematchVoteState"
   | "endMatchVoteState"
   | "voteRematch"
@@ -296,10 +295,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
   const [handRecorded, setHandRecorded] = useState(false);
-  const { data: myRating } = useQuery<RatingDto>({
-    queryKey: ["/api/ratings/me"],
-    enabled: Object.keys(ratingDeltas).length > 0,
-  });
+  const [ratingsAfter, setRatingsAfter] = useState<Record<string, RatingAfter>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
 
@@ -667,6 +663,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // beside a fresh scoreboard.
       setHandScores({});
       setRatingDeltas({});
+      setRatingsAfter({});
       setHandRecorded(false);
     };
 
@@ -683,12 +680,14 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         matchContinues,
         isDraw,
         ratingDeltas,
+        ratingsAfter,
         recorded,
       } = parsed.data as unknown as GameOverPayload;
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
+      setRatingsAfter(ratingsAfter ?? {});
       setHandRecorded(recorded);
       setHandScoresCurrent(true);
       if (scores) {
@@ -1086,13 +1085,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       handScoresCurrent,
       ratingDeltas,
       handRecorded,
-      myRating,
+      ratingsAfter,
       rematchVoteState,
       endMatchVoteState,
       voteRematch,
       voteToEndMatch,
     }),
-    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, myRating, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
+    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, ratingsAfter, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
   );
 
   const exchangeValue = useMemo(
