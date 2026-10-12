@@ -8,6 +8,7 @@ import {
   ARTEFACTS,
   errorOf,
   handoffIn,
+  holdRound,
   killedStarts,
   ledger,
   outcomeRow,
@@ -25,7 +26,14 @@ import {
   typicalMs,
   usageSplit,
   windowCost,
+  withSpawnPhase,
 } from "../loop-logs.mjs";
+
+const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
+const golden = {
+  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
+  main: JSON.parse(fixture("ledger-golden.main.json")),
+};
 
 const RESULT = {
   kind: "result",
@@ -761,19 +769,48 @@ describe("ticketWindow", () => {
       reruns: [],
       holds: 0,
       fixSpend: 0,
+      ciRounds: 0,
     });
   });
 
-  test("on 60 closed windows of the live ledger, every prefix spends what ticketTally says", () => {
-    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-windows-2026-10.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
-    assert.equal(rows.filter((r) => ["landed", "closed", "parked"].includes(r.outcome)).length, 60);
+  test("carries the tracker's CI-RED count beside the ledger's retries", () => {
+    assert.equal(ticketWindow(1, [out({ outcome: "retry" })], 2).ciRounds, 2);
+  });
+
+  test("before schema 6 a handoff is read from its prose", () => {
+    const v5 = { schema: 5, n: 1, outcome: "handoff", cost: 2, turns: 30, phases: { D: 600 }, park_reason: "phase C next — HOLD on abc" };
+    assert.deepEqual(ticketWindow(1, [v5]).lastHandoff, { phase: "C", why: "HOLD on abc" });
+    assert.equal(holdRound(v5), true);
+    assert.equal(holdRound({ ...v5, park_reason: "phase E next" }), false);
+  });
+
+  test("on every prefix of a ledger of schema 3 to 8, matches what main's ticketTally recorded", () => {
+    const rows = golden.rows.filter((r) => r.outcome !== "started" && r.schema !== 9);
+    assert.equal(rows.length, golden.main.tallies.length);
     rows.forEach((r, i) => {
-      const prefix = rows.slice(0, i + 1);
-      assert.equal(ticketWindow(r.n, prefix).spend, ticketTally(r.n, prefix).spend, `row ${i + 1}`);
+      const t = ticketWindow(r.n, rows.slice(0, i + 1));
+      assert.deepEqual([r.n, t.spend, t.retries, t.handoffs, t.lastRedHead, t.lastHandoff?.phase ?? null], golden.main.tallies[i], `row ${i + 1}`);
     });
+  });
+});
+
+describe("withSpawnPhase", () => {
+  const start = (phase: string, over: object = {}) => ({ schema: 8, n: 1, outcome: "started", phase, run_id: "r", ...over });
+  const row = (over: object) => ({ schema: 8, n: 1, run_id: "r", turns: 20, cost: 1, phases: { B: 60 }, ...over });
+
+  test("gives a process before schema 9 the phase its start row named, and drops the start rows", () => {
+    const out = withSpawnPhase([start("A"), row({ outcome: "handoff" })]);
+    assert.deepEqual(out.map((r) => [r.outcome, r.at]), [["handoff", "A"]]);
+  });
+
+  test("a supervisor row in between does not take the next process's start", () => {
+    const out = withSpawnPhase([start("D"), row({ outcome: "retry", turns: 0, phases: {} }), row({ outcome: "pushed" })]);
+    assert.deepEqual(out.map((r) => r.at), [undefined, "D"]);
+  });
+
+  test("a row with no start row of its run keeps its own phase, and schema 9 keeps its own `at`", () => {
+    const out = withSpawnPhase([start("A", { run_id: "other" }), row({ outcome: "pushed" }), { schema: 9, kind: "process", n: 1, at: "C", run_id: "other" }]);
+    assert.deepEqual(out.map((r) => r.at), [undefined, "C"]);
   });
 });
 

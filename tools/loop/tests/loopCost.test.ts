@@ -6,7 +6,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { killedLine, lastStamp, ledgerSummary, mismatchedModel, priceOf, readTicket, report, shaTable, sinceWindow, summary, turnHeadroom, wanted } from "../loop-cost.mjs";
-import { ticketTally } from "../loop-logs.mjs";
+import { handoffIn } from "../loop-logs.mjs";
+
+const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
+const golden = {
+  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
+  main: JSON.parse(fixture("ledger-golden.main.json")),
+};
 
 const at = (min: number) => new Date(Date.UTC(2026, 8, 14, 10, min)).toISOString();
 const say = (text: string, min: number, model = "claude-opus-5", parent: string | null = null) =>
@@ -325,19 +331,55 @@ describe("summary", () => {
     assert.deepEqual(s.headroom, [{ size: "size:S", most: 200, cap: 320, short: true }]);
   });
 
-  test("the live ledger's per-ticket spend equals today's ticketTally spend", () => {
-    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-windows-2026-10.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
-    const spends = rows.flatMap((r, i) =>
-      ["landed", "closed", "parked"].includes(r.outcome) ? [ticketTally(r.n, rows.slice(0, i)).spend + r.cost] : [],
-    );
-    const sorted = [...spends].sort((a, b) => a - b);
+  test("a ticket is an issue number, however many claims it took", () => {
+    const s = summary([proc({ cost: 4 }), out({ outcome: "parked" }), proc({ cost: 2 }), out({ outcome: "landed" }), proc({ n: 2, cost: 1 })]);
+    assert.deepEqual([s.tickets, s.perTicket.mean, s.perTicket.median, s.processesMedian], [2, 3.5, 6, 1]);
+  });
+
+  test("a review round is a D-spawned process, beside schema 8's own count", () => {
+    const s = summary([proc({ at: "D" }), proc({ at: "D" }), proc({ n: 2, at: "C" }), { schema: 8, n: 3, outcome: "pushed", cost: 1, turns: 9, review_rounds: 3 }]);
+    assert.equal(s.reviewRoundsMedian, 3);
+  });
+
+  test("a process spawned at A that reached review is a HOLD round by what it ran, and spawned at A", () => {
+    const rows = [
+      { schema: 8, n: 5, outcome: "started", phase: "A", run_id: "r" },
+      { schema: 8, n: 5, run_id: "r", outcome: "handoff", cost: 3, turns: 40, phases: { D: 600 }, handoff: { phase: "D" } },
+    ];
     const s = summary(rows);
-    assert.equal(s.tickets, 60);
-    assert.ok(Math.abs(s.perTicket.mean - spends.reduce((a, b) => a + b, 0) / spends.length) < 1e-9);
-    assert.equal(s.perTicket.median, sorted[Math.floor(sorted.length / 2)]);
+    assert.deepEqual([s.fixSpend, Object.keys(s.byAt)], [3, ["A"]]);
+  });
+
+  describe("on a ledger of schema 3 to 8, against what main's gauge recorded of it", () => {
+    const rows = golden.rows.filter((r) => r.schema !== 9);
+    const s = summary(rows);
+    const firstTimed = (r: { phases?: object }) => Object.keys(r.phases ?? {})[0];
+
+    test("HOLD rounds per ticket, processes per ticket, models and turn headroom are main's", () => {
+      assert.ok(Math.abs(s.holdsPerTicket - golden.main.holdsMean) < 1e-9);
+      assert.equal(s.processesMedian, golden.main.processesMedian);
+      assert.deepEqual(s.mismatched.map((r: { n: number, started: string }) => `${r.n}@${r.started}`), golden.main.mismatches);
+      assert.equal(s.unjudged, golden.main.unjudged);
+      assert.deepEqual(s.headroom, golden.main.headroom);
+    });
+
+    // Before 09-23 a review that posted LAND handed off to E; main counted that handoff as a HOLD.
+    test("fix spend is main's, less the reviews that landed", () => {
+      const fixing = new Set();
+      let landedReviews = 0;
+      for (const r of rows.filter((x) => x.outcome !== "started")) {
+        if (["landed", "closed", "parked", "reparked"].includes(r.outcome)) fixing.delete(r.n);
+        else if (r.outcome === "retry") fixing.add(r.n);
+        else if (r.outcome === "handoff" && firstTimed(r) === "D" && handoffIn(r)?.phase === "E" && !fixing.has(r.n)) landedReviews += r.cost;
+      }
+      assert.ok(landedReviews > 0);
+      assert.ok(Math.abs(s.fixSpend - (golden.main.fixCost - landedReviews)) < 1e-9);
+    });
+  });
+
+  test("a claim spanning schema 8 and 9 is one ticket, and a fix round with no flag is counted by order", () => {
+    const s = summary(golden.rows.filter((r) => r.n === 9001));
+    assert.deepEqual([s.tickets, s.spend, s.fixSpend, s.processesMedian, s.unjudged], [1, 9.75, 3, 3, 2]);
   });
 });
 
@@ -355,7 +397,7 @@ describe("report", () => {
   test("reads the ledger alone: tickets, per ticket, fix rounds, HOLD rounds and processes", () => {
     const text = report(rows);
     assert.match(text, /^loop-cost: 2 tickets, \$15\.00 spent$/m);
-    assert.match(text, /^per ticket: \$7\.50 mean, \$11\.00 median, 14 min median$/m);
+    assert.match(text, /^per ticket: \$7\.50 mean, \$11\.00 median, 14 min median, 2 review rounds median$/m);
     assert.match(text, /^fix rounds: \$2\.00 \(13%\)$/m);
     assert.match(text, /^HOLD rounds: 0\.50 per ticket$/m);
     assert.match(text, /^processes\/ticket: median 4$/m);
@@ -566,14 +608,14 @@ describe("turnHeadroom", () => {
 describe("by loop sha", () => {
   const rows = [
     { n: 1, outcome: "handoff", cost: 2, turns: 5, phases: { C: 60 }, loop_sha: "aaaaaaa111" },
-    { n: 1, outcome: "landed", cost: 1, phases: {}, loop_sha: "aaaaaaa111" },
+    { n: 1, outcome: "landed", cost: 1, turns: 0, phases: {}, loop_sha: "aaaaaaa111" },
     { n: 2, outcome: "parked", cost: 4, turns: 5, phases: { C: 60 } },
   ];
   const killed = [{ n: 3, phase: "D", started: "t", ms: 90_000, trailing: true, loop_sha: "aaaaaaa111" }];
 
   test("groups sessions, spend and outcomes per loop commit, rows before schema 6 as unknown", () => {
     const table = shaTable(rows, killed);
-    assert.match(table, /^aaaaaaa\s+2\s+3\.00\s+1\s+0\s+1$/m);
+    assert.match(table, /^aaaaaaa\s+1\s+3\.00\s+1\s+0\s+1$/m, "a settle row ran no session");
     assert.match(table, /^unknown\s+1\s+4\.00\s+0\s+1\s+0$/m);
   });
 
