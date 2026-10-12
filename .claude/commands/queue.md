@@ -176,11 +176,12 @@ round 1, then the sha the previous round reviewed.
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
-2. **Then wait for CI on HEAD** with `node tools/loop/await-run.mjs <run-id>`; the verdict needs
+2. **Then wait for CI** with `node tools/loop/await-run.mjs <run-id>`; the verdict needs
    both. A red this change caused is Blocking; one it did not may be rerun once, the verdict
    naming the test and attempt.
    ```sh
    gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
+   gh run view <databaseId> --log-failed | tail -40
    ```
 3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
    in a fix round, which the cap does not count):
