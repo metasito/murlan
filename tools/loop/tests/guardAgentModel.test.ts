@@ -1,8 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { brief } from "../brief.mjs";
+import { brief, KINDS, MODEL_BY_KIND } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-agent-model.mjs", import.meta.url));
 
@@ -108,6 +109,44 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
   test("a subagent's own dispatch and a session outside the loop are not judged", () => {
     assert.equal(run(agent("Spec review", "free text", { agent_id: "a1" })), "");
     assert.equal(run(agent("Spec review", "free text"), false), "");
+  });
+});
+
+describe("a named loop agent carries its own model and effort", () => {
+  const named = (subagent_type: string, prompt: string, extra: object = {}) =>
+    ({ tool_name: "Agent", tool_input: { subagent_type, description: "Review #42 round 1", prompt, ...extra } });
+  const review = brief("review", { n: 42, worktree: WT }) + "\nDefinition-of-done boxes ticked n/a: none\n";
+
+  test("its brief, with no per-call model or effort, is allowed", () => {
+    assert.equal(run(named("loop-review", review)), "");
+    assert.equal(run(named("loop-scope", brief("scope", { n: 42, worktree: WT }))), "");
+  });
+
+  test("a per-call model or effort is an override, and is denied", () => {
+    for (const extra of [{ model: "haiku" }, { effort: "low" }, { model: "opus", effort: "medium" }]) {
+      assert.match(run(named("loop-review", review, extra)), /override/, JSON.stringify(extra));
+    }
+  });
+
+  test("it runs only its own kind's brief, verbatim", () => {
+    assert.match(run(named("loop-review", "Review the diff")), /loop-review.*review brief/);
+    assert.match(run(named("loop-scope", review)), /loop-scope.*scope brief/);
+    assert.match(run(named("loop-review", review.replace("every caller", "some callers"))), /brief was edited/);
+  });
+
+  test("a loop agent that does not exist is denied, naming the ones that do", () => {
+    assert.match(run(named("loop-builder", review)), /no loop agent `loop-builder`.*loop-review/);
+  });
+
+  test("each kind's agent file names the model rule 29 gives that kind, at medium effort", () => {
+    for (const kind of KINDS) {
+      const file = fileURLToPath(new URL(`../../../.claude/agents/loop-${kind}.md`, import.meta.url));
+      const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(file, "utf8"))?.[1] ?? "";
+      const field = (k: string) => new RegExp(`^${k}:\\s*(.+)$`, "m").exec(head)?.[1].trim();
+      assert.equal(field("name"), `loop-${kind}`, file);
+      assert.equal(field("model"), MODEL_BY_KIND[kind as keyof typeof MODEL_BY_KIND], file);
+      assert.equal(field("effort"), "medium", file);
+    }
   });
 });
 
