@@ -1556,6 +1556,24 @@ describe("the run recap", () => {
     await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
     assert.match(text, /turn cap under 2× the busiest process: size:S busiest 300/);
   });
+
+  test("names a red nightly parity run, read once per pass", async () => {
+    let text = "";
+    let passes = 0;
+    let reads = 0;
+    const book = {
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
+      record: () => {},
+      close: (_id: string, _line: string, t: string) => void (text = t),
+    };
+    const parity = () => (reads++, { number: 1544, since: "2026-10-12T11:40:08Z" });
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0, parity };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+    assert.match(text, /parity nightly red since 2026-10-12 \(#1544\)/);
+    assert.equal(reads, passes);
+  });
 });
 
 describe("a handoff", () => {

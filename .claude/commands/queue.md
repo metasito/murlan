@@ -107,9 +107,9 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    gh run list --branch agent/<n>-<slug> --limit 1 --json databaseId --jq '.[0].databaseId' \
      | xargs -I{} gh run view {} --log-failed
    ```
-3. The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
-   They are not this diff's: fix their root cause here in a commit of its own, naming main's run
-   in `FIX-NOTES`. `none` means every failure is this diff's.
+3. `CI-RED`'s `on main:` failures also fail on main's latest run: fix their root cause here in a
+   commit of its own, naming that run in `FIX-NOTES`.
+   `flaky on main:` failures are neither this diff's nor this round's. Any other failure is this diff's.
 4. Fix what CI named, then run `npm run agent:check`.
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short

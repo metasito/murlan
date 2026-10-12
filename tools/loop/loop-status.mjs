@@ -12,7 +12,8 @@
  * session down, and queue.md reads silence as "pick a ticket".
  */
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { derive } from "./loop-derive.mjs";
+import { derive, parityRed } from "./loop-derive.mjs";
+import { parityLine } from "./loop-render.mjs";
 
 const unknown = (why) => `loop-status could not determine the run: ${why}; do not pick a ticket until resolved`;
 
@@ -80,26 +81,36 @@ export function report(s, reason = process.env.LOOP_REASON) {
  */
 export const silentAt = (argv, env) => argv.includes("--startup") && Boolean(env.LOOP_TURNS);
 
-/** An owner's session shares the checkout with a run it does not own: it is told, never ordered. */
-export function inform(s, at = new Date()) {
-  const lead = `loop-status, derived ${at.toISOString()}, for information:`;
-  if (s.onTicket) {
-    const where = s.phase === "?" ? `stuck (${s.why})` : `at phase ${s.phase}`;
-    return `${lead} loop run #${s.ticket} is ${where} on \`${s.branch}\`, in ${s.cwd}.`;
-  }
-  if (s.phase === "?") return `${lead} the loop's run could not be determined (${s.why}).`;
-  return s.ambiguous ? `${lead} more than one agent/* worktree is live (${s.why}).` : "";
+/**
+ * An owner's session shares the checkout with a run it does not own: it is told, never ordered.
+ *
+ * @param {{number: number, since: string}|null} [parity] `parityRed()`'s answer
+ */
+export function inform(s, at = new Date(), parity = null) {
+  const where = s.phase === "?" ? `stuck (${s.why})` : `at phase ${s.phase}`;
+  const run = s.onTicket
+    ? `loop run #${s.ticket} is ${where} on \`${s.branch}\`, in ${s.cwd}`
+    : s.phase === "?"
+      ? `the loop's run could not be determined (${s.why})`
+      : s.ambiguous
+        ? `more than one agent/* worktree is live (${s.why})`
+        : "";
+  const said = [run, parity ? parityLine(parity) : ""].filter(Boolean);
+  return said.length ? `loop-status, derived ${at.toISOString()}, for information: ${said.join("; ")}.` : "";
 }
 
-export const statusFor = (s, env, at = new Date()) => (env.LOOP_TURNS ? report(s, env.LOOP_REASON) : inform(s, at));
+/** @param {{number: number, since: string}|null} [parity] */
+export const statusFor = (s, env, at = new Date(), parity = null) =>
+  env.LOOP_TURNS ? report(s, env.LOOP_REASON) : inform(s, at, parity);
 
 if (isInvokedDirectly(process.argv[1], import.meta.url) && !silentAt(process.argv, process.env)) {
   const at = new Date();
+  const parity = process.env.LOOP_TURNS ? null : parityRed();
   try {
-    const out = statusFor(derive({ ci: true }), process.env, at);
+    const out = statusFor(derive({ ci: true }), process.env, at, parity);
     if (out) console.log(out);
   } catch (err) {
     const why = String(err?.message ?? err).split("\n")[0];
-    console.log(process.env.LOOP_TURNS ? unknown(why) : inform({ onTicket: false, phase: "?", why }, at));
+    console.log(process.env.LOOP_TURNS ? unknown(why) : inform({ onTicket: false, phase: "?", why }, at, parity));
   }
 }

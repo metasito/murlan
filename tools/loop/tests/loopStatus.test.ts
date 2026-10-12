@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { report, silentAt, statusFor } from "../loop-status.mjs";
+import { parityRed } from "../loop-derive.mjs";
 
 const live = {
   onTicket: true,
@@ -60,6 +61,42 @@ test("an interactive clear, compact or resume is told in one line, when it was d
   }
   assert.match(statusFor(live, {}, at), /#42 is at phase C on `agent\/42-x`, in \.worktrees\/agent-42/);
   assert.equal(statusFor({ onTicket: false, phase: "C" }, {}, at), "");
+});
+
+const parity = { number: 1544, since: "2026-10-12T11:40:08Z" };
+const PARITY = "parity nightly red since 2026-10-12 (#1544)";
+
+test("an owner's session is told the nightly parity run is red, on the same one line", () => {
+  for (const s of [{ onTicket: false, phase: "C" }, live]) {
+    const out = statusFor(s, {}, at, parity);
+    assert.equal(out.split("\n").length, 1, out);
+    assert.ok(out.includes(PARITY), out);
+    assert.doesNotMatch(out, IMPERATIVE);
+  }
+  assert.match(statusFor(live, {}, at, parity), /#42 is at phase C/);
+  assert.equal(statusFor({ onTicket: false, phase: "C" }, {}, at, null), "");
+  assert.ok(!statusFor(live, { LOOP_TURNS: "60" }, at, parity).includes("parity"), "a loop child is not the owner");
+});
+
+test("parityRed asks once for open parity issues and names the oldest; none or an unreadable tracker is null", () => {
+  const asked: string[][] = [];
+  const read = (args: string[]) => {
+    asked.push(args);
+    return JSON.stringify([
+      { number: 1600, createdAt: "2026-10-20T00:00:00Z" },
+      { number: 1544, createdAt: "2026-10-12T11:40:08Z" },
+    ]);
+  };
+  assert.deepEqual(parityRed(read), parity);
+  assert.equal(asked.length, 1);
+  assert.deepEqual(asked[0].slice(0, 2), ["issue", "list"]);
+  assert.equal(asked[0][asked[0].indexOf("--label") + 1], "parity");
+  assert.equal(asked[0][asked[0].indexOf("--state") + 1], "open");
+  assert.equal(parityRed(() => "[]"), null);
+  const offline = () => {
+    throw new Error("gh: could not connect");
+  };
+  assert.equal(parityRed(offline), null);
 });
 
 test("a loop child is still given the imperative", () => {
