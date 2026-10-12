@@ -1754,6 +1754,7 @@ export function runTicket(
           strayPlugin: state.strayPlugin,
           accountError: state.accountError,
           apiErrorCode: state.apiErrorCode,
+          started: new Date(startedAt).toISOString(),
           ms: Date.now() - startedAt,
           asleepMs: state.asleepMs,
           lastFact: state.lastFact,
@@ -2795,8 +2796,10 @@ function realIo(book, screen) {
           // Named for what the loop knows: whether it merged, not a CI verdict it never read.
           merged,
           reviewRounds: facts.reviewRounds,
-          startedAt: new Date(Date.now() - run.ms).toISOString(),
+          // A session's own start: a park recorded hours after its session ended is not `now - ms`.
+          startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
           ms: run.ms,
+          asleepMs: run.asleepMs ?? null,
           version: run.version,
           usage: run.usage ?? null,
           committed: run.committed ?? null,
@@ -2844,6 +2847,7 @@ export async function main({
   io = null,
   install = trapSignals,
   runId = RUN_ID,
+  tick = 30_000,
 } = {}) {
   let failures = 0;
   let waits = 0;
@@ -2875,9 +2879,23 @@ export async function main({
     }
   };
   const sofar = (kind) => spent[kind] + (since[kind] == null ? 0 : Date.now() - since[kind]);
+  // Whatever the run was doing when the machine slept, the sleep comes out of that bucket.
+  let asleepMs = 0;
+  let tickAt = startedAt;
+  const sleepWatch = setInterval(() => {
+    const now = Date.now();
+    const slept = suspended(tickAt, now, tick);
+    tickAt = now;
+    asleepMs += slept;
+    for (const kind of Object.keys(since)) if (since[kind] != null) since[kind] = Math.min(now, since[kind] + slept);
+  }, tick);
+  sleepWatch.unref();
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
-    runRecap({ startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), utc }, t);
+    runRecap(
+      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, utc },
+      t,
+    );
   screen.board?.({ recap: recapOf });
 
   /**
@@ -2902,6 +2920,7 @@ export async function main({
 
   /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
   const finish = (code, why) => {
+    clearInterval(sleepWatch);
     const total = runTotal(book.totals);
     const t = screen.theme ?? PLAIN();
     if (why) {

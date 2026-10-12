@@ -1490,7 +1490,7 @@ describe("the run recap", () => {
     };
     const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
     await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t", tick: TICK } as never);
-    assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00 · asleep 2:00:00/);
+    assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00\n.*asleep 2:00:00/);
   });
 });
 
