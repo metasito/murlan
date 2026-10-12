@@ -19,7 +19,17 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedPosted, ciRedRounds, derive, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
+import {
+  ciRedPosted,
+  ciRedRounds,
+  derive,
+  REPO,
+  reviewRounds,
+  STOOD_DOWN,
+  totalReviewRounds,
+  trustedComments,
+  WORKTREE_DIR,
+} from "./loop-derive.mjs";
 import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
@@ -649,7 +659,7 @@ export function reasonFor(run, after, ticket) {
   const hard = (why) => ({ why, hard: true });
   const soft = (why) => ({ why, hard: false });
 
-  if (said?.stoodDown) return hard(said.why ?? "the session stood down");
+  if (said?.stoodDown) return hard(said.why ? `${STOOD_DOWN}: ${said.why}` : STOOD_DOWN);
   if (after?.ticket && after.ticket !== ticket) return hard(`the session worked #${after.ticket}, not #${ticket}`);
   // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
   // said — the result event for that session still reads subtype "success".
@@ -1430,12 +1440,13 @@ export function ticketFacts(number, exec = execFileSync) {
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
+      totalReviewRounds: totalReviewRounds(trustedComments(issue.comments ?? [])),
       ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
+    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, totalReviewRounds: null, ciRounds: 0 };
   }
 }
 
@@ -2850,6 +2861,7 @@ function realIo(book, screen) {
           // Named for what the loop knows: whether it merged, not a CI verdict it never read.
           merged,
           reviewRounds: facts.reviewRounds,
+          totalReviewRounds: facts.totalReviewRounds,
           // A session's own start: a park recorded hours after its session ended is not `now - ms`.
           startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
           ms: run.ms,

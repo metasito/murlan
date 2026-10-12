@@ -152,7 +152,7 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 7);
+    assert.equal(r.schema, 8);
   });
 
   test("carries the time the session's machine was asleep, null when none was measured", () => {

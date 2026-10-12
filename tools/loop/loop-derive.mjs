@@ -285,27 +285,47 @@ export function dodCheckFor(comments, head, resolves) {
   return null;
 }
 
+/** `reasonFor`'s reason for a stand-down, which its park comment carries as `- reason:`. */
+export const STOOD_DOWN = "the session stood down";
+
+const STOOD_DOWN_PARK_RE = new RegExp(`^Parked by the queue loop\\b[\\s\\S]*^- reason: ${STOOD_DOWN}\\b`, "m");
+
+/**
+ * The cap's count starts at the first claim after a stand-down park, which is the owner sending
+ * the ticket back; a claim after a crash, a stall or a stranded pull request inherits the rounds.
+ */
+function countedVerdicts(comments) {
+  const bodies = comments.map((c) => fenceStripped(c.body));
+  let since = 0;
+  let stood = false;
+  bodies.forEach((b, i) => {
+    if (STOOD_DOWN_PARK_RE.test(b)) stood = true;
+    else if (stood && CLAIM_RE.test(b)) [since, stood] = [i, false];
+  });
+  const firstRed = bodies.findIndex((b, i) => i >= since && CI_RED_RE.test(b.trimStart()));
+  return bodies.slice(since).flatMap((body) => {
+    const v = VERDICT_RE.exec(body);
+    if (!v) return [];
+    const fix = bodies.some((b, i) => {
+      const m = REVIEW_FIX_RE.exec(b);
+      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
+    });
+    return [{ decision: v[1], fix }];
+  });
+}
+
 /**
  * One review round per comment carrying a real verdict — not scoped to a head, since a round
  * spent on an earlier commit was still spent. `derive()` returns this alongside `verdictFor`'s
  * answer so `loop-gate.mjs` need not read the tracker twice.
  */
 export function reviewRounds(comments) {
-  const bodies = comments.map((c) => fenceStripped(c.body));
-  const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
-  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
-  let rounds = 0;
-  for (const [at, body] of bodies.entries()) {
-    if (at < claimed) continue;
-    const v = VERDICT_RE.exec(body);
-    if (!v) continue;
-    const fix = bodies.some((b, i) => {
-      const m = REVIEW_FIX_RE.exec(b);
-      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
-    });
-    if (!fix) rounds += 1;
-  }
-  return rounds;
+  return countedVerdicts(comments).filter((v) => !v.fix).length;
+}
+
+/** Every verdict on the thread, across claims and fix rounds: the ledger's measure, never the cap's. */
+export function totalReviewRounds(comments) {
+  return comments.filter((c) => VERDICT_RE.test(fenceStripped(c.body))).length;
 }
 
 /**
