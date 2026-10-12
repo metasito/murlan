@@ -897,6 +897,7 @@ jobs:
           # non-fast-forward. Re-derive against the new tip rather than rebase
           # — both sides rewrote the whole file.
           for attempt in 1 2 3; do
+            node tools/ci/clamp-timings.mjs
             if git diff --quiet -- tests/e2e/timings.json; then
               echo "tests/e2e/timings.json already matches this run's measurements."
               exit 0

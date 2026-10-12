@@ -24,9 +24,7 @@ test("a faster spec and a spec with no committed time take the measurement", () 
 test("the weekly commit clamps against the committed file, and again after re-deriving on a moved main", () => {
   const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
   const step = /- name: Commit the regenerated timings[\s\S]*?\n\n/.exec(ci)?.[0] ?? "";
-  const clamp = /node tools\/ci\/clamp-timings\.mjs\n/g;
-  assert.match(step, /node tools\/ci\/clamp-timings\.mjs\n\s+if git diff --quiet/);
-  assert.match(step, /node tools\/ci\/e2e-timings\.mjs merged-report\.json\n\s+node tools\/ci\/clamp-timings\.mjs\n\s+done/);
-  assert.equal(step.match(clamp)?.length, 2);
-  assert.equal(ci.match(clamp)?.length, 2, "only the weekly commit clamps; the e2e-timings artefact keeps the measurements");
+  assert.match(step, /for attempt in [^\n]*; do\n\s+node tools\/ci\/clamp-timings\.mjs\n\s+if git diff --quiet/);
+  assert.match(step, /git reset --hard [^\n]*\n\s+node tools\/ci\/e2e-timings\.mjs merged-report\.json\n\s+done/);
+  assert.equal(ci.match(/clamp-timings\.mjs/g)?.length, 1, "only the weekly commit clamps; the e2e-timings artefact keeps the measurements");
 });
