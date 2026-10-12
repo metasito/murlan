@@ -8,6 +8,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
+import { readLine } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import {
   parseRoute,
@@ -116,6 +117,16 @@ describe("queueLoopArgs", () => {
   test("the spawn carries the ticket number", () => {
     const args = queueLoopArgs(956);
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
+  });
+
+  test("a session declares through a schema with exactly the LOOP-RESULT line's fields", () => {
+    const args = queueLoopArgs(1);
+    const at = args.indexOf("--json-schema");
+    assert.notEqual(at, -1);
+    const schema = JSON.parse(args[at + 1]);
+    const line = readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":1}' }] } }));
+    assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys((line as any).declared).sort());
+    assert.ok(!args[at + 1].includes("\n"), "one argument, one line");
   });
 
   test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
@@ -742,6 +753,19 @@ describe("runTicket", () => {
     const run = await runTicket(fakeSpawn([phase("F"), declare, RESULT]), opts());
     assert.equal(run.declared?.pr, 1204);
     assert.equal(run.declared?.branch, "agent/953-x");
+  });
+
+  test("a structured declaration on the result reaches the caller, and outranks the line before it", async () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"D"}' }] },
+    });
+    const structured = result({ structured_output: { ticket: 953, phase: "C", handoff: "C", why: "two tests left" } });
+    const run = await runTicket(fakeSpawn([phase("C"), line, structured]), opts());
+    assert.equal(run.declared?.handoff, "C");
+    assert.equal(run.declared?.why, "two tests left");
+    const alone = await runTicket(fakeSpawn([phase("C"), structured]), opts());
+    assert.equal(alone.declared?.handoff, "C");
   });
 
   // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and

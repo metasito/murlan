@@ -156,6 +156,7 @@ describe("readLine", () => {
       models: { "claude-opus-5": { costUSD: 1.6 }, "claude-sonnet-5": { costUSD: 0.22 } },
       subagents: { spawned: 3, failed: 0 },
       cache: { created: 26069, read: 15320 },
+      declared: null,
     });
   });
 
@@ -391,6 +392,19 @@ describe("the session's closing declaration", () => {
 
   test("a handoff that is not a phase letter is dropped", () => {
     assert.equal(said('LOOP-RESULT {"ticket":7,"handoff":"done"}').declared.handoff, null);
+  });
+
+  const ended = (structured_output: unknown) =>
+    readLine(JSON.stringify({ type: "result", subtype: "success", total_cost_usd: 1, num_turns: 3, structured_output })) as any;
+
+  test("a result's structured_output is the same declaration the line makes", () => {
+    const line = said('LOOP-RESULT {"ticket":7,"branch":"agent/7-x","phase":"C","handoff":"D","why":"built"}').declared;
+    assert.deepEqual(ended({ ticket: 7, branch: "agent/7-x", phase: "C", handoff: "D", why: "built" }).declared, line);
+    assert.equal(ended({ ticket: 7, handoff: "done" }).declared.handoff, null);
+  });
+
+  test("a result without an object for structured_output declares nothing", () => {
+    for (const out of [undefined, null, "LOOP-RESULT {}", 7, []]) assert.equal(ended(out).declared, null, JSON.stringify(out));
   });
 });
 
