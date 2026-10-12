@@ -294,6 +294,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     // Print mode refuses stream-json without it: "Error: When using --print,
     // --output-format=stream-json requires --verbose".
     "--verbose",
+    "--include-hook-events",
     // Without it a fresh process reuses ~8k of a ~33k prefix even from an identical twin (2.1.274).
     // With it the twin reuses all of it — once the git status is gone too (the env below) and the
     // startup hook says nothing (loop-status.mjs), since both land ahead of the static rest.
@@ -1655,6 +1656,14 @@ export function runTicket(
       // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
       // and each of its writes moves the cached prefix.
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+      CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
+      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+      CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
+      CLAUDE_CODE_DISABLE_CRON: "1",
+      CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+      CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
+      // Every brief says "Do not spawn any subagent"; this is what holds it.
+      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
