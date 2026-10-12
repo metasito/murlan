@@ -78,7 +78,7 @@ import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
@@ -2945,7 +2945,18 @@ export async function main({
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
     runRecap(
-      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, launch, utc },
+      {
+        startedAt,
+        now: Date.now(),
+        totals: book.totals,
+        tickets: book.tickets,
+        ciMs: sofar("ci"),
+        waitMs: sofar("wait"),
+        asleepMs,
+        launch,
+        utc,
+        headroom: turnHeadroom(book.rows ?? []),
+      },
       t,
     );
   screen.board?.({ recap: recapOf });

@@ -11,6 +11,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { readLine, scopeEnds } from "./loop-stream.mjs";
 import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
+import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const REVIEW = /\b(spec|standards) review\b/i;
@@ -39,12 +40,12 @@ export const CONTEXT_BY_SIZE = { "size:M": 300_000, "size:L": 330_000, "size:XL"
 export const CONTEXT_DEFAULT = 200_000;
 
 /**
- * Each cap stays above twice the busiest healthy process of its size; `loop-cost` prints any size
- * where it does not. A raised context ceiling raises its cap with it, so that one is met first.
+ * Each cap stays above twice the busiest healthy process of its size; `loop-cost` and the run recap
+ * print any size where it does not. A raised context ceiling raises its cap with it, so that one is met first.
  */
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
-  "size:S": 160,
+  "size:S": 320,
   "size:M": 505,
   "size:L": 560,
   "size:XL": 600,
@@ -305,7 +306,7 @@ export function ledgerSummary(rows) {
  * 27% of a table whose job is to say which phase to attack. They are dropped and counted, because
  * the gate this feeds compares a before against an after and only marked runs are in both.
  */
-export function report(tickets, ledgerRows = []) {
+export function report(tickets, ledgerRows = [], caps = TURNS_BY_SIZE) {
   const priceable = tickets.filter((t) => t.usd > 0);
   const done = priceable.filter((t) => t.marked);
   const skipped = priceable.length - done.length;
@@ -361,9 +362,7 @@ export function report(tickets, ledgerRows = []) {
             ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
             : []),
           ...(ledger.unjudged ? [`model unjudged: ${ledger.unjudged} rows predate the reading`] : []),
-          ...turnHeadroom(ledgerRows)
-            .filter((h) => h.short)
-            .map((h) => `turn cap under 2× the busiest process: ${h.size} busiest ${h.most}, cap ${h.cap}`),
+          ...turnHeadroom(ledgerRows, caps).filter((h) => h.short).map(shortOfTurns),
         ]
       : []),
   ].join("\n");
