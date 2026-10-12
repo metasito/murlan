@@ -211,12 +211,15 @@ describe("settle, replayed against recorded gh payloads", () => {
 describe("settle across a standby", () => {
   const MIN = 60_000;
   /** The real verdict, with the clock jumping `by` during the pause after the first read. */
-  const sleeper = (t: any, gh: (args: string[]) => string, by: number, fails: number[] = []) => {
+  /** `execFileSync`'s shape: the first line names the command, `stderr` says what went wrong. */
+  const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh pr view 1053\n${stderr}`), { stderr });
+  const OFFLINE = "error connecting to api.github.com";
+  const sleeper = (t: any, gh: (args: string[]) => string, by: number, fails: number[] = [], stderr = OFFLINE) => {
     let reads = 0;
     return (repo: string, branch: string, pr: number) => {
       reads += 1;
       if (reads === 1) setTimeout(() => t.mock.timers.setTime(Date.now() + by), 10);
-      if (fails.includes(reads)) throw new Error("gh: error connecting to api.github.com");
+      if (fails.includes(reads)) throw ghFailed(stderr);
       return readVerdict(repo, branch, pr, Date.now() + MIN, (args) => gh(args));
     };
   };
@@ -235,6 +238,15 @@ describe("settle across a standby", () => {
     const { gh } = green();
     const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), verdictOf: sleeper(t, gh, 10 * MIN, [2]) });
     assert.equal(out.action, "merge", String(out.reason));
+  });
+
+  test("after a wake, a read refused for any reason but the network still goes to the owner", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const { gh } = green();
+    const refused = sleeper(t, gh, 10 * MIN, [2], "HTTP 401: Bad credentials (https://api.github.com/graphql)");
+    const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), verdictOf: refused });
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /^could not read CI/);
   });
 });
 

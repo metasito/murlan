@@ -123,6 +123,26 @@ describe("diagnose", () => {
     assert.equal(turns.apiDown, undefined);
   });
 
+  test("an error no wait cures is a plain failure, not a hold", async () => {
+    const run = (over: object) => diagnose(stop, { spawnFn: () => child(reply("", { is_error: true, subtype: "success", ...over })), state: () => "" });
+    for (const over of [
+      { result: "Prompt is too long" },
+      { result: "Credit balance is too low" },
+      { result: "API Error: 401 Invalid authentication credentials", terminal_reason: "api_error", api_error_status: 401 },
+      { result: "API Error: 400 invalid_request_error", terminal_reason: "api_error" },
+    ]) {
+      const d: any = await run(over);
+      assert.deepEqual([d.ok, d.apiDown], [false, undefined], JSON.stringify(over));
+    }
+    for (const over of [
+      { result: "API Error: 529 Overloaded", terminal_reason: "api_error", api_error_status: 529 },
+      { result: "API Error: 429 rate_limit_error", api_error_status: 429 },
+    ]) {
+      const d: any = await run(over);
+      assert.equal(d.apiDown, true, JSON.stringify(over));
+    }
+  });
+
   const realTimeout = globalThis.setTimeout;
   const HOURS_2 = 2 * 3_600_000;
   const silent = () => {
