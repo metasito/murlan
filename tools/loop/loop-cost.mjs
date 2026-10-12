@@ -32,9 +32,9 @@ export const MODEL_BY_PHASE = { A: "opus", B: "opus", C: "opus", D: "opus", E: "
 export const EFFORT_BY_PHASE = { A: "medium", B: "medium", C: "high", D: "high", E: "medium", F: "medium" };
 
 /**
- * Each size's `CLAUDE_CODE_AUTO_COMPACT_WINDOW`. A handoff costs the next process 5-14 min
- * re-reading what this one knew; a larger ceiling costs every later turn its extra context. Sized
- * from each size's measured need.
+ * Each size's `CLAUDE_CODE_AUTO_COMPACT_WINDOW`; a compaction fires about 33k below it. A handoff
+ * costs the next process 5-14 min re-reading what this one knew; a larger ceiling costs every later
+ * turn its extra context. Sized from each size's measured need.
  */
 export const CONTEXT_BY_SIZE = { "size:M": 300_000, "size:L": 330_000, "size:XL": 330_000 };
 export const CONTEXT_DEFAULT = 200_000;
