@@ -600,12 +600,14 @@ describe("an MSYS drive path is the Windows path it names", () => {
 });
 
 describe("loop sessions only", () => {
-  for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts", "git worktree add -b side/x ../murlan-side-1 origin/main"]) {
+  for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts"]) {
     test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, repo,true), null));
     test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, repo,false), null));
   }
-  test("queue.md's rebuild of the ticket's own worktree is allowed", () => {
-    assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, repo,true), null);
+  test("a worktree added anywhere is git's own business, in the loop as outside it", () => {
+    for (const cmd of ["git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", "git worktree add -b side/x ../murlan-side-1 origin/main", "git worktree add ../x"]) {
+      assert.equal(check(cmd, () => null, repo, true), null, cmd);
+    }
   });
   test("gh run watch is refused in the loop and names the helper", () => {
     assert.match(String(check("gh run watch 123 --exit-status", () => null, repo, true)), /await-run\.mjs/);
