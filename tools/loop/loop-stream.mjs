@@ -8,8 +8,59 @@
 // The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
 // same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
-/** The same report as a statement of its own in a main-session command: `echo "PHASE C" && …`. */
-export const ECHOED = /^[ \t]*(?:cd[ \t]+[^&;\r\n]*&&[ \t]*)?echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/;
+const ECHO = /^[ \t]*echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/;
+const HEREDOC = /^<<(-?)[ \t]*(["']?)([\w.-]+)\2/;
+
+/**
+ * The same report as a statement of its own in a main-session command — at its head or after a
+ * `&&`, `;` or newline, never inside a quoted string or a heredoc's body, which is text the command
+ * writes rather than runs.
+ * @param {string} command
+ */
+export function echoedPhase(command) {
+  let quote = "";
+  let start = true;
+  const heredocs = [];
+  for (let i = 0; i < command.length; i++) {
+    if (start && !quote) {
+      const m = ECHO.exec(command.slice(i));
+      if (m) return m[2];
+      start = false;
+    }
+    const c = command[i];
+    if (quote) {
+      if (c === "\\" && quote === '"') i++;
+      else if (c === quote) quote = "";
+    } else if (c === "\\") i++;
+    else if (c === '"' || c === "'") quote = c;
+    else if (command.startsWith("<<<", i)) i += 2;
+    else if (c === "<" && HEREDOC.test(command.slice(i))) {
+      const m = HEREDOC.exec(command.slice(i));
+      heredocs.push({ word: m[3], tabs: m[1] === "-" });
+      i += m[0].length - 1;
+    } else if (c === ";" || c === "\n" || (c === "&" && command[i + 1] === "&")) {
+      if (c === "&") i++;
+      if (c === "\n") i = bodiesEnd(command, i + 1, heredocs.splice(0)) - 1;
+      start = true;
+    }
+  }
+  return null;
+}
+
+/** Where the bodies of the heredocs a line opened end, each at its delimiter's own line. */
+function bodiesEnd(command, from, heredocs) {
+  let at = from;
+  for (const { word, tabs } of heredocs) {
+    while (at < command.length) {
+      const nl = command.indexOf("\n", at);
+      const end = nl < 0 ? command.length : nl;
+      const line = command.slice(at, end).replace(/\r$/, "");
+      at = end + 1;
+      if ((tabs ? line.replace(/^\t+/, "") : line) === word) break;
+    }
+  }
+  return Math.min(at, command.length);
+}
 
 /**
  * What the session says it did, once, before it exits — the one channel that is a statement rather
@@ -166,8 +217,11 @@ export function readLine(line) {
         input: b.input ?? {},
         parent: e.parent_tool_use_id ?? null,
       }));
-    const echoed = calls.find((c) => c.parent === null && (c.name === "Bash" || c.name === "PowerShell") && ECHOED.test(c.command));
-    const letter = phase?.[1] ?? (echoed ? ECHOED.exec(echoed.command)[2] : null);
+    const echoed = calls
+      .filter((c) => c.parent === null && (c.name === "Bash" || c.name === "PowerShell"))
+      .map((c) => echoedPhase(c.command))
+      .find(Boolean);
+    const letter = phase?.[1] ?? echoed ?? null;
     const declared = declaredIn(text);
     if (!letter && !declared && !calls.length) return null;
     // The prose around the marker, which the board shows as the session's own account of what it is
