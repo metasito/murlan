@@ -6,10 +6,11 @@
 // would still read fine as text, so this drives the actual timer instead.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { GameTable } from '@/components/GameTable';
+import type { ExchangeHold } from '@/lib/game/sharedGameFlow';
 import { LEG } from '@/lib/game/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
@@ -41,7 +42,7 @@ const state = (): GameState => ({
 
 const noop = () => {};
 
-const tableWith = (holdMsOverride: number | undefined, onDismiss: () => void) => (
+const tableWith = (holdMsOverride: ExchangeHold | undefined, onDismiss: () => void) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={state()}
@@ -108,6 +109,22 @@ describe('the offline table forwards holdMsOverride to the overlay it renders', 
     expect(screen.getByTestId('exchange-announce')).toBeTruthy();
 
     await act(async () => jest.advanceTimersByTime(HOLD - REAL_MS - 1000));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+
+    await r.unmount();
+  });
+
+  it('held until tapped, outlasts any clock and dismisses on a tap of the overlay', async () => {
+    const onDismiss = jest.fn();
+    const r = await render(tableWith('untilTapped', onDismiss));
+
+    await frames(REAL_MS + 3 * FRAME_MS);
+    await act(async () => jest.advanceTimersByTime(60_000));
+    expect(onDismiss).not.toHaveBeenCalled();
+    const overlay = screen.getByTestId('exchange-announce');
+    expect(overlay.props.pointerEvents).toBe('auto');
+
+    await act(async () => fireEvent(overlay, 'responderRelease'));
     expect(onDismiss).toHaveBeenCalledTimes(1);
 
     await r.unmount();

@@ -19,7 +19,7 @@
 # The ceremony's own overlay (`<ExchangeLegs>`, testID `exchange-announce`)
 # is what ends hand 1's pass loop below: the table deals hand 2 on its own
 # clock, so no command marks the moment it fires.
-# `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD_MS` is the authority on how
+# `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD` is the authority on how
 # long that hold lasts and why; not repeated here. What the exchange
 # *decides* is asserted by the unit tests, which can see it — this flow only
 # proves the overlay itself paints on a real device.
@@ -114,6 +114,22 @@ appId: "${MAESTRO_APP_ID}"
     visible:
       id: "exchange-announce"
     timeout: 20000
+# This build holds the overlay until it is tapped (`E2E_EXCHANGE_HOLD`). It takes taps only once the
+# winner has given; a tap before that falls through to the empty felt at the overlay's centre.
+- repeat:
+    times: 10
+    while:
+      visible:
+        id: "exchange-announce"
+    commands:
+      - tapOn:
+          id: "exchange-announce"
+          optional: true
+          waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    notVisible:
+      id: "exchange-announce"
+    timeout: 30000
 
 # --- Confirm the match moved on rather than ending: a fresh, playable hand ---
 - extendedWaitUntil:

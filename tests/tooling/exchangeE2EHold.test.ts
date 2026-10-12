@@ -89,7 +89,7 @@ describe("the offline exchange overlay's E2E hold", () => {
     );
     assert.match(
       gameContext,
-      /exchangeHoldMsOverride = E2E_FAST \? E2E_EXCHANGE_HOLD_MS : undefined/,
+      /exchangeHoldMsOverride = E2E_FAST \? E2E_EXCHANGE_HOLD : undefined/,
       "the override is no longer undefined when EXPO_PUBLIC_E2E_FAST is unset — " +
         "a real player would get a held-open overlay"
     );
@@ -118,5 +118,25 @@ describe("the offline exchange overlay's E2E hold", () => {
         "its clock must stay exchangeAnnounceMs() exactly, or the client's overlay " +
         "and the server's hold (server/game/tableHandlers.ts, server/game/onlineGameLogic.ts) drift apart"
     );
+  });
+
+  test("a device build holds the overlay until exchange-phase.yaml taps it, and the flow does", () => {
+    assert.match(
+      gameContext,
+      /E2E_EXCHANGE_HOLD: ExchangeHold =\s*Platform\.OS === "web" \? [^:]+ : "untilTapped";/,
+      "a device e2e build is back on a timed hold, which a slow hierarchy read outlasts (#1560)"
+    );
+    const flow = read(".maestro/exchange-phase.yaml");
+    const step = (kind: string, condition = "") =>
+      flow.search(new RegExp(`- ${kind}:\\n${condition}\\s+id: "exchange-announce"`));
+    const seen = step("extendedWaitUntil", "\\s+visible:");
+    const tapped = step("tapOn");
+    const gone = step("extendedWaitUntil", "\\s+notVisible:");
+    assert.ok(seen >= 0, "the flow no longer waits to see exchange-announce");
+    assert.ok(
+      tapped > seen,
+      "the flow never taps exchange-announce after seeing it, so a device build's overlay never releases"
+    );
+    assert.ok(gone > tapped, "the flow does not wait for the tapped overlay to go before playing on");
   });
 });

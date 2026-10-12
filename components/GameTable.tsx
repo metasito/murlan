@@ -33,7 +33,7 @@ import {
   type GameState,
   type StartReason,
 } from "@/lib/game/gameEngine";
-import { buildExchangeAnnounce, type ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
+import { buildExchangeAnnounce, type ExchangeAnnounceData, type ExchangeHold } from "@/lib/game/sharedGameFlow";
 import type { LegStage } from "@/lib/game/exchangeTimeline";
 import {
   CHIP_H,
@@ -245,7 +245,7 @@ export interface ExchangeAnnouncementSlot {
   data: ExchangeAnnounceData | null;
   onDismiss: () => void;
   /** Offline-only E2E override for how long the overlay holds (#915). */
-  holdMsOverride?: number;
+  holdMsOverride?: ExchangeHold;
 }
 
 export interface GameTableProps {

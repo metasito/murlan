@@ -40,6 +40,7 @@ import {
   buildExchangeAnnounce,
   useExchangeAnnouncement,
   type ExchangeAnnounceData,
+  type ExchangeHold,
 } from "@/lib/game/sharedGameFlow";
 import type { HandResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
@@ -50,15 +51,18 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 // A launch argument on iOS lands in NSUserDefaults, which `Settings` reads; Android and web have no such channel.
 const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_OPENER_KEY)) === "1";
 /**
- * How long the offline exchange overlay holds under Maestro. One command on a
- * real device can take ~8.2s to return, measured on the iOS runner (#915, run
- * 33906243513) — well past the overlay's real ~5.2s — so a wait placed after
- * the command the deal follows may miss it. This holds it past that measured
- * return instead of speeding the real ceremony up.
+ * How long the offline exchange overlay holds in an e2e build. Under Maestro it
+ * holds until `.maestro/exchange-phase.yaml` taps it: no fixed hold covers how
+ * long a device can keep Maestro from reading the screen. One view-hierarchy
+ * read on the Android emulator took 22 s while the hand ended, and a Passa tap
+ * returned 37.5 s later, past the whole ceremony (#1560).
+ * The web build keeps a timed hold, because Playwright specs play through the
+ * exchange without ever tapping it.
  */
 const MEASURED_TAP_RETURN_MS = 8200;
 const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
-const E2E_EXCHANGE_HOLD_MS = MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS;
+const E2E_EXCHANGE_HOLD: ExchangeHold =
+  Platform.OS === "web" ? MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS : "untilTapped";
 
 export type { PlayerSetupConfig, HandResult, MatchState };
 
@@ -112,7 +116,7 @@ interface GameContextValue {
   exchangeAnnouncing: boolean;
   exchangeAnnounceData: ExchangeAnnounceData | null;
   /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
-  exchangeHoldMsOverride: number | undefined;
+  exchangeHoldMsOverride: ExchangeHold | undefined;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
   startNextHand: () => void;
   startNewMatch: () => void;
@@ -148,7 +152,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const savedRef = useRef<OfflineSave | null>(null);
   const { showNotification } = useNotification();
 
-  const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD_MS : undefined;
+  const exchangeHoldMsOverride = E2E_FAST ? E2E_EXCHANGE_HOLD : undefined;
   const {
     announcing: exchangeAnnouncing,
     data: exchangeAnnounceData,

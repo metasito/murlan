@@ -61,8 +61,8 @@ jobs:
       # every AI delay any of them has across all
       # four flows this job drives, not only exchange-phase.yaml's. What
       # that ticket needed from it is the offline exchange overlay holding
-      # open past the ~8.2s a real device's single tap-and-wait command
-      # takes to return (#915), instead of its real ~5.2s — but every flow
+      # open until exchange-phase.yaml taps it (#915, #1560), instead of
+      # closing on its real ~5.2s clock — but every flow
       # here now runs at this pace. Never read outside a build this
       # harness itself produced (`scripts/assertNotE2EFast.js`).
       EXPO_PUBLIC_E2E_FAST: "1"
