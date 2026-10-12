@@ -1960,6 +1960,19 @@ describe("an unrecognised stop is diagnosed, once per head", () => {
     assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
   });
 
+  test("a diagnosis the API refused holds the ticket, and the next stop on that head is diagnosed", async () => {
+    const ledger: any[] = [];
+    let diagnoses = 0;
+    const down = async () => (
+      diagnoses++,
+      { ok: false, apiDown: true, error: "it could not reach the API", run: { result: { cost: 0, turns: 1 }, ms: 1, log: "l", phases: {} } }
+    );
+    const first = await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
+    assert.equal(first.outcome, "overloaded");
+    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
+    assert.equal(diagnoses, 2, "a head the API kept the diagnosis from reading is not diagnosed");
+  });
+
   test("a failed diagnosis parks with the original reason", async () => {
     const ledger: any[] = [];
     const whys: string[] = [];

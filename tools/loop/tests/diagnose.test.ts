@@ -112,6 +112,17 @@ describe("diagnose", () => {
     assert.match(empty.error, /exited 1 with no result/);
   });
 
+  test("a diagnosis the API refused is apiDown; one cut off by its turns is not", async () => {
+    const run = (over: object) => diagnose(stop, { spawnFn: () => child(reply("", { is_error: true, ...over })), state: () => "" });
+    const marked: any = await run({ subtype: "success", terminal_reason: "api_error", result: "API Error: Connection error." });
+    assert.deepEqual([marked.ok, marked.apiDown], [false, true]);
+    // The shape #1465's and #1466's diagnoses ended in — "it ended success" — with no terminal_reason.
+    const unmarked: any = await run({ subtype: "success", result: "API Error: Unable to connect to API" });
+    assert.deepEqual([unmarked.ok, unmarked.apiDown], [false, true]);
+    const turns: any = await run({ subtype: "error_max_turns" });
+    assert.equal(turns.apiDown, undefined);
+  });
+
   const realTimeout = globalThis.setTimeout;
   const HOURS_2 = 2 * 3_600_000;
   const silent = () => {
