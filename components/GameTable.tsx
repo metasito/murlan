@@ -944,7 +944,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { grey, greyStyle, edgeGreyStyle, darkenStyle, held: linkHeldNow, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
+  const { grey, greyStyle, edgeGreyStyle, darkenStyle, greyed: linkGreyed, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1200,7 +1200,7 @@ export function GameTable({
           style={[
             styles.hudCentre,
             { left: frame.tableLeft, right: frame.tableRight, top: frame.tableTop },
-            (holdingForStart || (darkenStyle && linkHeldNow)) && HELD_CLOCK_Z,
+            (holdingForStart || (darkenStyle && linkGreyed)) && HELD_CLOCK_Z,
             stackFadeStyle,
           ]}
         >

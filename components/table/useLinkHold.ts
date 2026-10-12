@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useAnimatedStyle, useFrameCallback, useSharedValue, type FrameInfo } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
@@ -22,6 +23,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   const grey = useSharedValue(holdGrey(link));
   const ramp = useSharedValue({ to: holdGrey(link), perMs: 0, started: true });
   const was = useRef(link);
+  // Outlasts `held` until the grey has faded out: whatever iOS lifts over the scrim must stay lifted while it fades.
+  const [greyed, setGreyed] = useState(held);
+  if (greyed !== held && (held || reduceMotion)) setGreyed(held);
 
   useEffect(() => {
     const to = held ? Reconnect.grey : 0;
@@ -41,7 +45,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
       return;
     }
     const d = perMs * (frame.timeSincePreviousFrame ?? 0);
-    grey.value = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
+    const next = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
+    grey.value = next;
+    if (next === 0) scheduleOnRN(setGreyed, false);
   });
   useFrameCallback(step);
 
@@ -70,5 +76,5 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
   // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail would leave the cutout's column.
   const edgeGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
   const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
-  return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, frozen: held || missedInFlight };
+  return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, greyed, frozen: held || missedInFlight };
 }
