@@ -1,11 +1,12 @@
 // tools/loop/tests/guardBash.test.ts
-import { test, describe } from "node:test";
+import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import * as guardBash from "../guard-bash.mjs";
 import { check, fromMsys, gitAt } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
 
@@ -473,6 +474,10 @@ describe("a loop session reads comments only through rule 25's filter", () => {
     `gh issue view 5 --json comments --jq '.comments[]|select(.body|startswith("DOD-CHECK"))|.body'`,
     "gh issue view 5 --json=title,comments",
     "cd .worktrees/agent-5 && gh -R o/r pr view 5 --json body,comments",
+    "gh api repos/metasito/murlan/issues/5/comments --jq '.[].body'",
+    "gh api repos/{owner}/{repo}/pulls/5/reviews",
+    "gh api -X GET repos/o/r/pulls/5/comments -f per_page=100",
+    "gh api repos/o/r/issues/comments --paginate",
   ]) {
     test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, none, repo, true)), /--json title,body,comments --jq/));
     test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, false), null));
@@ -483,6 +488,10 @@ describe("a loop session reads comments only through rule 25's filter", () => {
     "gh issue comment 5 --body 'read it with gh issue view 5 --comments'",
     "gh issue view 5 --json title,body",
     "gh pr view 5 --json state,mergeStateStatus",
+    `gh api repos/o/r/issues/5/comments --jq '.[]|${TRUSTED_SELECT}|.body'`,
+    "gh api repos/o/r/issues/5/comments -f body=x",
+    "gh api -X POST repos/o/r/pulls/5/reviews --input r.json",
+    "gh api repos/o/r/issues/5 --jq .state",
   ]) {
     test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, true), null));
   }
@@ -599,8 +608,10 @@ describe("a redirect under git -C is judged by the path git sees", () => {
 
 describe("an implement session files no agent work", () => {
   const none = () => null;
-  const ticket = { ...repo, onTicket: () => true };
-  const idle = { ...repo, onTicket: () => false };
+  // A worktree on a ticket branch stands in both: in the triage case it is a stale one.
+  const stale = { ...repo, onTicket: () => true };
+  const implementing = { implementing: () => true };
+  const triaging = { implementing: () => false };
   const AGENT_WORK = /files no agent work/;
   const refused = [
     "gh issue create --title x --body-file b.md",
@@ -609,12 +620,17 @@ describe("an implement session files no agent work", () => {
     "gh issue edit 5 --add-label main-red",
     "gh -R o/r issue edit 5 --add-label=ci-flake",
     "cd /c/Users/roton/murlan && gh issue create --title x --body-file b.md",
+    "gh api repos/o/r/issues -f title=x -f body=y",
+    "gh api -X POST repos/{owner}/{repo}/issues -f title=x -f 'labels[]=ready-for-agent' -f 'labels[]=ready-for-human'",
+    "gh api repos/o/r/issues/5/labels -f 'labels[]=ready-for-agent'",
+    "gh api -X PUT repos/o/r/issues/5/labels -f 'labels[]=main-red'",
+    "gh api repos/o/r/issues --input new.json",
   ];
   for (const cmd of refused) {
-    test(`refuses while a ticket's worktree stands: ${cmd}`, () => assert.match(String(check(cmd, none, ticket, true)), AGENT_WORK));
-    test(`allows with no ticket worktree, or outside the loop: ${cmd}`, () => {
-      assert.equal(check(cmd, none, idle, true), null);
-      assert.equal(check(cmd, none, ticket, false), null);
+    test(`refuses in an implement session: ${cmd}`, () => assert.match(String(check(cmd, none, stale, true, implementing)), AGENT_WORK));
+    test(`allows in a triage or wayfinder session beside a stale worktree, or outside the loop: ${cmd}`, () => {
+      assert.equal(check(cmd, none, stale, true, triaging), null);
+      assert.equal(check(cmd, none, stale, false, implementing), null);
     });
   }
   for (const cmd of [
@@ -623,25 +639,39 @@ describe("an implement session files no agent work", () => {
     "gh issue create -t x -F b.md --label=bug,ready-for-human",
     "gh issue edit 5 --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human",
     "gh issue comment 5 --body 'gh issue create --label ready-for-agent'",
+    "gh api repos/o/r/issues -f title=x -f 'labels[]=ready-for-human'",
+    "gh api repos/o/r/issues/5/labels -f 'labels[]=ready-for-human'",
+    "gh api repos/o/r/issues/5/comments -f body=x",
+    "gh api repos/o/r/issues --jq '.[].number'",
   ]) {
-    test(`allows while a ticket's worktree stands: ${cmd}`, () => assert.equal(check(cmd, none, ticket, true), null));
+    test(`allows in an implement session: ${cmd}`, () => assert.equal(check(cmd, none, stale, true, implementing), null));
   }
 });
 
-describe("gitAt.onTicket, against real worktrees", () => {
-  test("is true from the shared checkout or the worktree while an agent-<n> worktree is on its ticket branch", () => {
-    const dir = mkdtempSync(join(tmpdir(), "guard-ticket-"));
-    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, stdio: "ignore" });
-    try {
-      git("init", "-q", "-b", "main");
-      git("commit", "-q", "--allow-empty", "-m", "base");
-      assert.equal(gitAt(dir).onTicket(), false);
-      git("worktree", "add", "-q", "-b", "agent/7-x", join(".worktrees", "agent-7"));
-      assert.equal(gitAt(dir).onTicket(), true);
-      assert.equal(gitAt(join(dir, ".worktrees", "agent-7")).onTicket(), true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+describe("an implement session is known by its own phase, not by a worktree", () => {
+  const dir = mkdtempSync(join(tmpdir(), "guard-route-"));
+  after(() => rmSync(dir, { recursive: true, force: true }));
+  const transcript = (...rows: object[]) => {
+    const file = join(dir, `t${Math.random().toString(36).slice(2)}.jsonl`);
+    writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return file;
+  };
+  const say = (text: string) => ({ type: "assistant", message: { content: [{ type: "text", text }] } });
+  const bash = (command: string) => ({ type: "assistant", message: { content: [{ type: "tool_use", id: "x", name: "Bash", input: { command } }] } });
+  const route = (env: Record<string, string>, file?: string) => (guardBash as any).implementRoute?.(env, file);
+
+  test("a resumed implement session says so in LOOP_PHASE", () => {
+    assert.equal(route({ LOOP_PHASE: "D" }, join(dir, "missing.jsonl")), true);
+  });
+
+  test("a fresh one by the phase it reported, in text or as an echo", () => {
+    assert.equal(route({}, transcript(say("PHASE A"), say("PHASE B"))), true);
+    assert.equal(route({}, transcript(say("PHASE A"), bash('echo "PHASE C" && git status'))), true);
+  });
+
+  test("a triage or wayfinder session never reports past A", () => {
+    assert.equal(route({}, transcript(say("PHASE A"), say("Routing to /triage"))), false);
+    assert.equal(route({ LOOP_PHASE: "" }, transcript(say("PHASE A"))), false);
   });
 });
 

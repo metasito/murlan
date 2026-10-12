@@ -1,6 +1,6 @@
 import { test, describe, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -106,6 +106,15 @@ describe("a LAND by any other spelling is still a LAND", () => {
     const out = run([], LAND, { transcript_path: path.join(dir, "missing.jsonl") });
     assert.ok(denied(out));
     assert.match(out, /transcript/);
+  });
+
+  test("a payload naming no transcript is allowed, with a warning on stderr", () => {
+    const input = JSON.stringify({ tool_name: "Bash", tool_input: { command: LAND }, cwd: dir });
+    const env = { ...process.env, LOOP_TURNS: "40" } as NodeJS.ProcessEnv;
+    const out = spawnSync(process.execPath, [SCRIPT], { input, encoding: "utf8", env });
+    assert.equal(out.status, 0);
+    assert.equal(out.stdout, "");
+    assert.match(out.stderr, /no transcript/);
   });
 });
 
