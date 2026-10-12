@@ -44,6 +44,7 @@ import {
   stockLipHeight,
   SUIT_GLYPHS,
   suitMarksPath,
+  ART_FILL,
 } from "@/components/cardFaceModel";
 import { a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 
@@ -515,7 +516,7 @@ function CardViewBase({
           testID="card-box-back"
           style={[styles.card, { width: w, height: h }, styles.cardBack, backStyle]}
         >
-          <Image source={BACK_ART[backKey]()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
+          <Image source={BACK_ART[backKey]()} style={ART_FILL} resizeMode="stretch" {...a11yHidden()} />
           <LampGloss rectKey={rectKey} rects={rects} width={w} height={h} />
           <FoilGlint backKey={backKey} rectKey={rectKey} rects={rects} width={w} height={h} />
         </View>
@@ -607,7 +608,7 @@ function CardViewBase({
           style={[styles.card, styles.stock, { width: w, height: h }, stockStyle]}
         >
           {selectedHint.node}
-          <Image source={STOCK_ART()} style={StyleSheet.absoluteFill} resizeMode="stretch" {...a11yHidden()} />
+          <Image source={STOCK_ART()} style={ART_FILL} resizeMode="stretch" {...a11yHidden()} />
           <CardFaceArt card={card} color={color} w={w} h={h} compact={compact} />
           {!compact && COURT_RANKS.has(card.rank) && <CourtArt card={card} w={w} h={h} />}
           <TableText

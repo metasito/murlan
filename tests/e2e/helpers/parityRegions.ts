@@ -19,12 +19,14 @@ export interface SideLayout {
   light: Point;
   /** The highest edge of any card in the viewer's hand. */
   handTop: number;
+  /** The centre of the union of each seat's backs. */
+  fans: Record<"top" | "left" | "right", Point>;
 }
 
 /** The mockup's `.card` box-shadow blurs 10 pt above the hand. */
 const HAND_SHADOW = 10;
 
-export function regionsFor({ pile, light, handTop }: SideLayout): Record<string, Region> {
+export function regionsFor({ pile, light, handTop, fans }: SideLayout): Record<string, Region> {
   return {
     // The light hangs over the hand, so its pool's nearest open felt is straight up from it, past the hand's shadow.
     pool: { x: light.x - 20, y: handTop - HAND_SHADOW - 8, w: 40, h: 8 },
@@ -33,6 +35,9 @@ export function regionsFor({ pile, light, handTop }: SideLayout): Record<string,
     pile: { x: pile.x - 30, y: pile.y - 20, w: 60, h: 40 },
     scorePill: { x: 740, y: 16, w: 90, h: 18 },
     hand: { x: light.x - 160, y: handTop + 40, w: 320, h: 16 },
+    topFan: { x: fans.top.x - 12, y: fans.top.y - 5, w: 24, h: 10 },
+    leftFan: { x: fans.left.x - 5, y: fans.left.y - 12, w: 10, h: 24 },
+    rightFan: { x: fans.right.x - 5, y: fans.right.y - 12, w: 10, h: 24 },
   };
 }
 

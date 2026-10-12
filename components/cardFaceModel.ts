@@ -352,3 +352,6 @@ export function pipBox(pip: PlacedPip): Box {
 export function boxesOverlap(a: Box, b: Box): boolean {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
+
+/** Baked art stretched over its card. Both platforms size a static image to its asset unless the style names a size, and that beats `absoluteFill`'s insets. */
+export const ART_FILL = { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" } as const;
