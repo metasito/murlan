@@ -63,7 +63,6 @@ const guard = (cmd: string) => check(cmd, device, repo);
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /before 2\.54\.0[\s\S]*worktrees:remove/;
-const DEVICE = /device workflows only on its own branch/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 const PIPED = /Piping a Playwright run/;
@@ -133,26 +132,6 @@ const BLOCKED: [string, RegExp][] = [
   ["git push origin main", /pull request/],
   ["git push -f origin +agent/1-x:refs/heads/main", /pull request/],
   ["git push origin --delete main", /pull request/],
-  ["gh workflow run maestro.yml", DEVICE],
-  ['gh workflow run "iOS UI (Maestro)"', DEVICE],
-  ["gh workflow run IOS.YML", DEVICE],
-  ["gh workflow run 123456", DEVICE],
-  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main", DEVICE],
-  ["gh api -X POST repos/o/r/Actions/Workflows/Maestro.yml/Dispatches", DEVICE],
-  ["echo MAESTRO_EVIDENCE_READ=1; gh workflow run ios.yml", DEVICE],
-  ["gh workflow run ios.yml # MAESTRO_EVIDENCE_READ=1", DEVICE],
-  ["MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches", DEVICE],
-  ["gh workflow run ios.yml --ref main", DEVICE],
-  ["gh workflow run ios.yml --ref agent/1199", DEVICE],
-  ["gh workflow run ios.yml --ref side/1195-x", DEVICE],
-  ["gh workflow run ios.yml --ref claude/foo", DEVICE],
-  ["gh workflow run ios.yml --ref claude/1259", DEVICE],
-  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=agent/1199-x", DEVICE],
-  ["gh run rerun 33428375221 --failed", DEVICE],
-  ["gh -R o/r run rerun 33428375221", DEVICE],
-  ["gh api -X POST repos/o/r/actions/runs/33428375221/rerun", DEVICE],
-  ["gh api -X POST repos/o/r/actions/jobs/99710945601/rerun", DEVICE],
-  ["gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs", UNREADABLE],
   ["gh pr merge 994 --merge --delete-branch", MERGE],
   ["gh -R metasito/murlan pr merge 994 --merge", MERGE],
   ["gh --repo o/r pr merge 5", MERGE],
@@ -315,88 +294,73 @@ describe("the bash guard allows correct usage", () => {
   }
 });
 
-describe("a rerun is gated on the workflow it would re-dispatch, not on being a rerun", () => {
-  // `gh run rerun <id>` names a run, not a workflow, so the command alone cannot say whether
-  // it costs 25 minutes on a simulator or four on a browser shard. Asking is the only way to
-  // know, and a guard that blocks the honest path teaches people to route around the marker.
-  const asWorkflow = (name: string | null) => () => (name === null ? null : firstRun(name));
-
-  test("blocks a rerun of a device run", () => {
-    const message = check("gh run rerun 33428375221 --failed", asWorkflow("iOS UI (Maestro)"));
-    assert.ok(message, "expected a rerun of a Maestro run to be blocked");
-    assert.match(String(message), DEVICE);
-  });
-
-  test("blocks a rerun of the Android device run", () => {
-    assert.ok(check("gh run rerun 33428375221", asWorkflow("Android UI (Maestro)")));
-  });
-
-  test("allows a rerun of a run with no pixels to read", () => {
-    assert.equal(check("gh run rerun 33495876524 --failed", asWorkflow("CI")), null);
-  });
-
-  test("blocks a device rerun even with the old marker", () => {
-    assert.ok(check("MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221", asWorkflow("iOS UI (Maestro)")));
-  });
-
-  test("allows a rerun whose workflow cannot be resolved", () => {
-    // Resolution goes through `gh`. If that cannot answer, the rerun it guards cannot dispatch
-    // anything either, so blocking here costs the honest path and protects nothing.
-    assert.equal(check("gh run rerun 33428375221 --failed", asWorkflow(null)), null);
-  });
-
-  // Resolution costs a network round trip, so it may only be spent on a command whose verdict
-  // it can still change.
-  for (const [what, cmd] of [
-    ["a command that reruns nothing", "gh run view 33428373840 --json jobs"],
-    ["a device dispatch from a ticket's branch", "gh workflow run ios.yml --ref agent/1211-x"],
+describe("a device run's rerun or dispatch is the workflow's own to refuse", () => {
+  // ios.yml and maestro.yml run a job only on attempt 1 of a schedule or a ticket branch
+  // (tests/tooling/deviceWorkflowsGate.test.ts): no gh outage opens that, as it opened this guard.
+  for (const cmd of [
+    "gh workflow run maestro.yml",
+    "gh workflow run 123456",
+    "gh workflow run ios.yml --ref main",
+    "gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main",
+    "gh run rerun 33428375221 --failed",
+    "gh -R o/r run rerun 33428375221",
+    "gh api -X POST repos/o/r/actions/jobs/99710945601/rerun",
   ]) {
+    test(`allows, in the loop and outside it: ${cmd}`, () => {
+      assert.equal(check(cmd, device, repo, false), null);
+      assert.equal(check(cmd, device, repo, true), null);
+    });
+  }
+
+  // A lookup costs a network round trip, so it is spent only where its answer can still refuse.
+  for (const [what, cmd, loop] of [
+    ["a command that reruns nothing", "gh run view 33428373840 --json jobs", true],
+    ["a dispatch", "gh workflow run ios.yml --ref agent/1211-x", true],
+    ["a rerun outside the loop", "gh run rerun 33428375221 --failed", false],
+  ] as const) {
     test(`does not ask about ${what}`, () => {
       let asked = 0;
-      check(cmd, () => {
-        asked += 1;
-        return firstRun("iOS UI (Maestro)");
-      });
+      check(cmd, () => (asked++, firstRun("iOS UI (Maestro)")), repo, loop);
       assert.equal(asked, 0, `${cmd} spent a round trip it could not have acted on`);
     });
   }
 });
 
-describe("a rerun is read as its own command, with its own arguments", () => {
+describe("a loop session's rerun is read as its own command, with its own arguments", () => {
   // Each of these reached the guard as a way past it. A rerun that cannot be read is refused
   // rather than allowed: `$RUN` must not be the spelling that gets through.
-  const device = () => firstRun("iOS UI (Maestro)");
-  const ci = () => firstRun("CI");
+  const rerun = () => ({ workflowName: "CI", attempt: 2 });
+  const fresh = () => firstRun("CI");
+  const inLoop = (cmd: string, lookup: (t: { run?: string; job?: string }) => unknown) => check(cmd, lookup as never, repo, true);
 
   test("reads --job, which is not a run id", () => {
-    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing —
-    // and `--job` re-dispatches the whole ~25 minute simulator job.
+    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing.
     let asked: unknown = null;
-    const message = check("gh run rerun --job 99710945601", (t) => {
+    const message = inLoop("gh run rerun --job 99710945601", (t) => {
       asked = t;
-      return device();
+      return rerun();
     });
-    assert.ok(message, "expected a device job rerun to be blocked");
+    assert.match(String(message), /already rerun/);
     assert.deepEqual(asked, { job: "99710945601" });
   });
 
   test("reads --job= in its joined spelling", () => {
-    assert.ok(check("gh run rerun --job=99710945601", device));
+    assert.ok(inLoop("gh run rerun --job=99710945601", rerun));
   });
 
   test("looks at every rerun on the line, not only the first", () => {
     for (const separator of [" && ", "; ", "\n"]) {
       const cmd = `gh run rerun 33495876524${separator}gh run rerun 33428375221`;
-      const message = check(cmd, (t) => (t.run === "33428375221" ? device() : ci()));
-      assert.ok(message, `expected the device rerun after a ${JSON.stringify(separator)} to block`);
+      const message = inLoop(cmd, (t) => (t.run === "33428375221" ? rerun() : fresh()));
+      assert.ok(message, `expected the second rerun after a ${JSON.stringify(separator)} to block`);
     }
   });
 
   test("does not take a flag's value for the run id", () => {
     let asked: unknown = null;
-    check("gh run rerun -R metasito/murlan 33428375221", (t) => {
+    inLoop("gh run rerun -R metasito/murlan 33428375221", (t) => {
       asked = t;
-      return ci();
+      return fresh();
     });
     assert.deepEqual(asked, { run: "33428375221" }, "the repo was read as the run");
   });
@@ -404,28 +368,25 @@ describe("a rerun is read as its own command, with its own arguments", () => {
   test("does not take a later command's id for this one's", () => {
     // The download named here is the very command the block message prescribes as the way out.
     let asked: unknown = null;
-    const message = check(
-      'gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios',
-      (t) => {
-        asked = t;
-        return device();
-      }
-    );
+    const message = inLoop('gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios', (t) => {
+      asked = t;
+      return fresh();
+    });
     assert.equal(asked, null, "the download's id was read as the rerun's");
-    assert.match(String(message), /literal id/);
+    assert.match(String(message), UNREADABLE);
   });
 
-  for (const cmd of ['gh run rerun "$RUN" --failed', "gh run rerun --failed"]) {
-    test(`refuses a rerun it cannot identify: ${cmd}`, () => {
-      const message = check(cmd, ci);
-      assert.ok(message, `expected ${cmd} to be blocked`);
-      assert.match(String(message), /literal id/);
+  for (const cmd of [
+    'gh run rerun "$RUN" --failed',
+    "gh run rerun --failed",
+    'MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed',
+    "gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs",
+  ]) {
+    test(`refuses in the loop a rerun it cannot identify, and allows it outside: ${cmd}`, () => {
+      assert.match(String(inLoop(cmd, fresh)), UNREADABLE);
+      assert.equal(check(cmd, fresh, repo, false), null);
     });
   }
-
-  test("the old marker does not clear a rerun it cannot identify", () => {
-    assert.match(String(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci)), /literal id/);
-  });
 });
 
 describe("a workflow lookup that fails is announced, not swallowed", () => {
@@ -436,7 +397,7 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
       message = check("gh run rerun 33428375221 --failed", () => {
         calls += 1;
         throw new Error("connect ETIMEDOUT");
-      });
+      }, repo, true);
     });
     assert.equal(message, null, "a lookup failure must still allow the dispatch");
     assert.equal(calls, 1);
@@ -475,7 +436,7 @@ describe("a loop session reruns a run once", () => {
     assert.equal(check("gh run rerun 38188271467 --failed", at(2), repo, false), null);
   });
 
-  test("one lookup answers both the device and the attempt question", () => {
+  test("one rerun costs one lookup", () => {
     let asked = 0;
     check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
     assert.equal(asked, 1);
@@ -566,28 +527,15 @@ describe("a loop session reads comments only through rule 25's filter", () => {
   }
 });
 
-describe("a dispatch ref through a variable", () => {
-  test("a literal assignment earlier on the line is read", () => {
-    assert.equal(check('B=agent/12-x && gh workflow run ios.yml --ref "$B"', () => null, repo,false), null);
-  });
-  test("a variable it cannot read is still refused", () => {
-    assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
-    assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
-  });
+describe("a redirect target through a variable", () => {
+  const show = "git show HEAD:dirty.ts > $P";
   test("only an assignment in command position is read, never one inside another command's quoted data", () => {
-    for (const cmd of [
-      'git commit -m "B=agent/12-x x"; gh workflow run ios.yml --ref $B',
-      "echo 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
-      "B=agent/12-x gh workflow run ios.yml --ref $B",
-      "bash -c 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
-      "B=agent/12-x bash -c 'echo'; gh workflow run ios.yml --ref $B",
-    ]) assert.match(String(check(cmd, () => null, repo, false)), DEVICE, cmd);
-    for (const cmd of [
-      "B=agent/12-x; gh workflow run ios.yml --ref $B",
-      "bash -c 'B=agent/12-x; gh workflow run ios.yml --ref $B'",
-      "B=agent/12-x bash -c 'gh workflow run ios.yml --ref $B'",
-    ]) assert.equal(check(cmd, () => null, repo, false), null, cmd);
-    assert.match(String(guard("bash -c 'p=dirty.ts; git show HEAD:dirty.ts > $p'")), DISCARD);
+    for (const cmd of [`git commit -m "P=dirty.ts x"; ${show}`, `echo 'P=dirty.ts'; ${show}`, `bash -c 'P=dirty.ts'; ${show}`, `P=dirty.ts bash -c 'echo'; ${show}`]) {
+      assert.equal(guard(cmd), null, cmd);
+    }
+    for (const cmd of [`P=dirty.ts; ${show}`, `P=dirty.ts && ${show}`, `bash -c 'P=dirty.ts; ${show}'`, `P=dirty.ts bash -c '${show}'`]) {
+      assert.match(String(guard(cmd)), DISCARD, cmd);
+    }
   });
 });
 
