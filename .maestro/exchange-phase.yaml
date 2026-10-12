@@ -117,7 +117,7 @@ appId: "${MAESTRO_APP_ID}"
 # This build holds the overlay until it is tapped (`E2E_EXCHANGE_HOLD`). It takes taps only once the
 # winner has given; a tap before that falls through to the empty felt at the overlay's centre.
 - repeat:
-    times: 10
+    times: 30
     while:
       visible:
         id: "exchange-announce"
