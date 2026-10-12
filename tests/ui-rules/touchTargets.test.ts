@@ -37,9 +37,8 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
-  ["app/(online)/index.tsx", 1, "the error banner's close is a 16pt icon reaching the floor through `hitSlop`"],
   ["components/table/partitaBoard.tsx", 1, "Home and Nuova partita on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
-  ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes are pill notices reaching the floor through `hitSlop`"],
+  ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes paint a pill notice inside a box `reach` grows to the floor"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
 
@@ -326,17 +325,12 @@ test("the settings sheet's exit floors rather than scales", () => {
   assert.equal(physicalTouchTarget(0.82), TOUCH_TARGET_MIN);
 });
 
-test("the error banner's close reaches the floor on slop, having no room for a box", () => {
-  const source = read("app/(online)/index.tsx");
-  const tag = /<Pressable\s+onPress=\{clearError\}\s+hitSlop=\{Spacing\.(\w+)\}/.exec(source);
-  assert.ok(tag, "the close button no longer takes its reach from hitSlop");
-  const icon = /name="close"\s+size=\{(\d+)\}/.exec(source);
-  assert.ok(icon, "the close button no longer wraps a sized icon");
-  const inset = Spacing[tag[1] as keyof typeof Spacing];
-  assert.ok(
-    Number(icon[1]) + inset * 2 >= TOUCH_TARGET_MIN,
-    `${icon[1]}pt icon plus ${inset}pt each side is ${Number(icon[1]) + inset * 2}pt`
-  );
+// Measured on web by tests/e2e/tapTargetsVotes.spec.ts; this pins that each vote takes the growth.
+test("the votes grow their own box to the floor rather than borrow hitSlop", () => {
+  const source = read("components/table/notices/netNotes.tsx");
+  assert.doesNotMatch(source, /hitSlop=/,"react-native-web ignores hitSlop on a Pressable");
+  assert.match(source, /style=\{reach\("mancheVote", scale\)\}/);
+  assert.match(source, /style=\{reach\("endMatchVote", scale\)\}/);
 });
 
 test("an invite row is a touch target in both orientations", () => {

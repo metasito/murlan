@@ -7,12 +7,17 @@ import { TOUCH_TARGET_MIN } from "../../../lib/tokens";
  *
  * react-native-web reads `hitSlop` on nothing but the legacy Touchable, so on
  * this platform a control's own box is the whole target.
+ *
+ * A disabled control is skipped, so `measure` names the controls the sweep is
+ * there for: each must be found enabled and on screen, or the sweep fails
+ * rather than passing without having looked at it.
  */
-export async function sweepSizes(page: Page, where: string, allow: string[] = []): Promise<void> {
+export async function sweepSizes(page: Page, where: string, allow: string[] = [], measure: string[] = []): Promise<void> {
   // The floor crosses into the page as an argument: this callback runs in the
   // browser, where nothing this file imports exists.
-  const undersized = await page.evaluate(({ allowed, MIN }) => {
+  const { undersized, seen } = await page.evaluate(({ allowed, MIN }) => {
     const out: string[] = [];
+    const seen: string[] = [];
     const nameOf = (el: Element): string =>
       (el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 50);
 
@@ -31,12 +36,17 @@ export async function sweepSizes(page: Page, where: string, allow: string[] = []
 
       const { width, height } = r;
       const name = nameOf(el) || "(unnamed)";
+      seen.push(name);
       if (allowed.some((a) => name.includes(a))) continue;
       if (width >= MIN && height >= MIN) continue;
       out.push(`${name} — ${Math.round(width)}x${Math.round(height)}`);
     }
-    return out;
+    return { undersized: out, seen };
   }, { allowed: allow, MIN: TOUCH_TARGET_MIN });
+  expect(
+    measure.filter((m) => !seen.some((name) => name.includes(m))),
+    `${where}: not measured — absent, off screen or aria-disabled`
+  ).toEqual([]);
   expect(undersized, where).toEqual([]);
 }
 
