@@ -307,6 +307,8 @@ export function queueLoopArgs(number, size = null, phase = null) {
     "project",
     "--tools",
     readAllowedTools().join(","),
+    "--json-schema",
+    JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8"))),
     "--max-turns",
     String(turnsFor(size)),
     "--max-budget-usd",
@@ -1741,7 +1743,10 @@ export function runTicket(
       if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
       state.apiErrorCode = fact.code;
     }
-    if (fact.kind === "result" && !fact.origin) state.result = fact;
+    if (fact.kind === "result" && !fact.origin) {
+      state.result = fact;
+      if (fact.declared) state.declared = fact.declared;
+    }
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers
       // and pushes has done its work, and a sticky flag pre-empts every other reading of it.

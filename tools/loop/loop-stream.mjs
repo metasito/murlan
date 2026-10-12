@@ -48,21 +48,26 @@ export const scopeEnds = (calls) =>
 /** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
 export const HANDOFF = /^[A-F]$/;
 
+/** @param {unknown} d a LOOP-RESULT line's JSON, or a result's `structured_output` */
+function declaration(d) {
+  if (!d || typeof d !== "object" || Array.isArray(d)) return null;
+  return {
+    ticket: Number(d.ticket) || null,
+    branch: d.branch ?? null,
+    pr: Number(d.pr) || null,
+    phase: d.phase ?? null,
+    handoff: HANDOFF.test(String(d.handoff ?? "")) ? String(d.handoff) : null,
+    stoodDown: Boolean(d.stoodDown),
+    why: d.why ?? null,
+  };
+}
+
 /** @param {string} text */
 function declaredIn(text) {
   const m = DECLARED.exec(text);
   if (!m) return null;
   try {
-    const d = JSON.parse(m[1]);
-    return {
-      ticket: Number(d.ticket) || null,
-      branch: d.branch ?? null,
-      pr: Number(d.pr) || null,
-      phase: d.phase ?? null,
-      handoff: HANDOFF.test(String(d.handoff ?? "")) ? String(d.handoff) : null,
-      stoodDown: Boolean(d.stoodDown),
-      why: d.why ?? null,
-    };
+    return declaration(JSON.parse(m[1]));
   } catch {
     return null;
   }
@@ -213,6 +218,7 @@ export function readEvent(e) {
         created: e.usage?.cache_creation_input_tokens ?? 0,
         read: e.usage?.cache_read_input_tokens ?? 0,
       },
+      declared: declaration(e.structured_output),
     };
   }
   return null;
