@@ -524,6 +524,7 @@ describe("--build gates review on a cached local pass", () => {
       [check("- [x] chip enters — package.json:2\n- [x] the owner signs the copy off — n/a: no code site, a decision"), 0, /2 box\(es\) ticked/],
       [check("- [x] the owner signs the copy off — n/a:"), 1, /leaves open/],
       [check("- [ ] the owner signs the copy off — n/a: not mine"), 1, /leaves open/],
+      [check("- [x] the new e2e check fails before and passes after; npm run agent:check is green"), 1, /leaves open/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);
@@ -538,6 +539,34 @@ describe("--build gates review on a cached local pass", () => {
     const unbuilt = dodVerdict(comments, "abc1234def", () => false, false);
     assert.equal(unbuilt.ok, false);
     assert.match(unbuilt.why, /leaves open: - \[x\] `npm run agent:check` green/);
+  });
+
+  const closes = (box: string) => dodVerdict([{ body: `DOD-CHECK abc1234\n\n${box}` }], "abc1234def", () => false, true).ok;
+
+  test("only a box claiming the agent:check pass alone closes on it", () => {
+    for (const box of ["- [x] `npm run agent:check` green", "- [x] agent:check passes on this head", "- [x] npm run agent:check: clean."]) {
+      assert.equal(closes(box), true, box);
+    }
+    for (const box of [
+      "- [x] the new e2e check fails before and passes after; npm run agent:check is green",
+      "- [x] the fan is centred and `npm run agent:check` is green",
+    ]) {
+      assert.equal(closes(box), false, box);
+    }
+  });
+
+  test("an n/a box may not name code or a test; those still cite a path:line", () => {
+    assert.equal(closes("- [x] the owner signs the copy off — n/a: no test applies, it is a decision"), true);
+    for (const box of [
+      "- [x] `tests/e2e/flip.spec.ts` covers the flip — n/a: covered elsewhere",
+      "- [x] a regression test pins the clamp — n/a: too small",
+      "- [x] the e2e flow lands the card — n/a: CI runs it",
+      "- [x] the fan is centred in `lib/fan.ts` — n/a: obvious",
+      "- [x] flip.spec.ts is green — n/a: CI",
+      "- [x] tools/loop/brief.test.ts covers it — n/a: done",
+    ]) {
+      assert.equal(closes(box), false, box);
+    }
   });
 
   test("a dirty tree refuses even with a passing cache entry for HEAD", () => {

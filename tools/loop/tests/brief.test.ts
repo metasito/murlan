@@ -57,8 +57,10 @@ describe("brief", () => {
     const first = brief("review", { n: 1, worktree: WT });
     const later = brief("review", { n: 1, worktree: WT, base: "abc1234" });
     assert.match(first, /does it do what the Definition of done asks/);
-    assert.match(later, /Review only the fix `git -C \S+ log -p --first-parent --diff-merges=remerge abc1234\.\.HEAD`/);
-    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), /The fix is `git -C \S+ log -p --first-parent --diff-merges=remerge abc1234\.\.HEAD`/);
+    const net = /`git -C \S+ diff abc1234\.\.HEAD`, with `git -C \S+ log -p --first-parent --diff-merges=remerge --merges abc1234\.\.HEAD` for a merge's own edits/;
+    assert.match(later, new RegExp(`Review only the fix ${net.source}`));
+    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), new RegExp(`The fix is ${net.source}`));
+    assert.doesNotMatch(later, /log -p --first-parent --diff-merges=remerge abc1234/);
     assert.match(later, /each earlier Blocking finding listed after this brief fixed/);
   });
 
@@ -136,10 +138,11 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
   });
   after(() => rmSync(root, { recursive: true, force: true }));
 
-  test("a later round's base that is an ancestor of HEAD gives the first-parent delta", () => {
+  test("a later round's base that is an ancestor of HEAD gives the net delta and the merges' own edits", () => {
     const r = cli("review", "7", wt, reviewed.slice(0, 7));
     assert.equal(r.status, 0, r.stderr);
-    assert.ok(r.stdout.includes(`git -C ${wt} log -p --first-parent --diff-merges=remerge ${reviewed.slice(0, 7)}..HEAD`), r.stdout);
+    assert.ok(r.stdout.includes(`git -C ${wt} diff ${reviewed.slice(0, 7)}..HEAD`), r.stdout);
+    assert.ok(r.stdout.includes(`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${reviewed.slice(0, 7)}..HEAD`), r.stdout);
   });
 
   test("a base the branch was rebased away from exits 2", () => {
