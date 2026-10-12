@@ -80,12 +80,15 @@ export function classify(openIssues, io = realClassifyIo()) {
   const launch = openIssues.filter((i) => i.milestone?.title === LAUNCH_MILESTONE).length;
   /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[], launch: number}} */
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [], launch };
-  // Asked once, and only if a ticket that could be stranded is here at all: it costs a subprocess.
+  // Asked once, and only once a ticket has an open pull request: it costs a subprocess, and with no
+  // pull request no ticket can be stranded.
   let live;
   const evidence = (issue) => {
+    const openPr = io.openPr(issue.number);
+    if (!openPr) return { openPr, liveWorktree: false };
     if (live === undefined) live = io.liveWorktrees();
     // `live === null` is git unreadable: every ticket reads as live, which fails closed.
-    return { openPr: io.openPr(issue.number), liveWorktree: !live || live.has(issue.number) };
+    return { openPr, liveWorktree: !live || live.has(issue.number) };
   };
   for (const issue of openIssues) {
     const ls = labelNames(issue);
