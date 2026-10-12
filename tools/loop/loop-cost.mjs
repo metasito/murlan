@@ -6,13 +6,10 @@
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { readEvent, scopeEnds } from "./loop-stream.mjs";
-import { DIR, ARTEFACTS, atOf, closesWindow, holdRound as held, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
+import { DIR, ARTEFACTS, atOf, closesWindow, holdRound, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
-const REVIEW = /\b(spec|standards) review\b/i;
-const SINGLE_REVIEW = /\breview #\d+ round \d+\b/i;
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
 
 /**
@@ -60,244 +57,12 @@ export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
 }
 
 /**
- * $/MTok by family: base input, 5-minute cache write, cache read, output, 1-hour cache write.
- *
- * Keyed on the family word rather than on a full id, because the logs carry four spellings of two
- * models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet` — and an exact-match table priced
- * 64 sonnet turns at opus's rate. `report` scales absolutes onto Anthropic's reported total, so a
- * misprice lands entirely in the share column, which is the one number this file exists to give.
- *
- * A stream line's `output_tokens` is the count at the message's start, so output — about a fifth of
- * a session — is invisible per message and reaches the table only through that scaling.
+ * The model family an id names. Keyed on the family word rather than on a full id, because the logs
+ * carry four spellings of two models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet`.
  */
-export const PRICE = {
-  opus: [5, 6.25, 0.5, 25, 10],
-  sonnet: [2, 2.5, 0.2, 10, 4],
-  haiku: [1, 1.25, 0.1, 5, 2],
-};
-
-export const familyOf = (model) => Object.keys(PRICE).find((f) => String(model).includes(f)) ?? null;
-
-/** The 5.5 releases repriced inside their family, so a release id wins over the family word. */
-const PRICE_BY_RELEASE = {
-  "opus-5-5": [4, 5, 0.2, 20, 8],
-  "sonnet-5-5": [2, 2.5, 0.1, 10, 4],
-  "haiku-5-5": [0.1, 0.125, 0.01, 0.5, 0.2],
-};
-const rateOf = (model) =>
-  PRICE_BY_RELEASE[Object.keys(PRICE_BY_RELEASE).find((r) => String(model).includes(r)) ?? ""] ?? PRICE[familyOf(model) ?? "opus"];
-const HAIKU_LONG_PROMPT = 100_000;
-
-export const priceOf = (model, u) => {
-  const prompt = (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-  const scale = String(model).includes("haiku-5-5") && prompt > HAIKU_LONG_PROMPT ? 5 : 1;
-  const [i, w5, r, o, w1h] = rateOf(model).map((p) => p * scale);
-  const hour = u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
-  const writes = (u.cache_creation_input_tokens ?? 0) - hour;
-  return ((u.input_tokens ?? 0) * i + writes * w5 + hour * w1h + (u.cache_read_input_tokens ?? 0) * r + (u.output_tokens ?? 0) * o) / 1e6;
-};
-
-const bucket = () => ({ turns: 0, tokens: 0, usd: 0, minutes: 0, toolTurns: 0, batched: 0 });
-
-/** Sessions whose first stamped line is outside [since, until), which a window leaves out whole. */
-function inWindow(lines, since, until) {
-  const parsed = lines.map((l) => { try { return JSON.parse(l); } catch { return null; } });
-  const firstAt = new Map();
-  for (const j of parsed) {
-    if (j?.session_id && j.timestamp && !firstAt.has(j.session_id)) firstAt.set(j.session_id, new Date(j.timestamp).toISOString());
-  }
-  return lines.filter((_, i) => {
-    const at = firstAt.get(parsed[i]?.session_id);
-    return !(since && at < since) && !(until && at >= until);
-  });
-}
-
-/** @param {string[]} allLines @param {string} [ticket] @param {string|null} [since] @param {string|null} [until] ISO times */
-export function readTicket(allLines, ticket = "", since = null, until = null) {
-  const lines = since || until ? inWindow(allLines, since, until) : allLines;
-  /** @type {Record<string, ReturnType<typeof bucket>>} */
-  const phases = {};
-  const sessions = new Map();
-  let phase = "pre";
-  let at = null;
-  let first = null;
-  let last = null;
-  let reviewers = 0;
-  let singles = 0;
-  const unpriced = new Set();
-  const priced = new Set();
-  const toolMsgs = new Map();
-
-  /**
-   * Charges the open phase for the time since the last stamped record, then moves to `to`. A record
-   * with no timestamp must not move the clock: taking `at = null` from one would make the next
-   * stamped turn uncountable and lose the interval either side of it.
-   */
-  const advance = (to, t) => {
-    if (t !== null) {
-      if (at !== null) (phases[phase] ??= bucket()).minutes += (t - at) / 6e4;
-      at = t;
-    }
-    phase = to;
-  };
-
-  for (const line of lines) {
-    if (!line) continue;
-    let j;
-    try { j = JSON.parse(line); } catch { continue; }
-
-    const t = j.timestamp ? Date.parse(j.timestamp) : null;
-    if (t) { first ??= t; last = t; }
-
-    if (j.type === "system" && j.subtype === "task_started" && j.task_type === "local_agent") {
-      if (REVIEW.test(j.description ?? "")) reviewers++;
-      if (SINGLE_REVIEW.test(j.description ?? "")) singles++;
-      continue;
-    }
-    if (j.type === "result" && j.session_id) {
-      sessions.set(j.session_id, Math.max(sessions.get(j.session_id) ?? 0, j.total_cost_usd ?? 0));
-      continue;
-    }
-    // A new process starts before its marker, and the gap since the last one is no phase's time.
-    if (j.type === "system" && j.subtype === "init") {
-      phase = "pre";
-      at = null;
-      continue;
-    }
-    if (j.type !== "assistant" || !j.message?.usage) continue;
-
-    // Main-session only: a subagent emits no marker, and its text quoting a phase would otherwise
-    // reassign every turn after it.
-    if (!j.parent_tool_use_id) {
-      const blocks = j.message.content ?? [];
-      const marked = readEvent(j)?.letter;
-      if (marked) advance(marked, t);
-      else if (phase === "B" || phase === "D" || phase === "E") {
-        const calls = blocks
-          .filter((b) => b.type === "tool_use")
-          .map((b) => ({ name: b.name, command: b.input?.command, file: b.input?.file_path ?? b.input?.notebook_path }));
-        if (scopeEnds(calls)) advance("C", t);
-      }
-    }
-
-    // One line per content block, each repeating the message's usage: priced once, by id.
-    const id = j.message.id;
-    const uses = (j.message.content ?? []).filter((b) => b.type === "tool_use").length;
-    if (!j.parent_tool_use_id && uses) {
-      const msg = toolMsgs.get(id ?? toolMsgs.size) ?? { phase, calls: 0 };
-      msg.calls += uses;
-      toolMsgs.set(id ?? toolMsgs.size, msg);
-    }
-    if (id && priced.has(id)) continue;
-    if (id) priced.add(id);
-
-    const u = j.message.usage;
-    const model = j.message.model ?? "";
-    if (model === "<synthetic>") continue;
-    if (!familyOf(model)) unpriced.add(model);
-    const row = (phases[phase] ??= bucket());
-    row.turns++;
-    row.tokens += (u.input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0);
-    row.usd += priceOf(model, u);
-    advance(phase, t);
-  }
-  for (const msg of toolMsgs.values()) {
-    const row = (phases[msg.phase] ??= bucket());
-    row.toolTurns++;
-    if (msg.calls > 1) row.batched++;
-  }
-
-  return {
-    ticket,
-    usd: [...sessions.values()].reduce((a, b) => a + b, 0),
-    minutes: first && last ? (last - first) / 6e4 : 0,
-    rounds: Math.floor(reviewers / 2) + singles,
-    marked: Object.keys(phases).some((k) => k !== "pre"),
-    unpriced: [...unpriced],
-    phases,
-  };
-}
+export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => String(model).includes(f)) ?? null;
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
-
-/**
- * A ledger row (one session) whose own model is not the family planned for its first phase, read
- * from the main session's turns alone — `models` counts subagents too, and judging by the costliest
- * of those flagged 62 rows: every opus build whose sonnet recon outspent it.
- */
-export function mismatchedModel(row) {
-  const want = MODEL_BY_PHASE[Object.keys(row.phases ?? {})[0]];
-  const [top] = Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1]);
-  const family = top && familyOf(top[0]);
-  return Boolean(want && family && family !== want);
-}
-
-/** A row from before `mainModels` was recorded, which this flag cannot speak about either way. */
-const unjudgeable = (row) => !row.usage?.mainModels || Object.keys(row.usage.mainModels).length === 0;
-
-/** A ticket's rows since its last `landed`/`closed`/`parked` close — an open window still counts. */
-function windows(rows) {
-  const byTicket = new Map();
-  for (const r of rows) (byTicket.get(r.n) ?? byTicket.set(r.n, []).get(r.n)).push(r);
-  return [...byTicket.values()].flatMap((forTicket) => {
-    const out = [];
-    let win = [];
-    for (const r of forTicket) {
-      win.push(r);
-      if (r.outcome === "landed" || r.outcome === "closed" || r.outcome === "parked") {
-        out.push(win);
-        win = [];
-      }
-    }
-    return win.length ? [...out, win] : out;
-  });
-}
-
-/** A supervisor's own row — a settle, a CI-red retry, a park after it — which no session ran. */
-const ranTurns = (row) => row.turns !== 0;
-
-/** A process that starts at D and hands off is a HOLD round: the review and the fix it asked for. */
-const holdRound = (row) => row.outcome === "handoff" && Object.keys(row.phases ?? {})[0] === "D";
-
-/**
- * Each ticket's HOLD verdicts: schema 8's `review_holds_total`, across claims and fix rounds. A
- * ticket with no row carrying it is approximated as its `review_rounds` less its landings — a count a
- * re-claim resets, and one that takes a LAND still settling for a HOLD.
- */
-function holdsByTicket(rows) {
-  const by = new Map();
-  for (const r of rows) {
-    const t = by.get(r.n) ?? by.set(r.n, { holds: null, rounds: 0, landed: 0 }).get(r.n);
-    if (typeof r.review_holds_total === "number") t.holds = Math.max(t.holds ?? 0, r.review_holds_total);
-    t.rounds = Math.max(t.rounds, r.review_rounds ?? 0);
-    if (r.outcome === "landed") t.landed += 1;
-  }
-  return Object.fromEntries([...by].map(([n, t]) => [n, t.holds ?? Math.max(0, t.rounds - t.landed)]));
-}
-
-/**
- * Fix-round spend, sessions per ticket, and any row that ran the wrong model — from `tickets.jsonl`
- * rather than the stream logs `readTicket` reads, because a fix round and a model are ledger facts.
- */
-export function ledgerSummary(rows) {
-  const groups = windows(rows);
-  const total = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
-  const fixCost = groups.reduce((a, win) => {
-    const first = win.findIndex((r) => r.outcome === "retry");
-    return a + win.reduce((x, r, i) => x + ((first >= 0 && i > first) || holdRound(r) ? (r.cost ?? 0) : 0), 0);
-  }, 0);
-  const holds = holdsByTicket(rows);
-  const counts = Object.values(holds);
-  return {
-    fixCost,
-    fixShare: total ? (fixCost / total) * 100 : 0,
-    holds,
-    holdsMean: counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0,
-    processesMedian: median(groups.map((w) => w.filter(ranTurns).length).filter(Boolean)),
-    mismatches: rows.filter(mismatchedModel),
-    unjudged: rows.filter((r) => ranTurns(r) && unjudgeable(r)).length,
-  };
-}
 
 /** The main session's own model: schema 9 records it, and before it the one most of its turns ran on. */
 const modelOf = (row) => row.model ?? Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -336,7 +101,7 @@ function holdsOf(rows) {
     if (typeof r.review_holds_total === "number") total = Math.max(total ?? 0, r.review_holds_total);
     rounds = Math.max(rounds, r.review_rounds ?? 0);
     if (r.outcome === "landed") landed += 1;
-    if (r.kind && held(r)) own += 1;
+    if (r.kind && holdRound(r)) own += 1;
   }
   return (total ?? Math.max(0, rounds - landed)) + own;
 }
