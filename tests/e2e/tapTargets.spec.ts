@@ -190,10 +190,16 @@ for (const size of SIZES) {
     await expectNoBuriedControls(page, "offline lobby, 4 players", 10);
 
     await sweepSizes(page, "offline lobby", UNDERSIZED_BY_DESIGN);
+    await page.getByRole("button", { name: copy["lobby.start"], exact: true }).scrollIntoViewIfNeeded();
+    await settled(page, 1200);
+    await sweepSizes(page, "offline lobby, start", UNDERSIZED_BY_DESIGN, [copy["lobby.start"]]);
 
     await page.goto(`${baseURL!}/rules`);
     await settled(page, 2500);
     await sweepSizes(page, "rules");
+    await page.getByRole("button", { name: copy["rules.faq.q1"] }).scrollIntoViewIfNeeded();
+    await settled(page, 1200);
+    await sweepSizes(page, "rules, questions", [], [copy["rules.faq.q1"]]);
   });
 
   // The table forces landscape (components/GameTable.tsx), so in portrait the
