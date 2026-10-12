@@ -21,6 +21,8 @@ export interface CardTable {
   glossLight: SharedValue<GlossLight>;
   /** The hand's registry keys in the order its cards paint, bottom first (`handPaintOrder`). */
   handOrder: SharedValue<readonly string[]>;
+  /** The pile's registry keys in the order its cards paint, bottom first (`pilePaintOrder`). */
+  pileOrder: SharedValue<readonly string[]>;
 }
 
 /** One publisher's own cards, mirrored from the registry: a reader of these re-runs on its owner's writes alone. */
@@ -38,6 +40,7 @@ type Places = Pick<CardTable, "pile" | "hand" | "seats" | "felt">;
 export function useCardTableValue(places: Places, motion: SharedValue<TableMotion>, handLift: SharedValue<number>, glossLight: SharedValue<GlossLight>): CardTable {
   const rects = useSharedValue<CardRects>({});
   const handOrder = useSharedValue<readonly string[]>([]);
+  const pileOrder = useSharedValue<readonly string[]>([]);
   const key = JSON.stringify(places);
   useEffect(() => {
     if (process.env.EXPO_PUBLIC_E2E_FAST !== "1") return;
@@ -54,7 +57,7 @@ export function useCardTableValue(places: Places, motion: SharedValue<TableMotio
       if (e2e.murlanCardPile === pile) delete e2e.murlanCardPile;
     };
   }, [rects, key]);
-  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift, glossLight, handOrder }), [key, rects, motion, handLift, glossLight, handOrder]);
+  return useMemo(() => ({ ...(JSON.parse(key) as Places), rects, motion, handLift, glossLight, handOrder, pileOrder }), [key, rects, motion, handLift, glossLight, handOrder, pileOrder]);
 }
 
 function forget(rects: SharedValue<CardRects>, key: string, prefix: boolean) {

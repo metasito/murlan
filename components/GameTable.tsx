@@ -185,7 +185,7 @@ const VOTE_BELOW_PILL = 7;
  */
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
-const HAND_SHADE_Z = { zIndex: Layer.handShade } as const;
+const CARD_SHADE_Z = { zIndex: Layer.cardShade } as const;
 const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
  * The turn chip while the opening gate holds the table. Online the deadline is
@@ -1173,7 +1173,7 @@ export function GameTable({
           rather than whatever the window is drawn on. */}
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
         <Sweep trigger={flushTrigger} width={W} height={H} />
-        <View style={[StyleSheet.absoluteFill, HAND_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
+        <View style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
         </View>
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />

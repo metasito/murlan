@@ -1,5 +1,5 @@
-// tests/native/handShadeWiring.test.tsx — the hand's shadows on each other (#1466) are drawn by one
-// canvas over the table, from the hand's own paint order: the order its card views stack in.
+// tests/native/handShadeWiring.test.tsx — the hand's and pile's shadows on each other are drawn by one
+// canvas over the table, from each one's own paint order: the order its card views stack in.
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { StyleSheet } from 'react-native';
@@ -11,6 +11,7 @@ import type { HandShadeProps } from '@/components/table/feltReady';
 import { dealCards, type GameState } from '@/lib/game/gameEngine';
 import { Layer } from '@/lib/theme';
 import { frames } from './helpers/exchangeLegs';
+import { PAIR, throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
 
 const HIDDEN = { includeHiddenElements: true };
@@ -64,7 +65,7 @@ describe('the hand shade', () => {
 
     const canvas = screen.getByTestId('hand-shade-canvas', HIDDEN);
     const layer = StyleSheet.flatten(canvas.parent?.props.style) as { zIndex?: number };
-    expect(layer.zIndex).toBe(Layer.handShade);
+    expect(layer.zIndex).toBe(Layer.cardShade);
     const props = mounted[mounted.length - 1];
     expect(props.ready).toBe(true);
 
@@ -75,5 +76,16 @@ describe('the hand shade', () => {
       .map(({ key }) => key);
     expect(stacked.length).toBeGreaterThan(1);
     expect(props.cards.handOrder.value).toEqual(stacked);
+  }, 60_000);
+
+  it('reads the pile in the order its card views stack', async () => {
+    await throwPair(3);
+    const pileOrder = () => mounted[mounted.length - 1].cards.pileOrder.value;
+    const shown = () => screen.container.queryAll((n) => typeof n.props.nativeID === 'string' && n.props.nativeID.startsWith('card-pile:')).map((n) => String(n.props.nativeID).slice('card-'.length));
+    await frames(64);
+    expect(shown()).toEqual(PAIR.cards.map((c) => `pile:${c.id}`));
+    expect(pileOrder()).toEqual(shown());
+    await frames(2000);
+    expect(pileOrder()).toEqual(shown());
   }, 60_000);
 });

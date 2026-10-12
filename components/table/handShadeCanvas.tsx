@@ -1,4 +1,4 @@
-// The share of each hand card's shadow that falls on the cards under it (#1466): the felt draws
+// The share of each hand or pile card's shadow that falls on the cards under it: the felt draws
 // every shadow beneath all cards, so this second canvas lies over the table. On web it is only
 // ever reached through `handShade.web.tsx`'s lazy boundary, once CanvasKit has loaded.
 import { useEffect, useMemo } from "react";
@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native";
 import { BlurStyle, Canvas, ClipOp, Picture, Skia, type SkPath, type SkPicture } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";
 import { CardShadow, Colors, withAlpha } from "@/lib/theme";
-import { addOutline, handShadeCards, handShadeShape, handShades, shadowFall, shadowPaint, type ShadowPath } from "./cardShadows";
+import { addOutline, cardShades, shadeCards, shadeShape, shadowFall, shadowPaint, type ShadowPath } from "./cardShadows";
 import { useCardShadowsOn, type HandShadeProps } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 
@@ -15,7 +15,7 @@ interface Shade { caster: SkPath; below: SkPath; above: SkPath; back: boolean }
 const PAINTS: readonly ShadowPath[] = ["cast", "face", "back"];
 
 export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
-  const { rects, handOrder, motion, felt } = cards;
+  const { rects, handOrder, pileOrder, motion, felt } = cards;
   const midX = cards.hand.x;
   const pile = { x: cards.pile.x / felt.sx, y: cards.pile.y / felt.sy };
   const recorder = useMemo(() => Skia.PictureRecorder(), []);
@@ -54,10 +54,11 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
   const drawn = useSharedValue<SkPicture>(empty);
 
   useAnimatedReaction(
-    () => [rects.value, handOrder.value] as const,
-    ([all, order]) => {
-      const read = handShadeCards(all, order, felt);
-      const shape = handShadeShape(all, read, felt, midX);
+    () => [rects.value, handOrder.value, pileOrder.value] as const,
+    ([all, hand, pileCards]) => {
+      // The hand's card layer lies under every resting pile play (`pileGroupZ`).
+      const read = shadeCards(all, [...hand, ...pileCards], felt);
+      const shape = shadeShape(all, read, felt, midX);
       if (shape === last.value) return;
       last.value = shape;
       const outline = (keys: readonly string[]) => {
@@ -66,7 +67,7 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
         return builder.build();
       };
       const old = shades.value;
-      shades.value = handShades(read).map((s) => ({ caster: outline([s.caster]), below: outline(s.below), above: outline(s.above), back: all[s.caster].back }));
+      shades.value = cardShades(read).map((s) => ({ caster: outline([s.caster]), below: outline(s.below), above: outline(s.above), back: all[s.caster].back }));
       version.value += 1;
       if (DISPOSE_PATHS) for (const s of old) for (const path of [s.caster, s.below, s.above]) path.dispose();
     },
