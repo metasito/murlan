@@ -611,8 +611,7 @@ export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKE
  * @param {{action: string}} settled
  */
 export function settleOutcome({ action }) {
-  if (action === "merge" || action === "already-merged")
-    return { countsAsFailure: false, recorded: "landed", handBack: false };
+  if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
   if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
   // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
   // claim nor its silence. Recording the row and tearing the worktree down without releasing
@@ -1949,50 +1948,10 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
  * mergeability job still running is neither; and a run that has not registered yet is a push seconds
  * old. Sharing a counter parks whichever goes second. A run that *is* running spends none of these.
  */
-export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12, ready: 2 };
+export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12 };
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
-
-/**
- * Reads the pull request's state and asks `landing()` what to do with it.
- *
- * **Every settle round asks, whatever CI said.** The landing question used to be put only behind a
- * green verdict, so a pull request someone else had already merged — whose ci.yml run reads
- * `cancelled`, because merging cancels it — was never asked at all, and spent three fix rounds
- * against a branch that was already in main.
- *
- * @param {Function} run
- */
-function readLanding(prNumber, verdict, run = sh) {
-  const pr = JSON.parse(
-    run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable,isDraft"]),
-  );
-  return ts("./land.ts").landing(pr, verdict);
-}
-
-/**
- * Merges, then confirms the remote branch is actually gone.
- *
- * RULES.md rule 14 asks for that confirmation and ADR 0004 moved the merge here, which left the
- * rule with no executor at all — it was written for a session or a person doing the merging. A
- * worktree still holding the local branch makes `--delete-branch` fail quietly, and the remote copy
- * survives with it. Harmless over a merged pull request; the identical silence over an unmerged one
- * is #294, where a branch on origin with no open pull request reads as a live claim and the ticket
- * can never be picked up again.
- *
- * @returns {string|null} the branch, if it is still on origin
- */
-function mergeAndConfirm(prNumber, branch, sha, run = sh) {
-  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber, sha));
-  if (!branch) return null;
-  try {
-    return ts("./land.ts").branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
-  } catch {
-    // The merge is what mattered, and an unreadable `ls-remote` is not evidence of a survivor.
-    return null;
-  }
-}
 
 /**
  * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether

@@ -73,7 +73,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
     phase: "E",
   }),
   pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-  settle: async () => ({ action: "merge", reason: "merged" }),
+  settle: async () => ({ action: "already-merged", reason: "merged" }),
   park: () => {},
   teardown: () => {},
   bell: () => {},
@@ -111,7 +111,7 @@ describe("runOnce", () => {
         },
         settle: async () => {
           order.push("settle");
-          return { action: "merge", reason: "" };
+          return { action: "already-merged", reason: "" };
         },
       }),
     );
@@ -217,7 +217,7 @@ describe("runOnce", () => {
   test("every teardown is told which ticket's claim it is releasing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "merge", reason: "merged" }) },
+      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const torn: unknown[][] = [];
       await runOnce(io({ ...over, teardown: (...args: unknown[]) => torn.push(args) }));
@@ -231,7 +231,7 @@ describe("runOnce", () => {
   test("no terminal outcome leaves the worktree standing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "merge", reason: "merged" }) },
+      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const gone: (string | null)[] = [];
       await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
@@ -444,7 +444,7 @@ describe("runOnce", () => {
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
         announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
-        settle: async () => (order.push("settle"), { action: "merge", reason: "merged" }),
+        settle: async () => (order.push("settle"), { action: "already-merged", reason: "merged" }),
       }),
     );
     assert.deepEqual(order, ["announce 42 G", "settle"]);
@@ -980,7 +980,7 @@ describe("runOnce", () => {
               spawned.push(s.retryCount);
               return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
             },
-            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "merge", reason: "" }),
+            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "already-merged", reason: "" }),
           },
           ledger,
         ),
@@ -1727,7 +1727,7 @@ describe("a session's cost is in the ledger before CI is waited on", () => {
   });
 
   for (const [name, verdict] of Object.entries({
-    merged: { action: "merge", reason: "merged" },
+    merged: { action: "already-merged", reason: "merged" },
     red: { action: "hand-back", reason: "CI failed" },
     owner: { action: "owner", reason: "no settle" },
   })) {
@@ -1749,7 +1749,7 @@ describe("what a ticket's clock covers", () => {
       io({
         settle: async () => {
           await new Promise((r) => setTimeout(r, 30));
-          return { action: "merge", reason: "merged" };
+          return { action: "already-merged", reason: "merged" };
         },
         record: (x: unknown) => rows.push(x),
       }),
@@ -1934,7 +1934,7 @@ describe("a session the API failed", () => {
       pick: (p: number | null, at: string | null) => (picked.push([p, at]), ticket),
       spawn: async (route: { phase: string }) => (phases.push(route.phase), died(overloaded)()),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-      settle: async () => (settled++, { action: "merge" }),
+      settle: async () => (settled++, { action: "already-merged" }),
     });
     assert.equal(settled, 0);
     assert.deepEqual(phases, ["E", "E"]);

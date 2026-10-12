@@ -137,27 +137,3 @@ export function armArgs(repo: string, prNumber: number, sha: string): string[] {
 export function disarmArgs(repo: string, prNumber: number): string[] {
   return ["pr", "merge", String(prNumber), "--repo", repo, "--disable-auto"];
 }
-
-/**
- * `--merge`, never `--squash`: the branch's own history is what a later bisect reads.
- * `--delete-branch` removes the remote copy, which nothing else does. `--match-head-commit` makes
- * GitHub refuse the merge if the head moved past the commit that was cleared.
- */
-export function mergeArgs(repo: string, prNumber: number, sha: string): string[] {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--merge", "--delete-branch", "--match-head-commit", sha];
-}
-
-/**
- * Whether `git ls-remote origin <branch>` still finds the branch — RULES.md rule 14's confirmation
- * that `--delete-branch` took effect. A worktree still holding the local branch makes the delete
- * fail and the remote copy survives with it.
- *
- * Harmless over a merged branch; over an unmerged one it is #294, where a branch on origin with no
- * open pull request satisfies `issue-tracker.md`'s staleness test and the ticket can never be
- * picked up again.
- *
- * A string predicate: the caller owns the command.
- */
-export function branchSurvives(lsRemoteStdout: string): boolean {
-  return lsRemoteStdout.trim().length > 0;
-}

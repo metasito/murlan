@@ -5,8 +5,6 @@ import {
   landing,
   armArgs,
   disarmArgs,
-  mergeArgs,
-  branchSurvives,
   type CiVerdict,
   type Landing,
   type PrState,
@@ -361,35 +359,5 @@ describe("armArgs and disarmArgs", () => {
 
   test("disarm", () => {
     assert.deepEqual(disarmArgs("metasito/murlan", 7), ["pr", "merge", "7", "--repo", "metasito/murlan", "--disable-auto"]);
-  });
-});
-
-describe("mergeArgs", () => {
-  test("merges the cleared head with a merge commit and deletes the branch", () => {
-    assert.deepEqual(mergeArgs("o/r", 7, "abc"), [
-      "pr", "merge", "7", "--repo", "o/r", "--merge", "--delete-branch", "--match-head-commit", "abc",
-    ]);
-  });
-
-  // The floor. Asserted as absences because a merge that needs forcing is a decision, and
-  // `--squash` throws away the branch history a later bisect reads.
-  test("never squashes, rebases or forces", () => {
-    const args = mergeArgs("metasito/murlan", 42, "abc");
-    assert.ok(!args.includes("--squash"));
-    assert.ok(!args.includes("--rebase"));
-    assert.ok(!args.includes("--admin"));
-  });
-});
-
-describe("branchSurvives", () => {
-  test("no output means the remote branch is gone", () => {
-    assert.equal(branchSurvives(""), false);
-    assert.equal(branchSurvives("\n"), false);
-    assert.equal(branchSurvives("  \n"), false);
-  });
-
-  test("a ref line means --delete-branch did not take", () => {
-    const line = "9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist-vacated-seats\n";
-    assert.equal(branchSurvives(line), true);
   });
 });

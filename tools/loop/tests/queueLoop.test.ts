@@ -62,7 +62,7 @@ const stubIo = () => ({
   spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
   standing: () => null,
   pushedPr: () => null,
-  settle: async () => ({ action: "merge", reason: "" }),
+  settle: async () => ({ action: "already-merged", reason: "" }),
   park: () => {},
   teardown: () => {},
   bell: () => {},
@@ -1303,15 +1303,11 @@ describe("takeStopFile", () => {
 
 describe("settleOutcome", () => {
   test("a merge is the landing, and costs the run nothing", () => {
-    assert.deepEqual(settleOutcome({ action: "merge" }), {
+    assert.deepEqual(settleOutcome({ action: "already-merged" }), {
       countsAsFailure: false,
       recorded: "landed",
       handBack: false,
     });
-  });
-
-  test("one already merged is a landing too, not a settle failure", () => {
-    assert.equal(settleOutcome({ action: "already-merged" }).recorded, "landed");
   });
 
   // A ticket red three times produced three whole sessions and zero rows, so its cost, its turns
@@ -1773,7 +1769,7 @@ describe("the land phase", () => {
 
   test("opens a phase before the wait and says what is being waited on", async () => {
     const screen = board();
-    await settle(pending, screen as never, { watch: async () => ({ action: "merge" }) });
+    await settle(pending, screen as never, { watch: async () => ({ action: "already-merged" }) });
     assert.equal(screen.rows[0], `start ${LAND}`);
     assert.match(screen.rows[1], /waiting for ci\.yml on agent\/42-a-thing/);
   });
@@ -1810,7 +1806,7 @@ describe("the land phase", () => {
     await settle(pending, screen as never, {
       watch: async (_p: unknown, log: (m: string) => void) => {
         log("main moved — updating the branch and reading CI again");
-        return { action: "merge" };
+        return { action: "already-merged" };
       },
     });
     assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
