@@ -30,7 +30,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { COMMITTING, overLine, readLine, scopeEnds } from "./loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   activity,
@@ -1747,7 +1747,7 @@ export function runTicket(
     }
     if (fact.kind === "result" && !fact.origin) {
       state.result = fact;
-      if (fact.declared) state.declared = overLine(state.declared, fact.declared);
+      if (fact.declared) state.declared = fact.declared;
     }
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers
