@@ -1823,7 +1823,7 @@ describe("ticketFacts", () => {
     const facts = ticketFacts(7, timedOut as never);
     assert.equal(seen[0].timeout, 30_000);
     assert.equal(facts.reviewRounds, null);
-    assert.equal(facts.totalReviewRounds, null);
+    assert.equal(facts.totalHolds, null);
     assert.equal(facts.title, "ticket #7");
   });
 
@@ -1836,6 +1836,6 @@ describe("ticketFacts", () => {
     assert.equal(outside.title, "t");
     assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
     const own = ticketFacts(7, read("MEMBER") as never);
-    assert.deepEqual([own.reviewRounds, own.totalReviewRounds, own.ciRounds], [1, 1, 1]);
+    assert.deepEqual([own.reviewRounds, own.totalHolds, own.ciRounds], [1, 1, 1]);
   });
 });
