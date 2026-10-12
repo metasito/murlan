@@ -174,6 +174,7 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
         ...process.env,
         DISABLE_AUTOUPDATER: "1",
         CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+        CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
         LOOP_TURNS: undefined,
         LOOP_PHASE: undefined,
         LOOP_REASON: undefined,

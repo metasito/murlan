@@ -225,6 +225,21 @@ describe("readTicket, across processes and stream lines", () => {
     });
   }
 
+  test("a session marked only by echoing the phase mid-chain is marked, and charges that phase", () => {
+    const t = readTicket([
+      msg("m1", [call("Bash", "git status")], 0),
+      msg("m2", [call("Bash", 'cd /c/x/.worktrees/agent-1 && echo "PHASE C" && git log -1')], 1),
+      msg("m3", [call("Bash", 'gh issue comment 5 --body-file v.md && echo "PHASE E" && gh pr view 7')], 2),
+    ]);
+    assert.equal(t.marked, true);
+    assert.deepEqual([t.phases.pre?.turns, t.phases.C?.turns, t.phases.E?.turns], [1, 1, 1]);
+  });
+
+  test("an echo a subagent runs moves no phase", () => {
+    const sub = line({ ...JSON.parse(msg("m2", [call("Bash", 'echo "PHASE C"')], 1)), parent_tool_use_id: "toolu_1" });
+    assert.equal(readTicket([msg("m1", [text("PHASE D")], 0), sub]).phases.C, undefined);
+  });
+
   test("since leaves out a whole earlier process of the same ticket", () => {
     const early = msg("m1", [text("PHASE C")], 0, "old");
     const late = line({ ...JSON.parse(msg("m2", [text("PHASE D")], 0, "new")), timestamp: "2026-09-21T11:00:00.000Z" });
@@ -338,8 +353,67 @@ describe("ledgerSummary", () => {
   });
 
   test("a pushed row and its settle row are one process", () => {
-    const rows = [row(1, "pushed", 3, { C: 60 }, {}), row(1, "landed", 0, {}, {})];
+    const rows = [{ ...row(1, "pushed", 3, { C: 60 }, {}), turns: 20 }, { ...row(1, "landed", 0, {}, {}), turns: 0 }];
     assert.equal(ledgerSummary(rows).processesMedian, 1);
+  });
+
+  // Under ADR 0011 a HOLD round is a process that starts at D and hands off: the review and its fix.
+  // Fix spend counted only `retry` rows, the last of which was written on 2026-10-10, and read $0.00.
+  test("a D-started handoff is fix spend, and a build's handoff is not", () => {
+    const rows = [
+      row(1, "handoff", 5, { B: 60, C: 600 }, { opus: 5 }),
+      row(1, "handoff", 2, { D: 300, C: 300 }, { opus: 2 }),
+      row(1, "pushed", 1, { D: 120, E: 30 }, { opus: 1 }),
+      row(1, "landed", 0, {}, {}),
+    ];
+    const out = ledgerSummary(rows);
+    assert.equal(out.fixCost, 2);
+    assert.equal(out.fixShare, 25);
+  });
+
+  const rounds = (n: number, fields: object[], landed = true) => [
+    ...fields.map((f) => ({ ...row(n, "handoff", 1, { D: 60 }, {}), ...f })),
+    ...(landed ? [{ ...row(n, "landed", 0, {}, {}), ...fields.at(-1) }] : []),
+  ];
+
+  test("HOLD rounds per ticket are its HOLD total, or before it its verdicts less its landings", () => {
+    const rows = [
+      ...rounds(1, [{ review_holds_total: 0 }, { review_holds_total: 1 }, { review_holds_total: 1 }]),
+      ...rounds(2, [{ review_rounds: 1, review_holds_total: 2 }]),
+      ...rounds(3, [{ review_rounds: 0 }, { review_rounds: 2 }]),
+      ...rounds(4, [{}]),
+      ...rounds(5, [{ review_holds_total: null, review_rounds: null }], false),
+    ];
+    const out = ledgerSummary(rows);
+    assert.deepEqual(out.holds, { 1: 1, 2: 2, 3: 1, 4: 0, 5: 0 });
+    assert.equal(out.holdsMean, 0.8);
+    assert.match(report([readTicket([say("PHASE C", 0), result(1)], "1")], rows), /HOLD rounds: 0\.80 per ticket/);
+  });
+
+  // A CI fix round's `REVIEW <sha> fix` LAND, still settling, is a verdict and no HOLD.
+  test("a ticket whose HOLD total is 0 has no HOLDs, whatever its verdicts and landings", () => {
+    const rows = [
+      ...rounds(6, [{ review_holds_total: 0, review_rounds: 1 }], false),
+      { n: 6, outcome: "retry", cost: 0, phases: {}, turns: 0 },
+      { ...row(6, "pushed", 1, { C: 60, D: 60 }, {}), review_holds_total: 0, review_rounds: 1 },
+    ];
+    assert.deepEqual(ledgerSummary(rows).holds, { 6: 0 });
+  });
+
+  // 101 of the ledger's rows are a settle's `landed` with no turns, and 14 a supervisor's `retry`.
+  test("a zero-turn row is neither a process nor a row whose model went unjudged", () => {
+    const rows = [
+      { ...row(1, "handoff", 4, { C: 60 }, { "claude-opus-5": 4 }), turns: 50 },
+      { n: 1, outcome: "retry", cost: 0, phases: {}, turns: 0 },
+      { ...row(1, "handoff", 2, { C: 60 }, { "claude-opus-5": 2 }), turns: 40 },
+      { ...row(1, "pushed", 1, { D: 60 }, { "claude-opus-5": 1 }), turns: 20 },
+      { n: 1, outcome: "landed", cost: 0, phases: {}, turns: 0 },
+    ];
+    const out = ledgerSummary(rows);
+    assert.equal(out.processesMedian, 3);
+    assert.equal(out.unjudged, 0);
+    const reparks = [{ n: 2, outcome: "parked", turns: 30 }, { n: 3, outcome: "reparked", turns: 0 }, { n: 4, outcome: "reparked", turns: 0 }];
+    assert.equal(ledgerSummary(reparks).processesMedian, 1, "a window no session ran in is no ticket's process count");
   });
 
   test("a closed row ends its window, and counts as landed per loop commit", () => {
@@ -382,9 +456,15 @@ describe("turnHeadroom", () => {
 
   test("the report names the short size and stays quiet about the rest", () => {
     const busy = [{ size: "size:S", turns: 90, outcome: "handoff" }, { size: "size:M", turns: 60, outcome: "pushed" }];
-    const out = report([readTicket([say("PHASE C", 0), result(1)], "1")], busy);
+    const out = report([readTicket([say("PHASE C", 0), result(1)], "1")], busy, { "size:S": 160, "size:M": 505 });
     assert.match(out, /turn cap under 2× the busiest process: size:S busiest 90, cap 160/);
     assert.doesNotMatch(out, /size:M busiest/);
+  });
+
+  // #1496's build used 153 of size:S's 160 turns; #1438 151 and #1470 137 sat as close.
+  test("size:S's cap has twice the turns its busiest measured build used", () => {
+    const [s] = turnHeadroom([{ size: "size:S", turns: 153, outcome: "handoff" }]);
+    assert.equal(s.short, false, `cap ${s.cap} for a busiest of ${s.most}`);
   });
 });
 

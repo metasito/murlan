@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { awaitRuns, BUDGET_MS, EVERY_MS, GATE_MS, runArgs } from "../await-run.mjs";
-import { BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS } from "../queue-loop.mjs";
+import { TARGET_RUN_SECONDS } from "../../ci/e2e-shard.mjs";
 
 const quiet = () => {};
 function clock() {
@@ -94,4 +95,11 @@ test("with --pr, a green run whose over-budget list names a file the pull reques
 test("the default budget returns with a poll's headroom under the default Bash timeout", () => {
   assert.ok(BUDGET_MS + EVERY_MS <= BASH_DEFAULT_TIMEOUT_MS);
   assert.ok(BUDGET_MS + GATE_MS <= BASH_DEFAULT_TIMEOUT_MS);
+});
+
+// Each re-issue is a turn at the session's full context: #1481's build polled about 40 times at up
+// to 290k. One wait outlasting the whole run CI aims for makes the usual case one call.
+test("one wait outlasts the CI run's target, and the default Bash timeout stays under agent:check's", () => {
+  assert.ok(BUDGET_MS >= TARGET_RUN_SECONDS * 1000, `a ${BUDGET_MS / 1000}s wait against a ${TARGET_RUN_SECONDS}s run`);
+  assert.ok(BASH_DEFAULT_TIMEOUT_MS < CHECK_BASH_TIMEOUT_MS);
 });

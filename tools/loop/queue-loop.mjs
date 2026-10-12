@@ -78,7 +78,7 @@ import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift } from "./preflight.mjs";
 import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
@@ -433,8 +433,12 @@ export function syncCheckout(
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
 
-/** Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the ceiling. */
-export const BASH_DEFAULT_TIMEOUT_MS = 5 * 60_000;
+/**
+ * Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the
+ * ceiling. `await-run` waits a minute less, and each re-issue of it is a turn at full context, so
+ * this stays well past the CI run's target.
+ */
+export const BASH_DEFAULT_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * The supervisor's half has no watchdog over it — `runTicket`'s watches the child and is cleared
@@ -1633,6 +1637,9 @@ export function runTicket(
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
       // Also drops the commit trailer, which queue.md states instead.
       CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
+      // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
+      // and each of its writes moves the cached prefix.
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
@@ -2942,7 +2949,18 @@ export async function main({
   // `utc` for the file: its title is RUN_ID, which is UTC.
   const recapOf = (t, utc = false) =>
     runRecap(
-      { startedAt, now: Date.now(), totals: book.totals, tickets: book.tickets, ciMs: sofar("ci"), waitMs: sofar("wait"), asleepMs, launch, utc },
+      {
+        startedAt,
+        now: Date.now(),
+        totals: book.totals,
+        tickets: book.tickets,
+        ciMs: sofar("ci"),
+        waitMs: sofar("wait"),
+        asleepMs,
+        launch,
+        utc,
+        headroom: turnHeadroom(book.rows ?? []),
+      },
       t,
     );
   screen.board?.({ recap: recapOf });

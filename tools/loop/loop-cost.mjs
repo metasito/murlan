@@ -9,8 +9,9 @@
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { PHASE, scopeEnds } from "./loop-stream.mjs";
+import { readEvent, scopeEnds } from "./loop-stream.mjs";
 import { DIR, ARTEFACTS, killedStarts, readLedger } from "./loop-logs.mjs";
+import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const REVIEW = /\b(spec|standards) review\b/i;
@@ -39,12 +40,12 @@ export const CONTEXT_BY_SIZE = { "size:M": 300_000, "size:L": 330_000, "size:XL"
 export const CONTEXT_DEFAULT = 200_000;
 
 /**
- * Each cap stays above twice the busiest healthy process of its size; `loop-cost` prints any size
- * where it does not. A raised context ceiling raises its cap with it, so that one is met first.
+ * Each cap stays above twice the busiest healthy process of its size; `loop-cost` and the run recap
+ * print any size where it does not. A raised context ceiling raises its cap with it, so that one is met first.
  */
 export const TURNS_BY_SIZE = {
   "size:XS": 60,
-  "size:S": 160,
+  "size:S": 320,
   "size:M": 505,
   "size:L": 560,
   "size:XL": 600,
@@ -172,8 +173,8 @@ export function readTicket(allLines, ticket = "", since = null, until = null) {
     // reassign every turn after it.
     if (!j.parent_tool_use_id) {
       const blocks = j.message.content ?? [];
-      const marked = blocks.map((b) => (b.type === "text" ? PHASE.exec(b.text ?? "") : null)).find(Boolean);
-      if (marked) advance(marked[1], t);
+      const marked = readEvent(j)?.letter;
+      if (marked) advance(marked, t);
       else if (phase === "B" || phase === "D" || phase === "E") {
         const calls = blocks
           .filter((b) => b.type === "tool_use")
@@ -255,6 +256,28 @@ function windows(rows) {
   });
 }
 
+/** A supervisor's own row — a settle, a CI-red retry, a park after it — which no session ran. */
+const ranTurns = (row) => row.turns !== 0;
+
+/** A process that starts at D and hands off is a HOLD round: the review and the fix it asked for. */
+const holdRound = (row) => row.outcome === "handoff" && Object.keys(row.phases ?? {})[0] === "D";
+
+/**
+ * Each ticket's HOLD verdicts: schema 8's `review_holds_total`, across claims and fix rounds. A
+ * ticket with no row carrying it is approximated as its `review_rounds` less its landings — a count a
+ * re-claim resets, and one that takes a LAND still settling for a HOLD.
+ */
+function holdsByTicket(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const t = by.get(r.n) ?? by.set(r.n, { holds: null, rounds: 0, landed: 0 }).get(r.n);
+    if (typeof r.review_holds_total === "number") t.holds = Math.max(t.holds ?? 0, r.review_holds_total);
+    t.rounds = Math.max(t.rounds, r.review_rounds ?? 0);
+    if (r.outcome === "landed") t.landed += 1;
+  }
+  return Object.fromEntries([...by].map(([n, t]) => [n, t.holds ?? Math.max(0, t.rounds - t.landed)]));
+}
+
 /**
  * Fix-round spend, sessions per ticket, and any row that ran the wrong model — from `tickets.jsonl`
  * rather than the stream logs `readTicket` reads, because a fix round and a model are ledger facts.
@@ -264,14 +287,18 @@ export function ledgerSummary(rows) {
   const total = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
   const fixCost = groups.reduce((a, win) => {
     const first = win.findIndex((r) => r.outcome === "retry");
-    return first < 0 ? a : a + win.slice(first + 1).reduce((x, r) => x + (r.cost ?? 0), 0);
+    return a + win.reduce((x, r, i) => x + ((first >= 0 && i > first) || holdRound(r) ? (r.cost ?? 0) : 0), 0);
   }, 0);
+  const holds = holdsByTicket(rows);
+  const counts = Object.values(holds);
   return {
     fixCost,
     fixShare: total ? (fixCost / total) * 100 : 0,
-    processesMedian: median(groups.map((w) => w.filter((r) => r.outcome !== "pushed").length)),
+    holds,
+    holdsMean: counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0,
+    processesMedian: median(groups.map((w) => w.filter(ranTurns).length).filter(Boolean)),
     mismatches: rows.filter(mismatchedModel),
-    unjudged: rows.filter(unjudgeable).length,
+    unjudged: rows.filter((r) => ranTurns(r) && unjudgeable(r)).length,
   };
 }
 
@@ -280,8 +307,10 @@ export function ledgerSummary(rows) {
  * statement about the log rather than about the loop — eleven of thirty-one such logs put `pre` at
  * 27% of a table whose job is to say which phase to attack. They are dropped and counted, because
  * the gate this feeds compares a before against an after and only marked runs are in both.
+ *
+ * @param {any[]} tickets what `readTicket` returns @param {object[]} [ledgerRows] @param {Record<string, number>} [caps]
  */
-export function report(tickets, ledgerRows = []) {
+export function report(tickets, ledgerRows = [], caps = TURNS_BY_SIZE) {
   const priceable = tickets.filter((t) => t.usd > 0);
   const done = priceable.filter((t) => t.marked);
   const skipped = priceable.length - done.length;
@@ -331,14 +360,13 @@ export function report(tickets, ledgerRows = []) {
     ...(ledger
       ? [
           `fix rounds: $${ledger.fixCost.toFixed(2)} (${ledger.fixShare.toFixed(0)}%)`,
+          `HOLD rounds: ${ledger.holdsMean.toFixed(2)} per ticket`,
           `processes/ticket: median ${ledger.processesMedian}`,
           ...(ledger.mismatches.length
             ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
             : []),
           ...(ledger.unjudged ? [`model unjudged: ${ledger.unjudged} rows predate the reading`] : []),
-          ...turnHeadroom(ledgerRows)
-            .filter((h) => h.short)
-            .map((h) => `turn cap under 2× the busiest process: ${h.size} busiest ${h.most}, cap ${h.cap}`),
+          ...turnHeadroom(ledgerRows, caps).filter((h) => h.short).map(shortOfTurns),
         ]
       : []),
   ].join("\n");
