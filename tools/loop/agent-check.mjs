@@ -9,10 +9,51 @@ import { createHash } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { primaryWorktree, checkLockDrift, readSubject } from "./preflight.mjs";
+import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
 import { STEPS, LOCAL, DELEGATED, byName, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import preflightMemory from "../ci/preflightMemory.mjs";
+
+/**
+ * The tree `agent:check` is judging, from that tree's own readings.
+ *
+ * A subject with nothing in it is a refusal rather than a pass: a check looking at no diff has
+ * nothing its green could be a statement about, and the loop only ever runs this before a push.
+ */
+export function checkSubject({ toplevel, baseSha, changed }) {
+  if (!toplevel) return { refuse: "no tree to judge — this is not inside a git worktree" };
+  if (!baseSha) return { refuse: "no base to judge against — origin/main does not resolve" };
+  if (!changed.trim()) {
+    return {
+      refuse: `nothing to judge in ${toplevel} — no commits against origin/main, nothing tracked changed`,
+    };
+  }
+  return { root: toplevel, base: baseSha.slice(0, 7) };
+}
+
+/**
+ * Those readings, taken from a given tree. Separate from the process's own cwd so two worktrees of
+ * one repository can be resolved side by side, which is the only way to test that they are judged
+ * apart.
+ */
+export function readSubject(cwd) {
+  const read = (...args) => {
+    try {
+      return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+    } catch {
+      return null;
+    }
+  };
+  return checkSubject({
+    toplevel: read("rev-parse", "--show-toplevel"),
+    baseSha: read("rev-parse", "--verify", "origin/main"),
+    // Untracked files are excluded: a scratch file is not a change any verdict could be about.
+    changed: [
+      read("diff", "--name-only", "origin/main...HEAD"),
+      read("status", "--porcelain", "--untracked-files=no"),
+    ].join("\n"),
+  });
+}
 
 /**
  * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
@@ -191,7 +232,7 @@ async function main() {
 
   // The cache key is tree content only (see `treeHash` above), so it cannot see a node_modules-only
   // drift — a peer session's `npm install` mid-run would otherwise keep replaying a stale PASS.
-  const sharedRoot = primaryWorktree(git("worktree", "list", "--porcelain"));
+  const sharedRoot = parseWorktreeList(git("worktree", "list", "--porcelain"))[0]?.path ?? null;
   if (!sharedRoot) {
     console.error("agent:check: could not find the primary worktree");
     process.exit(1);

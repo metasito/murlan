@@ -308,12 +308,12 @@ export function isSessionHost(commandLine, { platform = process.platform, system
   );
 }
 
-function killPid(pid, dryRun) {
+function killPid(pid, dryRun, say = console.log) {
   if (dryRun) return;
   if (wouldTakeSelf(processTable(), pid, process.pid)) {
     // Re-read rather than trust the caller's snapshot: the tree is what `/T` acts on, and a
     // process that joined it since the sweep began is as fatal as one that was always there.
-    console.log(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
+    say(`reap: refused to kill pid ${pid} — this session is inside its process tree`);
     return;
   }
   if (process.platform === "win32") sh("taskkill", ["/PID", String(pid), "/T", "/F"]);
@@ -395,8 +395,11 @@ export function clearPort(port, { dryRun = false } = {}) {
   return pids;
 }
 
-if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const dryRun = process.argv.includes("--dry-run");
+/**
+ * One sweep, said a line at a time through `say`. Returns how many it named to take; a port left to
+ * a live run is somebody else working, not a leftover, so it is not counted.
+ */
+export async function reap({ dryRun = false, stale: takeStale = false, say = console.log } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
 
   // Two snapshots a moment apart: cumulative CPU says only what a process has ever burned, and
@@ -421,17 +424,17 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const byPid = new Map(table.map((p) => [p.pid, p]));
   const staleHolders = stalePortHolders(holders, table);
   for (const pid of staleHolders) {
-    console.log(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
-    killPid(pid, dryRun);
+    say(`reap: ${verb} the e2e port ${E2E_PORT}, held by ${labelOf(byPid.get(pid))}`);
+    killPid(pid, dryRun, say);
   }
   for (const pid of holders.filter((p) => !staleHolders.includes(p))) {
     const held = byPid.get(pid);
-    console.log(
+    say(
       `reap: left the e2e port ${E2E_PORT} to a live run — ${labelOf(held ?? { pid })}, ` +
         `launched by ${held?.ppid ?? "?"}: ${(held?.commandLine || "command line unreadable").slice(0, 120)}`
     );
   }
-  if (!holders.length) console.log(`reap: e2e port ${E2E_PORT} is free`);
+  if (!holders.length) say(`reap: e2e port ${E2E_PORT} is free`);
 
   const parentless = orphans(ours, {
     livePids: new Set(table.map((p) => p.pid)),
@@ -440,23 +443,22 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     keep,
   });
   for (const p of parentless) {
-    console.log(`reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, parent ${p.ppid} is gone`);
-    killPid(p.pid, dryRun);
+    say(`reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, parent ${p.ppid} is gone`);
+    killPid(p.pid, dryRun, say);
   }
-  if (!parentless.length) console.log("reap: nothing of ours lost its parent");
+  if (!parentless.length) say("reap: nothing of ours lost its parent");
 
   const stale = staleByAge(ours, { maxAgeMs: STALE_AGE_MS, now, keep }).filter(
     (p) => !parentless.includes(p)
   );
-  const takeStale = process.argv.includes("--stale");
   for (const p of stale) {
-    console.log(
+    say(
       `reap: ${takeStale && !dryRun ? "killed" : "would kill"} ${labelOf(p)}, ${hoursOf(p)}h old` +
         (takeStale ? "" : " — pass --stale to take it")
     );
-    if (takeStale) killPid(p.pid, dryRun);
+    if (takeStale) killPid(p.pid, dryRun, say);
   }
-  if (!stale.length) console.log(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
+  if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
   // Ownership is what makes the classes above safe, and it is exactly why they could not see the
   // worst leftover on this machine: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
@@ -472,15 +474,18 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   }).filter((p) => !parentless.some((q) => q.pid === p.pid));
   for (const p of burning) {
     const percent = Math.round(p.cpuRatio * 100);
-    console.log(
+    say(
       `reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, ` +
         `parent ${p.ppid} is gone, burning ${percent}% of a core`
     );
-    killPid(p.pid, dryRun);
+    killPid(p.pid, dryRun, say);
   }
-  if (!burning.length) console.log("reap: no orphan is burning CPU");
+  if (!burning.length) say("reap: no orphan is burning CPU");
 
-  // A port left to a live run is somebody else working, not a leftover, so it is not counted.
-  const found = staleHolders.length + parentless.length + stale.length + burning.length;
+  return staleHolders.length + parentless.length + stale.length + burning.length;
+}
+
+if (isInvokedDirectly(process.argv[1], import.meta.url)) {
+  const found = await reap({ dryRun: process.argv.includes("--dry-run"), stale: process.argv.includes("--stale") });
   if (process.argv.includes(IF_FOUND) && found === 0) process.exit(FOUND_NOTHING);
 }
