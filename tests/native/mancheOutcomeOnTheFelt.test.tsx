@@ -10,6 +10,7 @@ import * as particles from '@/components/table/particles';
 import * as flightPhysics from '@/components/flightPhysics';
 import { lampControls, type Pool } from '@/components/table/lampRig';
 import { MancheMoment } from '@/lib/tokens';
+import { displayFrames } from './helpers/displayFrames';
 import { bootFeedback, settle } from './helpers/feedback';
 import { card, PAIR } from './helpers/landing';
 
@@ -94,68 +95,59 @@ async function closeManche(c: (typeof CASES)[number]) {
 }
 
 describe("a manche's outcome on the felt", () => {
+  let restoreFrames: () => void;
   beforeEach(async () => {
     mockReduceMotion = false;
     jest.useFakeTimers();
+    restoreFrames = displayFrames();
     await bootFeedback();
   });
   afterEach(() => {
+    restoreFrames();
     jest.restoreAllMocks();
     jest.useRealTimers();
   });
 
-  it.each(CASES)('$outcome: $motes motes at the winner once the last card lands', async (c) => {
-    const { r, motes, motesBeforeLanding } = await closeManche(c);
-    expect(motesBeforeLanding).toBe(0);
-    expect(motes.mock.calls.map(([o]) => o)).toEqual([c.outcome]);
-    expect((motes.mock.results[0].value as unknown[]).length).toBe(c.motes);
-    await r.unmount();
-  });
-
-  it.each(CASES)('$outcome: the table shakes only for a win', async (c) => {
-    const { r, trauma } = await closeManche(c);
-    const tiers = trauma.mock.calls.map(([tier]) => tier);
-    expect(tiers).toContain(c.outcome === 'won' ? 'mancheWon' : 'ordinary');
-    expect(tiers.includes('mancheWon')).toBe(c.outcome === 'won');
-    await r.unmount();
-  });
-
   // Seat 3 closes every case: the viewer's partner in teams, an opponent otherwise.
-  it.each(CASES)('$outcome (teams: $teams): the closing card is lit only for a win the winning side closed, from the landing until the next deal', async (c) => {
-    const { r, litBeforeLanding } = await closeManche(c);
-    expect(litBeforeLanding).toBe(0);
-    expect(lit(r)).toBe(c.outcome === 'won' && c.teams ? 1 : 0);
-    await act(async () => r.rerender(table(c, false)));
-    await settle(100);
-    expect(lit(r)).toBe(0);
-    await r.unmount();
-  });
+  it.each(CASES)(
+    '$outcome (teams: $teams): once the last card lands, $motes motes at the winner, a shake only for a win, the closing seat off move, ' +
+      'the closing card lit only for a win the winning side closed, the lamp turned to the winner for a loss or a neutral finish and dimmed only for a loss; ' +
+      'the next deal puts out the card and gives the lamp back',
+    async (c) => {
+      const { r, motes, trauma, target, level, aimBefore, motesBeforeLanding, litBeforeLanding, seatsBeforeLanding } = await closeManche(c);
 
-  it.each(CASES)('$outcome: the closing seat is no longer on move once the last card lands', async (c) => {
-    const { r, seatsBeforeLanding } = await closeManche(c);
-    expect(seatsBeforeLanding).toEqual(['side-seat-left']);
-    expect(litSeats(r)).toEqual([]);
-    await r.unmount();
-  });
+      expect(motesBeforeLanding).toBe(0);
+      expect(motes.mock.calls.map(([o]) => o)).toEqual([c.outcome]);
+      expect((motes.mock.results[0].value as unknown[]).length).toBe(c.motes);
 
-  it.each(CASES)('$outcome: the lamp turns to the winner for a loss or a neutral finish, and dims only for a loss', async (c) => {
-    const { r, target, level, aimBefore } = await closeManche(c);
-    const turns = c.outcome === 'lost' || c.outcome === 'neutral';
-    const aimAfter = target.mock.calls.at(-1)?.[1] ?? aimBefore;
-    expect(aimBefore).toBeDefined();
-    expect(aimAfter?.slice(0, 2)).not.toEqual(turns ? aimBefore!.slice(0, 2) : undefined);
-    if (!turns) expect(target.mock.calls.every(([, pool]) => pool[0] === aimBefore![0] && pool[1] === aimBefore![1])).toBe(true);
-    const dims = level.mock.calls.filter(([, to, rate]) => to === MancheMoment.lostLevel && rate === MancheMoment.lostLevelRate);
-    expect(dims.length > 0).toBe(c.outcome === 'lost');
+      const tiers = trauma.mock.calls.map(([tier]) => tier);
+      expect(tiers).toContain(c.outcome === 'won' ? 'mancheWon' : 'ordinary');
+      expect(tiers.includes('mancheWon')).toBe(c.outcome === 'won');
 
-    level.mockClear();
-    await act(async () => r.rerender(table(c, false)));
-    await settle(100);
-    const released = level.mock.calls.some(([, to, rate]) => to === 1 && rate === MancheMoment.releaseRate);
-    expect(released).toBe(c.outcome === 'lost');
-    expect((target.mock.calls.at(-1)?.[1] ?? aimBefore!).slice(0, 2)).toEqual(aimBefore!.slice(0, 2));
-    await r.unmount();
-  });
+      expect(seatsBeforeLanding).toEqual(['side-seat-left']);
+      expect(litSeats(r)).toEqual([]);
+
+      expect(litBeforeLanding).toBe(0);
+      expect(lit(r)).toBe(c.outcome === 'won' && c.teams ? 1 : 0);
+
+      const turns = c.outcome === 'lost' || c.outcome === 'neutral';
+      const aimAfter = target.mock.calls.at(-1)?.[1] ?? aimBefore;
+      expect(aimBefore).toBeDefined();
+      expect(aimAfter?.slice(0, 2)).not.toEqual(turns ? aimBefore!.slice(0, 2) : undefined);
+      if (!turns) expect(target.mock.calls.every(([, pool]) => pool[0] === aimBefore![0] && pool[1] === aimBefore![1])).toBe(true);
+      const dims = level.mock.calls.filter(([, to, rate]) => to === MancheMoment.lostLevel && rate === MancheMoment.lostLevelRate);
+      expect(dims.length > 0).toBe(c.outcome === 'lost');
+
+      level.mockClear();
+      await act(async () => r.rerender(table(c, false)));
+      await settle(100);
+      expect(lit(r)).toBe(0);
+      const released = level.mock.calls.some(([, to, rate]) => to === 1 && rate === MancheMoment.releaseRate);
+      expect(released).toBe(c.outcome === 'lost');
+      expect((target.mock.calls.at(-1)?.[1] ?? aimBefore!).slice(0, 2)).toEqual(aimBefore!.slice(0, 2));
+      await r.unmount();
+    }
+  );
 
   // Online, a teams manche's scores (`game:over`) trail the state that ends it: the outcome is pending until they come.
   describe('a teams win scored after the throw', () => {
