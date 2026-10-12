@@ -467,9 +467,12 @@ export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_a
  * the ticket, so it is held and respawned, never parked.
  * A session that declared its ending chose it, whatever its last turn met. A spent usage window
  * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
+ * A session the watchdog killed mid-retry never wrote a result, and is the same outage.
  */
 export function apiFailure(run) {
-  if (!run.result?.isError || run.declared || run.blocked || run.accountError) return null;
+  if (run.declared || run.blocked || run.accountError) return null;
+  if (run.status === "stalled" && run.lastFact === "api_retry") return "unreachable";
+  if (!run.result?.isError) return null;
   const s = run.result.apiStatus;
   if (s >= 500 || s === 429) return s;
   return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
@@ -1490,6 +1493,7 @@ export function runTicket(
     version: null,
     lastFactAt: Date.now(),
     asleepMs: 0,
+    lastFact: null,
     blocked: false,
     blockedUntil: 0,
     stalled: false,
@@ -1579,6 +1583,7 @@ export function runTicket(
     state.lastFactAt = Date.now();
     const fact = readLine(line);
     if (!fact) return;
+    state.lastFact = fact.kind;
     if (fact.kind === "init") {
       state.version = fact.version;
       screen.set({ session: fact.sessionId });
@@ -1727,6 +1732,7 @@ export function runTicket(
           apiErrorCode: state.apiErrorCode,
           ms: Date.now() - startedAt,
           asleepMs: state.asleepMs,
+          lastFact: state.lastFact,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
           // file is complete and nothing is writing to it.
