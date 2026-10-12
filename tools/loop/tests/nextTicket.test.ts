@@ -4,17 +4,20 @@ import assert from "node:assert/strict";
 import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
+import { park } from "../queue-loop.mjs";
 
 function issue(number: number, labelNames: string[], author_association = "OWNER") {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };
 }
+
+const noPrs = { openPr: () => false, liveWorktrees: () => new Set<number>() };
 
 describe("an issue opened from outside the repo", () => {
   test("never reaches an agent, whatever it is labelled", () => {
     for (const association of ["NONE", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", undefined]) {
       for (const labels of [[], ["needs-triage"], ["ready-for-agent"], ["wayfinder:task"]]) {
         const stranger = { ...issue(1, labels), author_association: association };
-        const b = classify([stranger]);
+        const b = classify([stranger], noPrs);
         assert.equal(routeOf(stranger), null, `${association} ${labels}`);
         assert.deepEqual(b.owner.map((i) => i.number), [1], `${association} ${labels}`);
       }
@@ -34,7 +37,7 @@ describe("an issue opened from outside the repo", () => {
 
 describe("classify's bucketing", () => {
   test("an unlabelled issue routes to triage, not to the owner", () => {
-    const buckets = classify([issue(1, [])]);
+    const buckets = classify([issue(1, [])], noPrs);
 
     assert.deepEqual(buckets.owner, []);
     assert.equal(buckets.triage.length, 1);
@@ -42,7 +45,7 @@ describe("classify's bucketing", () => {
   });
 
   test("an explicit needs-triage label still routes to triage", () => {
-    const buckets = classify([issue(2, ["needs-triage"])]);
+    const buckets = classify([issue(2, ["needs-triage"])], noPrs);
 
     assert.equal(buckets.triage.length, 1);
     assert.equal(buckets.triage[0].number, 2);
@@ -51,7 +54,7 @@ describe("classify's bucketing", () => {
   test("triage still precedes wayfinder when both have work", () => {
     // Precedence is deliberate, not incidental — per the ordering comment
     // above `classify`.
-    const buckets = classify([issue(3, []), issue(4, ["wayfinder:research"])]);
+    const buckets = classify([issue(3, []), issue(4, ["wayfinder:research"])], noPrs);
 
     const route = pickRoute(buckets);
     assert.equal(route.skill, "triage");
@@ -59,7 +62,7 @@ describe("classify's bucketing", () => {
   });
 
   test("a blocked wayfinder child is not routed", () => {
-    const buckets = classify([issue(6, ["wayfinder:research"]), issue(7, ["wayfinder:task"])]);
+    const buckets = classify([issue(6, ["wayfinder:research"]), issue(7, ["wayfinder:task"])], noPrs);
     const blocked = new Set([6]);
     const take = (list: { number: number }[], n: number) => list.filter((i) => !blocked.has(i.number)).slice(0, n);
 
@@ -69,7 +72,7 @@ describe("classify's bucketing", () => {
   });
 
   test("an owner-gated label still routes to owner", () => {
-    const buckets = classify([issue(5, ["ready-for-human"])]);
+    const buckets = classify([issue(5, ["ready-for-human"])], noPrs);
 
     assert.equal(buckets.owner.length, 1);
     assert.equal(buckets.owner[0].number, 5);
@@ -79,7 +82,7 @@ describe("classify's bucketing", () => {
   // already there. Routed as frontier work, #38 was claimed and escalated on two runs in a row and
   // would have been on every run after, because it sorts to the same place each time.
   test("an owner label beats ready-for-agent when a ticket carries both", () => {
-    const buckets = classify([issue(38, ["ready-for-agent", "ready-for-human", "size:M"])]);
+    const buckets = classify([issue(38, ["ready-for-agent", "ready-for-human", "size:M"])], noPrs);
 
     assert.equal(buckets.frontier.length, 0, "an owner-gated ticket must never reach the frontier");
     assert.equal(buckets.owner.length, 1);
@@ -88,14 +91,14 @@ describe("classify's bucketing", () => {
 
   test("needs-info and rejected gate a ready-for-agent ticket the same way", () => {
     for (const label of ["needs-info", "rejected"]) {
-      const buckets = classify([issue(39, ["ready-for-agent", label])]);
+      const buckets = classify([issue(39, ["ready-for-agent", label])], noPrs);
       assert.equal(buckets.frontier.length, 0, `${label} must keep a ticket off the frontier`);
       assert.equal(buckets.owner.length, 1, `${label} must land in owner`);
     }
   });
 
   test("ready-for-agent still wins over an unlabelled issue", () => {
-    const buckets = classify([issue(6, ["ready-for-agent", "size:S"]), issue(7, [])]);
+    const buckets = classify([issue(6, ["ready-for-agent", "size:S"]), issue(7, [])], noPrs);
 
     assert.equal(buckets.frontier.length, 1);
     assert.equal(buckets.frontier[0].number, 6);
@@ -106,7 +109,7 @@ describe("classify's bucketing", () => {
   test("in-progress and blocked are still skipped regardless of other labels", () => {
     const buckets = classify(
       [issue(8, ["in-progress"]), issue(9, ["ready-for-agent", "blocked"])],
-      { openPr: () => false, liveWorktrees: () => new Set<number>() },
+      noPrs,
     );
 
     assert.equal(buckets.frontier.length, 0);
@@ -118,7 +121,7 @@ describe("classify's bucketing", () => {
 
 describe("the frontier's order", () => {
   test("the oldest ticket comes first, whatever its size", () => {
-    const b = classify([issue(995, ["ready-for-agent", "size:S"]), issue(70, ["ready-for-agent", "size:L"])]);
+    const b = classify([issue(995, ["ready-for-agent", "size:S"]), issue(70, ["ready-for-agent", "size:L"])], noPrs);
     assert.deepEqual(b.frontier.map((i) => i.number), [70, 995]);
   });
 
@@ -130,7 +133,7 @@ describe("the frontier's order", () => {
       issue(1500, ["ready-for-agent", "main-red"]),
       launch(300),
       { ...issue(5, ["ready-for-agent"]), milestone: { title: "Later" } },
-    ]);
+    ], noPrs);
     assert.deepEqual(b.frontier.map((i) => i.number), [1500, 300, 900, 5, 10]);
   });
 
@@ -139,7 +142,7 @@ describe("the frontier's order", () => {
       issue(44, ["ready-for-human"]),
       { ...issue(1107, ["ready-for-human"]), milestone: { title: LAUNCH_MILESTONE } },
       issue(60, ["deferred"]),
-    ]);
+    ], noPrs);
     assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #44");
     assert.equal(waitingOn([]), "nothing agent-takeable");
   });
@@ -164,9 +167,50 @@ describe("a ticket stranded between CI rounds", () => {
     assert.equal(stranded(inProgress, { openPr: false, liveWorktree: false }), false);
   });
 
-  test("a ticket carrying no claim is never stranded, whatever else is true of it", () => {
-    const fresh = { number: 1100, title: "u", labels: [{ name: "ready-for-agent" }] };
-    assert.equal(stranded(fresh, { openPr: true, liveWorktree: false }), false);
+  test("a ready-for-agent ticket whose own PR is open and whose worktree is gone is stranded without a claim", () => {
+    const released = issue(1100, ["ready-for-agent"]);
+    assert.equal(stranded(released, { openPr: true, liveWorktree: false }), true);
+    assert.equal(stranded(released, { openPr: true, liveWorktree: true }), false);
+    assert.equal(stranded(released, { openPr: false, liveWorktree: false }), false);
+  });
+
+  test("a parked ticket still waiting on the owner is not stranded", () => {
+    const parked = issue(1100, ["ready-for-human"]);
+    assert.equal(stranded(parked, { openPr: true, liveWorktree: false }), false);
+  });
+
+  test("a park the owner sends back is stranded, ahead of an older plain ticket", () => {
+    const labels = new Set(["in-progress", "ready-for-agent", "size:S"]);
+    let note = "";
+    park(1438, {
+      phase: "D",
+      why: "review HOLD",
+      log: "l",
+      cwd: null,
+      branch: "agent/1438-x",
+      dirty: false,
+      run: (cmd: string, args: string[]) => {
+        if (cmd === "gh" && args[1] === "edit") {
+          args.forEach((a, i) => {
+            if (a === "--remove-label") labels.delete(args[i + 1]);
+            if (a === "--add-label") labels.add(args[i + 1]);
+          });
+        }
+        return "";
+      },
+      write: (_path: string, body: string) => void (note = body),
+    });
+    assert.deepEqual([...labels].sort(), ["ready-for-human", "size:S"], "park's own labels");
+    const swap = /swap `([^`]+)` for `([^`]+)`/.exec(note);
+    assert.ok(swap, "the park note tells the owner which label to swap");
+    labels.delete(swap[1]);
+    labels.add(swap[2]);
+
+    const sentBack = issue(1438, [...labels]);
+    const io = { openPr: (n: number) => n === 1438, liveWorktrees: () => new Set<number>() };
+    const b = classify([sentBack, issue(1200, ["ready-for-agent"])], io);
+    assert.deepEqual(b.stranded.map((i) => i.number), [1438]);
+    assert.deepEqual(b.frontier.map((i) => i.number), [1438, 1200]);
   });
 
   test("a stranded ticket reaches the frontier ahead of fresh work", () => {
