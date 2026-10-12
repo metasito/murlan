@@ -944,7 +944,7 @@ export function GameTable({
   const [feltReady, onFeltReady] = useFeltReady();
   const cardCast = useCardCast(feltReady, restingCast(cardTable.pile, lampAim, cardTable.felt));
   useBenchHandle("lampFreeze", rig.freeze);
-  const { grey, greyStyle, feltGreyStyle, darkenStyle, held: linkHeldNow, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
+  const { grey, greyStyle, edgeGreyStyle, darkenStyle, held: linkHeldNow, frozen: clockHeld } = useLinkHold(ownLink, rig, catchUp && timeline.inFlight);
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -1159,7 +1159,7 @@ export function GameTable({
           information (#1244), lit by the one lamp rig. */}
       <Animated.View
         testID="table-felt"
-        style={[StyleSheet.absoluteFill, FELT_Z, feltGreyStyle, breathStyle]}
+        style={[StyleSheet.absoluteFill, FELT_Z, edgeGreyStyle, breathStyle]}
         pointerEvents="none"
         {...a11yHidden()}
       >
@@ -1323,7 +1323,7 @@ export function GameTable({
         {/* The cutout's own column. A cutout can never sit on a card, but it sits
             happily between two controls — so the menu knob takes the head of the
             column, the reactions knob its foot, and the cutout the gap between. */}
-        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, greyStyle]}>
+        <Animated.View testID="control-rail-layer" pointerEvents="box-none" style={[StyleSheet.absoluteFill, RAIL_Z, edgeGreyStyle]}>
           <ControlRail
             veiled={behindCoverOnly}
             width={frame.rail}

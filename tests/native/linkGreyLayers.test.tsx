@@ -81,6 +81,8 @@ const table = (ownLink: OwnLink) => (
 );
 
 const LAYERS = ['table-felt', 'game-top-bar', 'score-pill-layer', 'control-rail-layer', 'game-table'];
+// Unfiltered on iOS: the felt greys in Skia, and SwiftUI would inset the rail off its cutout column.
+const EDGE = ['table-felt', 'control-rail-layer'];
 const filters = () =>
   LAYERS.map((id) => (getAnimatedStyle(screen.getByTestId(id, { includeHiddenElements: true })) as { filter?: string }).filter);
 
@@ -97,13 +99,13 @@ describe("the table while the viewer's own link is down", () => {
   it.each<[OwnLink, string]>([
     ['lost', greyFilter(Reconnect.grey)],
     ['up', 'none'],
-  ])('with the link %s, every layer of the table and its HUD reads %s off iOS; on iOS the HUD its grayscale alone', async (link, filter) => {
+  ])('with the link %s, every layer of the table and its HUD reads %s off iOS; on iOS the HUD its grayscale alone, the felt and rail none', async (link, filter) => {
     const view = await render(table(link));
     await act(async () => {
       jest.advanceTimersByTime(16);
     });
     const ios = iosGrey(link === 'up' ? 0 : Reconnect.grey).filter;
-    expect(filters()).toEqual(LAYERS.map((id) => (Platform.OS !== 'ios' ? filter : id === 'table-felt' ? undefined : ios)));
+    expect(filters()).toEqual(LAYERS.map((id) => (Platform.OS !== 'ios' ? filter : EDGE.includes(id) ? undefined : ios)));
     await view.unmount();
   });
 

@@ -68,7 +68,9 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => ({ filter: IOS ? iosGrey(grey.value).filter : greyFilter(grey.value) }));
-  const feltGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
+  // RN hosts an iOS filter in SwiftUI, which insets its content by the safe area: the rail, laid out
+  // in the cutout's column, moved a cutout's width inward (#1481). The felt filters in Skia.
+  const edgeGreyStyle = useAnimatedStyle(() => (IOS ? {} : { filter: greyFilter(grey.value) }));
   const darkenStyle = useAnimatedStyle(() => ({ opacity: iosGrey(grey.value).darken }));
-  return { grey, greyStyle, feltGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, frozen: held || missedInFlight };
+  return { grey, greyStyle, edgeGreyStyle, darkenStyle: IOS ? darkenStyle : null, held, frozen: held || missedInFlight };
 }
