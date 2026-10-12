@@ -32,6 +32,9 @@ appId: "${MAESTRO_APP_ID}"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: play-right-landed
+# No wait: the flare fades within FLARE_BRIEF_MS of the landing (components/table/moments.tsx).
+- openLink: "murlan://capture?state=bomb-landed"
+- takeScreenshot: bomb-landed
 - openLink: "murlan://capture?state=held"
 - waitForAnimationToEnd:
     timeout: 3000

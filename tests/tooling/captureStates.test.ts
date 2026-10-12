@@ -156,6 +156,18 @@ describe("the state a capture renders", () => {
     }
   });
 
+  test("a bomb pile lands four of a kind, so the table fires its burst", () => {
+    const bombs = ALL_CAPTURE_STATES.filter((s) => s.pile === "bomb");
+    assert.ok(bombs.length > 0, "no capture state lands a bomb");
+    for (const state of bombs) {
+      const game = captureGameState(state);
+      assert.equal(game.lastPlayedCombination?.type, "bomb", state.id);
+      assert.notEqual(game.lastPlayedBy, state.turn, state.id);
+      const ids = [...game.players.flatMap((p) => p.hand), ...game.lastPlayedCombination!.cards].map((c) => c.id);
+      assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
+    }
+  });
+
   test("nothing waits on the opening, so the table draws mid-hand", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
