@@ -272,6 +272,7 @@ export const contextFor = (size) => CONTEXT_BY_SIZE[size ?? ""] ?? CONTEXT_DEFAU
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
 
 const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
+const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
 
 /** `loop-settings.json` can only switch off what it names; a plugin it does not turn on is stray. */
 export const strayPlugins = (loaded, allowed = JSON.parse(fs.readFileSync(LOOP_SETTINGS, "utf8")).enabledPlugins) =>
@@ -308,7 +309,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     "--tools",
     readAllowedTools().join(","),
     "--json-schema",
-    JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8"))),
+    RESULT_SCHEMA,
     "--max-turns",
     String(turnsFor(size)),
     "--max-budget-usd",
