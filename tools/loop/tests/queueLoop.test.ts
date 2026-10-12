@@ -681,6 +681,9 @@ describe("runTicket", () => {
       assert.equal(seen?.env[`CLAUDE_CODE_DISABLE_${off}`], "1", off);
     }
     assert.equal(seen?.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH, "1");
+    // 25000 is the CLI's own default (2.1.296): a cap at or above it caps nothing.
+    const read = Number(seen?.env.CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS);
+    assert.ok(Number.isInteger(read) && read > 0 && read < 25_000, `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=${read}`);
     assert.ok(seen?.args.includes("--include-hook-events"), "a guard's firing is otherwise invisible in the stream log");
   });
 

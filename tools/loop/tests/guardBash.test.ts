@@ -786,11 +786,12 @@ describe("the hooks settings.json registers", () => {
     }
     for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
     for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
-    assert.deepEqual(
-      matched("PostToolUse", "guard-context.mjs"),
-      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch", "Edit", "Write"],
-      "the tools whose output grows context; every other call would start node for nothing",
-    );
+  });
+
+  test("the native output caps and compaction window stand where guard-read and guard-context did", () => {
+    for (const script of ["guard-read.mjs", "guard-context.mjs"]) {
+      assert.equal(allHooks().find((h) => text(h).includes(script)), undefined, `${script} is still hooked`);
+    }
   });
 
   for (const cwd of CWDS) {
