@@ -1,11 +1,18 @@
 import { Pressable, View } from "react-native";
 import { A11yStatus, a11yHidden, a11yState, useA11yHint } from "@/lib/a11y";
 import { useTranslation } from "@/lib/i18n";
-import { Spacing } from "@/lib/theme";
+import { TOUCH_TARGET_MIN } from "@/lib/theme";
 import { NoticeBadge, NoticeGlyph, NoticeText, TableNotice } from "../TableNotice";
+import { noticeBox, type NoticeKind } from "../noticeModel";
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
 export type MancheVoteNote = EndMatchVoteNote;
+
+/** The pill's own box grown to the floor, its footprint unchanged: react-native-web ignores `hitSlop` on a Pressable. */
+function reach(kind: NoticeKind, scale: number) {
+  const slop = Math.max(0, (TOUCH_TARGET_MIN - (noticeBox(kind, scale).height ?? 0)) / 2);
+  return { paddingVertical: slop, marginVertical: -slop };
+}
 
 /** The next-hand vote at the open pill's foot: the tally as a count, lit and spent once the viewer has voted. */
 export function MancheVote({ scale, voted, votes, total, onPress }: MancheVoteNote & { scale: number }) {
@@ -15,7 +22,7 @@ export function MancheVote({ scale, voted, votes, total, onPress }: MancheVoteNo
     <>
       <A11yStatus label={voted ? waiting : ""} />
       <Pressable
-        hitSlop={Spacing.wide}
+        style={reach("mancheVote", scale)}
         {...a11yState({ role: "button", disabled: voted })}
         accessibilityLabel={voted ? waiting : t("gameOverOverlay.nextHandA11yLabel")}
         disabled={voted}
@@ -42,7 +49,7 @@ export function EndMatchVote({ scale, voted, votes, total, onPress }: EndMatchVo
     <>
       <A11yStatus label={tally} />
       <Pressable
-        hitSlop={Spacing.wide}
+        style={reach("endMatchVote", scale)}
         {...a11yState({ role: "button", selected: voted })}
         accessibilityLabel={voted ? t("game.endMatchWithdrawButton") : t("game.endMatchVoteButton")}
         {...hint.props}

@@ -252,17 +252,17 @@ export default function OnlineLobbyScreen() {
           <Text style={styles.errorBannerText} numberOfLines={2}>
             {error.text}
           </Text>
-          {/* 16pt icon, so the slop lands on both edges to reach the floor: a declared
-              box would take the banner from 32pt to 60 on a single-line message. */}
+          {/* A floor-sized box laid out at the icon's size: a box taking its own room
+              would take the banner from 32pt to 60 on a single-line message. */}
           <Pressable
             onPress={clearError}
-            hitSlop={Spacing.wide}
+            style={styles.errorBannerClose}
             accessibilityRole="button"
             accessibilityLabel={t("common.close")}
           >
             <Ionicons
               name="close"
-              size={16}
+              size={CLOSE_ICON}
               color={Colors.white}
               {...a11yHidden()}
             />
@@ -427,6 +427,7 @@ const MODE_ICON = 16;
 const MODE_ICON_COMPACT = 14;
 const PRESSED_OPACITY = 0.85;
 const DISABLED_OPACITY = 0.4;
+const CLOSE_ICON = 16;
 
 const styles = StyleSheet.create({
   errorBanner: {
@@ -438,6 +439,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     marginBottom: Spacing.sm,
+  },
+  errorBannerClose: {
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    margin: -(TOUCH_TARGET_MIN - CLOSE_ICON) / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   joiningBanner: {
     flexDirection: "row",

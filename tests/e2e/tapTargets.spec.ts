@@ -259,6 +259,15 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: "Annulla" }).click();
     await settled(page, 1500);
 
+    await page.getByRole("button", { name: "Inserisci codice stanza" }).click();
+    await page.getByRole("textbox", { name: "Codice stanza" }).fill("ZZZZZZ");
+    await page.getByRole("button", { name: "Guarda" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Stanza non trovata" })).toBeVisible();
+    await settled(page, 1500);
+    await sweepSizes(page, "online lobby, error banner", [], [copy["common.close"]]);
+    await page.getByRole("button", { name: copy["common.close"] }).click();
+    await settled(page, 1500);
+
     // The waiting room carries the most controls of any menu screen — format,
     // bot fill, five personality pills, the code actions and the start button —
     // and it lays them out differently in each orientation.
