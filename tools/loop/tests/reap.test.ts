@@ -23,6 +23,7 @@ import {
   parseWindowsProcessJson,
   resolvePowerShellExe,
   readProcessTable,
+  reap,
 } from "../reap.mjs";
 import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
@@ -935,6 +936,15 @@ describe("readProcessTable", () => {
       "pwsh",
     );
     assert.equal(rows.length, 1);
+  });
+});
+
+describe("the sweep, called in-process as housekeeping calls it", () => {
+  test("says each line through its caller and counts exactly what it named to take", async () => {
+    const said: string[] = [];
+    const found = await reap({ dryRun: true, stale: true, say: (l: string) => said.push(l) });
+    assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
+    assert.equal(found, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 });
 

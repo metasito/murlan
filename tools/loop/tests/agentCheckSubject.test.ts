@@ -6,9 +6,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkSubject, readSubject } from "../preflight.mjs";
 import { BANNER } from "../check-steps.mjs";
-import { cacheEntry, cleanPassFor, replays, runAll, runStep } from "../agent-check.mjs";
+import { cacheEntry, checkSubject, cleanPassFor, readSubject, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
 // A refusal exits at once; a regression that stops short-circuiting would otherwise run the real

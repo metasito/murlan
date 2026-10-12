@@ -56,7 +56,7 @@ import {
 const stubIo = () => ({
   stopFile: () => false,
   syncCheckout: () => true,
-  queuePre: () => ({ status: 0, said: "" }),
+  housekeeping: () => ({ verdict: "ok", rows: [] }),
   pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
   spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
   standing: () => null,
