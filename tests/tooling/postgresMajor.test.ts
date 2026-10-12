@@ -26,7 +26,7 @@ describe("every Postgres in the project is production's major", () => {
   });
 
   test("the dev container matches it", () => {
-    const dev = majors(readRepoFile("scripts", "dev-stack.mjs"), /"(?:[\w.-]+\/)*postgres:(\d+)-alpine"/g);
+    const dev = majors(readRepoFile("scripts", "dev-stack.mjs"), /"(?:[\w.-]+\/)*postgres:(\d+)-alpine(?:@sha256:[0-9a-f]{64})?"/g);
 
     assert.ok(dev.length > 0, "dev-stack.mjs runs no Postgres image");
     assert.deepEqual(dev, production);

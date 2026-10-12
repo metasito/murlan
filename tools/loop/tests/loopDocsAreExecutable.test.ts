@@ -341,5 +341,6 @@ describe("no instruction runs a suite rule 2 forbids", () => {
 test("queue.md reads CI-RED's on main: line and knows no shared issue", () => {
   const q = read(QUEUE);
   assert.match(q, /`on main:`/);
+  assert.match(q, /`flaky on main:`[^.]*neither this diff's nor this round's/);
   assert.doesNotMatch(q, /shared:|shared issue|owned here/);
 });

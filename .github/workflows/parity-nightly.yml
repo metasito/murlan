@@ -94,3 +94,17 @@ jobs:
           else
             gh issue create --title "$title" --label parity --body-file parity-failure.md
           fi
+
+      - name: Close the failure issue once a run passes
+        if: success() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="The nightly mockup-parity run failed"
+          gh issue list --label parity --state open --limit 20 --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[].number" | while read -r n; do
+            gh issue comment "$n" --body "The nightly mockup-parity run passed. [Run]($RUN_URL)"
+            gh issue close "$n"
+          done
