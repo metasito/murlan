@@ -60,7 +60,15 @@ describe("brief", () => {
     assert.match(later, /Review only the fix `git -C \S+ log -p --first-parent --diff-merges=remerge abc1234\.\.HEAD`/);
     assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), /The fix is `git -C \S+ log -p --first-parent --diff-merges=remerge abc1234\.\.HEAD`/);
     assert.match(later, /each earlier Blocking finding listed after this brief fixed/);
-    assert.match(later, /Report Blocking findings only/);
+  });
+
+  test("no brief asks for Blocking findings only and then for three headings", () => {
+    for (const kind of KINDS) {
+      for (const base of ["origin/main", "abc1234"]) {
+        const text = brief(kind, { n: 1, worktree: WT, base });
+        if (text.includes("## Pre-existing")) assert.doesNotMatch(text, /Blocking findings only/, `${kind} ${base}`);
+      }
+    }
   });
 
   test("the completeness brief asks for the covering test, and leaves test strength to the builder", () => {
