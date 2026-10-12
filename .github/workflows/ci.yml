@@ -301,7 +301,7 @@ jobs:
     # deadlock, and a silent skip would let any of those regress unnoticed.
     services:
       postgres:
-        image: mirror.gcr.io/library/postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -925,7 +925,7 @@ jobs:
     # The boot check reaches a real database, the same way a deploy does.
     services:
       postgres:
-        image: mirror.gcr.io/library/postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres

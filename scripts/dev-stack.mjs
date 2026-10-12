@@ -26,7 +26,7 @@ const NAME = "murlan-dev-pg";
 // Docker Hub's anonymous pull limit and ECR Public's anonymous data cap both reddened CI; Google's
 // mirror of the Docker Official Images serves the same digest with neither. Every workflow's
 // Postgres service repeats this (tests/tooling/postgresImage.test.ts).
-const IMAGE = "mirror.gcr.io/library/postgres:16-alpine";
+const IMAGE = "mirror.gcr.io/library/postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea";
 // Below 49152: Windows carves its dynamic port reservations (Hyper-V, WSL) out of 49152-65535 only.
 const DEFAULT_PORT = 45432;
 const requested = process.env.MURLAN_DEV_PG_PORT;
