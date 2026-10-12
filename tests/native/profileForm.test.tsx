@@ -40,7 +40,7 @@ jest.mock('@tanstack/react-query', () => ({
     isSuccess: true,
     refetch: jest.fn(),
   }),
-  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn() }),
+  useQueryClient: () => ({ setQueryData: jest.fn(), invalidateQueries: jest.fn(), cancelQueries: jest.fn() }),
 }));
 
 import React from 'react';
