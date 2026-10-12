@@ -491,8 +491,9 @@ every hook):
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
-- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewer has
-  run (rule 29). There is no LAND at the round cap: the ticket goes to the owner.
+- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND`, posted by `gh issue comment` or
+  `gh api …/issues/<n>/comments`, until that round's own reviewer has run (rule 29), and whenever
+  the session's transcript cannot be read. There is no LAND at the round cap: the ticket goes to the owner.
 
 ## Owner decisions
 
