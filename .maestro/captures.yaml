@@ -39,7 +39,7 @@ appId: "${MAESTRO_APP_ID}"
 # FLARE_BRIEF_MS of the rethrow's landing (components/table/moments.tsx).
 - tapOn:
     text: "Throw the pile again"
-    waitToSettleTimeoutMs: 500
+    waitToSettleTimeoutMs: 800
 - takeScreenshot: bomb-landed
 - openLink: "murlan://capture?state=held"
 - waitForAnimationToEnd:
