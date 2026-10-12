@@ -353,8 +353,54 @@ describe("ledgerSummary", () => {
   });
 
   test("a pushed row and its settle row are one process", () => {
-    const rows = [row(1, "pushed", 3, { C: 60 }, {}), row(1, "landed", 0, {}, {})];
+    const rows = [{ ...row(1, "pushed", 3, { C: 60 }, {}), turns: 20 }, { ...row(1, "landed", 0, {}, {}), turns: 0 }];
     assert.equal(ledgerSummary(rows).processesMedian, 1);
+  });
+
+  // Under ADR 0011 a HOLD round is a process that starts at D and hands off: the review and its fix.
+  // Fix spend counted only `retry` rows, the last of which was written on 2026-10-10, and read $0.00.
+  test("a D-started handoff is fix spend, and a build's handoff is not", () => {
+    const rows = [
+      row(1, "handoff", 5, { B: 60, C: 600 }, { opus: 5 }),
+      row(1, "handoff", 2, { D: 300, C: 300 }, { opus: 2 }),
+      row(1, "pushed", 1, { D: 120, E: 30 }, { opus: 1 }),
+      row(1, "landed", 0, {}, {}),
+    ];
+    const out = ledgerSummary(rows);
+    assert.equal(out.fixCost, 2);
+    assert.equal(out.fixShare, 25);
+  });
+
+  test("HOLD rounds per ticket are its verdicts less its landings, from the total the cap does not reset", () => {
+    const rounds = (n: number, fields: object[], landed = true) => [
+      ...fields.map((f) => ({ ...row(n, "handoff", 1, { D: 60 }, {}), ...f })),
+      ...(landed ? [{ ...row(n, "landed", 0, {}, {}), ...fields.at(-1) }] : []),
+    ];
+    const rows = [
+      ...rounds(1, [{ review_rounds_total: 0 }, { review_rounds_total: 1 }, { review_rounds_total: 2 }]),
+      ...rounds(2, [{ review_rounds: 1, review_rounds_total: 3 }]),
+      ...rounds(3, [{ review_rounds: 0 }, { review_rounds: 2 }]),
+      ...rounds(4, [{}]),
+      ...rounds(5, [{ review_rounds_total: null, review_rounds: null }], false),
+    ];
+    const out = ledgerSummary(rows);
+    assert.deepEqual(out.holds, { 1: 1, 2: 2, 3: 1, 4: 0, 5: 0 });
+    assert.equal(out.holdsMean, 0.8);
+    assert.match(report([readTicket([say("PHASE C", 0), result(1)], "1")], rows), /HOLD rounds: 0\.80 per ticket/);
+  });
+
+  // 101 of the ledger's rows are a settle's `landed` with no turns, and 14 a supervisor's `retry`.
+  test("a zero-turn row is neither a process nor a row whose model went unjudged", () => {
+    const rows = [
+      { ...row(1, "handoff", 4, { C: 60 }, { "claude-opus-5": 4 }), turns: 50 },
+      { n: 1, outcome: "retry", cost: 0, phases: {}, turns: 0 },
+      { ...row(1, "handoff", 2, { C: 60 }, { "claude-opus-5": 2 }), turns: 40 },
+      { ...row(1, "pushed", 1, { D: 60 }, { "claude-opus-5": 1 }), turns: 20 },
+      { n: 1, outcome: "landed", cost: 0, phases: {}, turns: 0 },
+    ];
+    const out = ledgerSummary(rows);
+    assert.equal(out.processesMedian, 3);
+    assert.equal(out.unjudged, 0);
   });
 
   test("a closed row ends its window, and counts as landed per loop commit", () => {
