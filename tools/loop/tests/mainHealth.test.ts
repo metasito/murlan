@@ -387,6 +387,26 @@ describe("mainFailures", () => {
       assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
     });
 
+    test("main's own green won at attempt 2 gives attempt 1's failures as flaky, before any inherited run", () => {
+      const own = { ...GREEN, attempt: 2 };
+      const asked: string[] = [];
+      const gh = (args: string[]) => {
+        const key = args.join(" ");
+        asked.push(key);
+        if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([own]);
+        if (key === `run view ${own.databaseId} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
+          const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
+          return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
+        }
+        if (key === `run view ${own.databaseId} --repo ${REPO} --log-failed --attempt 1`) {
+          return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
+        }
+        throw new Error(`unexpected gh call: ${key}`);
+      };
+      assert.deepEqual(mainFailures(gh, REPO), { runId: own.databaseId, url: `${own.url}/attempts/1`, ids: [WOBBLE], flaky: true });
+      assert.ok(!asked.some((k) => k.includes("/pulls")), asked.join("\n"));
+    });
+
     test("a main whose tree differs from the pull request's ran its own suite, and its green is its own", () => {
       const asked: string[] = [];
       assert.equal(mainFailures(inherited(2, asked, "beef"), REPO), null);

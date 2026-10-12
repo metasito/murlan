@@ -14,7 +14,7 @@ function walk(dir: string): string[] {
   });
 }
 
-const POSTGRES_REF = /(?:[\w.-]+\/)*postgres:\d[\w.-]*/g;
+const POSTGRES_REF = /(?:[\w.-]+\/)*postgres:\d[\w.-]*(?:@sha256:[0-9a-f]{64})?/g;
 
 // A workflow's `services:` image cannot read a variable, so each one repeats dev-stack.mjs's IMAGE
 // and this holds them to it.
@@ -36,4 +36,5 @@ test("every Postgres image is dev-stack.mjs's IMAGE, and it is not ECR Public", 
     !image.startsWith("public.ecr.aws/"),
     `${image}: ECR Public caps anonymous pulls at 500 GB a month, and CI's pulls got "toomanyrequests: Data limit exceeded"`,
   );
+  assert.match(image, /^[^@]+:[\w.-]+@sha256:[0-9a-f]{64}$/, "a mirror's tag can be repointed; the digest is the image that was verified");
 });
