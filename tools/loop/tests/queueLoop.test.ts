@@ -659,6 +659,20 @@ describe("runTicket", () => {
     assert.notEqual(contextFor("size:M"), contextFor(null), "the two sizes must differ for this to tell them apart");
   });
 
+  test("the spawn turns off what a loop session never uses, and a subagent spawns no other", async () => {
+    let seen: { args: string[]; env: Record<string, string> } | undefined;
+    const capturing = (_cmd: string, args: string[], o: any) => {
+      seen = { args, env: o.env };
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts());
+    for (const off of ["EXPLORE_PLAN_AGENTS", "BUNDLED_SKILLS", "WORKFLOWS", "CRON", "FEEDBACK_SURVEY", "FILE_CHECKPOINTING"]) {
+      assert.equal(seen?.env[`CLAUDE_CODE_DISABLE_${off}`], "1", off);
+    }
+    assert.equal(seen?.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH, "1");
+    assert.ok(seen?.args.includes("--include-hook-events"), "a guard's firing is otherwise invisible in the stream log");
+  });
+
   test("a refusal reaches the caller, as milliseconds", async () => {
     const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);
