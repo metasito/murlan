@@ -57,10 +57,9 @@ describe("brief", () => {
     const first = brief("review", { n: 1, worktree: WT });
     const later = brief("review", { n: 1, worktree: WT, base: "abc1234" });
     assert.match(first, /does it do what the Definition of done asks/);
-    const net = /`git -C \S+ diff abc1234\.\.HEAD`, with `git -C \S+ log -p --first-parent --diff-merges=remerge --merges abc1234\.\.HEAD` for a merge's own edits/;
-    assert.match(later, new RegExp(`Review only the fix ${net.source}`));
-    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), new RegExp(`The fix is ${net.source}`));
-    assert.doesNotMatch(later, /log -p --first-parent --diff-merges=remerge abc1234/);
+    assert.match(later, /Review only the fix `git -C \S+ diff abc1234\.\.HEAD`/);
+    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), /The fix is `git -C \S+ diff abc1234\.\.HEAD`/);
+    assert.doesNotMatch(later, /log -p --first-parent/);
     assert.match(later, /each earlier Blocking finding listed after this brief fixed/);
   });
 
@@ -138,11 +137,11 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
   });
   after(() => rmSync(root, { recursive: true, force: true }));
 
-  test("a later round's base that is an ancestor of HEAD gives the net delta and the merges' own edits", () => {
+  test("a later round's base that is an ancestor of HEAD, with no merge since, gives the plain net diff", () => {
     const r = cli("review", "7", wt, reviewed.slice(0, 7));
     assert.equal(r.status, 0, r.stderr);
     assert.ok(r.stdout.includes(`git -C ${wt} diff ${reviewed.slice(0, 7)}..HEAD`), r.stdout);
-    assert.ok(r.stdout.includes(`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${reviewed.slice(0, 7)}..HEAD`), r.stdout);
+    assert.doesNotMatch(r.stdout, /--diff-merges/);
   });
 
   test("a base the branch was rebased away from exits 2", () => {
@@ -172,5 +171,62 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
       assert.match(r.stderr, /\.worktrees\/agent-7/);
     }
     assert.equal(cli("scope", "7", ".").status, 2);
+  });
+});
+
+describe("a later round's delta is net of the main a merge brought in", () => {
+  let root = "";
+  before(() => (root = mkdtempSync(join(tmpdir(), "brief-delta-"))));
+  after(() => rmSync(root, { recursive: true, force: true }));
+
+  /** Main changes x.txt; the branch, past its reviewed head, merges main and then fixes y.txt. */
+  const scratch = (n: number, mainEdits: string) => {
+    const wt = join(root, ".worktrees", `agent-${n}`);
+    mkdirSync(wt, { recursive: true });
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], { cwd: wt, encoding: "utf8" }).trim();
+    const commit = (file: string, body: string) => {
+      writeFileSync(join(wt, file), body);
+      git("add", "--", file);
+      git("commit", "-qm", file);
+      return git("rev-parse", "HEAD");
+    };
+    git("init", "-q", "-b", "trunk");
+    commit("base.txt", "base\n");
+    git("switch", "-q", "-c", "agent");
+    const reviewed = commit("y.txt", "round 1\n");
+    git("switch", "-q", "trunk");
+    commit(mainEdits, "from main\n");
+    git("switch", "-q", "agent");
+    const merged = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "--no-edit", "trunk"], { cwd: wt });
+    if (merged.status !== 0) {
+      writeFileSync(join(wt, mainEdits), "resolved\n");
+      git("add", "--", mainEdits);
+      git("commit", "-q", "--no-edit");
+    }
+    commit("y.txt", "round 1\nthe fix\n");
+    return { wt, reviewed: reviewed.slice(0, 7) };
+  };
+
+  const namedBy = (text: string) => {
+    const cmd = /The fix is `(git -C \S+ diff \S+(?: HEAD)?)`/.exec(text)?.[1];
+    assert.ok(cmd, text);
+    const [, ...args] = cmd.split(" ");
+    return execFileSync("git", [...args, "--name-only"], { encoding: "utf8" }).split("\n").filter(Boolean);
+  };
+
+  test("a clean merge of main leaves main's files out of the delta", () => {
+    const { wt, reviewed } = scratch(8, "x.txt");
+    const text = brief("fix", { n: 8, worktree: wt, base: reviewed });
+    assert.deepEqual(namedBy(text), ["y.txt"]);
+    assert.doesNotMatch(text, /--diff-merges/);
+  });
+
+  test("a merge merge-tree cannot redo falls back to the net diff and says what it carries", () => {
+    const { wt, reviewed } = scratch(9, "y.txt");
+    const text = brief("fix", { n: 9, worktree: wt, base: reviewed });
+    assert.ok(namedBy(text).includes("y.txt"), text);
+    assert.match(text, /--diff-merges=remerge --merges/);
+    assert.match(text, /what a merge brought in from main is not the fix/);
   });
 });
