@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { READ_CAP, linesRequested, native, verdict } from "../guard-read.mjs";
+import { READ_CAP, linesRequested, verdict } from "../guard-read.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-read.mjs", import.meta.url));
 let dir = "";
@@ -81,10 +81,6 @@ describe("linesRequested", () => {
   test("a Git Bash /c/… cd resolves on win32", { skip: process.platform !== "win32" }, () => {
     const msys = dir.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).replace(/\\/g, "/");
     assert.equal(linesRequested(bash(`cd ${msys}/wt && cat only.ts`), count), 400);
-  });
-
-  test("Git Bash's /tmp is the OS temp dir on win32", { skip: process.platform !== "win32" }, () => {
-    assert.equal(native("/tmp/v.md"), `${os.tmpdir().replace(/\\/g, "/")}/v.md`);
   });
 });
 

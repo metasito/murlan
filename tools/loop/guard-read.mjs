@@ -6,9 +6,8 @@
  * Exit 0 always. stdout carries the deny, or nothing.
  */
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
+import { located, toNative, withoutQuotedBodies } from "./shell.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 export const READ_CAP = 150;
@@ -21,13 +20,6 @@ const realCount = (p) => {
   const text = readFileSync(p, "utf8");
   return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 };
-
-/** Git Bash spells `C:\x` as `/c/x` and its temp dir as `/tmp`; Node would read both as paths on the current drive. */
-export const native = (p) =>
-  process.platform === "win32"
-    ? p.replace(/^\/tmp(?=\/|$)/, tmpdir().replace(/\\/g, "/")).replace(/^\/([a-z])(?=\/|$)/i, "$1:")
-    : p;
-const MOVES = /^(cd|chdir|pushd|set-location|sl|push-location)$/;
 const NARROWS = new Set(["grep", "rg", "wc", "sort", "uniq", "cut", "jq", "select-string", "sls", "findstr", "measure-object"]);
 
 function flagValue(args, names, lineShorthand = true) {
@@ -119,7 +111,7 @@ function bound(c) {
 
 function fromCommand(c, cwd, count) {
   const name = c.cmd.toLowerCase();
-  const at = (f) => count(resolve(cwd, native(f))) ?? 0;
+  const at = (f) => count(resolve(cwd, toNative(f))) ?? 0;
   if (name === "sed") {
     const s = sedParts(c.args);
     const input = s.files.reduce((sum, f) => sum + at(f), 0);
@@ -138,7 +130,7 @@ function fromCommand(c, cwd, count) {
   if (name === "git" && c.args[0] === "show") {
     return c.args.slice(1).reduce((sum, a) => {
       const m = /^[^-][^:]*:(.+)$/.exec(a);
-      return m ? sum + (count(resolve(cwd, native(c.dir ?? "."), native(m[1]))) ?? 0) : sum;
+      return m ? sum + (count(resolve(cwd, toNative(c.dir ?? "."), toNative(m[1]))) ?? 0) : sum;
     }, 0);
   }
   return 0;
@@ -173,20 +165,6 @@ export function linesRequested(payload, count = realCount) {
     stages = [];
   }
   return total + (stages.length ? pipeline(stages, from, count) : 0);
-}
-
-/** Each command of the line, with the directory the `cd`s before it left the call in. */
-export function located(command, cwd) {
-  let at = cwd;
-  const out = [];
-  for (const c of commands(command)) {
-    if (!MOVES.test(c.cmd.toLowerCase())) out.push({ c, at });
-    else {
-      const to = c.args.find((a) => !a.startsWith("-"));
-      if (to) at = resolve(at, native(to));
-    }
-  }
-  return out;
 }
 
 export function verdict(payload, count = realCount) {

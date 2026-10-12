@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { check, fromMsys, gitAt, implementRoute } from "../guard-bash.mjs";
+import { check, gitAt, implementRoute } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
@@ -522,13 +522,6 @@ describe("a dispatch ref through a variable", () => {
 });
 
 describe("an MSYS drive path is the Windows path it names", () => {
-  test("mapped on win32 only", () => {
-    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "win32"), "C:/Users/r/repo/a.ts");
-    assert.equal(fromMsys("/d", "win32"), "D:/");
-    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "linux"), "/c/Users/r/repo/a.ts");
-    assert.equal(fromMsys("/cd/a.ts", "win32"), "/cd/a.ts");
-    assert.equal(fromMsys("c/a.ts", "win32"), "c/a.ts");
-  });
   test("a redirect to one restoring a dirty tracked file is refused", { skip: process.platform !== "win32" }, () => {
     const msys = `/${resolve("/r")[0].toLowerCase()}/r/dirty.ts`;
     assert.match(String(guard(`git show HEAD:dirty.ts > ${msys}`)), DISCARD);
