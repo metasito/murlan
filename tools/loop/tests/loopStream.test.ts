@@ -294,13 +294,24 @@ describe("a PHASE line from the session", () => {
     assert.equal(bash('echo "PHASE C" && ls', "toolu_sub").letter, null);
   });
 
+  test("echoed as a statement of its own anywhere in the chain, it is a fact", () => {
+    const bash = (command: string) =>
+      readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] } })) as any;
+    assert.equal(bash('gh issue comment 5 --body-file v.md && echo "PHASE E" && gh pr view 7').letter, "E");
+    assert.equal(bash("ls; echo PHASE C").letter, "C");
+    assert.equal(bash('wc -c <<<"EOF"; echo PHASE C').letter, "C", "a here-string has no body to skip");
+    assert.equal(bash("git add -- a.ts && git commit -m 'x; y' ;  echo 'PHASE F'").letter, "F");
+    assert.equal(bash('gh issue comment 5 --body "done && echo PHASE E"').letter, null);
+    assert.equal(bash("ls || echo PHASE C").letter, null);
+  });
+
   test("an echo inside what a command writes is not the session's report", () => {
     const bash = (command: string) =>
       readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Bash", input: { command } }] } })) as any;
     assert.equal(bash("cat > t.sh <<'EOF'\necho PHASE E\nEOF").letter, null);
     assert.equal(bash('git commit -m "docs\necho PHASE E\n"').letter, null);
     assert.equal(bash('python -c "x; echo PHASE C"').letter, null);
-    assert.equal(bash("ls; echo PHASE C").letter, null);
+    assert.equal(bash("cat > t.sh <<EOF && ls\necho PHASE E\nEOF\nls").letter, null);
   });
 
   test("the message's own line wins over an echo", () => {

@@ -225,6 +225,21 @@ describe("readTicket, across processes and stream lines", () => {
     });
   }
 
+  test("a session marked only by echoing the phase mid-chain is marked, and charges that phase", () => {
+    const t = readTicket([
+      msg("m1", [call("Bash", "git status")], 0),
+      msg("m2", [call("Bash", 'cd /c/x/.worktrees/agent-1 && echo "PHASE C" && git log -1')], 1),
+      msg("m3", [call("Bash", 'gh issue comment 5 --body-file v.md && echo "PHASE E" && gh pr view 7')], 2),
+    ]);
+    assert.equal(t.marked, true);
+    assert.deepEqual([t.phases.pre?.turns, t.phases.C?.turns, t.phases.E?.turns], [1, 1, 1]);
+  });
+
+  test("an echo a subagent runs moves no phase", () => {
+    const sub = line({ ...JSON.parse(msg("m2", [call("Bash", 'echo "PHASE C"')], 1)), parent_tool_use_id: "toolu_1" });
+    assert.equal(readTicket([msg("m1", [text("PHASE D")], 0), sub]).phases.C, undefined);
+  });
+
   test("since leaves out a whole earlier process of the same ticket", () => {
     const early = msg("m1", [text("PHASE C")], 0, "old");
     const late = line({ ...JSON.parse(msg("m2", [text("PHASE D")], 0, "new")), timestamp: "2026-09-21T11:00:00.000Z" });
