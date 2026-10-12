@@ -118,8 +118,11 @@ function shellWords(line: string, from: number): string[] {
 
 function declared(code: string, name: string): Arg[] | undefined {
   const at = new RegExp(String.raw`\b(?:const|let|var)\s+${name}\s*=\s*`).exec(code);
-  const assignment = new RegExp(String.raw`(?<![\w.$])${name}\s*(?:[-+*/%&|^]|\?\?|&&|\|\|)?=(?![=>])`, "g");
-  if (!at || [...code.matchAll(assignment)].length > 1) return undefined;
+  const write = new RegExp(
+    String.raw`(?<![\w.$])${name}\s*(?:(?:\[[^\]]*\]\s*)?(?:[-+*/%&|^]|\?\?|&&|\|\|)?=(?![=>])|\.\s*(?:push|unshift|splice|fill|copyWithin|reverse|sort)\s*\()`,
+    "g",
+  );
+  if (!at || [...code.matchAll(write)].length > 1) return undefined;
   const from = at.index + at[0].length;
   if (code[from] === "[") return arrayElements(code, from + 1);
   const literal = new RegExp(STRING, "y");
@@ -333,6 +336,8 @@ describe("no CI job pulls an image from Docker Hub", () => {
       'spawnSync("docker", [...base, "run", "postgres:16"]);\n',
       'spawnSync("docker", [cmd, "postgres:16"]);\n',
       'let args = ["version"];\nif (x) args = ["run", "postgres:16"];\nspawnSync("docker", args);\n',
+      'const args = ["version"];\nargs.splice(0, 1, "run", "postgres:16");\nspawnSync("docker", args);\n',
+      'const args = ["version"];\nargs[0] = "run";\nargs.push("postgres:16");\nspawnSync("docker", args);\n',
       'function docker(args) {\n  return run("docker", args);\n}\nfunction up(args) {\n  return docker(args);\n}\nup(["run", "postgres:16"]);\n',
     ]) {
       assert.deepEqual(imageRefs("s.mjs", source), [UNREAD], source);
