@@ -341,7 +341,8 @@ export function readHeadCi(
   );
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
   const { verdict } = jobsAndLog(repo, run, gh, until, false);
-  return { remoteSha, pr: prRows[0]?.number ?? null, verdict };
+  const pr = prRows[0]?.number ?? null;
+  return { remoteSha, pr, verdict: pr === null ? verdict : gated(repo, pr, run, verdict, gh, until) };
 }
 
 export function readVerdict(
@@ -364,8 +365,12 @@ export function readVerdict(
   // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
   const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
-  const head = headSha ?? null;
-  if (!verdict.pass || !run) return { ...verdict, head, testIds };
+  return { ...gated(repo, prNumber, run, { ...verdict, testIds }, gh, until), head: headSha ?? null };
+}
+
+/** A green verdict through RULES.md 46's land gate; any other verdict as it is. */
+function gated(repo: string, prNumber: number, run: RunRow | undefined, verdict: Verdict, gh: GhExec, until: number): Verdict {
+  if (!verdict.pass || !run) return verdict;
   let found: BudgetFinding;
   try {
     found = overBudget(repo, prNumber, run.databaseId, gh, until);
@@ -374,19 +379,17 @@ export function readVerdict(
       pass: false,
       infrastructure: true,
       runId: run.databaseId,
-      head,
-      testIds,
+      testIds: verdict.testIds,
       reason: `the run's over-budget lists could not be read: ${String((error as Error)?.message ?? error).split("\n")[0]}`,
     };
   }
   if (found.files.length === 0) {
     const exempt = found.exempt.length ? `; no recorded time, so no budget yet: ${found.exempt.join(", ")}` : "";
-    return { ...verdict, head, testIds, reason: `${verdict.reason}${exempt}` };
+    return { ...verdict, reason: `${verdict.reason}${exempt}` };
   }
   return {
     pass: false,
     runId: run.databaseId,
-    head,
     failedStep: TIMING_STEP,
     testIds: found.files,
     logArgs: budgetListArgs(repo, run.databaseId),
@@ -428,8 +431,10 @@ export function budgetFinding(listed: OverBudget[], prFiles: PrFile[]): BudgetFi
   const touched = new Set(prFiles.filter((f) => f.status !== "removed").map((f) => f.filename));
   const files: string[] = [];
   const lines: string[] = [];
-  for (const o of listed) {
-    if (!touched.has(o.file)) continue;
+  // A native file is listed once per project it ran under.
+  const slowest = new Map<string, OverBudget>();
+  for (const o of listed) if (touched.has(o.file) && o.seconds > (slowest.get(o.file)?.seconds ?? -1)) slowest.set(o.file, o);
+  for (const o of slowest.values()) {
     files.push(o.file);
     lines.push(`${o.file}: ${o.seconds}s against a budget of ${o.budget}s`);
   }
@@ -468,28 +473,33 @@ const budgetListArgs = (repo: string, runId: number) => ["run", "download", Stri
  * ci.yml uploads one from every green shard that ran, so a missing one is not an empty one.
  */
 export function overBudget(repo: string, prNumber: number, runId: number, gh: GhExec, until: number): BudgetFinding {
-  const names = gh(
-    ["api", `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, "--paginate", "--jq", '.artifacts[] | select(.name | startswith("over-budget-")) | .name'],
-    until
-  )
+  const prFiles = gh(["api", `repos/${repo}/pulls/${prNumber}/files?per_page=100`, "--paginate", "--jq", ".[] | {filename, status, patch}"], until)
     .split("\n")
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as PrFile);
+  if (!prFiles.some((f) => f.status !== "removed" && f.filename.startsWith("tests/"))) return budgetFinding([], prFiles);
+  // Every attempt's upload is listed, one name per attempt (run 38229501646). The endpoint lists the
+  // newest first and `gh run download` keeps the first of each name, so the latest attempt's is read.
+  const names = new Set(
+    gh(
+      ["api", `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, "--paginate", "--jq", '.artifacts[] | select(.name | startswith("over-budget-")) | .name'],
+      until
+    )
+      .split("\n")
+      .filter(Boolean)
+  );
   const listed: OverBudget[] = [];
-  if (names.length > 0) {
+  if (names.size > 0) {
     const dir = mkdtempSync(path.join(tmpdir(), "over-budget-"));
     try {
       gh([...budgetListArgs(repo, runId), "--dir", dir], until);
       const found = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => path.basename(f) === "over-budget.json");
-      if (found.length !== names.length) throw new Error(`${found.length} of ${names.length} over-budget lists arrived`);
+      if (found.length !== names.size) throw new Error(`${found.length} of ${names.size} over-budget lists arrived`);
       for (const f of found) listed.push(...(JSON.parse(readFileSync(path.join(dir, f), "utf8")) as OverBudget[]));
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
-  const prFiles = gh(["api", `repos/${repo}/pulls/${prNumber}/files?per_page=100`, "--paginate", "--jq", ".[] | {filename, status, patch}"], until)
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as PrFile);
   return budgetFinding(listed, prFiles);
 }
 
