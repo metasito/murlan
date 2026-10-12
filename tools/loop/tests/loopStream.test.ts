@@ -302,7 +302,8 @@ describe("a PHASE line from the session", () => {
     assert.equal(bash('wc -c <<<"EOF"; echo PHASE C').letter, "C", "a here-string has no body to skip");
     assert.equal(bash("git add -- a.ts && git commit -m 'x; y' ;  echo 'PHASE F'").letter, "F");
     assert.equal(bash('gh issue comment 5 --body "done && echo PHASE E"').letter, null);
-    assert.equal(bash("ls || echo PHASE C").letter, null);
+    assert.equal(bash("ls || echo PHASE C").letter, "C");
+    assert.equal(bash('x=$((1<<2))\necho "PHASE D"').letter, "D", "a shift is no heredoc");
   });
 
   test("an echo inside what a command writes is not the session's report", () => {
@@ -312,6 +313,8 @@ describe("a PHASE line from the session", () => {
     assert.equal(bash('git commit -m "docs\necho PHASE E\n"').letter, null);
     assert.equal(bash('python -c "x; echo PHASE C"').letter, null);
     assert.equal(bash("cat > t.sh <<EOF && ls\necho PHASE E\nEOF\nls").letter, null);
+    const body = "gh pr create --body \"$(cat <<'EOF'\nThe \"marker line\necho \"PHASE E\" && x\nEOF\n)\"";
+    assert.equal(bash(body).letter, null, "a stray quote in a heredoc inside $(…) does not expose its body");
   });
 
   test("the message's own line wins over an echo", () => {
