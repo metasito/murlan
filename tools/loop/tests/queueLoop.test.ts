@@ -118,6 +118,14 @@ describe("queueLoopArgs", () => {
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
   });
 
+  test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
+    const args = queueLoopArgs(1529, "size:M", "C");
+    const at = args.indexOf("--setting-sources");
+    assert.notEqual(at, -1, "without it the owner's ~/.claude and the checkout's local settings ride in every session");
+    assert.equal(args[at + 1], "project");
+    assert.match(args[args.indexOf("--settings") + 1], /[\\/]tools[\\/]loop[\\/]loop-settings\.json$/);
+  });
+
   test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
     const args = queueLoopArgs(1);
     const settings = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
@@ -637,6 +645,20 @@ describe("runTicket", () => {
     assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor(null)));
     await runTicket(capturing as never, opts({ size: "size:M" }));
     assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor("size:M")));
+  });
+
+  test("a session compacts at its size's context ceiling, and is told its ticket", async () => {
+    let env: Record<string, string> | undefined;
+    const capturing = (_cmd: string, _args: string[], o: any) => {
+      env = o.env;
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts({ number: 1529 }));
+    assert.equal(env?.LOOP_TICKET, "1529");
+    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor(null)));
+    await runTicket(capturing as never, opts({ number: 1529, size: "size:M" }));
+    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor("size:M")));
+    assert.notEqual(contextFor("size:M"), contextFor(null), "the two sizes must differ for this to tell them apart");
   });
 
   test("a refusal reaches the caller, as milliseconds", async () => {
