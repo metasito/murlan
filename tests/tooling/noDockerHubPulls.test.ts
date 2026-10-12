@@ -67,11 +67,14 @@ function takesValue(values: Set<string>, flag: string): boolean {
   return first === letters.length - 1;
 }
 
-function dockerImage(args: string[]): string | undefined {
+type Arg = { text: string; read: boolean };
+
+function dockerImage(args: Arg[]): string | undefined {
   let at = 0;
-  while (args[at]?.startsWith("-")) at += takesValue(GLOBAL_VALUE_FLAGS, args[at]) ? 2 : 1;
-  if (["container", "image"].includes(args[at])) at++;
-  const [command, ...rest] = args.slice(at);
+  while (args[at]?.read && args[at].text.startsWith("-")) at += takesValue(GLOBAL_VALUE_FLAGS, args[at].text) ? 2 : 1;
+  if (args[at]?.read && ["container", "image"].includes(args[at].text)) at++;
+  if (args[at] && !args[at].read) return UNREAD;
+  const [command, ...rest] = args.slice(at).map((arg) => arg.text);
   const values = VALUE_FLAGS.get(command);
   if (!values) return undefined;
   for (let i = 0; i < rest.length; i++) {
@@ -113,42 +116,73 @@ function shellWords(line: string, from: number): string[] {
   return words.map((w) => w.replace(/[,)]+$/, ""));
 }
 
-function declared(code: string, name: string): string[] | undefined {
+function declared(code: string, name: string): Arg[] | undefined {
   const at = new RegExp(String.raw`\b(?:const|let|var)\s+${name}\s*=\s*`).exec(code);
-  if (!at) return undefined;
+  const write = new RegExp(
+    String.raw`(?<![\w.$])${name}\s*(?:(?:\[[^\]]*\]\s*)?(?:[-+*/%&|^]|\?\?|&&|\|\|)?=(?![=>])|\.\s*(?:push|unshift|splice|fill|copyWithin|reverse|sort)\s*\()`,
+    "g",
+  );
+  if (!at || [...code.matchAll(write)].length > 1) return undefined;
   const from = at.index + at[0].length;
   if (code[from] === "[") return arrayElements(code, from + 1);
   const literal = new RegExp(STRING, "y");
   literal.lastIndex = from;
   const value = literal.exec(code)?.[0];
-  return value ? [value.slice(1, -1)] : undefined;
+  return value ? [{ text: value.slice(1, -1), read: true }] : undefined;
 }
 
-function arrayElements(code: string, from: number): string[] {
+function arrayElements(code: string, from: number): Arg[] {
   const raw: string[] = [];
   ARRAY_ELEMENT.lastIndex = from;
   for (let m = ARRAY_ELEMENT.exec(code); m; m = m[2] === "]" ? null : ARRAY_ELEMENT.exec(code)) raw.push(m[1]);
   return raw.flatMap((element) => {
-    if (/^["'`]/.test(element)) return [element.slice(1, -1)];
+    if (/^["'`]/.test(element)) return [{ text: element.slice(1, -1), read: true }];
     const name = /^(?:\.\.\.)?(\w+)$/.exec(element)?.[1];
-    return (name && declared(code, name)) || [element];
+    return (name && declared(code, name)) || [{ text: element, read: false }];
   });
 }
 
-function callArguments(code: string, from: number): string[] | "passed on" | undefined {
+function callArguments(code: string, from: number): Arg[] | "passed on" | undefined {
   if (code[from] === "[") return arrayElements(code, from + 1);
   const name = /\w+/y;
   name.lastIndex = from;
   const identifier = name.exec(code)?.[0];
   if (!identifier) return undefined;
-  if (new RegExp(String.raw`\bfunction\s+docker\s*\(\s*${identifier}\s*\)`).test(code)) return "passed on";
+  if (insideDockerWrapper(code, from, identifier)) return "passed on";
   return declared(code, identifier);
 }
 
-const blank = (string: string) =>
-  string.startsWith("`")
-    ? string.replace(/\$\{((?:[^{}]|\{[^{}]*\})*)\}|[^\n]/g, (_, inner?: string) => (inner === undefined ? " " : `  ${inner} `))
-    : `"${" ".repeat(string.length - 2)}"`;
+function insideDockerWrapper(code: string, at: number, parameter: string): boolean {
+  for (const wrapper of code.matchAll(new RegExp(String.raw`\bfunction\s+docker\s*\(\s*${parameter}\s*\)\s*\{`, "g"))) {
+    let end = wrapper.index + wrapper[0].length;
+    for (let depth = 1; end < code.length && depth > 0; end++) {
+      if (code[end] === "{") depth++;
+      else if (code[end] === "}") depth--;
+    }
+    if (at >= wrapper.index && at < end) return true;
+  }
+  return false;
+}
+
+function blankTemplate(template: string): string {
+  let out = "";
+  for (let i = 0; i < template.length; i++) {
+    if (!template.startsWith("${", i)) {
+      out += template[i] === "\n" ? "\n" : " ";
+      continue;
+    }
+    let end = i + 2;
+    for (let depth = 1; end < template.length && depth > 0; end++) {
+      if (template[end] === "{") depth++;
+      else if (template[end] === "}") depth--;
+    }
+    out += `  ${template.slice(i + 2, end - 1)} `;
+    i = end - 1;
+  }
+  return out;
+}
+
+const blank = (string: string) => (string.startsWith("`") ? blankTemplate(string) : `"${" ".repeat(string.length - 2)}"`);
 
 function withoutMessageStrings(code: string): string {
   let out = code;
@@ -179,7 +213,7 @@ export function imageRefs(file: string, source: string): string[] {
   }
   for (const line of code.replace(/\\\r?\n/g, " ").split(/\r?\n/)) {
     for (const word of line.matchAll(DOCKER_WORD)) {
-      const image = dockerImage(shellWords(line, word.index + word[0].length));
+      const image = dockerImage(shellWords(line, word.index + word[0].length).map((text) => ({ text, read: true })));
       if (image) refs.push(image);
     }
   }
@@ -291,10 +325,20 @@ describe("no CI job pulls an image from Docker Hub", () => {
     );
     assert.deepEqual(imageRefs("s.mjs", 'throw new Error(`failed: ${execSync("docker run postgres:16")}`);\n'), ["postgres:16"]);
     assert.deepEqual(imageRefs("s.mjs", "console.log(`${execSync('docker run postgres:16')}`);\n"), ["postgres:16"]);
+    assert.deepEqual(
+      imageRefs("s.mjs", 'throw new Error(`x ${execSync("docker run postgres:16", { env: { ...process.env } })}`);\n'),
+      ["postgres:16"],
+    );
     for (const source of [
       "execSync(`docker run\n  --rm postgres:16`);\n",
       "spawnSync('docker', buildArgs('postgres:16'));\n",
       "const a = [];\na.push('run', 'postgres:16');\nspawnSync('docker', a);\n",
+      'spawnSync("docker", [...base, "run", "postgres:16"]);\n',
+      'spawnSync("docker", [cmd, "postgres:16"]);\n',
+      'let args = ["version"];\nif (x) args = ["run", "postgres:16"];\nspawnSync("docker", args);\n',
+      'const args = ["version"];\nargs.splice(0, 1, "run", "postgres:16");\nspawnSync("docker", args);\n',
+      'const args = ["version"];\nargs[0] = "run";\nargs.push("postgres:16");\nspawnSync("docker", args);\n',
+      'function docker(args) {\n  return run("docker", args);\n}\nfunction up(args) {\n  return docker(args);\n}\nup(["run", "postgres:16"]);\n',
     ]) {
       assert.deepEqual(imageRefs("s.mjs", source), [UNREAD], source);
     }
