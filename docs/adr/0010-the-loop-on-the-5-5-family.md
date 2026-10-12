@@ -79,4 +79,6 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
   dollar caps read Claude Code's own `total_cost_usd`, so they do not move.
 - The context ceilings are not raised. Claude Code's docs say native-1M models compact near 967k,
   but every loop session that reached compaction compacted at 366–368k
-  (`tools/loop/tests/queueLoop.test.ts`). Until a 5.5 session is seen to compact later, the 340k bound stands.
+  under the owner's 400k window. Since loop sessions stopped reading the owner's settings, each size's
+  ceiling is its own `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (`CONTEXT_BY_SIZE` in `tools/loop/loop-cost.mjs`),
+  and a compaction fires about 33k below each window.

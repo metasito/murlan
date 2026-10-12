@@ -8,6 +8,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
+import { readLine } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import {
   parseRoute,
@@ -118,6 +119,24 @@ describe("queueLoopArgs", () => {
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
   });
 
+  test("a session declares through a schema with exactly the LOOP-RESULT line's fields", () => {
+    const args = queueLoopArgs(1);
+    const at = args.indexOf("--json-schema");
+    assert.notEqual(at, -1);
+    const schema = JSON.parse(args[at + 1]);
+    const line = readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":1}' }] } }));
+    assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys((line as any).declared).sort());
+    assert.ok(!args[at + 1].includes("\n"), "one argument, one line");
+  });
+
+  test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
+    const args = queueLoopArgs(1529, "size:M", "C");
+    const at = args.indexOf("--setting-sources");
+    assert.notEqual(at, -1, "without it the owner's ~/.claude and the checkout's local settings ride in every session");
+    assert.equal(args[at + 1], "project");
+    assert.match(args[args.indexOf("--settings") + 1], /[\\/]tools[\\/]loop[\\/]loop-settings\.json$/);
+  });
+
   test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
     const args = queueLoopArgs(1);
     const settings = JSON.parse(readFileSync(args[args.indexOf("--settings") + 1], "utf8"));
@@ -204,12 +223,10 @@ describe("queueLoopArgs", () => {
     assert.ok(Number.isInteger(TURNS_DEFAULT) && TURNS_DEFAULT > 0);
   });
 
-  test("a ticket's context ceiling follows its size, and every one leaves room below auto-compaction", () => {
+  test("a ticket's context ceiling follows its size", () => {
     assert.equal(contextFor(null), CONTEXT_DEFAULT);
     assert.equal(contextFor("size:S"), CONTEXT_DEFAULT);
     assert.ok(contextFor("size:M") > contextFor("size:S"));
-    // Auto-compaction fired at 366-368k in all five loop sessions it reached.
-    for (const c of [CONTEXT_DEFAULT, ...Object.values(CONTEXT_BY_SIZE)]) assert.ok(c < 340_000, `${c}`);
   });
 
   test("a raised ceiling keeps a turn cap that reaches it", () => {
@@ -639,6 +656,37 @@ describe("runTicket", () => {
     assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor("size:M")));
   });
 
+  test("a session compacts at its size's context ceiling, and is told its ticket", async () => {
+    let env: Record<string, string> | undefined;
+    const capturing = (_cmd: string, _args: string[], o: any) => {
+      env = o.env;
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts({ number: 1529 }));
+    assert.equal(env?.LOOP_TICKET, "1529");
+    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor(null)));
+    await runTicket(capturing as never, opts({ number: 1529, size: "size:M" }));
+    assert.equal(env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW, String(contextFor("size:M")));
+    assert.notEqual(contextFor("size:M"), contextFor(null), "the two sizes must differ for this to tell them apart");
+  });
+
+  test("the spawn turns off what a loop session never uses, and a subagent spawns no other", async () => {
+    let seen: { args: string[]; env: Record<string, string> } | undefined;
+    const capturing = (_cmd: string, args: string[], o: any) => {
+      seen = { args, env: o.env };
+      return fakeSpawn([RESULT])();
+    };
+    await runTicket(capturing as never, opts());
+    for (const off of ["EXPLORE_PLAN_AGENTS", "BUNDLED_SKILLS", "WORKFLOWS", "CRON", "FEEDBACK_SURVEY", "FILE_CHECKPOINTING"]) {
+      assert.equal(seen?.env[`CLAUDE_CODE_DISABLE_${off}`], "1", off);
+    }
+    assert.equal(seen?.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH, "1");
+    // 25000 is the CLI's own default (2.1.296): a cap at or above it caps nothing.
+    const read = Number(seen?.env.CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS);
+    assert.ok(Number.isInteger(read) && read > 0 && read < 25_000, `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS=${read}`);
+    assert.ok(seen?.args.includes("--include-hook-events"), "a guard's firing is otherwise invisible in the stream log");
+  });
+
   test("a refusal reaches the caller, as milliseconds", async () => {
     const run = await runTicket(fakeSpawn([meter("rejected"), RESULT]), opts({ number: 962 }));
     assert.equal(run.blocked, true);
@@ -708,6 +756,32 @@ describe("runTicket", () => {
     const run = await runTicket(fakeSpawn([phase("F"), declare, RESULT]), opts());
     assert.equal(run.declared?.pr, 1204);
     assert.equal(run.declared?.branch, "agent/953-x");
+  });
+
+  test("a structured declaration on the result reaches the caller, and outranks the line before it", async () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"D"}' }] },
+    });
+    const structured = result({ structured_output: { ticket: 953, phase: "C", handoff: "C", why: "two tests left" } });
+    const run = await runTicket(fakeSpawn([phase("C"), line, structured]), opts());
+    assert.equal(run.declared?.handoff, "C");
+    assert.equal(run.declared?.why, "two tests left");
+    const alone = await runTicket(fakeSpawn([phase("C"), structured]), opts());
+    assert.equal(alone.declared?.handoff, "C");
+  });
+
+  test("a field the structured declaration leaves out keeps the line's value", async () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"C","stoodDown":true,"why":"lost the claim"}' }] },
+    });
+    const partial = result({ structured_output: { ticket: 953, phase: "D" } });
+    const run = await runTicket(fakeSpawn([phase("C"), line, partial]), opts());
+    assert.deepEqual(
+      [run.declared?.phase, run.declared?.handoff, run.declared?.stoodDown, run.declared?.why],
+      ["D", "C", true, "lost the claim"],
+    );
   });
 
   // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and

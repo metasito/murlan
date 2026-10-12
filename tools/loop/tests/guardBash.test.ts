@@ -786,11 +786,12 @@ describe("the hooks settings.json registers", () => {
     }
     for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
     for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
-    assert.deepEqual(
-      matched("PostToolUse", "guard-context.mjs"),
-      ["Bash", "Read", "Grep", "Glob", "Agent", "Task", "WebFetch", "Edit", "Write"],
-      "the tools whose output grows context; every other call would start node for nothing",
-    );
+    // The native caps are looser than its 150 lines; it stays until compaction is shown to hold (#1102).
+    for (const tool of ["Bash", "PowerShell", "Read"]) assert.ok(matched("PreToolUse", "guard-read.mjs").includes(tool), tool);
+  });
+
+  test("the compaction window stands where guard-context did", () => {
+    assert.equal(allHooks().find((h) => text(h).includes("guard-context.mjs")), undefined);
   });
 
   for (const cwd of CWDS) {

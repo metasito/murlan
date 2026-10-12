@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "The JSON of the LOOP-RESULT line you emitted last: the same fields, the same values.",
+  "type": "object",
+  "required": ["ticket"],
+  "properties": {
+    "ticket": { "type": "integer" },
+    "branch": { "type": "string" },
+    "pr": { "type": "integer" },
+    "phase": { "enum": ["A", "B", "C", "D", "E", "F", "G"] },
+    "handoff": { "enum": ["A", "B", "C", "D", "E", "F"] },
+    "stoodDown": { "type": "boolean" },
+    "why": { "type": "string", "maxLength": 1500 }
+  }
+}

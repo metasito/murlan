@@ -32,9 +32,9 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
   ```
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds with nothing committed, commit what works
   and narrow the slice.
-- **On the context notice**, commit, post `HANDOFF <sha>` first-line on the issue
-  (`gh issue comment <n> --body-file <file>`): steps left as `- [ ] …`, then `Read first:` file
-  ranges. Declare `handoff` = your phase; its `"why"` is the next process's brief, in one sentence.
+- **Compaction fires ~33k below `$CLAUDE_CODE_AUTO_COMPACT_WINDOW`**; nearing it, commit, post
+  `HANDOFF <sha>` first-line on the issue (`gh issue comment <n> --body-file <file>`): steps left as
+  `- [ ] …`, then `Read first:` file ranges. Declare `handoff` = your phase; its `"why"` is the next process's brief, in one sentence.
 - **After a compaction** the `SessionStart` hook reruns `tools/loop/loop-status.mjs`. Preserve
   **failing test output** through it.
 - **Scratch files go under `.loop-logs/`**, never outside the repo (rule 32).
