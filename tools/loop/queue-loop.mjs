@@ -1666,6 +1666,7 @@ export function runTicket(
       CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
       // Every brief says "Do not spawn any subagent"; this is what holds it.
       CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
+      CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: "6000",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
