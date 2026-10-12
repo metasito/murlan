@@ -35,6 +35,23 @@ export const readIssue = (n) =>
   `gh issue view ${n} --json title,body,comments --jq '.title, .body, (.comments[]|${TRUSTED_SELECT}|"--- "+.author.login+": "+.body)'`;
 const issue = (n) => `\`${readIssue(n)}\``;
 
+const ASKS_COMMENTS = /(^|\s)(--comments|-c)(\s|$)|--json[\s=]\S*\bcomments\b/;
+/** `gh`'s arguments, verb first, read an issue's or pull request's thread. */
+export const readsComments = (args) =>
+  /^(issue|pr)$/.test(args[0] ?? "") && args[1] === "view" && ASKS_COMMENTS.test(args.slice(2).join(" "));
+/** A thread read without rule 25's filter, where an outsider's `DOD-CHECK` or `REVIEW` reads as the loop's own. */
+export const untrustedRead = (args) => readsComments(args) && !args.some((a) => a.includes(TRUSTED_SELECT));
+/** Each thread read a document gives, as `gh`'s arguments; a `\` continuation joins its lines. */
+export const commentReads = (text) =>
+  text
+    .replace(/\\\r?\n\s*/g, " ")
+    .split("\n")
+    .flatMap((line) => {
+      const at = line.search(/\bgh (issue|pr) view\b/);
+      return at < 0 ? [] : [line.slice(at + 3).split(/[\s`]+/).filter(Boolean)];
+    })
+    .filter(readsComments);
+
 const BODIES = {
   scope: ({ n, worktree }) =>
     `Investigate issue #${n} (${issue(n)}) in the worktree \`${worktree}\`. Report: every place ` +
