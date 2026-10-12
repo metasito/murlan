@@ -28,6 +28,7 @@ import {
   windowCost,
   withSpawnPhase,
 } from "../loop-logs.mjs";
+import { readEvent } from "../loop-stream.mjs";
 
 const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
 const golden = {
@@ -659,7 +660,8 @@ describe("ticketTally", () => {
 });
 
 describe("schema 9 rows", () => {
-  const result = { session_id: "s1", total_cost_usd: 1.5, num_turns: 20, subtype: "success", phases: { D: 50, E: 10 } };
+  const result = readEvent({ type: "result", session_id: "s1", is_error: false, subtype: "success", total_cost_usd: 1.5, num_turns: 20 });
+  const run = { result, phases: { D: 50, E: 10 } };
   const proc = (over: object = {}) =>
     processRow({
       n: 7,
@@ -670,21 +672,35 @@ describe("schema 9 rows", () => {
       at: "D",
       size: "size:S",
       model: "claude-opus-5-5",
+      sessionId: "s1",
       maxTurns: 320,
-      run: result,
+      run,
       outcome: "handoff",
       handoff: { phase: "C", why: null, said: "HOLD on abc" },
       ...over,
     });
 
-  test("a process row carries the result event's figures, its spawn phase and its own model", () => {
-    const r = proc();
+  test("a process row carries the supervisor's result event's figures, its spawn phase and its own model", () => {
+    const r = proc({ fix: true });
     assert.deepEqual(
       [r.schema, r.kind, r.n, r.at, r.fix, r.model, r.session_id, r.cost, r.turns, r.max_turns, r.subtype, r.outcome, r.handoff?.phase],
-      [9, "process", 7, "D", false, "claude-opus-5-5", "s1", 1.5, 20, 320, "success", "handoff", "C"],
+      [9, "process", 7, "D", true, "claude-opus-5-5", "s1", 1.5, 20, 320, "success", "handoff", "C"],
     );
     assert.deepEqual(r.phases, { D: 50, E: 10 });
     assert.deepEqual([r.run_id, r.loop_sha, r.started, r.ms], ["r1", "abc", "2026-10-12T10:00:00.000Z", 60_000]);
+  });
+
+  test("a process not known to be a fix round writes no flag, so the window's order decides", () => {
+    const written = (row: object) => JSON.parse(JSON.stringify(row));
+    const flagless = written(proc({ at: "D", outcome: "pushed", handoff: null }));
+    assert.equal("fix" in flagless, false);
+    const rows = [
+      written(proc({ at: "C", outcome: "pushed", handoff: null })),
+      outcomeRow({ n: 7, outcome: "retry", head: "a" }),
+      written(proc({ at: "C", fix: true, handoff: { phase: "D", why: null, said: null } })),
+      flagless,
+    ];
+    assert.equal(ticketWindow(7, rows).fixSpend, 3);
   });
 
   test("a process that died before its result event is a row of no spend, not a throw", () => {
