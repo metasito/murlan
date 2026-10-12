@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { readIssue } from "./brief.mjs";
-import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
+import { BRANCH, REPO, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
@@ -10,8 +10,34 @@ function trusted(issueOrComment) {
   return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
 }
 
+const gh = (args) => execFileSync("gh", args, { encoding: "utf8" });
+
 function ghJson(args) {
-  return JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
+  return JSON.parse(gh(args));
+}
+
+const QUERY = `query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(states:OPEN,first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{number title authorAssociation labels(first:100){nodes{name}} milestone{title} issueDependenciesSummary{blockedBy}}}}}`;
+
+/** Every open issue with its open-blocker count, a page of 100 per call. GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
+export function openIssues(run = gh) {
+  const [owner, name] = REPO.split("/");
+  const nodes = [];
+  let after = null;
+  do {
+    const args = ["api", "graphql", "-f", `query=${QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`];
+    if (after) args.push("-f", `after=${after}`);
+    const { issues } = JSON.parse(run(args)).data.repository;
+    nodes.push(...issues.nodes);
+    after = issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null;
+  } while (after);
+  return nodes.map((n) => ({
+    number: n.number,
+    title: n.title,
+    author_association: n.authorAssociation,
+    labels: n.labels.nodes,
+    milestone: n.milestone,
+    blocked: n.issueDependenciesSummary.blockedBy > 0,
+  }));
 }
 
 function labelNames(issue) {
@@ -34,7 +60,7 @@ export function sizeOf(issue) {
  * wins over `ready-for-agent`: releasing a ticket takes `ready-for-agent` off (RULES.md rule 28),
  * but one left carrying both must still not be taken.
  *
- * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string, milestone?: { title: string } | null, _stranded?: boolean }} Issue
+ * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string, milestone?: { title: string } | null, blocked?: boolean, _stranded?: boolean }} Issue
  * @param {Issue} issue
  */
 export function routeOf(issue) {
@@ -153,29 +179,18 @@ function openPrsFor(number) {
   return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
 }
 
-function openBlockers(number) {
-  const edges = ghJson([
-    "api", `repos/{owner}/{repo}/issues/${number}/dependencies/blocked_by?per_page=100`,
-  ]);
-  return edges.filter((e) => e.state === "open");
-}
-
-// The gate order per candidate: native blockers, then claims.
-function takeable(frontier, limit) {
-  // No list endpoint carries the dependencies summary, so each candidate costs
-  // one call; stop as soon as enough are in hand.
+/** The gate order per candidate: native blockers, then claims. */
+export function takeable(frontier, limit, claimed = (n) => claimedElsewhere(n, openPrsFor)) {
   const out = [];
   for (const issue of frontier) {
-    const full = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]);
-    if (full.issue_dependencies_summary.blocked_by !== 0) continue;
+    if (issue.blocked) continue;
     // A stranded candidate is exactly the shape `claimedElsewhere` refuses — its own open pull
     // request — and it reached the frontier because nothing on this machine is working it.
-    if (!issue._stranded && claimedElsewhere(issue.number, openPrsFor)) {
+    if (!issue._stranded && claimed(issue.number)) {
       process.stderr.write(`SKIP\t${issue.number}\tan open pull request already claims it\n`);
       continue;
     }
-    const comments = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}/comments?per_page=100`]);
-    out.push({ ...issue, _full: full, _comments: comments });
+    out.push(issue);
     if (out.length >= limit) break;
   }
   return out;
@@ -211,29 +226,29 @@ export function pickRoute(buckets, take = takeable) {
   return { skill: "handoff", ticket: null };
 }
 
-function printDetail(ticket, comments) {
-  const issue = ticket._full ?? ghJson(["api", `repos/{owner}/{repo}/issues/${ticket.number}`]);
-  const ls = labelNames({ labels: issue.labels });
-  const blockers = issue.issue_dependencies_summary?.blocked_by ?? 0;
+/** Why a ticket read in full (REST's shape) is not takeable; none means it is. */
+export function takeableReasons(issue) {
+  const ls = labelNames(issue);
+  const reasons = [];
+  if ((issue.issue_dependencies_summary?.blocked_by ?? 0) > 0) reasons.push("has open blockers");
+  if (ls.includes("in-progress")) reasons.push("labelled in-progress");
+  if (ls.includes("blocked")) reasons.push("labelled blocked");
+  if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
+  if (!trusted(issue)) reasons.push(`opened from outside the repo (${issue.author_association})`);
+  return reasons;
+}
+
+function printDetail(issue, comments) {
+  const ls = labelNames(issue);
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
   console.log(`Labels: ${ls.join(", ")}`);
-  console.log(`Open blockers: ${blockers}`);
-  if (blockers > 0) {
-    for (const b of openBlockers(issue.number)) {
-      console.log(`  blocked by #${b.number} ${b.title}`);
-    }
-  }
+  console.log(`Open blockers: ${issue.issue_dependencies_summary?.blocked_by ?? 0}`);
   // A CI fix round is handed back by ticket number, and that session's first question — does the
   // branch already exist — cannot be answered from labels.
   for (const pr of openPrsFor(issue.number)) {
     if (pr.state === "OPEN") console.log(`Open pull request: #${pr.number} on ${pr.headRefName}`);
   }
-  const reasons = [];
-  if (blockers > 0) reasons.push("has open blockers");
-  if (ls.includes("in-progress")) reasons.push("labelled in-progress");
-  if (ls.includes("blocked")) reasons.push("labelled blocked");
-  if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
-  if (!trusted(issue)) reasons.push(`opened from outside the repo (${issue.author_association})`);
+  const reasons = takeableReasons(issue);
   console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");
   console.log(issue.body ?? "(empty)");
@@ -262,40 +277,29 @@ const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {
   const args = process.argv.slice(2);
-  const wantAll = args.includes("--all");
   const explicit = args.map(Number).find((n) => Number.isInteger(n) && n > 0);
-
-  if (explicit) {
-    let issue, comments;
+  const read = (n) => {
     try {
-      issue = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}`]);
-      comments = ghJson(["api", `repos/{owner}/{repo}/issues/${explicit}/comments?per_page=100`]);
+      return [
+        ghJson(["api", `repos/{owner}/{repo}/issues/${n}`]),
+        ghJson(["api", `repos/{owner}/{repo}/issues/${n}/comments?per_page=100`]),
+      ];
     } catch {
-      console.error(`#${explicit} not found (is it a pull request?)`);
+      console.error(`#${n} could not be read (a pull request, or gh unreachable)`);
       process.exit(1);
     }
+  };
+
+  if (explicit) {
+    const [issue, comments] = read(explicit);
     // `queue.md` branches on implement / triage / wayfinder / handoff and has no fifth case.
     console.log(`ROUTE\t${routeOf(issue) ?? "handoff"}\t${explicit}\t${issue.title}\t${sizeOf(issue) ?? ""}`);
     printDetail(issue, comments);
     process.exit(0);
   }
 
-  // REST, not `gh issue list`: only REST carries `author_association`.
-  const openIssues = ghJson([
-    "api", "--paginate", "--slurp", "repos/{owner}/{repo}/issues?state=open&per_page=100",
-  ]).flat().filter((i) => !i.pull_request);
-
-  const buckets = classify(openIssues);
-
-  if (wantAll) {
-    // The listing is a gate, not a menu: blocked tickets stay off it even here.
-    for (const issue of buckets.frontier) {
-      const { blocked_by } = ghJson(["api", `repos/{owner}/{repo}/issues/${issue.number}`]).issue_dependencies_summary;
-      if (blocked_by === 0) console.log(`${issue.number}\t${issue.title}`);
-    }
-    process.exit(0);
-  }
-
+  const issues = openIssues();
+  const buckets = classify(issues);
   const chosen = pickRoute(buckets);
   console.log(
     `ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}` +
@@ -307,10 +311,8 @@ if (invokedDirectly) {
     `\ttriage:${buckets.triage.length}` +
     `\twayfinder:${buckets.wayfinder.length}` +
     `\towner:${buckets.owner.length}` +
-    `\tlaunch:${launchOpen(openIssues)}`,
+    `\tlaunch:${launchOpen(issues)}`,
   );
 
-  if (chosen.ticket) {
-    printDetail(chosen.ticket, chosen.ticket._comments ?? []);
-  }
+  if (chosen.ticket) printDetail(...read(chosen.ticket.number));
 }

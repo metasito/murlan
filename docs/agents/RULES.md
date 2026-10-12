@@ -7,7 +7,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 ## Checking your work
 
 1. **Run `npm run agent:check` before you push.** `tools/loop/check-steps.mjs` is the list of what
-   runs there and what `ci.yml` carries; the check prints both and replays on an unchanged tree.
+   runs there and what `ci.yml` carries; the check prints both and replays on an unchanged, committed HEAD.
 2. **Never run a whole suite by hand** — not `npm run verify`, `npm test`, `npm run loop:test`,
    `npm run test:native`, `npm run test:e2e`. `ci.yml` runs them on your push, in parallel, with
    the Postgres the integration suites need.
@@ -77,7 +77,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 
 30. **Report what you actually did.** A gap named is worth more than a green report.
 31. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
-    stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
+    stop. `npm run queue:pre` (`tools/loop/workspace.mjs`) holds a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog: a new one labelled

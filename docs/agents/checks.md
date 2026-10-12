@@ -328,8 +328,9 @@ one that doesn't needs a device capture (above).
   the pre-press state** — see *The native harness is async*, below.
 - **A stale `node_modules` reads as a real defect.** It is shared live across every worktree
   (#938); an install can leave `react-native`/`react-native-worklets` looser than
-  `package-lock.json` pins, silently (phantom `TS2698`). `tools/loop/preflight.mjs` and
-  `tools/loop/agent-check.mjs` both call `checkLockDrift`, and both point at `npm ci`.
+  `package-lock.json` pins, silently (phantom `TS2698`). The loop's housekeeping
+  (`tools/loop/workspace.mjs`) and `tools/loop/agent-check.mjs` both call `checkLockDrift`, and
+  both point at `npm ci`.
 
 ## A scan needs a planted floor
 
@@ -427,10 +428,9 @@ survive a peer's teardown burst.
 
 `npm run reap` (`--dry-run` to only list) clears what a killed run leaves, decided **by command
 line, never process name** — `chrome.exe` is as likely the developer's own browser. Taken by
-default: a stale holder of `E2E_PORT`, anything of ours >2h old with its parent gone, and *any*
-process matching that shape burning ≥20% of a core regardless of ownership (once a pipeline held a
-full core for 62 hours after its parent Git Bash session was killed, while every ownership check
-said "nothing of ours"). Only `--stale` takes anything of ours merely >24h old. A sweep never
+default: a stale holder of `E2E_PORT` and anything of ours >2h old with its parent gone; a process
+that is not ours is never taken, however busy. Only `--stale` takes anything of ours merely >24h
+old. A sweep never
 takes a port with a live launcher attached — a run now *picks* a free one (`tools/ci/e2ePort.mjs`)
 instead, because a webServer pulled from under Playwright manufactures a connection error or 0ms
 failure that reads like a defect (a truncated run can manufacture a **green** the same way — check
@@ -444,9 +444,12 @@ the spec count, not the colour).
   `rm -r` to follow. `tools/loop/guard-bash.mjs` blocks the raw `--force` and points at
   `worktrees:remove` (rule 39); `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the
   defect and pins the version where it changed, on the Windows CI leg. `npm run worktrees:prune`
-  (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
-  It only ever removes worktrees directly under `.worktrees/`; one registered anywhere else is a
-  person's, and only `worktrees:remove` takes it.
+  (`-- --dry-run` to only list) cleans up one left by a killed/crashed session the same way, and
+  the loop runs it before every ticket. It only ever removes a `.worktrees/agent-<n>` on a
+  detached HEAD, or whose issue is closed, or no longer `in-progress` with a pull request or a
+  branch merged into `origin/main` — never with `--force`, so uncommitted, locked or unmerged
+  work with no pull request stays, and the row says why; one registered anywhere else, or named otherwise, is a person's, and
+  only `worktrees:remove` takes it.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
   with `Cannot find package 'typescript'` through one, while `tsc`/`eslint` keep working, which
   reads exactly like a broken branch.

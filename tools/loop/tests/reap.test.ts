@@ -1,10 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
-import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import {
   orphans,
@@ -13,22 +12,16 @@ import {
   toolingRoots,
   checkoutRoot,
   ownedByTooling,
-  cpuRatios,
-  isSystemProcess,
-  burningOrphans,
-  psTimeToMs,
   stalePortHolders,
   wouldTakeSelf,
   isSessionHost,
   parseWindowsProcessJson,
-  resolvePowerShellExe,
   readProcessTable,
+  reap,
 } from "../reap.mjs";
-import preflightMemory, { memoryVerdict, memoryFloor } from "../../ci/preflightMemory.mjs";
 
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_700_000_000_000;
-const GB = 1024 ** 3;
 
 function proc(overrides: Partial<{ pid: number; ppid: number; startedAt: number }>) {
   return { pid: 100, ppid: 1, startedAt: NOW - 3 * HOUR, ...overrides };
@@ -167,354 +160,6 @@ describe("stalePortHolders", () => {
   });
 });
 
-describe("cpuRatios", () => {
-  const before = [{ pid: 7, cpuMs: 1_000 }, { pid: 8, cpuMs: 5_000 }];
-
-  test("a process that burned a full second of CPU in a second reads as a whole core", () => {
-    const after = [{ pid: 7, cpuMs: 2_000 }, { pid: 8, cpuMs: 5_000 }];
-    const byPid = new Map(
-      cpuRatios(before, after, 1_000).map((p: { pid: number; cpuRatio: number }) => [p.pid, p.cpuRatio])
-    );
-    assert.equal(byPid.get(7), 1);
-    assert.equal(byPid.get(8), 0);
-  });
-
-  /**
-   * Cumulative CPU time is what the platform reports, and a process that burned a core for hours
-   * and then went idle still carries all of it. Only the delta across the interval says it is
-   * burning one *now*, which is the difference between measuring and assuming.
-   */
-  test("a long-idle process that once burned hours of CPU reads as idle", () => {
-    const idled = [{ pid: 7, cpuMs: 225_000_000 }];
-    assert.equal(cpuRatios(idled, idled, 1_000)[0].cpuRatio, 0);
-  });
-
-  test("a process absent from the first sample is not rated at all", () => {
-    assert.deepEqual(cpuRatios(before, [{ pid: 99, cpuMs: 900 }], 1_000), []);
-  });
-
-  test("an unreadable CPU time yields no rating rather than a wrong one", () => {
-    for (const cpuMs of [NaN, undefined]) {
-      assert.deepEqual(
-        cpuRatios([{ pid: 7, cpuMs: 0 }], [{ pid: 7, cpuMs } as { pid: number; cpuMs: number }], 1_000),
-        []
-      );
-    }
-  });
-});
-
-describe("isSystemProcess", () => {
-  const win = { systemRoot: "C:/Windows", platform: "win32" as const };
-
-  test("anything running out of the Windows directory is never a candidate", () => {
-    assert.equal(
-      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Windows\System32\svchost.exe -k netsvcs` }, win),
-      true
-    );
-  });
-
-  /**
-   * Sampled on the owner's machine: the System Idle Process, pid 0, reads at 2297% of a core
-   * because its CPU time is summed across all of them. It is the single largest burner the scan
-   * sees and it must never be a candidate — nor pid 4, `System`, behind it.
-   */
-  test("the kernel's own low pids are never candidates, however hot they read", () => {
-    assert.equal(isSystemProcess({ pid: 0, commandLine: "" }, win), true);
-    assert.equal(isSystemProcess({ pid: 4, commandLine: "System" }, win), true);
-  });
-
-  /**
-   * On Windows a command line that cannot be read is the signature of a protected process, so the
-   * unreadable case has to fail closed — the opposite of `ownedByTooling`, which claims nothing
-   * for the same reason.
-   */
-  test("a process whose command line could not be read is never a candidate", () => {
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "" }, win), true);
-  });
-
-  test("a Git Bash utility under Program Files is a candidate", () => {
-    assert.equal(
-      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++` }, win),
-      false
-    );
-  });
-
-  test("init and the service managers are never candidates on posix", () => {
-    const posix = { platform: "linux" as const };
-    assert.equal(isSystemProcess({ pid: 1, commandLine: "/sbin/init" }, posix), true);
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/lib/systemd/systemd-journald" }, posix), true);
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/bin/awk !seen[$0]++" }, posix), false);
-  });
-});
-
-describe("burningOrphans", () => {
-  const opts = {
-    livePids: new Set([1, 42]),
-    minAgeMs: 2 * HOUR,
-    now: NOW,
-    keep: new Set<number>(),
-    minRatio: 0.2,
-    systemRoot: "C:/Windows",
-    platform: "win32" as const,
-  };
-  const burner = (over: Record<string, unknown> = {}) => ({
-    pid: 7,
-    ppid: 999,
-    startedAt: NOW - 62 * HOUR,
-    cpuRatio: 1,
-    commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++`,
-    ...over,
-  });
-
-  /**
-   * The case this class exists for: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
-   * by a killed Git Bash session that had no SIGHUP to send, burning a core for 62 hours. It
-   * names nothing of this repo's, so every ownership-based class was blind to it.
-   */
-  test("takes a parentless process burning a core for hours, though it is not ours", () => {
-    assert.deepEqual(burningOrphans([burner()], opts).map((p: { pid: number }) => p.pid), [7]);
-  });
-
-  test("leaves a parentless process that is merely resident", () => {
-    assert.deepEqual(burningOrphans([burner({ cpuRatio: 0.01 })], opts), []);
-  });
-
-  test("leaves a busy process whose parent is still alive", () => {
-    assert.deepEqual(burningOrphans([burner({ ppid: 42 })], opts), []);
-  });
-
-  test("leaves a busy orphan that is younger than the age floor", () => {
-    assert.deepEqual(burningOrphans([burner({ startedAt: NOW - HOUR })], opts), []);
-  });
-
-  test("never takes a Windows process, however busy and however orphaned", () => {
-    const system = burner({ commandLine: String.raw`C:\Windows\System32\MsMpEng.exe` });
-    assert.deepEqual(burningOrphans([system], opts), []);
-  });
-
-  test("never takes what it was told to keep", () => {
-    assert.deepEqual(burningOrphans([burner()], { ...opts, keep: new Set([7]) }), []);
-  });
-});
-
-describe("memoryVerdict", () => {
-  test("refuses when free memory is under the floor, naming exhaustion", () => {
-    const verdict = memoryVerdict({ freeBytes: 0.2 * GB, totalBytes: 16 * GB });
-    assert.equal(verdict.ok, false);
-    assert.match(verdict.message, /memory/i);
-  });
-
-  test("passes when there is room", () => {
-    assert.equal(memoryVerdict({ freeBytes: 8 * GB, totalBytes: 16 * GB }).ok, true);
-  });
-
-  /**
-   * A fixed floor is a trigger with no floor of its own: on a small box every
-   * run sits under it and the check becomes something to switch off.
-   */
-  test("the floor never exceeds a tenth of the machine, however small it is", () => {
-    assert.ok(memoryFloor(2 * GB) <= 0.2 * GB);
-    assert.equal(memoryVerdict({ freeBytes: 0.25 * GB, totalBytes: 2 * GB }).ok, true);
-  });
-});
-
-describe("preflightMemory", () => {
-  const settled = () => Promise.resolve();
-  // This suite runs on CI too, where the real process.env.CI makes the function return before it
-  // samples anything — every case below then passes without exercising a line of it.
-  const local = { wait: settled, env: {} as NodeJS.ProcessEnv };
-  /**
-   * One settle and rule, which is what every case below was written against and what `--no-wait`
-   * still does. The cases that exercise the wait itself state their own ceiling; giving these the
-   * default would poll a fixed list of readings sixty times over.
-   */
-  const oneSettle = { ceilingMs: 1000, announce: () => {} };
-
-  // A suite tearing down frees its workers in one burst — the other session's hold ~2.6 GB. A
-  // reading taken inside that burst refused a run that the identical command, retried a second
-  // later with nothing changed, then completed.
-  test("a reading taken mid-teardown does not refuse a run the machine can afford", async () => {
-    const samples = [0.2 * GB, 8 * GB];
-    await preflightMemory({
-      sample: () => samples.shift()!,
-      totalBytes: 16 * GB,
-      ...local,
-      ...oneSettle,
-    });
-  });
-
-  test("a machine that is still starved a moment later is still refused", async () => {
-    await assert.rejects(
-      preflightMemory({ sample: () => 0.2 * GB, totalBytes: 16 * GB, ...local, ...oneSettle }),
-      /memory/i
-    );
-  });
-
-  // The first report of this was unsound because the refusal's own numbers had scrolled away and
-  // had to be reconstructed from a second reading taken seconds later. A refusal has to carry
-  // what it saw, or the next one cannot be told from a transient dip either.
-  test("a refusal names every reading it took, not just the one it ruled on", async () => {
-    const samples = [0.2 * GB, 0.4 * GB];
-    await assert.rejects(
-      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, ...local, ...oneSettle }),
-      (err: Error) => /0\.20 GB/.test(err.message) && /0\.40 GB/.test(err.message)
-    );
-  });
-
-  // Taking the better of the two readings would clear a box that fell further while we waited,
-  // on the strength of a number that had already stopped being true.
-  test("a box that degrades while settling is judged on the later reading", async () => {
-    const samples = [1.4 * GB, 0.3 * GB];
-    await assert.rejects(
-      preflightMemory({ sample: () => samples.shift()!, totalBytes: 16 * GB, ...local, ...oneSettle }),
-      /0\.30 GB free/
-    );
-  });
-
-  // A refusal is not a queue. Two sessions share this machine and the second has no way to know
-  // when the first will finish, so it waits on the thing that actually gates the run (#642).
-  test("a machine that frees up while we wait is not refused", async () => {
-    const samples = [0.2 * GB, 0.3 * GB, 0.4 * GB, 8 * GB];
-    let waits = 0;
-    await preflightMemory({
-      sample: () => samples.shift()!,
-      totalBytes: 16 * GB,
-      wait: async () => {
-        waits++;
-      },
-      env: {} as NodeJS.ProcessEnv,
-      announce: () => {},
-    });
-    // Four readings, so three waits — it stops on the one that passes rather than serving out the
-    // ceiling it was given.
-    assert.equal(waits, 3);
-    assert.equal(samples.length, 0);
-  });
-
-  test("says it is waiting, once, rather than pausing in silence", async () => {
-    const said: string[] = [];
-    await assert.rejects(
-      preflightMemory({
-        sample: () => 0.2 * GB,
-        totalBytes: 16 * GB,
-        ceilingMs: 4000,
-        announce: (m: string) => said.push(m),
-        ...local,
-      })
-    );
-    assert.equal(said.length, 1, "a wait announced per poll is a wait that reads as a loop");
-    assert.match(said[0], /Waiting up to 4s/);
-    assert.match(said[0], /0\.20 GB free/);
-  });
-
-  test("a box that never comes back is refused with what it read", async () => {
-    await assert.rejects(
-      preflightMemory({
-        sample: () => 0.2 * GB,
-        totalBytes: 16 * GB,
-        ceilingMs: 3000,
-        announce: () => {},
-        ...local,
-      }),
-      // The same refusal it has always been, not a "waited too long" of its own.
-      (err: Error) =>
-        /Not enough free memory/.test(err.message) && /over 4 readings/.test(err.message)
-    );
-  });
-
-  // Whether the box was climbing towards the floor or never moved is the difference between
-  // waiting longer and going to find what is holding it.
-  test("the refusal carries the best reading as well as the last", async () => {
-    const samples = [0.2 * GB, 1.4 * GB, 0.3 * GB];
-    await assert.rejects(
-      preflightMemory({
-        sample: () => samples.shift() ?? 0.3 * GB,
-        totalBytes: 16 * GB,
-        ceilingMs: 2000,
-        announce: () => {},
-        ...local,
-      }),
-      (err: Error) => /best 1\.40 GB/.test(err.message) && /last 0\.30 GB/.test(err.message)
-    );
-  });
-
-  test("--no-wait's ceiling is one settle, which is what it always did", async () => {
-    let waits = 0;
-    const samples = [0.2 * GB, 0.3 * GB];
-    await assert.rejects(
-      preflightMemory({
-        sample: () => samples.shift()!,
-        totalBytes: 16 * GB,
-        ceilingMs: 1000,
-        wait: async () => {
-          waits++;
-        },
-        env: {} as NodeJS.ProcessEnv,
-        announce: () => {
-          throw new Error("a single settle is not a wait worth announcing");
-        },
-      }),
-      /0\.30 GB/
-    );
-    assert.equal(waits, 1);
-  });
-
-  // jest and Playwright call `globalSetup` with their own config object, so a command-line flag
-  // reaches neither — and a person running one of those interactively is exactly who would rather
-  // be refused now than waited for.
-  test("the environment can shorten the wait where a flag cannot reach", async () => {
-    let waits = 0;
-    const samples = [0.2 * GB, 0.3 * GB];
-    await assert.rejects(
-      preflightMemory({
-        sample: () => samples.shift()!,
-        totalBytes: 16 * GB,
-        wait: async () => {
-          waits++;
-        },
-        env: { MURLAN_PREFLIGHT_WAIT_MS: "0" } as unknown as NodeJS.ProcessEnv,
-        announce: () => {
-          throw new Error("nothing was waited for, so nothing should be announced");
-        },
-      }),
-      /0\.30 GB/
-    );
-    // Zero means "do not wait", not "do not look twice": the settle is what keeps a reading taken
-    // inside another suite's teardown burst from being the one that decides.
-    assert.equal(waits, 1);
-  });
-
-  test("the environment wins over the ceiling it was given", async () => {
-    let waits = 0;
-    await assert.rejects(
-      preflightMemory({
-        sample: () => 0.2 * GB,
-        totalBytes: 16 * GB,
-        ceilingMs: 60_000,
-        wait: async () => {
-          waits++;
-        },
-        env: { MURLAN_PREFLIGHT_WAIT_MS: "3000" } as unknown as NodeJS.ProcessEnv,
-        announce: () => {},
-      })
-    );
-    assert.equal(waits, 3);
-  });
-
-  test("a machine with room is never sampled twice", async () => {
-    let taken = 0;
-    await preflightMemory({
-      sample: () => {
-        taken++;
-        return 8 * GB;
-      },
-      totalBytes: 16 * GB,
-      ...local,
-    });
-    assert.equal(taken, 1);
-  });
-});
-
 describe("checkoutRoot", () => {
   /** The main worktree, which `git worktree list` names first — a different question from the one
    * `checkoutRoot` asks, so the two agreeing is a check and not the implementation restated. */
@@ -526,7 +171,7 @@ describe("checkoutRoot", () => {
 
   /**
    * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
-   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
+   * stale — quietly matches nothing, and `--dry-run` reports a clean machine.
    */
   test("is the checkout the suite's own tree hangs off", () => {
     assert.equal(checkoutRoot(), mainWorktreeOf(path.dirname(fileURLToPath(import.meta.url))));
@@ -676,6 +321,12 @@ describe("wouldTakeSelf", () => {
     assert.equal(wouldTakeSelf(table, 700, REAP_PID), false);
   });
 
+  test("a table that does not describe the reaper proves nothing safe, so it refuses", () => {
+    assert.equal(wouldTakeSelf([], 700, REAP_PID), true, "no table");
+    const blindToSelf = [{ pid: 700, ppid: 99999, name: "node.exe", commandLine: "x", startedAt: NOW }];
+    assert.equal(wouldTakeSelf(blindToSelf, 700, REAP_PID), true, "a table missing the reaper's own pid");
+  });
+
   /**
    * The whole point of reading the tree downward rather than walking parents upward: the walk
    * stops at the first pid the snapshot is missing, and on Windows the launcher above a
@@ -766,19 +417,6 @@ describe("killPid consults the tree it is about to end", () => {
   });
 });
 
-describe("psTimeToMs", () => {
-  test("reads ps's cumulative CPU column in each width it prints", () => {
-    assert.equal(psTimeToMs("00:00"), 0);
-    assert.equal(psTimeToMs("01:30"), 90_000);
-    assert.equal(psTimeToMs("02:01:30"), 7_290_000);
-    assert.equal(psTimeToMs("2-02:01:30"), 180_090_000);
-  });
-
-  test("an unparseable column yields NaN, which cpuRatios then declines to rate", () => {
-    assert.equal(Number.isNaN(psTimeToMs("-")), true);
-  });
-});
-
 /**
  * One process carrying a raw control byte in its command line once took the whole reaper down —
  * and with it `npm run agent:check`, because `JSON.parse` rejects the entire table over a single
@@ -787,7 +425,7 @@ describe("psTimeToMs", () => {
 describe("parseWindowsProcessJson", () => {
   const row = (commandLine: string) =>
     `[{"ProcessId":42,"ParentProcessId":7,"Name":"node.exe","CommandLine":"${commandLine}",` +
-    `"Started":1700000000000,"Cpu":1234}]`;
+    `"Started":1700000000000}]`;
 
   test("reads the shape ConvertTo-Json emits", () => {
     assert.deepEqual(parseWindowsProcessJson(row("node index.mjs")), [
@@ -797,7 +435,6 @@ describe("parseWindowsProcessJson", () => {
         name: "node.exe",
         commandLine: "node index.mjs",
         startedAt: 1_700_000_000_000,
-        cpuMs: 1234,
       },
     ]);
   });
@@ -827,125 +464,32 @@ describe("parseWindowsProcessJson", () => {
   });
 });
 
-describe("resolvePowerShellExe", () => {
-  test("prefers pwsh when it answers with its own version", () => {
-    assert.equal(
-      resolvePowerShellExe(() => "7\r\n"),
-      "pwsh",
-    );
-  });
-
-  test("a same-named binary that merely exits 0 is rejected, not read as pwsh", () => {
-    assert.equal(
-      resolvePowerShellExe(() => "not a version number"),
-      "powershell",
-    );
-  });
-
-  test("falls back to legacy powershell only on ENOENT", () => {
-    const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
-    assert.equal(
-      resolvePowerShellExe(() => {
-        throw enoent;
-      }),
-      "powershell",
-    );
-  });
-
-  test("a non-ENOENT failure keeps pwsh rather than hiding it behind a fallback", () => {
-    assert.equal(
-      resolvePowerShellExe(() => {
-        throw new Error("pwsh ran but the probed command failed");
-      }),
-      "pwsh",
-    );
-  });
-
-});
-
-describe("resolvePowerShellExe, live", () => {
-  const onWindows = process.platform === "win32";
-  const identityProbeOn = (PATH: string) => (exe: string) =>
-    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, PATH },
-    });
-  const inTempDir = (body: (dir: string) => void) => {
-    const dir = mkdtempSync(path.join(tmpdir(), "resolve-pwsh-"));
-    try {
-      body(dir);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
-
-  test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
-    assert.equal(resolvePowerShellExe(), "pwsh");
-  });
-
-  test("a decoy pwsh that exits 0 printing no version is rejected — reproduced live", () => {
-    inTempDir((dir) => {
-      const decoy = onWindows ? path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe") : "/bin/echo";
-      copyFileSync(decoy, path.join(dir, onWindows ? "pwsh.exe" : "pwsh"));
-      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
-    });
-  });
-
-  test("with no pwsh on PATH, resolution falls back on the real ENOENT", () => {
-    inTempDir((dir) => {
-      assert.throws(() => identityProbeOn(dir)("pwsh"), { code: "ENOENT" });
-      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
-    });
-  });
-
-  test("the legacy binary it falls back to reads the process table", { skip: onWindows ? false : "Windows PowerShell and Win32_Process exist on win32 only" }, () => {
-    // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
-    // so this reproduces "pwsh not installed" without touching the real PATH.
-    const legacyOnly = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`;
-    assert.throws(() => identityProbeOn(legacyOnly)("pwsh"), { code: "ENOENT" });
-    const resolved = resolvePowerShellExe(identityProbeOn(legacyOnly));
-    assert.equal(resolved, "powershell");
-
-    const out = execFileSync(
-      resolved,
-      ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object -First 1 ProcessId,Name | ConvertTo-Json -Compress"],
-      { env: { ...process.env, PATH: legacyOnly }, encoding: "utf8" },
-    );
-    assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
-  });
-});
-
 describe("readProcessTable", () => {
-  test("a resolver mistake degrades to an empty table, logged, instead of crashing the sweep", () => {
-    const logged: string[] = [];
-    const original = console.error;
-    console.error = (msg: string) => logged.push(msg);
-    try {
-      assert.deepEqual(readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh"), []);
-    } finally {
-      console.error = original;
-    }
-    assert.match(logged.join("\n"), /pwsh/, "the skip names which binary produced it, not just that one happened");
+  test("an answer that is not a table degrades to an empty one, named blind, instead of crashing the sweep", () => {
+    const out = readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh");
+    assert.deepEqual(out.rows, []);
+    assert.match(out.blind ?? "", /pwsh/, "the skip names which binary produced it, not just that one happened");
   });
 
-  test("still reads a well-formed table", () => {
-    const rows = readProcessTable(
-      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1,"Cpu":1}]',
-      "pwsh",
-    );
-    assert.equal(rows.length, 1);
+  test("a PowerShell that answered nothing, or is missing, is blind, never a machine with no processes", () => {
+    const out = readProcessTable("", "pwsh");
+    assert.deepEqual(out.rows, []);
+    assert.match(out.blind ?? "", /pwsh.*no process table/);
+  });
+
+  test("still reads a well-formed table, and sees", () => {
+    const out = readProcessTable('[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1}]', "pwsh");
+    assert.equal(out.rows.length, 1);
+    assert.equal(out.blind, null);
   });
 });
 
-describe("the --if-found answer", () => {
-  test("exits FOUND_NOTHING exactly when it named nothing to take", () => {
-    const done = spawnSync(
-      process.execPath,
-      [fileURLToPath(new URL("../reap.mjs", import.meta.url)), "--dry-run", IF_FOUND],
-      { encoding: "utf8" },
-    );
-    const named = /would (kill|clear|remove)/.test(done.stdout);
-    assert.equal(done.status, named ? 0 : FOUND_NOTHING, done.stdout);
+describe("the sweep, called in-process as housekeeping calls it", () => {
+  test("says each line through its caller and counts exactly what it named to take", async () => {
+    const said: string[] = [];
+    const { took, blind } = await reap({ dryRun: true, stale: true, say: (l: string) => said.push(l) });
+    assert.equal(blind, null, said.join("\n"));
+    assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
+    assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 });
