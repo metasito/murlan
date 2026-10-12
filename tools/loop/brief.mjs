@@ -95,12 +95,11 @@ const BODIES = {
         "correct? Read the code it calls and every caller of what it changes."
       : `Review only the fix ${diff(worktree, base)} on issue #${n} (${issue(n)}): is each earlier ` +
         "Blocking finding listed after this brief fixed, and does the fix break anything? Read every " +
-        "caller of what it changes. Report Blocking findings only.") + LABELS,
+        "caller of what it changes.") + LABELS,
   fix: ({ n, worktree, base }) =>
     `A CI fix round on issue #${n}. The fix is ${diff(worktree, base)}; the failure it answers is ` +
     `the newest \`CI-RED\` comment in ${issue(n)}. Does it answer every failing test the CI-RED names, ` +
-    "without changing what the ticket asked for, and break nothing else? Report Blocking findings only." +
-    LABELS,
+    "without changing what the ticket asked for, and break nothing else?" + LABELS,
 };
 
 /** @param {string} kind @param {{n: number, worktree: string, base?: string}} opts */

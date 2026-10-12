@@ -1,6 +1,6 @@
 # 0010. The loop on the 5.5 family: no Haiku executor, effort by round, Opus review
 
-**Status:** Accepted
+**Status:** Accepted — decision 3 superseded by ADR-0011
 **Date:** 2026-10-10
 
 ## Context
@@ -44,8 +44,9 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
    pays only on routine work or on work too large for one context window, and a ticket build is
    one dependent chain that fits in one.
 2. **A fresh ticket is built at `medium`; a fix round at `high`.** `EFFORT_BY_PHASE` puts A and B
-   at `medium`. The process that starts at A carries the build through C and D. A process that
-   starts at C (a CI-red round) or D (a review round, and the HOLD fix it makes) stays at `high`.
+   at `medium`. The process that starts at A carries the build through C, then hands off to D, so
+   round 1's review runs in a fresh process. A process that starts at C (a build, or a CI-red
+   round) or D (a review round, and the HOLD fix it makes) runs at `high`.
    This is Anthropic's "low first, re-run the failures higher" trade, with the review and CI as
    the failure signal.
 3. **Review runs on Opus at `medium`.** Rule 29's reviewers and refuter were `sonnet`, and their
