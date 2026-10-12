@@ -13,7 +13,10 @@ import {
   runListArgs,
   stripLogPrefix,
 } from "../ciVerdict.ts";
+import { ciRedBody } from "../queue-loop.mjs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 
 const jestProjects: string[] = createRequire(import.meta.url)("../../../jest.config.js").projects.map(
   (p: { displayName: string }) => p.displayName,
@@ -409,6 +412,116 @@ describe("readHeadCi", () => {
     assert.equal(out.pr, null);
     const list = asked.find((a) => a[0] === "pr" && a[1] === "list");
     assert.equal(list?.[list.indexOf("--json") + 1], "number");
+  });
+});
+
+describe("a green run over a test file the pull request touched", () => {
+  const green = { databaseId: 41, status: "completed", conclusion: "success", headSha: "h" };
+  const native = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
+  const spec = "tests/e2e/tableProportions.spec.ts";
+  type PrFile = { filename: string; status: string; patch?: string };
+  type Fake = { download?: () => void; listed?: string[]; asked?: string[][] };
+  const fakeGh = (lists: Record<string, object[]>, files: PrFile[], { download, listed, asked }: Fake = {}) => (args: string[]) => {
+    asked?.push(args);
+    if (args[0] === "pr" && args[1] === "list") return JSON.stringify([{ number: 1 }]);
+    if (args[0] === "pr") return JSON.stringify({ headRefOid: "h" });
+    if (args[0] === "run" && args[1] === "list") return JSON.stringify([green]);
+    if (args[0] === "api" && args[1] === "repos/o/r/git/ref/heads/agent/1-x") return "h";
+    if (args[0] === "api" && args[1].startsWith("repos/o/r/actions/runs/41/artifacts")) return (listed ?? Object.keys(lists)).join("\n");
+    if (args[0] === "run" && args[1] === "download") {
+      download?.();
+      const dir = args[args.indexOf("--dir") + 1];
+      for (const [name, list] of Object.entries(lists)) {
+        mkdirSync(path.join(dir, name), { recursive: true });
+        writeFileSync(path.join(dir, name, "over-budget.json"), JSON.stringify(list));
+      }
+      return "";
+    }
+    if (args[0] === "api" && args[1].startsWith("repos/o/r/pulls/1/files")) return files.map((f) => JSON.stringify(f)).join("\n");
+    throw new Error(`unexpected gh ${args.join(" ")}`);
+  };
+  const lists = {
+    "over-budget-native-1": [{ file: native, seconds: 32.9, budget: 15 }],
+    "over-budget-browser-2": [{ file: spec, seconds: 94, budget: 75.6 }],
+  };
+  const read = (gh: (args: string[]) => string) => readVerdict("o/r", "agent/1-x", 1, Date.now() + 60_000, gh);
+
+  test("is a CI fix round at `timing budget`, whose CI-RED names the file", () => {
+    const v = read(fakeGh(lists, [{ filename: native, status: "modified" }, { filename: "lib/x.ts", status: "modified" }]));
+    assert.equal(v.pass, false);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "timing budget");
+    assert.deepEqual(v.testIds, [native]);
+    assert.match(v.output ?? "", /mancheOutcomeOnTheFelt\.test\.tsx.*32\.9s.*15s/);
+    assert.doesNotMatch(v.output ?? "", /tableProportions/);
+    assert.ok(v.logArgs?.includes("over-budget-*"), String(v.logArgs));
+    const body = ciRedBody({ sha: "h", runUrl: "u", failedStep: v.failedStep, testIds: v.testIds, excerpt: v.output, logArgs: v.logArgs, reason: v.reason });
+    assert.match(body, /step: timing budget/);
+    assert.match(body, new RegExp(`^- ${native.replace(/\./g, "\\.")}$`, "m"));
+  });
+
+  test("passes when the file over budget is one the pull request did not touch", () => {
+    assert.equal(read(fakeGh(lists, [{ filename: "lib/x.ts", status: "modified" }])).pass, true);
+    assert.equal(read(fakeGh({}, [{ filename: native, status: "modified" }])).pass, true);
+  });
+
+  test("is the same fix round when the pull request raises its own spec's recorded time past the ratio", () => {
+    const raise = (to: number) =>
+      fakeGh({}, [
+        { filename: spec, status: "modified" },
+        { filename: "tests/e2e/timings.json", status: "modified", patch: `@@ -40,3 +40,3 @@\n-  "tableProportions.spec.ts": 22.8,\n+  "tableProportions.spec.ts": ${to},\n` },
+      ]);
+    const v = read(raise(90));
+    assert.equal(v.failedStep, "timing budget");
+    assert.deepEqual(v.testIds, [spec]);
+    assert.match(v.output ?? "", /22\.8s.*90s/);
+    assert.equal(read(raise(30)).pass, true);
+  });
+
+  test("passes a new spec with no recorded time, and says it has no budget yet", () => {
+    const v = read(fakeGh(lists, [{ filename: "tests/e2e/brandNew.spec.ts", status: "added" }]));
+    assert.equal(v.pass, true);
+    assert.match(v.reason, /no budget yet.*tests\/e2e\/brandNew\.spec\.ts/);
+  });
+
+  test("a list that cannot be read is not a pass", () => {
+    const v = read(fakeGh(lists, [{ filename: native, status: "modified" }], {
+      download: () => {
+        throw new Error("HTTP 410: artifact expired");
+      },
+    }));
+    assert.equal(v.pass, false);
+    assert.equal(v.infrastructure, true);
+  });
+
+  // Run 38229501646, attempt 2: the artifacts endpoint lists every attempt's upload, two `blob-report-15` among them.
+  test("a list a rerun uploaded twice under one name is read once, not refused", () => {
+    const one = { "over-budget-native-1": lists["over-budget-native-1"] };
+    const v = read(fakeGh(one, [{ filename: native, status: "modified" }], { listed: ["over-budget-native-1", "over-budget-native-1"] }));
+    assert.notEqual(v.infrastructure, true, v.reason);
+    assert.equal(v.failedStep, "timing budget");
+  });
+
+  test("a pull request that changes no test file downloads nothing", () => {
+    const asked: string[][] = [];
+    assert.equal(read(fakeGh(lists, [{ filename: "lib/x.ts", status: "modified" }], { asked })).pass, true);
+    assert.ok(!asked.some((a) => a[1] === "download" || /\/artifacts/.test(a[1] ?? "")), JSON.stringify(asked));
+  });
+
+  test("a file over budget on both projects is one finding, at its slower time", () => {
+    const both = {
+      "over-budget-native-1": [{ file: native, seconds: 20, budget: 15 }],
+      "over-budget-native-2": [{ file: native, seconds: 32.9, budget: 15 }],
+    };
+    const v = read(fakeGh(both, [{ filename: native, status: "modified" }]));
+    const lines = (v.output ?? "").split("\n").filter((l) => l.includes(native));
+    assert.deepEqual(lines, [`  ${native}: 32.9s against a budget of 15s`]);
+  });
+
+  test("readHeadCi, which derives the phase, holds the same gate", () => {
+    const { verdict } = readHeadCi("o/r", "agent/1-x", fakeGh(lists, [{ filename: native, status: "modified" }]), Date.now() + 60_000);
+    assert.equal(verdict.pass, false);
+    assert.equal(verdict.failedStep, "timing budget");
   });
 });
 

@@ -9,6 +9,8 @@
 // returns. Only the subprocess is fake.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { ciRedBody, onMainLine, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
 import { readHeadCi, readVerdict } from "../ciVerdict.ts";
 
@@ -38,6 +40,8 @@ function ghFake({
   remoteSha = SHA,
   prList = [{ number: PENDING.pr, headRefOid: SHA }],
   issueComments = [],
+  overBudget = {},
+  prFiles = [],
 }: {
   script: unknown[][];
   pr?: Record<string, string>;
@@ -46,6 +50,8 @@ function ghFake({
   remoteSha?: string | null;
   prList?: unknown[];
   issueComments?: { body: string }[];
+  overBudget?: Record<string, unknown[]>;
+  prFiles?: { filename: string; status: string }[];
 }) {
   const asked: string[][] = [];
   let listed = 0;
@@ -54,6 +60,16 @@ function ghFake({
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
+    if (args[0] === "api" && /\/actions\/runs\/\d+\/artifacts/.test(args[1])) return Object.keys(overBudget).join("\n");
+    if (args[0] === "api" && /\/pulls\/\d+\/files/.test(args[1])) return prFiles.map((f) => JSON.stringify(f)).join("\n");
+    if (args[0] === "run" && args[1] === "download") {
+      const dir = args[args.indexOf("--dir") + 1];
+      for (const [name, list] of Object.entries(overBudget)) {
+        mkdirSync(path.join(dir, name), { recursive: true });
+        writeFileSync(path.join(dir, name, "over-budget.json"), JSON.stringify(list));
+      }
+      return "";
+    }
     if (args[0] === "api") {
       if (remoteSha === null) throw new Error("gh: not found");
       return remoteSha;
@@ -125,6 +141,24 @@ describe("settle, replayed against recorded gh payloads", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "merge");
     assert.ok(asked.some((a) => a[0] === "pr" && a[1] === "merge"), "the merge is what makes it a landing");
+  });
+
+  test("a green run over budget on a file the pull request changed is handed back at `timing budget`, never merged", async () => {
+    const file = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
+    const written: string[][] = [];
+    const { gh, asked } = ghFake({
+      script: [runRow("completed", "success")],
+      pr: prRow({ mergeStateStatus: "CLEAN" }),
+      overBudget: { "over-budget-native-1": [{ file, seconds: 32.9, budget: 15 }] },
+      prFiles: [{ filename: file, status: "modified" }],
+    });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    assert.equal(out.action, "hand-back");
+    assert.match(String(out.reason), /timing budget/);
+    assert.ok(!asked.some((a) => a[1] === "merge"));
+    const note = written.find(([p]) => !/ci-1028\.log$/.test(p))?.[1] ?? "";
+    assert.match(note, /step: timing budget/);
+    assert.match(note, /mancheOutcomeOnTheFelt\.test\.tsx/);
   });
 
   test("a green head no LAND covers is the owner's, and is never merged", async () => {
