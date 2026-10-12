@@ -24,7 +24,8 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
-| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | — |
+| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | ranked first |
+| `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it) | ranked with `main-red` |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
@@ -81,7 +82,7 @@ the same GitHub account.
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
   branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
-  owner sent back), then a `main-red` issue, then the oldest in the Launch
+  owner sent back), then a `main-red` or `ci-flake` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim

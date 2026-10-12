@@ -97,7 +97,7 @@ export function classify(openIssues, io = realClassifyIo()) {
     if (claimed) continue;
     buckets[BUCKET[route] ?? "owner"].push(issue);
   }
-  // A red main first, then the Launch milestone, each oldest first. Never by size: that put every
+  // A red main or a CI flake first, then the Launch milestone, each oldest first. Never by size: that put every
   // self-filed size:S follow-up at the head.
   for (const b of [...new Set([...Object.values(BUCKET), "owner", "stranded"])]) buckets[b].sort((a, x) => rank(a) - rank(x) || a.number - x.number);
   // A branch already pushed and already reviewed is the cheapest work in the queue, and leaving it
@@ -175,7 +175,7 @@ function takeable(frontier, limit) {
 
 /** @param {Issue} issue */
 export function rank(issue) {
-  if (labelNames(issue).includes("main-red")) return 0;
+  if (labelNames(issue).some((l) => l === "main-red" || l === "ci-flake")) return 0;
   return issue.milestone?.title === LAUNCH_MILESTONE ? 1 : 2;
 }
 
