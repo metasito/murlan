@@ -1,6 +1,6 @@
 name: Android UI (Maestro)
 
-# A ticket whose work needs a device run dispatches it on its own branch (`tools/loop/guard-bash.mjs`);
+# A ticket whose work needs a device run dispatches it on its own branch (the gate job below);
 # twice a week main runs it, so branches restore main's native-build cache, which GitHub evicts
 # after 7 days unread. Never on `push` or `pull_request` (owner, 2026-09-24).
 #
@@ -36,8 +36,44 @@ permissions:
   issues: write
 
 jobs:
+  # No rerun, and no dispatch off a ticket's own branch (owner, 2026-10-12). A rerun carries every
+  # passed job over and skips `android`, so only `verdict`, which always runs, can turn it red
+  # (tests/tooling/deviceWorkflowsGate.test.ts).
+  gate:
+    name: Dispatched on a ticket's own branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Expressions have no regex, and `startsWith` admits every worktree branch.
+      - name: A schedule, or a dispatch on agent/<n>-… or claude/<n>-…
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+        run: |
+          [[ "$EVENT" == schedule || "$REF" =~ ^(agent|claude)/[0-9]+- ]] && exit 0
+          echo "::error::A device run is dispatched only on a ticket's own branch (agent/<n>-… or claude/<n>-…), not $REF."
+          exit 1
+
+  verdict:
+    name: The emulator ran and passed on this attempt
+    needs: [gate, android]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Every job ran and passed, on the first attempt
+        env:
+          RESULTS: ${{ needs.gate.result }} ${{ needs.android.result }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          [ "$ATTEMPT" = 1 ] || { echo "::error::A device run is never rerun: dispatch it again after a change."; exit 1; }
+          echo "The gate's and the emulator job's results: $RESULTS"
+          [ "$RESULTS" = "success success" ]
+
   android:
     name: Drive the app on a real Android emulator
+    needs: gate
+    if: github.run_attempt == 1
     runs-on: ubuntu-latest
     # Two boot waits fit inside this, which is the point: at 900s each, plus
     # the Gradle build before the first, a double timeout lands near 55 min and

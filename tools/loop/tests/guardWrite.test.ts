@@ -24,13 +24,13 @@ test("a path outside the repo is refused, so the owner's own folders are not scr
   for (const p of [path.resolve("/Users/roton/murlan-plans/review-1261.md"), path.resolve("/tmp/pr.md")])
     assert.match(String(verdict(p, root)), /\.loop-logs/, p);
 });
-test("the hook denies in a loop session and is silent outside one", () => {
+test("the hook denies with or without LOOP_TURNS: only the loop's own settings load it", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "guard-write-"));
   execFileSync("git", ["init", "-q", repo]);
   const script = fileURLToPath(new URL("../guard-write.mjs", import.meta.url));
   const input = JSON.stringify({ tool_name: "Edit", tool_input: { file_path: path.join(repo, "a.ts") }, cwd: repo });
   const run = (env: Record<string, string | undefined>) => execFileSync(process.execPath, [script], { input, encoding: "utf8", env: { ...process.env, LOOP_TURNS: undefined, ...env } as NodeJS.ProcessEnv });
   assert.equal(JSON.parse(run({ LOOP_TURNS: "40" })).hookSpecificOutput.permissionDecision, "deny");
-  assert.equal(run({}), "");
+  assert.equal(JSON.parse(run({})).hookSpecificOutput.permissionDecision, "deny");
   fs.rmSync(repo, { recursive: true, force: true });
 });

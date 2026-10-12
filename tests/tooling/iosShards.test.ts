@@ -126,7 +126,7 @@ test("every load sampler is stopped once the debug output carrying its log is up
 
 test("a shard boots beside the app job, which restores, and waits for the app it uploads", () => {
   assert.match(job("app"), /uses: \.\/\.github\/actions\/ios-app\n/);
-  assert.doesNotMatch(job("flows"), /\n {4}needs:/);
+  assert.doesNotMatch(job("flows"), /\n {4}needs:.*\bapp\b/);
   const flows = job("flows");
   const uploaded = /upload-artifact@.*\n {8}with:\n {10}name: (.+)\n/.exec(job("app"))![1];
   const producer = /\n {4}name: (.+)\n/.exec(job("app"))![1];

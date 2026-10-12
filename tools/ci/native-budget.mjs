@@ -3,7 +3,7 @@
 // budgeted apart from the rest of `PASS … (N s)`, which also holds the module graph's transform that a
 // cold cache charges to whichever file loads it first; the rest gets a ceiling of its own, so work moved
 // into a beforeAll or a module body cannot leave the budget. A green run also writes the files over budget
-// on their cases to `out`, which ci.yml uploads for the loop's land gate (`overBudget` in tools/loop/ciVerdict.ts).
+// on their cases to `out`, which ci.yml uploads for the land gate (`overBudget` in tools/ci/budget-gate.mjs).
 
 import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

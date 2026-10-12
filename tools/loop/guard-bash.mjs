@@ -8,9 +8,10 @@
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
  *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
  *   git push … main                  lands code with no CI
+ *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a device workflow rerun, or a dispatch anywhere but a ticket's own agent/<n>- branch
+ *   a rerun of a run it cannot name, or a loop session's second rerun of one
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -27,245 +28,11 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
+import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
 /** A failure's first line — enough to name it on stderr without dumping a stack there. */
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
-const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression)$/;
-const PIPED_TO_SHELL = /^[^\n]*\|\s*(?:\S*[\\/])?(bash|sh|zsh|dash|pwsh|powershell|iex|invoke-expression)\b/i;
-const WRAPPER = new Set(["env", "xargs", "time", "do", "then", "else", "elif", "if", "while", "until", "!", "exec", "nohup", "command", "sudo", "nice"]);
-const WRAPPER_TAKES_A_VALUE = /^-(?:[IinPdLEsau]|-(?:max-args|max-procs|delimiter|replace|arg-file|unset))$/;
-const GIT_TAKES_A_VALUE = /^(-C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix)$/;
-const GH_TAKES_A_VALUE = /^(-R|--repo|--hostname)$/;
-const REDIRECT = /^\d*(?:[<>]+|&>>?)(\S*)$/;
-const MAX_DEPTH = 5;
-
-const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().replace(/\.(exe|cmd)$/i, "").toLowerCase();
-
-/** Index of the `)` closing the `(` at `open`, or the end of the text. */
-function closing(text, open) {
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    if (text[i] === "(") depth += 1;
-    else if (text[i] === ")" && --depth === 0) return i;
-  }
-  return text.length;
-}
-
-/**
- * The words of each simple command, quote-aware: a separator inside quotes is data, and a
- * `$( … )` anywhere, quoted or not, is a command of its own. Backslash is literal (PowerShell and
- * Windows paths) except before a quote or a newline.
- */
-function segments(text, depth) {
-  const out = [];
-  let words = [];
-  let word = null;
-  let quote = null;
-  let i = 0;
-  let from = 0;
-  const endWord = () => {
-    if (word !== null) words.push(word);
-    word = null;
-  };
-  const endSegment = () => {
-    endWord();
-    words.span = [from, i];
-    if (words.length) out.push(words);
-    words = [];
-    from = i + 1;
-  };
-  for (; i < text.length; i++) {
-    const ch = text[i];
-    if (quote === "'") {
-      if (ch === "'") quote = null;
-      else word += ch;
-      continue;
-    }
-    if (ch === "$" && text[i + 1] === "(") {
-      const end = closing(text, i + 1);
-      if (depth < MAX_DEPTH) out.push(...segments(text.slice(i + 2, end), depth + 1));
-      word = (word ?? "") + text.slice(i, end + 1);
-      i = end;
-      continue;
-    }
-    if (ch === "\\" && /["'\n]/.test(text[i + 1] ?? "")) {
-      if (text[i + 1] === "\n") endWord();
-      else word = (word ?? "") + text[i + 1];
-      i += 1;
-      continue;
-    }
-    if (quote === '"') {
-      if (ch === '"') quote = null;
-      else word += ch;
-      continue;
-    }
-    if (ch === "'" || ch === '"') {
-      quote = ch;
-      word ??= "";
-    } else if (ch === "$" && text[i + 1] === "{") {
-      const end = text.indexOf("}", i);
-      const stop = end < 0 ? text.length : end;
-      word = (word ?? "") + text.slice(i, stop + 1);
-      i = stop;
-    } else if (ch === "`" && text[i + 1] === "\n") {
-      endWord();
-      i += 1;
-    } else if (ch === "&" && (/[<>]/.test(text[i - 1] ?? "") || text[i + 1] === ">")) {
-      word = (word ?? "") + ch;
-    } else if (/[;&|\n(){}`]/.test(ch)) {
-      if (ch === "|" && text[i - 1] !== "|" && text[i + 1] !== "|") words.piped = true;
-      endSegment();
-    } else if (/\s/.test(ch)) {
-      endWord();
-    } else {
-      word = (word ?? "") + ch;
-    }
-  }
-  endSegment();
-  return out;
-}
-
-/** The command line a shell (or `iex`) is handed: its `-c` body, a here-string, or the rest of an `iex`. */
-function shellBodyOf(cmd, rest) {
-  const herestring = rest.indexOf("<<<");
-  const flag = rest.findIndex((a) => /^(-c|-command|\/c|\/k)$/i.test(a));
-  if (herestring >= 0) return rest[herestring + 1];
-  if (flag < 0) return rest[0] && !rest[0].startsWith("-") && /^(iex|invoke-expression)$/.test(cmd) ? rest.join(" ") : null;
-  return /^(pwsh|powershell|cmd)$/.test(cmd) ? rest.slice(flag + 1).join(" ") : rest[flag + 1];
-}
-
-/**
- * One segment as `{ cmd, env, dir, args, piped }`: leading assignments, wrappers and redirections
- * gone, a shell's `-c` body parsed in its place, and git's or gh's global options taken off so
- * `args[0]` is the verb. `env` holds the leading assignments; `dir` is git's last `-C`; `out` is
- * its stdout redirect targets; `piped` means its output feeds a `|`.
- */
-function normalize(words, depth) {
-  const env = {};
-  let i = 0;
-  for (; i < words.length; i++) {
-    const assign = /^([A-Za-z_]\w*)=([\s\S]*)$/.exec(words[i]);
-    if (assign) {
-      env[assign[1]] = assign[2];
-    } else if (REDIRECT.test(words[i])) {
-      if (!REDIRECT.exec(words[i])[1]) i += 1;
-    } else if (commandName(words[i]) === "timeout") {
-      while (words[i + 1]?.startsWith("-")) i += /^(-[sk]|--signal|--kill-after)$/.test(words[i + 1]) ? 2 : 1;
-      i += 1;
-    } else if (WRAPPER.has(commandName(words[i]))) {
-      while (words[i + 1]?.startsWith("-")) i += WRAPPER_TAKES_A_VALUE.test(words[i + 1]) ? 2 : 1;
-    } else {
-      break;
-    }
-  }
-  if (i >= words.length) return [];
-  const cmd = commandName(words[i]);
-  const rest = words.slice(i + 1);
-
-  if (SHELL.test(cmd) && depth < MAX_DEPTH) {
-    const body = shellBodyOf(cmd, rest);
-    if (body) {
-      const scope = { ...env, ...assignmentsIn(body) };
-      return commands(body, depth + 1).map((c) => ({ ...c, scope: { ...scope, ...c.scope }, piped: c.piped || words.piped === true }));
-    }
-  }
-
-  const args = [];
-  const out = [];
-  for (let j = 0; j < rest.length; j++) {
-    const redirect = REDIRECT.exec(rest[j]);
-    if (!redirect) {
-      args.push(rest[j]);
-      continue;
-    }
-    const target = redirect[1] || rest[j + 1] || "";
-    if (/^[1&]?>/.test(rest[j]) && target && !target.startsWith("&")) out.push(target);
-    j += redirect[1] ? 0 : 1;
-  }
-  let dir = null;
-  const globals = cmd === "git" ? GIT_TAKES_A_VALUE : cmd === "gh" ? GH_TAKES_A_VALUE : null;
-  while (globals && args[0]?.startsWith("-")) {
-    const takes = globals.test(args[0]);
-    if (cmd === "git" && args[0] === "-C") dir = args[1] ?? dir;
-    args.splice(0, takes ? 2 : 1);
-  }
-  return [{ cmd, env, dir, args, out, piped: words.piped === true }];
-}
-
-export function commands(text, depth = 0) {
-  // gh's own `{owner}`/`{repo}`/`{branch}` placeholders, or the braces split an endpoint in three.
-  const spelled = depth === 0 ? text.replace(/\{(owner|repo|branch)\}/g, "$1") : text;
-  return segments(spelled, depth).flatMap((words) => normalize(words, depth));
-}
-
-/**
- * Blanks the bodies of here-strings and heredocs before any rule reads the command — unless the
- * body is fed to a shell, where it is the command.
- *
- * Their content is otherwise data — a commit message, a PR body, a doc — and a line inside one
- * begins at a line start like any other, so a rule would fire on prose *about* a command.
- * Blanked rather than deleted so nothing on either side is joined into a new match.
- */
-export function withoutQuotedBodies(command) {
-  const blank = (s) => s.replace(/[^\n]/g, " ");
-  const lineBefore = (all, offset) => all.slice(all.lastIndexOf("\n", offset - 1) + 1, offset);
-  const feedsShell = (before, after) => {
-    const last = commands(before).pop();
-    return (last && SHELL.test(last.cmd) && !has(last.args, /^[^-]/)) || PIPED_TO_SHELL.test(after);
-  };
-  return command
-    .replace(/@(['"])([\s\S]*?)\1@/g, (m, _q, body, offset, all) =>
-      feedsShell(lineBefore(all, offset), all.slice(offset + m.length)) ? `  ${body}  ` : blank(m)
-    )
-    .replace(/<<-?\s*(['"]?)(\w+)\1([^\n]*\n)([\s\S]*?^\t*\2$)/gm, (m, _q, _tag, rest, body, offset, all) => {
-      const opener = m.slice(0, m.length - rest.length - body.length);
-      return blank(opener) + rest + (feedsShell(lineBefore(all, offset), rest) ? body : blank(body));
-    });
-}
-
-/** Both device workflows are named for Maestro, and the iOS one's file is `ios.yml`. */
-const DEVICE_WORKFLOW = /maestro|\bios\b/i;
-
-const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
-const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
-
-/** Each bare `X=…` statement's value, a later one replacing an earlier. */
-function assignmentsIn(text) {
-  const vars = {};
-  for (const w of segments(text, MAX_DEPTH)) {
-    let i = 0;
-    while (/^(do|then|else|elif|!)$/.test(w[i] ?? "")) i += 1;
-    if (i < w.length && w.slice(i).every((x) => ASSIGN.test(x))) for (const x of w.slice(i)) vars[ASSIGN.exec(x)[1]] = ASSIGN.exec(x)[2];
-  }
-  return vars;
-}
-
-/**
- * `B=agent/12-x && … --ref $B`: literal assignments `commands()` drops. Only a bare `X=…` statement
- * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
- */
-export const literalAssignments = (text) => literal(assignmentsIn(text));
-
-/** `gh workflow run … --ref agent/<n>-…` or `claude/<n>-…` (or `--ref=`, `-r`): a ticket dispatching on its own branch. */
-function dispatchesOnTicketBranch(c, vars = {}) {
-  const at = c.args.findIndex((a) => a === "-r" || a === "--ref");
-  const raw = at >= 0 ? (c.args[at + 1] ?? "") : (c.args.find((a) => a.startsWith("--ref=")) ?? "").slice(6);
-  const name = /^\$\{?(\w+)\}?$/.exec(raw)?.[1];
-  const ref = name ? (vars[name] ?? "") : raw;
-  return c.cmd === "gh" && c.args[0] === "workflow" && /^(?:agent|claude)\/\d+-/.test(ref);
-}
-
-/** The path operand of `git worktree add`, or null when it names none. */
-function worktreeAddPath(c) {
-  if (c.cmd !== "git" || c.args[0] !== "worktree" || c.args[1] !== "add") return null;
-  const rest = c.args.slice(2);
-  for (let i = 0; i < rest.length; i++) {
-    if (/^(-b|-B|--reason)$/.test(rest[i])) i += 1;
-    else if (!rest[i].startsWith("-")) return rest[i];
-  }
-  return "";
-}
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
 /** The only `gh run rerun` flags that consume the token after them. */
@@ -277,7 +44,7 @@ const JOB_FLAG = /^(?:--job|-j)$/;
  * variable, or absent, or something this cannot read — nothing identifiable.
  *
  * A job id is not a run id: `gh run view <job-id>` answers 404, so reading one as the other
- * resolves to nothing and waves through the ~25 minute simulator job it names.
+ * resolves to nothing and waves through a second rerun of the job it names.
  */
 function target(tokens) {
   for (let i = 0; i < tokens.length; i++) {
@@ -301,19 +68,6 @@ function rerunOf(c) {
   if (!rest) return null;
   if (!/^\d+$/.test(rest[2])) return {};
   return rest[1].toLowerCase() === "jobs" ? { job: rest[2] } : { run: rest[2] };
-}
-
-/** The workflow this command dispatches, or null when it dispatches none. */
-function dispatchOf(c) {
-  if (c.cmd === "gh" && c.args[0] === "workflow" && c.args[1] === "run") {
-    for (let i = 2; i < c.args.length; i++) {
-      if (/^(-r|--ref|-f|--raw-field|-F|--field|-R|--repo)$/.test(c.args[i])) i += 1;
-      else if (!c.args[i].startsWith("-")) return c.args[i];
-    }
-    return "";
-  }
-  const rest = HTTP_CLIENT.test(c.cmd) && /actions\/workflows\/([^\s/?]+)\/dispatches/i.exec(c.args.join(" "));
-  return rest ? rest[1] : null;
 }
 
 /**
@@ -448,81 +202,6 @@ function addsInsideOwnWorktree(c, repo) {
   );
 }
 
-const has = (args, re) => args.some((a) => re.test(a));
-
-const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
-const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
-
-/**
- * The block braces between each segment and the next, as `[char, position]`. `segments()` splits on
- * every brace, so a bash brace expansion — `{1..48}`, `a{1,2}`: a pair with no space or separator
- * inside — is dropped here, or it would read as a PowerShell block opening before the `do`.
- */
-function blockBraces(text, segs) {
-  const gaps = segs.map((s, k) => {
-    const out = [];
-    for (let p = s.span[1]; p < (segs[k + 1]?.span[0] ?? text.length); p++) if (/[{}]/.test(text[p])) out.push([text[p], p]);
-    return out;
-  });
-  const expansion = new Set();
-  const open = [];
-  for (const [ch, p] of gaps.flat()) {
-    if (ch === "{") open.push(p);
-    else if (open.length) {
-      const o = open.pop();
-      if (!/[\s;|&]/.test(text.slice(o + 1, p))) expansion.add(o).add(p);
-    }
-  }
-  return gaps.map((g) => g.filter(([, p]) => !expansion.has(p)));
-}
-
-/** Where the loop opened by `segs[k]` ends: its matching `done`, or for PowerShell its matching `}`. */
-function loopEnd(text, segs, k, braces) {
-  let j = k;
-  while (j < segs.length && !braces[j].some(([ch]) => ch === "{") && !(j > k && segs[j][0] === "do")) j += 1;
-  if (j < segs.length && segs[j][0] === "do" && j > k) {
-    let open = 1;
-    for (; j < segs.length; j++) {
-      if (LOOP_KEYWORD.test(headOf(segs[j]))) open += 1;
-      if (segs[j][0] === "done" && --open === 0) return segs[j].span[1];
-    }
-    return text.length;
-  }
-  let depth = 0;
-  for (; j < segs.length; j++) {
-    for (const [ch, at] of braces[j]) {
-      if (ch === "{") depth += 1;
-      if (ch !== "}" || --depth > 0) continue;
-      const cond = segs[j + 1];
-      if (segs[k][0] !== "do" || !/^(while|until)$/i.test(cond?.[0] ?? "")) return at + 1;
-      const paren = text.indexOf("(", cond.span[0]);
-      return paren < 0 ? text.length : closing(text, paren) + 1;
-    }
-  }
-  return text.length;
-}
-
-/**
- * Each loop's own text, keyword to end, in shell and `$( … )` bodies too. Spans come from a parse
- * that keeps `$( … )` whole, so only separators lie between two segments' spans.
- */
-function loopBodies(text, depth = 0) {
-  const segs = segments(text, MAX_DEPTH);
-  const braces = blockBraces(text, segs);
-  const bodies = [];
-  segs.forEach((w, k) => {
-    const psDo = w.length === 1 && w[0] === "do" && braces[k].some(([ch]) => ch === "{");
-    if (LOOP_KEYWORD.test(headOf(w)) || psDo) bodies.push(text.slice(w.span[0], loopEnd(text, segs, k, braces)));
-    if (depth >= MAX_DEPTH) return;
-    const inner = w.flatMap((x) => [...x.matchAll(/\$\(/g)].map((m) => x.slice(m.index + 2, closing(x, m.index + 1))));
-    for (const body of [shellBodyIn(w), ...inner]) if (body) bodies.push(...loopBodies(body, depth + 1));
-  });
-  return bodies;
-}
-const shellBodyIn = (w) => {
-  const i = w.findIndex((x) => SHELL.test(commandName(x)));
-  return i < 0 ? null : shellBodyOf(commandName(w[i]), w.slice(i + 1));
-};
 const pollsARun = (c) =>
   c.cmd === "gh" &&
   ((c.args[0] === "run" && /^(view|list)$/.test(c.args[1] ?? "")) ||
@@ -538,45 +217,21 @@ function checkoutDiscards(rest, c, repo) {
   const before = dash < 0 ? rest : rest.slice(0, dash);
   const paths = dash < 0 ? [] : rest.slice(dash + 1);
   if (has(before, /^(-f|--force|--pathspec-from-file(=.*)?)$/)) return true;
-  const operands = [];
-  let branching = false;
-  for (let i = 0; i < before.length; i++) {
-    if (/^(-b|-B|--orphan)$/.test(before[i])) {
-      branching = true;
-      i += 1;
-    } else if (/^(-t|--track(=.*)?|--detach|--orphan=.*)$/.test(before[i])) {
-      branching = true;
-    } else if (!before[i].startsWith("-")) {
-      operands.push(before[i]);
-    }
-  }
+  const named = operands(before, /^(-b|-B|--orphan)$/);
+  const branching = has(before, /^(-b|-B|--orphan|-t|--track(=.*)?|--detach|--orphan=.*)$/);
   if (paths.length && has(before, /^--(ours|theirs)$/) && repo.unmerged(paths, c.dir)) return false;
-  if (paths.length) return !operands.length || !repo.pathsClean(paths, c.dir);
-  return !branching && operands.some((a) => !repo.isRef(a, c.dir));
+  if (paths.length) return !named.length || !repo.pathsClean(paths, c.dir);
+  return !branching && named.some((a) => !repo.isRef(a, c.dir));
 }
 
 function restoreDiscards(rest, c, repo) {
   const staged = has(rest, /^(--staged|-S[A-Za-z]*)$/);
   const worktree = has(rest, /^(--worktree|-[A-Za-z]*W[A-Za-z]*)$/);
   if (staged && !worktree) return false;
-  const paths = [];
-  let source = false;
-  for (let i = 0; i < rest.length; i++) {
-    if (/^(-s|--source)$/.test(rest[i])) {
-      source = true;
-      i += 1;
-    } else if (/^--source=/.test(rest[i])) {
-      source = true;
-    } else if (!rest[i].startsWith("-")) {
-      paths.push(rest[i]);
-    }
-  }
+  const source = has(rest, /^(-s|--source|--source=.*)$/);
+  const paths = operands(rest, /^(-s|--source)$/);
   return !source || !paths.length || !repo.pathsClean(paths, c.dir);
 }
-
-/** Git Bash's `/c/…` is `C:/…`; `resolve` alone reads it as a path on the current drive. */
-export const fromMsys = (p, platform = process.platform) =>
-  platform === "win32" ? p.replace(/^\/([A-Za-z])(\/|$)/, (_, d) => `${d.toUpperCase()}:/`) : p;
 
 /** `git show <rev>:<path> > <path>` over a tracked file with uncommitted work: the same discard as a checkout. */
 function redirectRestores(c, repo, vars, moved) {
@@ -590,7 +245,7 @@ function redirectRestores(c, repo, vars, moved) {
     const target = raw.replace(/\$\{?(\w+)\}?/g, (m, v) => c.env[v] ?? vars[v] ?? m);
     if (target.includes("$")) return raw === source;
     if (moved && !isAbsolute(target)) return true;
-    const abs = resolve(repo.cwd(null), fromMsys(target));
+    const abs = resolve(repo.cwd(null), toNative(target));
     const top = repo.top(c.dir);
     const rel = top && relative(resolve(top), abs);
     if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
@@ -620,15 +275,12 @@ function discards(c, repo) {
   }
 }
 
+const PUSH_TAKES_A_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/;
+
 function pushesMain(c, repo) {
   if (c.cmd !== "git" || c.args[0] !== "push") return false;
-  const operands = [];
-  for (let i = 1; i < c.args.length; i++) {
-    if (/^(-o|--push-option|--repo|--receive-pack|--exec)$/.test(c.args[i])) i += 1;
-    else if (!c.args[i].startsWith("-")) operands.push(c.args[i]);
-  }
   const isMain = (ref) => /^(refs\/heads\/)?main$/.test(ref);
-  const refs = operands.slice(1);
+  const refs = operands(c.args.slice(1), PUSH_TAKES_A_VALUE).slice(1);
   if (!refs.length) {
     const target = repo.pushTarget(c.dir);
     return target ? /^[^/]+\/main$/.test(target) : repo.branch(c.dir) === "main";
@@ -636,6 +288,27 @@ function pushesMain(c, repo) {
   return refs.some((ref) => {
     const dest = ref.replace(/^\+/, "").split(":").pop();
     return /^(HEAD|@)$/.test(dest) ? repo.branch(c.dir) === "main" : isMain(dest);
+  });
+}
+
+/** The ticket the supervisor spawned this session for, or null when its env names none. */
+const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
+
+/**
+ * A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an
+ * explicit `src:dst`. A delete names the branch alone, and only its own.
+ */
+function pushesElsewhere(c, ticket) {
+  if (c.cmd === "gh" && c.args[0] === "api" && has(c.args, /\/git\/refs\b/)) return true;
+  if (c.cmd !== "git" || c.args[0] !== "push") return false;
+  if (ticket === null || has(c.args, /^(--all|--mirror|--tags|--prune)$/)) return true;
+  const own = new RegExp(`^(refs/heads/)?agent/${ticket}-`);
+  const refs = operands(c.args.slice(1), PUSH_TAKES_A_VALUE).slice(1);
+  if (!refs.length) return true;
+  if (has(c.args, /^(--delete|-d)$/)) return refs.some((ref) => !own.test(ref) || ref.includes(":"));
+  return refs.some((ref) => {
+    const dst = ref.replace(/^\+/, "").split(":")[1];
+    return dst === undefined || !own.test(dst);
   });
 }
 
@@ -724,49 +397,33 @@ const RULES = [
     message:
       "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
       "Push your ticket branch and open a pull request:\n" +
-      "  git push -u origin agent/<n>-<slug>",
+      "  git push -u origin HEAD:agent/<n>-<slug>",
   },
   {
-    // A numeric workflow id cannot be read, so it is treated as the device one.
-    test: (c, { workflowOf, vars }) => {
-      const dispatched = dispatchOf(c);
-      if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c, vars);
-      const t = rerunOf(c);
-      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t)?.workflowName ?? ""));
-    },
-    message:
-      "A ticket dispatches the iOS and Android device workflows only on its own branch (agent/<n>-… or claude/<n>-…), " +
-      "and only when its work needs a device run:\n" +
-      "  gh workflow run ios.yml --ref agent/<n>-<slug>\n" +
-      "A red device run is diagnosed from its maestro-debug artifacts and dispatched again after a " +
-      "change, never rerun.\n" +
-      "Not a device workflow? Name it by its file (ci.yml), not a numeric id.",
+    test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
+    message: () =>
+      loopTicket() === null
+        ? "A loop session pushes only its own ticket's branch, and this session's LOOP_TICKET, which names it, is not set. " +
+          "Nothing can be pushed: say so on the issue and park it for the owner."
+        : "A loop session pushes only its own ticket's branch, named explicitly:\n" +
+          `  git push -u origin HEAD:agent/${loopTicket()}-<slug>\n` +
+          "Without the colon, the remote's push config decides where it lands. A delete names only " +
+          `agent/${loopTicket()}-<slug>; --all, --mirror, --tags, --prune and a ref write through \`gh api\` are refused.`,
   },
   {
-    // The rule above allows a rerun once GitHub says the run is not a device one. A target it
-    // cannot read is not an answer, and defaulting to allow there would make `$RUN` the way
-    // past the rule rather than a way to write it.
-    test: (c) => {
+    // A target it cannot read is not an answer: allowing there would make `$RUN` the way past
+    // the rule rather than a way to write it.
+    test: (c, { workflowOf, loop }) => {
       const t = rerunOf(c);
-      return Boolean(t && !t.run && !t.job);
+      return Boolean(t && (!(t.run || t.job) || (loop && workflowOf(t)?.attempt >= 2)));
     },
     message:
-      "This rerun does not name a run this guard can look up, and a rerun it cannot identify " +
-      "might be the ~25 minute device job.\n" +
-      "Name the run by its literal id so the workflow can be read:\n" +
+      "A rerun names its run by literal id, so the run it reruns can be read:\n" +
       "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
       "  gh run rerun <that id> --failed\n" +
-      "Rerunning one job? `--job <job-id>` is read too. Device runs are never rerun.",
-  },
-  {
-    test: (c, { workflowOf, loop }) => {
-      const t = loop && rerunOf(c);
-      return Boolean(t && (t.run || t.job) && workflowOf(t)?.attempt >= 2);
-    },
-    message:
-      "This run was already rerun: a loop session reruns a run at most once.\n" +
-      "A red that survives its rerun is a Blocking finding if this change caused it; otherwise the " +
-      "verdict names the test and the attempt (queue.md phase D).",
+      "Rerunning one job? `--job <job-id>` is read too.\n" +
+      "A loop session does not rerun a run already rerun: a red that survives its rerun is a Blocking finding if this change caused it; " +
+      "otherwise the verdict names the test and the attempt (queue.md phase D).",
   },
   {
     test: (c, { loop }) => loop && c.cmd === "gh" && untrustedRead(c.args),
@@ -833,17 +490,6 @@ const RULES = [
       "Change the file with the Edit or Write tool.",
   },
   {
-    test: (c, { loop }) => {
-      const where = worktreeAddPath(c);
-      const own = /(^|[\\/])\.worktrees[\\/]agent-\d+[\\/]?$/.test(where ?? "") && !where.split(/[\\/]/).includes("..");
-      return loop && where !== null && !own;
-    },
-    message:
-      "A loop session works only in the worktree the supervisor made (RULES.md rules 7 and 32).\n" +
-      "Rebuilding it? `git worktree add -B agent/<n>-<slug> .worktrees/agent-<n> origin/agent/<n>-<slug>`, as queue.md says.\n" +
-      "Blocked on a change to the loop itself? Say so on the issue and park it for the owner.",
-  },
-  {
     test: (c, { loop }) =>
       loop && c.cmd === "gh" &&
       ((c.args[0] === "run" && c.args[1] === "watch") || (c.args[0] === "pr" && c.args[1] === "checks" && has(c.args, /^--watch(=true)?$/))),
@@ -875,7 +521,7 @@ export function check(
   const parsed = commands(runnable);
   const vars = literalAssignments(runnable);
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
-  const moved = parsed.some((c) => /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/.test(c.cmd));
+  const moved = parsed.some((c) => MOVES.test(c.cmd));
   let warned = false;
   const known = new Map();
   const workflowOf = (t) => {
@@ -897,7 +543,9 @@ export function check(
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+      return typeof rule.message === "function" ? rule.message() : rule.message;
+    }
   }
   return null;
 }

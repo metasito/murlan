@@ -91,7 +91,7 @@ import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
-import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
+import { commands, withoutQuotedBodies } from "./shell.mjs";
 import { OWNER_LABELS } from "./next-ticket.mjs";
 import { createRequire } from "node:module";
 

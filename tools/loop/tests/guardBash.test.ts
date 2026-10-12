@@ -6,7 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { check, fromMsys, gitAt, implementRoute } from "../guard-bash.mjs";
+import { check, gitAt, implementRoute } from "../guard-bash.mjs";
 import { readIssue, TRUSTED_SELECT } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../guard-bash.mjs", import.meta.url));
@@ -28,6 +28,23 @@ function captureStderr(fn: () => void): string {
   return out;
 }
 
+/** Runs a function with the given environment keys set (undefined deletes one), then restores them. */
+function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
+  const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  const put = (from: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(from)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  };
+  put(vars);
+  try {
+    return fn();
+  } finally {
+    put(saved);
+  }
+}
+
 const REFS = new Set(["main", "HEAD", "origin/main", "HEAD~1"]);
 const repo = {
   branch: () => "agent/1-x",
@@ -46,7 +63,6 @@ const guard = (cmd: string) => check(cmd, device, repo);
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /before 2\.54\.0[\s\S]*worktrees:remove/;
-const DEVICE = /device workflows only on its own branch/;
 const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 const PIPED = /Piping a Playwright run/;
@@ -116,26 +132,6 @@ const BLOCKED: [string, RegExp][] = [
   ["git push origin main", /pull request/],
   ["git push -f origin +agent/1-x:refs/heads/main", /pull request/],
   ["git push origin --delete main", /pull request/],
-  ["gh workflow run maestro.yml", DEVICE],
-  ['gh workflow run "iOS UI (Maestro)"', DEVICE],
-  ["gh workflow run IOS.YML", DEVICE],
-  ["gh workflow run 123456", DEVICE],
-  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main", DEVICE],
-  ["gh api -X POST repos/o/r/Actions/Workflows/Maestro.yml/Dispatches", DEVICE],
-  ["echo MAESTRO_EVIDENCE_READ=1; gh workflow run ios.yml", DEVICE],
-  ["gh workflow run ios.yml # MAESTRO_EVIDENCE_READ=1", DEVICE],
-  ["MAESTRO_EVIDENCE_READ=1 gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches", DEVICE],
-  ["gh workflow run ios.yml --ref main", DEVICE],
-  ["gh workflow run ios.yml --ref agent/1199", DEVICE],
-  ["gh workflow run ios.yml --ref side/1195-x", DEVICE],
-  ["gh workflow run ios.yml --ref claude/foo", DEVICE],
-  ["gh workflow run ios.yml --ref claude/1259", DEVICE],
-  ["gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=agent/1199-x", DEVICE],
-  ["gh run rerun 33428375221 --failed", DEVICE],
-  ["gh -R o/r run rerun 33428375221", DEVICE],
-  ["gh api -X POST repos/o/r/actions/runs/33428375221/rerun", DEVICE],
-  ["gh api -X POST repos/o/r/actions/jobs/99710945601/rerun", DEVICE],
-  ["gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs", UNREADABLE],
   ["gh pr merge 994 --merge --delete-branch", MERGE],
   ["gh -R metasito/murlan pr merge 994 --merge", MERGE],
   ["gh --repo o/r pr merge 5", MERGE],
@@ -298,88 +294,73 @@ describe("the bash guard allows correct usage", () => {
   }
 });
 
-describe("a rerun is gated on the workflow it would re-dispatch, not on being a rerun", () => {
-  // `gh run rerun <id>` names a run, not a workflow, so the command alone cannot say whether
-  // it costs 25 minutes on a simulator or four on a browser shard. Asking is the only way to
-  // know, and a guard that blocks the honest path teaches people to route around the marker.
-  const asWorkflow = (name: string | null) => () => (name === null ? null : firstRun(name));
-
-  test("blocks a rerun of a device run", () => {
-    const message = check("gh run rerun 33428375221 --failed", asWorkflow("iOS UI (Maestro)"));
-    assert.ok(message, "expected a rerun of a Maestro run to be blocked");
-    assert.match(String(message), DEVICE);
-  });
-
-  test("blocks a rerun of the Android device run", () => {
-    assert.ok(check("gh run rerun 33428375221", asWorkflow("Android UI (Maestro)")));
-  });
-
-  test("allows a rerun of a run with no pixels to read", () => {
-    assert.equal(check("gh run rerun 33495876524 --failed", asWorkflow("CI")), null);
-  });
-
-  test("blocks a device rerun even with the old marker", () => {
-    assert.ok(check("MAESTRO_EVIDENCE_READ=1 gh run rerun 33428375221", asWorkflow("iOS UI (Maestro)")));
-  });
-
-  test("allows a rerun whose workflow cannot be resolved", () => {
-    // Resolution goes through `gh`. If that cannot answer, the rerun it guards cannot dispatch
-    // anything either, so blocking here costs the honest path and protects nothing.
-    assert.equal(check("gh run rerun 33428375221 --failed", asWorkflow(null)), null);
-  });
-
-  // Resolution costs a network round trip, so it may only be spent on a command whose verdict
-  // it can still change.
-  for (const [what, cmd] of [
-    ["a command that reruns nothing", "gh run view 33428373840 --json jobs"],
-    ["a device dispatch from a ticket's branch", "gh workflow run ios.yml --ref agent/1211-x"],
+describe("a device run's rerun or dispatch is the workflow's own to refuse", () => {
+  // ios.yml and maestro.yml run a job only on attempt 1 of a schedule or a ticket branch
+  // (tests/tooling/deviceWorkflowsGate.test.ts): no gh outage opens that, as it opened this guard.
+  for (const cmd of [
+    "gh workflow run maestro.yml",
+    "gh workflow run 123456",
+    "gh workflow run ios.yml --ref main",
+    "gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main",
+    "gh run rerun 33428375221 --failed",
+    "gh -R o/r run rerun 33428375221",
+    "gh api -X POST repos/o/r/actions/jobs/99710945601/rerun",
   ]) {
+    test(`allows, in the loop and outside it: ${cmd}`, () => {
+      assert.equal(check(cmd, device, repo, false), null);
+      assert.equal(check(cmd, device, repo, true), null);
+    });
+  }
+
+  // A lookup costs a network round trip, so it is spent only where its answer can still refuse.
+  for (const [what, cmd, loop] of [
+    ["a command that reruns nothing", "gh run view 33428373840 --json jobs", true],
+    ["a dispatch", "gh workflow run ios.yml --ref agent/1211-x", true],
+    ["a rerun outside the loop", "gh run rerun 33428375221 --failed", false],
+  ] as const) {
     test(`does not ask about ${what}`, () => {
       let asked = 0;
-      check(cmd, () => {
-        asked += 1;
-        return firstRun("iOS UI (Maestro)");
-      });
+      check(cmd, () => (asked++, firstRun("iOS UI (Maestro)")), repo, loop);
       assert.equal(asked, 0, `${cmd} spent a round trip it could not have acted on`);
     });
   }
 });
 
-describe("a rerun is read as its own command, with its own arguments", () => {
+describe("a loop session's rerun is read as its own command, with its own arguments", () => {
   // Each of these reached the guard as a way past it. A rerun that cannot be read is refused
   // rather than allowed: `$RUN` must not be the spelling that gets through.
-  const device = () => firstRun("iOS UI (Maestro)");
-  const ci = () => firstRun("CI");
+  const rerun = () => ({ workflowName: "CI", attempt: 2 });
+  const fresh = () => firstRun("CI");
+  const inLoop = (cmd: string, lookup: (t: { run?: string; job?: string }) => unknown) => check(cmd, lookup as never, repo, true);
 
   test("reads --job, which is not a run id", () => {
-    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing —
-    // and `--job` re-dispatches the whole ~25 minute simulator job.
+    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing.
     let asked: unknown = null;
-    const message = check("gh run rerun --job 99710945601", (t) => {
+    const message = inLoop("gh run rerun --job 99710945601", (t) => {
       asked = t;
-      return device();
+      return rerun();
     });
-    assert.ok(message, "expected a device job rerun to be blocked");
+    assert.match(String(message), /already rerun/);
     assert.deepEqual(asked, { job: "99710945601" });
   });
 
   test("reads --job= in its joined spelling", () => {
-    assert.ok(check("gh run rerun --job=99710945601", device));
+    assert.ok(inLoop("gh run rerun --job=99710945601", rerun));
   });
 
   test("looks at every rerun on the line, not only the first", () => {
     for (const separator of [" && ", "; ", "\n"]) {
       const cmd = `gh run rerun 33495876524${separator}gh run rerun 33428375221`;
-      const message = check(cmd, (t) => (t.run === "33428375221" ? device() : ci()));
-      assert.ok(message, `expected the device rerun after a ${JSON.stringify(separator)} to block`);
+      const message = inLoop(cmd, (t) => (t.run === "33428375221" ? rerun() : fresh()));
+      assert.ok(message, `expected the second rerun after a ${JSON.stringify(separator)} to block`);
     }
   });
 
   test("does not take a flag's value for the run id", () => {
     let asked: unknown = null;
-    check("gh run rerun -R metasito/murlan 33428375221", (t) => {
+    inLoop("gh run rerun -R metasito/murlan 33428375221", (t) => {
       asked = t;
-      return ci();
+      return fresh();
     });
     assert.deepEqual(asked, { run: "33428375221" }, "the repo was read as the run");
   });
@@ -387,28 +368,25 @@ describe("a rerun is read as its own command, with its own arguments", () => {
   test("does not take a later command's id for this one's", () => {
     // The download named here is the very command the block message prescribes as the way out.
     let asked: unknown = null;
-    const message = check(
-      'gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios',
-      (t) => {
-        asked = t;
-        return device();
-      }
-    );
+    const message = inLoop('gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios', (t) => {
+      asked = t;
+      return fresh();
+    });
     assert.equal(asked, null, "the download's id was read as the rerun's");
-    assert.match(String(message), /literal id/);
+    assert.match(String(message), UNREADABLE);
   });
 
-  for (const cmd of ['gh run rerun "$RUN" --failed', "gh run rerun --failed"]) {
-    test(`refuses a rerun it cannot identify: ${cmd}`, () => {
-      const message = check(cmd, ci);
-      assert.ok(message, `expected ${cmd} to be blocked`);
-      assert.match(String(message), /literal id/);
+  for (const cmd of [
+    'gh run rerun "$RUN" --failed',
+    "gh run rerun --failed",
+    'MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed',
+    "gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs",
+  ]) {
+    test(`refuses, in the loop and outside it, a rerun it cannot identify: ${cmd}`, () => {
+      assert.match(String(inLoop(cmd, fresh)), UNREADABLE);
+      assert.match(String(check(cmd, fresh, repo, false)), UNREADABLE);
     });
   }
-
-  test("the old marker does not clear a rerun it cannot identify", () => {
-    assert.match(String(check('MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed', ci)), /literal id/);
-  });
 });
 
 describe("a workflow lookup that fails is announced, not swallowed", () => {
@@ -419,7 +397,7 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
       message = check("gh run rerun 33428375221 --failed", () => {
         calls += 1;
         throw new Error("connect ETIMEDOUT");
-      });
+      }, repo, true);
     });
     assert.equal(message, null, "a lookup failure must still allow the dispatch");
     assert.equal(calls, 1);
@@ -458,10 +436,72 @@ describe("a loop session reruns a run once", () => {
     assert.equal(check("gh run rerun 38188271467 --failed", at(2), repo, false), null);
   });
 
-  test("one lookup answers both the device and the attempt question", () => {
+  test("one rerun costs one lookup", () => {
     let asked = 0;
     check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
     assert.equal(asked, 1);
+  });
+});
+
+describe("a loop session pushes only its own ticket's branch", () => {
+  const none = () => null;
+  const asTicket = (ticket: string | undefined, cmd: string) => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, none, repo, true));
+  const inLoop = (cmd: string) => asTicket("1529", cmd);
+  const OWN_ONLY = /agent\/1529-<slug>/;
+
+  for (const ok of [
+    "git push origin HEAD:agent/1529-guard",
+    "git push -u origin HEAD:agent/1529-guard",
+    "git push -u origin agent/1529-x:agent/1529-x",
+    "git push --force-with-lease origin +HEAD:agent/1529-x",
+    "git -C .worktrees/agent-1529 push origin HEAD:refs/heads/agent/1529-x",
+    "git push -o ci.skip origin HEAD:agent/1529-x",
+    "git push origin --delete agent/1529-x",
+    "git push -d origin agent/1529-x",
+    "git push origin --delete refs/heads/agent/1529-x",
+    "git push origin :agent/1529-x",
+  ]) test(`allows: ${ok}`, () => assert.equal(inLoop(ok), null));
+
+  for (const no of [
+    "git push",
+    "git push origin",
+    "git push origin HEAD",
+    "git push -u origin agent/1529-x",
+    "git push origin HEAD:agent/1438-other",
+    "git push origin HEAD:agent/15290-other",
+    "git push origin HEAD:agent/1529-x HEAD:agent/1438-y",
+    "git push --all origin",
+    "git push --mirror origin",
+    "git push --tags origin",
+    "git push origin :agent/1438-other",
+    "git push origin --delete agent/1438-other",
+    "git push origin --delete agent/1529-x agent/1438-y",
+    "git push -d origin agent/15290-x",
+    "git push --delete origin HEAD:agent/1529-x",
+    "git push --delete origin",
+    "cd .worktrees/agent-1529 && git push origin HEAD:agent/1438-x",
+    "gh api -X PATCH repos/metasito/murlan/git/refs/heads/agent/1438-x -f sha=abc",
+    "gh api repos/o/r/git/refs -f ref=refs/heads/agent/1438-x -f sha=abc",
+  ]) test(`refuses: ${no}`, () => assert.match(String(inLoop(no)), OWN_ONLY));
+
+  test("with no ticket to name, a loop session pushes nothing", () => {
+    for (const ticket of [undefined, "", "abc"]) {
+      const said = String(asTicket(ticket, "git push origin HEAD:agent/1529-x"));
+      assert.match(said, /LOOP_TICKET/, String(ticket));
+      assert.doesNotMatch(said, /agent\/undefined-/);
+    }
+  });
+
+  test("an owner session is not bound by it", () => {
+    for (const cmd of ["git push origin HEAD:agent/1438-x", "git push", "git push origin --delete side/x"]) {
+      assert.equal(withEnv({ LOOP_TICKET: "1529" }, () => check(cmd, none, repo, false)), null, cmd);
+    }
+  });
+
+  test("push to main is still the main rule's refusal", () => {
+    const said = String(inLoop("git push origin HEAD:main"));
+    assert.match(said, /Pushing to main is blocked/);
+    assert.match(said, /git push -u origin HEAD:agent\/<n>-<slug>/, "it prescribes the one form the own-ticket rule allows");
   });
 });
 
@@ -496,39 +536,19 @@ describe("a loop session reads comments only through rule 25's filter", () => {
   }
 });
 
-describe("a dispatch ref through a variable", () => {
-  test("a literal assignment earlier on the line is read", () => {
-    assert.equal(check('B=agent/12-x && gh workflow run ios.yml --ref "$B"', () => null, repo,false), null);
-  });
-  test("a variable it cannot read is still refused", () => {
-    assert.notEqual(check("B=$(git branch --show-current) && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
-    assert.notEqual(check("B=main && gh workflow run ios.yml --ref $B", () => null, repo,false), null);
-  });
+describe("a redirect target through a variable", () => {
+  const show = "git show HEAD:dirty.ts > $P";
   test("only an assignment in command position is read, never one inside another command's quoted data", () => {
-    for (const cmd of [
-      'git commit -m "B=agent/12-x x"; gh workflow run ios.yml --ref $B',
-      "echo 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
-      "B=agent/12-x gh workflow run ios.yml --ref $B",
-      "bash -c 'B=agent/12-x'; gh workflow run ios.yml --ref $B",
-      "B=agent/12-x bash -c 'echo'; gh workflow run ios.yml --ref $B",
-    ]) assert.match(String(check(cmd, () => null, repo, false)), DEVICE, cmd);
-    for (const cmd of [
-      "B=agent/12-x; gh workflow run ios.yml --ref $B",
-      "bash -c 'B=agent/12-x; gh workflow run ios.yml --ref $B'",
-      "B=agent/12-x bash -c 'gh workflow run ios.yml --ref $B'",
-    ]) assert.equal(check(cmd, () => null, repo, false), null, cmd);
-    assert.match(String(guard("bash -c 'p=dirty.ts; git show HEAD:dirty.ts > $p'")), DISCARD);
+    for (const cmd of [`git commit -m "P=dirty.ts x"; ${show}`, `echo 'P=dirty.ts'; ${show}`, `bash -c 'P=dirty.ts'; ${show}`, `P=dirty.ts bash -c 'echo'; ${show}`]) {
+      assert.equal(guard(cmd), null, cmd);
+    }
+    for (const cmd of [`P=dirty.ts; ${show}`, `P=dirty.ts && ${show}`, `bash -c 'P=dirty.ts; ${show}'`, `P=dirty.ts bash -c '${show}'`]) {
+      assert.match(String(guard(cmd)), DISCARD, cmd);
+    }
   });
 });
 
 describe("an MSYS drive path is the Windows path it names", () => {
-  test("mapped on win32 only", () => {
-    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "win32"), "C:/Users/r/repo/a.ts");
-    assert.equal(fromMsys("/d", "win32"), "D:/");
-    assert.equal(fromMsys("/c/Users/r/repo/a.ts", "linux"), "/c/Users/r/repo/a.ts");
-    assert.equal(fromMsys("/cd/a.ts", "win32"), "/cd/a.ts");
-    assert.equal(fromMsys("c/a.ts", "win32"), "c/a.ts");
-  });
   test("a redirect to one restoring a dirty tracked file is refused", { skip: process.platform !== "win32" }, () => {
     const msys = `/${resolve("/r")[0].toLowerCase()}/r/dirty.ts`;
     assert.match(String(guard(`git show HEAD:dirty.ts > ${msys}`)), DISCARD);
@@ -537,12 +557,14 @@ describe("an MSYS drive path is the Windows path it names", () => {
 });
 
 describe("loop sessions only", () => {
-  for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts", "git worktree add -b side/x ../murlan-side-1 origin/main"]) {
+  for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts"]) {
     test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, repo,true), null));
     test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, repo,false), null));
   }
-  test("queue.md's rebuild of the ticket's own worktree is allowed", () => {
-    assert.equal(check("git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", () => null, repo,true), null);
+  test("a worktree added anywhere is git's own business, in the loop as outside it", () => {
+    for (const cmd of ["git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", "git worktree add -b side/x ../murlan-side-1 origin/main", "git worktree add ../x"]) {
+      assert.equal(check(cmd, () => null, repo, true), null, cmd);
+    }
   });
   test("gh run watch is refused in the loop and names the helper", () => {
     assert.match(String(check("gh run watch 123 --exit-status", () => null, repo, true)), /await-run\.mjs/);
@@ -746,15 +768,18 @@ describe("the entrypoint fails open on a payload it cannot read", () => {
   }
 });
 
-describe("the hooks settings.json registers", () => {
-  type Hook = { command: string; args?: string[] };
-  type Entry = { matcher: string; hooks: Hook[] };
-  const settings = JSON.parse(readFileSync(join(ROOT, ".claude/settings.json"), "utf8"));
-  const entries = (event: string) => settings.hooks[event] as Entry[];
-  const allHooks = () => Object.values(settings.hooks as Record<string, Entry[]>).flat().flatMap((e) => e.hooks);
+describe("the hooks the project's settings and the loop's own register", () => {
+  type Hook = { command: string; args?: string[]; onFailure?: string; if?: unknown };
+  type Entry = { matcher: string; hooks: Hook[]; if?: unknown };
+  type Hooks = Record<string, Entry[]>;
+  const hooksIn = (file: string) => (JSON.parse(readFileSync(join(ROOT, file), "utf8")).hooks ?? {}) as Hooks;
+  const PROJECT = hooksIn(".claude/settings.json");
+  const LOOP = hooksIn("tools/loop/loop-settings.json");
+  const entriesOf = (hooks: Hooks) => Object.values(hooks).flat();
+  const allHooks = () => [PROJECT, LOOP].flatMap(entriesOf).flatMap((e) => e.hooks);
   const text = (h: Hook) => [h.command, ...(h.args ?? [])].join(" ");
-  const matched = (event: string, script: string) =>
-    entries(event)
+  const matched = (event: string, script: string, hooks: Hooks = PROJECT) =>
+    (hooks[event] ?? [])
       .filter((e) => e.hooks.some((h) => text(h).includes(script)))
       .flatMap((e) => e.matcher.split("|"));
   const hookOf = (script: string) => allHooks().find((h) => text(h).includes(script))!;
@@ -772,20 +797,36 @@ describe("the hooks settings.json registers", () => {
     }
   });
 
+  test("every PreToolUse hook blocks when it fails, and none is filtered by an `if`", () => {
+    for (const hooks of [PROJECT, LOOP]) {
+      for (const hook of (hooks.PreToolUse ?? []).flatMap((e) => e.hooks)) assert.equal(hook.onFailure, "block", text(hook));
+      for (const entry of entriesOf(hooks)) {
+        assert.equal(entry.if, undefined, entry.matcher);
+        for (const hook of entry.hooks) assert.equal(hook.if, undefined, text(hook));
+      }
+    }
+  });
+
+  test("the loop-only guards load from the loop's own settings, never every session's", () => {
+    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs", LOOP).includes(tool), tool);
+    for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs", LOOP).includes(tool), tool);
+    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs", LOOP).includes(tool), tool);
+    for (const script of ["guard-write.mjs", "guard-agent-model.mjs", "guard-verdict.mjs"]) {
+      assert.deepEqual(matched("PreToolUse", script, PROJECT), [], `${script} still starts in every owner session`);
+    }
+  });
+
   test("a relative script path is what the subdirectory run catches", () => {
     const relative = { command: "node", args: ["tools/loop/guard-bash.mjs"] };
     const fromSubdir = runAsWritten(CWDS[1], relative, { cwd: ROOT, tool_input: { command: "git add -A" } });
     assert.notEqual(fromSubdir.status, 2, "the planted relative hook must not block from a subdirectory");
   });
 
-  test("cover every tool and every session start they guard", () => {
+  test("the project's cover every tool and every session start they guard", () => {
     for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-bash.mjs").includes(tool), tool);
-    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs").includes(tool), tool);
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
-    for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs").includes(tool), tool);
-    for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs").includes(tool), tool);
     // The native caps are looser than its 150 lines; it stays until compaction is shown to hold (#1102).
     for (const tool of ["Bash", "PowerShell", "Read"]) assert.ok(matched("PreToolUse", "guard-read.mjs").includes(tool), tool);
   });
@@ -800,12 +841,7 @@ describe("the hooks settings.json registers", () => {
       assert.equal(bash.status, 2, bash.stderr);
       assert.match(bash.stderr, ADD);
 
-      const agent = runAsWritten(
-        cwd,
-        hookOf("guard-agent-model.mjs"),
-        { tool_name: "Agent", tool_input: { prompt: "x" } },
-        { ...process.env, LOOP_TURNS: "120" },
-      );
+      const agent = runAsWritten(cwd, hookOf("guard-agent-model.mjs"), { tool_name: "Agent", tool_input: { prompt: "x" } });
       assert.match(agent.stdout, /"permissionDecision":\s*"deny"/, agent.stderr);
     });
 

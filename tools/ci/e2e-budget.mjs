@@ -2,8 +2,8 @@
 // what `tests/e2e/timings.json` measured for it, plus `SLACK_S`), and fails it past `HARD_FACTOR` times that. It reads the
 // committed file, never the working tree: CI overwrites that copy with the branch's own
 // measurements before the suite starts, which would let a run raise its own budget. A green shard also
-// writes the specs over budget to `out`, which ci.yml uploads for the loop's land gate (`overBudget` in
-// tools/loop/ciVerdict.ts).
+// writes the specs over budget to `out`, which ci.yml uploads for the land gate (`overBudget` in
+// tools/ci/budget-gate.mjs).
 
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -82,7 +82,7 @@ export default class BudgetReporter {
       const level = seconds > budget * HARD_FACTOR ? "error" : "warning";
       process.stdout.write(
         `::${level}::${file} took ${seconds}s against a budget of ${budget}s (${RATIO}× its measured time in tests/e2e/timings.json + ${SLACK_S}s; red past ${HARD_FACTOR}×). ` +
-          `Find what made it slower and make it fast again: a pull request that changes this spec cannot land over its budget, nor raise its time in timings.json past ${RATIO}× (tools/loop/ciVerdict.ts).\n`
+          `Find what made it slower and make it fast again: a pull request that changes this spec cannot land over its budget, nor raise its time in timings.json past ${RATIO}× (tools/ci/budget-gate.mjs).\n`
       );
     }
     if (over.some(({ seconds, budget }) => seconds > budget * HARD_FACTOR)) return { status: "failed" };

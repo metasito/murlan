@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, parseHeader } from "./brief.mjs";
-import { located, native } from "./guard-read.mjs";
+import { located, toNative } from "./shell.mjs";
 import { PHASE } from "./loop-stream.mjs";
 
 const LAND = /(^|["'=])[ \t]*VERDICT:[ \t]*LAND\b/m;
@@ -43,7 +43,7 @@ export function landOn(payload, read = (p) => readFileSync(p, "utf8")) {
   for (const { c, at: dir } of located(raw, payload.cwd ?? process.cwd())) {
     const post = postOf(c);
     if (!post) continue;
-    const body = post.file && post.file !== "-" ? readOr(read, resolve(dir, native(post.file))) : "";
+    const body = post.file && post.file !== "-" ? readOr(read, resolve(dir, toNative(post.file))) : "";
     if (LAND.test(`${raw}\n${body}`)) return post.n;
   }
   return null;

@@ -3,9 +3,7 @@
  *
  * Everything here is pure: a line in, a fact or null out. The supervisor does the IO.
  */
-// guard-bash imports `readLine` from here: the cycle holds only while neither module calls into the
-// other while it loads.
-import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
+import { commands, withoutQuotedBodies } from "./shell.mjs";
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
 // The fence is optional because the session's echo of it is: from queue.md's one fenced marker the

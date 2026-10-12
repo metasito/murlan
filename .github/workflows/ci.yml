@@ -130,7 +130,7 @@ jobs:
           # files, `.claude/settings.json`'s hook paths, package.json's script names, and this
           # workflow, whose job names `check-steps.mjs` pins each delegated step to. Both lists are
           # derived by `tests/tooling/ciScope.test.ts`, which reds on a path they miss.
-          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/(preflightMemory|native-budget|e2e-budget|e2e-shard)\.mjs$|tests/helpers/(importShellGuard\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+          if grep -qE '^(tools/loop/|scripts/lib/(checkoutRoot|entry)\.mjs$|tools/ci/(preflightMemory|native-budget|e2e-budget|e2e-shard|budget-gate)\.mjs$|tests/helpers/(importShellGuard\.ts|filesRunReporter\.mjs|fileDeadline\.mjs|runWatch\.mjs)$|docs/agents/|\.claude/|CLAUDE\.md$|package\.json$|jest\.config\.js$|\.github/workflows/ci\.yml$)' <<< "$changed"; then
             echo "harness=true" >> "$GITHUB_OUTPUT"
           else
             echo "harness=false" >> "$GITHUB_OUTPUT"
@@ -1012,3 +1012,60 @@ jobs:
           kill "$server_pid" || true
           cat health.json
           grep -q '"db":"connected"' health.json
+
+  # RULES.md 46's land gate, in CI where no session can argue it away: a pull request that adds or
+  # changes a test file over its time budget does not pass `CI gate`.
+  timing-budget:
+    name: Timing budget
+    needs: [native, browser]
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            tools/ci
+            scripts/lib
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Which step fails is the verdict's: this one is infrastructure (exit 2), the next a finding.
+      # The name is budget-gate.mjs's UNREAD_STEP (tests/tooling/ciGate.test.ts).
+      - name: The run's over-budget lists were read
+        id: budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          code=0
+          node tools/ci/budget-gate.mjs || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" != 2 ]
+      - name: No test file this pull request touches ran over its budget
+        env:
+          CODE: ${{ steps.budget.outputs.code }}
+        run: '[ "$CODE" = 0 ]'
+
+  # The one required check. `always()`: a required check that is skipped reports success, so this
+  # runs whatever its needs concluded, and it needs every other job (tests/tooling/ciGate.test.ts).
+  ci-gate:
+    name: CI gate
+    needs: [scope, secrets, verify, native, harness, harness-windows, lint, android-build, ios-build, browser, browser-report, build, timing-budget]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: |
+            tools/ci
+            scripts/lib
+      - name: Every job passed or was skipped by scope
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node tools/ci/gate.mjs

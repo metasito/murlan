@@ -24,8 +24,10 @@ const ciJobs = ciYml.slice(ciYml.indexOf("\njobs:\n")).split(/\n(?= {2}[a-z][\w-
 // Left out: the device compiles, which start only on a native change or the weekly schedule — runs
 // their own 9–29 min already put far past the target (#1408), where two queued jobs cost nothing.
 const deviceCompile = (job: string) => /^ {4}if: .*\bnative\b/m.test(job);
+// A job that needs the shards' own job starts only once every shard has finished.
+const afterShards = (job: string) => /^ {4}needs: .*\bbrowser\b(?!-)/m.test(job);
 const besideShards = ciJobs
-  .filter((job) => !/^ {2}(scope|browser|browser-report):/.test(job) && !deviceCompile(job))
+  .filter((job) => !/^ {2}(scope|browser):/.test(job) && !afterShards(job) && !deviceCompile(job))
   .reduce((n, job) => n + (/^ {8}shard: \[([^\]]*)\]$/m.exec(job)?.[1].split(",").length ?? 1), 0);
 const SHARDS = plan([path.join(E2E_DIR, "timings.json")]).shards.length;
 

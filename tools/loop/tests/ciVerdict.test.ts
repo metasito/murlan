@@ -14,6 +14,7 @@ import {
   stripLogPrefix,
 } from "../ciVerdict.ts";
 import { ciRedBody } from "../queue-loop.mjs";
+import * as budgetGate from "../../ci/budget-gate.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -261,6 +262,64 @@ describe("a cancelled run", () => {
     const none = decideVerdict(undefined);
     assert.equal(none.waiting, undefined, "an absent run would wait out the whole deadline");
     assert.equal(none.appearing, true);
+  });
+});
+
+// `CI gate` runs under `always()` and fails whenever another job did not pass, so its own red is
+// never the failure: it would name itself, or call a cancelled run a red one.
+describe("the CI gate job", () => {
+  const gate = { name: "CI gate", conclusion: "failure", steps: 3 };
+
+  test("is never the failing job a red run names", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never, [
+      gate,
+      { name: "Lint", conclusion: "failure", steps: 5 },
+    ] as never[]);
+    assert.equal(v.failedStep, "Lint");
+  });
+
+  test("does not turn a cancelled run into a red one", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "cancelled" } as never, [
+      { name: "Native tests 1/2", conclusion: "cancelled", steps: 4 },
+      gate,
+    ] as never[]);
+    assert.equal(v.infrastructure, true);
+    assert.match(v.reason, /cancelled/);
+  });
+
+  test("red with no other job red is infrastructure that names it, never an empty red", () => {
+    const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never, [
+      { name: "Lint", conclusion: "success", steps: 5 },
+      { name: "Browser tests", conclusion: "skipped", steps: 0 },
+      gate,
+    ] as never[]);
+    assert.equal(v.infrastructure, true);
+    assert.equal(v.failedStep, "CI gate");
+  });
+});
+
+// The step names come from budget-gate.mjs, which ci.yml's Timing budget job is pinned to
+// (tests/tooling/ciGate.test.ts).
+describe("a red Timing budget", () => {
+  const red = (failedSteps: string[]) =>
+    decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never, [
+      { name: "Native tests 1/2", conclusion: "success", steps: 9 },
+      { name: "Timing budget", conclusion: "failure", steps: 4, failedSteps },
+      { name: "CI gate", conclusion: "failure", steps: 3, failedSteps: ["Every job passed or was skipped by scope"] },
+    ] as never[]);
+
+  test("that could not read the run's lists is infrastructure, as the supervisor's own gate called it", () => {
+    assert.ok(budgetGate.UNREAD_STEP, "budget-gate.mjs names no reading step");
+    const v = red([budgetGate.UNREAD_STEP]);
+    assert.equal(v.infrastructure, true);
+    assert.equal(v.failedStep, "Timing budget");
+    assert.match(v.reason, /over-budget lists/);
+  });
+
+  test("on a finding is the diff's own red", () => {
+    const v = red(["No test file this pull request touches ran over its budget"]);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "Timing budget");
   });
 });
 

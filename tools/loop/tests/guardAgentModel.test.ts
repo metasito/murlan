@@ -32,15 +32,14 @@ describe("a loop dispatch names its model", () => {
     const out = run(dispatch("Agent", { prompt: "y", model: "opus" }));
     assert.match(out, /"deny"/);
     assert.match(out, /effort/);
-    assert.equal(run(dispatch("Agent", { prompt: "y", model: "opus" }), false), "");
   });
 
   test("an empty model is no model", () => {
     assert.match(run(dispatch("Agent", { prompt: "y", model: "" })), /"deny"/);
   });
 
-  test("outside the loop a dispatch without a model is allowed", () => {
-    assert.equal(run(dispatch("Agent", { prompt: "y" }), false), "");
+  test("judged with no LOOP_TURNS too: only the loop's own settings load this hook", () => {
+    assert.match(run(dispatch("Agent", { prompt: "y" }), false), /"deny"/);
   });
 
   test("another tool is allowed", () => {
@@ -106,9 +105,9 @@ describe("a loop dispatch of a brief passes it verbatim", () => {
     assert.equal(run(agent("Read the CI log", "Summarise the failures in .loop-logs/ci-42.log")), "");
   });
 
-  test("a subagent's own dispatch and a session outside the loop are not judged", () => {
+  test("a subagent's own dispatch is not judged", () => {
     assert.equal(run(agent("Spec review", "free text", { agent_id: "a1" })), "");
-    assert.equal(run(agent("Spec review", "free text"), false), "");
+    assert.match(run(agent("Spec review", "free text"), false), /"deny"/);
   });
 });
 

@@ -93,7 +93,10 @@ can read only its own cache and main's, so a branch's first run restores main's 
 instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
 that build on every push to main whose native fingerprint has none yet, and looks it up in about a
 minute when it has; it drives no device (`tests/tooling/iosAppCache.test.ts`). By the owner's decision; a
-red run is diagnosed from its artifacts, never rerun. A red scheduled run files or comments on
+red run is diagnosed from its artifacts, never rerun: a `gate` job refuses a dispatch off an
+`agent/<n>-`/`claude/<n>-` branch, the device jobs run only on attempt 1, and a job under `always()`
+is red on any rerun or any job that did not pass, so neither goes green with no device run
+(`tests/tooling/deviceWorkflowsGate.test.ts`). A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
@@ -101,7 +104,10 @@ mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs
 and 3 when some are still going: then run the same command again. With `--pr <n>` a passed run is
 also 1 when its over-budget list (`tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`) names a
 test file that pull request adds or changes: rule 46's land gate, which the supervisor applies too
-(`tools/loop/ciVerdict.ts`). It returns before the default
+(`tools/loop/ciVerdict.ts`), and so does `ci.yml`'s `Timing budget` job (`tools/ci/budget-gate.mjs`),
+whose lists storage never served fail a step of their own that the verdict calls infrastructure.
+`CI gate`, the one check a merge waits on, needs every other `ci.yml` job, that one included, and is
+red unless each passed or was skipped by scope (`tools/ci/gate.mjs`). `await-run.mjs` returns before the default
 Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
 --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
 `…actions/runs|check-runs` are refused because a device run
@@ -484,14 +490,17 @@ the repository itself, so npm's cwd sends every one of them looking in the wrong
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
 
-**Some hooks act only in a loop session** (`LOOP_TURNS` set; `.claude/settings.json` registers
-every hook):
-- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), a `git worktree add`
-  anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
+**Some hooks act only in a loop session.** `.claude/settings.json` registers guard-bash for every
+session, and these rules of it act only with `LOOP_TURNS` set; `tools/loop/loop-settings.json`
+alone registers guard-write, guard-verdict and guard-agent-model (rule 29's model and effort), so
+no other session starts them:
+- `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
-  replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
-  attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  replaces with `await-run.mjs`. It refuses a push anywhere but the session's own
+  `agent/<LOOP_TICKET>-…`, named by an explicit `HEAD:agent/<n>-<slug>` refspec, a delete of any
+  other branch, and every push when `LOOP_TICKET` is unset. It refuses a `gh run rerun` of a run
+  already past its first attempt (any session's rerun not named by its literal id too), and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
   or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
   resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
   created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and

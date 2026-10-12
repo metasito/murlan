@@ -1,6 +1,6 @@
 name: iOS UI (Maestro)
 
-# A ticket whose work needs a device run dispatches it on its own branch (`tools/loop/guard-bash.mjs`);
+# A ticket whose work needs a device run dispatches it on its own branch (the gate job below);
 # branches restore the native build `ios-app-cache.yml` saves on main, and twice a week main runs
 # this, which reads that cache before GitHub evicts it at 7 days unread. Never on `push` or
 # `pull_request` (owner, 2026-09-24).
@@ -30,8 +30,28 @@ permissions:
   contents: read
 
 jobs:
+  # No rerun, and no dispatch off a ticket's own branch (owner, 2026-10-12). A rerun carries every
+  # passed job over and skips each device job, so only `ios` below, which always runs, can turn it
+  # red (tests/tooling/deviceWorkflowsGate.test.ts).
+  gate:
+    name: Dispatched on a ticket's own branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Expressions have no regex, and `startsWith` admits every worktree branch.
+      - name: A schedule, or a dispatch on agent/<n>-… or claude/<n>-…
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+        run: |
+          [[ "$EVENT" == schedule || "$REF" =~ ^(agent|claude)/[0-9]+- ]] && exit 0
+          echo "::error::A device run is dispatched only on a ticket's own branch (agent/<n>-… or claude/<n>-…), not $REF."
+          exit 1
+
   app:
     name: Restore the app and bundle its JS
+    needs: gate
+    if: github.run_attempt == 1
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -107,6 +127,8 @@ jobs:
   flows:
     name: Drive the app on a real iOS simulator (${{ matrix.shard }})
     # No `needs: app`: a simulator's first boot costs minutes, and it runs beside the app job.
+    needs: gate
+    if: github.run_attempt == 1
     runs-on: macos-latest
     permissions:
       actions: read
@@ -424,8 +446,8 @@ jobs:
 
   ios:
     name: Drive the app on a real iOS simulator
-    needs: [app, flows]
-    # `always()`, so a skipped or cancelled job reaches the check below and turns it red.
+    needs: [gate, app, flows]
+    # `always()`, so a skipped or cancelled job, and every rerun, reaches the check below and turns it red.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -438,10 +460,12 @@ jobs:
 
       - name: Every shard ran and passed
         env:
-          RESULTS: ${{ needs.app.result }} ${{ needs.flows.result }}
+          RESULTS: ${{ needs.gate.result }} ${{ needs.app.result }} ${{ needs.flows.result }}
+          ATTEMPT: ${{ github.run_attempt }}
         run: |
-          echo "The app job's and the shards' results: $RESULTS"
-          [ "$RESULTS" = "success success" ]
+          [ "$ATTEMPT" = 1 ] || { echo "::error::A device run is never rerun: dispatch it again after a change."; exit 1; }
+          echo "The gate's, the app job's and the shards' results: $RESULTS"
+          [ "$RESULTS" = "success success success" ]
 
       - name: The run finished within its wall budget
         env:
