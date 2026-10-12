@@ -66,7 +66,9 @@ test("a run gh cannot find is 2, naming the id, not a wait forever", async () =>
 
 test("with --pr, a green run whose over-budget list names a file the pull request changed is 1, naming it", async () => {
   const native = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
-  const gh = (changed: string) => (args: string[]) => {
+  const untils: number[] = [];
+  const gh = (changed: string) => (args: string[], until: number) => {
+    untils.push(until);
     if (args[0] === "api" && /\/actions\/runs\/1\/artifacts/.test(args[1])) return "over-budget-native-1";
     if (args[0] === "run" && args[1] === "download") {
       const dir = path.join(args[args.indexOf("--dir") + 1], "over-budget-native-1");
@@ -81,6 +83,7 @@ test("with --pr, a green run whose over-budget list names a file the pull reques
   const say = (s: string) => said.push(s);
   assert.equal(await awaitRuns(["1"], { view: () => done("success"), ...clock(), say, pr: 7, gh: gh(native) }), 1);
   assert.match(said.join("\n"), /mancheOutcomeOnTheFelt\.test\.tsx: 32\.9s against a budget of 15s/);
+  assert.deepEqual([...new Set(untils)], [GATE_MS], "the gate's deadline is read off the injected clock");
   assert.equal(await awaitRuns(["1"], { view: () => done("success"), ...clock(), say: quiet, pr: 7, gh: gh("lib/x.ts") }), 0);
   assert.deepEqual(runArgs(["--pr", "7", "1", "2"]), { pr: 7, ids: ["1", "2"] });
   assert.deepEqual(runArgs(["--pr=7", "1"]), { pr: 7, ids: ["1"] });
