@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BANNER } from "../check-steps.mjs";
+import * as agentCheck from "../agent-check.mjs";
 import { cacheEntry, checkSubject, cleanPassFor, readSubject, replays, runAll, runStep } from "../agent-check.mjs";
 
 const REAP = { recursive: true, force: true, maxRetries: 3, retryDelay: 100 } as const;
@@ -121,6 +122,41 @@ describe("the refusal is the script's, not only the helper's", () => {
     } finally {
       fs.rmSync(outside, REAP);
     }
+  });
+
+  test("a flag it does not know is refused before anything is read or run", () => {
+    const run = spawnSync(process.execPath, [SCRIPT, "--also", "test:native"], { ...SPAWN, cwd: os.tmpdir() });
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /unknown flag --also/);
+    assert.ok(!run.stdout.includes(BANNER));
+  });
+});
+
+describe("what the cache is keyed on", () => {
+  const passing = async () => [{ failed: null, text: "ok" }];
+
+  test("a pass on a clean tree is recorded under HEAD's sha", async () => {
+    const out = await agentCheck.judge({ head: "h1", clean: true, force: false, cache: {}, run: passing });
+    assert.equal(out.replayed, undefined);
+    assert.equal(out.cache?.h1?.pass, true);
+    assert.equal(out.cache?.h1?.head, "h1");
+  });
+
+  test("a clean HEAD that already passed replays without running", async () => {
+    let ran = 0;
+    const cache = { h1: cacheEntry({ failed: [], head: "h1", clean: true }) };
+    const out = await agentCheck.judge({ head: "h1", clean: true, force: false, cache, run: async () => (ran++, []) });
+    assert.equal(ran, 0);
+    assert.equal(out.replayed, cache.h1);
+  });
+
+  test("a dirty tree runs every step, though its HEAD passed, and records nothing", async () => {
+    let ran = 0;
+    const cache = { h1: cacheEntry({ failed: [], head: "h1", clean: true }) };
+    const out = await agentCheck.judge({ head: "h1", clean: false, force: false, cache, run: async () => (ran++, passing()) });
+    assert.equal(ran, 1);
+    assert.equal(out.replayed, undefined);
+    assert.equal(out.cache, null);
   });
 });
 
