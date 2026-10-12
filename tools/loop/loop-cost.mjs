@@ -1,13 +1,13 @@
 /**
- * What the loop spends, from the ledger alone: one row per process, its figures the `result`
- * event's. Every cost claim about the loop is checked here or is an assertion.
+ * What the loop spends, from the ledger: one row per process, its figures the `result` event's.
+ * Every cost claim about the loop is checked here or is an assertion.
  *
  * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--until <time>] [--by-sha]
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { readEvent, scopeEnds } from "./loop-stream.mjs";
-import { DIR, ARTEFACTS, atOf, closesWindow, isProcess, killedStarts, readLedger, tallyOf } from "./loop-logs.mjs";
+import { DIR, ARTEFACTS, atOf, closesWindow, holdRound as held, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -304,11 +304,15 @@ const modelOf = (row) => row.model ?? Object.entries(row.usage?.mainModels ?? {}
 
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 
-/** Each ticket's windows, its closing row in each and an open last one included. */
+const byTicket = (rows) => {
+  const by = new Map();
+  for (const r of rows) (by.get(r.n) ?? by.set(r.n, []).get(r.n)).push(r);
+  return [...by.values()];
+};
+
+/** Each ticket's claim windows, its closing row in each and an open last one included. */
 function windowsOf(rows) {
-  const byTicket = new Map();
-  for (const r of rows) (byTicket.get(r.n) ?? byTicket.set(r.n, []).get(r.n)).push(r);
-  return [...byTicket.values()].flatMap((forTicket) => {
+  return byTicket(rows).flatMap((forTicket) => {
     const out = [[]];
     for (const r of forTicket) {
       out.at(-1).push(r);
@@ -319,19 +323,46 @@ function windowsOf(rows) {
 }
 
 /**
- * The gauge over ledger rows of every schema: a ticket is a window some process ran in, and a
- * model is judged only on a process that ran turns.
- *
- * @param {{n: number, [field: string]: unknown}[]} rows @param {Record<string, number>} [caps]
+ * A ticket's HOLD verdicts. Schema 8 carries `review_holds_total` across claims and fix rounds; a
+ * ticket with no row carrying it is approximated as its `review_rounds` less its landings, a count
+ * a re-claim resets. From schema 9 each HOLD round is a process of its own.
  */
-export function summary(rows, caps = TURNS_BY_SIZE) {
-  const tallies = windowsOf(rows).map(tallyOf).filter((t) => t.processes > 0);
-  const ran = rows.filter((r) => isProcess(r) && (r.turns ?? 0) > 0);
-  const spend = sum(rows.map((r) => r.cost ?? 0));
-  const fixSpend = sum(tallies.map((t) => t.fixSpend));
-  const spends = tallies.map((t) => t.spend);
+function holdsOf(rows) {
+  let total = null;
+  let rounds = 0;
+  let landed = 0;
+  let own = 0;
+  for (const r of rows) {
+    if (typeof r.review_holds_total === "number") total = Math.max(total ?? 0, r.review_holds_total);
+    rounds = Math.max(rounds, r.review_rounds ?? 0);
+    if (r.outcome === "landed") landed += 1;
+    if (r.kind && held(r)) own += 1;
+  }
+  return (total ?? Math.max(0, rounds - landed)) + own;
+}
+
+/**
+ * The gauge over ledger rows of every schema, start rows included. A ticket is an issue number,
+ * however many claims it took; fix spend is counted per claim window; a model is judged only on a
+ * process.
+ *
+ * @param {{n: number, [field: string]: unknown}[]} input @param {Record<string, number>} [caps]
+ */
+export function summary(input, caps = TURNS_BY_SIZE) {
+  const rows = withSpawnPhase(input);
+  const processes = rows.filter(isProcess);
+  const tickets = byTicket(rows).map((mine) => ({
+    spend: sum(mine.map((r) => r.cost ?? 0)),
+    minutes: sum(mine.map((r) => r.ms ?? 0)) / 6e4,
+    rounds: Math.max(0, ...mine.map((r) => r.review_rounds ?? 0)) + mine.filter((r) => r.kind === "process" && atOf(r) === "D").length,
+    holds: holdsOf(mine),
+  }));
+  const spent = tickets.filter((t) => t.spend > 0);
+  const windows = windowsOf(rows).map(tallyOf);
+  const spend = sum(spent.map((t) => t.spend));
+  const fixSpend = sum(windows.map((t) => t.fixSpend));
   const byAt = {};
-  for (const r of rows.filter(isProcess)) {
+  for (const r of processes) {
     const at = atOf(r);
     if (!at) continue;
     const b = (byAt[at] ??= { processes: 0, spend: 0, ms: [] });
@@ -340,22 +371,23 @@ export function summary(rows, caps = TURNS_BY_SIZE) {
     b.ms.push(r.ms ?? 0);
   }
   return {
-    tickets: tallies.length,
+    tickets: spent.length,
     spend,
-    perTicket: { mean: spends.length ? sum(spends) / spends.length : 0, median: median(spends) },
-    minutesMedian: median(tallies.map((t) => t.ms / 6e4)),
+    perTicket: { mean: spent.length ? spend / spent.length : 0, median: median(spent.map((t) => t.spend)) },
+    minutesMedian: median(spent.map((t) => t.minutes)),
+    reviewRoundsMedian: median(spent.map((t) => t.rounds).filter(Boolean)),
     fixSpend,
     fixShare: spend ? (fixSpend / spend) * 100 : 0,
-    holdsPerTicket: tallies.length ? sum(tallies.map((t) => t.holds)) / tallies.length : 0,
-    processesMedian: median(tallies.map((t) => t.processes)),
-    mismatched: ran.filter((r) => {
+    holdsPerTicket: tickets.length ? sum(tickets.map((t) => t.holds)) / tickets.length : 0,
+    processesMedian: median(windows.map((t) => t.processes).filter(Boolean)),
+    mismatched: processes.filter((r) => {
       const want = MODEL_BY_PHASE[atOf(r)];
       const family = familyOf(modelOf(r));
       return Boolean(want && family && family !== want);
     }),
-    unjudged: ran.filter((r) => !familyOf(modelOf(r))).length,
-    headroom: turnHeadroom(rows.filter(isProcess), caps),
-    maxTurnsHit: rows.filter((r) => isProcess(r) && (r.subtype ?? r.error?.reason) === "error_max_turns").length,
+    unjudged: processes.filter((r) => !modelOf(r)).length,
+    headroom: turnHeadroom(processes, caps),
+    maxTurnsHit: processes.filter((r) => (r.subtype ?? r.error?.reason) === "error_max_turns").length,
     byAt: Object.fromEntries(Object.entries(byAt).map(([at, b]) => [at, { processes: b.processes, spend: b.spend, minutes: median(b.ms) / 6e4 }])),
   };
 }
@@ -371,7 +403,7 @@ export function report(rows, caps = TURNS_BY_SIZE) {
   });
   return [
     `loop-cost: ${s.tickets} tickets, ${usd(s.spend)} spent`,
-    `per ticket: ${usd(s.perTicket.mean)} mean, ${usd(s.perTicket.median)} median, ${s.minutesMedian.toFixed(0)} min median`,
+    `per ticket: ${usd(s.perTicket.mean)} mean, ${usd(s.perTicket.median)} median, ${s.minutesMedian.toFixed(0)} min median, ${s.reviewRoundsMedian} review rounds median`,
     `fix rounds: ${usd(s.fixSpend)} (${s.fixShare.toFixed(0)}%)`,
     `HOLD rounds: ${s.holdsPerTicket.toFixed(2)} per ticket`,
     `processes/ticket: median ${s.processesMedian}`,
@@ -428,7 +460,7 @@ export function shaTable(rows, killed = []) {
   };
   for (const r of rows) {
     const g = of(r.loop_sha);
-    if (r.kind !== "outcome") g.sessions += 1;
+    if (isProcess(r)) g.sessions += 1;
     g.cost += r.cost ?? 0;
     if (r.outcome === "landed" || r.outcome === "closed") g.landed += 1;
     if (r.outcome === "parked") g.parked += 1;
@@ -476,14 +508,18 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const withStarts = readLedger(undefined, { starts: true });
   const ledger = withStarts.filter((r) => r.outcome !== "started");
   const window = since || until ? sinceWindow(ledger, since ?? "", until) : null;
-  const picked = (n) => !args.length || args.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : n === Number.parseInt(p, 10)));
-  const rows = (window ? window.rows : ledger).filter((r) => picked(r.n));
+  const picks = window ? window.tickets : args;
+  // The tickets whose stream log is still on disk. Retention keeps fourteen days of them, and that
+  // is the population every earlier reading of this gauge was taken over.
+  const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
+  const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
+  const rows = (window ? sinceWindow(withStarts, since ?? "", until).rows : withStarts).filter((r) => asked.has(r.n));
   // The stream log only times a killed session: the ledger has no row for it to read.
   const lastSeen = (row, until) => lastStamp(existsSync(join(DIR, `${row.n}.jsonl`)) ? readFileSync(join(DIR, `${row.n}.jsonl`), "utf8") : "", Date.parse(row.started), until);
   const killed = killedStarts(withStarts, lastSeen).filter((k) =>
-    picked(k.n) && (!window || (k.started >= (since ?? "") && (!until || k.started < until))));
+    window ? k.started >= (since ?? "") && (!until || k.started < until) : asked.has(k.n));
   console.log(report(rows));
   const died = killedLine(killed);
   if (died) console.log(died);
-  if (grouped) console.log(`\n${shaTable(rows, killed)}`);
+  if (grouped) console.log(`\n${shaTable(rows.filter((r) => r.outcome !== "started"), killed)}`);
 }

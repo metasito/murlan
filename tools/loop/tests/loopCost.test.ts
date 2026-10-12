@@ -358,7 +358,7 @@ describe("summary", () => {
     test("HOLD rounds per ticket, processes per ticket, models and turn headroom are main's", () => {
       assert.ok(Math.abs(s.holdsPerTicket - golden.main.holdsMean) < 1e-9);
       assert.equal(s.processesMedian, golden.main.processesMedian);
-      assert.deepEqual(s.mismatched.map((r: { n: number, started: string }) => `${r.n}@${r.started}`), golden.main.mismatches);
+      assert.deepEqual(s.mismatched.map((r) => `${r.n}@${r.started}`), golden.main.mismatches);
       assert.equal(s.unjudged, golden.main.unjudged);
       assert.deepEqual(s.headroom, golden.main.headroom);
     });
@@ -592,7 +592,7 @@ describe("turnHeadroom", () => {
   });
 
   test("the report names the short size and stays quiet about the rest", () => {
-    const busy = [proc({ size: "size:S", turns: 90, outcome: "handoff" }), proc({ size: "size:M", turns: 60, outcome: "pushed" })];
+    const busy = [proc({ size: "size:S", turns: 90, outcome: "handoff", cost: 1 }), proc({ size: "size:M", turns: 60, outcome: "pushed", cost: 1 })];
     const out = report(busy, { "size:S": 160, "size:M": 505 });
     assert.match(out, /turn cap under 2× the busiest process: size:S busiest 90, cap 160/);
     assert.doesNotMatch(out, /size:M busiest/);

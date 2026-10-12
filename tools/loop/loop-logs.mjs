@@ -557,14 +557,45 @@ export function ticketTally(n, rows) {
 const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
 export const closesWindow = (row) => CLOSERS.has(row.outcome);
 
-/** A session's row: by `kind` from schema 9, and before it by having run turns. */
-export const isProcess = (row) => (row.kind ? row.kind === "process" : (row.turns ?? 0) > 0);
+/** A session's row: by `kind` from schema 9, and before it any row but a start that ran turns. */
+export const isProcess = (row) => (row.kind ? row.kind === "process" : row.outcome !== "started" && row.turns !== 0);
 
-/** The phase a process was spawned at; before schema 9, the first phase it timed. */
+/**
+ * The phase a process was spawned at: schema 9 records it, `withSpawnPhase` reads it from the start
+ * row before that, and only a row older than start rows falls back to the first phase it timed.
+ */
 export const atOf = (row) => row.at ?? Object.keys(row.phases ?? {})[0] ?? null;
 
-/** A review that held: a process spawned at D that hands back to C or D. */
-export const holdRound = (row) => isProcess(row) && atOf(row) === "D" && (row.handoff?.phase === "C" || row.handoff?.phase === "D");
+/**
+ * The rows without their start rows, each earlier process row given the `at` its start row named.
+ * The first phase a session timed is B for most fresh claims, and D for one that reached review.
+ *
+ * @param {{n: number, [field: string]: any}[]} rows the ledger with its start rows
+ * @returns {{n: number, [field: string]: any}[]}
+ */
+export function withSpawnPhase(rows) {
+  const pending = new Map();
+  const out = [];
+  for (const r of rows) {
+    const key = `${r.n} ${r.run_id ?? ""}`;
+    if (r.outcome === "started") {
+      pending.set(key, r.phase ?? null);
+      continue;
+    }
+    const at = isProcess(r) ? pending.get(key) : undefined;
+    if (at !== undefined) pending.delete(key);
+    out.push(r.at || at == null ? r : { ...r, at });
+  }
+  return out;
+}
+
+/**
+ * A review that held: a process that reviewed and handed back to C or D. Read from the phase it
+ * timed first, not the one it was spawned at: a fresh claim that found its branch at review ran D.
+ * A handoff on to E was a LAND that left E to the next process.
+ */
+export const holdRound = (row) =>
+  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(handoffIn(row)?.phase ?? "");
 
 /**
  * One window's rows folded together. Before schema 9 a row carries no `fix`, so a process after
@@ -573,7 +604,19 @@ export const holdRound = (row) => isProcess(row) && atOf(row) === "D" && (row.ha
  * @param {object[]} rows one ticket's rows, oldest first, start rows excluded
  */
 export function tallyOf(rows) {
-  const t = { spend: 0, ms: 0, turns: 0, processes: 0, handoffs: 0, lastHandoff: null, retries: 0, lastRedHead: null, reruns: [], holds: 0, fixSpend: 0 };
+  const t = {
+    spend: 0,
+    ms: 0,
+    turns: 0,
+    processes: 0,
+    handoffs: 0,
+    lastHandoff: /** @type {{phase: string, why: string|null}|null} */ (null),
+    retries: 0,
+    lastRedHead: /** @type {string|null} */ (null),
+    reruns: /** @type {(string|null)[]} */ ([]),
+    holds: 0,
+    fixSpend: 0,
+  };
   let fixing = false;
   for (const r of rows) {
     const cost = r.cost ?? 0;
@@ -591,7 +634,7 @@ export function tallyOf(rows) {
       fixing = true;
     } else if (r.outcome === "handoff") {
       t.handoffs += 1;
-      if (r.handoff) t.lastHandoff = { phase: r.handoff.phase, why: r.handoff.why ?? r.handoff.said ?? null };
+      t.lastHandoff = handoffIn(r) ?? t.lastHandoff;
     } else if (r.outcome === "rerun" || r.outcome === "diagnosed") {
       t.reruns.push(r.head ?? null);
     }
@@ -601,11 +644,12 @@ export function tallyOf(rows) {
 
 /**
  * Ticket `n`'s open window: its rows since its last landed, closed, parked or reparked row, where
- * every count must have read zero even before this process existed.
+ * every count must have read zero even before this process existed. `ciRounds` is the tracker's
+ * CI-RED count, which survives a ledger that never saw a round the loop was down for.
  *
- * @param {number} n @param {object[]} rows
+ * @param {number} n @param {object[]} rows @param {number} [ciRounds]
  */
-export function ticketWindow(n, rows) {
+export function ticketWindow(n, rows, ciRounds = 0) {
   const mine = rows.filter((r) => r.n === n && r.outcome !== "started");
-  return tallyOf(mine.slice(mine.findLastIndex(closesWindow) + 1));
+  return { ...tallyOf(mine.slice(mine.findLastIndex(closesWindow) + 1)), ciRounds };
 }
