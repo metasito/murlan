@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, mergeCleared } from "../loop-gate.mjs";
+import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, mergeCleared } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -431,6 +431,27 @@ describe("the review-round cap", () => {
       assert.equal(v.ok, false, `reviewRounds ${String(reviewRounds)} allowed a round`);
       assert.match(v.why, /cannot reach the tracker/);
     }
+  });
+
+  test("CI fix rounds that hold have a cap of their own", () => {
+    assert.equal(roundVerdict({ reviewRounds: 1, fixHolds: MAX_FIX_HOLDS - 1 }).ok, true);
+    const v = roundVerdict({ reviewRounds: 1, fixHolds: MAX_FIX_HOLDS });
+    assert.equal(v.ok, false, `a fix round after ${MAX_FIX_HOLDS} fix HOLDs was allowed`);
+    assert.match(v.why, /fix/);
+  });
+
+  test("a third fix HOLD is refused through the real CLI; one is not", () => {
+    const wt = worktree("agent/9900022-fixholds");
+    commit(wt, "docs/probe.md");
+    const red = [{ body: "REVIEW abc1234\n\n## Blocking\n" }, { body: "VERDICT: LAND abc1234" }, { body: "CI-RED abc1234" }];
+    const fixHold = (sha: string) => [{ body: `REVIEW ${sha} fix\n\n## Blocking\n` }, { body: `VERDICT: HOLD ${sha} — still red` }];
+
+    const one = gate(root, [...red, ...fixHold("def5678")], BASE, wt, ["--review-round"]);
+    assert.equal(one.code, 0, one.out);
+
+    const two = gate(root, [...red, ...fixHold("def5678"), ...fixHold("eee6789")], BASE, wt, ["--review-round"]);
+    assert.equal(two.code, 1, two.out);
+    assert.match(two.out, /"stoodDown":true/);
   });
 
   // The exit code is what phase D branches on, so it is asserted through the real CLI too.

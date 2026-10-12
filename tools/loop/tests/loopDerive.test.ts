@@ -14,6 +14,7 @@ import {
   handoffFor,
   reviewRounds,
   totalReviewRounds,
+  fixHolds,
   ciRedRounds,
   ciRedPosted,
   derive,
@@ -280,6 +281,16 @@ describe("counting review rounds", () => {
       { body: "VERDICT: LAND def5678" },
     ];
     assert.equal(reviewRounds(comments), 1);
+  });
+
+  test("a HOLD on a CI fix round's review is a fix hold, counted apart from the rounds", () => {
+    const fixHold = (sha: string) => [{ body: `REVIEW ${sha} fix\n\n## Blocking\n` }, { body: `VERDICT: HOLD ${sha} — no` }];
+    const red = [{ body: "VERDICT: LAND abc1234" }, { body: "CI-RED abc1234" }];
+    assert.equal(fixHolds([...red, ...fixHold("def5678")]), 1);
+    assert.equal(fixHolds([...red, ...fixHold("def5678"), ...fixHold("eee6789")]), 2);
+    assert.equal(reviewRounds([...red, ...fixHold("def5678"), ...fixHold("eee6789")]), 1);
+    assert.equal(fixHolds([...red, fixReview, { body: "VERDICT: LAND def5678" }]), 0);
+    assert.equal(fixHolds([{ body: "VERDICT: HOLD abc1234 — no" }]), 0);
   });
 
   test("a fix label with no CI-RED before it, since the count last started, still counts", () => {
