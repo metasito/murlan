@@ -343,6 +343,20 @@ describe("sweep: a directory git no longer registers (#377)", () => {
     assert.match(row?.note ?? "", /agent-17/);
   });
 
+  test("one still holding files after its delete is kept, with the reason", (t) => {
+    const { repo } = scratchRepo();
+    fs.mkdirSync(path.join(repo, ".worktrees", "agent-33"), { recursive: true });
+    const rm = t.mock.method(fs, "rmSync", (p: string) => {
+      throw Object.assign(new Error(`ENOTEMPTY: directory not empty, rmdir '${p}'`), { code: "ENOTEMPTY" });
+    });
+    const row = sweep({ git: spyGit(repo).git, gh: fakeGh({}).gh });
+    rm.mock.restore();
+    assert.equal(row?.state, "warned");
+    assert.doesNotMatch(row?.detail ?? "", /removed agent-33/);
+    assert.match(row?.detail ?? "", /kept agent-33/);
+    assert.match(row?.note ?? "", /agent-33: could not be removed — ENOTEMPTY/);
+  });
+
   test("one a process holds open is reported as going when it exits; any other failure keeps it", (t) => {
     const { repo } = scratchRepo();
     for (const n of [31, 32]) fs.mkdirSync(path.join(repo, ".worktrees", `agent-${n}`), { recursive: true });
