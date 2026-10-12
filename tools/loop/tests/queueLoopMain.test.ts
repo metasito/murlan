@@ -90,7 +90,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   rerun: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
   ledgerRows: () => ledger,
-  repark: () => ({ ok: true, failed: [] }),
+  repark: () => ({ failed: [], why: null }),
   ...over,
 });
 
@@ -1929,7 +1929,7 @@ describe("a park that never reached the tracker", () => {
             spawn: died,
             pushedPr: () => null,
             park: labelDown,
-            repark: (n: number, steps: string[]) => (reparked.push([n, steps]), { ok: true, failed: [] }),
+            repark: (n: number, steps: string[]) => (reparked.push([n, steps]), { failed: [], why: null }),
           },
           ledger,
         ) as never,

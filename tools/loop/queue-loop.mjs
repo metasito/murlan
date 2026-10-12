@@ -80,7 +80,7 @@ import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { CHECK_BASH_TIMEOUT_MS, STALL_MS, suspended } from "./limits.mjs";
+import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
 import { createRequire } from "node:module";
 
@@ -795,13 +795,29 @@ const PARK_STEPS = {
 };
 
 /**
- * The park steps that failed, applied again from what the park left on disk.
+ * The park steps that failed, applied again from what the park left on disk — only while the park
+ * still stands. `why` says why a debt closed without being applied; `failed` is what is still owed.
  *
  * @param {number} number @param {string[]} steps
- * @returns {{ok: boolean, failed: string[]}}
+ * @returns {{failed: string[], why: string|null}}
  */
-export function repark(number, steps, run = sh) {
+export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)) {
+  let issue;
+  try {
+    issue = JSON.parse(run("gh", ["issue", "view", String(number), "--json", "state,labels"], { timeout: CI_RED_TIMEOUT_MS }));
+  } catch (err) {
+    console.error(`  ⚠️ park #${number}: the issue could not be read — ${String(err.message).split("\n")[0]}`);
+    return { failed: steps, why: null };
+  }
+  // The label step owed leaves `in-progress` on; once it landed, `ready-for-human` is the park's own.
+  // Anything else is the owner's doing, which a retry must not undo.
+  const mark = steps.includes("label") ? "in-progress" : "ready-for-human";
+  if (issue.state !== "OPEN" || !issue.labels.some((l) => l.name === mark)) {
+    return { failed: [], why: "the owner already acted on the issue" };
+  }
+  const pruned = steps.includes("comment") && !exists(parkNotePath(number));
   const failed = steps.filter((s) => {
+    if (s === "comment" && pruned) return false;
     try {
       PARK_STEPS[s](number, run);
       return false;
@@ -810,7 +826,7 @@ export function repark(number, steps, run = sh) {
       return true;
     }
   });
-  return { ok: failed.length === 0, failed };
+  return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
 }
 
 /** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
@@ -1706,11 +1722,10 @@ export function runTicket(
     // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
     // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
     // SIGINT only ends the turn, and a session with nothing to end ignores it.
-    let tickAt = Date.now();
+    const clock = sleepClock(tick);
     const watchdog = setInterval(() => {
+      const slept = clock.lap();
       const now = Date.now();
-      const slept = suspended(tickAt, now, tick);
-      tickAt = now;
       state.asleepMs += slept;
       state.lastFactAt = Math.min(now, state.lastFactAt + slept);
       if (now - state.lastFactAt <= stallMs) return;
@@ -2037,6 +2052,9 @@ function postCiRedOnce(ticket, verdict, onMain, comments, run, write, log) {
   }
 }
 
+/** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
+const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
+
 /** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
 const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
 
@@ -2064,10 +2082,10 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   let woke = false;
   // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
   const wait = async () => {
-    const from = Date.now();
+    const clock = sleepClock(pause);
     // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
     await new Promise((r) => setTimeout(r, pause));
-    const slept = suspended(from, Date.now(), pause);
+    const slept = clock.lap();
     until += slept;
     woke ||= slept > 0;
   };
@@ -2104,7 +2122,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     } catch (err) {
       const why = String(err.message).split("\n")[0];
       // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
-      if (woke) {
+      if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
         log(`could not read CI since the machine woke — ${why}; asking again`);
         await wait();
         continue;
@@ -2893,11 +2911,10 @@ export async function main({
   const sofar = (kind) => spent[kind] + (since[kind] == null ? 0 : Date.now() - since[kind]);
   // Whatever the run was doing when the machine slept, the sleep comes out of that bucket.
   let asleepMs = 0;
-  let tickAt = startedAt;
+  const clock = sleepClock(tick);
   const sleepWatch = setInterval(() => {
+    const slept = clock.lap();
     const now = Date.now();
-    const slept = suspended(tickAt, now, tick);
-    tickAt = now;
     asleepMs += slept;
     for (const kind of Object.keys(since)) if (since[kind] != null) since[kind] = Math.min(now, since[kind] + slept);
   }, tick);
@@ -2963,15 +2980,16 @@ export async function main({
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
-    screen.board?.({ typical: typicalMs(readLedger()) });
+    const rows = io.ledgerRows();
+    screen.board?.({ typical: typicalMs(rows) });
     // From the ledger, not memory: the outage that failed a park outlasts any backoff, and a restart.
-    for (const { n, steps } of pendingReparks(io.ledgerRows())) {
-      const { failed } = io.repark(n, steps);
-      if (failed.length === steps.length) {
+    for (const { n, steps } of pendingReparks(rows)) {
+      const { failed, why: moot = null } = io.repark(n, steps);
+      if (!moot && failed.length === steps.length) {
         screen.notice("park", `#${n}'s park has still not reached the tracker (${steps.join(", ")})`);
         continue;
       }
-      const why = failed.length ? `the park reached the tracker but for ${failed.join(", ")}` : "the park reached the tracker";
+      const why = [moot ?? "the park reached the tracker", ...(failed.length ? [`still owed: ${failed.join(", ")}`] : [])].join(" — ");
       io.record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, counts: false, parkFailed: failed.length ? failed : null });
       io.log(`#${n}: ${why}`, "park");
     }

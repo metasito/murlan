@@ -7,7 +7,7 @@ import { execFileSync, spawn as spawnChild } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readIssue } from "./brief.mjs";
-import { suspended } from "./limits.mjs";
+import { sleepClock } from "./limits.mjs";
 
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
@@ -126,6 +126,17 @@ export function parseDiagnosis(text, runId = null) {
   return { ok: true, action, cause };
 }
 
+/**
+ * An API failure a wait cures: no connection, a 5xx, or a 429. The CLI does not always name
+ * `terminal_reason` beside an `API Error:` result, so the text is read too; a 4xx other than 429 —
+ * a bad key, a refused request — is not waited out.
+ */
+function apiDown(terminalReason, status, said) {
+  const code = status ?? (Number(/^API Error: (\d{3})\b/.exec(said)?.[1]) || null);
+  const waitable = code == null || code >= 500 || code === 429;
+  return waitable && (terminalReason === "api_error" || /^API Error\b/.test(said));
+}
+
 /** HEAD and the tree's status together, so a diagnosis that wrote anything is caught either way. */
 export function treeState(cwd, run = (args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" })) {
   try {
@@ -168,13 +179,11 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
         LOOP_REASON: undefined,
       },
     });
-    let tickAt = startedAt;
-    let awake = 0;
+    const clock = sleepClock(tick);
+    let asleep = 0;
     const timer = setInterval(() => {
-      const now = Date.now();
-      awake += now - tickAt - suspended(tickAt, now, tick);
-      tickAt = now;
-      if (awake < timeoutMs) return;
+      asleep += clock.lap();
+      if (Date.now() - startedAt - asleep < timeoutMs) return;
       child.kill("SIGTERM");
       done({ ok: false, error: `it ran past ${Math.round(timeoutMs / 60_000)}m` });
     }, tick);
@@ -192,10 +201,9 @@ export function diagnose(stop, { spawnFn = spawnChild, state = treeState, timeou
       }
       run.result = { cost: json.total_cost_usd ?? 0, turns: json.num_turns ?? 0 };
       if (state(cwd) !== before) return done({ ok: false, error: "it changed the worktree it was only to read" });
-      // An API failure ends `is_error` under subtype "success", and the CLI does not always name
-      // `terminal_reason` beside it: #1465's and #1466's diagnoses both read only "success".
-      if (json.is_error && (json.terminal_reason === "api_error" || json.subtype === "success")) {
-        return done({ ok: false, apiDown: true, error: `it could not reach the API — ${String(json.result ?? "").split("\n")[0]}` });
+      const said = String(json.result ?? "");
+      if (json.is_error && apiDown(json.terminal_reason, json.api_error_status, said)) {
+        return done({ ok: false, apiDown: true, error: `it could not reach the API — ${said.split("\n")[0]}` });
       }
       if (json.is_error) return done({ ok: false, error: `it ended ${json.terminal_reason ?? json.subtype ?? "in an error"}` });
       done({ ...parseDiagnosis(json.result, stop.runId ?? null), reply: String(json.result ?? "") });
