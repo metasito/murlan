@@ -53,9 +53,9 @@ test("a download storage refuses is retried, and the lists it then reads decide"
   assert.equal(slept.length, 2);
 });
 
-test("lists that never arrive are not an empty list", async () => {
+test("lists that never arrive are not an empty list, and exit apart from a finding", async () => {
   const { code, said, slept } = await gate(fakeGh([{ filename: native, status: "modified" }], { failDownloads: Infinity }));
-  assert.equal(code, 1);
+  assert.equal(code, 2);
   assert.ok(slept.length >= 2, "gave up without retrying");
   assert.match(said, /could not be read[\s\S]*503/);
 });
