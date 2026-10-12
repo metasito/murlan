@@ -77,16 +77,16 @@ their procedures, and the command files carry only this repo's specifics.
 ticket here: its frontier query drops candidates on assignee, and every session authenticates as
 the same GitHub account.
 
-- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from one GraphQL
-  query of the open issues; past 100 it refuses rather than truncates. A bare issue number
+- **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22), from a GraphQL
+  query of the open issues, read a page of 100 at a time. A bare issue number
   inspects that ticket without picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
   branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
   owner sent back), then a `main-red` or `ci-flake` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
-  the comments, the open-blocker count, any open pull request, and, for a picked ticket not yet
-  claimed, the claim commands. With nothing takeable, its handoff line names the owner's live asks
+  the comments, the open-blocker count, any open pull request, whether it is takeable, and the
+  claim commands when it is. With nothing takeable, its handoff line names the owner's live asks
   (`ready-for-human` or `needs-info`, never `deferred`), the Launch milestone's first, then the
   newest.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s

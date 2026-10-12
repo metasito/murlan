@@ -16,14 +16,21 @@ function ghJson(args) {
   return JSON.parse(gh(args));
 }
 
-const QUERY = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issues(states:OPEN,first:100){pageInfo{hasNextPage}nodes{number title authorAssociation labels(first:100){nodes{name}} milestone{title} issueDependenciesSummary{blockedBy}}}}}`;
+const QUERY = `query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(states:OPEN,first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{number title authorAssociation labels(first:100){nodes{name}} milestone{title} issueDependenciesSummary{blockedBy}}}}}`;
 
-/** Every open issue with its open-blocker count, in one call. GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
+/** Every open issue with its open-blocker count, a page of 100 per call. GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
 export function openIssues(run = gh) {
   const [owner, name] = REPO.split("/");
-  const { issues } = JSON.parse(run(["api", "graphql", "-f", `query=${QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`])).data.repository;
-  if (issues.pageInfo.hasNextPage) throw new Error("more than 100 open issues; the picker will not guess");
-  return issues.nodes.map((n) => ({
+  const nodes = [];
+  let after = null;
+  do {
+    const args = ["api", "graphql", "-f", `query=${QUERY}`, "-F", `owner=${owner}`, "-F", `name=${name}`];
+    if (after) args.push("-f", `after=${after}`);
+    const { issues } = JSON.parse(run(args)).data.repository;
+    nodes.push(...issues.nodes);
+    after = issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null;
+  } while (after);
+  return nodes.map((n) => ({
     number: n.number,
     title: n.title,
     author_association: n.authorAssociation,
@@ -219,8 +226,19 @@ export function pickRoute(buckets, take = takeable) {
   return { skill: "handoff", ticket: null };
 }
 
-/** @param {boolean} picked an inspected ticket is not offered for claiming; a picked one is, unless already claimed */
-function printDetail(issue, comments, picked) {
+/** Why a ticket read in full (REST's shape) is not takeable; none means it is. */
+export function takeableReasons(issue) {
+  const ls = labelNames(issue);
+  const reasons = [];
+  if ((issue.issue_dependencies_summary?.blocked_by ?? 0) > 0) reasons.push("has open blockers");
+  if (ls.includes("in-progress")) reasons.push("labelled in-progress");
+  if (ls.includes("blocked")) reasons.push("labelled blocked");
+  if (ls.some((l) => OWNER_LABELS.has(l))) reasons.push(`owner-gated (${ls.filter((l) => OWNER_LABELS.has(l)).join(", ")})`);
+  if (!trusted(issue)) reasons.push(`opened from outside the repo (${issue.author_association})`);
+  return reasons;
+}
+
+function printDetail(issue, comments) {
   const ls = labelNames(issue);
   console.log(`\n===== TICKET #${issue.number} - ${issue.title} =====`);
   console.log(`Labels: ${ls.join(", ")}`);
@@ -230,6 +248,8 @@ function printDetail(issue, comments, picked) {
   for (const pr of openPrsFor(issue.number)) {
     if (pr.state === "OPEN") console.log(`Open pull request: #${pr.number} on ${pr.headRefName}`);
   }
+  const reasons = takeableReasons(issue);
+  console.log(reasons.length === 0 ? `Takeable: yes` : `Takeable: no - ${reasons.join("; ")}`);
   console.log("----- BODY -----");
   console.log(issue.body ?? "(empty)");
   const shown = comments.filter(trusted);
@@ -239,7 +259,7 @@ function printDetail(issue, comments, picked) {
     console.log(`\n[${c.user.login} | ${c.created_at}]`);
     console.log(c.body);
   }
-  if (picked && !ls.includes("in-progress")) {
+  if (reasons.length === 0) {
     const n = issue.number;
     console.log("\n----- NEXT -----");
     console.log("Claim (first write; then confirm you won the race):");
@@ -274,7 +294,7 @@ if (invokedDirectly) {
     const [issue, comments] = read(explicit);
     // `queue.md` branches on implement / triage / wayfinder / handoff and has no fifth case.
     console.log(`ROUTE\t${routeOf(issue) ?? "handoff"}\t${explicit}\t${issue.title}\t${sizeOf(issue) ?? ""}`);
-    printDetail(issue, comments, false);
+    printDetail(issue, comments);
     process.exit(0);
   }
 
@@ -294,5 +314,5 @@ if (invokedDirectly) {
     `\tlaunch:${launchOpen(issues)}`,
   );
 
-  if (chosen.ticket) printDetail(...read(chosen.ticket.number), true);
+  if (chosen.ticket) printDetail(...read(chosen.ticket.number));
 }

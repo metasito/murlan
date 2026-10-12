@@ -1,10 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import * as picker from "../next-ticket.mjs";
-import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
-
-const takeableReasons = (i: object) => picker.takeableReasons(i);
+import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
