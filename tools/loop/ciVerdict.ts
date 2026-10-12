@@ -1,6 +1,7 @@
 // tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { budgetListArgs, budgetReport, overBudget, UNREAD_STEP } from "../ci/budget-gate.mjs";
+import type { PrState } from "./land.ts";
 
 export { budgetReport, overBudget };
 
@@ -336,6 +337,97 @@ function jobsAndLog(
     }
   }
   return { verdict, testIds };
+}
+
+/** One entry of `gh pr view --json statusCheckRollup`; a commit status carries `context` instead of `name`. */
+interface RollupEntry {
+  name?: string;
+  status?: string;
+  conclusion?: string;
+  detailsUrl?: string;
+}
+
+export interface LandingState {
+  pr: PrState & { headRefOid: string };
+  ci: Verdict;
+  progress: CiProgress;
+}
+
+const RUN_OF = /\/actions\/runs\/(\d+)\//;
+
+function rollupProgress(entries: RollupEntry[]): CiProgress {
+  return ciProgress(
+    entries
+      .filter((e) => e.name && e.name !== CI_GATE)
+      .map((e) => ({ name: e.name!, steps: 0, status: e.status?.toLowerCase(), conclusion: e.conclusion?.toLowerCase() || null })),
+  );
+}
+
+function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: number): Verdict {
+  const gate = entries.find((e) => e.name === CI_GATE);
+  if (!gate) {
+    return entries.length
+      ? { pass: false, waiting: true, reason: `${CI_GATE} has not reported` }
+      : { pass: false, appearing: true, infrastructure: true, reason: "no check has reported on this head" };
+  }
+  const runId = Number(RUN_OF.exec(gate.detailsUrl ?? "")?.[1]) || undefined;
+  if (gate.status !== "COMPLETED") {
+    return { pass: false, waiting: true, runId, reason: `${CI_GATE} is ${String(gate.status).toLowerCase()}` };
+  }
+  if (gate.conclusion === "SUCCESS") return { pass: true, runId, reason: `${CI_GATE} passed` };
+  if (!runId) {
+    return { pass: false, infrastructure: true, reason: `${CI_GATE} concluded ${gate.conclusion} on a run its link does not name` };
+  }
+  const run = ghJson<RunRow | undefined>(
+    gh,
+    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha"],
+    undefined,
+    until
+  );
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  return { ...verdict, testIds };
+}
+
+/**
+ * The pull request and its required gate, from one read. The gate's own run is read only when the
+ * gate is red, for the jobs and log a fix round is built on. A `pr view` that fails throws: whether
+ * that is the network or GitHub's refusal is the caller's to judge.
+ */
+export function readLandingState(
+  repo: string,
+  prNumber: number,
+  gh: GhExec = realGh,
+  until = Date.now() + READ_DEADLINE_MS
+): LandingState {
+  const view = JSON.parse(
+    gh(
+      [
+        "pr",
+        "view",
+        String(prNumber),
+        "--repo",
+        repo,
+        "--json",
+        "headRefOid,state,mergeable,mergeStateStatus,isDraft,autoMergeRequest,statusCheckRollup",
+      ],
+      until
+    )
+  );
+  const entries: RollupEntry[] = view.statusCheckRollup ?? [];
+  const progress = rollupProgress(entries);
+  const ci = gateVerdict(repo, entries, gh, until);
+  return {
+    pr: {
+      headRefOid: view.headRefOid,
+      state: view.state,
+      mergeable: view.mergeable,
+      mergeStateStatus: view.mergeStateStatus,
+      isDraft: Boolean(view.isDraft),
+      armed: view.autoMergeRequest != null,
+    },
+    ci: { ...ci, head: view.headRefOid ?? null, ...(ci.waiting ? { progress } : {}) },
+    progress,
+  };
 }
 
 export interface HeadCi {
