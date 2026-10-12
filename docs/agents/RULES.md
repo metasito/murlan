@@ -69,7 +69,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
+29. **Name a model and an effort on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
     at `medium` effort, and only a Blocking finding holds (a nit never costs a round).
     Recon and verification: sonnet at `medium`. Mechanical: haiku. Give every dispatch a label.
 
@@ -80,10 +80,11 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
-33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog.
+33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog: a new one labelled
+    `ready-for-human`, or a comment on the open `noticed` issue. A ticket's session never adds `ready-for-agent`.
 34. **Fix it in this session before you file it.** A defect you hit in your own tools, checks or
     worktree is yours to close, not to hand on — outside a review round, which fixes only the Blocking findings its review or CI
-    named. File an issue only for what you tried and could
+    named. File an issue (rule 33's channels) only for what you tried and could
     not finish, and say what you tried.
 35. **File what you measured, not what you concluded.** If two explanations survive, write both
     and mark it unsettled. A rule written from one observation is how a wrong rule gets pinned.
@@ -114,4 +115,4 @@ Another agent is working in this repository, on this machine, right now.
     `tests/tooling/docReferences.test.ts` fails on the path a rename left behind.
 44. **Change a file with Edit or Write; Bash runs commands.** A `sed`, heredoc or rewrite script skips the `Write|Edit` hooks, applies its own escaping on top of the file's, and one that fails partway drops every edit before it.
 45. *(retired)*
-46. **The whole CI run stays under 5 minutes, first job to last, as a target to aim for: `TARGET_RUN_SECONDS` in `tools/ci/e2e-shard.mjs` is 300.** That bounds a pull request's ordinary `ci.yml` run. `Android compiles` and `iOS compiles` run only on a native-touching change, `-f native=true` and the weekly cron, under a budget of their own: `timeout-minutes: 35` on each, the slowest measured compile plus about 20%. Time turns a check red only at a job's timeout or past 3x a file's budget (`HARD_FACTOR` in `tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`, `tools/ci/ios-wall.mjs`); a file over its budget is a warning to look at, not a failure. The owner's rulings (2026-10-07, 2026-10-09, 2026-10-11), and only the owner changes them. When the suite outgrows the shards, make specs faster or split them; never raise the target to turn a check green.
+46. **The whole CI run stays under 5 minutes, first job to last, as a target to aim for: `TARGET_RUN_SECONDS` in `tools/ci/e2e-shard.mjs` is 300.** That bounds a pull request's ordinary `ci.yml` run. `Android compiles` and `iOS compiles` run only on a native-touching change, `-f native=true` and the weekly cron, under a budget of their own: `timeout-minutes: 35` on each, the slowest measured compile plus about 20%. Time turns a check red only at a job's timeout or past 3x a file's budget (`HARD_FACTOR` in `tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`, `tools/ci/ios-wall.mjs`); a file over its budget is a warning to look at, not a failure, except that a pull request adding or changing that file cannot land (`overBudget` in `tools/loop/ciVerdict.ts`, which also refuses raising its spec's time in `tests/e2e/timings.json` past `RATIO`). The owner's rulings (2026-10-07, 2026-10-09, 2026-10-11, 2026-10-12), and only the owner changes them. When the suite outgrows the shards, make specs faster or split them; never raise the target to turn a check green.

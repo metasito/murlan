@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import BudgetReporter, { committedTimings, HARD_FACTOR, overBudget, RATIO, SLACK_S } from "../../tools/ci/e2e-budget.mjs";
@@ -19,7 +20,9 @@ test("the budget cannot be loosened past twice the measurement and half a minute
 });
 
 function run(durations: Record<string, number[]>, status = "passed", skipped: string[] = []) {
-  const reporter = new BudgetReporter();
+  const dir = mkdtempSync(path.join(tmpdir(), "e2e-budget-"));
+  const listFile = path.join(dir, "over-budget.json");
+  const reporter = new BudgetReporter({ out: listFile });
   reporter.onBegin({ projects: [{ testDir }] });
   for (const [file, list] of Object.entries(durations)) {
     list.forEach((duration, i) => {
@@ -33,11 +36,14 @@ function run(durations: Record<string, number[]>, status = "passed", skipped: st
   let out = "";
   process.stdout.write = ((chunk: string) => ((out += chunk), true)) as typeof process.stdout.write;
   try {
-    return { verdict: reporter.onEnd({ status }), out };
+    const verdict = reporter.onEnd({ status });
+    const listed = existsSync(listFile) ? JSON.parse(readFileSync(listFile, "utf8")) : undefined;
+    return { verdict, out, listed };
   } finally {
     process.stdout.write = write;
     if (prior === undefined) delete process.env.CI;
     else process.env.CI = prior;
+    rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -49,6 +55,27 @@ test("a spec over its budget warns by name and leaves the shard green", () => {
   const { verdict, out } = run({ [priced]: [ms / 2, ms / 2] });
   assert.equal(verdict, undefined);
   assert.match(out, new RegExp(`::warning::${priced.replace(/\./g, "\\.")} took`));
+});
+
+test("a green shard lists each spec over budget, repo-relative, for the land gate; a spec with no recorded time is not listed", () => {
+  const ms = (seconds * RATIO + SLACK_S + 5) * 1000;
+  const { listed } = run({ [priced]: [ms], "brandNew.spec.ts": [1e9] });
+  assert.deepEqual(listed, [{ file: `tests/e2e/${priced}`, seconds: Math.round(ms / 100) / 10, budget: seconds * RATIO + SLACK_S }]);
+  assert.deepEqual(run({ [priced]: [1000] }).listed, []);
+});
+
+test("each browser shard uploads the list from the runner's temp directory, and a green shard without one is red", () => {
+  const prior = process.env.RUNNER_TEMP;
+  process.env.RUNNER_TEMP = path.join(repoRoot, "runner-temp");
+  try {
+    assert.equal(new BudgetReporter().out, path.join(repoRoot, "runner-temp", "over-budget.json"));
+  } finally {
+    if (prior === undefined) delete process.env.RUNNER_TEMP;
+    else process.env.RUNNER_TEMP = prior;
+  }
+  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+  const browser = /^ {2}browser:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
+  assert.match(browser, /upload-artifact@\S+.*\n\s+with:\n\s+name: over-budget-browser-\$\{\{ matrix\.shard \}\}\n\s+path: \$\{\{ runner\.temp \}\}\/over-budget\.json\n\s+if-no-files-found: error\n/);
 });
 
 test("the reporter fails a green shard whose spec took over HARD_FACTOR times its budget, and names it", () => {

@@ -3,13 +3,24 @@
  *
  * Everything here is pure: a line in, a fact or null out. The supervisor does the IO.
  */
+// guard-bash imports `readLine` from here: the cycle holds only while neither module calls into the
+// other while it loads.
+import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
 // The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
 // same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
-/** The same report as a statement of its own in a main-session command: `echo "PHASE C" && …`. */
-export const ECHOED = /^[ \t]*(?:cd[ \t]+[^&;\r\n]*&&[ \t]*)?echo[ \t]+(["']?)PHASE ([A-F])\1[ \t]*(?=&&|;|\r?\n|$)/;
+/**
+ * The same report as a command of its own in a main-session call: `… && echo "PHASE C" && …`. Read
+ * by the shell parser the supervisor already runs on these commands, so a quoted string or a
+ * heredoc's body, text a command writes rather than runs, is never one.
+ * @param {string} command
+ */
+export function echoedPhase(command) {
+  const echo = commands(withoutQuotedBodies(command)).find((c) => c.cmd === "echo" && /^PHASE [A-F]$/.test(c.args.join(" ")));
+  return echo ? echo.args.join(" ").slice(-1) : null;
+}
 
 /**
  * What the session says it did, once, before it exits — the one channel that is a statement rather
@@ -103,6 +114,11 @@ export function readLine(line) {
   } catch {
     return null;
   }
+  return readEvent(e);
+}
+
+/** `readLine` for a line already parsed. */
+export function readEvent(e) {
   if (e.type === "system" && e.subtype === "init") {
     return {
       kind: "init",
@@ -111,6 +127,9 @@ export function readLine(line) {
       model: e.model ?? null,
       plugins: (e.plugins ?? []).map((p) => p.source ?? p.name),
     };
+  }
+  if (e.type === "system" && e.subtype === "api_retry") {
+    return { kind: "api_retry", attempt: e.attempt ?? null, status: e.error_status ?? null, error: e.error ?? null };
   }
   if (e.type === "system" && TASK_EVENT[e.subtype]) {
     if (!e.task_id) return null;
@@ -163,8 +182,11 @@ export function readLine(line) {
         input: b.input ?? {},
         parent: e.parent_tool_use_id ?? null,
       }));
-    const echoed = calls.find((c) => c.parent === null && (c.name === "Bash" || c.name === "PowerShell") && ECHOED.test(c.command));
-    const letter = phase?.[1] ?? (echoed ? ECHOED.exec(echoed.command)[2] : null);
+    const echoed = calls
+      .filter((c) => c.parent === null && (c.name === "Bash" || c.name === "PowerShell"))
+      .map((c) => echoedPhase(c.command))
+      .find(Boolean);
+    const letter = phase?.[1] ?? echoed ?? null;
     const declared = declaredIn(text);
     if (!letter && !declared && !calls.length) return null;
     // The prose around the marker, which the board shows as the session's own account of what it is

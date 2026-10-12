@@ -25,11 +25,11 @@ instead of sitting unguarded in prose.
 | Anything **visual** (colour, gradient, shadow, size) | pixel-sample two PNGs on the same grid | pixels vs the prototype | Docker + a built web bundle | ~40s |
 | An effect under #1252 (a moment, a sound, a haptic, the lamp, the shake) | the `mockupParity*.spec.ts` file running its moment alone (rule 3), the moment registered in `MOMENTS` in `tests/e2e/helpers/mockupParity.ts`. Each test records in real time on one worker, so iterate on one variant's file and never run the whole set for a single tweak. The parity specs (every one `tests/e2e/playwright.config.ts` ignores but `webPerf`) are out of pull-request CI: `.github/workflows/parity-nightly.yml` runs them nightly, report-only, files a red run under `parity` and publishes the side-by-side page as its `mockup-parity` artifact; locally, `npx playwright test --config tests/e2e/playwright.parity.config.ts` runs them all, or one file named after it (the default config ignores them, so rule 3's command finds no test), and `node scripts/mockupParityPage.mjs <report> <out>` builds the page | the app's trace against the picked mockup's on one virtual clock: onsets, particle counts, lamp, shake, region brightness, the moth's path, an onset held to a window, the particle layer's frames apart (`tests/e2e/helpers/traceDiff.ts`) | Docker + a built web bundle | ~2.5 min |
 | The viewer's own connection: the drop, the hold, give-up, the way back | `tests/ui-rules/{ownLink,reconnectDiff}.test.ts` and `tests/native/{ownLinkHold,onlineCatchUp}.test.tsx`, then `tests/e2e/reconnect.spec.ts` and `tests/e2e/mockupParityReconnect.spec.ts` alone, the latter under `tests/e2e/playwright.parity.config.ts`. The parity spec runs the app on **real time** (the socket's timers stall under the virtual clock, #1250) beside the mockup on the virtual one, drops the socket through `page.routeWebSocket` and refuses retries by going offline: a retry must fail with an error, since socket.io ignores a close while opening and waits its 20 s `timeout` | the pill's states and Riprova, and (native only) the turn pill's lost state and Riprova handed to the table over a finished partita; the grey, the lamp's freeze, the pill's onsets, the recovery sound and the give-up's dimmed lamp against the mockup's `reconnect` chapter, each side on its own drops, return and give-up (`tests/e2e/helpers/reconnectDiff.ts`); the app's give-up waits out `Reconnect.giveUp`, so the parity spec takes ~1.5 min | Docker + a built web bundle for the specs | ~1s / ~3s / ~1 min, ~1.5 min |
-| A table card's shadow | `tests/ui-rules/cardShadows.test.ts`, `tests/native/{tableCardShadows,handShadeWiring,handShadeRebuild}.test.tsx`, then `tests/e2e/cardShadowParity.spec.ts` and `mockupParity.spec.ts`'s `rest` alone under `tests/e2e/playwright.parity.config.ts` | the mockup's numbers; any card view carrying its own shadow; the hand shade's canvas, paint order and rebuild on a resize; the felt's shadow against the mockup's `.card` under the same light, and a hand card's on the card beneath (the `hand` region) | Docker + a built web bundle for the spec | ~1s / ~70s / ~1 min |
+| A table card's shadow | `tests/ui-rules/cardShadows.test.ts`, `tests/native/{tableCardShadows,handShadeWiring,handShadeRebuild}.test.tsx`, then `tests/e2e/cardShadowParity.spec.ts` and `mockupParity.spec.ts`'s `rest` alone, and `mockupParityBomb{Skia,Fallback}.spec.ts`, under `tests/e2e/playwright.parity.config.ts` | the mockup's numbers; any card view carrying its own shadow; the card shade's canvas, the hand's and pile's paint order and rebuild on a resize; the felt's shadow against the mockup's `.card` under the same light, a hand card's on the card beneath (the `hand` region) and a pile card's (the bomb's `pile` region) | Docker + a built web bundle for the spec | ~1s / ~70s / ~1 min |
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | under 15 min warm, held by its gate; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
-| The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
+| The ticket loop (`tools/loop/`) | `node --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
 folds in and self-skips without `DATABASE_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
@@ -98,7 +98,10 @@ that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branc
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
-and 3 when some are still going: then run the same command again. It returns before the default
+and 3 when some are still going: then run the same command again. With `--pr <n>` a passed run is
+also 1 when its over-budget list (`tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`) names a
+test file that pull request adds or changes: rule 46's land gate, which the supervisor applies too
+(`tools/loop/ciVerdict.ts`). It returns before the default
 Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
 --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
 `…actions/runs|check-runs` are refused because a device run
@@ -138,9 +141,9 @@ the Chromium specs walk, so a photograph and a web run are of the same state; ad
 not in a spec. `CAPTURE_STATES` puts the lamp on each seat (`tests/e2e/lampSeats.spec.ts`);
 `SEAT_COUNT_STATES` shrinks the hands and puts a seat out, the deal first
 (`tests/e2e/seatsDoNotMove.spec.ts`); `LINK_STATES` holds the online table with the viewer's link
-down. The capture screen lists all three, in a development build or one built with
+down; `MOMENT_STATES` lands a bomb as the link opens. The capture screen lists all four, in a development build or one built with
 `EXPO_PUBLIC_E2E_FAST`, where `murlan://capture?state=<id>` opens one. The `ios.yml` felt shard
-photographs `lamp-bottom`, `pile-right`, `play-right-landed` (a play flown in from the right seat) and `held` with `.maestro/captures.yaml` and uploads them as
+photographs `lamp-bottom`, `pile-right`, `play-right-landed` (a play flown in from the right seat), `bomb-landed` (the flare, shot without waiting) and `held` with `.maestro/captures.yaml` and uploads them as
 `ios-captures`: fetch that before asking the owner. Otherwise open `/capture`, pick a
 state, hold landscape, and ask for it verbatim: *"send one landscape screenshot of each state:
 `lamp-bottom`, `lamp-right`, `lamp-top`, `lamp-left`, `pile-right`, `play-right-landed`, named after its state."*
@@ -458,7 +461,7 @@ the spec count, not the colour).
 ## The loop is a second product, with its own gate
 
 `tools/loop/` — supervisor, gate, picker, workspace tools — has its own suite
-(`tools/loop/tests/`, run with `npm run loop:test`) that shares nothing with the game's `npm
+(`tools/loop/tests/`, which `ci.yml`'s `harness` job runs) that shares nothing with the game's `npm
 test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs: a diff confined to
 `tools/loop/` (plus a short list of shared scripts) sets `harness=true, app=false`; anything else
 sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) set **both**, since
@@ -473,7 +476,7 @@ loop-only change. Beside it, `harness-windows` runs every loop test file with a 
 `win32` on a Windows runner and fails if any test in them skips: Linux skips those tests, so this
 is the only place they run.
 
-**Run `npm run loop:test` from the repo root, never `npm --prefix tools/loop`** — its tests read
+**Run a loop test from the repo root, never through `npm --prefix tools/loop`** — its tests read
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
@@ -484,12 +487,18 @@ every hook):
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
-  replaces with `await-run.mjs`.
+  replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
+  attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
+  resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
+  created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and
+  an added `ready-for-agent`, `ci-flake` or `main-red` (rule 33).
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
-- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewer has
-  run (rule 29). There is no LAND at the round cap: the ticket goes to the owner.
+- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND`, posted by `gh issue comment` or
+  `gh api …/issues/<n>/comments`, until that round's own reviewer has run (rule 29), and whenever
+  the transcript the payload names cannot be read; a payload naming none is allowed with a warning. There is no LAND at the round cap: the ticket goes to the owner.
 
 ## Owner decisions
 

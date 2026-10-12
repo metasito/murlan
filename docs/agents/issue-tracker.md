@@ -19,12 +19,13 @@ every `tools/loop/brief.mjs` brief keep only those authors' (`tests/tooling/issu
 | `wayfinder:research` / `prototype` / `grilling` / `task` | A child of a wayfinder map | route `wayfinder` |
 | `wayfinder:map` | The map issue itself | never routed |
 | `ready-for-human` / `needs-info` / `rejected` | The owner's; wins over `ready-for-agent`. `rejected` stays open (`docs/BRIEF.md`) | owner |
-| `deferred` | Decided against for now; the owner can lift it | owner |
+| `deferred` | Decided against for now; the owner can lift it. Wins over `ready-for-agent` | owner, never named as waiting |
 | `in-progress` | Claimed | skipped, unless *stranded* (below) |
 | `blocked` | Ready and approved, but waiting on something external — a dead CI, an unreleased dependency | skipped |
 | `size:XS` … `size:XL` | A promise about the diff; the supervisor sets the session's turn budget from it | — |
 | `loop` | The loop's own machinery: `tools/loop`, the supervisor, its guards | — |
-| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | — |
+| `main-red` | Filed by the supervisor when main's CI is red (`tools/loop/mainHealth.ts`); closed by the same module once a later `ci.yml` run on main is green | ranked first |
+| `ci-flake` | A test that fails CI intermittently; the owner's to add, never a loop session's (`tools/loop/guard-bash.mjs` refuses it) | ranked with `main-red` |
 | `soak` | Filed by the nightly soak (`.github/workflows/soak.yml`) | — |
 | `device-run` | Filed by a red scheduled `ios.yml` or `maestro.yml` run (`tools/ci/report-device-run.sh`), one open per workflow; closed by hand once diagnosed | — |
 | `gauntlet` | A piece in a gauntlet round, critiqued blind against a named bar | — |
@@ -72,20 +73,22 @@ and the merge to the supervisor. `triage` and `wayfinder` go through `/triage` a
 (rule 27), which run `mattpocock-skills:triage` and `mattpocock-skills:wayfinder`; those skills own
 their procedures, and the command files carry only this repo's specifics.
 `mattpocock-skills:implement` is not used: its closing full-suite run contradicts rule 2, so
-`/queue` calls `mattpocock-skills:tdd` and `code-review` directly. Nothing in that pack picks a
+`/queue` calls `mattpocock-skills:tdd` directly and reviews through `node tools/loop/brief.mjs review`. Nothing in that pack picks a
 ticket here: its frontier query drops candidates on assignee, and every session authenticates as
 the same GitHub account.
 
 - **Pick** — `node tools/loop/next-ticket.mjs`, the single picker (rule 22). `--all` lists the
   unblocked implement frontier in pick order; a bare issue number inspects that ticket without
   picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
-  tickets first (`in-progress`, an open pull request, no worktree on this machine: a run whose
-  supervisor died between CI rounds), then a `main-red` issue, then the oldest in the Launch
+  tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
+  branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
+  owner sent back), then a `main-red` or `ci-flake` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
   the comments, open blockers, any open pull request, whether it is takeable, and the claim
-  commands when it is. With nothing takeable, its handoff line names the owner's issues the loop
-  is waiting on, the Launch milestone's first.
+  commands when it is. With nothing takeable, its handoff line names the owner's live asks
+  (`ready-for-human` or `needs-info`, never `deferred`), the Launch milestone's first, then the
+  newest.
 - **Claim** (rule 22). For `/queue`: `npm run queue:claim -- <n> "<title>"` — `.claude/commands/queue.md`'s
   phase A step 4 covers what it does. For `/triage` and `/wayfinder`: the label and comment the picker
   prints, then re-read the issue (rule 25); stand down for an older claim, per rule 22. The comment
@@ -142,8 +145,9 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 - **Name the invariant *and* its enforcement.** "`CARD_W` is declared once, and
   `tests/ui-rules/layoutConstantsPinned.test.ts` source-scans for a second declaration" says both
   what not to do and what will catch it.
-- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rules 3 and 5
-  leave the slow suites to the agent's judgement, and you have read the change coming; it has not.
+- **Name the checks in two slots: the loop, and the gate.** `docs/agents/RULES.md` rule 3 has the
+  agent run only the tests its change adds or edits, leaving the covering suites to CI, and rule 5
+  says when a browser spec needs a rebuild. You have read the change coming; it has not.
 
   ```markdown
   ## Checks
@@ -163,10 +167,10 @@ Eight sections, in this order. Drop any that would be empty — an empty heading
 - **A box a loop session is refused cannot be `ready-for-agent`.** The permission classifier
   refuses a loop session's edits to `.claude/settings.json` as self-modification. Such a box is
   the owner's: label the ticket `ready-for-human`, or move the box into a ticket of its own that is.
-- **Scope the ticket to an area, not to a list.** The queue fixes what it meets in the files and
-  the defect class the ticket names, and adds a box for each (`queue.md` phase C). So
-  `## Not this ticket` names only work another issue owns or a decision not yet made — never a
-  same-area defect.
+- **Write a same-area defect into the Definition of done.** The queue fixes only defects in the
+  lines its diff changes (`queue.md` phase C) and files no agent work, so a defect in the ticket's
+  area that the diff need not touch gets a box of its own, or nobody fixes it.
+  `## Not this ticket` names only work another issue owns or a decision not yet made.
 - **Check every prescribed form against what already pins the current one.** Grep the tests and
   `git log -S` for the command, pattern or path you tell the agent to use; a form a test forbids
   leaves the session nothing to do but park. Where unsure, state the intent and let the agent pick.
@@ -198,8 +202,8 @@ past the part that mattered.
   search.
 - **Link the primary source; never paraphrase it** — a prototype URL, an ADR, a spec — and say
   which part to read. A paraphrase is a second copy that goes stale.
-- **40–80 lines.** Longer is a spec, not a ticket: split it and let the blocking edges carry the
-  order.
+- **40–80 lines.** Longer is a spec, not a ticket: propose the split as `ready-for-human` tickets
+  for the owner, the blocking edges carrying the order.
 - **One `size:*` label is a promise about the diff**, not about the reading. A ticket whose body
   needs a research detour is not `size:S`, however small the edit turns out to be.
 

@@ -460,6 +460,24 @@ describe("runRecap", () => {
   test("a run with nothing parked has no needs-you heading", () => {
     assert.ok(!runRecap({ ...run, tickets: [] }, tPlain).join("\n").includes("needs you"));
   });
+
+  test("no open Launch tickets is said, and a known or unread count is not", () => {
+    assert.match(runRecap({ ...run, launch: 0 }, tPlain).map(strip).join("\n"), /no open Launch tickets: the picker takes the oldest first/);
+    for (const launch of [4, null, undefined]) {
+      assert.ok(!runRecap({ ...run, launch }, tPlain).join("\n").includes("Launch"), String(launch));
+    }
+  });
+
+  test("a size whose turn cap is under twice its busiest process is said, and one with room is not", () => {
+    const headroom = [
+      { size: "size:S", most: 170, cap: 320, short: true },
+      { size: "size:M", most: 90, cap: 505, short: false },
+    ];
+    const out = runRecap({ ...run, headroom }, tPlain).map(strip).join("\n");
+    assert.match(out, /turn cap under 2× the busiest process: size:S busiest 170, cap 320/);
+    assert.doesNotMatch(out, /size:M/);
+    assert.doesNotMatch(runRecap(run, tPlain).map(strip).join("\n"), /turn cap/);
+  });
 });
 
 describe("keybar", () => {

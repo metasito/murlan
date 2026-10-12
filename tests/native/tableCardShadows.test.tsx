@@ -155,7 +155,7 @@ describe('a card view off the felt', () => {
     await baking.unmount();
   });
 
-  it("casts a hand card's shadow as the Skia hand shade does where the web felt is still baking, and no other card's", async () => {
+  it("casts a hand or pile card's shadow as the Skia card shade does where the web felt is still baking, and no other card's", async () => {
     const shade = `-3px 7px ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`;
     const face = card('7', 'clubs');
     const shadowOf = async (rectKey: string, faceDown = false) => {
@@ -170,7 +170,8 @@ describe('a card view off the felt', () => {
     };
     expect(await shadowOf(`hand:${face.id}`)).toContain(shade);
     expect(await shadowOf(`hand:${face.id}`, true)).toContain(shade);
-    expect(await shadowOf(`pile:${face.id}`)).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
-    expect(await shadowOf(`pile:${face.id}`)).not.toContain(`${CardShadow.cast.blur}px`);
+    expect(await shadowOf(`pile:${face.id}`)).toContain(shade);
+    expect(await shadowOf(`deal:${face.id}`)).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
+    expect(await shadowOf(`deal:${face.id}`)).not.toContain(`${CardShadow.cast.blur}px`);
   });
 });

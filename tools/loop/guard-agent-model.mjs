@@ -1,6 +1,6 @@
 /**
- * PreToolUse deny for Agent/Task inside a loop session: a dispatch with no `model` inherits the
- * session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. Also denies a
+ * PreToolUse deny for Agent/Task inside a loop session: a dispatch with no `model` or no `effort`
+ * inherits the session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. Also denies a
  * dispatch that claims to be one of `brief.mjs`'s kinds without starting with its exact output.
  *
  * Exit 0 always. stdout carries the deny, or nothing.
@@ -17,6 +17,9 @@ function denial(payload) {
   const input = payload.tool_input ?? {};
   if (!input.model) {
     return "This dispatch names no model. Add `model` (see rule 29 of docs/agents/RULES.md) and dispatch it again.";
+  }
+  if (!input.effort) {
+    return "This dispatch names no effort, so it inherits the session's. Add `effort` (rule 29 of docs/agents/RULES.md) and dispatch it again.";
   }
   const prompt = unix(String(input.prompt ?? ""));
   const header = parseHeader(prompt);

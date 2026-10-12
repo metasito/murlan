@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import NativeBudgetReporter, { BUDGET_S, budgetLines, CI_SLOWER, EXCEPTIONS, HARD_FACTOR, MAX_EXCEPTION_S, OUTSIDE_S, overBudget } from "../../tools/ci/native-budget.mjs";
@@ -12,7 +13,9 @@ const exceptions: Record<string, { seconds: number; why: string }> = EXCEPTIONS;
 const projects = (createRequire(import.meta.url)("../../jest.config.js") as { projects: { displayName: string }[] }).projects.map((p) => p.displayName);
 
 function run(files: Record<string, number[]>, failedSuites = 0, runtimeS: Record<string, number> = {}) {
-  const reporter = new NativeBudgetReporter({ rootDir: repoRoot });
+  const dir = mkdtempSync(path.join(tmpdir(), "native-budget-"));
+  const listFile = path.join(dir, "over-budget.json");
+  const reporter = new NativeBudgetReporter({ rootDir: repoRoot }, { out: listFile });
   for (const [key, durations] of Object.entries(files)) {
     const [project, file] = key.split(/:(.*)/s);
     reporter.onTestResult(
@@ -32,7 +35,9 @@ function run(files: Record<string, number[]>, failedSuites = 0, runtimeS: Record
   } finally {
     process.stdout.write = write;
   }
-  return { error: reporter.getLastError(), out };
+  const listed = existsSync(listFile) ? JSON.parse(readFileSync(listFile, "utf8")) : undefined;
+  rmSync(dir, { recursive: true, force: true });
+  return { error: reporter.getLastError(), out, listed };
 }
 
 const ms = (seconds: number) => seconds * 1000;
@@ -79,6 +84,28 @@ test("work moved out of the cases, into a beforeAll or the module body, is caugh
   assert.equal(soft.error, undefined);
   assert.match(soft.out, /::warning::ios:tests\/native\/tableNotices\.test\.tsx spent [0-9.]+s outside its cases/);
   assert.equal(run({ [key]: [ms(1)] }, 0, { [key]: OUTSIDE_S }).error, undefined);
+});
+
+test("a green run lists each file over budget on its cases, repo-relative, for the land gate; time outside its cases is not listed", () => {
+  const slow = "tests/native/tableNotices.test.tsx";
+  const cold = "tests/native/cardHitBox.test.tsx";
+  const { listed } = run({ [`ios:${slow}`]: [ms(BUDGET_S + 1)], [`android:${cold}`]: [ms(1)] }, 0, { [`android:${cold}`]: OUTSIDE_S + 2 });
+  assert.deepEqual(listed, [{ file: slow, seconds: BUDGET_S + 1, budget: BUDGET_S }]);
+  assert.deepEqual(run({ [`ios:${slow}`]: [ms(1)] }).listed, []);
+});
+
+test("each native shard uploads the list from the runner's temp directory, and a green shard without one is red", () => {
+  const prior = process.env.RUNNER_TEMP;
+  process.env.RUNNER_TEMP = path.join(repoRoot, "runner-temp");
+  try {
+    assert.equal(new NativeBudgetReporter({ rootDir: repoRoot }).out, path.join(repoRoot, "runner-temp", "over-budget.json"));
+  } finally {
+    if (prior === undefined) delete process.env.RUNNER_TEMP;
+    else process.env.RUNNER_TEMP = prior;
+  }
+  const ci = readFileSync(path.join(repoRoot, ".github/workflows/ci.yml"), "utf8");
+  const native = /^ {2}native:\n([\s\S]*?)(?=^ {2}\S)/m.exec(ci.replace(/^\s*#.*\n/gm, ""))?.[1] ?? "";
+  assert.match(native, /upload-artifact@\S+.*\n\s+with:\n\s+name: over-budget-native-\$\{\{ matrix\.shard \}\}\n\s+path: \$\{\{ runner\.temp \}\}\/over-budget\.json\n\s+if-no-files-found: error\n/);
 });
 
 test("the budget cannot be loosened past what was measured, nor an exception past a minute, nor the exceptions multiplied", () => {

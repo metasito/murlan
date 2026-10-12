@@ -22,10 +22,17 @@ describe("a loop dispatch names its model", () => {
       assert.match(out.hookSpecificOutput.permissionDecisionReason, /rule 29 of docs\/agents\/RULES\.md/);
     });
 
-    test(`${tool} with a model is allowed`, () => {
-      assert.equal(run(dispatch(tool, { prompt: "y", model: "sonnet" })), "");
+    test(`${tool} with a model and an effort is allowed`, () => {
+      assert.equal(run(dispatch(tool, { prompt: "y", model: "sonnet", effort: "medium" })), "");
     });
   }
+
+  test(`a dispatch without an effort is denied, naming it`, () => {
+    const out = run(dispatch("Agent", { prompt: "y", model: "opus" }));
+    assert.match(out, /"deny"/);
+    assert.match(out, /effort/);
+    assert.equal(run(dispatch("Agent", { prompt: "y", model: "opus" }), false), "");
+  });
 
   test("an empty model is no model", () => {
     assert.match(run(dispatch("Agent", { prompt: "y", model: "" })), /"deny"/);
@@ -42,7 +49,7 @@ describe("a loop dispatch names its model", () => {
 
 const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
 const agent = (description: string, prompt: string, extra: object = {}) =>
-  ({ tool_name: "Agent", tool_input: { description, prompt, model: "sonnet" }, ...extra });
+  ({ tool_name: "Agent", tool_input: { description, prompt, model: "sonnet", effort: "medium" }, ...extra });
 
 describe("a loop dispatch of a brief passes it verbatim", () => {
   const exact = brief("completeness", { n: 42, worktree: WT });

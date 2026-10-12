@@ -46,6 +46,10 @@ reporting only Important findings after the first review.
 4. **The picker works toward launch.** Its order is: stranded, then `main-red`, then the Launch
    milestone (which only the owner fills), then the rest. With nothing takeable, it names the
    owner's open asks.
+   - **Amended 2026-10-12** (`docs/agents/loop-audit-2026-10-12.md` F2): `ci-flake` ranks with
+     `main-red`. With Playwright retries gone, one flake reddened about one run in four, and its
+     ticket (#1528) sat behind ordinary work. Only the owner adds `ci-flake`, so the loop's own
+     filings cannot jump the queue.
 
 ## Consequences
 

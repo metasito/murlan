@@ -32,6 +32,15 @@ appId: "${MAESTRO_APP_ID}"
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: play-right-landed
+- openLink: "murlan://capture?state=bomb-landed"
+- waitForAnimationToEnd:
+    timeout: 3000
+# The link's own landing is over by the time openLink settles. The settle cap keeps the shot inside
+# FLARE_BRIEF_MS of the rethrow's landing (components/table/moments.tsx).
+- tapOn:
+    text: "Throw the pile again"
+    waitToSettleTimeoutMs: 800
+- takeScreenshot: bomb-landed
 - openLink: "murlan://capture?state=held"
 - waitForAnimationToEnd:
     timeout: 3000

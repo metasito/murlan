@@ -41,6 +41,7 @@ const rowOf = (x: any) => ({
   park_reason: parkReasonOf(x.outcome, x.why),
   head: x.head ?? null,
   handoff: x.handoff ?? null,
+  park_failed: x.parkFailed ?? null,
 });
 
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
@@ -88,6 +89,8 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
   rerun: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
+  ledgerRows: () => ledger,
+  repark: () => ({ failed: [], why: null }),
   ...over,
 });
 
@@ -735,6 +738,34 @@ describe("runOnce", () => {
     const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
     const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
+  });
+
+  test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const picked: number[] = [];
+    const picker = () => {
+      picked.push(1);
+      return "ROUTE\timplement\t77\tother\tsize:S\nSTATUS\timplement:3\ttriage:0\twayfinder:0\towner:1\tlaunch:0\n";
+    };
+    const route = (labels: string[] | null) =>
+      nextRoute(42, null, {
+        read: () => ({ onTicket: false, phase: "A" }),
+        facts: () => ({ title: "t", url: "", size: "size:S", labels, reviewRounds: 1, ciRounds: 0 }),
+        ledger,
+        picker,
+      } as never);
+    for (const labels of [["in-progress", "ready-for-human"], ["size:S"], ["in-progress", "deferred"]]) {
+      const r: any = route(labels);
+      assert.deepEqual([r.skill, r.number, r.resuming], ["implement", 77, false], labels.join(","));
+    }
+    assert.equal(picked.length, 3);
+    const unread: any = route(null);
+    assert.deepEqual([unread.number, unread.resuming, unread.phase], [42, true, "A"], "an unreadable tracker keeps resuming");
+    // An overloaded hold of a session the API failed before its phase-A claim: still ours, and its
+    // kept worktree is waiting for it.
+    const unclaimed: any = route(["ready-for-agent", "size:S"]);
+    assert.deepEqual([unclaimed.number, unclaimed.resuming, unclaimed.phase], [42, true, "A"], "a pre-claim hold keeps resuming");
+    assert.equal(picked.length, 3);
   });
 
   test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
@@ -1463,6 +1494,68 @@ describe("the run recap", () => {
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
+
+  // Only `Date` is mocked: main's own tick stays real, as it does across a standby.
+  test("books a standby as asleep, not working", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const TICK = 10;
+    let recap = "";
+    let passes = 0;
+    const book = {
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
+      record: () => {},
+      close: (_id: string, _line: string, text: string) => void (recap = text),
+    };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ > 0,
+      spawn: async () => {
+        t.mock.timers.setTime(Date.now() + 2 * 3_600_000 + TICK);
+        await new Promise((r) => setTimeout(r, 5 * TICK));
+        return (io() as any).spawn();
+      },
+    };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t", tick: TICK } as never);
+    assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00\n.*asleep 2:00:00/);
+  });
+
+  test("says so when the picker read no open Launch tickets", async () => {
+    const recapFor = async (launch: number) => {
+      let text = "";
+      let passes = 0;
+      const book = {
+        totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+        tickets: [],
+        record: () => {},
+        close: (_id: string, _line: string, t: string) => void (text = t),
+      };
+      const pick = () => ({ ...(io() as any).pick(), queue: { implement: 1, triage: 0, wayfinder: 0, launch } });
+      const spy = { ...(io() as any), stopFile: () => passes++ > 0, pick };
+      const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+      await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+      return text;
+    };
+    assert.match(await recapFor(0), /no open Launch tickets/);
+    assert.doesNotMatch(await recapFor(2), /Launch/);
+  });
+
+  test("names a size this run's busiest process left short of turn headroom", async () => {
+    let text = "";
+    let passes = 0;
+    const book = {
+      rows: [{ n: 1, size: "size:S", turns: 300, outcome: "handoff" }],
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
+      record: () => {},
+      close: (_id: string, _line: string, t: string) => void (text = t),
+    };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0 };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+    assert.match(text, /turn cap under 2× the busiest process: size:S busiest 300/);
+  });
 });
 
 describe("a handoff", () => {
@@ -1816,6 +1909,12 @@ describe("a session the API failed", () => {
     });
   }
 
+  test("a session stalled mid-retry is overloaded", async () => {
+    const stalled = async () => ({ ...(await died(null)()), status: "stalled", lastFact: "api_retry" });
+    const r = await runOnce(io({ spawn: stalled, pushedPr: () => null }));
+    assert.equal(r.outcome, "overloaded");
+  });
+
   test("a 429 from a spent usage window (#1074's) is a refusal, waited out to its reset", async () => {
     const spent = async () => ({ ...(await died({ isError: true, apiStatus: 429 })()), blocked: true, blockedUntil: 1789000000000 });
     const r = await runOnce(io({ spawn: spent, pushedPr: () => null }));
@@ -1865,6 +1964,48 @@ describe("a session the API failed", () => {
     await night({ stopFile: () => spawns >= 3, pick: () => ticket, spawn: async () => (spawns++, died(overloaded)()) }, ledger);
     assert.deepEqual(ledger.map((r) => r.outcome), ["overloaded", "overloaded", "overloaded"]);
     assert.equal(ticketTally(42, ledger).handoffsThisRound, 0);
+  });
+});
+
+// #1465's park ran 30 s after a wake with no network: the ledger said parked, the issue kept its
+// claim, and nothing ever tried again (F6).
+describe("a park that never reached the tracker", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  const died = async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: "C", declared: null });
+  const labelDown = () => ({ ok: false, failed: ["label"] });
+
+  test("is recorded with the steps that failed", async () => {
+    const ledger: any[] = [];
+    await runOnce(io({ spawn: died, pushedPr: () => null, park: labelDown }, ledger));
+    assert.deepEqual(ledger.filter((r) => r.outcome === "parked").map((r) => r.park_failed), [["label"]]);
+  });
+
+  test("is applied again at the start of the next pass, once, and a restart does not repeat it", async () => {
+    const ledger: any[] = [];
+    const reparked: [number, string[]][] = [];
+    let picks = 0;
+    const night = () =>
+      main({
+        io: io(
+          {
+            pick: () => (picks++ === 0 ? (io() as any).pick() : { skill: "handoff", number: 0, title: "queue empty" }),
+            spawn: died,
+            pushedPr: () => null,
+            park: labelDown,
+            repark: (n: number, steps: string[]) => (reparked.push([n, steps]), { failed: [], why: null }),
+          },
+          ledger,
+        ) as never,
+        book: book(),
+        screen: screen(),
+        install: () => {},
+        runId: "t",
+      });
+    await night();
+    assert.deepEqual(reparked, [[42, ["label"]]]);
+    await night();
+    assert.deepEqual(reparked, [[42, ["label"]]], "a park the tracker received is not applied again");
   });
 });
 
@@ -1952,6 +2093,19 @@ describe("an unrecognised stop is diagnosed, once per head", () => {
     assert.equal(r.outcome, "parked");
     assert.equal(diagnoses, 0);
     assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
+  });
+
+  test("a diagnosis the API refused holds the ticket, and the next stop on that head is diagnosed", async () => {
+    const ledger: any[] = [];
+    let diagnoses = 0;
+    const down = async () => (
+      diagnoses++,
+      { ok: false, apiDown: true, error: "it could not reach the API", run: { result: { cost: 0, turns: 1 }, ms: 1, log: "l", phases: {} } }
+    );
+    const first = await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
+    assert.equal(first.outcome, "overloaded");
+    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
+    assert.equal(diagnoses, 2, "a head the API kept the diagnosis from reading is not diagnosed");
   });
 
   test("a failed diagnosis parks with the original reason", async () => {

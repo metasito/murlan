@@ -4,7 +4,7 @@ import { readIssue } from "./brief.mjs";
 import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
-const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected"]);
+export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
 export const LAUNCH_MILESTONE = "Launch";
 function trusted(issueOrComment) {
   return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
@@ -34,7 +34,7 @@ export function sizeOf(issue) {
  * wins over `ready-for-agent`: releasing a ticket takes `ready-for-agent` off (RULES.md rule 28),
  * but one left carrying both must still not be taken.
  *
- * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string, milestone?: { title: string } | null }} Issue
+ * @typedef {{ number: number, title: string, labels: { name: string }[], author_association?: string, milestone?: { title: string } | null, _stranded?: boolean }} Issue
  * @param {Issue} issue
  */
 export function routeOf(issue) {
@@ -51,12 +51,12 @@ export function routeOf(issue) {
 const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder" };
 
 /**
- * A ticket whose supervisor died between CI rounds.
+ * A ticket with its own pushed branch that nothing on this machine is working.
  *
- * A red round is handed back in the supervisor's own memory, so a fresh one runs the picker — which
- * skips `in-progress` — and #1043 now holds a claim, an open red pull request and a log nothing will
- * read. The three facts together are the whole test: claimed, pushed, and no worktree on this
- * machine standing for it.
+ * Two shapes reach it: a supervisor that died between CI rounds leaves `in-progress` on, and a park
+ * the owner sent back leaves only `ready-for-agent` beside the pull request the park kept open. The
+ * test is the same for both: claimed or implement-routed, pushed, and no worktree on this machine
+ * standing for it. Its own open pull request is then not a peer's claim.
  *
  * The worktree half is local by design. This loop runs on one machine, and `.worktrees/` is the only
  * evidence separating "a peer is working it right now" from "nobody is" — the one distinction that
@@ -65,7 +65,13 @@ const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder"
  * @param {Issue} issue @param {{openPr: boolean, liveWorktree: boolean}} evidence
  */
 export function stranded(issue, { openPr, liveWorktree }) {
-  return labelNames(issue).includes("in-progress") && openPr && !liveWorktree;
+  const ours = labelNames(issue).includes("in-progress") || routeOf(issue) === "implement";
+  return ours && openPr && !liveWorktree;
+}
+
+/** The Launch milestone's open issues, whatever their labels: zero means launch-first ordering orders nothing. */
+export function launchOpen(/** @type {Issue[]} */ openIssues) {
+  return openIssues.filter((i) => i.milestone?.title === LAUNCH_MILESTONE).length;
 }
 
 /**
@@ -75,23 +81,31 @@ export function stranded(issue, { openPr, liveWorktree }) {
 export function classify(openIssues, io = realClassifyIo()) {
   /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[]}} */
   const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [] };
-  // Asked once, and only if an in-progress ticket is here at all: it costs a subprocess.
+  // Asked once, and only once a ticket has an open pull request: it costs a subprocess, and with no
+  // pull request no ticket can be stranded.
   let live;
+  const evidence = (issue) => {
+    const openPr = io.openPr(issue.number);
+    if (!openPr) return { openPr, liveWorktree: false };
+    if (live === undefined) live = io.liveWorktrees();
+    // `live === null` is git unreadable: every ticket reads as live, which fails closed.
+    return { openPr, liveWorktree: !live || live.has(issue.number) };
+  };
   for (const issue of openIssues) {
     const ls = labelNames(issue);
-    if (ls.includes("in-progress")) {
-      if (live === undefined) live = io.liveWorktrees();
-      // `live === null` is git unreadable: every ticket reads as live, which fails closed.
-      const evidence = { openPr: io.openPr(issue.number), liveWorktree: !live || live.has(issue.number) };
-      if (stranded(issue, evidence)) buckets.stranded.push(issue);
-      continue;
-    }
+    const claimed = ls.includes("in-progress");
     // `blocked` keeps `ready-for-agent`: the label carries a decision already
     // made, and taking it off to un-jam the queue is how that decision is lost.
-    if (ls.includes("blocked")) continue;
-    buckets[BUCKET[routeOf(issue)] ?? "owner"].push(issue);
+    if (!claimed && ls.includes("blocked")) continue;
+    const route = routeOf(issue);
+    if ((claimed || route === "implement") && stranded(issue, evidence(issue))) {
+      buckets.stranded.push({ ...issue, _stranded: true });
+      continue;
+    }
+    if (claimed) continue;
+    buckets[BUCKET[route] ?? "owner"].push(issue);
   }
-  // A red main first, then the Launch milestone, each oldest first. Never by size: that put every
+  // A red main or a CI flake first, then the Launch milestone, each oldest first. Never by size: that put every
   // self-filed size:S follow-up at the head.
   for (const b of [...new Set([...Object.values(BUCKET), "owner", "stranded"])]) buckets[b].sort((a, x) => rank(a) - rank(x) || a.number - x.number);
   // A branch already pushed and already reviewed is the cheapest work in the queue, and leaving it
@@ -156,8 +170,7 @@ function takeable(frontier, limit) {
     if (full.issue_dependencies_summary.blocked_by !== 0) continue;
     // A stranded candidate is exactly the shape `claimedElsewhere` refuses — its own open pull
     // request — and it reached the frontier because nothing on this machine is working it.
-    const isStranded = stranded(issue, { openPr: true, liveWorktree: false });
-    if (!isStranded && claimedElsewhere(issue.number, openPrsFor)) {
+    if (!issue._stranded && claimedElsewhere(issue.number, openPrsFor)) {
       process.stderr.write(`SKIP\t${issue.number}\tan open pull request already claims it\n`);
       continue;
     }
@@ -170,13 +183,18 @@ function takeable(frontier, limit) {
 
 /** @param {Issue} issue */
 export function rank(issue) {
-  if (labelNames(issue).includes("main-red")) return 0;
+  if (labelNames(issue).some((l) => l === "main-red" || l === "ci-flake")) return 0;
   return issue.milestone?.title === LAUNCH_MILESTONE ? 1 : 2;
 }
 
 /** The owner's open asks, as the handoff line names them: what the loop is waiting on. */
 export function waitingOn(owner, max = 8) {
-  const asks = owner.filter((i) => labelNames(i).some((l) => l === "ready-for-human" || l === "needs-info"));
+  const asks = owner
+    .filter((i) => {
+      const ls = labelNames(i);
+      return !ls.includes("deferred") && ls.some((l) => l === "ready-for-human" || l === "needs-info");
+    })
+    .sort((a, x) => rank(a) - rank(x) || x.number - a.number);
   return asks.length ? `nothing agent-takeable; waiting on you: ${asks.slice(0, max).map((i) => `#${i.number}`).join(", ")}` : "nothing agent-takeable";
 }
 
@@ -288,7 +306,8 @@ if (invokedDirectly) {
     `STATUS\timplement:${buckets.frontier.length}` +
     `\ttriage:${buckets.triage.length}` +
     `\twayfinder:${buckets.wayfinder.length}` +
-    `\towner:${buckets.owner.length}`,
+    `\towner:${buckets.owner.length}` +
+    `\tlaunch:${launchOpen(openIssues)}`,
   );
 
   if (chosen.ticket) {

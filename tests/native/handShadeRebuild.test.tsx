@@ -44,7 +44,7 @@ describe('the hand shade on a resize', () => {
     const at = { x: 0, y: 0 };
     type Scale = { sx: number; sy: number; s: number };
     const table = (scale: Scale, handX: number) =>
-      ({ rects, handOrder, felt: { ...scale, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: handX, y: 0 }, seats: {} }) as unknown as CardTable;
+      ({ rects, handOrder, pileOrder: makeMutable<readonly string[]>([]), felt: { ...scale, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: handX, y: 0 }, seats: {} }) as unknown as CardTable;
     const shade = (scale: Scale, handX: number) => <HandShadeCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} cards={table(scale, handX)} ready />;
     // One build outlines the caster, the card below it, then the caster again as what covers its own shadow.
     const BUILD = ['230', '200', '230'];

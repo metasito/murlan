@@ -110,8 +110,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 3. The `CI-RED` comment's `on main:` line names the failures main's own latest CI run has too.
    They are not this diff's: fix their root cause here in a commit of its own, naming main's run
    in `FIX-NOTES`. `none` means every failure is this diff's.
-4. Fix what CI named, then run the suite it named as well as the usual check:
-   `npm run agent:check -- --also test:native` (or `loop:test`; `test` always runs).
+4. Fix what CI named, then run `npm run agent:check`.
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
    HEAD`). Then leave through **Leaving C**.
@@ -169,20 +168,20 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","w
 One reviewer reads the change; only a Blocking finding sends it back. `<base>` is `origin/main` in
 round 1, then the sha the previous round reviewed.
 
-1. **Wait for CI on HEAD** with `node tools/loop/await-run.mjs <run-id>`. A red run this change
-   caused is a Blocking finding; a red run it did not cause is ruled out (rule 37) and named in the
-   verdict.
-   ```sh
-   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
-   gh run view <databaseId> --log-failed | tail -40       # if failure
-   ```
-2. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
+1. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
    starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
    it a fix round: the `fix` kind, labelled `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's
    Blocking findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
+   ```
+2. **Then wait for CI** with `node tools/loop/await-run.mjs --pr=<pr> <run-id>`; the verdict needs
+   both. A red this change caused is Blocking; one it did not may be rerun once, the verdict
+   naming the test and attempt.
+   ```sh
+   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
+   gh run view <databaseId> --log-failed | tail -40
    ```
 3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
    in a fix round, which the cap does not count):
@@ -194,7 +193,8 @@ round 1, then the sha the previous round reviewed.
    ```
 4. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
-   LAND when the report has no Blocking finding and CI is green on this head; otherwise
+   LAND when the report has no Blocking finding and CI is green on this head, or its only red is
+   one already rerun once and named; otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
    `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
 
@@ -202,7 +202,8 @@ round 1, then the sha the previous round reviewed.
 exits non-zero: fix nothing, say on the issue which Blocking finding is still open, and stand down.
 
 **A round is a process.** Otherwise say `PHASE C`, fix exactly the Blocking findings (no
-sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through phase C's steps 1–4.
+sweep for siblings, no nits) and list each in `FIX-NOTES`, then leave through **Leaving C**. A
+product decision goes to the owner (**Never stall**), never into `FIX-NOTES`.
 A failure only a local run showed, which neither the review nor CI named, is ruled out (rule 37)
 and named in `FIX-NOTES`. Then hand off:
 

@@ -416,25 +416,34 @@ const hhmm = (ms, utc) => {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 };
 
+/** @param {{size: string, most: number, cap: number}} h one of `turnHeadroom`'s short sizes */
+export const shortOfTurns = (h) => `turn cap under 2× the busiest process: ${h.size} busiest ${h.most}, cap ${h.cap}`;
+
 /**
  * The run for someone who did not watch it: what needs them first, then where the time went.
  * One text for the `r` key, a long wait, the exit, and the top of `run-*.md`.
  *
  * @param {{startedAt: number, now: number, totals: object, tickets: {number: number, outcome: string, why?: string}[],
- *   ciMs: number, waitMs: number, utc?: boolean}} run
+ *   ciMs: number, waitMs: number, asleepMs?: number, launch?: number|null, utc?: boolean,
+ *   headroom?: {size: string, most: number, cap: number, short: boolean}[]}} run
  */
-export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, utc = false }, t) {
+export function runRecap({ startedAt, now, totals, tickets, ciMs, waitMs, asleepMs = 0, launch = null, utc = false, headroom = [] }, t) {
   const wall = now - startedAt;
   const head = (text) => row([{ t: ` ${clamp(text, t.width - 1)}`, c: "text", b: true }], null, t);
   const stuck = tickets.filter((r) => r.outcome !== "landed" && r.outcome !== "closed");
-  const working = Math.max(0, wall - ciMs - waitMs);
+  const working = Math.max(0, wall - ciMs - waitMs - asleepMs);
+  // A row of its own: on the line above it is clamped to the width and loses its figure.
+  const asleep = asleepMs > 0 ? [stepRow({ label: "", detail: `asleep ${elapsed(asleepMs)}, in standby`, state: "skipped" }, t)] : [];
   return [
     head(`run   ${hhmm(startedAt, utc)} → ${hhmm(now, utc)} · ${elapsed(wall)}`),
     row([{ t: ` ${clamp(`${plural(totals.tickets, "ticket")} · ${totals.landed} landed · ${totals.parked} parked · ${money(totals.cost)}`, t.width - 1)}`, c: "muted" }], null, t),
+    ...(launch === 0 ? [row([{ t: ` ${clamp("no open Launch tickets: the picker takes the oldest first", t.width - 1)}`, c: "muted" }], null, t)] : []),
+    ...headroom.filter((h) => h.short).map((h) => row([{ t: ` ${clamp(shortOfTurns(h), t.width - 1)}`, c: "muted" }], null, t)),
     ...(stuck.length ? ["", head("needs you"), ...stuck.map((r) => stepRow({ label: `#${r.number}`, detail: r.why ?? r.outcome, state: "failed" }, t))] : []),
     "",
     head("where the time went"),
     stepRow({ label: "", detail: `working ${elapsed(working)} · CI ${elapsed(ciMs)} · waiting ${elapsed(waitMs)}`, state: "skipped" }, t),
+    ...asleep,
   ];
 }
 
