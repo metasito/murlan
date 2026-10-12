@@ -5,8 +5,9 @@
  *
  * Usage: node tools/loop/brief.mjs <kind> <n> <worktree> [base]
  */
+import { spawnSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { TRUSTED_AUTHORS } from "./loop-derive.mjs";
+import { dodCheckFor, ticketComments, TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
 
 export const KINDS = ["scope", "completeness", "review", "fix"];
 
@@ -28,7 +29,26 @@ const LABELS =
   "an untested branch or a style preference is a Nit. A defect this change did not introduce is " +
   "Pre-existing. Every finding names a file:line.";
 
-const diff = (wt, base) => `\`git -C ${wt} diff ${base}...HEAD\``;
+/**
+ * A later round's delta, net of the main a merge brought in: `base` merged with that main, diffed
+ * to HEAD, leaves only the fix and the merge's own resolution. It reads the worktree, so the
+ * guard's copy of a brief matches the CLI's only while HEAD has not moved between the two.
+ */
+function laterDelta(wt, base) {
+  const git = (...args) => spawnSync("git", ["-C", wt, ...args], { encoding: "utf8" });
+  const newest = git("rev-list", "--first-parent", "--merges", "-n", "1", `${base}..HEAD`).stdout?.trim();
+  if (!newest) return `\`git -C ${wt} diff ${base}..HEAD\``;
+  const main = git("rev-parse", "--verify", "-q", `${newest}^2`).stdout?.trim();
+  const merged = main ? git("merge-tree", "--write-tree", base, main) : null;
+  if (merged?.status === 0) return `\`git -C ${wt} diff ${merged.stdout.split("\n")[0]} HEAD\``;
+  return (
+    `\`git -C ${wt} diff ${base}..HEAD\`, with ` +
+    `\`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${base}..HEAD\` for a merge's own ` +
+    "edits (what a merge brought in from main is not the fix)"
+  );
+}
+
+const diff = (wt, base) => (base === "origin/main" ? `\`git -C ${wt} diff ${base}...HEAD\`` : laterDelta(wt, base));
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
@@ -90,12 +110,14 @@ const BODIES = {
         "correct? Read the code it calls and every caller of what it changes."
       : `Review only the fix ${diff(worktree, base)} on issue #${n} (${issue(n)}): is each earlier ` +
         "Blocking finding listed after this brief fixed, and does the fix break anything? Read every " +
-        "caller of what it changes. Report Blocking findings only.") + LABELS,
+        "caller of what it changes.") +
+    " The Definition-of-done boxes ticked `n/a: <reason>` are listed after this brief: one whose reason " +
+    "is false is an unmet box." +
+    LABELS,
   fix: ({ n, worktree, base }) =>
     `A CI fix round on issue #${n}. The fix is ${diff(worktree, base)}; the failure it answers is ` +
     `the newest \`CI-RED\` comment in ${issue(n)}. Does it answer every failing test the CI-RED names, ` +
-    "without changing what the ticket asked for, and break nothing else? Report Blocking findings only." +
-    LABELS,
+    "without changing what the ticket asked for, and break nothing else?" + LABELS,
 };
 
 /** @param {string} kind @param {{n: number, worktree: string, base?: string}} opts */
@@ -111,11 +133,40 @@ export function parseHeader(prompt) {
   return m && KINDS.includes(m[1]) ? { kind: m[1], n: Number(m[2]), worktree: m[3], base: m[4] } : null;
 }
 
+/** Why the delta cannot be read from these arguments, or null when it can. */
+function unreadable(n, worktree, base) {
+  if (!new RegExp(`(^|/)\\${WORKTREE_DIR}/agent-${n}$`).test(worktree.replace(/\\/g, "/").replace(/\/+$/, ""))) {
+    return `the worktree must be ${WORKTREE_DIR}/agent-${n}, not ${worktree}`;
+  }
+  if (base && base !== "origin/main") {
+    const ancestor = spawnSync("git", ["-C", worktree, "merge-base", "--is-ancestor", base, "HEAD"], { stdio: "ignore" });
+    if (ancestor.status !== 0) {
+      return `${base} is not an ancestor of HEAD in ${worktree}: a rebase moved the branch, so the delta would carry the whole ticket and main`;
+    }
+  }
+  return null;
+}
+
+/** This head's `n/a` boxes, which follow a review brief, or why they cannot be read. */
+function naBoxes(n, worktree) {
+  const comments = ticketComments(n, worktree);
+  if (!comments) return `cannot read #${n}'s DOD-CHECK from the tracker`;
+  const head = spawnSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout?.trim();
+  if (!head) return `cannot read HEAD in ${worktree}`;
+  const na = dodCheckFor(comments, head, () => false)?.na ?? [];
+  return { text: `\nDefinition-of-done boxes ticked n/a at ${head.slice(0, 7)}:\n${na.join("\n") || "none"}\n` };
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [kind, n, worktree, base] = process.argv.slice(2);
   if (!KINDS.includes(kind) || !/^\d+$/.test(n ?? "") || !worktree) {
     process.stderr.write(`usage: node tools/loop/brief.mjs <${KINDS.join("|")}> <n> <worktree> [base]\n`);
     process.exit(2);
   }
-  process.stdout.write(brief(kind, { n: Number(n), worktree, base }));
+  const listed = unreadable(n, worktree, base) ?? (kind === "review" ? naBoxes(Number(n), worktree) : { text: "" });
+  if (typeof listed === "string") {
+    process.stderr.write(`brief: ${listed}\n`);
+    process.exit(2);
+  }
+  process.stdout.write(brief(kind, { n: Number(n), worktree, base }) + listed.text);
 }

@@ -60,7 +60,7 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
    `PHASE A`
 
    ```sh
-   npm run queue:pre                            # by-hand runs only: the loop has already run it
+   npm run queue:pre                            # by-hand runs only
    node tools/loop/next-ticket.mjs $ARGUMENTS
    ```
 
@@ -138,7 +138,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 
 ### Leaving C
 
-`git rev-list --count origin/main..HEAD` must be non-zero. Then, in this order:
+`git rev-list --count origin/main..HEAD` must be non-zero. Then:
 
 1. **The completeness check, once per ticket**: skipped when a `DOD-CHECK` follows the issue's
    newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent at `medium` effort whose
@@ -152,6 +152,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 3. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
    (`git rev-parse --short HEAD`), then every box:
    `- [x] <box> — <path>:<line> · <test path>:<line> · red: <its failure line before the fix>`.
+   The agent:check box cites nothing; a box with no code site says `n/a: <reason>`.
    A box you cannot close stays `- [ ]` with why: keep building or park it (**Never stall**).
 4. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
 
@@ -184,7 +185,7 @@ round 1, then the sha the previous round reviewed.
    gh run view <databaseId> --log-failed | tail -40
    ```
 3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
-   in a fix round, which the cap does not count):
+   in a fix round, under its own cap):
    ```
    REVIEW <sha>
    ## Blocking
@@ -211,7 +212,7 @@ and named in `FIX-NOTES`. Then hand off:
 LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}
 ```
 
-After a `LAND`, go straight on to phase E and F in this process.
+After a `LAND`, continue to E and F in this process.
 
 ## E — Land
 

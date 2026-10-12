@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, mergeCleared } from "../loop-gate.mjs";
+import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, dodVerdict, mergeCleared } from "../loop-gate.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -365,7 +365,7 @@ describe("a LAND is only as good as the report behind it", () => {
   const state = (extra: Record<string, unknown>) => ({
     onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
     changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
-    trackerReadable: true, reviewRounds: 1, why: "reviewed and cleared",
+    trackerReadable: true, reviewRounds: 1, fixHolds: 0, why: "reviewed and cleared",
     verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, handoff: null, review: null,
     ci: null, fix: false, ciRounds: 0, ...extra,
   });
@@ -386,6 +386,12 @@ describe("a LAND is only as good as the report behind it", () => {
     const past = pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS + 1 }));
     assert.equal(past.ok, false);
     assert.match(String(past.why), /past the cap/);
+  });
+
+  test("a round count nobody could take is refused, never read as zero", () => {
+    const v = pushVerdict(state({ review: { line: "REVIEW abc1234" }, reviewRounds: null }));
+    assert.equal(v.ok, false);
+    assert.match(String(v.why), /count the review rounds/);
   });
 
   test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
@@ -425,6 +431,27 @@ describe("the review-round cap", () => {
       assert.equal(v.ok, false, `reviewRounds ${String(reviewRounds)} allowed a round`);
       assert.match(v.why, /cannot reach the tracker/);
     }
+  });
+
+  test("CI fix rounds that hold have a cap of their own", () => {
+    assert.equal(roundVerdict({ reviewRounds: 1, fixHolds: MAX_FIX_HOLDS - 1 }).ok, true);
+    const v = roundVerdict({ reviewRounds: 1, fixHolds: MAX_FIX_HOLDS });
+    assert.equal(v.ok, false, `a fix round after ${MAX_FIX_HOLDS} fix HOLDs was allowed`);
+    assert.match(v.why, /fix/);
+  });
+
+  test("a third fix HOLD is refused through the real CLI; one is not", () => {
+    const wt = worktree("agent/9900022-fixholds");
+    commit(wt, "docs/probe.md");
+    const red = [{ body: "REVIEW abc1234\n\n## Blocking\n" }, { body: "VERDICT: LAND abc1234" }, { body: "CI-RED abc1234" }];
+    const fixHold = (sha: string) => [{ body: `REVIEW ${sha} fix\n\n## Blocking\n` }, { body: `VERDICT: HOLD ${sha} — still red` }];
+
+    const one = gate(root, [...red, ...fixHold("def5678")], BASE, wt, ["--review-round"]);
+    assert.equal(one.code, 0, one.out);
+
+    const two = gate(root, [...red, ...fixHold("def5678"), ...fixHold("eee6789")], BASE, wt, ["--review-round"]);
+    assert.equal(two.code, 1, two.out);
+    assert.match(two.out, /"stoodDown":true/);
   });
 
   // The exit code is what phase D branches on, so it is asserted through the real CLI too.
@@ -493,11 +520,52 @@ describe("--build gates review on a cached local pass", () => {
       [check("no boxes at all"), 1, /ticks no box/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1\n- [X] sheen — package.json:3"), 0, /2 box\(es\) ticked/],
       [check("- [x] chip enters — package.json:2 · docs/probe.md:1 · red: AssertionError: expected 1 got 0"), 0, /1 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2\n- [x] `npm run agent:check` green"), 0, /2 box\(es\) ticked/],
+      [check("- [x] chip enters — package.json:2\n- [x] the owner signs the copy off — n/a: no code site, a decision"), 0, /2 box\(es\) ticked/],
+      [check("- [x] the owner signs the copy off — n/a:"), 1, /leaves open/],
+      [check("- [ ] the owner signs the copy off — n/a: not mine"), 1, /leaves open/],
+      [check("- [x] the new e2e check fails before and passes after; npm run agent:check is green"), 1, /leaves open/],
     ];
     for (const [comments, want, says] of cases) {
       const { code, out } = gate(wt, comments, BASE, wt, ["--build"]);
       assert.equal(code, want, out);
       assert.match(out, says);
+    }
+  });
+
+  test("the agent:check box is closed by the cached pass, never by its own word", () => {
+    const comments = [{ body: "DOD-CHECK abc1234\n\n- [x] `npm run agent:check` green" }];
+    assert.equal(dodVerdict(comments, "abc1234def", () => false, true).ok, true);
+    const unbuilt = dodVerdict(comments, "abc1234def", () => false, false);
+    assert.equal(unbuilt.ok, false);
+    assert.match(unbuilt.why, /leaves open: - \[x\] `npm run agent:check` green/);
+  });
+
+  const closes = (box: string) => dodVerdict([{ body: `DOD-CHECK abc1234\n\n${box}` }], "abc1234def", () => false, true).ok;
+
+  test("only a box claiming the agent:check pass alone closes on it", () => {
+    for (const box of ["- [x] `npm run agent:check` green", "- [x] agent:check passes on this head", "- [x] npm run agent:check: clean."]) {
+      assert.equal(closes(box), true, box);
+    }
+    for (const box of [
+      "- [x] the new e2e check fails before and passes after; npm run agent:check is green",
+      "- [x] the fan is centred and `npm run agent:check` is green",
+    ]) {
+      assert.equal(closes(box), false, box);
+    }
+  });
+
+  test("an n/a box may not name code or a test; those still cite a path:line", () => {
+    assert.equal(closes("- [x] the owner signs the copy off — n/a: no test applies, it is a decision"), true);
+    for (const box of [
+      "- [x] `tests/e2e/flip.spec.ts` covers the flip — n/a: covered elsewhere",
+      "- [x] a regression test pins the clamp — n/a: too small",
+      "- [x] the e2e flow lands the card — n/a: CI runs it",
+      "- [x] the fan is centred in `tools/loop/brief.mjs` — n/a: obvious",
+      "- [x] flip.spec.ts is green — n/a: CI",
+      "- [x] tools/loop/brief.test.ts covers it — n/a: done",
+    ]) {
+      assert.equal(closes(box), false, box);
     }
   });
 
@@ -568,6 +636,20 @@ describe("mergeCleared", () => {
     git(["switch", "-q", "-c", "agent/1-side", landed]);
     git(["merge", "-q", "--no-edit", side]);
     assert.equal(check(said(...cleared(landed)), git(["rev-parse", "HEAD"])), false);
+  });
+
+  const holds = (n: number) => Array.from({ length: n }, (_, i) => `VERDICT: HOLD ${"abcdef0".slice(0, 6)}${i} — round ${i + 1}`);
+
+  test("a LAND past the review cap is not cleared, though its report covers it", () => {
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS - 1), ...cleared(landed)), landed), true);
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), landed), false);
+    assert.equal(check(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), merged), false);
+  });
+
+  test("a CI fix round's LAND after the cap's last round is cleared", () => {
+    const fixed = (sha: string) => [`REVIEW ${sha.slice(0, 7)} fix\n\n## Blocking\n`, `VERDICT: LAND ${sha.slice(0, 7)}`];
+    const capped = [...holds(MAX_REVIEW_ROUNDS - 1), "REVIEW 1234567\n\n## Blocking\n", "VERDICT: LAND 1234567"];
+    assert.equal(check(said(...capped, "CI-RED 1234567", ...fixed(landed)), landed), true);
   });
 
   test("an unreviewed commit on a cleared head is not cleared", () => {

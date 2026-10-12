@@ -19,7 +19,17 @@ import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { ciRedPosted, ciRedRounds, derive, parityRed, REPO, reviewRounds, trustedComments, WORKTREE_DIR } from "./loop-derive.mjs";
+import {
+  ciRedPosted,
+  ciRedRounds,
+  derive,
+  parityRed,
+  REPO,
+  reviewRounds,
+  totalHolds,
+  trustedComments,
+  WORKTREE_DIR,
+} from "./loop-derive.mjs";
 import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
@@ -1430,12 +1440,13 @@ export function ticketFacts(number, exec = execFileSync) {
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
+      totalHolds: totalHolds(trustedComments(issue.comments ?? [])),
       ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
+    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, totalHolds: null, ciRounds: 0 };
   }
 }
 
@@ -2203,7 +2214,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
       const at = String(verdict.head ?? "an unread head").slice(0, 7);
-      return owner(`no VERDICT: LAND and review cover ${at} — it was pushed for review, not cleared`);
+      return owner(
+        `no VERDICT: LAND and review within the ${MAX_REVIEW_ROUNDS}-round cap cover ${at} — it was pushed for review, not cleared`,
+      );
     }
     if (next.action === "ready") {
       if (left.ready === 0) return owner("the draft is still a draft after gh pr ready");
@@ -2855,6 +2868,7 @@ function realIo(book, screen) {
           // Named for what the loop knows: whether it merged, not a CI verdict it never read.
           merged,
           reviewRounds: facts.reviewRounds,
+          totalHolds: facts.totalHolds,
           // A session's own start: a park recorded hours after its session ended is not `now - ms`.
           startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
           ms: run.ms,

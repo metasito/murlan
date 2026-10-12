@@ -259,30 +259,74 @@ export function handoffFor(comments, head) {
 
 const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
 const EVIDENCE_RE = /([\w./-]+\.\w+):(\d+)/g;
+const NA_RE = /(?:^|\s)n\/a:/;
+const NAMES_CODE_RE = /`[^`\s]*[/.][^`\s]*`|[\w-]+\/[\w./-]+|\.(?:test|spec)\.|\be2e\b|\btests?\b|\bspecs?\b/i;
+const AGENT_CHECK_WORDS_RE = /\bnpm run\b|\bagent:check\b|\b(?:is|was|green|pass(?:es|ed|ing)?|clean|ok|on|this|the|head)\b|[\W_]/gi;
+
+/** A box whose whole claim is the agent:check pass, so the cached pass is its evidence. */
+const agentCheckAlone = (text) => /\bagent:check\b/.test(text) && text.replace(AGENT_CHECK_WORDS_RE, "") === "";
+
+/** An `n/a: <reason>` box, never one naming code or a test: those cite a `path:line`. */
+const notApplicable = (text) => {
+  const [claim, ...reason] = text.split(NA_RE);
+  return reason.join("").trim() !== "" && !NAMES_CODE_RE.test(claim);
+};
 
 /**
  * The builder's own tick of the Definition of done for this head. A ticked box counts as open
  * unless one `path:line` in it resolves in the worktree: a bare tick, or `1.5:30`, is the omission
- * this exists to catch.
+ * this exists to catch. A box with no code site closes another way: the agent:check box on the
+ * cached pass (`built`), any other on an `n/a: <reason>`, which `na` hands to the reviewer.
  *
  * @param {{body: string}[]} comments @param {string} head
  * @param {(path: string, line: number) => boolean} resolves
- * @returns {{line: string, ticked: number, open: string[]} | null}
+ * @param {boolean} [built]
+ * @returns {{line: string, ticked: number, open: string[], na: string[]} | null}
  */
-export function dodCheckFor(comments, head, resolves) {
+export function dodCheckFor(comments, head, resolves, built = false) {
   for (let i = comments.length - 1; i >= 0; i--) {
     const body = fenceStripped(comments[i].body);
     const m = DOD_CHECK_RE.exec(body);
     if (!m || !covers(head, m[1])) continue;
     const boxes = [...body.matchAll(BOX_RE)];
-    const done = (b) => b[1] !== " " && [...b[2].matchAll(EVIDENCE_RE)].some(([, p, l]) => resolves(p, Number(l)));
+    const na = (b) => b[1] !== " " && notApplicable(b[2]);
+    const cited = (b) => [...b[2].matchAll(EVIDENCE_RE)].some(([, p, l]) => resolves(p, Number(l)));
+    const done = (b) => b[1] !== " " && (na(b) || (built && agentCheckAlone(b[2])) || cited(b));
     return {
       line: m[0].trim(),
       ticked: boxes.filter(done).length,
       open: boxes.filter((b) => !done(b)).map((b) => b[0].trim()),
+      na: boxes.filter(na).map((b) => b[0].trim()),
     };
   }
   return null;
+}
+
+/** `park()`'s comment, whatever its reason: only the owner returns a parked ticket to the queue. */
+const PARK_RE = /^Parked by the queue loop\b/m;
+
+/**
+ * The cap's count starts at the first claim after a park, which is the owner sending the ticket
+ * back; a stranded re-claim, with no park before it, inherits the rounds.
+ */
+function countedVerdicts(comments) {
+  const bodies = comments.map((c) => fenceStripped(c.body));
+  let since = 0;
+  let parked = false;
+  bodies.forEach((b, i) => {
+    if (PARK_RE.test(b)) parked = true;
+    else if (parked && CLAIM_RE.test(b)) [since, parked] = [i, false];
+  });
+  const firstRed = bodies.findIndex((b, i) => i >= since && CI_RED_RE.test(b.trimStart()));
+  return bodies.slice(since).flatMap((body) => {
+    const v = VERDICT_RE.exec(body);
+    if (!v) return [];
+    const fix = bodies.some((b, i) => {
+      const m = REVIEW_FIX_RE.exec(b);
+      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
+    });
+    return [{ decision: v[1], fix }];
+  });
 }
 
 /**
@@ -291,21 +335,17 @@ export function dodCheckFor(comments, head, resolves) {
  * answer so `loop-gate.mjs` need not read the tracker twice.
  */
 export function reviewRounds(comments) {
-  const bodies = comments.map((c) => fenceStripped(c.body));
-  const claimed = bodies.findLastIndex((b) => CLAIM_RE.test(b));
-  const firstRed = bodies.findIndex((b, i) => i > claimed && CI_RED_RE.test(b.trimStart()));
-  let rounds = 0;
-  for (const [at, body] of bodies.entries()) {
-    if (at < claimed) continue;
-    const v = VERDICT_RE.exec(body);
-    if (!v) continue;
-    const fix = bodies.some((b, i) => {
-      const m = REVIEW_FIX_RE.exec(b);
-      return m && firstRed >= 0 && i > firstRed && covers(v[2], m[1]);
-    });
-    if (!fix) rounds += 1;
-  }
-  return rounds;
+  return countedVerdicts(comments).filter((v) => !v.fix).length;
+}
+
+/** The HOLDs on CI fix rounds, which `reviewRounds` leaves out: `loop-gate.mjs` caps them apart. */
+export function fixHolds(comments) {
+  return countedVerdicts(comments).filter((v) => v.fix && v.decision === "HOLD").length;
+}
+
+/** Every HOLD on the thread, across claims and fix rounds: the ledger's measure, never the cap's. */
+export function totalHolds(comments) {
+  return comments.filter((c) => VERDICT_RE.exec(fenceStripped(c.body))?.[1] === "HOLD").length;
 }
 
 /**
@@ -558,6 +598,7 @@ export function derive({
     // Null, not 0, when the tracker can't be read: a count nobody could take is not a count of
     // zero rounds, and `loop-gate.mjs` fails closed on the same distinction `verdict` already does.
     reviewRounds: trackerReadable ? reviewRounds(comments) : null,
+    fixHolds: trackerReadable ? fixHolds(comments) : null,
     trackerReadable,
     verdict,
     handoff: trackerReadable ? handoffFor(comments, head) : null,

@@ -152,7 +152,7 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 7);
+    assert.equal(r.schema, 8);
   });
 
   test("carries the time the session's machine was asleep, null when none was measured", () => {
@@ -224,6 +224,13 @@ describe("sessionRow", () => {
 
   test("a count nobody could take is null, never zero", () => {
     assert.equal(sessionRow(session({ reviewRounds: null })).review_rounds, null);
+    assert.equal(sessionRow(session({ totalHolds: null })).review_holds_total, null);
+  });
+
+  test("carries every HOLD on the issue beside the count the cap reads", () => {
+    const r = sessionRow(session({ reviewRounds: 1, totalHolds: 5 }));
+    assert.equal(r.review_holds_total, 5);
+    assert.equal("review_rounds_total" in r, false);
   });
 
   test("collapses modelUsage to cost per model", () => {

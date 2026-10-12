@@ -28,7 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { derive, dodCheckFor, locateRun, reviewFor, ticketComments, verdictFor } from "./loop-derive.mjs";
+import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -69,11 +69,12 @@ export function lineResolver(cwd) {
 /**
  * @param {{body: string}[] | null} comments @param {string} head
  * @param {(path: string, line: number) => boolean} resolves
+ * @param {boolean} [built] whether `buildPassed` holds for this head
  */
-export function dodVerdict(comments, head, resolves) {
+export function dodVerdict(comments, head, resolves, built = false) {
   const at = head.slice(0, 7);
   if (!comments) return { ok: false, why: "cannot reach the tracker to read the DOD-CHECK" };
-  const d = dodCheckFor(comments, head, resolves);
+  const d = dodCheckFor(comments, head, resolves, built);
   if (!d) return { ok: false, why: `no DOD-CHECK ${at} on the issue` };
   if (d.open.length) return { ok: false, why: `DOD-CHECK ${at} leaves open: ${d.open.join(" | ")}` };
   if (d.ticked === 0) return { ok: false, why: `DOD-CHECK ${at} ticks no box` };
@@ -85,7 +86,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
   if (!buildPassed(cwd)) {
     return { ok: false, why: "no cached LOCAL PASS for HEAD on a clean tree; run `npm run agent:check`" };
   }
-  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd));
+  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd), true);
 }
 
 /**
@@ -97,16 +98,22 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
  */
 export const MAX_REVIEW_ROUNDS = 3;
 
-/** @param {{reviewRounds?: number|null}} s */
-export function roundVerdict({ reviewRounds }) {
+/** CI fix rounds the reviewer held, which `MAX_REVIEW_ROUNDS` does not count. */
+export const MAX_FIX_HOLDS = 2;
+
+/** @param {{reviewRounds?: number|null, fixHolds?: number|null}} s */
+export function roundVerdict({ reviewRounds, fixHolds = 0 }) {
   // Fails closed, the same way the push gate does on an unreadable tracker: a count nobody could
   // read is not a count of zero, and reading it as one buys an unbounded review.
-  if (reviewRounds == null) return { ok: false, why: "cannot reach the tracker to count the review rounds" };
+  if (reviewRounds == null || fixHolds == null) return { ok: false, why: "cannot reach the tracker to count the review rounds" };
   if (reviewRounds >= MAX_REVIEW_ROUNDS) {
     return {
       ok: false,
       why: `${reviewRounds} review round(s) already on the issue — the cap is ${MAX_REVIEW_ROUNDS}`,
     };
+  }
+  if (fixHolds >= MAX_FIX_HOLDS) {
+    return { ok: false, why: `${fixHolds} CI fix round(s) held — the cap is ${MAX_FIX_HOLDS}` };
   }
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }
@@ -129,7 +136,8 @@ export function pushVerdict(s) {
       "Phase C commits each slice as it lands.",
     ] };
   if (!s.trackerReadable) return { ok: false, why: `cannot reach the tracker to read the review of #${s.ticket}` };
-  if ((s.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
+  if (s.reviewRounds == null) return { ok: false, why: `cannot count the review rounds on #${s.ticket}` };
+  if (s.reviewRounds > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
     "A ticket never lands past the cap: stand down and leave it to the owner.",
   ] };
   if (!s.verdict) return { ok: false, why: `no review of ${s.head.slice(0, 7)} on the issue`, lines: [
@@ -155,13 +163,15 @@ const MERGE_WALK = 8;
  * Whether the merge may take `sha`. The branch is pushed when review starts, so the push is no
  * longer the gate: a LAND and its report must cover `sha`, or `sha` must be a merge of a commit on
  * `main` into a head they cover whose tree is exactly what a clean merge gives — which is what
- * `gh pr update-branch` makes, and not a merge carrying edits of its own. Fails closed.
+ * `gh pr update-branch` makes, and not a merge carrying edits of its own. The review cap holds
+ * here as at the push, since a session that dies past it never runs the push gate. Fails closed.
  *
  * @param {{body: string}[]} comments
  * @param {string} sha
  * @param {(args: string[]) => string} git trimmed stdout; throws on a non-zero exit
  */
 export function mergeCleared(comments, sha, git, main = "origin/main") {
+  if (reviewRounds(comments) > MAX_REVIEW_ROUNDS) return false;
   try {
     let at = sha;
     for (let i = 0; i < MERGE_WALK; i++) {
