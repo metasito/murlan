@@ -82,7 +82,7 @@ export default class BudgetReporter {
       const level = seconds > budget * HARD_FACTOR ? "error" : "warning";
       process.stdout.write(
         `::${level}::${file} took ${seconds}s against a budget of ${budget}s (${RATIO}× its measured time in tests/e2e/timings.json + ${SLACK_S}s; red past ${HARD_FACTOR}×). ` +
-          `Find what made it slower; if the extra checking is worth it, put this run's time in timings.json in the same change.\n`
+          `Find what made it slower and make it fast again: a pull request that changes this spec cannot land over its budget, nor raise its time in timings.json past ${RATIO}× (tools/loop/ciVerdict.ts).\n`
       );
     }
     if (over.some(({ seconds, budget }) => seconds > budget * HARD_FACTOR)) return { status: "failed" };

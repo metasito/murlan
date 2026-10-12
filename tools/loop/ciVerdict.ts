@@ -1,5 +1,9 @@
 // tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { RATIO } from "../ci/e2e-budget.mjs";
 
 export interface RunRow {
   databaseId: number;
@@ -360,6 +364,132 @@ export function readVerdict(
   // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
   const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
   const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
-  return { ...verdict, head: headSha ?? null, testIds };
+  const head = headSha ?? null;
+  if (!verdict.pass || !run) return { ...verdict, head, testIds };
+  let found: BudgetFinding;
+  try {
+    found = overBudget(repo, prNumber, run.databaseId, gh, until);
+  } catch (error) {
+    return {
+      pass: false,
+      infrastructure: true,
+      runId: run.databaseId,
+      head,
+      testIds,
+      reason: `the run's over-budget lists could not be read: ${String((error as Error)?.message ?? error).split("\n")[0]}`,
+    };
+  }
+  if (found.files.length === 0) {
+    const exempt = found.exempt.length ? `; no recorded time, so no budget yet: ${found.exempt.join(", ")}` : "";
+    return { ...verdict, head, testIds, reason: `${verdict.reason}${exempt}` };
+  }
+  return {
+    pass: false,
+    runId: run.databaseId,
+    head,
+    failedStep: TIMING_STEP,
+    testIds: found.files,
+    logArgs: budgetListArgs(repo, run.databaseId),
+    output: budgetReport(found),
+    reason: `${found.files.join(", ")} ran over its time budget, and this pull request changes it`,
+  };
+}
+
+export const TIMING_STEP = "timing budget";
+
+/** An entry of the list `tools/ci/native-budget.mjs` and `tools/ci/e2e-budget.mjs` write on a green run. */
+export interface OverBudget {
+  file: string;
+  seconds: number;
+  budget: number;
+}
+
+export interface PrFile {
+  filename: string;
+  status: string;
+  patch?: string;
+}
+
+export interface BudgetFinding {
+  files: string[];
+  lines: string[];
+  exempt: string[];
+}
+
+const E2E_DIR = "tests/e2e/";
+const TIMINGS = `${E2E_DIR}timings.json`;
+
+/**
+ * RULES.md 46's land gate. A recorded time raised past `RATIO` is the same slowdown, moved into the
+ * baseline the budget is computed from. A spec with no recorded time has no budget for the reporter
+ * to list.
+ */
+export function budgetFinding(listed: OverBudget[], prFiles: PrFile[]): BudgetFinding {
+  const touched = new Set(prFiles.filter((f) => f.status !== "removed").map((f) => f.filename));
+  const files: string[] = [];
+  const lines: string[] = [];
+  for (const o of listed) {
+    if (!touched.has(o.file)) continue;
+    files.push(o.file);
+    lines.push(`${o.file}: ${o.seconds}s against a budget of ${o.budget}s`);
+  }
+  const timings = prFiles.find((f) => f.filename === TIMINGS);
+  if (timings) {
+    if (typeof timings.patch !== "string") throw new Error(`GitHub sent no diff for ${TIMINGS}`);
+    const was: Record<string, number> = {};
+    const now: Record<string, number> = {};
+    for (const m of timings.patch.matchAll(/^([+-])\s*"([^"]+)":\s*([\d.]+)/gm)) (m[1] === "-" ? was : now)[m[2]] = Number(m[3]);
+    for (const [spec, to] of Object.entries(now)) {
+      const file = E2E_DIR + spec;
+      if (!touched.has(file) || !(spec in was) || to <= was[spec] * RATIO) continue;
+      files.push(file);
+      lines.push(`${file}: ${TIMINGS} raises its time from ${was[spec]}s to ${to}s, past ${RATIO}x`);
+    }
+  }
+  const exempt = prFiles
+    .filter((f) => f.status === "added" && f.filename.startsWith(E2E_DIR) && f.filename.endsWith(".spec.ts"))
+    .map((f) => f.filename);
+  return { files: [...new Set(files)], lines, exempt };
+}
+
+export function budgetReport({ lines, exempt }: BudgetFinding): string {
+  return [
+    "A test file this pull request adds or changes ran over its time budget, so it cannot land (RULES.md 46):",
+    ...lines.map((l) => `  ${l}`),
+    "Make it fast again: find what made it slow; split it, or shrink what it plays to what it asserts.",
+    ...(exempt.length ? [`No recorded time, so no budget yet: ${exempt.join(", ")}`] : []),
+  ].join("\n");
+}
+
+const budgetListArgs = (repo: string, runId: number) => ["run", "download", String(runId), "--repo", repo, "--pattern", "over-budget-*"];
+
+/**
+ * The run's over-budget lists against the pull request's files. Throws when a list cannot be read:
+ * ci.yml uploads one from every green shard that ran, so a missing one is not an empty one.
+ */
+export function overBudget(repo: string, prNumber: number, runId: number, gh: GhExec, until: number): BudgetFinding {
+  const names = gh(
+    ["api", `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`, "--paginate", "--jq", '.artifacts[] | select(.name | startswith("over-budget-")) | .name'],
+    until
+  )
+    .split("\n")
+    .filter(Boolean);
+  const listed: OverBudget[] = [];
+  if (names.length > 0) {
+    const dir = mkdtempSync(path.join(tmpdir(), "over-budget-"));
+    try {
+      gh([...budgetListArgs(repo, runId), "--dir", dir], until);
+      const found = readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((f) => path.basename(f) === "over-budget.json");
+      if (found.length !== names.length) throw new Error(`${found.length} of ${names.length} over-budget lists arrived`);
+      for (const f of found) listed.push(...(JSON.parse(readFileSync(path.join(dir, f), "utf8")) as OverBudget[]));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const prFiles = gh(["api", `repos/${repo}/pulls/${prNumber}/files?per_page=100`, "--paginate", "--jq", ".[] | {filename, status, patch}"], until)
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as PrFile);
+  return budgetFinding(listed, prFiles);
 }
 
