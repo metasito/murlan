@@ -336,7 +336,7 @@ describe("summary", () => {
     const sorted = [...spends].sort((a, b) => a - b);
     const s = summary(rows);
     assert.equal(s.tickets, 60);
-    assert.equal(s.perTicket.mean, spends.reduce((a, b) => a + b, 0) / spends.length);
+    assert.ok(Math.abs(s.perTicket.mean - spends.reduce((a, b) => a + b, 0) / spends.length) < 1e-9);
     assert.equal(s.perTicket.median, sorted[Math.floor(sorted.length / 2)]);
   });
 });

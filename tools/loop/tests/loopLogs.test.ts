@@ -672,7 +672,7 @@ describe("schema 9 rows", () => {
   test("a process row carries the result event's figures, its spawn phase and its own model", () => {
     const r = proc();
     assert.deepEqual(
-      [r.schema, r.kind, r.n, r.at, r.fix, r.model, r.session_id, r.cost, r.turns, r.max_turns, r.subtype, r.outcome, r.handoff.phase],
+      [r.schema, r.kind, r.n, r.at, r.fix, r.model, r.session_id, r.cost, r.turns, r.max_turns, r.subtype, r.outcome, r.handoff?.phase],
       [9, "process", 7, "D", false, "claude-opus-5-5", "s1", 1.5, 20, 320, "success", "handoff", "C"],
     );
     assert.deepEqual(r.phases, { D: 50, E: 10 });
@@ -688,8 +688,8 @@ describe("schema 9 rows", () => {
   test("an outcome row is the supervisor's: no spend, no turns, and the time it waited", () => {
     const r = outcomeRow({ n: 7, runId: "r1", loopSha: "abc", outcome: "landed", why: "merged", pr: 9, head: "h", ms: 480_000, at: new Date("2026-10-12T11:00:00Z") });
     assert.deepEqual(
-      [r.schema, r.kind, r.n, r.outcome, r.why, r.pr, r.head, r.ms, r.started, r.cost, r.turns],
-      [9, "outcome", 7, "landed", "merged", 9, "h", 480_000, "2026-10-12T11:00:00.000Z", undefined, undefined],
+      [r.schema, r.kind, r.n, r.outcome, r.why, r.pr, r.head, r.ms, r.started, "cost" in r, "turns" in r],
+      [9, "outcome", 7, "landed", "merged", 9, "h", 480_000, "2026-10-12T11:00:00.000Z", false, false],
     );
   });
 });

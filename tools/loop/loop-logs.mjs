@@ -146,8 +146,13 @@ export function usageSplit(text) {
  * `park_failed` and the `reparked` row, which closes it, `asleep_ms`, the part of `ms` the
  * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
  * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads.
+ *
+ * 9 splits the row by `kind`: a `process` row per spawned session, its figures the `result`
+ * event's, and an `outcome` row for what the supervisor decided without one. `sessionRow` and
+ * `startRow` write 8 until the supervisor writes 9; a reader tells the two apart by `kind`.
  */
-export const SCHEMA = 8;
+export const SCHEMA = 9;
+const SESSION_SCHEMA = 8;
 
 export const STDERR_CAP = 2000;
 
@@ -210,7 +215,7 @@ export function sessionRow({
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
   );
   return {
-    schema: SCHEMA,
+    schema: SESSION_SCHEMA,
     n: number,
     size: size ?? null,
     outcome,
@@ -264,13 +269,73 @@ export function pendingReparks(rows) {
 
 /** A spawn, written before the session can die with its supervisor and leave no row of its own. */
 export const startRow = ({ number, phase = null, runId = null, loopSha = null, at = new Date() }) => ({
-  schema: SCHEMA,
+  schema: SESSION_SCHEMA,
   n: number,
   outcome: "started",
   phase,
   started: at.toISOString(),
   run_id: runId,
   loop_sha: loopSha,
+});
+
+/**
+ * One spawned session. `at` is the phase it was spawned at and `model` its own session's model
+ * from `init`, so a model is judged per row; `run` is the `result` event, null when the session
+ * died before writing one. `error` is `errorOf`'s.
+ *
+ * @param {{n: number, runId?: string|null, loopSha?: string|null, started: string, ms: number,
+ *   asleepMs?: number|null, at: string|null, fix?: boolean, size?: string|null, model?: string|null,
+ *   version?: string|null, maxTurns?: number|null, outcome: string, why?: string|null,
+ *   handoff?: {phase: string, why: string|null, said: string|null}|null, pr?: number|null,
+ *   head?: string|null, error?: object|null, run?: {session_id?: string, total_cost_usd?: number,
+ *   num_turns?: number, subtype?: string, phases?: Record<string, number>}|null}} p
+ */
+export const processRow = ({ n, runId = null, loopSha = null, started, ms, asleepMs = null, at, fix = false, size = null, model = null, version = null, maxTurns = null, run = null, outcome, why = null, handoff = null, pr = null, head = null, error = null }) => ({
+  schema: SCHEMA,
+  kind: "process",
+  n,
+  run_id: runId,
+  loop_sha: loopSha,
+  started,
+  ms,
+  asleep_ms: asleepMs,
+  at,
+  fix: Boolean(fix),
+  size,
+  model,
+  claude_version: version,
+  session_id: run?.session_id ?? null,
+  cost: run?.total_cost_usd ?? 0,
+  turns: run?.num_turns ?? 0,
+  max_turns: maxTurns,
+  subtype: run?.subtype ?? null,
+  phases: run?.phases ?? {},
+  outcome,
+  why,
+  handoff,
+  pr,
+  head,
+  error,
+});
+
+/**
+ * What the supervisor decided with no session of its own; `ms` is the time it waited on CI.
+ *
+ * @param {{n: number, runId?: string|null, loopSha?: string|null, outcome: string, why?: string|null,
+ *   pr?: number|null, head?: string|null, ms?: number|null, at?: Date}} p
+ */
+export const outcomeRow = ({ n, runId = null, loopSha = null, outcome, why = null, pr = null, head = null, ms = null, at = new Date() }) => ({
+  schema: SCHEMA,
+  kind: "outcome",
+  n,
+  run_id: runId,
+  loop_sha: loopSha,
+  started: at.toISOString(),
+  ms,
+  outcome,
+  why,
+  pr,
+  head,
 });
 
 /**
@@ -487,4 +552,60 @@ export function ticketTally(n, rows) {
   }
   const sessions = since.filter((r) => r.outcome !== "pushed").length;
   return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, diagnosed, brief };
+}
+
+const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
+export const closesWindow = (row) => CLOSERS.has(row.outcome);
+
+/** A session's row: by `kind` from schema 9, and before it by having run turns. */
+export const isProcess = (row) => (row.kind ? row.kind === "process" : (row.turns ?? 0) > 0);
+
+/** The phase a process was spawned at; before schema 9, the first phase it timed. */
+export const atOf = (row) => row.at ?? Object.keys(row.phases ?? {})[0] ?? null;
+
+/** A review that held: a process spawned at D that hands back to C or D. */
+export const holdRound = (row) => isProcess(row) && atOf(row) === "D" && (row.handoff?.phase === "C" || row.handoff?.phase === "D");
+
+/**
+ * One window's rows folded together. Before schema 9 a row carries no `fix`, so a process after
+ * the window's first `retry` is the fix round's.
+ *
+ * @param {object[]} rows one ticket's rows, oldest first, start rows excluded
+ */
+export function tallyOf(rows) {
+  const t = { spend: 0, ms: 0, turns: 0, processes: 0, handoffs: 0, lastHandoff: null, retries: 0, lastRedHead: null, reruns: [], holds: 0, fixSpend: 0 };
+  let fixing = false;
+  for (const r of rows) {
+    const cost = r.cost ?? 0;
+    t.spend += cost;
+    t.ms += r.ms ?? 0;
+    t.turns += r.turns ?? 0;
+    if (isProcess(r)) t.processes += 1;
+    if (holdRound(r)) t.holds += 1;
+    if ((r.fix ?? fixing) || holdRound(r)) t.fixSpend += cost;
+    if (r.outcome === "retry") {
+      t.retries += 1;
+      t.handoffs = 0;
+      t.lastHandoff = null;
+      t.lastRedHead = r.head ?? null;
+      fixing = true;
+    } else if (r.outcome === "handoff") {
+      t.handoffs += 1;
+      if (r.handoff) t.lastHandoff = { phase: r.handoff.phase, why: r.handoff.why ?? r.handoff.said ?? null };
+    } else if (r.outcome === "rerun" || r.outcome === "diagnosed") {
+      t.reruns.push(r.head ?? null);
+    }
+  }
+  return t;
+}
+
+/**
+ * Ticket `n`'s open window: its rows since its last landed, closed, parked or reparked row, where
+ * every count must have read zero even before this process existed.
+ *
+ * @param {number} n @param {object[]} rows
+ */
+export function ticketWindow(n, rows) {
+  const mine = rows.filter((r) => r.n === n && r.outcome !== "started");
+  return tallyOf(mine.slice(mine.findLastIndex(closesWindow) + 1));
 }
