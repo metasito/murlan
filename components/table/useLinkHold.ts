@@ -38,12 +38,13 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     "worklet";
     const { to, perMs, started } = ramp.value;
     const g = grey.value;
-    if (g === to) return;
     // The first frame's interval began before the change, so it only starts the ramp.
     if (!started) {
       ramp.value = { to, perMs, started: true };
+      if (g === 0 && to === 0) scheduleOnRN(setGreyed, false);
       return;
     }
+    if (g === to) return;
     const d = perMs * (frame.timeSincePreviousFrame ?? 0);
     const next = g < to ? Math.min(to, g + d) : Math.max(to, g - d);
     grey.value = next;

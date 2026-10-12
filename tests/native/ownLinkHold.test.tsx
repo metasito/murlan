@@ -202,4 +202,22 @@ describe('the table holding its breath', () => {
     await view.unmount();
     expect(seen).toEqual(reduced ? [false, true, false, false, false] : [false, true, true, true, false]);
   });
+
+  it('stops being greyed after a hold that ended before the grey ever moved', async () => {
+    const rig = { freeze: jest.fn<(amount: number) => void>(), setLevel: jest.fn<(to: number, rate: number) => void>() };
+    const view = await renderHook(({ link }: { link: OwnLink }) => useLinkHold(link, rig), { initialProps: { link: 'up' } });
+    const frame = (ms: number) => mockSteps.at(-1)!({ timeSincePreviousFrame: ms, timestamp: 0, timeSinceFirstFrame: 0 });
+    await view.rerender({ link: 'dropped' });
+    frame(16);
+    const during = [view.result.current.greyed, mockReaders.grey()];
+    await view.rerender({ link: 'up' });
+    await act(async () => {
+      frame(16);
+      frame(16);
+    });
+    await wait(Reconnect.greyOut);
+    const after = [view.result.current.greyed, mockReaders.grey()];
+    await view.unmount();
+    expect({ during, after }).toEqual({ during: [true, 0], after: [false, 0] });
+  });
 });
