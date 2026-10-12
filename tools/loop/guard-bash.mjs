@@ -11,7 +11,7 @@
  *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a rerun of a run it cannot name, or a loop session's second rerun of one
+ *   a loop session's rerun of any run    the supervisor reruns a red once per head
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -411,19 +411,8 @@ const RULES = [
           `agent/${loopTicket()}-<slug>; --all, --mirror, --tags, --prune and a ref write through \`gh api\` are refused.`,
   },
   {
-    // A target it cannot read is not an answer: allowing there would make `$RUN` the way past
-    // the rule rather than a way to write it.
-    test: (c, { workflowOf, loop }) => {
-      const t = rerunOf(c);
-      return Boolean(t && (!(t.run || t.job) || (loop && workflowOf(t)?.attempt >= 2)));
-    },
-    message:
-      "A rerun names its run by literal id, so the run it reruns can be read:\n" +
-      "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
-      "  gh run rerun <that id> --failed\n" +
-      "Rerunning one job? `--job <job-id>` is read too.\n" +
-      "A loop session does not rerun a run already rerun: a red that survives its rerun is a Blocking finding if this change caused it; " +
-      "otherwise the verdict names the test and the attempt (queue.md phase D).",
+    test: (c, { loop }) => loop && rerunOf(c) !== null,
+    message: "The supervisor reruns a red once per head; a session does not rerun.",
   },
   {
     test: (c, { loop }) => loop && c.cmd === "gh" && untrustedRead(c.args),

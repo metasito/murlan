@@ -13,6 +13,7 @@ export interface RunRow {
   status: string;
   /** Optional so a caller reasoning about a single run need not invent one. */
   headSha?: string;
+  attempt?: number;
 }
 
 export interface JobRow {
@@ -87,6 +88,8 @@ export interface Verdict {
   /** The `gh` arguments that read the log `output` and `testIds` came from. */
   logArgs?: string[];
   progress?: CiProgress;
+  /** The red run's attempt: the supervisor reruns only an attempt 1, so a red is rerun once. */
+  attempt?: number;
   reason: string;
 }
 
@@ -380,12 +383,12 @@ function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: nu
   }
   const run = ghJson<RunRow | undefined>(
     gh,
-    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha"],
+    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha,attempt"],
     undefined,
     until
   );
   const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
-  return { ...verdict, testIds };
+  return { ...verdict, testIds, attempt: run?.attempt };
 }
 
 /**

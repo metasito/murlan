@@ -87,7 +87,7 @@ import {
 import { readAllowedTools } from "./loop-tools.mjs";
 import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
-import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
+import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
@@ -2010,7 +2010,7 @@ export async function settle(pending, screen, opts = {}) {
   screen.said(`waiting for ci.yml on ${pending.branch}`);
   try {
     const out = await watch(pending, (m) => screen.said(m), pause, deadline);
-    const landed = out.action === "merge";
+    const landed = out.action === "already-merged";
     screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
     return out;
   } catch (err) {
@@ -2114,31 +2114,54 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
 
+const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
+
 /** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
 const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
 
+/** The ticket's stream, every process of it, as facts. */
+function streamFacts(ticket) {
+  const file = streamLog(ticket);
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
+}
+
+/**
+ * Settles a pushed pull request: waits on its `CI gate`, arms GitHub's auto-merge on a green head
+ * that review cleared, reruns a red no test names once, and hands any other red back.
+ *
+ * **Armed is a state no session may push into.** GitHub merges whatever head carries the arm once
+ * the gate passes, so every exit but the merge disarms first, and a red is disarmed before its
+ * CI-RED is posted — that comment is what starts a fix round, here or after a restart.
+ */
 export async function poll(pending, log, pause, deadline, io = {}) {
   const {
     run = sh,
-    verdictOf = (...args) => ts("./ciVerdict.ts").readVerdict(...args),
+    stateOf = (pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr),
     write = writeFileSync,
     mkdir = mkdirSync,
     mainFailures = () =>
       ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
+    facts = () => streamFacts(pending.ticket),
     cleared = (sha) => {
       const comments = readTicketComments(pending.ticket, run, log);
-      if (!comments || !sha) return false;
       try {
         run("git", ["fetch", "--quiet", "origin", pending.branch, "main"], { timeout: REFRESH_TIMEOUT_MS });
-      } catch {
-        return false;
+      } catch (err) {
+        return { ok: false, why: `could not fetch ${pending.branch} — ${firstLine(err)}` };
       }
-      return mergeCleared(comments, sha, (args) => run("git", args).trim());
+      const v = landable(comments, sha, (args) => run("git", args).trim());
+      if (!v.ok || reviewerRan(facts(), pending.ticket)) return v;
+      return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     },
   } = io;
+  const { armArgs, disarmArgs, landing } = ts("./land.ts");
+  const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
   const left = { ...SETTLE_ROUNDS };
   let until = Date.now() + deadline;
   let woke = false;
+  let head = null;
+  let armed = false;
+  let reran = null;
   // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
   const wait = async () => {
     const clock = sleepClock(pause);
@@ -2149,39 +2172,43 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     woke ||= slept > 0;
   };
   let verdict = {};
-  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head: verdict.head ?? null });
+  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
+  /** Null once nothing is armed; the owner's otherwise, since GitHub may still merge what is. */
+  const disarm = (then) => {
+    if (!armed) return null;
+    try {
+      gh(disarmArgs(REPO, pending.pr));
+      armed = false;
+      return null;
+    } catch (err) {
+      return owner(`could not disarm auto-merge — ${firstLine(err)}; it may still merge${then ? ` — ${then}` : ""}`);
+    }
+  };
+  const leave = (out) => disarm(out.reason) ?? out;
 
   for (;;) {
     if (Date.now() > until) {
-      return owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`);
+      return leave(owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`));
     }
     let next;
     // Which budget a `recheck` spends. A verdict asked again because the runner had nothing to say
     // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
     // answers on its own in seconds. One counter for both parks whichever goes second.
     let asking = "recheck";
-    verdict = {};
+    let pr;
     try {
-      verdict = verdictOf(REPO, pending.branch, pending.pr);
+      ({ pr, ci: verdict } = stateOf(pending.pr));
+      armed = pr.armed === true;
+      if (pr.headRefOid !== head) {
+        head = pr.headRefOid ?? null;
+        until = Date.now() + deadline;
+      }
       if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
-      next = readLanding(pending.pr, verdict, run);
-      if (next.action === "arm") next = { ...next, action: "merge" };
-      // Written before it is handed back, because the session that fixes it is a fresh process
-      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
-      // round one's real failure is already in that file, and this would paint over it.
-      if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
-        mkdir(DIR, { recursive: true });
-        write(ciLogPath(pending.ticket), verdict.output, "utf8");
-        const comments = readTicketComments(pending.ticket, run, log);
-        const failing = verdict.testIds ?? [];
-        const main = failing.length ? mainFailures() : null;
-        const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
-        postCiRedOnce(pending.ticket, verdict, lines, comments, run, write, log);
-      }
+      next = landing(pr, verdict);
       woke = false;
     } catch (err) {
-      const why = String(err.message).split("\n")[0];
+      const why = firstLine(err);
       // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
       if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
         log(`could not read CI since the machine woke — ${why}; asking again`);
@@ -2190,16 +2217,53 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this goes to the owner rather than ending the night.
-      return owner(`could not read CI — ${why}`);
+      return leave(owner(`could not read CI — ${why}`));
+    }
+
+    if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
+      const unnamed = !verdict.testIds?.length && !LOCATED.test(verdict.output);
+      // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
+      if (unnamed && verdict.runId && verdict.attempt === 1 && reran !== head) {
+        reran = head;
+        try {
+          gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
+          log(`CI is red at a step no test names — rerunning ${verdict.runId} once`);
+          until = Date.now() + deadline;
+          await wait();
+          continue;
+        } catch (err) {
+          log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
+        }
+      }
+      const held = disarm(next.reason);
+      if (held) return held;
+      // Written before it is handed back, because the session that fixes it is a fresh process
+      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
+      // round one's real failure is already in that file, and this would paint over it.
+      try {
+        mkdir(DIR, { recursive: true });
+        write(ciLogPath(pending.ticket), verdict.output, "utf8");
+        const comments = readTicketComments(pending.ticket, run, log);
+        const failing = verdict.testIds ?? [];
+        const main = failing.length ? mainFailures() : null;
+        const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+        postCiRedOnce(pending.ticket, verdict, lines, comments, run, write, log);
+      } catch (err) {
+        log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+      }
+      return { ...next, head, runId: verdict.runId ?? null, unnamed };
     }
 
     if (next.action === "update-branch" && left.update > 0) {
       left.update -= 1;
+      // The merge of main is a new head nobody cleared, and an arm would carry over to it.
+      const held = disarm(next.reason);
+      if (held) return held;
       log("main moved — updating the branch and reading CI again");
       try {
-        run("gh", ["pr", "update-branch", String(pending.pr)], { timeout: CI_RED_TIMEOUT_MS });
+        gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
-        return owner(`could not update the branch — ${String(err.message).split("\n")[0]}`);
+        return owner(`could not update the branch — ${firstLine(err)}`);
       }
       await wait();
       continue;
@@ -2221,7 +2285,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         await wait();
         continue;
       }
-      return owner(`CI is red and its log could not be read — ${next.reason}`);
+      return leave(owner(`CI is red and its log could not be read — ${next.reason}`));
     }
     if (next.action === "recheck" && left[asking] > 0) {
       left[asking] -= 1;
@@ -2231,42 +2295,42 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if (next.action === "update-branch" || next.action === "recheck") {
       const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
-      return owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`);
+      return leave(owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`));
     }
-    if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
-      const at = String(verdict.head ?? "an unread head").slice(0, 7);
-      return owner(
-        `no VERDICT: LAND and review within the ${MAX_REVIEW_ROUNDS}-round cap cover ${at} — it was pushed for review, not cleared`,
-      );
-    }
-    if (next.action === "ready") {
-      if (left.ready === 0) return owner("the draft is still a draft after gh pr ready");
-      left.ready -= 1;
+    if (next.action === "arm" || next.action === "ready") {
+      if (armed) {
+        log("auto-merge is armed — waiting for GitHub to merge");
+        await wait();
+        continue;
+      }
+      const at = String(head ?? "an unread head").slice(0, 7);
+      const clear = cleared(head);
+      if (!clear.ok) return owner(`${clear.why} — ${at} was pushed for review, not cleared`);
       try {
-        run("gh", ["pr", "ready", String(pending.pr), "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS });
+        if (pr.isDraft) gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
       } catch (err) {
-        return owner(`could not mark the draft ready — ${String(err.message).split("\n")[0]}`);
+        return owner(`could not mark the draft ready — ${firstLine(err)}`);
+      }
+      const argv = armArgs(REPO, pending.pr, head);
+      try {
+        gh(argv);
+        armed = true;
+        log(`auto-merge armed at ${at}`);
+      } catch (err) {
+        // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
+        // gate is green here, and `--match-head-commit` still binds the merge to the cleared head.
+        log(`could not arm auto-merge — ${firstLine(err)}; merging ${at} directly`);
+        try {
+          gh(argv.filter((a) => a !== "--auto"));
+        } catch (again) {
+          return owner(`the merge failed — ${firstLine(again)}`);
+        }
       }
       await wait();
       continue;
     }
-    if (next.action === "merge") {
-      try {
-        const survivor = mergeAndConfirm(pending.pr, pending.branch, verdict.head, run);
-        if (survivor) log(`  ⚠️ #${pending.ticket} ${survivor} is still on origin after --delete-branch`);
-      } catch (err) {
-        return owner(`the merge failed — ${String(err.message).split("\n")[0]}`);
-      }
-    }
-    if (next.action === "owner") return owner(next.reason);
-    return next.action === "hand-back"
-      ? {
-          ...next,
-          head: verdict.head ?? null,
-          runId: verdict.runId ?? null,
-          unnamed: !verdict.testIds?.length && !LOCATED.test(verdict.output ?? ""),
-        }
-      : next;
+    if (next.action === "owner") return leave(owner(next.reason));
+    return next;
   }
 }
 
@@ -2589,11 +2653,7 @@ export async function runOnce(io, pinned = null, at = null) {
     return { outcome: "closed", ticket: route.number };
   }
 
-  if (decided.action === "park") {
-    if (reason.hard || exhausted(run)) return handBack(decided.why, after?.phase ?? "?");
-    const told = await diagnosed(decided.why, after?.phase ?? "?");
-    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
-  }
+  if (decided.action === "park") return handBack(decided.why, after?.phase ?? "?");
 
   if (decided.action === "landed") {
     io.teardown(after?.cwd ?? null, route.number);
@@ -2621,19 +2681,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // claim, the reason on the issue and the worktree, in that one place. Recording the row and
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
-  const red = { runId: settled.runId ?? null, head: settled.head ?? pr?.sha ?? null };
-  if (cost.handBack) {
-    const told = await diagnosed(settled.reason, "E", red);
-    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
-  }
-  // A red run that names no test is a failure shape, not a failing test, and a fix round has
-  // nothing to aim at.
-  if (cost.recorded === "retry" && settled.unnamed) {
-    const ciLog = fs.existsSync(ciLogPath(route.number)) ? ciLogPath(route.number) : null;
-    const told = await diagnosed(settled.reason, "E", { ...red, ciLog });
-    if ("pass" in told) return told.pass;
-    if (told.resume !== "C") return handTo(told.resume, told.cause);
-  }
+  if (cost.handBack) return handBack(settled.reason, "E");
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as

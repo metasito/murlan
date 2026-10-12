@@ -499,8 +499,8 @@ no other session starts them:
   `…actions/runs|check-runs`, which § Device runs
   replaces with `await-run.mjs`. It refuses a push anywhere but the session's own
   `agent/<LOOP_TICKET>-…`, named by an explicit `HEAD:agent/<n>-<slug>` refspec, a delete of any
-  other branch, and every push when `LOOP_TICKET` is unset. It refuses a `gh run rerun` of a run
-  already past its first attempt (any session's rerun not named by its literal id too), and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  other branch, and every push when `LOOP_TICKET` is unset. It refuses a loop session every rerun, `gh run
+  rerun` or the API's `…/rerun` forms: the supervisor reruns a red once per head. It refuses a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
   or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
   resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
   created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and
