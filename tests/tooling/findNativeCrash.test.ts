@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { androidCrash, iosCrash } from "../../tools/ci/find-native-crash.mjs";
+import { androidAnr, androidCrash, iosCrash } from "../../tools/ci/find-native-crash.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const APP = "com.murlan.cardgame";
@@ -22,6 +22,8 @@ const tombstone = (pkg: string, signal: string) =>
     "09-21 04:41:02.124  1234  1234 F DEBUG   : uid: 10150",
     `09-21 04:41:02.125  1234  1234 F DEBUG   : ${signal}, code 1 (SEGV_MAPERR), fault addr 0x0`,
   ].join("\n");
+
+const anr = (pkg: string) => `10-01 04:54:28.313   520   600 E ActivityManager: ANR in ${pkg}`;
 
 const ips = (bundleID: string, exception = { type: "EXC_CRASH", signal: "SIGABRT" }) =>
   JSON.stringify({ app_name: "Murlan", bug_type: "309", platform: 7, bundleID, name: "Murlan" }) +
@@ -58,6 +60,15 @@ describe("Android", () => {
   test("a crash in one of our own subprocesses is ours", () => {
     assert.equal(androidCrash(APP, tombstone(`${APP}:remote`, "signal 6 (SIGABRT)"))?.process, `${APP}:remote`);
   });
+
+  test("the system's ANR of our app is named by its own line; the window's and another package's are not", () => {
+    const window = `10-01 04:54:26.143   520   600 I WindowManager: ANR in Window{a1b2c3 u0 ${APP}/${APP}.MainActivity}. Reason:Input dispatching timed out`;
+    assert.equal(androidAnr(APP, window), null);
+    assert.equal(androidAnr(APP, anr(`${APP}x`)), null);
+    assert.equal(androidAnr(APP, anr("com.android.systemui")), null);
+    assert.deepEqual(androidAnr(APP, [window, anr(APP)].join("\n")), { process: APP, line: anr(APP) });
+    assert.equal(androidAnr(APP, `${anr(`${APP}:remote`)} (${APP}/.MainActivity)`)?.process, `${APP}:remote`);
+  });
 });
 
 describe("iOS", () => {
@@ -83,6 +94,14 @@ describe("the command a device run calls", () => {
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /^::error::.*RenderThread.*com\.murlan\.cardgame.*signal 11 \(SIGSEGV\).*logcat\.txt/m);
     assert.doesNotMatch(result.stdout, /::warning::/);
+  });
+
+  test("Android: an ANR of our app in the streamed logcat fails the step, printing the ANR line", () => {
+    const flood = `10-01 04:54:21.001  6755  6755 W Reanimated: synchronouslyUpdateUIProps failed for tag 412`;
+    const dir = dirWith({ "maestro/run/maestro.log": "Tap on id: btn-prossima-manche COMPLETED", "logcat.txt": [flood, anr(APP)].join("\n") });
+    const result = run("android", APP, path.join(dir, "maestro"), path.join(dir, "logcat.txt"));
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stdout, /^::error::.*not responding.*E ActivityManager: ANR in com\.murlan\.cardgame.*logcat\.txt/m);
   });
 
   test("iOS: a report for our app fails the step and is copied out for upload", () => {

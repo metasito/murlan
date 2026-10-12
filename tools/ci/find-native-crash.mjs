@@ -1,9 +1,9 @@
-// Fails a device run whose app died of a native crash.
+// Fails a device run whose app died of a native crash, or on Android of an ANR.
 //
 //   node tools/ci/find-native-crash.mjs <android|ios> <app id> [--copy-to <dir>] <path>...
 //
 // Reads every report under the paths (Android: logcat and Maestro's output; iOS: the host's
-// DiagnosticReports), prints `::error::` and exits 1 on a crash of the app's own process.
+// DiagnosticReports), prints `::error::` and exits 1 on a crash or ANR of the app's own process.
 import { appendFileSync, copyFileSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -24,6 +24,12 @@ export function androidCrash(appId, text) {
     return { process: match[2], thread: match[1], signal: signal ?? "an unknown signal" };
   }
   return null;
+}
+
+/** `{ process, line }` of the ActivityManager's ANR of the app in a logcat, or null. */
+export function androidAnr(appId, text) {
+  const match = new RegExp(`^.*\\bANR in (${escape(appId)}(?::\\S+)?)(?=\\s|$).*$`, "m").exec(text.replace(/\r/g, ""));
+  return match ? { process: match[1], line: match[0].trim() } : null;
 }
 
 const parse = (json) => {
@@ -57,8 +63,8 @@ export function iosCrash(appId, text) {
 const PLATFORMS = {
   android: {
     reads: (file) => !/\.(png|jpe?g|gif|mp4|webm|zip)$/i.test(file),
-    find: androidCrash,
-    describe: (c) => `${c.thread} in ${c.process} died of ${c.signal}`,
+    find: (appId, text) => androidCrash(appId, text) ?? androidAnr(appId, text),
+    describe: (c) => (c.line ? `${c.process} was not responding and was killed (${c.line})` : `${c.thread} in ${c.process} died of ${c.signal}`),
     after:
       "Maestro asserts against a stale hierarchy afterwards, so the step that failed is not where the problem is - read the screenshot beside it.",
   },
@@ -108,7 +114,7 @@ function main([platform, appId, ...rest]) {
       mkdirSync(copyTo, { recursive: true });
       copyFileSync(file, path.join(copyTo, path.basename(file)));
     }
-    console.log(`::error::The app died of a native crash during this run: ${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
+    console.log(`::error::The app died during this run:${spec.describe(crash)}. ${spec.after} Report: ${file}.`);
   }
   return 1;
 }
