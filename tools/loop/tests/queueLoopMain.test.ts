@@ -1466,6 +1466,32 @@ describe("the run recap", () => {
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
+
+  // Only `Date` is mocked: main's own tick stays real, as it does across a standby.
+  test("books a standby as asleep, not working", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const TICK = 10;
+    let recap = "";
+    let passes = 0;
+    const book = {
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
+      record: () => {},
+      close: (_id: string, _line: string, text: string) => void (recap = text),
+    };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ > 0,
+      spawn: async () => {
+        t.mock.timers.setTime(Date.now() + 2 * 3_600_000 + TICK);
+        await new Promise((r) => setTimeout(r, 5 * TICK));
+        return (io() as any).spawn();
+      },
+    };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t", tick: TICK } as never);
+    assert.match(recap, /working 0:00 · CI 0:00 · waiting 0:00 · asleep 2:00:00/);
+  });
 });
 
 describe("a handoff", () => {

@@ -155,6 +155,11 @@ describe("sessionRow", () => {
     assert.equal(r.schema, 7);
   });
 
+  test("carries the time the session's machine was asleep, null when none was measured", () => {
+    assert.equal(sessionRow(session({ asleepMs: 7_200_000 })).asleep_ms, 7_200_000);
+    assert.equal(r.asleep_ms, null);
+  });
+
   test("carries the park steps the tracker never received", () => {
     assert.deepEqual(sessionRow(session({ parkFailed: ["label"] })).park_failed, ["label"]);
     assert.equal(r.park_failed, null);

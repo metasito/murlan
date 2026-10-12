@@ -932,6 +932,19 @@ describe("runTicket", () => {
     assert.equal(run.asleepMs, HOURS_2 - 10);
   });
 
+  // #1466's parked row read 16:33Z for a session that started 13:39Z: it was dated now − ms, hours later.
+  test("a session carries the instant it was spawned, which its ledger row is dated from", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-11T13:39:32Z") });
+    const spawned = () => {
+      const child = quiet();
+      setTimeout(() => t.mock.timers.setTime(Date.now() + HOURS_2), 15);
+      setTimeout(() => child.finish([RESULT]), 60);
+      return child;
+    };
+    const run = await runTicket(spawned, opts({ tick: 10 }));
+    assert.equal(run.started, "2026-10-11T13:39:32.000Z");
+  });
+
   test("a hung session whose every tick arrives late is still killed", async (t) => {
     t.mock.timers.enable({ apis: ["Date"] });
     const late = setInterval(() => t.mock.timers.setTime(Date.now() + HOURS_2), 5);
