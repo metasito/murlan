@@ -1,10 +1,12 @@
 /**
  * RULES.md 46's land gate: a pull request that adds or changes a test file which ran over its time
- * budget cannot land.
+ * budget cannot land. ci.yml's `Timing budget` job runs it, and `CI gate` needs that job.
  */
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { RATIO } from "./e2e-budget.mjs";
 
 /** @typedef {{ file: string, seconds: number, budget: number }} OverBudget an entry of the list native-budget.mjs and e2e-budget.mjs write on a green run */
@@ -114,3 +116,51 @@ export function overBudget(repo, prNumber, runId, gh, until) {
   }
   return budgetFinding(listed, prFiles);
 }
+
+/** Storage answers a burst of downloads with `503 Egress is over the account limit` (run 37784854605). */
+const RETRY_WAITS_S = [5, 10, 20];
+const READ_DEADLINE_MS = 5 * 60_000;
+
+/** @type {GhExec} */
+const realGh = (args, until) =>
+  execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, timeout: Math.max(1_000, until - Date.now()) });
+
+/**
+ * The gate over the pull request and run `env` names: 0 to pass, 1 on a finding, and 1 when the
+ * lists cannot be read, since a list that never arrived is not an empty one.
+ * @param {Record<string, string | undefined>} env
+ * @param {GhExec} gh
+ * @param {(seconds: number) => Promise<void>} sleep
+ * @param {(line: string) => void} log
+ */
+export async function run(env, gh = realGh, sleep = (s) => new Promise((r) => setTimeout(r, s * 1000)), log = console.log) {
+  const repo = env.GITHUB_REPOSITORY ?? "";
+  const [pr, runId] = [env.PR, env.GITHUB_RUN_ID].map(Number);
+  if (!/^[^/\s]+\/[^/\s]+$/.test(repo) || !Number.isInteger(pr) || pr <= 0 || !Number.isInteger(runId) || runId <= 0) {
+    log("GITHUB_REPOSITORY, PR and GITHUB_RUN_ID must name the pull request and its run.");
+    return 1;
+  }
+  const until = Date.now() + READ_DEADLINE_MS;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const found = overBudget(repo, pr, runId, gh, until);
+      if (found.files.length) {
+        log(budgetReport(found));
+        return 1;
+      }
+      log(found.exempt.length ? `No recorded time, so no budget yet: ${found.exempt.join(", ")}` : "No test file this pull request touches ran over its budget.");
+      return 0;
+    } catch (err) {
+      const why = String(/** @type {Error} */ (err)?.message ?? err).split("\n")[0];
+      if (attempt >= RETRY_WAITS_S.length) {
+        log(`The run's over-budget lists could not be read: ${why}`);
+        return 1;
+      }
+      log(`Reading the over-budget lists failed (${why}); trying again in ${RETRY_WAITS_S[attempt]} s.`);
+      await sleep(RETRY_WAITS_S[attempt]);
+    }
+  }
+}
+
+// Not a top-level await: ciVerdict.ts is `require`d, and require() refuses a module that has one.
+if (isInvokedDirectly(process.argv[1], import.meta.url)) run(process.env).then((code) => (process.exitCode = code));

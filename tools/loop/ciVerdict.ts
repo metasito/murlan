@@ -109,6 +109,8 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   if (run.conclusion === "success") {
     return { pass: true, runId: run.databaseId, reason: "ci.yml passed" };
   }
+  // `CI gate` runs under `always()` and fails whenever another job did not pass: its red is never the cause.
+  jobs = jobs.filter((j) => j.name !== "CI gate");
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
   // stepless. Asked the other way round, this reported `infrastructure` and named the cancelled
