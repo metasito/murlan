@@ -93,8 +93,9 @@ can read only its own cache and main's, so a branch's first run restores main's 
 instead of compiling it cold, and a cache unread for 7 days is evicted. `ios-app-cache.yml` saves
 that build on every push to main whose native fingerprint has none yet, and looks it up in about a
 minute when it has; it drives no device (`tests/tooling/iosAppCache.test.ts`). By the owner's decision; a
-red run is diagnosed from its artifacts, never rerun: every job in both workflows runs only on attempt 1
-of a schedule or an `agent/`/`claude/` branch, so a rerun or a dispatch anywhere else skips them all
+red run is diagnosed from its artifacts, never rerun: a `gate` job refuses a dispatch off an
+`agent/<n>-`/`claude/<n>-` branch, the device jobs run only on attempt 1, and a job under `always()`
+is red on any rerun or any job that did not pass, so neither goes green with no device run
 (`tests/tooling/deviceWorkflowsGate.test.ts`). A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
