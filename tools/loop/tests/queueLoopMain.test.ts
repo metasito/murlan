@@ -41,6 +41,7 @@ const rowOf = (x: any) => ({
   park_reason: parkReasonOf(x.outcome, x.why),
   head: x.head ?? null,
   handoff: x.handoff ?? null,
+  park_failed: x.parkFailed ?? null,
 });
 
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
@@ -88,6 +89,8 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
   rerun: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
+  ledgerRows: () => ledger,
+  repark: () => ({ ok: true, failed: [] }),
   ...over,
 });
 
@@ -1871,6 +1874,48 @@ describe("a session the API failed", () => {
     await night({ stopFile: () => spawns >= 3, pick: () => ticket, spawn: async () => (spawns++, died(overloaded)()) }, ledger);
     assert.deepEqual(ledger.map((r) => r.outcome), ["overloaded", "overloaded", "overloaded"]);
     assert.equal(ticketTally(42, ledger).handoffsThisRound, 0);
+  });
+});
+
+// #1465's park ran 30 s after a wake with no network: the ledger said parked, the issue kept its
+// claim, and nothing ever tried again (F6).
+describe("a park that never reached the tracker", () => {
+  const book = () => ({ totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} });
+  const screen = () => ({ say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} });
+  const died = async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: "C", declared: null });
+  const labelDown = () => ({ ok: false, failed: ["label"] });
+
+  test("is recorded with the steps that failed", async () => {
+    const ledger: any[] = [];
+    await runOnce(io({ spawn: died, pushedPr: () => null, park: labelDown }, ledger));
+    assert.deepEqual(ledger.filter((r) => r.outcome === "parked").map((r) => r.park_failed), [["label"]]);
+  });
+
+  test("is applied again at the start of the next pass, once, and a restart does not repeat it", async () => {
+    const ledger: any[] = [];
+    const reparked: [number, string[]][] = [];
+    let picks = 0;
+    const night = () =>
+      main({
+        io: io(
+          {
+            pick: () => (picks++ === 0 ? (io() as any).pick() : { skill: "handoff", number: 0, title: "queue empty" }),
+            spawn: died,
+            pushedPr: () => null,
+            park: labelDown,
+            repark: (n: number, steps: string[]) => (reparked.push([n, steps]), { ok: true, failed: [] }),
+          },
+          ledger,
+        ) as never,
+        book: book(),
+        screen: screen(),
+        install: () => {},
+        runId: "t",
+      });
+    await night();
+    assert.deepEqual(reparked, [[42, ["label"]]]);
+    await night();
+    assert.deepEqual(reparked, [[42, ["label"]]], "a park the tracker received is not applied again");
   });
 });
 
