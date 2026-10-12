@@ -88,7 +88,7 @@ export async function awaitRuns(
     if (failed || !open.length) {
       for (const r of runs) say(`${r.workflowName} ${r.id}: ${r.conclusion || r.status} ${r.url ?? ""}`);
       if (failed) return 1;
-      return pr === undefined ? 0 : budgetGate(ids, pr, gh, Date.now() + GATE_MS, say);
+      return pr === undefined ? 0 : budgetGate(ids, pr, gh, now() + GATE_MS, say);
     }
     if (now() + everyMs > end) {
       say(`Still going: ${open.map((r) => `${r.workflowName} ${r.id} (${r.why ?? r.status})`).join(", ")}. Run the same command again.`);
