@@ -39,6 +39,7 @@ import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNu
 import { HistoryRow } from "@/components/HistoryRow";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
+import { refreshQuery } from "@/lib/refreshQuery";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/game/placement";
 import type { UserStatsDto, RatingDto, AchievementStatusDto, MatchHistoryDto } from "@/lib/wire";
@@ -117,7 +118,7 @@ function UserCard({ user }: { user: { username: string } }) {
       // The ladder is the only cached list that carries the viewer's own name —
       // friends and requests carry other people's, and home reads the account
       // straight from AuthContext.
-      queryClient.invalidateQueries({ queryKey: LADDER_KEY });
+      refreshQuery(queryClient, LADDER_KEY);
       setEditing(false);
     } catch (e: unknown) {
       setError(serverErrorMessage(e, t("profile.renameFailed")));

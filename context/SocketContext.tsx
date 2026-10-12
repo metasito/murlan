@@ -12,6 +12,7 @@ import React, {
 import { router } from "expo-router";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
+import { refreshQuery } from "@/lib/refreshQuery";
 import { useAuth } from "@/context/AuthContext";
 import {
   connectSocket,
@@ -205,7 +206,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       hideGameInvite(roomCode);
       void apiRequest("DELETE", `/api/friends/invites/${roomCode}`)
         .catch(() => unhideGameInvite(roomCode))
-        .finally(() => qc.invalidateQueries({ queryKey: ["/api/friends/invites"] }));
+        .finally(() => refreshQuery(qc, ["/api/friends/invites"]));
     },
     [qc, hideGameInvite, unhideGameInvite]
   );
@@ -297,7 +298,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // second attempt is ever made. The rows are the truth, so connecting is
       // where we ask again — otherwise a friend request sent to someone
       // offline is invisible to them, and neither side can then act on it.
-      for (const queryKey of RECONCILED_ON_CONNECT) qc.invalidateQueries({ queryKey });
+      for (const queryKey of RECONCILED_ON_CONNECT) refreshQuery(qc, queryKey);
     };
 
     const onDisconnect = (reason: UntypedSocket.DisconnectReason) => {
@@ -360,7 +361,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onRequestIncoming = ({ from, request }: FriendRequestIncoming) => {
       seatRow(qc, "/api/friends/requests", request);
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      refreshQuery(qc, ["/api/friends/requests"]);
       showNotification({
         type: "friend_request",
         title: t("notifications.friendRequestTitle"),
@@ -371,9 +372,9 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     const onRequestAccepted = ({ by, friend }: FriendRequestAccepted) => {
       seatRow(qc, "/api/friends", friend);
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
+      refreshQuery(qc, ["/api/friends"]);
+      refreshQuery(qc, ["/api/friends/requests"]);
+      refreshQuery(qc, ["/api/friends/sent"]);
       socket.emit("friend:get_online_list");
       showNotification({
         type: "friend_accepted",
@@ -386,7 +387,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const onInvite = ({ from, roomCode }: { from: string; roomCode: string }) => {
       setPendingInvite({ from, roomCode });
       unhideGameInvite(roomCode);
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      refreshQuery(qc, ["/api/friends/invites"]);
       showNotification({
         type: "game_invite",
         title: t("notifications.gameInviteTitle", { name: from }),
@@ -405,7 +406,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // invites survive is the server's answer to give, so the list is re-asked.
     const onInviteRetired = ({ roomCode }: { roomCode: string }) => {
       setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      refreshQuery(qc, ["/api/friends/invites"]);
     };
 
     // The invite itself is still good either way, so the list is simply re-asked
@@ -413,7 +414,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     // stranger leaving a lobby is not an invitation.
     const onRoomJoinable = ({ roomCode, joinable }: { roomCode: string; joinable: boolean }) => {
       if (!joinable) setPendingInvite((prev) => (prev?.roomCode === roomCode ? null : prev));
-      qc.invalidateQueries({ queryKey: ["/api/friends/invites"] });
+      refreshQuery(qc, ["/api/friends/invites"]);
     };
 
     // Keep the whole payload: the server emits a stable `code` (plus `params`)

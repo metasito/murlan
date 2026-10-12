@@ -14,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "@/context/SocketContext";
 import { useNotification } from "@/context/NotificationContext";
 import { t, translateServerPayload, type ServerPayload } from "@/lib/i18n";
+import { refreshQuery } from "@/lib/refreshQuery";
 import { Reading } from "@/lib/theme";
 import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
@@ -708,11 +709,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       // whatever it read on first open for the rest of the session — a player
       // finishes a game and their counters, history and achievements do not
       // move. A hand just finished, so this is exactly when they are stale.
-      qc.invalidateQueries({ queryKey: ["/api/stats/me"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/history"] });
-      qc.invalidateQueries({ queryKey: ["/api/stats/achievements"] });
-      qc.invalidateQueries({ queryKey: ["/api/ratings/me"] });
-      qc.invalidateQueries({ queryKey: LADDER_KEY });
+      refreshQuery(qc, ["/api/stats/me"]);
+      refreshQuery(qc, ["/api/stats/history"]);
+      refreshQuery(qc, ["/api/stats/achievements"]);
+      refreshQuery(qc, ["/api/ratings/me"]);
+      refreshQuery(qc, LADDER_KEY);
     };
 
     const onVoteState = (vs: RematchVoteState) => setRematchVoteState(vs);

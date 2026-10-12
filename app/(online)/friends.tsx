@@ -17,6 +17,7 @@ import { useOnlineRoom } from "@/context/onlineGameHooks";
 import { useNotification } from "@/context/NotificationContext";
 import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
+import { refreshQuery } from "@/lib/refreshQuery";
 import { Colors, Spacing, FontSize, Radius, TOUCH_TARGET_MIN, Type } from '@/lib/theme';
 import { MenuLayout, takesSlack } from "@/components/MenuLayout";
 import { Avatar } from "@/components/Avatar";
@@ -111,8 +112,8 @@ export default function FriendsScreen() {
     },
     ...dropRow("/api/friends/requests"),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      refreshQuery(qc, ["/api/friends"]);
+      refreshQuery(qc, ["/api/friends/requests"]);
     },
   });
 
@@ -122,7 +123,7 @@ export default function FriendsScreen() {
     },
     ...dropRow("/api/friends/requests"),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/requests"] });
+      refreshQuery(qc, ["/api/friends/requests"]);
     },
   });
 
@@ -132,7 +133,7 @@ export default function FriendsScreen() {
     },
     ...dropRow("/api/friends/sent"),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
+      refreshQuery(qc, ["/api/friends/sent"]);
     },
   });
 
@@ -142,7 +143,7 @@ export default function FriendsScreen() {
     },
     ...dropRow("/api/friends"),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/friends"] });
+      refreshQuery(qc, ["/api/friends"]);
     },
   });
 
@@ -191,7 +192,7 @@ export default function FriendsScreen() {
       setSearchQuery("");
       setSearchResult(null);
       setSearchDone(false);
-      qc.invalidateQueries({ queryKey: ["/api/friends/sent"] });
+      refreshQuery(qc, ["/api/friends/sent"]);
     } catch (e: unknown) {
       showError(serverErrorMessage(e, t("common.error")));
     }
