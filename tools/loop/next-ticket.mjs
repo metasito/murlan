@@ -69,17 +69,18 @@ export function stranded(issue, { openPr, liveWorktree }) {
   return ours && openPr && !liveWorktree;
 }
 
+/** The Launch milestone's open issues, whatever their labels: zero means launch-first ordering orders nothing. */
+export function launchOpen(/** @type {Issue[]} */ openIssues) {
+  return openIssues.filter((i) => i.milestone?.title === LAUNCH_MILESTONE).length;
+}
+
 /**
- * `launch` is the Launch milestone's open issues in any bucket: zero means launch-first ordering is
- * ordering nothing.
- *
  * @param {Issue[]} openIssues
- * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[], launch: number }}
+ * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[] }}
  */
 export function classify(openIssues, io = realClassifyIo()) {
-  const launch = openIssues.filter((i) => i.milestone?.title === LAUNCH_MILESTONE).length;
-  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[], launch: number}} */
-  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [], launch };
+  /** @type {{frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[]}} */
+  const buckets = { frontier: [], triage: [], wayfinder: [], owner: [], stranded: [] };
   // Asked once, and only once a ticket has an open pull request: it costs a subprocess, and with no
   // pull request no ticket can be stranded.
   let live;
@@ -306,7 +307,7 @@ if (invokedDirectly) {
     `\ttriage:${buckets.triage.length}` +
     `\twayfinder:${buckets.wayfinder.length}` +
     `\towner:${buckets.owner.length}` +
-    `\tlaunch:${buckets.launch}`,
+    `\tlaunch:${launchOpen(openIssues)}`,
   );
 
   if (chosen.ticket) {

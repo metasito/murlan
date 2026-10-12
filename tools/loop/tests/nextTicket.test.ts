@@ -1,7 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, launchOpen, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -168,16 +168,18 @@ describe("the frontier's order", () => {
     assert.equal(waitingOn(b.owner), "nothing agent-takeable; waiting on you: #1107, #1536, #1529, #44");
   });
 
-  test("counts the Launch milestone's open issues in every bucket, so an empty one is visible", () => {
+  test("counts the Launch milestone's open issues whatever their labels, so an empty one is visible", () => {
     const launch = (n: number, labels: string[]) => ({ ...issue(n, labels), milestone: { title: LAUNCH_MILESTONE } });
-    const b = classify([
-      issue(10, ["ready-for-agent"]),
-      launch(300, ["ready-for-agent"]),
-      launch(900, ["in-progress", "ready-for-agent"]),
-      launch(1107, ["ready-for-human"]),
-    ], noPrs);
-    assert.equal(b.launch, 3);
-    assert.equal(classify([issue(10, ["ready-for-agent"])], noPrs).launch, 0);
+    assert.equal(
+      launchOpen([
+        issue(10, ["ready-for-agent"]),
+        launch(300, ["ready-for-agent"]),
+        launch(900, ["in-progress", "ready-for-agent"]),
+        launch(1107, ["ready-for-human"]),
+      ]),
+      3,
+    );
+    assert.equal(launchOpen([issue(10, ["ready-for-agent"])]), 0);
   });
 
   test("a deferred ticket is the owner's even when it is ready-for-agent", () => {
