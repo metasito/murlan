@@ -212,6 +212,15 @@ describe("a ticket stranded between CI rounds", () => {
     assert.equal(stranded(released, { openPr: false, liveWorktree: false }), false);
   });
 
+  test("git is read only for a ticket that has an open PR", () => {
+    let gitReads = 0;
+    const io = { openPr: (n: number) => n === 1043, liveWorktrees: () => (gitReads++, new Set<number>()) };
+    classify([issue(10, ["ready-for-agent"]), issue(11, ["ready-for-agent"]), issue(12, ["in-progress"])], io);
+    assert.equal(gitReads, 0, "a frontier with no open PRs costs no git subprocess");
+    classify([issue(10, ["ready-for-agent"]), inProgress], io);
+    assert.equal(gitReads, 1);
+  });
+
   test("a parked ticket still waiting on the owner is not stranded", () => {
     const parked = issue(1100, ["ready-for-human"]);
     assert.equal(stranded(parked, { openPr: true, liveWorktree: false }), false);
