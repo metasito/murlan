@@ -2018,9 +2018,17 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     },
   } = io;
   const left = { ...SETTLE_ROUNDS };
-  const until = Date.now() + deadline;
-  // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
-  const wait = () => new Promise((r) => setTimeout(r, pause));
+  let until = Date.now() + deadline;
+  let woke = false;
+  // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
+  const wait = async () => {
+    const from = Date.now();
+    // Not unref'd, for the same reason `holdFor` is not: this is the only handle open while it waits.
+    await new Promise((r) => setTimeout(r, pause));
+    const slept = suspended(from, Date.now(), pause);
+    until += slept;
+    woke ||= slept > 0;
+  };
   let verdict = {};
   const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head: verdict.head ?? null });
 
@@ -2050,10 +2058,18 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         const onMain = onMainLine(failing, failing.length ? mainFailures() : null);
         postCiRedOnce(pending.ticket, verdict, onMain, comments, run, write, log);
       }
+      woke = false;
     } catch (err) {
+      const why = String(err.message).split("\n")[0];
+      // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
+      if (woke) {
+        log(`could not read CI since the machine woke — ${why}; asking again`);
+        await wait();
+        continue;
+      }
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this goes to the owner rather than ending the night.
-      return owner(`could not read CI — ${String(err.message).split("\n")[0]}`);
+      return owner(`could not read CI — ${why}`);
     }
 
     if (next.action === "update-branch" && left.update > 0) {
