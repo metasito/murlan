@@ -33,8 +33,7 @@ describe("loop-settings.json carries what a session no longer inherits from the 
     assert.ok(settings.bashOutputMaxChars >= 8000 && settings.bashOutputMaxChars < 30000, String(settings.bashOutputMaxChars));
   });
 
-  test("the output style the cost baseline was measured under, which came from the checkout's local settings", () => {
-    assert.equal(settings.outputStyle, "Concise");
+  test("claude.ai connectors stay off, as the checkout's local settings had them", () => {
     assert.equal(settings.disableClaudeAiConnectors, true);
   });
 });

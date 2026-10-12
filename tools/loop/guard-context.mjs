@@ -8,8 +8,8 @@ if (!process.env.LOOP_TURNS) process.exit(0);
 const { closeSync, fstatSync, openSync, readFileSync, readSync } = await import("node:fs");
 
 const asked = Number(process.env.LOOP_CONTEXT);
-// The session compacts below its window, so a ceiling at or past it would never be met.
-const CONTEXT_CEILING = asked > 0 && asked < Number(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW) ? asked : 200_000;
+// Auto-compaction fires near 366k: a ceiling above 340k would never be met.
+const CONTEXT_CEILING = asked > 0 && asked < 340_000 ? asked : 200_000;
 const TAIL_BYTES = 4 * 1024 * 1024;
 
 function tail(file) {

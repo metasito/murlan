@@ -32,7 +32,7 @@ function transcript(rows: object[]): string {
 
 function run(payload: object | string, env: Record<string, string | undefined> = { LOOP_TURNS: "40", LOOP_PHASE: "C" }): string {
   const input = typeof payload === "string" ? payload : JSON.stringify(payload);
-  const clean = { ...process.env, LOOP_TURNS: undefined, LOOP_PHASE: undefined, LOOP_CONTEXT: undefined, CLAUDE_CODE_AUTO_COMPACT_WINDOW: undefined, ...env };
+  const clean = { ...process.env, LOOP_TURNS: undefined, LOOP_PHASE: undefined, LOOP_CONTEXT: undefined, ...env };
   return execFileSync(process.execPath, [SCRIPT], { input, encoding: "utf8", env: clean as NodeJS.ProcessEnv });
 }
 
@@ -68,24 +68,15 @@ describe("the context ceiling", () => {
   });
 
   test("the ceiling is the supervisor's LOOP_CONTEXT, and the notice names it", () => {
-    const env = { LOOP_TURNS: "40", LOOP_CONTEXT: "300000", CLAUDE_CODE_AUTO_COMPACT_WINDOW: "330000" };
+    const env = { LOOP_TURNS: "40", LOOP_CONTEXT: "300000" };
     assert.equal(run(call(transcript([assistant(299_000)])), env), "");
     const out = JSON.parse(run(call(transcript([assistant(301_000)])), env));
     assert.match(out.hookSpecificOutput.additionalContext, /^Context is past 300k. /);
   });
 
-  test("a ceiling at or past the session's compaction window is never met, so the 200k one stands", () => {
-    for (const window of ["300000", "250000", ""]) {
-      const env = { LOOP_TURNS: "40", LOOP_CONTEXT: "300000", CLAUDE_CODE_AUTO_COMPACT_WINDOW: window };
-      const out = JSON.parse(run(call(transcript([assistant(201_000)])), env));
-      assert.equal(out.hookSpecificOutput.additionalContext, ceiling, `window ${window}`);
-    }
-  });
-
   test("an unreadable LOOP_CONTEXT keeps the 200k ceiling", () => {
-    for (const LOOP_CONTEXT of ["", "abc", "0", "-5", "Infinity", "1e9"]) {
-      const env = { LOOP_TURNS: "40", LOOP_CONTEXT, CLAUDE_CODE_AUTO_COMPACT_WINDOW: "330000" };
-      const out = JSON.parse(run(call(transcript([assistant(201_000)])), env));
+    for (const LOOP_CONTEXT of ["", "abc", "0", "-5", "Infinity", "1e9", "340000"]) {
+      const out = JSON.parse(run(call(transcript([assistant(201_000)])), { LOOP_TURNS: "40", LOOP_CONTEXT }));
       assert.equal(out.hookSpecificOutput.additionalContext, ceiling, `LOOP_CONTEXT=${JSON.stringify(LOOP_CONTEXT)}`);
     }
   });

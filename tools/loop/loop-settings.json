@@ -6,7 +6,6 @@
     "cowork-plugin-management@synced": false,
     "ponytail@ponytail": false
   },
-  "outputStyle": "Concise",
   "bashOutputMaxChars": 16000,
   "disableClaudeAiConnectors": true,
   "autoContinueAtUsageLimit": true,
