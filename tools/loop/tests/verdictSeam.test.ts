@@ -1,7 +1,7 @@
 // tools/loop/tests/verdictSeam.test.ts
 //
 // `decideVerdict` produces the verdict and `landing` consumes it. Each has its own suite, each was
-// green, and the defect lived between them: `readVerdict` used to block until the run settled, so
+// green, and the defect lived between them: the verdict read used to block until the run settled, so
 // `landing` could read `pass !== true` as "red". Removing that block made an in-flight run read as
 // a red branch, and #1028 burned three fix rounds on a log that was never written.
 //

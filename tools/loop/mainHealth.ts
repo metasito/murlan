@@ -90,8 +90,8 @@ export function decideMainHealth(
 }
 
 /**
- * `--workflow ci.yml` for the reason `ciVerdict.runListArgs` gives: `main` carries other workflows
- * that finish on their own schedule, and unfiltered `--limit 1` answers with whichever ran last.
+ * `--workflow ci.yml`: `main` carries other workflows that finish on their own schedule, and
+ * unfiltered `--limit 1` answers with whichever ran last.
  */
 export function mainRunArgs(repo: string): string[] {
   // prettier-ignore

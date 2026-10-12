@@ -1,8 +1,8 @@
-import { test } from "node:test";
+import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { run } from "../../tools/ci/budget-gate.mjs";
+import { budgetReport, overBudget, run } from "../../tools/ci/budget-gate.mjs";
 
 const env = { GITHUB_REPOSITORY: "o/r", PR: "7", GITHUB_RUN_ID: "41" };
 const native = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
@@ -68,4 +68,90 @@ test("a run it cannot name is refused before any call", async () => {
     assert.deepEqual(asked, [], missing);
   }
   assert.equal((await gate(fakeGh([]), { ...env, PR: "abc" })).code, 1);
+});
+
+describe("overBudget: which run lists, against which changed files", () => {
+  const spec = "tests/e2e/tableProportions.spec.ts";
+  const both = {
+    "over-budget-native-1": [{ file: native, seconds: 32.9, budget: 15 }],
+    "over-budget-browser-2": [{ file: spec, seconds: 94, budget: 75.6 }],
+  };
+  type Fake = { download?: () => void; listed?: string[]; asked?: string[][] };
+  const listsGh = (found: Record<string, object[]>, files: PrFile[], { download, listed, asked }: Fake = {}) => (args: string[]) => {
+    asked?.push(args);
+    if (args[0] === "api" && args[1].startsWith("repos/o/r/pulls/7/files")) return files.map((f) => JSON.stringify(f)).join("\n");
+    if (args[0] === "api" && args[1].startsWith("repos/o/r/actions/runs/41/artifacts")) return (listed ?? Object.keys(found)).join("\n");
+    if (args[0] === "run" && args[1] === "download") {
+      download?.();
+      const dir = args[args.indexOf("--dir") + 1];
+      for (const [name, list] of Object.entries(found)) {
+        mkdirSync(path.join(dir, name), { recursive: true });
+        writeFileSync(path.join(dir, name, "over-budget.json"), JSON.stringify(list));
+      }
+      return "";
+    }
+    throw new Error(`unexpected gh ${args.join(" ")}`);
+  };
+  const read = (gh: (args: string[]) => string) => overBudget("o/r", 7, 41, gh, Date.now() + 60_000);
+
+  test("names a touched file over its budget, and only that one", () => {
+    const found = read(listsGh(both, [{ filename: native, status: "modified" }, { filename: "lib/x.ts", status: "modified" }]));
+    assert.deepEqual(found.files, [native]);
+    assert.match(budgetReport(found), /mancheOutcomeOnTheFelt\.test\.tsx.*32\.9s.*15s/);
+    assert.doesNotMatch(budgetReport(found), /tableProportions/);
+  });
+
+  test("a file over budget the pull request did not touch, or no list at all, is no finding", () => {
+    assert.deepEqual(read(listsGh(both, [{ filename: "lib/x.ts", status: "modified" }])).files, []);
+    assert.deepEqual(read(listsGh({}, [{ filename: native, status: "modified" }])).files, []);
+  });
+
+  test("raising its own spec's recorded time past the ratio is a finding", () => {
+    const raise = (to: number) =>
+      listsGh({}, [
+        { filename: spec, status: "modified" },
+        { filename: "tests/e2e/timings.json", status: "modified", patch: `@@ -40,3 +40,3 @@\n-  "tableProportions.spec.ts": 22.8,\n+  "tableProportions.spec.ts": ${to},\n` },
+      ]);
+    const found = read(raise(90));
+    assert.deepEqual(found.files, [spec]);
+    assert.match(budgetReport(found), /22\.8s.*90s/);
+    assert.deepEqual(read(raise(30)).files, []);
+  });
+
+  test("a new spec with no recorded time has no budget yet, and is named as such", () => {
+    const found = read(listsGh(both, [{ filename: "tests/e2e/brandNew.spec.ts", status: "added" }]));
+    assert.deepEqual(found.files, []);
+    assert.deepEqual(found.exempt, ["tests/e2e/brandNew.spec.ts"]);
+  });
+
+  test("a list that cannot be read throws, never reads as empty", () => {
+    const expired = listsGh(both, [{ filename: native, status: "modified" }], {
+      download: () => {
+        throw new Error("HTTP 410: artifact expired");
+      },
+    });
+    assert.throws(() => read(expired), /artifact expired/);
+  });
+
+  // Run 38229501646, attempt 2: the artifacts endpoint lists every attempt's upload under one name.
+  test("a list a rerun uploaded twice under one name is read once, not refused", () => {
+    const one = { "over-budget-native-1": both["over-budget-native-1"] };
+    const found = read(listsGh(one, [{ filename: native, status: "modified" }], { listed: ["over-budget-native-1", "over-budget-native-1"] }));
+    assert.deepEqual(found.files, [native]);
+  });
+
+  test("a pull request that changes no test file downloads nothing", () => {
+    const asked: string[][] = [];
+    assert.deepEqual(read(listsGh(both, [{ filename: "lib/x.ts", status: "modified" }], { asked })).files, []);
+    assert.ok(!asked.some((a) => a[1] === "download" || /\/artifacts/.test(a[1] ?? "")), JSON.stringify(asked));
+  });
+
+  test("a file over budget on both projects is one finding, at its slower time", () => {
+    const twice = {
+      "over-budget-native-1": [{ file: native, seconds: 20, budget: 15 }],
+      "over-budget-native-2": [{ file: native, seconds: 32.9, budget: 15 }],
+    };
+    const lines = budgetReport(read(listsGh(twice, [{ filename: native, status: "modified" }]))).split("\n").filter((l) => l.includes(native));
+    assert.deepEqual(lines, [`  ${native}: 32.9s against a budget of 15s`]);
+  });
 });

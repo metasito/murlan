@@ -1995,8 +1995,8 @@ function mergeAndConfirm(prNumber, branch, sha, run = sh) {
 }
 
 /**
- * Waits for the pushed branch's CI and lands it. No judgement here — `readVerdict` says whether the
- * run passed and `landing()` says what that plus the merge state means — which is why the session
+ * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether
+ * the gate passed and `landing()` says what that plus the merge state means — which is why the session
  * that built the ticket has already exited by the time this runs.
  *
  * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:

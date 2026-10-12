@@ -1,9 +1,7 @@
 // tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { budgetListArgs, budgetReport, overBudget, UNREAD_STEP } from "../ci/budget-gate.mjs";
+import { UNREAD_STEP } from "../ci/budget-gate.mjs";
 import type { PrState } from "./land.ts";
-
-export { budgetReport, overBudget };
 
 const CI_GATE = "CI gate";
 
@@ -119,7 +117,7 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // `CI gate` runs under `always()` and fails whenever another job did not pass: its red is the
   // cause only when no other job's is.
   const gate = jobs.find((j) => j.name === CI_GATE && j.conclusion === "failure");
-  // Lists storage never served say nothing about the diff, as `gated()` below calls them.
+  // Lists storage never served say nothing about the diff.
   const unread = jobs.find((j) => j.conclusion === "failure" && j.failedSteps?.length && j.failedSteps.every((s) => s === UNREAD_STEP));
   jobs = jobs.filter((j) => j.name !== CI_GATE && j !== unread);
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
@@ -187,30 +185,6 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
       ? `${realFailure.name} ran past its timeout-minutes`
       : `ci.yml concluded ${run.conclusion}`,
   };
-}
-
-/**
- * ci.yml is the gate, and the branch carries other workflows — the Maestro suites, EAS — that
- * finish on their own schedule. Unfiltered, `--limit 1` answers with whichever of them ran last,
- * so a green Maestro over a red ci.yml reads as a green branch.
- */
-export function runListArgs(repo: string, branch: string): string[] {
-  // prettier-ignore
-  return [
-    "run", "list", "--repo", repo, "--branch", branch,
-    "--workflow", "ci.yml", "--limit", "5",
-    "--json", "databaseId,conclusion,status,headSha",
-  ];
-}
-
-/**
- * A fix round pushes and asks immediately. For the seconds before the new run registers, the
- * newest row on the branch belongs to the previous push — completed, and red, which is why the
- * round ran at all. Answering from it sends another fix agent after a failure already fixed.
- */
-export function runForHead(runs: RunRow[], headSha: string | undefined): RunRow | undefined {
-  if (!headSha) return runs[0];
-  return runs.find((r) => r.headSha === headSha);
 }
 
 /**
@@ -295,8 +269,7 @@ function jobsAndLog(
   repo: string,
   run: RunRow | undefined,
   gh: GhExec,
-  until: number,
-  withLog = true
+  until: number
 ): { verdict: Verdict; testIds: string[] } {
   if (!run || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
@@ -323,7 +296,7 @@ function jobsAndLog(
   markTimedOut(jobs, (args) => gh(args, until), repo);
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
-  if (withLog && !verdict.pass && !verdict.infrastructure) {
+  if (!verdict.pass && !verdict.infrastructure) {
     verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
       const strippedLines = gh(verdict.logArgs, until)
@@ -432,93 +405,4 @@ export function readLandingState(
     progress,
   };
 }
-
-export interface HeadCi {
-  remoteSha: string | null;
-  pr: number | null;
-  verdict: Verdict;
-}
-
-/**
- * Reads for the branch's real remote head, not a PR's `headRefOid`, so the verdict still belongs
- * to what is actually pushed after a `gh pr update-branch` moves the head without a new push.
- */
-export function readHeadCi(
-  repo: string,
-  branch: string,
-  gh: GhExec,
-  until = Date.now() + READ_DEADLINE_MS
-): HeadCi {
-  let remoteSha: string | null;
-  try {
-    remoteSha = gh(["api", `repos/${repo}/git/ref/heads/${branch}`, "--jq", ".object.sha"], until).trim() || null;
-  } catch {
-    remoteSha = null;
-  }
-  const prRows = ghJson<{ number: number }[]>(
-    gh,
-    ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number"],
-    [],
-    until
-  );
-  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
-  const { verdict } = jobsAndLog(repo, run, gh, until, false);
-  const pr = prRows[0]?.number ?? null;
-  return { remoteSha, pr, verdict: pr === null ? verdict : gated(repo, pr, run, verdict, gh, until) };
-}
-
-export function readVerdict(
-  repo: string,
-  branch: string,
-  prNumber: number,
-  until = Date.now() + READ_DEADLINE_MS,
-  gh: GhExec = realGh
-): Verdict {
-  // The pull request carries other checks — the Maestro suites — that settle on their own
-  // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
-  // that is red on main anyway, so only ci.yml's own run is watched.
-  const headSha = ghJson<{ headRefOid?: string }>(
-    gh,
-    ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
-    {},
-    until
-  ).headRefOid;
-
-  // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
-  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
-  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
-  return { ...gated(repo, prNumber, run, { ...verdict, testIds }, gh, until), head: headSha ?? null };
-}
-
-/** A green verdict through RULES.md 46's land gate; any other verdict as it is. */
-function gated(repo: string, prNumber: number, run: RunRow | undefined, verdict: Verdict, gh: GhExec, until: number): Verdict {
-  if (!verdict.pass || !run) return verdict;
-  let found: ReturnType<typeof overBudget>;
-  try {
-    found = overBudget(repo, prNumber, run.databaseId, gh, until);
-  } catch (error) {
-    return {
-      pass: false,
-      infrastructure: true,
-      runId: run.databaseId,
-      testIds: verdict.testIds,
-      reason: `the run's over-budget lists could not be read: ${String((error as Error)?.message ?? error).split("\n")[0]}`,
-    };
-  }
-  if (found.files.length === 0) {
-    const exempt = found.exempt.length ? `; no recorded time, so no budget yet: ${found.exempt.join(", ")}` : "";
-    return { ...verdict, reason: `${verdict.reason}${exempt}` };
-  }
-  return {
-    pass: false,
-    runId: run.databaseId,
-    failedStep: TIMING_STEP,
-    testIds: found.files,
-    logArgs: budgetListArgs(repo, run.databaseId),
-    output: budgetReport(found),
-    reason: `${found.files.join(", ")} ran over its time budget, and this pull request changes it`,
-  };
-}
-
-export const TIMING_STEP = "timing budget";
 

@@ -16,7 +16,6 @@
  * git will not let you be on two at once.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { basename, dirname } from "node:path";
 
 export const BRANCH = /^agent\/(\d+)-/;
@@ -416,20 +415,6 @@ export const CI_BUDGET_MS = 10_000;
 
 const HANDED = /^[A-G]$/;
 
-function ciGh(cwd, until, failed, exec) {
-  return (args, deadline) => {
-    try {
-      const left = Math.min(until, deadline) - Date.now();
-      if (left <= 0) throw new Error("CI read budget spent");
-      return exec(args, cwd, left);
-    } catch (err) {
-      const absent = args[0] === "api" && /HTTP 404/.test(String(err?.stderr ?? ""));
-      if (!absent) failed.push(args[0]);
-      throw err;
-    }
-  };
-}
-
 function under(cwd, head, remote, branch, until, failed) {
   if (remote === head) return true;
   const git = (args) =>
@@ -573,8 +558,6 @@ export function derive({
     why = "reviewed and cleared, but its pull request could not be read in time — the supervisor settles it";
   } else if (ciRead && !ciRead.pushed) {
     why = "reviewed and cleared, and no open pull request carries this head yet";
-  } else if (ciRead && ciRead.pr === null) {
-    why = "pushed, but no pull request is open for it";
   } else if (fix) {
     phase = "C";
     why = `CI failed at ${ciRead.step ?? "an unnamed step"} on the pushed head`;

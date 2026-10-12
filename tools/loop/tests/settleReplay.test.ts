@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ciRedBody, onMainLine, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
-import { readHeadCi, readLandingState } from "../ciVerdict.ts";
+import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
 import { readLine } from "../loop-stream.mjs";
 
@@ -399,45 +399,6 @@ describe("settle across a standby", () => {
     const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), stateOf: refused });
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /^could not read CI/);
-  });
-});
-
-/** The run listing `readHeadCi` reads, which `poll` no longer does. */
-function runListFake({ script, remoteSha = SHA, prList = [{ number: PENDING.pr, headRefOid: SHA }] }: { script: unknown[][]; remoteSha?: string | null; prList?: unknown[] }) {
-  return (args: string[]) => {
-    if (args[0] === "api") {
-      if (remoteSha === null) throw new Error("gh: not found");
-      return remoteSha;
-    }
-    if (args[0] === "pr" && args[1] === "list") return JSON.stringify(prList);
-    if (args[0] === "run" && args[1] === "list") return JSON.stringify(script[0]);
-    if (args.includes("--log-failed")) return "Native tests\tRun tests\t2026-09-14T00:00:00Z FAIL";
-    if (args[0] === "run" && args[1] === "view") return JSON.stringify([{ name: "Native tests", conclusion: "failure", steps: 11 }]);
-    return "";
-  };
-}
-const runRow = (status: string, conclusion: string | null) => [{ databaseId: 34872415311, status, conclusion, headSha: SHA }];
-
-describe("readHeadCi, replayed against recorded gh payloads", () => {
-  test("answers the remote head, its open PR and the verdict", () => {
-    const gh = runListFake({ script: [runRow("completed", "failure")] });
-    const out = readHeadCi(REPO, PENDING.branch, gh, Date.now() + 60_000);
-    assert.equal(out.remoteSha, SHA);
-    assert.equal(out.pr, PENDING.pr);
-    assert.equal(out.verdict.pass, false);
-  });
-
-  test("a branch with no open pull request reads pr as null", () => {
-    const gh = runListFake({ script: [runRow("completed", "success")], prList: [] });
-    const out = readHeadCi(REPO, PENDING.branch, gh, Date.now() + 60_000);
-    assert.equal(out.pr, null);
-    assert.equal(out.verdict.pass, true);
-  });
-
-  test("a remote sha that cannot be read reads as null, not a throw", () => {
-    const gh = runListFake({ script: [runRow("completed", "success")], remoteSha: null });
-    const out = readHeadCi(REPO, PENDING.branch, gh, Date.now() + 60_000);
-    assert.equal(out.remoteSha, null);
   });
 });
 

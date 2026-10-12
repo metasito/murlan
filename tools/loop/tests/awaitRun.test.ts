@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import { awaitRuns, BUDGET_MS, EVERY_MS, GATE_MS, runArgs } from "../await-run.mjs";
+import { awaitRuns, BUDGET_MS, EVERY_MS, runArgs } from "../await-run.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS } from "../queue-loop.mjs";
 import { TARGET_RUN_SECONDS } from "../../ci/e2e-shard.mjs";
 
@@ -65,36 +63,14 @@ test("a run gh cannot find is 2, naming the id, not a wait forever", async () =>
   assert.equal(await awaitRuns(["9"], { view: () => { throw new Error("could not find any workflow run with ID 9"); }, ...clock(), say: quiet }), 2);
 });
 
-test("with --pr, a green run whose over-budget list names a file the pull request changed is 1, naming it", async () => {
-  const native = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
-  const untils: number[] = [];
-  const gh = (changed: string) => (args: string[], until: number) => {
-    untils.push(until);
-    if (args[0] === "api" && /\/actions\/runs\/1\/artifacts/.test(args[1])) return "over-budget-native-1";
-    if (args[0] === "run" && args[1] === "download") {
-      const dir = path.join(args[args.indexOf("--dir") + 1], "over-budget-native-1");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(path.join(dir, "over-budget.json"), JSON.stringify([{ file: native, seconds: 32.9, budget: 15 }]));
-      return "";
-    }
-    if (args[0] === "api" && /\/pulls\/7\/files/.test(args[1])) return JSON.stringify({ filename: changed, status: "modified" });
-    throw new Error(`unexpected gh ${args.join(" ")}`);
-  };
-  const said: string[] = [];
-  const say = (s: string) => said.push(s);
-  assert.equal(await awaitRuns(["1"], { view: () => done("success"), ...clock(), say, pr: 7, gh: gh(native) }), 1);
-  assert.match(said.join("\n"), /mancheOutcomeOnTheFelt\.test\.tsx: 32\.9s against a budget of 15s/);
-  assert.deepEqual([...new Set(untils)], [GATE_MS], "the gate's deadline is read off the injected clock");
-  assert.equal(await awaitRuns(["1"], { view: () => done("success"), ...clock(), say: quiet, pr: 7, gh: gh("lib/x.ts") }), 0);
-  assert.deepEqual(runArgs(["--pr", "7", "1", "2"]), { pr: 7, ids: ["1", "2"] });
-  assert.deepEqual(runArgs(["--pr=7", "1"]), { pr: 7, ids: ["1"] });
-  assert.deepEqual(runArgs(["1"]), { pr: undefined, ids: ["1"] });
-  assert.equal(runArgs(["--pr", "1"]), null);
+test("only run ids are arguments", () => {
+  assert.deepEqual(runArgs(["1", "2"]), ["1", "2"]);
+  assert.equal(runArgs([]), null);
+  assert.equal(runArgs(["--pr", "7", "1"]), null);
 });
 
 test("the default budget returns with a poll's headroom under the default Bash timeout", () => {
   assert.ok(BUDGET_MS + EVERY_MS <= BASH_DEFAULT_TIMEOUT_MS);
-  assert.ok(BUDGET_MS + GATE_MS <= BASH_DEFAULT_TIMEOUT_MS);
 });
 
 // Each re-issue is a turn at the session's full context: #1481's build polled about 40 times at up
