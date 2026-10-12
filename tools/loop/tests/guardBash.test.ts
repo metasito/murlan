@@ -37,6 +37,7 @@ const repo = {
   unmerged: (paths: string[]) => paths.length > 0 && paths.every((p) => p.includes("conflicted")),
   top: (dir?: string | null): string | null => resolve("/r", dir?.startsWith(".worktrees") ? dir : "."),
   cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
+  onTicket: () => false,
 };
 const firstRun = (workflowName: string) => ({ workflowName, attempt: 1 });
 const device = () => firstRun("iOS UI (Maestro)");

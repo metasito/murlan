@@ -20,7 +20,7 @@ test("rule 25's read is the one the briefs use, which keeps only trusted authors
 test("every documented read of an issue's comments keeps only trusted authors'", () => {
   const files = DIRS.flatMap(docs);
   assert.ok(files.flatMap((f) => commentReads(readFileSync(f, "utf8"))).length > 0, "no comment read found; the pattern has drifted");
-  assert.deepEqual(files.flatMap((f) => untrusted(readFileSync(f, "utf8")).map((a) => `${f}: gh ${a.join(" ")}`)), []);
+  assert.deepEqual(files.flatMap((f) => untrusted(readFileSync(f, "utf8")).map((a: string[]) => `${f}: gh ${a.join(" ")}`)), []);
 });
 
 test("the scan sees an unfiltered read, wrapped or not", () => {
