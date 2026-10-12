@@ -263,17 +263,19 @@ const ranTurns = (row) => row.turns !== 0;
 const holdRound = (row) => row.outcome === "handoff" && Object.keys(row.phases ?? {})[0] === "D";
 
 /**
- * Verdicts on each ticket less its landings, each of which a LAND verdict cleared. Schema 8's total
- * counts across claims; `review_rounds`, which a re-claim resets, is all an earlier row has.
+ * Each ticket's HOLD verdicts: schema 8's `review_holds_total`, across claims and fix rounds. A
+ * ticket with no row carrying it is approximated as its `review_rounds` less its landings — a count a
+ * re-claim resets, and one that takes a LAND still settling for a HOLD.
  */
 function holdsByTicket(rows) {
   const by = new Map();
   for (const r of rows) {
-    const t = by.get(r.n) ?? by.set(r.n, { rounds: 0, landed: 0 }).get(r.n);
-    t.rounds = Math.max(t.rounds, r.review_rounds_total ?? r.review_rounds ?? 0);
+    const t = by.get(r.n) ?? by.set(r.n, { holds: null, rounds: 0, landed: 0 }).get(r.n);
+    if (typeof r.review_holds_total === "number") t.holds = Math.max(t.holds ?? 0, r.review_holds_total);
+    t.rounds = Math.max(t.rounds, r.review_rounds ?? 0);
     if (r.outcome === "landed") t.landed += 1;
   }
-  return Object.fromEntries([...by].map(([n, t]) => [n, Math.max(0, t.rounds - t.landed)]));
+  return Object.fromEntries([...by].map(([n, t]) => [n, t.holds ?? Math.max(0, t.rounds - t.landed)]));
 }
 
 /**
