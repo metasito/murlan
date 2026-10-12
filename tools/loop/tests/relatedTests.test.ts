@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../related-tests.mjs";
+import { capNear, listedTests, LOCAL_PROJECTS, localProjectOf, nearTests, onLocalProjects } from "../near-tests.mjs";
 
 const T = (n: string) => `tests/native/${n}.test.tsx`;
 const src: Record<string, string> = {
@@ -22,9 +22,10 @@ describe("the native tests a change reaches first", () => {
     assert.deepEqual(near(["components/table/feltSkia.web.tsx"]), [T("feltFallbackShade")]));
   test("a name match jest's graph does not reach is dropped", () => assert.deepEqual(near(["lib/screenShake.ts"], [T("scorePill")]), []));
   test("a changed test file always runs", () => assert.deepEqual(near([T("brandNew")], []), [T("brandNew")]));
-  test("the command the loop runs selects jest projects only through onLocalProjects", () => {
+  test("the command the loop runs uses this module, and selects jest projects only through it", () => {
     const script = readFileSync(new URL("../related-tests.mjs", import.meta.url), "utf8");
-    assert.equal(script.match(/--selectProjects/g)?.length, 1, "only onLocalProjects names the projects");
+    assert.match(script, /from "\.\/near-tests\.mjs"/);
+    assert.doesNotMatch(script, /--selectProjects/);
     assert.equal(script.match(/\[jest, \.\.\.onLocalProjects\(/g)?.length, 2);
   });
   test("changed tests come first, then tests named after a changed module, then importers", () => {
