@@ -2210,7 +2210,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
       const at = String(verdict.head ?? "an unread head").slice(0, 7);
-      return owner(`no VERDICT: LAND and review cover ${at} — it was pushed for review, not cleared`);
+      return owner(
+        `no VERDICT: LAND and review within the ${MAX_REVIEW_ROUNDS}-round cap cover ${at} — it was pushed for review, not cleared`,
+      );
     }
     if (next.action === "ready") {
       if (left.ready === 0) return owner("the draft is still a draft after gh pr ready");

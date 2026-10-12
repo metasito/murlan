@@ -28,7 +28,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { derive, dodCheckFor, locateRun, reviewFor, ticketComments, verdictFor } from "./loop-derive.mjs";
+import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -129,7 +129,8 @@ export function pushVerdict(s) {
       "Phase C commits each slice as it lands.",
     ] };
   if (!s.trackerReadable) return { ok: false, why: `cannot reach the tracker to read the review of #${s.ticket}` };
-  if ((s.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
+  if (s.reviewRounds == null) return { ok: false, why: `cannot count the review rounds on #${s.ticket}` };
+  if (s.reviewRounds > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
     "A ticket never lands past the cap: stand down and leave it to the owner.",
   ] };
   if (!s.verdict) return { ok: false, why: `no review of ${s.head.slice(0, 7)} on the issue`, lines: [
@@ -155,13 +156,15 @@ const MERGE_WALK = 8;
  * Whether the merge may take `sha`. The branch is pushed when review starts, so the push is no
  * longer the gate: a LAND and its report must cover `sha`, or `sha` must be a merge of a commit on
  * `main` into a head they cover whose tree is exactly what a clean merge gives — which is what
- * `gh pr update-branch` makes, and not a merge carrying edits of its own. Fails closed.
+ * `gh pr update-branch` makes, and not a merge carrying edits of its own. The review cap holds
+ * here as at the push, since a session that dies past it never runs the push gate. Fails closed.
  *
  * @param {{body: string}[]} comments
  * @param {string} sha
  * @param {(args: string[]) => string} git trimmed stdout; throws on a non-zero exit
  */
 export function mergeCleared(comments, sha, git, main = "origin/main") {
+  if (reviewRounds(comments) > MAX_REVIEW_ROUNDS) return false;
   try {
     let at = sha;
     for (let i = 0; i < MERGE_WALK; i++) {
