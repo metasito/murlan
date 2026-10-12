@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { awaitRuns, BUDGET_MS, EVERY_MS, runArgs } from "../await-run.mjs";
+import { awaitRuns, BUDGET_MS, EVERY_MS, GATE_MS, runArgs } from "../await-run.mjs";
 import { BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
 
 const quiet = () => {};
@@ -89,4 +89,5 @@ test("with --pr, a green run whose over-budget list names a file the pull reques
 
 test("the default budget returns with a poll's headroom under the default Bash timeout", () => {
   assert.ok(BUDGET_MS + EVERY_MS <= BASH_DEFAULT_TIMEOUT_MS);
+  assert.ok(BUDGET_MS + GATE_MS <= BASH_DEFAULT_TIMEOUT_MS);
 });

@@ -98,7 +98,10 @@ that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branc
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
 mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
-and 3 when some are still going: then run the same command again. It returns before the default
+and 3 when some are still going: then run the same command again. With `--pr <n>` a passed run is
+also 1 when its over-budget list (`tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`) names a
+test file that pull request adds or changes: rule 46's land gate, which the supervisor applies too
+(`tools/loop/ciVerdict.ts`). It returns before the default
 Bash timeout, so it needs no `timeout` of its own; a loop session's `gh run watch`, `gh pr checks
 --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
 `…actions/runs|check-runs` are refused because a device run
