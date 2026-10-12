@@ -81,6 +81,7 @@ import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, suspended } from "./limits.mjs";
+import { commands, withoutQuotedBodies } from "./guard-bash.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -1466,6 +1467,13 @@ export function watchBuild(state, fact, budget, warn) {
   );
 }
 
+/** The `gh run rerun` commands the session itself ran — parsed, so a comment quoting one is not one. */
+const rerunsIn = (calls) =>
+  calls
+    .filter((c) => !c.parent && (c.name === "Bash" || c.name === "PowerShell"))
+    .flatMap((c) => commands(withoutQuotedBodies(c.command)))
+    .filter((c) => c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun").length;
+
 /**
  * Spawns one session and reports what it did.
  *
@@ -1518,6 +1526,7 @@ export function runTicket(
     lastFactAt: Date.now(),
     asleepMs: 0,
     lastFact: null,
+    reruns: 0,
     blocked: false,
     blockedUntil: 0,
     stalled: false,
@@ -1634,6 +1643,7 @@ export function runTicket(
         screen.start(letter, round());
       }
       if (fact.declared) state.declared = fact.declared;
+      state.reruns += rerunsIn(fact.calls);
       // The only sign of life during phase D, which is the longest one and the one that read as a
       // hang: its work happens entirely inside a review subagent.
       // Both halves, in the order a person reads them: what the session said about what it is
@@ -1758,6 +1768,7 @@ export function runTicket(
           ms: Date.now() - startedAt,
           asleepMs: state.asleepMs,
           lastFact: state.lastFact,
+          reruns: state.reruns,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
           // file is complete and nothing is writing to it.
@@ -2800,6 +2811,7 @@ function realIo(book, screen) {
           startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
           ms: run.ms,
           asleepMs: run.asleepMs ?? null,
+          reruns: run.reruns ?? null,
           version: run.version,
           usage: run.usage ?? null,
           committed: run.committed ?? null,

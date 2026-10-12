@@ -143,8 +143,8 @@ export function usageSplit(text) {
  * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
  * `run_id`, both null on rows written before it. 6 drops `solo_bash_turns`, adds `loop_sha`,
  * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session. 7 adds
- * `park_failed` and the `reparked` row, which closes it, and `asleep_ms`, the part of `ms` the
- * machine spent in standby.
+ * `park_failed` and the `reparked` row, which closes it, `asleep_ms`, the part of `ms` the
+ * machine spent in standby, and `reruns`.
  */
 export const SCHEMA = 7;
 
@@ -193,6 +193,7 @@ export function sessionRow({
   startedAt,
   ms,
   asleepMs = null,
+  reruns = null,
   version,
   usage = null,
   committed = null,
@@ -218,6 +219,7 @@ export function sessionRow({
     turns: result?.turns ?? 0,
     ms,
     asleep_ms: asleepMs,
+    reruns,
     models,
     subagents: result?.subagents ?? null,
     usage,
