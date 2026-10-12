@@ -7,11 +7,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
 import {
   parkAsked,
-  queuePreStreamed,
   runOnce,
   afterSession,
   main,
@@ -340,21 +337,6 @@ describe("runOnce", () => {
     assert.equal((await runOnce(io({ housekeeping: later("ok") }), 42)).outcome, "landed");
     assert.equal((await runOnce(io({ housekeeping: later("hold") }))).outcome, "hold");
     assert.deepEqual(asked, [42, null]);
-  });
-
-  test("queue-pre's rows reach the terminal as they are written, and the refusal is kept", async () => {
-    const child: any = new EventEmitter();
-    child.stderr = new PassThrough();
-    const shown: string[] = [];
-    const out = { write: (s: string) => shown.push(String(s)) };
-    const pending = queuePreStreamed({ spawnFn: () => child, out: out as never });
-    child.stderr.write("memory   \x1b[32m✓\x1b[0m 6.1 GB free\n");
-    await new Promise((r) => setImmediate(r));
-    assert.deepEqual(shown, ["memory   \x1b[32m✓\x1b[0m 6.1 GB free\n"], "the first row is on screen before queue-pre exits");
-    child.stderr.end("worktrees ✗ 1 not made by the loop\n");
-    await new Promise((r) => setImmediate(r));
-    child.emit("close", 1);
-    assert.deepEqual(await pending, { status: 1, said: "memory   ✓ 6.1 GB free\nworktrees ✗ 1 not made by the loop\n" });
   });
 
   test("a pinned ticket is what the picker is asked for", async () => {

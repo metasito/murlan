@@ -26,7 +26,7 @@ import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPasse
  */
 const LOOP = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(LOOP, "loop-gate.mjs");
-const PRUNE = join(LOOP, "prune-worktrees.mjs");
+const PRUNE = join(LOOP, "workspace.mjs");
 const root = dirname(
   execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
     encoding: "utf8",
@@ -108,7 +108,7 @@ function sweep() {
   for (const w of worktreeDirs()) {
     if (!/[\\/]\.worktrees[\\/]agent-99\d+$/.test(w)) continue;
     try {
-      execFileSync(process.execPath, [PRUNE, "--remove", w, "--force"], { cwd: root });
+      execFileSync(process.execPath, [PRUNE, "remove",w, "--force"], { cwd: root });
     } catch {
       /* already detached; the prune below finishes it */
     }
@@ -143,7 +143,7 @@ after(() => {
   // junction and empties the shared install. These probes have none, but the habit is the hazard.
   for (const wt of madeDirs) {
     try {
-      execFileSync(process.execPath, [PRUNE, "--remove", wt, "--force"], { cwd: root });
+      execFileSync(process.execPath, [PRUNE, "remove",wt, "--force"], { cwd: root });
     } catch {
       /* already gone */
     }

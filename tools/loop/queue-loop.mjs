@@ -409,7 +409,7 @@ export function syncCheckout(
 
   // Keyed on the installed stamp, not the fast-forward's own diff: a diff seen once and skipped
   // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
-  // its only chance to notice. `preflight` refuses to start a ticket on top of a drifted install,
+  // its only chance to notice. `housekeeping` refuses to start a ticket on top of a drifted install,
   // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
   // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
   // junction into this install, so reinstalling under a live session empties the tree it is in.
@@ -861,7 +861,7 @@ export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)
   return { failed, why: pruned ? "the park note was pruned, so its comment is not posted" : null };
 }
 
-/** From the main checkout: `removeOneWorktree` refuses a caller standing inside the tree it removes. */
+/** From the main checkout: `removeWorktree` in workspace.mjs refuses a caller standing inside the tree it removes. */
 export function removeWorktree(cwd, run = sh) {
   return run("npm", ["run", "worktrees:remove", "--", cwd], { cwd: ROOT });
 }
@@ -2660,21 +2660,6 @@ export async function runOnce(io, pinned = null, at = null) {
   }
   io.teardown(after?.cwd ?? null, route.number);
   return { outcome: "landed", ticket: route.number };
-}
-
-export function queuePreStreamed({ spawnFn = spawn, out = process.stderr } = {}) {
-  return new Promise((resolve) => {
-    const child = spawnFn(process.execPath, [HERE + "/queue-pre.mjs"], { stdio: ["ignore", "inherit", "pipe"] });
-    let said = "";
-    child.stderr.setEncoding?.("utf8");
-    child.stderr.on("data", (chunk) => {
-      out.write(chunk);
-      said += chunk;
-    });
-    const done = (status) => resolve({ status: status ?? 1, said: said.replace(/\x1b\[[0-9;]*m/g, "") });
-    child.on("error", (err) => ((said += `queue-pre ✗ could not start — ${err.message}\n`), done(1)));
-    child.on("close", done);
-  });
 }
 
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */

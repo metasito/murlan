@@ -322,8 +322,9 @@ one that doesn't needs a device capture (above).
   the pre-press state** — see *The native harness is async*, below.
 - **A stale `node_modules` reads as a real defect.** It is shared live across every worktree
   (#938); an install can leave `react-native`/`react-native-worklets` looser than
-  `package-lock.json` pins, silently (phantom `TS2698`). `tools/loop/preflight.mjs` and
-  `tools/loop/agent-check.mjs` both call `checkLockDrift`, and both point at `npm ci`.
+  `package-lock.json` pins, silently (phantom `TS2698`). The loop's housekeeping
+  (`tools/loop/workspace.mjs`) and `tools/loop/agent-check.mjs` both call `checkLockDrift`, and
+  both point at `npm ci`.
 
 ## A scan needs a planted floor
 
@@ -438,9 +439,11 @@ the spec count, not the colour).
   `rm -r` to follow. `tools/loop/guard-bash.mjs` blocks the raw `--force` and points at
   `worktrees:remove` (rule 39); `tools/loop/tests/worktreeRemoveCommand.test.ts` plants the
   defect and pins the version where it changed, on the Windows CI leg. `npm run worktrees:prune`
-  (`-- --dry-run` to only classify) cleans up one left by a killed/crashed session the same way.
-  It only ever removes worktrees directly under `.worktrees/`; one registered anywhere else is a
-  person's, and only `worktrees:remove` takes it.
+  (`-- --dry-run` to only list) cleans up one left by a killed/crashed session the same way, and
+  the loop runs it before every ticket. It only ever removes a `.worktrees/agent-<n>` whose issue
+  is closed or no longer `in-progress`, never with `--force`, so uncommitted or locked work stays
+  and the row says why; one registered anywhere else, or named otherwise, is a person's, and
+  only `worktrees:remove` takes it.
   Never hand-create the junction either — it is actively harmful: `node --test` fails every file
   with `Cannot find package 'typescript'` through one, while `tsc`/`eslint` keep working, which
   reads exactly like a broken branch.

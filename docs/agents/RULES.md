@@ -77,7 +77,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 
 30. **Report what you actually did.** A gap named is worth more than a green report.
 31. **Never leave an edit uncommitted in the shared checkout.** Commit it on a branch before you
-    stop. `node tools/loop/preflight.mjs` blocks a run that would start on top of one.
+    stop. `npm run queue:pre` (`tools/loop/workspace.mjs`) holds a run that would start on top of one.
 32. **Leave no residue** — no stray branches, worktrees, scratch files or uncommitted edits in the
     shared checkout.
 33. **Outstanding work goes in a GitHub issue**, never a `TODO` or a markdown backlog: a new one labelled

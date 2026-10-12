@@ -2,10 +2,6 @@
  * Clears what a killed run leaves behind: the e2e server still holding its port, and node
  * processes belonging to sessions that have exited.
  *
- * A sibling of prune-worktrees.mjs rather than a flag on it. Removing a worktree is reversible and
- * asked for; killing a process is neither, and prune runs in places where doing it would be a
- * surprise.
- *
  * Usage: node tools/loop/reap.mjs [--dry-run] [--stale]
  */
 import { execFileSync } from "node:child_process";
@@ -14,7 +10,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot as sharedRoot } from "../../scripts/lib/checkoutRoot.mjs";
-import { FOUND_NOTHING, IF_FOUND } from "./loop-derive.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
@@ -486,6 +481,5 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const found = await reap({ dryRun: process.argv.includes("--dry-run"), stale: process.argv.includes("--stale") });
-  if (process.argv.includes(IF_FOUND) && found === 0) process.exit(FOUND_NOTHING);
+  await reap({ dryRun: process.argv.includes("--dry-run"), stale: process.argv.includes("--stale") });
 }

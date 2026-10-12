@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
-import { FOUND_NOTHING, IF_FOUND } from "../loop-derive.mjs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import {
   orphans,
@@ -945,17 +944,5 @@ describe("the sweep, called in-process as housekeeping calls it", () => {
     const found = await reap({ dryRun: true, stale: true, say: (l: string) => said.push(l) });
     assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
     assert.equal(found, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
-  });
-});
-
-describe("the --if-found answer", () => {
-  test("exits FOUND_NOTHING exactly when it named nothing to take", () => {
-    const done = spawnSync(
-      process.execPath,
-      [fileURLToPath(new URL("../reap.mjs", import.meta.url)), "--dry-run", IF_FOUND],
-      { encoding: "utf8" },
-    );
-    const named = /would (kill|clear|remove)/.test(done.stdout);
-    assert.equal(done.status, named ? 0 : FOUND_NOTHING, done.stdout);
   });
 });

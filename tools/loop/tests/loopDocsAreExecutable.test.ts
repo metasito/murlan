@@ -92,7 +92,7 @@ describe("phase A's housekeeping belongs to the supervisor", () => {
 
   test("it does not also ask the model to run what the supervisor already ran", () => {
     const text = read(QUEUE);
-    for (const moved of ["node tools/loop/prune-worktrees.mjs", "node tools/loop/preflight.mjs"]) {
+    for (const moved of ["worktrees:prune", "tools/loop/workspace.mjs"]) {
       assert.ok(!text.includes(moved), `${moved} moved to the supervisor; queue.md must not ask for it too`);
     }
   });
