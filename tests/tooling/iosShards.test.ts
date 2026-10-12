@@ -99,7 +99,7 @@ test("the run is green only when every shard ran and passed", () => {
   const gate = job("ios");
   const jobs = [...IOS.split(/^jobs:\n/m)[1].matchAll(/^ {2}([\w-]+):\n/gm)].map((m) => m[1]).filter((j) => j !== "ios");
   assert.match(gate, new RegExp(`\\n {4}needs: \\[${jobs.join(", ")}\\]\\n`));
-  assert.match(gate, /\n {4}if: always\(\) && /);
+  assert.match(gate, /\n {4}if: always\(\)\n/);
   const results = jobs.map((j) => `\\$\\{\\{ needs\\.${j}\\.result \\}\\}`).join(" ");
   const expected = jobs.map(() => "success").join(" ");
   assert.match(step(gate, "Every shard ran and passed"), new RegExp(`RESULTS: ${results}\\n[\\s\\S]*\\[ "\\$RESULTS" = "${expected}" \\]\\s*$`));
