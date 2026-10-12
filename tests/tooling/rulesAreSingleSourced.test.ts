@@ -98,16 +98,26 @@ describe("every agent rule is written down exactly once", () => {
     );
   });
 
-  test("phase A checks loop-status.mjs before the picker, not just somewhere in the doc", () => {
-    const queue = read(".claude/commands/queue.md");
+  /** Why phase A of this queue.md does not check loop-status.mjs before the picker, or null. */
+  const phaseAOrder = (queue: string): string | null => {
     const statusAt = queue.indexOf("loop-status.mjs");
     const pickerAt = queue.indexOf("next-ticket.mjs $ARGUMENTS");
-    assert.ok(statusAt >= 0 && pickerAt >= 0, "one of the two commands is missing from queue.md");
-    assert.ok(
-      statusAt < pickerAt,
-      "loop-status.mjs must run before next-ticket.mjs's picker, or a live ticket can be bypassed " +
-        "for a fresh pick — see #911/#915"
-    );
+    if (statusAt < 0 || pickerAt < 0) return "one of the two commands is missing from phase A";
+    return statusAt < pickerAt
+      ? null
+      : "loop-status.mjs must run before next-ticket.mjs's picker, or a live ticket can be bypassed for a fresh pick — see #911/#915";
+  };
+
+  test("phase A checks loop-status.mjs before the picker", () => {
+    assert.equal(phaseAOrder(read(".claude/commands/queue.md")), null);
+  });
+
+  test("the phase A check is not passed by a mention elsewhere in the doc", () => {
+    const queue = read(".claude/commands/queue.md");
+    const stepless = queue.replace(/^1\. \*\*Is a run live\?\*\*[\s\S]*?(?=^2\. )/m, "");
+    assert.notEqual(stepless, queue, "step 1 was not found to delete; the pattern has drifted");
+    assert.ok(stepless.includes("loop-status.mjs"), "the decoys are gone; this test proves nothing");
+    assert.notEqual(phaseAOrder(stepless), null);
   });
 
   test("phase D runs one reviewer whose report sorts Blocking from the rest", () => {
