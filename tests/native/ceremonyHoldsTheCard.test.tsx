@@ -4,7 +4,7 @@
 // `arrivingCard` (tests/ui-rules/flightPhysics.test.ts) says which card each seat is
 // owed. Only a rendered table says whether the fan actually leaves the place
 // for it, which is what #650 lands into.
-import { describe, it, expect, jest } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -137,6 +137,14 @@ const table = (opts: {
 const named = (c: Card) => screen.queryAllByLabelText(cardSpokenName(c, t)).length;
 
 describe('the hand leaves a place for the card still in the air', () => {
+  // The legs run on performance.now(): on real timers a slow render is time the ceremony moves on in.
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('does not hold the winner\'s incoming card while the ceremony runs', async () => {
     const r = await render(table({ viewerSeat: WINNER_SEAT, visible: true }));
 
@@ -227,12 +235,10 @@ describe('the hand leaves a place for the card still in the air', () => {
   // A row still stepped for the cards it draws would close over the slot and
   // the card would arrive on top of a fan that never moved.
   it('steps the row for the card tucking in, not for the cards it draws', async () => {
-    jest.useFakeTimers();
     const during = await render(table({ viewerSeat: WINNER_SEAT, visible: false, choosing: true }));
     for (let at = 0; at < Motion.exchange.beat + LEG.tuck + 160; at += 16) await act(async () => jest.advanceTimersByTime(16));
     const holdingASlot = rowWidth();
     await during.unmount();
-    jest.useRealTimers();
 
     const after = await render(table({ viewerSeat: WINNER_SEAT, visible: false }));
     const withTheCard = rowWidth();

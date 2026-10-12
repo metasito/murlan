@@ -7,6 +7,7 @@ import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { GameState } from '@/lib/game/gameEngine';
 import { botManche, STEP_MS } from './helpers/botManche';
+import { displayFrames } from './helpers/displayFrames';
 import { settle } from './helpers/feedback';
 
 const mockRenders: Record<string, number> = {};
@@ -96,11 +97,14 @@ const most = (costs: Cost[], k: keyof Cost) => Math.max(...costs.map((c) => c[k]
 const total = (costs: Cost[], k: keyof Cost) => costs.reduce((sum, c) => sum + c[k], 0);
 
 describe('one bot move', () => {
+  let restoreFrames: () => void;
   beforeEach(() => {
     jest.useFakeTimers();
+    restoreFrames = displayFrames();
     jest.spyOn(console, 'warn').mockImplementation(noop);
   });
   afterEach(() => {
+    restoreFrames();
     jest.useRealTimers();
     jest.restoreAllMocks();
   });
