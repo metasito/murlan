@@ -62,6 +62,17 @@ function declaration(d) {
   };
 }
 
+/** Only the fields a result's `structured_output` gives and that read, or null when it gives none. */
+function given(out) {
+  const said = declaration(out);
+  if (!said) return null;
+  const kept = Object.entries(said).filter(([k, v]) => out[k] != null && v !== null);
+  return kept.length ? Object.fromEntries(kept) : null;
+}
+
+/** The structured fields over the LOOP-RESULT line's: a field the structured output leaves out keeps the line's value. */
+export const overLine = (line, structured) => ({ ...(line ?? declaration({})), ...structured });
+
 /** @param {string} text */
 function declaredIn(text) {
   const m = DECLARED.exec(text);
@@ -218,7 +229,7 @@ export function readEvent(e) {
         created: e.usage?.cache_creation_input_tokens ?? 0,
         read: e.usage?.cache_read_input_tokens ?? 0,
       },
-      declared: declaration(e.structured_output),
+      declared: given(e.structured_output),
     };
   }
   return null;
