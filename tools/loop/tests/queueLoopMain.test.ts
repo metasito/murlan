@@ -1540,6 +1540,22 @@ describe("the run recap", () => {
     assert.match(await recapFor(0), /no open Launch tickets/);
     assert.doesNotMatch(await recapFor(2), /Launch/);
   });
+
+  test("names a size this run's busiest process left short of turn headroom", async () => {
+    let text = "";
+    let passes = 0;
+    const book = {
+      rows: [{ n: 1, size: "size:S", turns: 300, outcome: "handoff" }],
+      totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 },
+      tickets: [],
+      record: () => {},
+      close: (_id: string, _line: string, t: string) => void (text = t),
+    };
+    const spy = { ...(io() as any), stopFile: () => passes++ > 0 };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
+    assert.match(text, /turn cap under 2× the busiest process: size:S busiest 300/);
+  });
 });
 
 describe("a handoff", () => {

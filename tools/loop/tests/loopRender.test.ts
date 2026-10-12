@@ -467,6 +467,17 @@ describe("runRecap", () => {
       assert.ok(!runRecap({ ...run, launch }, tPlain).join("\n").includes("Launch"), String(launch));
     }
   });
+
+  test("a size whose turn cap is under twice its busiest process is said, and one with room is not", () => {
+    const headroom = [
+      { size: "size:S", most: 170, cap: 320, short: true },
+      { size: "size:M", most: 90, cap: 505, short: false },
+    ];
+    const out = runRecap({ ...run, headroom }, tPlain).map(strip).join("\n");
+    assert.match(out, /turn cap under 2× the busiest process: size:S busiest 170, cap 320/);
+    assert.doesNotMatch(out, /size:M/);
+    assert.doesNotMatch(runRecap(run, tPlain).map(strip).join("\n"), /turn cap/);
+  });
 });
 
 describe("keybar", () => {

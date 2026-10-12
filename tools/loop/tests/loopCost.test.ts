@@ -445,9 +445,15 @@ describe("turnHeadroom", () => {
 
   test("the report names the short size and stays quiet about the rest", () => {
     const busy = [{ size: "size:S", turns: 90, outcome: "handoff" }, { size: "size:M", turns: 60, outcome: "pushed" }];
-    const out = report([readTicket([say("PHASE C", 0), result(1)], "1")], busy);
+    const out = report([readTicket([say("PHASE C", 0), result(1)], "1")], busy, { "size:S": 160, "size:M": 505 });
     assert.match(out, /turn cap under 2× the busiest process: size:S busiest 90, cap 160/);
     assert.doesNotMatch(out, /size:M busiest/);
+  });
+
+  // #1496's build used 153 of size:S's 160 turns; #1438 151 and #1470 137 sat as close.
+  test("size:S's cap has twice the turns its busiest measured build used", () => {
+    const [s] = turnHeadroom([{ size: "size:S", turns: 153, outcome: "handoff" }]);
+    assert.equal(s.short, false, `cap ${s.cap} for a busiest of ${s.most}`);
   });
 });
 
