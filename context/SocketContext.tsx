@@ -151,16 +151,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
   }, [userId, qc]);
   // Keyed by account rather than reset on sign-out: a render after the clear
   // above re-subscribes the invites query and puts it back in the emptied cache.
-  const [hidden, setHidden] = useState<{ userId?: string; codes: ReadonlySet<string> }>({
-    codes: NO_HIDDEN_INVITES,
-  });
-  const hiddenInvites = hidden.userId === userId ? hidden.codes : NO_HIDDEN_INVITES;
+  // One set per account, because a callback can settle after its account signed
+  // out (a decline's rejection) and must land in that account's set alone.
+  const [hidden, setHidden] = useState<ReadonlyMap<string | undefined, ReadonlySet<string>>>(
+    () => new Map()
+  );
+  const hiddenInvites = hidden.get(userId) ?? NO_HIDDEN_INVITES;
   const updateHiddenInvites = useCallback(
     (update: (codes: Set<string>) => void) =>
       setHidden((prev) => {
-        const codes = new Set(prev.userId === userId ? prev.codes : NO_HIDDEN_INVITES);
+        const codes = new Set(prev.get(userId) ?? NO_HIDDEN_INVITES);
         update(codes);
-        return { userId, codes };
+        return new Map(prev).set(userId, codes);
       }),
     [userId]
   );

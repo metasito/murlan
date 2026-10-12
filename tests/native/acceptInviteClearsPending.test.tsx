@@ -41,8 +41,10 @@ jest.mock('@/lib/query-client', () => ({
   apiRequest: (...args: unknown[]) => mockApiRequest(...args),
 }));
 
+const ANA = { id: 'u1', username: 'Ana' };
+let mockUser: { id: string; username: string } | null = ANA;
 jest.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', username: 'Ana' }, logout: async () => {} }),
+  useAuth: () => ({ user: mockUser, logout: async () => {} }),
 }));
 
 const { SocketProvider, useSocket } =
@@ -72,6 +74,7 @@ const invite = async () => {
 
 beforeEach(() => {
   mockSocket.listeners.clear();
+  mockUser = ANA;
 });
 
 describe('accepting an invite', () => {
@@ -148,6 +151,91 @@ describe('accepting an invite', () => {
 
     expect(result.current.pendingInvite).toEqual({ from: 'ana', roomCode: 'ABC123' });
     expect(result.current.acceptedInvite).toBeNull();
+
+    await unmount();
+  });
+});
+
+describe('hidden invites across accounts', () => {
+  it("leaves the next account's hidden invites alone when an old decline fails", async () => {
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'ana', roomCode: 'ABC123' }]);
+    const { result, rerender, unmount } = await mount(client);
+    let rejectDecline: (reason: Error) => void = () => {};
+    mockApiRequest.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => (rejectDecline = reject))
+    );
+    await act(async () => result.current.dismissGameInvite('ABC123'));
+
+    mockUser = null;
+    await act(async () => rerender({}));
+    mockUser = { id: 'u2', username: 'Ben' };
+    await act(async () => rerender({}));
+    await act(async () => {
+      client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
+    });
+    await act(async () => result.current.acceptInvite('XYZ789'));
+    expect(result.current.gameInvites).toEqual([]);
+
+    await act(async () => rejectDecline(new Error('unauthorized')));
+    expect(result.current.gameInvites).toEqual([]);
+
+    await unmount();
+  });
+
+  it('keeps a hide when the same account signs out and back in', async () => {
+    const client = new QueryClient();
+    const row = { fromUsername: 'ana', roomCode: 'ABC123' };
+    client.setQueryData(['/api/friends/invites'], [row]);
+    const { result, rerender, unmount } = await mount(client);
+    await act(async () => result.current.acceptInvite('ABC123'));
+
+    mockUser = null;
+    await act(async () => rerender({}));
+    mockUser = ANA;
+    await act(async () => rerender({}));
+    await act(async () => {
+      client.setQueryData(['/api/friends/invites'], [row]);
+    });
+
+    expect(result.current.gameInvites).toEqual([]);
+
+    await unmount();
+  });
+
+  it('hides an invite accepted by a child in the commit that signs the account in', async () => {
+    const { useAuth } = require('@/context/AuthContext') as typeof import('@/context/AuthContext');
+    mockUser = null;
+    const client = new QueryClient();
+    client.setQueryData(['/api/friends/invites'], [{ fromUsername: 'cleo', roomCode: 'XYZ789' }]);
+    const { result, rerender, unmount } = await renderHook(
+      () => {
+        const socket = useSocket();
+        const { acceptInvite } = socket;
+        const signedIn = useAuth().user !== null;
+        React.useEffect(() => {
+          if (signedIn) acceptInvite('XYZ789');
+        }, [signedIn, acceptInvite]);
+        return socket;
+      },
+      {
+        wrapper: ({ children }: { children: React.ReactNode }) => (
+          <QueryClientProvider client={client}>
+            <NotificationProvider>
+              <SocketProvider>{children}</SocketProvider>
+            </NotificationProvider>
+          </QueryClientProvider>
+        ),
+      }
+    );
+
+    expect(result.current.gameInvites).toEqual([{ from: 'cleo', roomCode: 'XYZ789' }]);
+
+    mockUser = { id: 'u2', username: 'Ben' };
+    await act(async () => rerender({}));
+
+    expect(result.current.acceptedInvite).toBe('XYZ789');
+    expect(result.current.gameInvites).toEqual([]);
 
     await unmount();
   });
