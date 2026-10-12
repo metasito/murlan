@@ -137,6 +137,16 @@ describe("the frontier's order", () => {
     assert.deepEqual(b.frontier.map((i) => i.number), [1500, 300, 900, 5, 10]);
   });
 
+  test("a CI flake ranks with a red main, ahead of older ordinary and Launch work", () => {
+    const b = classify([
+      issue(10, ["ready-for-agent"]),
+      { ...issue(300, ["ready-for-agent"]), milestone: { title: LAUNCH_MILESTONE } },
+      issue(1528, ["ready-for-agent", "ci-flake"]),
+      issue(1600, ["ready-for-agent", "main-red"]),
+    ], noPrs);
+    assert.deepEqual(b.frontier.map((i) => i.number), [1528, 1600, 300, 10]);
+  });
+
   test("with nothing takeable, the handoff names the owner's asks, the Launch milestone's first", () => {
     const b = classify([
       issue(44, ["ready-for-human"]),
