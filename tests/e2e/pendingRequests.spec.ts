@@ -67,7 +67,20 @@ test("pending requests — the section is there when empty, and names both direc
     await expect(pageA.getByText(emptyLine)).toBeHidden();
     await expect(pageA.getByText(copy["friends.pendingIncoming"])).toBeHidden();
 
-    // 3. The same request, from the other side: incoming, and actionable.
+    // 3. The same request, from the other side: incoming, and actionable. B's
+    //    friend list is read before the accept and answered only after it, the
+    //    way a player who accepts as the screen opens races it.
+    let releaseFriends!: () => void;
+    const friendsHeld = new Promise<void>((resolve) => (releaseFriends = resolve));
+    await pageB.route(
+      /\/api\/friends$/,
+      async (route) => {
+        const answer = await route.fetch();
+        await friendsHeld;
+        await route.fulfill({ response: answer });
+      },
+      { times: 1 }
+    );
     await openFriends(pageB);
     await expect(pageB.getByText(copy["friends.pendingIncoming"])).toBeVisible();
     await expect(pageB.getByText(copy["friends.pendingOutgoing"])).toBeHidden();
@@ -78,7 +91,10 @@ test("pending requests — the section is there when empty, and names both direc
     await expect(accept).toBeVisible();
 
     // 4. Accepting empties both directions, and the section survives it.
+    const acceptAnswered = pageB.waitForResponse(/\/api\/friends\/accept\//);
     await accept.click();
+    await acceptAnswered;
+    releaseFriends();
     await expect(pageB.getByText(emptyLine)).toBeVisible();
     await expect(pageB.getByText(userA, { exact: true })).toBeVisible();
   } finally {
