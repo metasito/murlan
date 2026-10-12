@@ -186,6 +186,7 @@ const VOTE_BELOW_PILL = 7;
 const FELT_Z = { zIndex: Layer.felt } as const;
 const TABLE_Z = { zIndex: Layer.table } as const;
 const HAND_SHADE_Z = { zIndex: Layer.handShade } as const;
+const PARTICLES_Z = { zIndex: Layer.particles } as const;
 const RAIL_Z = { zIndex: Layer.rail } as const;
 /**
  * The turn chip while the opening gate holds the table. Online the deadline is
@@ -1164,7 +1165,6 @@ export function GameTable({
         {...a11yHidden()}
       >
         <Felt rig={rig} stops={felt} pool={lampAim} ready={feltReady} onReady={onFeltReady} cards={cardTable} grey={grey} />
-        <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
         <FeltScrim dim={feltDim} />
       </Animated.View>
 
@@ -1176,6 +1176,9 @@ export function GameTable({
         <View style={[StyleSheet.absoluteFill, HAND_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
         </View>
+        <Animated.View testID="table-particles" style={[StyleSheet.absoluteFill, PARTICLES_Z, edgeGreyStyle]} pointerEvents="none" {...a11yHidden()}>
+          <ParticleLayer ref={particles} rig={rig} landing={landingSignal} grey={grey} />
+        </Animated.View>
         <A11yStatus label={tableA11yLabel} veiled={tableWithdrawn} />
         {/* Chips over the felt where the cards never reach — the combination in
             play at the head of the field, whose turn it is at the top centre, the

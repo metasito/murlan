@@ -431,6 +431,8 @@ export const Layer = {
   levelShade: 3,
   /** The hand's cards' shadows on each other, over the whole table and under its HUD, as the mockup's `.card` box-shadow on the card beneath. */
   handShade: 4,
+  /** The bomb's sparks and embers, the deal's specks and the win's motes: over every card, under the HUD, as the mockup's `#fx` over `#lit`. */
+  particles: 5,
   moment: 10,
   rail: 20,
   /** Darkens the table and its HUD on iOS while the viewer's link is held, where `brightness()` cannot: over the rail, under every hint. */
