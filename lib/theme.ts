@@ -2,7 +2,7 @@
 // platform-aware Shadow.
 import { Platform } from "react-native";
 
-import { CardGlow, Colors, MancheMoment } from "./tokens";
+import { CardGlow, CardShadow, Colors, MancheMoment } from "./tokens";
 
 export * from "./tokens";
 
@@ -101,10 +101,14 @@ const CARD_LAYERS = {
 } as const;
 const CARD_ELEVATION = { face: 3, lifted: 14, back: 5 } as const;
 
-/** A card view's own contact+cast pair; a resting card's cast moved to `cast` where the table gives one. */
-export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null): Record<string, any> {
+/**
+ * A card view's own contact+cast pair; a resting card's cast moved to `cast` where the table gives one, and
+ * where it `shadesCards` as the Skia felt's hand shade does, cast as that shade is.
+ */
+export function cardShadow(kind: keyof typeof CARD_LAYERS, cast?: { x: number; y: number } | null, shadesCards = false): Record<string, any> {
   const [contact, fall] = CARD_LAYERS[kind];
-  const moved = cast && kind !== "lifted" ? { ...fall, offsetX: cast.x, offsetY: cast.y } : fall;
+  const fell = shadesCards ? { color: Colors.shadow, opacity: CardShadow.cast.alpha, radius: CardShadow.cast.blur } : fall;
+  const moved = cast && kind !== "lifted" ? { ...fell, offsetX: cast.x, offsetY: cast.y } : fall;
   return makeLayeredShadow([contact, moved], CARD_ELEVATION[kind]);
 }
 

@@ -12,7 +12,7 @@ import { GameTable } from '@/components/GameTable';
 import { CARD_SCOPES } from '@/components/table/cardRects';
 import { CardCastContext } from '@/components/table/feltReady';
 import { dealCards, type Card, type GameState, type Player } from '@/lib/game/gameEngine';
-import { cardShadow, Shadow } from '@/lib/theme';
+import { CardShadow, cardShadow, Colors, Shadow, withAlpha } from '@/lib/theme';
 import { frames } from './helpers/exchangeLegs';
 import { throwPair } from './helpers/landing';
 import { bootFeedback } from './helpers/feedback';
@@ -153,5 +153,24 @@ describe('a card view off the felt', () => {
     expect(StyleSheet.flatten(screen.getByTestId('card-box').props.style).boxShadow).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
     expect(cardShadow('face', { x: -3, y: 7 }).boxShadow).toContain('-3px 7px');
     await baking.unmount();
+  });
+
+  it("casts a hand card's shadow as the Skia hand shade does where the web felt is still baking, and no other card's", async () => {
+    const shade = `-3px 7px ${CardShadow.cast.blur}px ${withAlpha(Colors.shadow, CardShadow.cast.alpha)}`;
+    const face = card('7', 'clubs');
+    const shadowOf = async (rectKey: string, faceDown = false) => {
+      const view = await render(
+        <CardCastContext.Provider value={{ x: -3, y: 7 }}>
+          <CardView card={face} rectKey={rectKey} faceDown={faceDown} />
+        </CardCastContext.Provider>
+      );
+      const shadow = StyleSheet.flatten(screen.getByTestId(faceDown ? 'card-box-back' : 'card-box').props.style).boxShadow as string;
+      await view.unmount();
+      return shadow;
+    };
+    expect(await shadowOf(`hand:${face.id}`)).toContain(shade);
+    expect(await shadowOf(`hand:${face.id}`, true)).toContain(shade);
+    expect(await shadowOf(`pile:${face.id}`)).toBe(cardShadow('face', { x: -3, y: 7 }).boxShadow);
+    expect(await shadowOf(`pile:${face.id}`)).not.toContain(`${CardShadow.cast.blur}px`);
   });
 });
