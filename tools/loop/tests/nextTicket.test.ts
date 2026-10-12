@@ -1,8 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import * as picker from "../next-ticket.mjs";
-import { classify, pickRoute, claimedElsewhere, launchOpen, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -325,7 +324,7 @@ describe("the open issues, from one query", () => {
     });
 
   test("each node arrives in the shape the policy reads", () => {
-    assert.deepEqual(picker.openIssues(answer(false)), [
+    assert.deepEqual(openIssues(answer(false)), [
       {
         number: 12,
         title: "a ticket",
@@ -339,14 +338,14 @@ describe("the open issues, from one query", () => {
   });
 
   test("a second page is refused, never truncated", () => {
-    assert.throws(() => picker.openIssues(answer(true)), /more than 100 open issues; the picker will not guess/);
+    assert.throws(() => openIssues(answer(true)), /more than 100 open issues; the picker will not guess/);
   });
 
   test("a candidate with an open native blocker is passed over for the next", () => {
     const blocked = { ...issue(5, ["ready-for-agent"]), blocked: true };
     const free = { ...issue(6, ["ready-for-agent"]), blocked: false };
     const unclaimed = () => false;
-    assert.deepEqual(picker.takeable([blocked, free], 1, unclaimed).map((i: { number: number }) => i.number), [6]);
+    assert.deepEqual(takeable([blocked, free], 1, unclaimed).map((i: { number: number }) => i.number), [6]);
   });
 });
 
