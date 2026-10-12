@@ -596,6 +596,54 @@ describe("a redirect under git -C is judged by the path git sees", () => {
   });
 });
 
+describe("an implement session files no agent work", () => {
+  const none = () => null;
+  const ticket = { ...repo, onTicket: () => true };
+  const idle = { ...repo, onTicket: () => false };
+  const AGENT_WORK = /files no agent work/;
+  const refused = [
+    "gh issue create --title x --body-file b.md",
+    "gh issue create -t x -F b.md --label bug,ready-for-agent",
+    "gh issue create -t x --label ready-for-human --label ready-for-agent",
+    "gh issue edit 5 --add-label main-red",
+    "gh -R o/r issue edit 5 --add-label=ci-flake",
+    "cd /c/Users/roton/murlan && gh issue create --title x --body-file b.md",
+  ];
+  for (const cmd of refused) {
+    test(`refuses while a ticket's worktree stands: ${cmd}`, () => assert.match(String(check(cmd, none, ticket, true)), AGENT_WORK));
+    test(`allows with no ticket worktree, or outside the loop: ${cmd}`, () => {
+      assert.equal(check(cmd, none, idle, true), null);
+      assert.equal(check(cmd, none, ticket, false), null);
+    });
+  }
+  for (const cmd of [
+    "gh issue create --title x --body-file b.md --label ready-for-human",
+    "gh issue create -t x -F b.md -l noticed",
+    "gh issue create -t x -F b.md --label=bug,ready-for-human",
+    "gh issue edit 5 --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human",
+    "gh issue comment 5 --body 'gh issue create --label ready-for-agent'",
+  ]) {
+    test(`allows while a ticket's worktree stands: ${cmd}`, () => assert.equal(check(cmd, none, ticket, true), null));
+  }
+});
+
+describe("gitAt.onTicket, against real worktrees", () => {
+  test("is true from the shared checkout or the worktree while an agent-<n> worktree is on its ticket branch", () => {
+    const dir = mkdtempSync(join(tmpdir(), "guard-ticket-"));
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...a], { cwd: dir, stdio: "ignore" });
+    try {
+      git("init", "-q", "-b", "main");
+      git("commit", "-q", "--allow-empty", "-m", "base");
+      assert.equal(gitAt(dir).onTicket(), false);
+      git("worktree", "add", "-q", "-b", "agent/7-x", join(".worktrees", "agent-7"));
+      assert.equal(gitAt(dir).onTicket(), true);
+      assert.equal(gitAt(join(dir, ".worktrees", "agent-7")).onTicket(), true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("gitAt.unmerged, against a real conflict", () => {
   test("is true only when every path is itself conflicted", () => {
     const dir = mkdtempSync(join(tmpdir(), "guard-unmerged-"));
