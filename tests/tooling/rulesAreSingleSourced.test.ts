@@ -100,8 +100,9 @@ describe("every agent rule is written down exactly once", () => {
 
   /** Why phase A of this queue.md does not check loop-status.mjs before the picker, or null. */
   const phaseAOrder = (queue: string): string | null => {
-    const statusAt = queue.indexOf("loop-status.mjs");
-    const pickerAt = queue.indexOf("next-ticket.mjs $ARGUMENTS");
+    const a = queue.split(/^## A — Start$/m)[1]?.split(/^## /m)[0] ?? "";
+    const statusAt = a.indexOf("loop-status.mjs");
+    const pickerAt = a.indexOf("next-ticket.mjs $ARGUMENTS");
     if (statusAt < 0 || pickerAt < 0) return "one of the two commands is missing from phase A";
     return statusAt < pickerAt
       ? null
