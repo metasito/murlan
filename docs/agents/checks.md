@@ -138,9 +138,9 @@ the Chromium specs walk, so a photograph and a web run are of the same state; ad
 not in a spec. `CAPTURE_STATES` puts the lamp on each seat (`tests/e2e/lampSeats.spec.ts`);
 `SEAT_COUNT_STATES` shrinks the hands and puts a seat out, the deal first
 (`tests/e2e/seatsDoNotMove.spec.ts`); `LINK_STATES` holds the online table with the viewer's link
-down. The capture screen lists all three, in a development build or one built with
+down; `MOMENT_STATES` lands a bomb as the link opens. The capture screen lists all four, in a development build or one built with
 `EXPO_PUBLIC_E2E_FAST`, where `murlan://capture?state=<id>` opens one. The `ios.yml` felt shard
-photographs `lamp-bottom`, `pile-right`, `play-right-landed` (a play flown in from the right seat) and `held` with `.maestro/captures.yaml` and uploads them as
+photographs `lamp-bottom`, `pile-right`, `play-right-landed` (a play flown in from the right seat), `bomb-landed` (the flare, shot without waiting) and `held` with `.maestro/captures.yaml` and uploads them as
 `ios-captures`: fetch that before asking the owner. Otherwise open `/capture`, pick a
 state, hold landscape, and ask for it verbatim: *"send one landscape screenshot of each state:
 `lamp-bottom`, `lamp-right`, `lamp-top`, `lamp-left`, `pile-right`, `play-right-landed`, named after its state."*

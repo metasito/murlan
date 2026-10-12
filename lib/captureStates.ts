@@ -46,8 +46,8 @@ export interface CaptureState {
    * `tests/tooling/captureStates.test.ts` pins each against `seatDirection`.
    */
   side: "bottom" | "top" | "left" | "right";
-  /** A combination already on the felt, so the pile draws under the lamp. */
-  pile: boolean;
+  /** A combination already on the felt, so the pile draws under the lamp; `"bomb"` lands four of a kind. */
+  pile: boolean | "bomb";
   /** What each opponent holds; "out" has finished the manche. Absent, every seat holds the whole deal. */
   counts?: Readonly<Record<"right" | "top" | "left", number | "out">>;
   /** The viewer's own connection, as the online table reads it. Absent, it is up. */
@@ -150,7 +150,24 @@ export const LINK_STATES: readonly CaptureState[] = [
   },
 ];
 
-export const ALL_CAPTURE_STATES: readonly CaptureState[] = [...CAPTURE_STATES, ...SEAT_COUNT_STATES, ...LINK_STATES];
+/** Landing on the link that opens them, so a shot taken straight after it catches the moment mid-flight. */
+export const MOMENT_STATES: readonly CaptureState[] = [
+  {
+    id: "bomb-landed",
+    label: "Drita's turn after Luan's bomb — the flare screening onto the felt",
+    playerCount: 4,
+    turn: 2,
+    side: "top",
+    pile: "bomb",
+  },
+];
+
+export const ALL_CAPTURE_STATES: readonly CaptureState[] = [
+  ...CAPTURE_STATES,
+  ...SEAT_COUNT_STATES,
+  ...LINK_STATES,
+  ...MOMENT_STATES,
+];
 
 export function captureStateById(id: string | undefined): CaptureState | null {
   return ALL_CAPTURE_STATES.find((s) => s.id === id) ?? null;
@@ -180,27 +197,27 @@ function heldAt(state: CaptureState, seat: number): number | "out" | undefined {
 }
 
 /**
- * Two cards of one rank lifted out of `deck`, as the combination they make.
+ * `size` cards of one rank lifted out of `deck`, as the combination they make.
  *
  * Taken before the deal, not out of a dealt hand. `createDeck` runs rank-major
  * within each suit and 13 does not divide by four, so a round-robin deal hands
  * each seat a different rank residue in every suit — no seat ends up holding a
  * pair at all, and lifting one out of a hand silently left the felt empty.
  */
-function takePair(deck: Card[]): Combination | null {
+function takeOfARank(deck: Card[], size: number): Combination | null {
   for (let i = 0; i < deck.length; i++) {
-    const j = deck.findIndex((c, k) => k > i && c.rank === deck[i].rank);
-    if (j < 0) continue;
-    // High index first, so removing it does not shift the low one.
-    const second = deck.splice(j, 1)[0];
-    const first = deck.splice(i, 1)[0];
-    return buildCombination([first, second]);
+    if (deck[i].isJoker) continue;
+    const at = deck.flatMap((c, k) => (k >= i && !c.isJoker && c.rank === deck[i].rank ? [k] : [])).slice(0, size);
+    if (at.length < size) continue;
+    // High index first, so removing one does not shift the rest.
+    const cards = [...at].reverse().map((k) => deck.splice(k, 1)[0]).reverse();
+    return buildCombination(cards);
   }
   return null;
 }
 
 /**
- * The table as a capture wants it: mid-hand, nothing in flight, no deal
+ * The table as a capture wants it: mid-hand, only the pile in flight, no deal
  * running, and the turn pinned where the state says.
  *
  * Pinned is the point. `app/game.tsx` runs the AI turn loop, so a seeded save
@@ -211,7 +228,7 @@ export function captureGameState(state: CaptureState): GameState {
   const deck = createDeck();
   // The pile's cards leave the deck before it is dealt, so the invariant that a
   // card appears exactly once holds across the hands and the felt together.
-  const pile = state.pile ? takePair(deck) : null;
+  const pile = state.pile ? takeOfARank(deck, state.pile === "bomb" ? 4 : 2) : null;
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
   const rankings: string[] = [];
@@ -243,6 +260,16 @@ export function captureGameState(state: CaptureState): GameState {
     // as a hand in progress rather than a first move.
     firstPlayMade: true,
   };
+}
+
+/** The same pile thrown by the next seat not on move, which the table flies and lands afresh. */
+export function rethrow(state: GameState): GameState {
+  const n = state.players.length;
+  for (let step = 1; step < n; step++) {
+    const seat = (state.lastPlayedBy + step) % n;
+    if (seat !== state.currentTurnIndex) return { ...state, lastPlayedBy: seat };
+  }
+  return state;
 }
 
 /** The seat the lamp moves to when a capture asks for the swing. */

@@ -5,7 +5,7 @@
 // while both are of the same named state. What this pins is the part of that
 // contract a renderer cannot check — that each state's stated side is where its
 // seat actually renders, that the four lamp positions are all covered, and that
-// a card still appears exactly once once the pile has taken two out of a hand.
+// a card still appears exactly once once the pile has taken its cards out of the deck.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -16,11 +16,12 @@ import {
   captureStateById,
   LINK_STATES,
   nextTurn,
+  rethrow,
   SEAT_COUNT_STATES,
 } from "../../lib/captureStates.ts";
 import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
-import { passedSeats } from "../../components/flightPhysics.ts";
+import { comboKey, passedSeats } from "../../components/flightPhysics.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
 
 type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
@@ -153,6 +154,35 @@ describe("the state a capture renders", () => {
       assert.ok(game.lastPlayedCombination, `${state.id} asked for a pile and got none`);
       assert.notEqual(game.lastPlayedBy, state.turn, `${state.id} plays against itself`);
       assert.ok(game.lastPlayedBy >= 0, state.id);
+    }
+  });
+
+  test("a bomb pile lands four of a kind, so the table fires its burst", () => {
+    const bombs = ALL_CAPTURE_STATES.filter((s) => s.pile === "bomb");
+    assert.ok(bombs.length > 0, "no capture state lands a bomb");
+    for (const state of bombs) {
+      const game = captureGameState(state);
+      assert.equal(game.lastPlayedCombination?.type, "bomb", state.id);
+      assert.notEqual(game.lastPlayedBy, state.turn, state.id);
+      const ids = [...game.players.flatMap((p) => p.hand), ...game.lastPlayedCombination!.cards].map((c) => c.id);
+      assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
+    }
+  });
+
+  test("throwing the pile again flies it from a seat not on move, as a landing the pile has not seen", () => {
+    for (const state of ALL_CAPTURE_STATES.filter((s) => s.pile)) {
+      const game = captureGameState(state);
+      let seen = comboKey(game.lastPlayedCombination!, game.lastPlayedBy);
+      let next = game;
+      for (let i = 0; i < 3; i++) {
+        next = rethrow(next);
+        const key = comboKey(next.lastPlayedCombination!, next.lastPlayedBy);
+        assert.notEqual(key, seen, `${state.id} throw ${i} would not fly`);
+        assert.notEqual(next.lastPlayedBy, state.turn, `${state.id} plays against itself`);
+        assert.equal(next.currentTurnIndex, state.turn, state.id);
+        assert.deepEqual(next.lastPlayedCombination, game.lastPlayedCombination, state.id);
+        seen = key;
+      }
     }
   });
 

@@ -13,7 +13,7 @@
 // that whole span rather than replaying every percentage break.
 
 import { useEffect } from "react";
-import { View, StyleSheet, Platform, type ViewStyle } from "react-native";
+import { View, StyleSheet, type ViewStyle } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -112,13 +112,7 @@ const FLARE_LAYERS: readonly GradientLayer[] = [
   { diameterFactor: FLARE_LAYER_CORE_DIAMETER, fill: withAlpha(FLARE_LAYER_CORE_COLOR, FLARE_LAYER_CORE_ALPHA) },
 ];
 
-// `mix-blend-mode` has no native equivalent; RN Web passes it straight
-// through as a style prop, and native ignores an unrecognised one. `{}`
-// rather than `null` — a literal `null` inside an Animated.View's own style
-// array is fine for RN's own flattening but crashes reanimated's jest
-// `getAnimatedStyle` read-back (its test-only `jestInlineStyle` filter does
-// `'jestAnimatedValues' in obj` on every entry, unguarded against `null`).
-const SCREEN_BLEND = Platform.OS === "web" ? ({ mixBlendMode: "screen" } as unknown as ViewStyle) : {};
+const SCREEN_BLEND: ViewStyle = { mixBlendMode: "screen" };
 
 // ─── Flare ──────────────────────────────────────────────────────────────────
 

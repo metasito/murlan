@@ -9,11 +9,12 @@
 // even when the wiring around it is perfect.
 import { describe, it, expect, jest } from "@jest/globals";
 import React from "react";
+import { Platform, StyleSheet } from "react-native";
 import { act, render, screen } from "@testing-library/react-native";
 import { getAnimatedStyle, makeMutable, type SharedValue } from "react-native-reanimated";
 import type { ImpactTier } from "@/components/flightPhysics";
 import { Motion } from "@/lib/theme";
-import { BombBurst } from "@/components/table/moments";
+import { BombBurst, Sweep } from "@/components/table/moments";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import { fireLanding } from "./helpers/landing";
 
@@ -80,6 +81,23 @@ describe("the bomb burst actually moves once fired (#765)", () => {
     expect(screen.queryAllByTestId(/^spark-/, { includeHiddenElements: true })).toHaveLength(0);
 
     jest.useRealTimers();
+    await r.unmount();
+  });
+});
+
+describe("the flare and the sweep screen onto the felt on native too (#1514)", () => {
+  const blendOf = (testID: string) =>
+    StyleSheet.flatten(screen.getByTestId(testID, { includeHiddenElements: true }).props.style).mixBlendMode;
+
+  it(`the bomb flare carries mixBlendMode "screen" on ${Platform.OS}`, async () => {
+    const r = await render(<BombBurst landing={makeMutable(NO_LANDING)} scale={1} />);
+    expect(blendOf("bomb-flare")).toBe("screen");
+    await r.unmount();
+  });
+
+  it(`the sweep carries mixBlendMode "screen" on ${Platform.OS}`, async () => {
+    const r = await render(<Sweep trigger={1} width={200} height={100} />);
+    expect(blendOf("sweep")).toBe("screen");
     await r.unmount();
   });
 });

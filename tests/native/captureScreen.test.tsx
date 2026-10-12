@@ -77,6 +77,7 @@ describe('the capture screen', () => {
     // The swing is the one state that needs an input rather than a route, so a
     // capture cannot be taken of the handover without it.
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
+    expect(screen.queryByLabelText('Throw the pile again') !== null).toBe(Boolean(captureStateById(id)?.pile));
     const link = captureStateById(id)?.link ?? 'up';
     expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(Platform.OS === 'ios' ? iosGrey(holdGrey(link)).filter : greyFilter(holdGrey(link)));
     await view.unmount();
