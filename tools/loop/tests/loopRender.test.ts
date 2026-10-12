@@ -478,6 +478,15 @@ describe("runRecap", () => {
     assert.doesNotMatch(out, /size:M/);
     assert.doesNotMatch(runRecap(run, tPlain).map(strip).join("\n"), /turn cap/);
   });
+
+  test("an open parity issue is something that needs you, and none is not said", () => {
+    const parity = { number: 1544, since: "2026-10-12T11:40:08Z" };
+    const out = runRecap({ ...run, tickets: [], parity }, tPlain).map(strip).join("\n");
+    assert.match(out, /needs you\n.*parity nightly red since 2026-10-12 \(#1544\)/);
+    for (const none of [null, undefined]) {
+      assert.ok(!runRecap({ ...run, parity: none }, tPlain).join("\n").includes("parity"), String(none));
+    }
+  });
 });
 
 describe("keybar", () => {
