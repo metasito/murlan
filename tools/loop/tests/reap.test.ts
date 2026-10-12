@@ -459,44 +459,31 @@ describe("parseWindowsProcessJson", () => {
 });
 
 describe("readProcessTable", () => {
-  test("an answer that is not a table degrades to an empty one, logged, instead of crashing the sweep", () => {
-    const logged: string[] = [];
-    const original = console.error;
-    console.error = (msg: string) => logged.push(msg);
-    try {
-      assert.deepEqual(readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh"), []);
-    } finally {
-      console.error = original;
-    }
-    assert.match(logged.join("\n"), /pwsh/, "the skip names which binary produced it, not just that one happened");
+  test("an answer that is not a table degrades to an empty one, named blind, instead of crashing the sweep", () => {
+    const out = readProcessTable("Impossibile trovare il testo del messaggio...", "pwsh");
+    assert.deepEqual(out.rows, []);
+    assert.match(out.blind ?? "", /pwsh/, "the skip names which binary produced it, not just that one happened");
   });
 
-  test("a PowerShell that answered nothing is said, never read as a machine with no processes", () => {
-    const logged: string[] = [];
-    const original = console.error;
-    console.error = (msg: string) => logged.push(msg);
-    try {
-      assert.deepEqual(readProcessTable("", "pwsh"), []);
-    } finally {
-      console.error = original;
-    }
-    assert.match(logged.join("\n"), /pwsh.*no process table/);
+  test("a PowerShell that answered nothing, or is missing, is blind, never a machine with no processes", () => {
+    const out = readProcessTable("", "pwsh");
+    assert.deepEqual(out.rows, []);
+    assert.match(out.blind ?? "", /pwsh.*no process table/);
   });
 
-  test("still reads a well-formed table", () => {
-    const rows = readProcessTable(
-      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1}]',
-      "pwsh",
-    );
-    assert.equal(rows.length, 1);
+  test("still reads a well-formed table, and sees", () => {
+    const out = readProcessTable('[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1}]', "pwsh");
+    assert.equal(out.rows.length, 1);
+    assert.equal(out.blind, null);
   });
 });
 
 describe("the sweep, called in-process as housekeeping calls it", () => {
   test("says each line through its caller and counts exactly what it named to take", async () => {
     const said: string[] = [];
-    const found = await reap({ dryRun: true, stale: true, say: (l: string) => said.push(l) });
+    const { took, blind } = await reap({ dryRun: true, stale: true, say: (l: string) => said.push(l) });
+    assert.equal(blind, null, said.join("\n"));
     assert.ok(said.some((l) => /e2e port/.test(l)), said.join("\n"));
-    assert.equal(found, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
+    assert.equal(took, said.filter((l) => /would (kill|clear)/.test(l)).length, said.join("\n"));
   });
 });

@@ -357,12 +357,14 @@ describe("sweep: a directory git no longer registers (#377)", () => {
 
 type Row = { label: string; state: string; detail?: string; note?: string; ms?: number };
 
+const SAW_NOTHING = { took: 0, blind: null };
+
 describe("housekeeping", () => {
   const base = (repo: string, over: Record<string, unknown> = {}) => ({
     pinned: null,
     git: spyGit(repo).git,
     gh: fakeGh({}).gh,
-    reap: async () => 0,
+    reap: async () => SAW_NOTHING,
     checkMain: () => null,
     drift: () => [],
     say: () => {},
@@ -376,7 +378,7 @@ describe("housekeeping", () => {
         throw new Error("boom");
       },
       gh: () => "",
-      reap: async () => 0,
+      reap: async () => SAW_NOTHING,
       checkMain: () => null,
       say: () => {},
     });
@@ -396,7 +398,7 @@ describe("housekeeping", () => {
     const { repo } = scratchRepo();
     fs.writeFileSync(path.join(repo, "theme.ts"), "export const x = 1;\n");
     const ran: string[] = [];
-    const r = await housekeeping(base(repo, { reap: async () => (ran.push("reap"), 0), checkMain: () => (ran.push("main"), null) }));
+    const r = await housekeeping(base(repo, { reap: async () => (ran.push("reap"), SAW_NOTHING), checkMain: () => (ran.push("main"), null) }));
     assert.equal(r.verdict, "hold");
     assert.match(r.why ?? "", /uncommitted/);
     assert.match((r.rows.at(-1) as Row).note ?? "", /theme\.ts/);
@@ -435,7 +437,7 @@ describe("housekeeping", () => {
     const order: string[] = [];
     const { git: real } = spyGit(repo);
     const git = (args: string[]) => (args[1] === "prune" && order.push("sweep"), real(args));
-    await housekeeping(base(repo, { git, reap: async () => (order.push("reap"), 0), checkMain: () => (order.push("main"), null) }));
+    await housekeeping(base(repo, { git, reap: async () => (order.push("reap"), SAW_NOTHING), checkMain: () => (order.push("main"), null) }));
     assert.deepEqual(order, ["sweep", "reap", "main"]);
   });
 
@@ -453,14 +455,23 @@ describe("housekeeping", () => {
     const said: Row[] = [];
     const r = await housekeeping(
       base(repo, {
-        reap: async ({ say }: { say: (l: string) => void }) => (say("reap: killed node pid 7, 3.0h old, parent 1 is gone"), 1),
+        reap: async ({ say }: { say: (l: string) => void }) => (say("reap: killed node pid 7, 3.0h old, parent 1 is gone"), { took: 1, blind: null }),
         say: (row: Row) => said.push(row),
       }),
     );
     assert.equal(r.verdict, "ok");
     assert.deepEqual(said.map((s) => s.label), ["reap"]);
     assert.match(said[0].note ?? "", /pid 7/);
-    assert.deepEqual((await housekeeping(base(repo, { reap: async ({ say }: { say: (l: string) => void }) => (say("reap: e2e port 5199 is free"), 0) }))).rows, []);
+    assert.deepEqual((await housekeeping(base(repo, { reap: async ({ say }: { say: (l: string) => void }) => (say("reap: e2e port 5199 is free"), SAW_NOTHING) }))).rows, []);
+  });
+
+  test("a reap that could not see the processes is a warning row, never silence", async () => {
+    const { repo } = scratchRepo();
+    const r = await housekeeping(base(repo, { reap: async () => ({ took: 0, blind: "pwsh gave no process table, so this sweep takes nothing" }) }));
+    assert.equal(r.verdict, "ok");
+    const row = r.rows.at(-1) as Row;
+    assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+    assert.match(row.detail ?? "", /pwsh gave no process table/);
   });
 
   test("a red main is a warning, never a refusal, and it comes last", async () => {
