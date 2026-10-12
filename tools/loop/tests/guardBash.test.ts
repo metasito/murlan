@@ -484,7 +484,8 @@ describe("a loop session reruns a run once", () => {
 
 describe("a loop session pushes only its own ticket's branch", () => {
   const none = () => null;
-  const inLoop = (cmd: string, ticket: string | undefined = "1529") => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, none, repo, true));
+  const asTicket = (ticket: string | undefined, cmd: string) => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, none, repo, true));
+  const inLoop = (cmd: string) => asTicket("1529", cmd);
   const OWN_ONLY = /agent\/1529-<slug>/;
 
   for (const ok of [
@@ -517,7 +518,7 @@ describe("a loop session pushes only its own ticket's branch", () => {
 
   test("with no ticket to name, a loop session pushes nothing", () => {
     for (const ticket of [undefined, "", "abc"]) {
-      const said = String(inLoop("git push origin HEAD:agent/1529-x", ticket));
+      const said = String(asTicket(ticket, "git push origin HEAD:agent/1529-x"));
       assert.match(said, /LOOP_TICKET/, String(ticket));
       assert.doesNotMatch(said, /agent\/undefined-/);
     }

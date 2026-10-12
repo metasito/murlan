@@ -487,7 +487,9 @@ every hook):
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
-  replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
+  replaces with `await-run.mjs`. It refuses a push anywhere but the session's own
+  `agent/<LOOP_TICKET>-…`, named by an explicit `HEAD:agent/<n>-<slug>` refspec, and every push
+  when `LOOP_TICKET` is unset. It refuses a `gh run rerun` of a run already past its first
   attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
   or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
   resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue

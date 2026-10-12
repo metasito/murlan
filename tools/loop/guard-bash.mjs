@@ -8,6 +8,7 @@
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
  *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
  *   git push … main                  lands code with no CI
+ *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
  *   a device workflow rerun, or a dispatch anywhere but a ticket's own agent/<n>- branch
@@ -325,6 +326,25 @@ function pushesMain(c, repo) {
   });
 }
 
+/** The ticket the supervisor spawned this session for, or null when its env names none. */
+const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
+
+/** A push, or a ref write through the API, landing anywhere but `agent/<ticket>-…`, named by an explicit `src:dst`. */
+function pushesElsewhere(c, ticket) {
+  if (c.cmd === "gh" && c.args[0] === "api" && has(c.args, /\/git\/refs\b/)) return true;
+  if (c.cmd !== "git" || c.args[0] !== "push") return false;
+  if (ticket === null || has(c.args, /^(--all|--mirror|--tags|--delete|-d|--prune)$/)) return true;
+  const own = new RegExp(`^(refs/heads/)?agent/${ticket}-`);
+  const refs = operands(c.args.slice(1), PUSH_TAKES_A_VALUE).slice(1);
+  return (
+    !refs.length ||
+    refs.some((ref) => {
+      const [src, dst] = ref.replace(/^\+/, "").split(":");
+      return dst === undefined || src === "" || !own.test(dst);
+    })
+  );
+}
+
 function deletesWorktree(c) {
   if (!has(c.args, /(^|[\\/])\.worktrees([\\/]|$)/)) return false;
   if (c.cmd === "rm") return has(c.args, /^(-[A-Za-z]*[rR][A-Za-z]*|--recursive)$/);
@@ -411,6 +431,17 @@ const RULES = [
       "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
       "Push your ticket branch and open a pull request:\n" +
       "  git push -u origin agent/<n>-<slug>",
+  },
+  {
+    test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
+    message: () =>
+      loopTicket() === null
+        ? "A loop session pushes only its own ticket's branch, and this session's LOOP_TICKET, which names it, is not set. " +
+          "Nothing can be pushed: say so on the issue and park it for the owner."
+        : "A loop session pushes only its own ticket's branch, named explicitly:\n" +
+          `  git push -u origin HEAD:agent/${loopTicket()}-<slug>\n` +
+          "Without the colon, the remote's push config decides where it lands. --all, --mirror, --tags, " +
+          "--prune, a delete and a ref write through `gh api` are refused.",
   },
   {
     // A numeric workflow id cannot be read, so it is treated as the device one.
@@ -583,7 +614,9 @@ export function check(
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) {
+      return typeof rule.message === "function" ? rule.message() : rule.message;
+    }
   }
   return null;
 }
