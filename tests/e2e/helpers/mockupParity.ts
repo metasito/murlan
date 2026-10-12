@@ -311,8 +311,6 @@ const MOMENTS: Moment[] = [
     fields: ["onset", "live", "level", "breath", "brightness"],
     regions: ["pool", "hand"],
     regionsAt: [1040, 1200],
-    // The app's hand is still brighter than at rest at 1040 and the mockup's is not (#1496).
-    regionAt: { hand: [1200] },
     onsets: ["moment:dealt"],
   },
   {
