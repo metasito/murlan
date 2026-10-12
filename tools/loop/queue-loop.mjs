@@ -25,7 +25,6 @@ import {
   derive,
   REPO,
   reviewRounds,
-  STOOD_DOWN,
   totalReviewRounds,
   trustedComments,
   WORKTREE_DIR,
@@ -659,7 +658,7 @@ export function reasonFor(run, after, ticket) {
   const hard = (why) => ({ why, hard: true });
   const soft = (why) => ({ why, hard: false });
 
-  if (said?.stoodDown) return hard(said.why ? `${STOOD_DOWN}: ${said.why}` : STOOD_DOWN);
+  if (said?.stoodDown) return hard(said.why ?? "the session stood down");
   if (after?.ticket && after.ticket !== ticket) return hard(`the session worked #${after.ticket}, not #${ticket}`);
   // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
   // said — the result event for that session still reads subtype "success".
