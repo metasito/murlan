@@ -401,6 +401,8 @@ describe("ledgerSummary", () => {
     const out = ledgerSummary(rows);
     assert.equal(out.processesMedian, 3);
     assert.equal(out.unjudged, 0);
+    const reparks = [{ n: 2, outcome: "parked", turns: 30 }, { n: 3, outcome: "reparked", turns: 0 }, { n: 4, outcome: "reparked", turns: 0 }];
+    assert.equal(ledgerSummary(reparks).processesMedian, 1, "a window no session ran in is no ticket's process count");
   });
 
   test("a closed row ends its window, and counts as landed per loop commit", () => {

@@ -255,6 +255,26 @@ function windows(rows) {
   });
 }
 
+/** A supervisor's own row — a settle, a CI-red retry, a park after it — which no session ran. */
+const ranTurns = (row) => row.turns !== 0;
+
+/** A process that starts at D and hands off is a HOLD round: the review and the fix it asked for. */
+const holdRound = (row) => row.outcome === "handoff" && Object.keys(row.phases ?? {})[0] === "D";
+
+/**
+ * Verdicts on each ticket less its landings, each of which a LAND verdict cleared. Schema 8's total
+ * counts across claims; `review_rounds`, which a re-claim resets, is all an earlier row has.
+ */
+function holdsByTicket(rows) {
+  const by = new Map();
+  for (const r of rows) {
+    const t = by.get(r.n) ?? by.set(r.n, { rounds: 0, landed: 0 }).get(r.n);
+    t.rounds = Math.max(t.rounds, r.review_rounds_total ?? r.review_rounds ?? 0);
+    if (r.outcome === "landed") t.landed += 1;
+  }
+  return Object.fromEntries([...by].map(([n, t]) => [n, Math.max(0, t.rounds - t.landed)]));
+}
+
 /**
  * Fix-round spend, sessions per ticket, and any row that ran the wrong model — from `tickets.jsonl`
  * rather than the stream logs `readTicket` reads, because a fix round and a model are ledger facts.
@@ -264,14 +284,18 @@ export function ledgerSummary(rows) {
   const total = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
   const fixCost = groups.reduce((a, win) => {
     const first = win.findIndex((r) => r.outcome === "retry");
-    return first < 0 ? a : a + win.slice(first + 1).reduce((x, r) => x + (r.cost ?? 0), 0);
+    return a + win.reduce((x, r, i) => x + ((first >= 0 && i > first) || holdRound(r) ? (r.cost ?? 0) : 0), 0);
   }, 0);
+  const holds = holdsByTicket(rows);
+  const counts = Object.values(holds);
   return {
     fixCost,
     fixShare: total ? (fixCost / total) * 100 : 0,
-    processesMedian: median(groups.map((w) => w.filter((r) => r.outcome !== "pushed").length)),
+    holds,
+    holdsMean: counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0,
+    processesMedian: median(groups.map((w) => w.filter(ranTurns).length).filter(Boolean)),
     mismatches: rows.filter(mismatchedModel),
-    unjudged: rows.filter(unjudgeable).length,
+    unjudged: rows.filter((r) => ranTurns(r) && unjudgeable(r)).length,
   };
 }
 
@@ -331,6 +355,7 @@ export function report(tickets, ledgerRows = []) {
     ...(ledger
       ? [
           `fix rounds: $${ledger.fixCost.toFixed(2)} (${ledger.fixShare.toFixed(0)}%)`,
+          `HOLD rounds: ${ledger.holdsMean.toFixed(2)} per ticket`,
           `processes/ticket: median ${ledger.processesMedian}`,
           ...(ledger.mismatches.length
             ? [`model mismatch: ${ledger.mismatches.map((r) => `#${r.n}`).join(", ")}`]
