@@ -69,11 +69,12 @@ export function lineResolver(cwd) {
 /**
  * @param {{body: string}[] | null} comments @param {string} head
  * @param {(path: string, line: number) => boolean} resolves
+ * @param {boolean} [built] whether `buildPassed` holds for this head
  */
-export function dodVerdict(comments, head, resolves) {
+export function dodVerdict(comments, head, resolves, built = false) {
   const at = head.slice(0, 7);
   if (!comments) return { ok: false, why: "cannot reach the tracker to read the DOD-CHECK" };
-  const d = dodCheckFor(comments, head, resolves);
+  const d = dodCheckFor(comments, head, resolves, built);
   if (!d) return { ok: false, why: `no DOD-CHECK ${at} on the issue` };
   if (d.open.length) return { ok: false, why: `DOD-CHECK ${at} leaves open: ${d.open.join(" | ")}` };
   if (d.ticked === 0) return { ok: false, why: `DOD-CHECK ${at} ticks no box` };
@@ -85,7 +86,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
   if (!buildPassed(cwd)) {
     return { ok: false, why: "no cached LOCAL PASS for HEAD on a clean tree; run `npm run agent:check`" };
   }
-  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd));
+  return dodVerdict(comments(ticket, cwd), git(["rev-parse", "HEAD"], cwd), lineResolver(cwd), true);
 }
 
 /**

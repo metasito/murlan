@@ -7,7 +7,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
+import { dodCheckFor, ticketComments, TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
 
 export const KINDS = ["scope", "completeness", "review", "fix"];
 
@@ -95,7 +95,10 @@ const BODIES = {
         "correct? Read the code it calls and every caller of what it changes."
       : `Review only the fix ${diff(worktree, base)} on issue #${n} (${issue(n)}): is each earlier ` +
         "Blocking finding listed after this brief fixed, and does the fix break anything? Read every " +
-        "caller of what it changes.") + LABELS,
+        "caller of what it changes.") +
+    " The Definition-of-done boxes ticked `n/a: <reason>` are listed after this brief: one whose reason " +
+    "is false is an unmet box." +
+    LABELS,
   fix: ({ n, worktree, base }) =>
     `A CI fix round on issue #${n}. The fix is ${diff(worktree, base)}; the failure it answers is ` +
     `the newest \`CI-RED\` comment in ${issue(n)}. Does it answer every failing test the CI-RED names, ` +
@@ -129,16 +132,26 @@ function unreadable(n, worktree, base) {
   return null;
 }
 
+/** This head's `n/a` boxes, which follow a review brief, or why they cannot be read. */
+function naBoxes(n, worktree) {
+  const comments = ticketComments(n, worktree);
+  if (!comments) return `cannot read #${n}'s DOD-CHECK from the tracker`;
+  const head = spawnSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout?.trim();
+  if (!head) return `cannot read HEAD in ${worktree}`;
+  const na = dodCheckFor(comments, head, () => false)?.na ?? [];
+  return { text: `\nDefinition-of-done boxes ticked n/a at ${head.slice(0, 7)}:\n${na.join("\n") || "none"}\n` };
+}
+
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const [kind, n, worktree, base] = process.argv.slice(2);
   if (!KINDS.includes(kind) || !/^\d+$/.test(n ?? "") || !worktree) {
     process.stderr.write(`usage: node tools/loop/brief.mjs <${KINDS.join("|")}> <n> <worktree> [base]\n`);
     process.exit(2);
   }
-  const refused = unreadable(n, worktree, base);
-  if (refused) {
-    process.stderr.write(`brief: ${refused}\n`);
+  const listed = unreadable(n, worktree, base) ?? (kind === "review" ? naBoxes(Number(n), worktree) : { text: "" });
+  if (typeof listed === "string") {
+    process.stderr.write(`brief: ${listed}\n`);
     process.exit(2);
   }
-  process.stdout.write(brief(kind, { n: Number(n), worktree, base }));
+  process.stdout.write(brief(kind, { n: Number(n), worktree, base }) + listed.text);
 }
