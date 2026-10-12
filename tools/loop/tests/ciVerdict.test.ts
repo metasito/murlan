@@ -8,6 +8,7 @@ import {
   failingTestIds,
   ghExecOptions,
   readHeadCi,
+  readLandingState,
   readVerdict,
   runForHead,
   runListArgs,
@@ -15,7 +16,7 @@ import {
 } from "../ciVerdict.ts";
 import { ciRedBody } from "../queue-loop.mjs";
 import * as budgetGate from "../../ci/budget-gate.mjs";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -593,5 +594,85 @@ describe("a run still going", () => {
       { name: "build", conclusion: null, status: "queued", steps: 0 },
     ]);
     assert.deepEqual(p, { done: 2, total: 4, running: "e2e", failed: "lint" });
+  });
+});
+
+describe("readLandingState, from rollups recorded off live pull requests", () => {
+  type Fixture = { view: Record<string, unknown> & { statusCheckRollup: Record<string, string>[] }; run?: object; jobs?: object[] };
+  const fixture = (name: string): Fixture =>
+    JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", `rollup-${name}.json`), "utf8"));
+  const LOG = "Typecheck and tests\tTest\t2026-10-12T19:07:30Z test at tools/loop/tests/x.test.ts:9:5\n✖ breaks (2.1ms)";
+  const read = (f: Fixture, over: Record<string, unknown> = {}) => {
+    const asked: string[][] = [];
+    const gh = (args: string[]) => {
+      asked.push(args);
+      if (args[0] === "pr" && args[1] === "view") return JSON.stringify({ ...f.view, ...over });
+      if (args[0] === "run" && args[1] === "view" && args.includes("--log-failed")) return LOG;
+      if (args[0] === "run" && args[1] === "view" && args.includes("jobs")) return JSON.stringify(f.jobs);
+      if (args[0] === "run" && args[1] === "view") return JSON.stringify(f.run);
+      throw new Error(`unexpected gh ${args.join(" ")}`);
+    };
+    return { state: readLandingState("metasito/murlan", 7, gh, Date.now() + 60_000), asked };
+  };
+
+  test("one call reads the head, the merge state, the arming and the rollup", () => {
+    const { state, asked } = read(fixture("green"));
+    assert.equal(asked.length, 1);
+    assert.deepEqual(asked[0].slice(0, 5), ["pr", "view", "7", "--repo", "metasito/murlan"]);
+    assert.equal(asked[0][asked[0].indexOf("--json") + 1], "headRefOid,state,mergeable,mergeStateStatus,isDraft,autoMergeRequest,statusCheckRollup");
+    assert.equal(state.pr.headRefOid, fixture("green").view.headRefOid);
+    assert.equal(state.pr.mergeStateStatus, "CLEAN");
+    assert.equal(state.pr.armed, false);
+  });
+
+  test("a SUCCESS gate passes, naming its run", () => {
+    const { state } = read(fixture("green"));
+    assert.equal(state.ci.pass, true);
+    assert.equal(state.ci.runId, 38298348044);
+    assert.equal(state.ci.head, fixture("green").view.headRefOid);
+  });
+
+  test("a gate not yet reported, with the run's other jobs going, waits and says how far it got", () => {
+    const { state } = read(fixture("absent"));
+    assert.equal(state.ci.pass, false);
+    assert.equal(state.ci.waiting, true);
+    assert.match(state.ci.reason, /CI gate has not reported/);
+    assert.deepEqual(state.progress, { done: 7, total: 28, running: "Typecheck and tests", failed: null });
+  });
+
+  test("a gate that has reported and not completed waits, with progress from the other entries", () => {
+    const { state } = read(fixture("pending"));
+    assert.equal(state.ci.waiting, true);
+    assert.match(state.ci.reason, /CI gate is (queued|in_progress)/);
+    assert.equal(state.progress.total, fixture("pending").view.statusCheckRollup.length - 1);
+  });
+
+  test("a head no check has reported on yet is a run still appearing, on its own budget", () => {
+    const { state } = read(fixture("absent"), { statusCheckRollup: [] });
+    assert.equal(state.ci.pass, false);
+    assert.equal(state.ci.appearing, true);
+    assert.equal(state.ci.infrastructure, true);
+  });
+
+  test("a red gate reaches decideVerdict with that run's own jobs and log", () => {
+    const { state, asked } = read(fixture("red"));
+    assert.equal(state.ci.pass, false);
+    assert.notEqual(state.ci.infrastructure, true);
+    assert.equal(state.ci.runId, 38295085768);
+    assert.equal(state.ci.failedStep, "Typecheck and tests");
+    assert.deepEqual(state.ci.testIds, ["tools/loop/tests/x.test.ts › breaks"]);
+    assert.ok(asked.every((a) => a[0] === "pr" || a.includes("38295085768")), JSON.stringify(asked));
+  });
+
+  test("autoMergeRequest set is armed", () => {
+    const { state } = read(fixture("red"), { autoMergeRequest: { mergeMethod: "MERGE", enabledAt: "2026-10-12T19:05:00Z" } });
+    assert.equal(state.pr.armed, true);
+  });
+
+  test("a pull request gh cannot read throws, for the caller to judge", () => {
+    const gh = () => {
+      throw new Error("error connecting to api.github.com");
+    };
+    assert.throws(() => readLandingState("metasito/murlan", 7, gh, Date.now() + 60_000), /error connecting/);
   });
 });
