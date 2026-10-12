@@ -1633,6 +1633,9 @@ export function runTicket(
       CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
       // Also drops the commit trailer, which queue.md states instead.
       CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
+      // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
+      // and each of its writes moves the cached prefix.
+      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
       BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
       BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
     },
