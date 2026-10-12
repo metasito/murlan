@@ -1,6 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import * as picker from "../next-ticket.mjs";
 import { classify, pickRoute, claimedElsewhere, launchOpen, routeOf, sizeOf, stranded, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
@@ -290,6 +291,62 @@ describe("claimedElsewhere", () => {
   test("a claim is live only while its pull request is open", () => {
     assert.equal(claimedElsewhere(42, () => [{ number: 984, state: "OPEN" }]), true);
     assert.equal(claimedElsewhere(42, () => []), false);
+  });
+});
+
+describe("the open issues, from one query", () => {
+  const answer = (hasNextPage: boolean) => () =>
+    JSON.stringify({
+      data: {
+        repository: {
+          issues: {
+            pageInfo: { hasNextPage },
+            nodes: [
+              {
+                number: 12,
+                title: "a ticket",
+                authorAssociation: "OWNER",
+                labels: { nodes: [{ name: "ready-for-agent" }, { name: "size:S" }] },
+                milestone: { title: LAUNCH_MILESTONE },
+                issueDependenciesSummary: { blockedBy: 2 },
+              },
+              {
+                number: 13,
+                title: "another",
+                authorAssociation: "NONE",
+                labels: { nodes: [] },
+                milestone: null,
+                issueDependenciesSummary: { blockedBy: 0 },
+              },
+            ],
+          },
+        },
+      },
+    });
+
+  test("each node arrives in the shape the policy reads", () => {
+    assert.deepEqual(picker.openIssues(answer(false)), [
+      {
+        number: 12,
+        title: "a ticket",
+        author_association: "OWNER",
+        labels: [{ name: "ready-for-agent" }, { name: "size:S" }],
+        milestone: { title: LAUNCH_MILESTONE },
+        blocked: true,
+      },
+      { number: 13, title: "another", author_association: "NONE", labels: [], milestone: null, blocked: false },
+    ]);
+  });
+
+  test("a second page is refused, never truncated", () => {
+    assert.throws(() => picker.openIssues(answer(true)), /more than 100 open issues; the picker will not guess/);
+  });
+
+  test("a candidate with an open native blocker is passed over for the next", () => {
+    const blocked = { ...issue(5, ["ready-for-agent"]), blocked: true };
+    const free = { ...issue(6, ["ready-for-agent"]), blocked: false };
+    const unclaimed = () => false;
+    assert.deepEqual(picker.takeable([blocked, free], 1, unclaimed).map((i: { number: number }) => i.number), [6]);
   });
 });
 
