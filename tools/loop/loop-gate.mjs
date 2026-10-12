@@ -97,16 +97,22 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
  */
 export const MAX_REVIEW_ROUNDS = 3;
 
-/** @param {{reviewRounds?: number|null}} s */
-export function roundVerdict({ reviewRounds }) {
+/** CI fix rounds the reviewer held, which `MAX_REVIEW_ROUNDS` does not count. */
+export const MAX_FIX_HOLDS = 2;
+
+/** @param {{reviewRounds?: number|null, fixHolds?: number|null}} s */
+export function roundVerdict({ reviewRounds, fixHolds = 0 }) {
   // Fails closed, the same way the push gate does on an unreadable tracker: a count nobody could
   // read is not a count of zero, and reading it as one buys an unbounded review.
-  if (reviewRounds == null) return { ok: false, why: "cannot reach the tracker to count the review rounds" };
+  if (reviewRounds == null || fixHolds == null) return { ok: false, why: "cannot reach the tracker to count the review rounds" };
   if (reviewRounds >= MAX_REVIEW_ROUNDS) {
     return {
       ok: false,
       why: `${reviewRounds} review round(s) already on the issue — the cap is ${MAX_REVIEW_ROUNDS}`,
     };
+  }
+  if (fixHolds >= MAX_FIX_HOLDS) {
+    return { ok: false, why: `${fixHolds} CI fix round(s) held — the cap is ${MAX_FIX_HOLDS}` };
   }
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }

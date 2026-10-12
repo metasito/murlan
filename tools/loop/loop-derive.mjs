@@ -323,6 +323,11 @@ export function reviewRounds(comments) {
   return countedVerdicts(comments).filter((v) => !v.fix).length;
 }
 
+/** The HOLDs on CI fix rounds, which `reviewRounds` leaves out: `loop-gate.mjs` caps them apart. */
+export function fixHolds(comments) {
+  return countedVerdicts(comments).filter((v) => v.fix && v.decision === "HOLD").length;
+}
+
 /** Every verdict on the thread, across claims and fix rounds: the ledger's measure, never the cap's. */
 export function totalReviewRounds(comments) {
   return comments.filter((c) => VERDICT_RE.test(fenceStripped(c.body))).length;
@@ -564,6 +569,7 @@ export function derive({
     // Null, not 0, when the tracker can't be read: a count nobody could take is not a count of
     // zero rounds, and `loop-gate.mjs` fails closed on the same distinction `verdict` already does.
     reviewRounds: trackerReadable ? reviewRounds(comments) : null,
+    fixHolds: trackerReadable ? fixHolds(comments) : null,
     trackerReadable,
     verdict,
     handoff: trackerReadable ? handoffFor(comments, head) : null,
