@@ -29,7 +29,7 @@ instead of sitting unguarded in prose.
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | under 15 min warm, held by its gate; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
-| The ticket loop (`tools/loop/`) | `node --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
+| The ticket loop (`tools/loop/`) | `node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
 folds in and self-skips without `DATABASE_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
