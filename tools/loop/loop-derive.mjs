@@ -59,16 +59,30 @@ const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/;
  * @param {{body: string}[]} comments
  */
 export function ciRedRounds(comments) {
+  const shas = new Set();
+  for (const c of sinceClaim(comments)) {
+    const m = CI_RED_RE.exec(fenceStripped(c.body).trimStart());
+    if (m) shas.add(m[1].slice(0, 7));
+  }
+  return shas.size;
+}
+
+/** The comments after the newest claim. */
+function sinceClaim(comments) {
   let since = 0;
   comments.forEach((c, i) => {
     if (CLAIM_RE.test(fenceStripped(c.body))) since = i + 1;
   });
-  const shas = new Set();
-  for (let i = since; i < comments.length; i++) {
-    const m = CI_RED_RE.exec(fenceStripped(comments[i].body).trimStart());
-    if (m) shas.add(m[1].slice(0, 7));
+  return comments.slice(since);
+}
+
+/** The step the supervisor's `CI-RED` for this head names since the newest claim; undefined when none is posted. */
+function ciRedStep(comments, sha) {
+  for (const c of sinceClaim(comments)) {
+    const body = fenceStripped(c.body).trimStart();
+    if (CI_RED_RE.exec(body)?.[1].slice(0, 7) === sha.slice(0, 7)) return /· step: (.+)$/m.exec(body)?.[1] ?? null;
   }
-  return shas.size;
+  return undefined;
 }
 
 /**
@@ -431,29 +445,26 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
-function readCi(cwd, branch, head, exec) {
+/**
+ * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
+ * that head: it reads the gate, and a session needs only to know a fix round is owed.
+ */
+function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
-  // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
-  const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
-  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until);
-  if (read.remoteSha === null && !failed.includes("api")) {
-    return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
+  let open;
+  try {
+    [open] = JSON.parse(
+      exec(["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid"], cwd, CI_BUDGET_MS),
+    );
+  } catch {
+    return { pushed: false, pr: null, sha: null, state: "unreadable", step: null };
   }
-  const pushed = read.remoteSha !== null && under(cwd, head, read.remoteSha, branch, until, failed);
-  const v = read.verdict;
-  const state = failed.length
-    ? "unreadable"
-    : v.pass
-      ? "green"
-      : v.waiting
-        ? "pending"
-        : v.appearing
-          ? "none"
-          : v.infrastructure
-            ? "infrastructure"
-            : "red";
-  return { pushed, pr: read.pr, sha: read.remoteSha, state, step: v.failedStep ?? null };
+  if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
+  const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
+  const step = ciRedStep(comments, open.headRefOid);
+  const state = failed.length ? "unreadable" : step === undefined ? "settling" : "red";
+  return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 
 /**
@@ -533,7 +544,7 @@ export function derive({
 
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
   const land = commits > 0 && verdict?.decision === "LAND";
-  const ciRead = ci && land ? readCi(cwd, branch, head, exec) : null;
+  const ciRead = ci && land ? readCi(cwd, branch, head, comments, exec) : null;
   const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
   // scope pass. Deriving C there made every session declare `PHASE C` and then, on reading
@@ -559,9 +570,9 @@ export function derive({
             : "the reviewer held it";
   if (ciRead?.state === "unreadable") {
     phase = SETTLE;
-    why = "reviewed and cleared, but CI could not be read in time — the supervisor settles it";
+    why = "reviewed and cleared, but its pull request could not be read in time — the supervisor settles it";
   } else if (ciRead && !ciRead.pushed) {
-    why = "reviewed and cleared, and this head is not pushed yet";
+    why = "reviewed and cleared, and no open pull request carries this head yet";
   } else if (ciRead && ciRead.pr === null) {
     why = "pushed, but no pull request is open for it";
   } else if (fix) {
@@ -569,7 +580,7 @@ export function derive({
     why = `CI failed at ${ciRead.step ?? "an unnamed step"} on the pushed head`;
   } else if (ciRead) {
     phase = SETTLE;
-    why = `pushed, and CI is ${ciRead.state}`;
+    why = "pushed, and CI is the supervisor's to settle";
   }
   if (HANDED.test(handed)) {
     phase = handed;

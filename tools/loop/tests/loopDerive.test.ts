@@ -709,7 +709,8 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
 
   test("every gh call, tracker and CI alike, runs under CI_BUDGET_MS", () => {
     const timeouts: (number | undefined)[] = [];
-    const answer = (a: string[]) => (a[0] === "issue" ? { comments: [...land(), red()] } : [{ number: 5, headRefOid: head }]);
+    const answer = (a: string[]) =>
+      a[0] === "issue" ? { comments: [...land(), { ...red(), authorAssociation: "OWNER" }] } : [{ number: 5, headRefOid: head }];
     const exec = (a: string[], _cwd: string, timeout?: number) => {
       timeouts.push(timeout);
       return JSON.stringify(answer(a));
