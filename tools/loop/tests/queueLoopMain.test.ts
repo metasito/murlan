@@ -1816,6 +1816,12 @@ describe("a session the API failed", () => {
     });
   }
 
+  test("a session stalled mid-retry is overloaded", async () => {
+    const stalled = async () => ({ ...(await died(null)()), status: "stalled", lastFact: "api_retry" });
+    const r = await runOnce(io({ spawn: stalled, pushedPr: () => null }));
+    assert.equal(r.outcome, "overloaded");
+  });
+
   test("a 429 from a spent usage window (#1074's) is a refusal, waited out to its reset", async () => {
     const spent = async () => ({ ...(await died({ isError: true, apiStatus: 429 })()), blocked: true, blockedUntil: 1789000000000 });
     const r = await runOnce(io({ spawn: spent, pushedPr: () => null }));

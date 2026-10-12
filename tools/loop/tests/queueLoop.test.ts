@@ -581,6 +581,27 @@ describe("runTicket", () => {
     assert.equal(apiFailure(await runTicket(fakeSpawn([refused, end], 1), opts())), null);
   });
 
+  // `.loop-logs/1465.jsonl` lines 969–998: a phase D session whose last line is an `api_retry`, after
+  // which the stream went silent until the watchdog killed it (K2).
+  test("a session that stalls mid-retry is held as unreachable, not parked", async () => {
+    const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-retry-stall.jsonl"), "utf8").trim().split("\n");
+    const replayed = () => {
+      const child: any = new EventEmitter();
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      for (const l of lines) child.stdout.push(`${l}\n`);
+      child.kill = () => {
+        child.stdout.push(null);
+        setImmediate(() => child.emit("close", null));
+      };
+      return child;
+    };
+    const run = await runTicket(replayed, opts({ at: "D", stallMs: 50, tick: 10 }));
+    assert.equal(run.status, "stalled");
+    assert.equal(run.wrongModel, null);
+    assert.equal(apiFailure(run), "unreachable");
+  });
+
   for (const [code, status] of [["overloaded", 529], ["server_error", 500]] as const) {
     test(`a ${code} api_error is narrated, and is neither an account error nor a change to apiFailure`, async () => {
       const text = `API Error: ${status} ${code} — the line the session printed`;
