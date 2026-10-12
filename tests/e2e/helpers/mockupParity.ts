@@ -422,10 +422,14 @@ const MOMENTS: Moment[] = [
     fields: ["onset", "live", "dropped", "lamp", "flare", "kick", "brightness"],
     regions: ["pile", "pool"],
     // Each time left out is measured, with its cause, in #1438's thread: the table's scrim, rings, flare disc, kick
-    // and shake, its sparks under the cards (#1503), and the fallback's baked light.
+    // and shake, and the fallback's baked light. `pile` is never read at 1440, on either felt: BombBurst's flare disc
+    // and rings brighten it there, which #1263 keeps on purpose and the mockup does not draw.
     regionsAt: [240, 480, 720, 960, 1040, 1200, 1920, 2160, 2400, 2640, 2880, 3120],
     fallbackRegionsAt: [240, 480, 720, 960, 1040, 1200, 1440],
-    regionAt: { pool: [240, 480, 2160, 2400, 2640, 2880, 3120] },
+    regionAt: {
+      pile: [240, 480, 720, 960, 1040, 1200, 1920, 2160, 2400, 2640, 2880, 3120],
+      pool: [240, 480, 2160, 2400, 2640, 2880, 3120],
+    },
     onsets: ["moment:bombFx"],
     // When the table's lamp turns: the bomb's flight end, past its contact, plus Hold.land, a frame before its `moment:handoff`.
     actions: [{ atMs: 600, app: botMove }, { atMs: 1280, mockup: "handoff('besnik', 'luan')" }],

@@ -6,6 +6,7 @@ import { act, render, screen, within } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import type { TestInstance } from 'test-renderer';
 
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -80,9 +81,9 @@ const table = (ownLink: OwnLink) => (
   </SafeAreaProvider>
 );
 
-const LAYERS = ['table-felt', 'game-top-bar', 'score-pill-layer', 'control-rail-layer', 'game-table'];
-// Unfiltered on iOS: the felt greys in Skia, and SwiftUI would inset the rail off its cutout column.
-const EDGE = ['table-felt', 'control-rail-layer'];
+const LAYERS = ['table-felt', 'table-particles', 'game-top-bar', 'score-pill-layer', 'control-rail-layer', 'game-table'];
+// Unfiltered on iOS: the felt and the particles grey in Skia, and SwiftUI would inset the rail off its cutout column.
+const EDGE = ['table-felt', 'table-particles', 'control-rail-layer'];
 const filters = () =>
   LAYERS.map((id) => (getAnimatedStyle(screen.getByTestId(id, { includeHiddenElements: true })) as { filter?: string }).filter);
 
@@ -141,7 +142,31 @@ describe("the table while the viewer's own link is down", () => {
   it('keeps every greyed layer at the layer it wraps', async () => {
     const view = await render(table('up'));
     const z = (id: string) => StyleSheet.flatten(screen.getByTestId(id, { includeHiddenElements: true }).props.style).zIndex;
-    expect(LAYERS.map(z)).toEqual([Layer.felt, Layer.moment, Layer.moment, Layer.rail, Layer.table]);
+    expect(LAYERS.map(z)).toEqual([Layer.felt, Layer.particles, Layer.moment, Layer.moment, Layer.rail, Layer.table]);
+    await view.unmount();
+  });
+
+  // The mockup's `#fx` canvas sits over `#lit`, which holds the pile, the seats and the hand.
+  it('draws the particles over the table that holds the cards, under its HUD', async () => {
+    const view = await render(table('up'));
+    const node = (id: string) => screen.getByTestId(id, { includeHiddenElements: true });
+    const chain = (n: TestInstance) => {
+      const up: TestInstance[] = [];
+      for (let at: TestInstance | null = n; at; at = at.parent) up.unshift(at);
+      return up;
+    };
+    // Each view's zIndex where its path parts from the other's: the one stacking context they share.
+    const peers = (a: string, b: string) => {
+      const [ca, cb] = [chain(node(a)), chain(node(b))];
+      let i = 0;
+      while (ca[i] === cb[i]) i++;
+      const z = (c: TestInstance[]) => c.slice(i).map((n) => StyleSheet.flatten(n.props.style)?.zIndex).find((v) => v !== undefined) ?? 0;
+      return [z(ca), z(cb)];
+    };
+    const [particles, cards] = peers('particle-skia', 'game-table');
+    expect(particles).toBeGreaterThan(cards);
+    const [under, hud] = peers('particle-skia', 'game-top-bar');
+    expect(under).toBeLessThan(hud);
     await view.unmount();
   });
 });
