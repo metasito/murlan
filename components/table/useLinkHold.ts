@@ -6,7 +6,7 @@ import { event } from "@/lib/device/feedback";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { holdGrey, linkHeld, type OwnLink } from "@/lib/ownLink";
 import { Reconnect } from "@/lib/theme";
-import { greyFilter } from "./linkGrey";
+import { greyFilter, greyScrims } from "./linkGrey";
 import type { LampRig } from "./useLampRig";
 
 /** The mockup's `#turn` class for each state, which the parity trace names its onsets by. */
@@ -68,7 +68,7 @@ export function useLinkHold(link: OwnLink, rig: Pick<LampRig, "freeze" | "setLev
     useCallback(() => grey.value, [grey])
   );
   const greyStyle = useAnimatedStyle(() => (VIEW_FILTER ? { filter: greyFilter(grey.value) } : {}));
-  const desaturateStyle = useAnimatedStyle(() => ({ opacity: grey.value }));
-  const darkenStyle = useAnimatedStyle(() => ({ opacity: Reconnect.darken * grey.value }));
+  const desaturateStyle = useAnimatedStyle(() => ({ opacity: greyScrims(grey.value).desaturate }));
+  const darkenStyle = useAnimatedStyle(() => ({ opacity: greyScrims(grey.value).darken }));
   return { grey, greyStyle, scrim: VIEW_FILTER ? null : { desaturateStyle, darkenStyle }, held, frozen: held || missedInFlight };
 }

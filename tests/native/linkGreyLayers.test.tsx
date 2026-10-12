@@ -2,10 +2,10 @@
 // its HUD go grey, layer by layer, and come back in colour once it is up (#1268).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { act, render, screen, within } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import { getAnimatedStyle } from 'react-native-reanimated';
 
 jest.mock('@/lib/accessibility', () => ({
   usePrefersReducedMotion: () => true,
@@ -13,28 +13,8 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'on',
 }));
 
-// tests/native/setup.ts's no-op Skia, except that a group draws its layer and a colour matrix shows its values.
-jest.mock('@shopify/react-native-skia', () => {
-  const React = require('react') as typeof import('react');
-  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
-  const call: object = new Proxy(function () {}, {
-    get: (_, key) => (key === 'then' ? undefined : call),
-    apply: () => call,
-  });
-  const element = ({ children }: { children?: React.ReactNode }) => React.createElement(React.Fragment, null, children);
-  const known: Record<string | symbol, unknown> = {
-    Skia: call,
-    PaintStyle: {},
-    useCanvasRef: () => React.useRef(null),
-    Canvas: ({ testID, children }: { testID?: string; children?: React.ReactNode }) => React.createElement(View, { testID }, children),
-    Group: ({ layer, children }: { layer?: React.ReactNode; children?: React.ReactNode }) => React.createElement(React.Fragment, null, layer, children),
-    ColorMatrix: ({ matrix }: { matrix: SharedValue<number[]> }) => React.createElement(View, { testID: 'grey-matrix', accessibilityHint: matrix.value.join(',') }),
-  };
-  return new Proxy(known, { get: (k, key) => (key === '__esModule' ? true : key in k ? k[key] : element) });
-});
-
 import { GameTable } from '@/components/GameTable';
-import { greyFilter, greyMatrix } from '@/components/table/linkGrey';
+import { greyFilter, greyScrims } from '@/components/table/linkGrey';
 import { Layer, Reconnect } from '@/lib/tokens';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import type { OwnLink } from '@/lib/ownLink';
@@ -109,12 +89,17 @@ describe("the table while the viewer's own link is down", () => {
   it.each<[OwnLink, boolean]>([
     ['lost', true],
     ['up', false],
-  ])('with the link %s, the felt and the particles draw their own grey on iOS alone, from the first render: %s', async (link, held) => {
+  ])('with the link %s, a scrim over every greyed layer desaturates the table on iOS alone, from the first render: %s', async (link, held) => {
     const view = await render(table(link));
-    for (const canvas of ['felt-skia', 'particle-skia']) {
-      const matrix = within(screen.getByTestId(canvas, { includeHiddenElements: true })).queryByTestId('grey-matrix', { includeHiddenElements: true });
-      if (held && Platform.OS === 'ios') expect(matrix?.props.accessibilityHint).toBe(greyMatrix(Reconnect.grey).join(','));
-      else expect(matrix).toBeNull();
+    const scrim = screen.queryByTestId('grey-scrim', { includeHiddenElements: true });
+    if (Platform.OS !== 'ios') {
+      expect(scrim).toBeNull();
+    } else {
+      expect(scrim).not.toBeNull();
+      const style = StyleSheet.flatten(scrim!.props.style);
+      expect(style.mixBlendMode).toBe('saturation');
+      expect(style.zIndex).toBe(Layer.greyScrim);
+      expect(getAnimatedStyle(scrim!)).toMatchObject({ opacity: held ? greyScrims(Reconnect.grey).desaturate : 0 });
     }
     await view.unmount();
   });
