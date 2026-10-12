@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { addOutline, buildGlow, buildShadow, castOffset, handCardZ, handPaintOrder, handShadeCards, handShadeShape, handShades, restingCast, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
+import { addOutline, buildGlow, buildShadow, castOffset, cardShades, handCardZ, handPaintOrder, pileGroupZ, pilePaintOrder, restingCast, shadeCards, shadeShape, SHADE_STEP, shadowClusters, shadowFall, shadowKind, shadowPaint, shadowShape, shadowClusterId, shadowTransform, SHADOW_PATHS, type GlowSink, type PathSink } from "../../components/table/cardShadows.ts";
 import type { CardRect } from "../../components/table/cardRects.ts";
 import { LIGHT_ABOVE } from "../../components/table/lampRig.ts";
 import { CardGlow, CardShadow, Colors, Layer as Layers, Motion } from "../../lib/tokens.ts";
@@ -90,23 +90,54 @@ describe("the shadow paths", () => {
     assert.deepEqual([gap(5.9), gap(6.1)], [1, 2]);
   });
 
-  test("a hand card shades the cards painted under it, never the ones over it, a card not drawn, or a flight over the hand", () => {
+  test("a card shades the cards painted under it, never the ones over it, a card not drawn, or a flight over them", () => {
     const felt = { sx: 1, sy: 1, s: 1 };
     const rects = { "hand:a": rect(), "hand:b": rect({ x: 120 }), "hand:c": rect({ x: 140 }), "hand:gone": rect({ seen: 0 }), "leg:x": rect(), "deal:gone": rect({ seen: 0 }), "pile:far": rect({ x: 400 }) };
-    const read = handShadeCards(rects, ["hand:c", "hand:gone", "hand:a", "hand:missing", "hand:b"], felt);
-    assert.deepEqual(read, { hand: ["hand:c", "hand:a", "hand:b"], over: ["leg:x"] });
-    assert.deepEqual(handShades(read), [
+    const read = shadeCards(rects, ["hand:c", "hand:gone", "hand:a", "hand:missing", "hand:b"], felt);
+    assert.deepEqual(read, { stack: ["hand:c", "hand:a", "hand:b"], over: ["leg:x"] });
+    assert.deepEqual(cardShades(read), [
       { caster: "hand:a", below: ["hand:c"], above: ["hand:a", "hand:b", "leg:x"] },
       { caster: "hand:b", below: ["hand:c", "hand:a"], above: ["hand:b", "leg:x"] },
     ]);
-    assert.deepEqual(handShades(handShadeCards({ "hand:a": rect() }, ["hand:a"], felt)), []);
+    assert.deepEqual(cardShades(shadeCards({ "hand:a": rect() }, ["hand:a"], felt)), []);
   });
 
-  test("the hand shade rebuilds on an outline moving a visible step, never on a drift under it", () => {
+  test("a pile card shades the pile cards and hand cards painted under it", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const rects = { "hand:a": rect(), "pile:b1": rect({ x: 110 }), "pile:t1": rect({ x: 120 }), "pile:t2": rect({ x: 130 }), "fan:top:0": rect({ x: 125 }) };
+    const read = shadeCards(rects, ["hand:a", "pile:b1", "pile:t1", "pile:t2"], felt);
+    assert.deepEqual(read, { stack: ["hand:a", "pile:b1", "pile:t1", "pile:t2"], over: ["fan:top:0"] });
+    assert.deepEqual(
+      cardShades(read).map(({ caster, below }) => [caster, below]),
+      [
+        ["pile:b1", ["hand:a"]],
+        ["pile:t1", ["hand:a", "pile:b1"]],
+        ["pile:t2", ["hand:a", "pile:b1", "pile:t1"]],
+      ]
+    );
+  });
+
+  test("the pile paints by its groups' zIndex, a play's cards in their order, the flight over every resting play", () => {
+    const play = (key: string, ids: string[], role: "top" | "beaten" | "buried", flying = false, sweep = false) => ({ key, ids, role, flying, sweep });
+    assert.deepEqual(
+      pilePaintOrder([play("s", ["s1"], "top", false, true), play("t", ["t1", "t2"], "top"), play("b", ["b1", "b2"], "beaten"), play("f", ["f1"], "top", true), play("x", ["x1"], "buried")]),
+      ["pile:x1", "pile:b1", "pile:b2", "pile:t1", "pile:t2", "pile:s1", "pile:f1"]
+    );
+    assert.ok(pileGroupZ(false, false, "beaten") < pileGroupZ(false, false, "top"));
+    assert.ok(pileGroupZ(false, false, "top") < pileGroupZ(false, true, "buried"));
+    assert.ok(pileGroupZ(false, true, "top") < pileGroupZ(true, false, "top"));
+  });
+
+  test("the card shade lies over every resting pile play and the hand, and under the moments", () => {
+    assert.ok(pileGroupZ(false, false, "top") < Layers.cardShade, `top play ${pileGroupZ(false, false, "top")} against the shade's ${Layers.cardShade}`);
+    assert.ok(Layers.cardShade < Layers.moment);
+  });
+
+  test("the card shade rebuilds on an outline moving a visible step, never on a drift under it", () => {
     const felt = { sx: 2, sy: 1.5, s: 1.25 };
     const shape = (over: Partial<CardRect> = {}, f = felt, midX = 0) => {
       const rects = { "hand:a": rect(), "hand:b": rect({ x: 120, ...over }) };
-      return handShadeShape(rects, handShadeCards(rects, ["hand:a", "hand:b"], f), f, midX);
+      return shadeShape(rects, shadeCards(rects, ["hand:a", "hand:b"], f), f, midX);
     };
     const drift = SHADE_STEP / 4;
     const still = [shape({ x: 120 + drift / felt.sx }), shape({ y: 50 + drift / felt.sy }), shape({ w: 64 + drift / felt.s }), shape({ h: 90 + drift / felt.s }), shape({ rot: drift / 100 })];
@@ -116,11 +147,11 @@ describe("the shadow paths", () => {
     assert.equal(new Set([shape(), ...moved]).size, moved.length + 1);
   });
 
-  test("a card reaches the hand shade only while it may overlap a hand card, at the felt's scale", () => {
-    const at = (x: number, y = 50) => ({ "hand:a": rect(), "pile:p": rect({ x, y, rot: 90 }) });
-    const over = (rects: Record<string, CardRect>, felt = { sx: 1, sy: 1, s: 1 }) => handShadeCards(rects, ["hand:a"], felt).over;
-    assert.deepEqual([over(at(100 + 153)), over(at(100 + 155)), over(at(100, 50 + 155))], [["pile:p"], [], []]);
-    assert.deepEqual(over(at(100 + 155), { sx: 1, sy: 1, s: 1.1 }), ["pile:p"]);
+  test("a card off the stack reaches the shade only while it may overlap a stacked card, at the felt's scale", () => {
+    const at = (x: number, y = 50) => ({ "hand:a": rect(), "fan:top:0": rect({ x, y, rot: 90 }) });
+    const over = (rects: Record<string, CardRect>, felt = { sx: 1, sy: 1, s: 1 }) => shadeCards(rects, ["hand:a"], felt).over;
+    assert.deepEqual([over(at(100 + 153)), over(at(100 + 155)), over(at(100, 50 + 155))], [["fan:top:0"], [], []]);
+    assert.deepEqual(over(at(100 + 155), { sx: 1, sy: 1, s: 1.1 }), ["fan:top:0"]);
   });
 
   test("the hand paints in its cards' zIndex order: a giveable card over its neighbours, the held card over all", () => {

@@ -502,7 +502,7 @@ function CardViewBase({
   const w = faceDown ? CARD_BACK_W(scale) : CARD_W(scale);
   const h = faceDown ? CARD_BACK_H(scale) : CARD_H(scale);
   const cast = useContext(CardCastContext);
-  const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast, rectKey?.startsWith("hand:"));
+  const shadow = cast === "felt" ? null : cardShadow(faceDown ? "back" : selected ? "lifted" : "face", cast, rectKey !== undefined && /^(hand|pile):/.test(rectKey));
 
   if (faceDown) {
     const backStyle = {

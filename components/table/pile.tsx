@@ -38,6 +38,7 @@ import { useBombBeat } from "./useBombBeat";
 import type { TableTimeline } from "./tableTimeline";
 import { designRect, pileCard, type GroupPose, type WobblePose } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
+import { pileGroupZ, pilePaintOrder } from "./cardShadows";
 
 /**
  * Where a combination's cards sit on the felt, the flight's own slots. A
@@ -125,11 +126,6 @@ const CATCH_EASING = Easing.out(Easing.cubic);
 const TURN_LEAD_MS = 1000 / 60;
 // Over the card, never a `filter` on the group: on iOS that darkens the felt beneath.
 const SHADE_Z = Layer.table + 1;
-
-const ROLE_RANK: Record<PlayRole, number> = { buried: 0, beaten: 1, top: 2 };
-// Over the moments, as the sweep and the throw were before they shared the pile's list.
-const SWEPT_Z = Layer.sheet;
-const FLYING_Z = SWEPT_Z + ROLE_RANK.top + 1;
 
 // ─── PlayGroup ────────────────────────────────────────────────────────────────
 
@@ -242,7 +238,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
 
   const { slots, w, h } = fieldSlots(cards, cardScale, roomW);
   const testID = sweep ? (sweepTop ? "sweep-cards" : undefined) : beaten ? "pile-prev-layer" : role === "buried" ? "pile-buried-layer" : undefined;
-  const zIndex = flying ? FLYING_Z : (sweep ? SWEPT_Z : Layer.table) + ROLE_RANK[role];
+  const zIndex = pileGroupZ(flying, sweep !== null, role);
   const out = !flying && (role === "buried" || (hidden && !sweep));
   return (
     <Animated.View
@@ -489,6 +485,12 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
     ...flights.filter((f) => !held.has(f.key)).map((play) => ({ play, role: "top" as const, sweep: null, sweepTop: false })),
   ];
   const flightOf = new Map(flights.map((f) => [f.key, f]));
+  const cardTable = useCardTable();
+  const paintOrder = pilePaintOrder(groups.map(({ play, role, sweep: motion }) => ({ key: play.key, ids: play.combo.cards.map((c) => c.id), role, flying: flightOf.has(play.key), sweep: motion !== null })));
+  const paintKey = paintOrder.join(",");
+  useEffect(() => {
+    cardTable?.pileOrder.set(paintKey === "" ? [] : paintKey.split(","));
+  }, [cardTable, paintKey]);
 
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;

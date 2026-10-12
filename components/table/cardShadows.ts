@@ -6,6 +6,7 @@ import { CardGlow, CardShadow, Layer } from "../../lib/tokens.ts";
 import { cardRadius } from "../cardFaceModel.ts";
 import type { CardRect, CardRects, Felt, Point } from "./cardRects.ts";
 import { LIGHT_ABOVE, type Pool } from "./lampRig.ts";
+import type { PlayRole } from "./trick.ts";
 
 export type ShadowKind = "face" | "back" | "fan";
 /** One path each; the cast is every face and back, a seat fan's backs cast nothing (`.bk`). */
@@ -124,36 +125,54 @@ export function handPaintOrder(ids: readonly string[], giveable: (id: string) =>
   return [...row.map(({ id }) => `hand:${id}`), ...(held === null ? [] : [`hand:${held}`])];
 }
 
-export interface HandShadeCards { hand: string[]; over: string[] }
+const ROLE_RANK: Record<PlayRole, number> = { buried: 0, beaten: 1, top: 2 };
+const SWEPT_Z = Layer.sheet;
+
+/** A pile play's `zIndex`: resting by its role, the sweep over the moments, a flight over the sweep. */
+export function pileGroupZ(flying: boolean, sweep: boolean, role: PlayRole): number {
+  return flying ? SWEPT_Z + ROLE_RANK.top + 1 : (sweep ? SWEPT_Z : Layer.table) + ROLE_RANK[role];
+}
+
+export interface PilePlay { key: string; ids: readonly string[]; role: PlayRole; flying: boolean; sweep: boolean }
+
+/** The registry keys of the pile's cards in the order they paint, bottom first: by `pileGroupZ`, then each play's own. */
+export function pilePaintOrder(plays: readonly PilePlay[]): string[] {
+  return plays
+    .map((p, at) => ({ p, at, z: pileGroupZ(p.flying, p.sweep, p.role) }))
+    .sort((a, b) => a.z - b.z || a.at - b.at)
+    .flatMap(({ p }) => p.ids.map((id) => `pile:${id}`));
+}
+
+export interface ShadeCards { stack: string[]; over: string[] }
 
 /**
- * The cards the hand shade reads: `order`'s drawn hand cards, bottom first as they paint, and every
- * other drawn card that may overlap one of them. The shade is clipped to the hand, so no other card
- * can cover it.
+ * The cards the card shade reads: `order`'s drawn cards, bottom first as they paint, and every other
+ * drawn card that may overlap one of them. The shade is clipped to the stack, so no other card can
+ * cover it.
  */
-export function handShadeCards(rects: CardRects, order: readonly string[], felt: Pick<Felt, "sx" | "sy" | "s">): HandShadeCards {
+export function shadeCards(rects: CardRects, order: readonly string[], felt: Pick<Felt, "sx" | "sy" | "s">): ShadeCards {
   "worklet";
   const shown = (key: string) => rects[key] !== undefined && rects[key].seen > 0;
-  const hand = order.filter(shown);
+  const stack = order.filter(shown);
   // Half the card's width plus half its height bounds its outline from its centre at any rotation.
   const reach = (r: CardRect) => ((r.w + r.h) * felt.s) / 2;
   const meets = (a: CardRect, b: CardRect) => {
     const d = reach(a) + reach(b);
     return Math.abs(a.x - b.x) * felt.sx < d && Math.abs(a.y - b.y) * felt.sy < d;
   };
-  const over = Object.keys(rects).filter((key) => !key.startsWith("hand:") && shown(key) && hand.some((h) => meets(rects[key], rects[h])));
-  return { hand, over };
+  const over = Object.keys(rects).filter((key) => !order.includes(key) && shown(key) && stack.some((h) => meets(rects[key], rects[h])));
+  return { stack, over };
 }
 
 /** In window points: a resting hand drifts by hundredths of one each frame, and every drift would rebuild all its outlines. */
 export const SHADE_STEP = 0.25;
 
-/** What the hand shade's outlines are built from, each outline to the nearest `SHADE_STEP`. */
-export function handShadeShape(rects: CardRects, { hand, over }: HandShadeCards, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): string {
+/** What the card shade's outlines are built from, each outline to the nearest `SHADE_STEP`. */
+export function shadeShape(rects: CardRects, { stack, over }: ShadeCards, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number): string {
   "worklet";
   const q = (v: number) => Math.round(v / SHADE_STEP);
-  let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${hand.join(",")}|`;
-  for (const key of [...hand, ...over]) {
+  let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${stack.join(",")}|`;
+  for (const key of [...stack, ...over]) {
     const r = rects[key];
     shape += `${key}:${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)},${r.back};`;
   }
@@ -161,13 +180,12 @@ export function handShadeShape(rects: CardRects, { hand, over }: HandShadeCards,
 }
 
 /**
- * Each drawn hand card over another casts onto the cards `below` it, except where it, a card `above`
- * it or a card in flight over the hand covers them — the mockup's shadow painted between its card and
- * the one beneath.
+ * Each drawn card over another casts onto the cards `below` it, except where it, a card `above` it or
+ * a card off the stack covers them — the mockup's shadow painted between its card and the one beneath.
  */
-export function handShades({ hand, over }: HandShadeCards): { caster: string; below: string[]; above: string[] }[] {
+export function cardShades({ stack, over }: ShadeCards): { caster: string; below: string[]; above: string[] }[] {
   "worklet";
-  return hand.slice(1).map((caster, i) => ({ caster, below: hand.slice(0, i + 1), above: [...hand.slice(i + 1), ...over] }));
+  return stack.slice(1).map((caster, i) => ({ caster, below: stack.slice(0, i + 1), above: [...stack.slice(i + 1), ...over] }));
 }
 
 export interface GlowSink extends PathSink {
