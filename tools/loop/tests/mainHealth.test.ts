@@ -341,4 +341,56 @@ describe("mainFailures", () => {
     };
     assert.equal(mainFailures(gh, REPO), null);
   });
+
+  // Main 38189115110 skipped its suite and inherited 38188271467, green only at attempt 2.
+  describe("a green main vouches for the pull-request run it inherited", () => {
+    const HEAD = "83e4d520240d82398dba3ca8b15a57c9376bd1f8";
+    const PR_RUN = 38188271467;
+    const PR_URL = `https://github.com/${REPO}/actions/runs/${PR_RUN}`;
+    const WOBBLE =
+      "tests/e2e/reducedMotionWobbleReset.spec.ts › the landing wobble's reset survives a live reduced-motion toggle (#786)" +
+      " › a toggle mid-wobble brings the cards to rest instead of freezing them scaled";
+    const inherited = (attempt: number, asked: string[] = [], mainTree = "f00d") => (args: string[]) => {
+      const key = args.join(" ");
+      asked.push(key);
+      if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([GREEN]);
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha}/pulls --jq .[0].head.sha // empty`) return `${HEAD}\n`;
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha} --jq .commit.tree.sha`) return `${mainTree}\n`;
+      if (key === `api repos/${REPO}/commits/${HEAD} --jq .commit.tree.sha`) return "f00d\n";
+      if (key === `run list --repo ${REPO} --workflow ci.yml --commit ${HEAD} --status success --limit 1 --json databaseId,attempt,url`) {
+        return JSON.stringify([{ databaseId: PR_RUN, attempt, url: PR_URL }]);
+      }
+      if (key === `run view ${PR_RUN} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
+        const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
+        return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
+      }
+      if (key === `run view ${PR_RUN} --repo ${REPO} --log-failed --attempt 1`) {
+        return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
+      }
+      throw new Error(`unexpected gh call: ${key}`);
+    };
+
+    test("a failure at attempt 1 is flaky on main, not on main", () => {
+      const asked: string[] = [];
+      assert.deepEqual(mainFailures(inherited(2, asked), REPO), {
+        runId: PR_RUN,
+        url: `${PR_URL}/attempts/1`,
+        ids: [WOBBLE],
+        flaky: true,
+      });
+      assert.ok(asked.some((k) => k.endsWith("--log-failed --attempt 1")), asked.join("\n"));
+    });
+
+    test("an inherited run green at attempt 1 has nothing to give, and its log is never read", () => {
+      const asked: string[] = [];
+      assert.equal(mainFailures(inherited(1, asked), REPO), null);
+      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+    });
+
+    test("a main whose tree differs from the pull request's ran its own suite, and its green is its own", () => {
+      const asked: string[] = [];
+      assert.equal(mainFailures(inherited(2, asked, "beef"), REPO), null);
+      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+    });
+  });
 });

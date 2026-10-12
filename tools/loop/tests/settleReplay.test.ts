@@ -423,12 +423,24 @@ describe("a red head's failures that main has too", () => {
     assert.match(String(bodyOf(asked, written)), /^on main: 1 of \d+ also fail on main \(https:\/\/example\.test\/runs\/1\): /m);
   });
 
+  test("a failure the inherited run had at attempt 1 goes on its own flaky line, and on main: stays none", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = red();
+    const main = { runId: 1, url: "https://example.test/runs/1/attempts/1", ids: [ID], flaky: true };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
+    assert.deepEqual(out, HAND_BACK);
+    const body = String(bodyOf(asked, written));
+    assert.match(body, /^on main: none$/m);
+    assert.match(body, /^flaky on main: 1 of \d+ failed attempt 1 of the run main inherited \(https:\/\/example\.test\/runs\/1\/attempts\/1\): /m);
+  });
+
   test("a main with nothing to give says none", async () => {
     const written: string[][] = [];
     const { gh, asked } = red();
     const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => null });
     assert.deepEqual(out, HAND_BACK);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
+    assert.doesNotMatch(String(bodyOf(asked, written)), /flaky on main/);
   });
 
   test("a red with no failing test id never reads main", async () => {
