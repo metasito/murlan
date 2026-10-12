@@ -79,7 +79,7 @@ import { listWorktreeDirNames } from "./prune-worktrees.mjs";
 import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { CHECK_BASH_TIMEOUT_MS, STALL_MS } from "./limits.mjs";
+import { CHECK_BASH_TIMEOUT_MS, STALL_MS, suspended } from "./limits.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -1489,6 +1489,7 @@ export function runTicket(
     declared: null,
     version: null,
     lastFactAt: Date.now(),
+    asleepMs: 0,
     blocked: false,
     blockedUntil: 0,
     stalled: false,
@@ -1666,8 +1667,14 @@ export function runTicket(
     // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
     // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
     // SIGINT only ends the turn, and a session with nothing to end ignores it.
+    let tickAt = Date.now();
     const watchdog = setInterval(() => {
-      if (Date.now() - state.lastFactAt <= stallMs) return;
+      const now = Date.now();
+      const slept = suspended(tickAt, now, tick);
+      tickAt = now;
+      state.asleepMs += slept;
+      state.lastFactAt = Math.min(now, state.lastFactAt + slept);
+      if (now - state.lastFactAt <= stallMs) return;
       state.stalled = true;
       clearInterval(watchdog);
       // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
@@ -1719,6 +1726,7 @@ export function runTicket(
           accountError: state.accountError,
           apiErrorCode: state.apiErrorCode,
           ms: Date.now() - startedAt,
+          asleepMs: state.asleepMs,
           log: logPath,
           // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
           // file is complete and nothing is writing to it.
