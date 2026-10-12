@@ -29,12 +29,26 @@ const LABELS =
   "an untested branch or a style preference is a Nit. A defect this change did not introduce is " +
   "Pre-existing. Every finding names a file:line.";
 
-const diff = (wt, base) =>
-  base === "origin/main"
-    ? `\`git -C ${wt} diff ${base}...HEAD\``
-    : `\`git -C ${wt} diff ${base}..HEAD\`, with ` +
-      `\`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${base}..HEAD\` for a merge's own ` +
-      "edits (what a merge brought in from main is not the fix)";
+/**
+ * A later round's delta, net of the main a merge brought in: `base` merged with that main, diffed
+ * to HEAD, leaves only the fix and the merge's own resolution. It reads the worktree, so the
+ * guard's copy of a brief matches the CLI's only while HEAD has not moved between the two.
+ */
+function laterDelta(wt, base) {
+  const git = (...args) => spawnSync("git", ["-C", wt, ...args], { encoding: "utf8" });
+  const newest = git("rev-list", "--first-parent", "--merges", "-n", "1", `${base}..HEAD`).stdout?.trim();
+  if (!newest) return `\`git -C ${wt} diff ${base}..HEAD\``;
+  const main = git("rev-parse", "--verify", "-q", `${newest}^2`).stdout?.trim();
+  const merged = main ? git("merge-tree", "--write-tree", base, main) : null;
+  if (merged?.status === 0) return `\`git -C ${wt} diff ${merged.stdout.split("\n")[0]} HEAD\``;
+  return (
+    `\`git -C ${wt} diff ${base}..HEAD\`, with ` +
+    `\`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${base}..HEAD\` for a merge's own ` +
+    "edits (what a merge brought in from main is not the fix)"
+  );
+}
+
+const diff = (wt, base) => (base === "origin/main" ? `\`git -C ${wt} diff ${base}...HEAD\`` : laterDelta(wt, base));
 export const TRUSTED_SELECT = `select(.authorAssociation|IN(${TRUSTED_AUTHORS.map((a) => `"${a}"`).join(",")}))`;
 /** Rule 25's read, keeping only trusted authors' comments: a later comment overrides the body. */
 export const readIssue = (n) =>
