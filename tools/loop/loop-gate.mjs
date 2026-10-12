@@ -119,44 +119,6 @@ export function roundVerdict({ reviewRounds, fixHolds = 0 }) {
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }
 
-/**
- * Whether this head may be pushed. Fails closed on every unknown: an unreachable tracker is not a
- * review, a verdict on an older commit is not this diff's, and a `LAND` with no report behind it is
- * the shape that put two red branches on origin.
- *
- * The unreadable-tracker refusal is the one that carries no `lines`, and `main` reads that as
- * "cannot judge" — exit 2 — rather than as a refusal.
- *
- * @param {ReturnType<import("./loop-derive.mjs").derive>} s
- * @returns {{ok: boolean, why?: string, lines?: string[]}}
- */
-export function pushVerdict(s) {
-  if (s.commits === 0 || s.changed.length === 0)
-    return { ok: false, why: "nothing was built on this branch", lines: [
-      `${s.commits} commit(s), ${s.changed.length} changed file(s) against ${s.base} in ${s.cwd}`,
-      "Phase C commits each slice as it lands.",
-    ] };
-  if (!s.trackerReadable) return { ok: false, why: `cannot reach the tracker to read the review of #${s.ticket}` };
-  if (s.reviewRounds == null) return { ok: false, why: `cannot count the review rounds on #${s.ticket}` };
-  if (s.reviewRounds > MAX_REVIEW_ROUNDS) return { ok: false, why: `${s.reviewRounds} reviews, past the cap of ${MAX_REVIEW_ROUNDS}`, lines: [
-    "A ticket never lands past the cap: stand down and leave it to the owner.",
-  ] };
-  if (!s.verdict) return { ok: false, why: `no review of ${s.head.slice(0, 7)} on the issue`, lines: [
-    "Phase D posts the reviewer's verdict as a comment on the issue, naming the commit it read:",
-    `  VERDICT: LAND ${s.head.slice(0, 7)}   (or VERDICT: HOLD ${s.head.slice(0, 7)} — reason)`,
-    "A commit made after a review moves the head, so that review no longer covers this diff.",
-  ] };
-  if (s.verdict.decision !== "LAND") return { ok: false, why: "the reviewer held this diff", lines: [s.verdict.line] };
-  if (!s.review) return { ok: false, why: `no review report for ${s.head.slice(0, 7)} on the issue`, lines: [
-    "A verdict is the session's read of the reviewer's report, and that report is the record. Post",
-    "it as its own comment before the verdict, first line the head it read:",
-    `  REVIEW ${s.head.slice(0, 7)}`,
-    "then `## Blocking`, `## Nits` and `## Pre-existing`. A LAND with nothing behind it is what put",
-    "two red branches on origin.",
-  ] };
-  return { ok: true };
-}
-
 /** How many update-branch merges `landable` walks back through before it gives up. */
 const MERGE_WALK = 8;
 
@@ -219,11 +181,6 @@ function verdictOn(comments, at, verdict) {
     "two red branches on origin.",
   ] };
   return { ok: true, why: `reviewed at ${short}: ${verdict.line}` };
-}
-
-/** Whether the merge may take `sha`: `landable`'s answer alone. */
-export function mergeCleared(comments, sha, git, main = "origin/main") {
-  return landable(comments, sha, git, main).ok;
 }
 
 const REVIEWERS = new Set(["loop-review", "loop-fix"]);

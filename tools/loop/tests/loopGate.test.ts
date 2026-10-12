@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, dodVerdict, landable, mergeCleared, reviewerRan } from "../loop-gate.mjs";
+import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, buildPassed, dodVerdict, landable, reviewerRan } from "../loop-gate.mjs";
 import { readLine } from "../loop-stream.mjs";
 
 /**
@@ -362,46 +362,6 @@ test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
   assert.match(out, /#9900015/);
 });
 
-describe("a LAND is only as good as the report behind it", () => {
-  const state = (extra: Record<string, unknown>) => ({
-    onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
-    changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
-    trackerReadable: true, reviewRounds: 1, fixHolds: 0, why: "reviewed and cleared",
-    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, handoff: null, review: null,
-    ci: null, fix: false, ciRounds: 0, ...extra,
-  });
-
-  test("a LAND with no review report on the issue is refused", () => {
-    const v = pushVerdict(state({}));
-    assert.equal(v.ok, false);
-    assert.match(String(v.why), /no review report/);
-  });
-
-  test("a LAND backed by a report for the same head passes", () => {
-    assert.equal(pushVerdict(state({ review: { line: "REVIEW abc1234" } })).ok, true);
-  });
-
-  test("a LAND past the review cap is refused, whatever the session wrote", () => {
-    const review = { line: "REVIEW abc1234" };
-    assert.equal(pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS })).ok, true);
-    const past = pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS + 1 }));
-    assert.equal(past.ok, false);
-    assert.match(String(past.why), /past the cap/);
-  });
-
-  test("a round count nobody could take is refused, never read as zero", () => {
-    const v = pushVerdict(state({ review: { line: "REVIEW abc1234" }, reviewRounds: null }));
-    assert.equal(v.ok, false);
-    assert.match(String(v.why), /count the review rounds/);
-  });
-
-  test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
-    const v = pushVerdict(state({ trackerReadable: false }));
-    assert.equal(v.ok, false);
-    assert.equal(v.lines, undefined);
-  });
-});
-
 /**
  * Phase D's ceiling. It is the largest cost lever in the loop, and it was a sentence in `queue.md`
  * that no test could fail until this branch moved it here — so the point of these is that editing
@@ -581,7 +541,7 @@ describe("--build gates review on a cached local pass", () => {
   });
 });
 
-describe("landable, and mergeCleared over it", () => {
+describe("landable", () => {
   let repo: string;
   const git = (args: string[]) =>
     execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" }).trim();
@@ -613,7 +573,7 @@ describe("landable, and mergeCleared over it", () => {
   });
   after(() => rmSync(repo, { recursive: true, force: true }));
 
-  const check = (comments: { body: string }[], sha: string) => mergeCleared(comments, sha, git, "main");
+  const check = (comments: { body: string }[], sha: string) => landable(comments, sha, git, "main").ok;
 
   test("a head its LAND and report cover is cleared; a LAND alone, a HOLD or silence is not", () => {
     assert.equal(check(said(...cleared(landed)), landed), true);
@@ -669,6 +629,12 @@ describe("landable, and mergeCleared over it", () => {
     assert.match(land(said(`VERDICT: LAND ${at}`), landed).why, /no review report/);
     assert.match(land(said(`VERDICT: HOLD ${at} — it is wrong`), landed).why, /reviewer held/);
     assert.match(land(said(...cleared(landed)), git(["rev-parse", "main"])).why, /nothing was built/);
+  });
+
+  test("an unreadable tracker carries no lines, which is what makes the CLI exit 2", () => {
+    const v = land(null, landed);
+    assert.equal(v.ok, false);
+    assert.equal(v.lines, undefined);
   });
 
   test("a LAND cannot overturn a HOLD on the same commit, and a quoted verdict is no review", () => {
