@@ -259,8 +259,18 @@ export function handoffFor(comments, head) {
 
 const BOX_RE = /^\s*[-*]\s+\[([ xX])\](.*)$/gm;
 const EVIDENCE_RE = /([\w./-]+\.\w+):(\d+)/g;
-const NA_RE = /(^|\s)n\/a:\s*\S/;
-const AGENT_CHECK_RE = /\bagent:check\b/;
+const NA_RE = /(?:^|\s)n\/a:/;
+const NAMES_CODE_RE = /`[^`\s]*[/.][^`\s]*`|[\w-]+\/[\w./-]+|\.(?:test|spec)\.|\be2e\b|\btests?\b|\bspecs?\b/i;
+const AGENT_CHECK_WORDS_RE = /\bnpm run\b|\bagent:check\b|\b(?:is|was|green|pass(?:es|ed|ing)?|clean|ok|on|this|the|head)\b|[\W_]/gi;
+
+/** A box whose whole claim is the agent:check pass, so the cached pass is its evidence. */
+const agentCheckAlone = (text) => /\bagent:check\b/.test(text) && text.replace(AGENT_CHECK_WORDS_RE, "") === "";
+
+/** An `n/a: <reason>` box, never one naming code or a test: those cite a `path:line`. */
+const notApplicable = (text) => {
+  const [claim, ...reason] = text.split(NA_RE);
+  return reason.join("").trim() !== "" && !NAMES_CODE_RE.test(claim);
+};
 
 /**
  * The builder's own tick of the Definition of done for this head. A ticked box counts as open
@@ -279,9 +289,9 @@ export function dodCheckFor(comments, head, resolves, built = false) {
     const m = DOD_CHECK_RE.exec(body);
     if (!m || !covers(head, m[1])) continue;
     const boxes = [...body.matchAll(BOX_RE)];
-    const na = (b) => b[1] !== " " && NA_RE.test(b[2]);
+    const na = (b) => b[1] !== " " && notApplicable(b[2]);
     const cited = (b) => [...b[2].matchAll(EVIDENCE_RE)].some(([, p, l]) => resolves(p, Number(l)));
-    const done = (b) => b[1] !== " " && (na(b) || (built && AGENT_CHECK_RE.test(b[2])) || cited(b));
+    const done = (b) => b[1] !== " " && (na(b) || (built && agentCheckAlone(b[2])) || cited(b));
     return {
       line: m[0].trim(),
       ticked: boxes.filter(done).length,
@@ -292,22 +302,20 @@ export function dodCheckFor(comments, head, resolves, built = false) {
   return null;
 }
 
-/** `reasonFor`'s reason for a stand-down, which its park comment carries as `- reason:`. */
-export const STOOD_DOWN = "the session stood down";
-
-const STOOD_DOWN_PARK_RE = new RegExp(`^Parked by the queue loop\\b[\\s\\S]*^- reason: ${STOOD_DOWN}\\b`, "m");
+/** `park()`'s comment, whatever its reason: only the owner returns a parked ticket to the queue. */
+const PARK_RE = /^Parked by the queue loop\b/m;
 
 /**
- * The cap's count starts at the first claim after a stand-down park, which is the owner sending
- * the ticket back; a claim after a crash, a stall or a stranded pull request inherits the rounds.
+ * The cap's count starts at the first claim after a park, which is the owner sending the ticket
+ * back; a stranded re-claim, with no park before it, inherits the rounds.
  */
 function countedVerdicts(comments) {
   const bodies = comments.map((c) => fenceStripped(c.body));
   let since = 0;
-  let stood = false;
+  let parked = false;
   bodies.forEach((b, i) => {
-    if (STOOD_DOWN_PARK_RE.test(b)) stood = true;
-    else if (stood && CLAIM_RE.test(b)) [since, stood] = [i, false];
+    if (PARK_RE.test(b)) parked = true;
+    else if (parked && CLAIM_RE.test(b)) [since, parked] = [i, false];
   });
   const firstRed = bodies.findIndex((b, i) => i >= since && CI_RED_RE.test(b.trimStart()));
   return bodies.slice(since).flatMap((body) => {
