@@ -16,7 +16,7 @@ import { render, screen } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle } from 'react-native-reanimated';
-import { greyFilter } from '@/components/table/linkGrey';
+import { greyFilter, iosGrey } from '@/components/table/linkGrey';
 import { holdGrey } from '@/lib/ownLink';
 
 // The table is landscape-locked and jest-expo's own window is a fixed portrait
@@ -78,7 +78,7 @@ describe('the capture screen', () => {
     // capture cannot be taken of the handover without it.
     expect(screen.getByLabelText('Move the lamp to the next seat')).toBeTruthy();
     const link = captureStateById(id)?.link ?? 'up';
-    expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(Platform.OS === 'ios' ? undefined : greyFilter(holdGrey(link)));
+    expect((getAnimatedStyle(screen.getByTestId('game-table')) as { filter?: string }).filter).toBe(Platform.OS === 'ios' ? iosGrey(holdGrey(link)).filter : greyFilter(holdGrey(link)));
     await view.unmount();
   });
 
