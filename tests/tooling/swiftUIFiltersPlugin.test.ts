@@ -23,7 +23,8 @@ function templateAppDelegate(): string {
 test("the installed Expo template's AppDelegate turns the SwiftUI filters on after creating the factory and before starting it", () => {
   const out = insertSwiftUIFilters(templateAppDelegate());
   const at = (s: string) => out.indexOf(s);
-  assert.ok(at("import MurlanDiagnostics") > at("import React"), "imports the pod");
+  // Expo's generated module provider imports every module `internal`, and Swift refuses two levels.
+  assert.ok(at("\ninternal import MurlanDiagnostics\n") > at("import React"), "imports the pod at the provider's access level");
   const call = at("MurlanReactNativeFlags.enableSwiftUIFilters()");
   assert.ok(call > at("ExpoReactNativeFactory(delegate:"), "after the factory sets its release level");
   assert.ok(call < at("factory.startReactNative("), "before React Native starts reading flags on other threads");

@@ -9,7 +9,7 @@ function insertSwiftUIFilters(source) {
   if (!source.includes(FACTORY) || !source.includes("\nimport React\n")) {
     throw new Error("withSwiftUIFilters: the AppDelegate template changed; find where the factory is created and before it starts.");
   }
-  return source.replace("\nimport React\n", "\nimport React\nimport MurlanDiagnostics\n").replace(FACTORY, FACTORY + CALL);
+  return source.replace("\nimport React\n", "\nimport React\ninternal import MurlanDiagnostics\n").replace(FACTORY, FACTORY + CALL);
 }
 
 module.exports = (config) =>
