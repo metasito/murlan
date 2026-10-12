@@ -16,11 +16,12 @@ import {
   captureStateById,
   LINK_STATES,
   nextTurn,
+  rethrow,
   SEAT_COUNT_STATES,
 } from "../../lib/captureStates.ts";
 import { holdGrey, linkHeld } from "../../lib/ownLink.ts";
 import { seatDirection } from "../../components/seatLayout.ts";
-import { passedSeats } from "../../components/flightPhysics.ts";
+import { comboKey, passedSeats } from "../../components/flightPhysics.ts";
 import { createDeck, dealCards } from "../../lib/game/gameEngine.ts";
 
 type Named = Partial<Record<"right" | "top" | "left", number | "out">>;
@@ -165,6 +166,23 @@ describe("the state a capture renders", () => {
       assert.notEqual(game.lastPlayedBy, state.turn, state.id);
       const ids = [...game.players.flatMap((p) => p.hand), ...game.lastPlayedCombination!.cards].map((c) => c.id);
       assert.equal(new Set(ids).size, ids.length, `${state.id} deals a card twice`);
+    }
+  });
+
+  test("throwing the pile again flies it from a seat not on move, as a landing the pile has not seen", () => {
+    for (const state of ALL_CAPTURE_STATES.filter((s) => s.pile)) {
+      const game = captureGameState(state);
+      let seen = comboKey(game.lastPlayedCombination!, game.lastPlayedBy);
+      let next = game;
+      for (let i = 0; i < 3; i++) {
+        next = rethrow(next);
+        const key = comboKey(next.lastPlayedCombination!, next.lastPlayedBy);
+        assert.notEqual(key, seen, `${state.id} throw ${i} would not fly`);
+        assert.notEqual(next.lastPlayedBy, state.turn, `${state.id} plays against itself`);
+        assert.equal(next.currentTurnIndex, state.turn, state.id);
+        assert.deepEqual(next.lastPlayedCombination, game.lastPlayedCombination, state.id);
+        seen = key;
+      }
     }
   });
 

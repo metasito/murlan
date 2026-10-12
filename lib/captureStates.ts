@@ -262,6 +262,16 @@ export function captureGameState(state: CaptureState): GameState {
   };
 }
 
+/** The same pile thrown by the next seat not on move, which the table flies and lands afresh. */
+export function rethrow(state: GameState): GameState {
+  const n = state.players.length;
+  for (let step = 1; step < n; step++) {
+    const seat = (state.lastPlayedBy + step) % n;
+    if (seat !== state.currentTurnIndex) return { ...state, lastPlayedBy: seat };
+  }
+  return state;
+}
+
 /** The seat the lamp moves to when a capture asks for the swing. */
 export function nextTurn(state: GameState): number {
   return (state.currentTurnIndex + 1) % state.players.length;

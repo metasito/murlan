@@ -18,7 +18,7 @@
 // keeps the route off the navigator, and `CaptureScreen`'s own check below
 // shows an unavailable message if the route is reached anyway.
 import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { GameTable } from "@/components/GameTable";
@@ -29,6 +29,7 @@ import {
   captureGameState,
   captureStateById,
   nextTurn,
+  rethrow,
 } from "@/lib/captureStates";
 import { captureEnabled } from "@/lib/captureRoute";
 import { Colors, FontSize, Radius, Spacing, TOUCH_TARGET_MIN, Type } from "@/lib/theme";
@@ -45,6 +46,7 @@ const COPY = {
   title: "Capture",
   body: "Pick a state, turn the device landscape, and photograph it. One shot per state.",
   swing: "Move the lamp to the next seat",
+  rethrow: "Throw the pile again",
   unavailable: "The capture screen is a development or e2e build only.",
 } as const;
 
@@ -64,7 +66,7 @@ function CaptureHarness() {
   const picked = captureStateById(stateId);
   // Before the null guard: a hook that runs on one render and not the next is
   // the error this ordering exists to prevent.
-  const [live, setLive] = useState<GameState | null>(null);
+  const [live, setLive] = useState<{ id: string; game: GameState } | null>(null);
   const seeded = React.useMemo(
     () => (picked ? captureGameState(picked) : null),
     [picked]
@@ -75,7 +77,8 @@ function CaptureHarness() {
   // Built once per state, not per render: `captureGameState` deals a fresh
   // deck, and a new card object on every render restarts the deal animation
   // the capture is waiting to finish.
-  const gameState = live ?? seeded;
+  const gameState = live?.id === picked.id ? live.game : seeded;
+  const move = (to: (s: GameState) => GameState) => setLive({ id: picked.id, game: to(gameState) });
 
   return (
     <GameTable
@@ -93,14 +96,26 @@ function CaptureHarness() {
       // needs an input to reach, so it takes a control that is already part of
       // the chrome rather than an overlay that would sit in the photograph.
       railExtra={
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={COPY.swing}
-          onPress={() => setLive((s) => ({ ...(s ?? gameState), currentTurnIndex: nextTurn(s ?? gameState) }))}
-          style={styles.swing}
-        >
-          <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />
-        </Pressable>
+        <View style={styles.knobs}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={COPY.swing}
+            onPress={() => move((s) => ({ ...s, currentTurnIndex: nextTurn(s) }))}
+            style={styles.swing}
+          >
+            <Ionicons name="arrow-forward" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />
+          </Pressable>
+          {gameState.lastPlayedCombination && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={COPY.rethrow}
+              onPress={() => move(rethrow)}
+              style={styles.swing}
+            >
+              <Ionicons name="refresh" size={SWING_GLYPH} color={Colors.textMuted} {...a11yHidden()} />
+            </Pressable>
+          )}
+        </View>
       }
     />
   );
@@ -145,6 +160,7 @@ const styles = StyleSheet.create({
   },
   rowId: { ...Type.bodyStrong, fontSize: FontSize.md, color: Colors.text },
   rowLabel: { ...Type.body, fontSize: FontSize.sm, color: Colors.textMuted },
+  knobs: { gap: Spacing.xs },
   swing: {
     minWidth: TOUCH_TARGET_MIN,
     minHeight: TOUCH_TARGET_MIN,
