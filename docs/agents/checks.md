@@ -29,7 +29,7 @@ instead of sitting unguarded in prose.
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | under 15 min warm, held by its gate; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
-| The ticket loop (`tools/loop/`) | `npm run loop:test` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
+| The ticket loop (`tools/loop/`) | `node --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
 folds in and self-skips without `DATABASE_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
@@ -458,7 +458,7 @@ the spec count, not the colour).
 ## The loop is a second product, with its own gate
 
 `tools/loop/` — supervisor, gate, picker, workspace tools — has its own suite
-(`tools/loop/tests/`, run with `npm run loop:test`) that shares nothing with the game's `npm
+(`tools/loop/tests/`, which `ci.yml`'s `harness` job runs) that shares nothing with the game's `npm
 test` but the repository. `ci.yml`'s `scope` job sets `app`/`harness` outputs: a diff confined to
 `tools/loop/` (plus a short list of shared scripts) sets `harness=true, app=false`; anything else
 sets `app=true`; the protocol files (`docs/agents/`, `.claude/`, `CLAUDE.md`) set **both**, since
@@ -473,7 +473,7 @@ loop-only change. Beside it, `harness-windows` runs every loop test file with a 
 `win32` on a Windows runner and fails if any test in them skips: Linux skips those tests, so this
 is the only place they run.
 
-**Run `npm run loop:test` from the repo root, never `npm --prefix tools/loop`** — its tests read
+**Run a loop test from the repo root, never through `npm --prefix tools/loop`** — its tests read
 the repository itself, so npm's cwd sends every one of them looking in the wrong place. **Move by
 subject, not filename**: `tests/ui-rules/contextSlices.test.ts` reads like harness tooling but
 asserts the game's React contexts stay a partition, so it stays on the game's side.
@@ -484,12 +484,18 @@ every hook):
   anywhere but `.worktrees/agent-<n>` (rules 7 and 32), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
   `…actions/runs|check-runs`, which § Device runs
-  replaces with `await-run.mjs`.
+  replaces with `await-run.mjs`. It refuses a `gh run rerun` of a run already past its first
+  attempt, and a read of an issue's or pull request's comments or reviews (`gh issue|pr view`,
+  or a `gh api` GET) without rule 25's trusted-author filter. In an implement session — one
+  resumed past A (`LOOP_PHASE`) or whose transcript reports a phase past A — it refuses an issue
+  created, through `gh issue` or `gh api`, labelled neither `ready-for-human` nor `noticed`, and
+  an added `ready-for-agent`, `ci-flake` or `main-red` (rule 33).
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
-- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND` until that round's own reviewer has
-  run (rule 29). There is no LAND at the round cap: the ticket goes to the owner.
+- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND`, posted by `gh issue comment` or
+  `gh api …/issues/<n>/comments`, until that round's own reviewer has run (rule 29), and whenever
+  the transcript the payload names cannot be read; a payload naming none is allowed with a warning. There is no LAND at the round cap: the ticket goes to the owner.
 
 ## Owner decisions
 

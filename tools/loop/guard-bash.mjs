@@ -24,6 +24,9 @@ import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs";
+import { locateRun } from "./loop-derive.mjs";
+import { readLine } from "./loop-stream.mjs";
 
 /** A failure's first line — enough to name it on stderr without dumping a stack there. */
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
@@ -191,7 +194,9 @@ function normalize(words, depth) {
 }
 
 export function commands(text, depth = 0) {
-  return segments(text, depth).flatMap((words) => normalize(words, depth));
+  // gh's own `{owner}`/`{repo}`/`{branch}` placeholders, or the braces split an endpoint in three.
+  const spelled = depth === 0 ? text.replace(/\{(owner|repo|branch)\}/g, "$1") : text;
+  return segments(spelled, depth).flatMap((words) => normalize(words, depth));
 }
 
 /**
@@ -312,7 +317,7 @@ function dispatchOf(c) {
 }
 
 /**
- * The workflow a target belongs to. Throws when `gh` cannot say — network, auth, rate limit —
+ * The run a target belongs to, as `{ workflowName, attempt }`. Throws when `gh` cannot say — network, auth, rate limit —
  * and leaves that to `check()`'s wrapper, which is the one place deciding to allow and saying
  * why, rather than this function choosing to allow silently.
  *
@@ -323,12 +328,12 @@ function dispatchOf(c) {
  */
 function askGitHub({ run, job }) {
   const which = job ? [`--job=${job}`] : [run];
-  return (
-    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName", "-q", ".workflowName"], {
+  return JSON.parse(
+    execFileSync("gh", ["run", "view", ...which, "--json", "workflowName,attempt"], {
       encoding: "utf8",
       timeout: 15_000,
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim() || null
+    }),
   );
 }
 
@@ -361,7 +366,69 @@ export function gitAt(base) {
     },
     top: (dir) => answer(["rev-parse", "--show-toplevel"], dir),
     cwd: (dir) => resolve(base, dir ?? "."),
+    onTicket: () => {
+      const run = locateRun(base);
+      return Boolean(run.ticket || run.ambiguous);
+    },
   };
+}
+
+const CHANNELS = /^(ready-for-human|noticed)$/;
+const AGENT_WORK = /^(ready-for-agent|ci-flake|main-red)$/;
+
+/** Every label the flags name, `--flag a,b` and `--flag=a,b` alike. */
+function labelsOf(args, flags) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const eq = /^(--[\w-]+)=(.*)$/.exec(args[i]);
+    if (eq && flags.includes(eq[1])) out.push(...eq[2].split(","));
+    else if (flags.includes(args[i])) out.push(...(args[++i] ?? "").split(","));
+  }
+  return out.map((l) => l.trim());
+}
+
+/** The labels a `gh api` call's `labels`/`labels[]` fields carry. */
+function apiLabels(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const joined = /^--(?:raw-)?field=(.*)$/.exec(args[i])?.[1];
+    const value = joined ?? (/^(-f|-F|--field|--raw-field)$/.test(args[i]) ? (args[++i] ?? "") : "");
+    const field = /^labels(?:\[\])?=(.*)$/.exec(value);
+    if (field) out.push(...field[1].split(","));
+  }
+  return out.map((l) => l.trim());
+}
+
+function filesAgentWork(c) {
+  if (c.cmd !== "gh") return false;
+  const fresh = (labels) => labels.some((l) => AGENT_WORK.test(l)) || !labels.some((l) => CHANNELS.test(l));
+  if (c.args[0] === "api" && apiMethod(c.args) !== "GET") {
+    // `--input` labels are in a file this cannot read; `gh issue create|edit` says them where it can.
+    const unseen = c.args.includes("--input");
+    if (has(c.args, /(?:^|\/)issues$/)) return unseen || fresh(apiLabels(c.args));
+    if (has(c.args, /\/issues\/\d+\/labels$/)) return unseen || apiLabels(c.args).some((l) => AGENT_WORK.test(l));
+    return has(c.args, /\/issues\/\d+$/) && apiLabels(c.args).some((l) => AGENT_WORK.test(l));
+  }
+  if (c.args[0] !== "issue") return false;
+  if (c.args[1] === "edit") return labelsOf(c.args, ["--add-label"]).some((l) => AGENT_WORK.test(l));
+  return c.args[1] === "create" && fresh(labelsOf(c.args, ["--label", "-l"]));
+}
+
+/**
+ * Whether this loop session is on the implement route, judged by its own phase: `LOOP_PHASE` when
+ * the supervisor resumed it past A, else the markers in its transcript, since triage and wayfinder
+ * never report past A. Only with no transcript to read does a standing ticket worktree decide.
+ */
+export function implementRoute(env, transcriptPath, standing = () => false, read = (p) => readFileSync(p, "utf8")) {
+  if (/^[B-G]$/.test(env.LOOP_PHASE ?? "")) return true;
+  let text;
+  try {
+    text = read(transcriptPath);
+  } catch (err) {
+    process.stderr.write(`guard-bash: cannot read this session's transcript (${firstLine(err)}); judging its route by the worktrees standing.\n`);
+    return standing();
+  }
+  return text.split("\n").some((line) => line.includes("PHASE ") && /^[B-F]$/.test(readLine(line)?.letter ?? ""));
 }
 
 /** A ticket's worktree has an index of its own, so `-A` there can absorb no other session's work. */
@@ -665,7 +732,7 @@ const RULES = [
       const dispatched = dispatchOf(c);
       if (dispatched !== null) return (DEVICE_WORKFLOW.test(dispatched) || /^\d*$/.test(dispatched)) && !dispatchesOnTicketBranch(c, vars);
       const t = rerunOf(c);
-      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t) ?? ""));
+      return Boolean(t && (t.run || t.job) && DEVICE_WORKFLOW.test(workflowOf(t)?.workflowName ?? ""));
     },
     message:
       "A ticket dispatches the iOS and Android device workflows only on its own branch (agent/<n>-… or claude/<n>-…), " +
@@ -690,6 +757,35 @@ const RULES = [
       "  gh run list -w ci.yml --limit 1 --json databaseId -q '.[0].databaseId'\n" +
       "  gh run rerun <that id> --failed\n" +
       "Rerunning one job? `--job <job-id>` is read too. Device runs are never rerun.",
+  },
+  {
+    test: (c, { workflowOf, loop }) => {
+      const t = loop && rerunOf(c);
+      return Boolean(t && (t.run || t.job) && workflowOf(t)?.attempt >= 2);
+    },
+    message:
+      "This run was already rerun: a loop session reruns a run at most once.\n" +
+      "A red that survives its rerun is a Blocking finding if this change caused it; otherwise the " +
+      "verdict names the test and the attempt (queue.md phase D).",
+  },
+  {
+    test: (c, { loop }) => loop && c.cmd === "gh" && untrustedRead(c.args),
+    message:
+      "A loop session reads an issue's or pull request's comments only through rule 25's " +
+      "trusted-author filter: an outsider's comment beginning `DOD-CHECK` or `REVIEW` otherwise reads as the loop's own.\n" +
+      `  ${readIssue("<n>")}\n` +
+      `On a pull request, put \`${TRUSTED_SELECT}\` in front of your own select.`,
+  },
+  {
+    // The session's route, not the call's cwd: sessions `cd` back to the shared checkout to file.
+    test: (c, { loop, session }) => loop && filesAgentWork(c) && session.implementing(),
+    message:
+      "A ticket's session files no agent work (rules 33 and 34): a new issue is labelled " +
+      "`ready-for-human`, for a security, data-loss or player-visible defect, or `noticed`; " +
+      "`ready-for-agent`, `ci-flake` and `main-red` are the owner's and triage's to add — through " +
+      "`gh api` as through `gh issue`, and a `gh api --input` file is not read, so name labels with `gh issue`.\n" +
+      '  gh issue create --title "<what>" --body-file <file> --label ready-for-human\n' +
+      "Anything smaller is one comment on the open `noticed` issue.",
   },
   {
     test: (c) => c.cmd === "find" && /^(\/|\/(mnt\/)?[a-z]\/?|[A-Za-z]:[\\/]?)$/.test(c.args[0] ?? ""),
@@ -768,14 +864,26 @@ const RULES = [
  * asked wrongly — allows and says so, instead of taking the whole hook down with it. Logged
  * once per call to `check()` even when a rule asks more than once for one command line.
  */
-export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.cwd()), loop = Boolean(process.env.LOOP_TURNS)) {
+export function check(
+  command,
+  workflowOfRun = askGitHub,
+  repo = gitAt(process.cwd()),
+  loop = Boolean(process.env.LOOP_TURNS),
+  session = { implementing: () => implementRoute(process.env, null, () => repo.onTicket()) },
+) {
   const runnable = withoutQuotedBodies(command);
   const parsed = commands(runnable);
   const vars = literalAssignments(runnable);
   // The payload's cwd is where the line starts, not where a `cd` in it leaves git.
   const moved = parsed.some((c) => /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/.test(c.cmd));
   let warned = false;
+  const known = new Map();
   const workflowOf = (t) => {
+    const key = JSON.stringify(t);
+    if (!known.has(key)) known.set(key, lookUp(t));
+    return known.get(key);
+  };
+  const lookUp = (t) => {
     try {
       return workflowOfRun(t);
     } catch (err) {
@@ -789,7 +897,7 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
     }
   };
   for (const rule of RULES) {
-    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop }))) return rule.message;
+    if (rule.text?.(runnable) || rule.line?.(parsed, runnable, { loop }) || parsed.some((c) => rule.test(c, { workflowOf, repo, moved, vars: c.scope ? literal(c.scope) : vars, loop, session }))) return rule.message;
   }
   return null;
 }
@@ -797,17 +905,21 @@ export function check(command, workflowOfRun = askGitHub, repo = gitAt(process.c
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   let command = "";
   let cwd = process.cwd();
+  let transcript = null;
   try {
     const payload = JSON.parse(readFileSync(0, "utf8") || "{}");
     command = (payload.tool_input ?? payload).command ?? "";
     cwd = payload.cwd ?? cwd;
+    transcript = payload.transcript_path ?? null;
   } catch (err) {
     // unreadable payload must never block a tool call, but silence here is the other half of
     // the same bug the RULES above exist to catch — say what could not be checked.
     process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
     process.exit(0);
   }
-  const message = check(command, askGitHub, gitAt(cwd));
+  const repo = gitAt(cwd);
+  const session = { implementing: () => implementRoute(process.env, transcript, () => repo.onTicket()) };
+  const message = check(command, askGitHub, repo, Boolean(process.env.LOOP_TURNS), session);
   if (message) {
     process.stderr.write(message + "\n");
     process.exit(2);
