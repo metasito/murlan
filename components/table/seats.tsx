@@ -192,6 +192,14 @@ function CardFan({
 }
 
 /**
+ * The seat's place if it emptied its hand. The manche's end also places the
+ * last seat, still holding its cards: that one shows them, not a trophy.
+ */
+function wentOutAt(player: Player, held: number): number | undefined {
+  return held === 0 ? player.finishPosition : undefined;
+}
+
+/**
  * How many of a deal's cards have landed at this seat, read off the deal's own
  * clock. Unbounded with no deal running or once the last has landed, so a card
  * the seat is handed later still counts.
@@ -624,6 +632,7 @@ export const TopOppSlot = memo(function TopOppSlot({
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
+  const wentOut = wentOutAt(player, held);
   const mark = markOf(marking);
   return (
     <View
@@ -639,7 +648,7 @@ export const TopOppSlot = memo(function TopOppSlot({
         isActive={isActive}
         count={displayed}
         held={held}
-        finishPos={player.finishPosition}
+        finishPos={wentOut}
         passed={passed}
         vacated={vacated}
         reconnecting={reconnecting}
@@ -648,7 +657,7 @@ export const TopOppSlot = memo(function TopOppSlot({
         focusMode={focusMode}
         mark={mark}
       />
-      {player.finishPosition === undefined && displayed > 0 && (
+      {wentOut === undefined && displayed > 0 && (
         <CardFan count={displayed} side="top" scale={scale} />
       )}
     </View>
@@ -801,6 +810,7 @@ export const SideOppSlot = memo(function SideOppSlot({
   const arrived = useArrivedCount(dealArrivals);
   const held = cardCount ?? player.hand.length;
   const displayed = Math.min(held, arrived);
+  const wentOut = wentOutAt(player, held);
   const isLeft = side === "left";
   const mark = markOf(marking);
   return (
@@ -818,7 +828,7 @@ export const SideOppSlot = memo(function SideOppSlot({
         isActive={isActive}
         count={displayed}
         held={held}
-        finishPos={player.finishPosition}
+        finishPos={wentOut}
         passed={passed}
         vacated={vacated}
         reconnecting={reconnecting}
@@ -828,7 +838,7 @@ export const SideOppSlot = memo(function SideOppSlot({
         focusMode={focusMode}
         mark={mark}
       />
-      {displayed > 0 && player.finishPosition === undefined && (
+      {displayed > 0 && wentOut === undefined && (
         <CardFan count={displayed} side={side} scale={scale} />
       )}
     </View>
