@@ -1,7 +1,7 @@
 // tools/loop/tests/loopDocsAreExecutable.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { allowedTools } from "../loop-tools.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
@@ -300,6 +300,41 @@ describe("the --tools list is queue.md's own declaration", () => {
     const args = queueLoopArgs(1);
     const passed = args[args.indexOf("--tools") + 1].split(",");
     assert.deepEqual(passed, allowedTools(read(QUEUE)));
+  });
+});
+
+// Rule 2 wins over any command file, but a session follows the line it is reading.
+describe("no instruction runs a suite rule 2 forbids", () => {
+  const rule2 = /^2\. \*\*Never run a whole suite[\s\S]*?(?=^3\. )/m.exec(read("docs/agents/RULES.md"))?.[0] ?? "";
+  const suites = [...rule2.matchAll(/`npm (?:run )?([\w:-]+)`/g)].map((m) => m[1]);
+  const runs = (line: string) =>
+    suites.flatMap((s) =>
+      [...line.matchAll(new RegExp(`(?:npm (?:run )?|--also[ =])${s}(?![\\w:-])`, "g"))].map((m) => ({ at: m.index ?? 0, said: m[0] })),
+    );
+  const found = (file: string, keep: (line: string, at: number) => boolean = () => true) =>
+    read(file)
+      .split("\n")
+      .flatMap((l, i) => runs(l).filter((r) => keep(l, r.at)).map((r) => `${file}:${i + 1}: ${r.said}`));
+
+  test("rule 2 still names the suites", () => {
+    assert.ok(suites.length >= 4 && suites.includes("loop:test") && suites.includes("test:native"), suites.join(", "));
+  });
+
+  test("the scan sees a suite given as a command or as --also, and not a script that only starts with its name", () => {
+    assert.deepEqual(runs("`npm run agent:check -- --also test:native`").map((r) => r.said), ["--also test:native"]);
+    assert.equal(runs("npm test").length, 1);
+    assert.equal(runs("`npm run test:native:related`").length, 0);
+  });
+
+  test("no command file gives one", () => {
+    const dir = ".claude/commands";
+    assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith(".md")).flatMap((f) => found(`${dir}/${f}`)), []);
+  });
+
+  test("checks.md tells no one to run one, in a table's Run column or a sentence", () => {
+    const told = (line: string, at: number) => /^\s*\||\b[Rr]un\b[^.;:|]*$/.test(line.slice(0, at));
+    assert.ok(told("| x | `", 6) && told("**Run `", 7) && !told("`npm test`'s", 1), "the instruction test has drifted");
+    assert.deepEqual(found("docs/agents/checks.md", told), []);
   });
 });
 
