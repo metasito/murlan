@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, mkdtempSync, rmSync, copyFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -12,15 +12,10 @@ import {
   toolingRoots,
   checkoutRoot,
   ownedByTooling,
-  cpuRatios,
-  isSystemProcess,
-  burningOrphans,
-  psTimeToMs,
   stalePortHolders,
   wouldTakeSelf,
   isSessionHost,
   parseWindowsProcessJson,
-  resolvePowerShellExe,
   readProcessTable,
   reap,
 } from "../reap.mjs";
@@ -165,136 +160,6 @@ describe("stalePortHolders", () => {
   });
 });
 
-describe("cpuRatios", () => {
-  const before = [{ pid: 7, cpuMs: 1_000 }, { pid: 8, cpuMs: 5_000 }];
-
-  test("a process that burned a full second of CPU in a second reads as a whole core", () => {
-    const after = [{ pid: 7, cpuMs: 2_000 }, { pid: 8, cpuMs: 5_000 }];
-    const byPid = new Map(
-      cpuRatios(before, after, 1_000).map((p: { pid: number; cpuRatio: number }) => [p.pid, p.cpuRatio])
-    );
-    assert.equal(byPid.get(7), 1);
-    assert.equal(byPid.get(8), 0);
-  });
-
-  /**
-   * Cumulative CPU time is what the platform reports, and a process that burned a core for hours
-   * and then went idle still carries all of it. Only the delta across the interval says it is
-   * burning one *now*, which is the difference between measuring and assuming.
-   */
-  test("a long-idle process that once burned hours of CPU reads as idle", () => {
-    const idled = [{ pid: 7, cpuMs: 225_000_000 }];
-    assert.equal(cpuRatios(idled, idled, 1_000)[0].cpuRatio, 0);
-  });
-
-  test("a process absent from the first sample is not rated at all", () => {
-    assert.deepEqual(cpuRatios(before, [{ pid: 99, cpuMs: 900 }], 1_000), []);
-  });
-
-  test("an unreadable CPU time yields no rating rather than a wrong one", () => {
-    for (const cpuMs of [NaN, undefined]) {
-      assert.deepEqual(
-        cpuRatios([{ pid: 7, cpuMs: 0 }], [{ pid: 7, cpuMs } as { pid: number; cpuMs: number }], 1_000),
-        []
-      );
-    }
-  });
-});
-
-describe("isSystemProcess", () => {
-  const win = { systemRoot: "C:/Windows", platform: "win32" as const };
-
-  test("anything running out of the Windows directory is never a candidate", () => {
-    assert.equal(
-      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Windows\System32\svchost.exe -k netsvcs` }, win),
-      true
-    );
-  });
-
-  /**
-   * Sampled on the owner's machine: the System Idle Process, pid 0, reads at 2297% of a core
-   * because its CPU time is summed across all of them. It is the single largest burner the scan
-   * sees and it must never be a candidate — nor pid 4, `System`, behind it.
-   */
-  test("the kernel's own low pids are never candidates, however hot they read", () => {
-    assert.equal(isSystemProcess({ pid: 0, commandLine: "" }, win), true);
-    assert.equal(isSystemProcess({ pid: 4, commandLine: "System" }, win), true);
-  });
-
-  /**
-   * On Windows a command line that cannot be read is the signature of a protected process, so the
-   * unreadable case has to fail closed — the opposite of `ownedByTooling`, which claims nothing
-   * for the same reason.
-   */
-  test("a process whose command line could not be read is never a candidate", () => {
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "" }, win), true);
-  });
-
-  test("a Git Bash utility under Program Files is a candidate", () => {
-    assert.equal(
-      isSystemProcess({ pid: 900, commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++` }, win),
-      false
-    );
-  });
-
-  test("init and the service managers are never candidates on posix", () => {
-    const posix = { platform: "linux" as const };
-    assert.equal(isSystemProcess({ pid: 1, commandLine: "/sbin/init" }, posix), true);
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/lib/systemd/systemd-journald" }, posix), true);
-    assert.equal(isSystemProcess({ pid: 900, commandLine: "/usr/bin/awk !seen[$0]++" }, posix), false);
-  });
-});
-
-describe("burningOrphans", () => {
-  const opts = {
-    livePids: new Set([1, 42]),
-    minAgeMs: 2 * HOUR,
-    now: NOW,
-    keep: new Set<number>(),
-    minRatio: 0.2,
-    systemRoot: "C:/Windows",
-    platform: "win32" as const,
-  };
-  const burner = (over: Record<string, unknown> = {}) => ({
-    pid: 7,
-    ppid: 999,
-    startedAt: NOW - 62 * HOUR,
-    cpuRatio: 1,
-    commandLine: String.raw`C:\Program Files\Git\usr\bin\awk.exe !seen[$0]++`,
-    ...over,
-  });
-
-  /**
-   * The case this class exists for: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
-   * by a killed Git Bash session that had no SIGHUP to send, burning a core for 62 hours. It
-   * names nothing of this repo's, so every ownership-based class was blind to it.
-   */
-  test("takes a parentless process burning a core for hours, though it is not ours", () => {
-    assert.deepEqual(burningOrphans([burner()], opts).map((p: { pid: number }) => p.pid), [7]);
-  });
-
-  test("leaves a parentless process that is merely resident", () => {
-    assert.deepEqual(burningOrphans([burner({ cpuRatio: 0.01 })], opts), []);
-  });
-
-  test("leaves a busy process whose parent is still alive", () => {
-    assert.deepEqual(burningOrphans([burner({ ppid: 42 })], opts), []);
-  });
-
-  test("leaves a busy orphan that is younger than the age floor", () => {
-    assert.deepEqual(burningOrphans([burner({ startedAt: NOW - HOUR })], opts), []);
-  });
-
-  test("never takes a Windows process, however busy and however orphaned", () => {
-    const system = burner({ commandLine: String.raw`C:\Windows\System32\MsMpEng.exe` });
-    assert.deepEqual(burningOrphans([system], opts), []);
-  });
-
-  test("never takes what it was told to keep", () => {
-    assert.deepEqual(burningOrphans([burner()], { ...opts, keep: new Set([7]) }), []);
-  });
-});
-
 describe("checkoutRoot", () => {
   /** The main worktree, which `git worktree list` names first — a different question from the one
    * `checkoutRoot` asks, so the two agreeing is a check and not the implementation restated. */
@@ -306,7 +171,7 @@ describe("checkoutRoot", () => {
 
   /**
    * The one input `ownedByTooling` is matched against. One directory out and every class — orphan,
-   * stale, CPU burner — quietly matches nothing, and `--dry-run` reports a clean machine.
+   * stale — quietly matches nothing, and `--dry-run` reports a clean machine.
    */
   test("is the checkout the suite's own tree hangs off", () => {
     assert.equal(checkoutRoot(), mainWorktreeOf(path.dirname(fileURLToPath(import.meta.url))));
@@ -546,19 +411,6 @@ describe("killPid consults the tree it is about to end", () => {
   });
 });
 
-describe("psTimeToMs", () => {
-  test("reads ps's cumulative CPU column in each width it prints", () => {
-    assert.equal(psTimeToMs("00:00"), 0);
-    assert.equal(psTimeToMs("01:30"), 90_000);
-    assert.equal(psTimeToMs("02:01:30"), 7_290_000);
-    assert.equal(psTimeToMs("2-02:01:30"), 180_090_000);
-  });
-
-  test("an unparseable column yields NaN, which cpuRatios then declines to rate", () => {
-    assert.equal(Number.isNaN(psTimeToMs("-")), true);
-  });
-});
-
 /**
  * One process carrying a raw control byte in its command line once took the whole reaper down —
  * and with it `npm run agent:check`, because `JSON.parse` rejects the entire table over a single
@@ -567,7 +419,7 @@ describe("psTimeToMs", () => {
 describe("parseWindowsProcessJson", () => {
   const row = (commandLine: string) =>
     `[{"ProcessId":42,"ParentProcessId":7,"Name":"node.exe","CommandLine":"${commandLine}",` +
-    `"Started":1700000000000,"Cpu":1234}]`;
+    `"Started":1700000000000}]`;
 
   test("reads the shape ConvertTo-Json emits", () => {
     assert.deepEqual(parseWindowsProcessJson(row("node index.mjs")), [
@@ -577,7 +429,6 @@ describe("parseWindowsProcessJson", () => {
         name: "node.exe",
         commandLine: "node index.mjs",
         startedAt: 1_700_000_000_000,
-        cpuMs: 1234,
       },
     ]);
   });
@@ -607,97 +458,8 @@ describe("parseWindowsProcessJson", () => {
   });
 });
 
-describe("resolvePowerShellExe", () => {
-  test("prefers pwsh when it answers with its own version", () => {
-    assert.equal(
-      resolvePowerShellExe(() => "7\r\n"),
-      "pwsh",
-    );
-  });
-
-  test("a same-named binary that merely exits 0 is rejected, not read as pwsh", () => {
-    assert.equal(
-      resolvePowerShellExe(() => "not a version number"),
-      "powershell",
-    );
-  });
-
-  test("falls back to legacy powershell only on ENOENT", () => {
-    const enoent = Object.assign(new Error("not found"), { code: "ENOENT" });
-    assert.equal(
-      resolvePowerShellExe(() => {
-        throw enoent;
-      }),
-      "powershell",
-    );
-  });
-
-  test("a non-ENOENT failure keeps pwsh rather than hiding it behind a fallback", () => {
-    assert.equal(
-      resolvePowerShellExe(() => {
-        throw new Error("pwsh ran but the probed command failed");
-      }),
-      "pwsh",
-    );
-  });
-
-});
-
-describe("resolvePowerShellExe, live", () => {
-  const onWindows = process.platform === "win32";
-  const identityProbeOn = (PATH: string) => (exe: string) =>
-    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, PATH },
-    });
-  const inTempDir = (body: (dir: string) => void) => {
-    const dir = mkdtempSync(path.join(tmpdir(), "resolve-pwsh-"));
-    try {
-      body(dir);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  };
-
-  test("measured: pwsh is on PATH on this machine, so the default probe picks it", () => {
-    assert.equal(resolvePowerShellExe(), "pwsh");
-  });
-
-  test("a decoy pwsh that exits 0 printing no version is rejected — reproduced live", () => {
-    inTempDir((dir) => {
-      const decoy = onWindows ? path.join(process.env.SystemRoot ?? "C:/Windows", "System32", "cmd.exe") : "/bin/echo";
-      copyFileSync(decoy, path.join(dir, onWindows ? "pwsh.exe" : "pwsh"));
-      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
-    });
-  });
-
-  test("with no pwsh on PATH, resolution falls back on the real ENOENT", () => {
-    inTempDir((dir) => {
-      assert.throws(() => identityProbeOn(dir)("pwsh"), { code: "ENOENT" });
-      assert.equal(resolvePowerShellExe(identityProbeOn(dir)), "powershell");
-    });
-  });
-
-  test("the legacy binary it falls back to reads the process table", { skip: onWindows ? false : "Windows PowerShell and Win32_Process exist on win32 only" }, () => {
-    // Only System32's own PowerShell 5.1 on PATH — the pwsh install lives under WindowsApps,
-    // so this reproduces "pwsh not installed" without touching the real PATH.
-    const legacyOnly = String.raw`C:\Windows\System32\WindowsPowerShell\v1.0`;
-    assert.throws(() => identityProbeOn(legacyOnly)("pwsh"), { code: "ENOENT" });
-    const resolved = resolvePowerShellExe(identityProbeOn(legacyOnly));
-    assert.equal(resolved, "powershell");
-
-    const out = execFileSync(
-      resolved,
-      ["-NoProfile", "-Command", "Get-CimInstance Win32_Process | Select-Object -First 1 ProcessId,Name | ConvertTo-Json -Compress"],
-      { env: { ...process.env, PATH: legacyOnly }, encoding: "utf8" },
-    );
-    assert.ok(JSON.parse(out).ProcessId >= 0, "the fallback binary ran Get-CimInstance for real, not just resolved a name");
-  });
-});
-
 describe("readProcessTable", () => {
-  test("a resolver mistake degrades to an empty table, logged, instead of crashing the sweep", () => {
+  test("an answer that is not a table degrades to an empty one, logged, instead of crashing the sweep", () => {
     const logged: string[] = [];
     const original = console.error;
     console.error = (msg: string) => logged.push(msg);
@@ -723,7 +485,7 @@ describe("readProcessTable", () => {
 
   test("still reads a well-formed table", () => {
     const rows = readProcessTable(
-      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1,"Cpu":1}]',
+      '[{"ProcessId":1,"ParentProcessId":0,"Name":"x","CommandLine":"x","Started":1}]',
       "pwsh",
     );
     assert.equal(rows.length, 1);

@@ -422,10 +422,9 @@ survive a peer's teardown burst.
 
 `npm run reap` (`--dry-run` to only list) clears what a killed run leaves, decided **by command
 line, never process name** — `chrome.exe` is as likely the developer's own browser. Taken by
-default: a stale holder of `E2E_PORT`, anything of ours >2h old with its parent gone, and *any*
-process matching that shape burning ≥20% of a core regardless of ownership (once a pipeline held a
-full core for 62 hours after its parent Git Bash session was killed, while every ownership check
-said "nothing of ours"). Only `--stale` takes anything of ours merely >24h old. A sweep never
+default: a stale holder of `E2E_PORT` and anything of ours >2h old with its parent gone; a process
+that is not ours is never taken, however busy. Only `--stale` takes anything of ours merely >24h
+old. A sweep never
 takes a port with a live launcher attached — a run now *picks* a free one (`tools/ci/e2ePort.mjs`)
 instead, because a webServer pulled from under Playwright manufactures a connection error or 0ms
 failure that reads like a defect (a truncated run can manufacture a **green** the same way — check

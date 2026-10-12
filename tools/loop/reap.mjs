@@ -76,63 +76,6 @@ export function orphans(processes, { livePids, minAgeMs, now, keep }) {
 }
 
 /**
- * How much of one core, sustained across the sample, counts as burning. Well under the full core
- * the observed pipeline held, and far above the noise a process makes doing nothing.
- */
-const BURN_MIN_RATIO = 0.2;
-const BURN_SAMPLE_MS = 1000;
-
-/**
- * How much CPU each process used *between* two snapshots, as a fraction of one core.
- *
- * The platform reports CPU time cumulatively, and a process that burned a core for hours and then
- * stopped still carries every second of it. Only the delta says it is burning one now, which is
- * the whole difference between measuring this and assuming it.
- */
-export function cpuRatios(before, after, intervalMs) {
-  const start = new Map(before.map((p) => [p.pid, p.cpuMs]));
-  return after
-    .filter((p) => Number.isFinite(p.cpuMs) && Number.isFinite(start.get(p.pid)))
-    .map((p) => ({ ...p, cpuRatio: (p.cpuMs - start.get(p.pid)) / intervalMs }))
-    .filter((p) => p.cpuRatio >= 0);
-}
-
-/**
- * Whether a process belongs to the operating system, and so can never be a candidate.
- *
- * This is the one class that kills something the repo does not own, so the exclusion has to fail
- * closed in both directions it can be wrong. An unreadable command line is the signature of a
- * protected process on Windows — the opposite conclusion from `ownedByTooling`, which claims
- * nothing in the same situation, because there an unknown process must not be *taken* and here an
- * unknown process must not be *spared* by accident.
- */
-export function isSystemProcess({ pid, commandLine = "" }, { systemRoot, platform = process.platform } = {}) {
-  if (!Number.isFinite(pid) || pid <= 4) return true;
-  if (!commandLine.trim()) return true;
-  const where = normalizePath(commandLine, platform);
-  const roots =
-    platform === "win32"
-      ? [systemRoot || process.env.SystemRoot || "C:/Windows"]
-      : ["/sbin", "/usr/sbin", "/lib/systemd", "/usr/lib/systemd"];
-  return roots.some((root) => where.includes(normalizePath(root, platform)));
-}
-
-/**
- * A parentless process that is measurably burning CPU, whoever owns it.
- *
- * The class the ownership rule cannot reach. A `tr | fold | awk` pipeline reading `/dev/urandom`,
- * orphaned by a killed Git Bash session — Windows has no `SIGHUP` to send it and the input never
- * ends — held a core for 62 hours while `reap` reported "nothing of ours". Nothing legitimate is
- * at once parentless, hours old, and pegged, so the conjunction is what makes this safe rather
- * than ownership.
- */
-export function burningOrphans(sampled, { livePids, minAgeMs, now, keep, minRatio, systemRoot, platform }) {
-  return orphans(sampled, { livePids, minAgeMs, now, keep }).filter(
-    (p) => p.cpuRatio >= minRatio && !isSystemProcess(p, { systemRoot, platform })
-  );
-}
-
-/**
  * A crashed session leaves its whole tree resident — the node process, the bash that launched it,
  * the cmd above that — so its parent is alive and `orphans` cannot see it. Age is the only signal
  * left, and not a safe one alone: a live session's node is also long-running. Hence `--stale`
@@ -153,28 +96,8 @@ function sh(cmd, args) {
   }
 }
 
-/**
- * pwsh (docs/agents/checks.md's shell contract) if it answers as PowerShell, else the legacy
- * `powershell` every Windows box still ships. The probe checks identity, not silence — a same-named
- * decoy that exits 0 for anything must not read as pwsh, so only a bare integer for
- * `$PSVersionTable.PSVersion.Major` counts. ENOENT and a non-numeric answer both fall back; any
- * other thrown error keeps pwsh, so a real pwsh fault is never hidden behind one nobody asked for.
- */
-export function resolvePowerShellExe(
-  probe = (exe) =>
-    execFileSync(exe, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }),
-) {
-  try {
-    return /^\d+$/.test(String(probe("pwsh")).trim()) ? "pwsh" : "powershell";
-  } catch (err) {
-    return err?.code === "ENOENT" ? "powershell" : "pwsh";
-  }
-}
-
-let cachedPowerShellExe;
+/** docs/agents/checks.md's shell contract. */
+const POWERSHELL = "pwsh";
 
 /**
  * `-Compress` emits no whitespace of its own, so a raw byte below 0x20 arriving here is never
@@ -194,13 +117,12 @@ export function parseWindowsProcessJson(json) {
     name: String(r.Name ?? ""),
     commandLine: r.CommandLine ?? "",
     startedAt: Number(r.Started ?? 0),
-    cpuMs: Number(r.Cpu ?? NaN),
   }));
 }
 
 /**
- * `parseWindowsProcessJson`, but a resolver mistake (an identity check is best-effort, not a
- * guarantee) degrades this one sweep instead of crashing every unattended run after it.
+ * `parseWindowsProcessJson`, but a PowerShell that did not answer as one degrades this one sweep
+ * instead of crashing every unattended run after it.
  */
 export function readProcessTable(json, exeName) {
   if (!json.trim()) {
@@ -218,42 +140,27 @@ export function readProcessTable(json, exeName) {
 /** Every process on the box, so a candidate's parent can be looked up rather than assumed dead. */
 function processTable() {
   if (process.platform === "win32") {
-    cachedPowerShellExe ??= resolvePowerShellExe();
-    const json = sh(cachedPowerShellExe, [
+    const json = sh(POWERSHELL, [
       "-NoProfile",
       "-Command",
       "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,CommandLine," +
-        "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}}," +
-        // Both times are cumulative, in 100-ns units. Their sum over 10,000 is milliseconds of CPU.
-        "@{n='Cpu';e={[int64](($_.KernelModeTime + $_.UserModeTime) / 10000)}} " +
+        "@{n='Started';e={[int64][datetimeoffset]::new($_.CreationDate).ToUnixTimeMilliseconds()}} " +
         "| ConvertTo-Json -Compress",
     ]);
-    return readProcessTable(json, cachedPowerShellExe);
+    return readProcessTable(json, POWERSHELL);
   }
   const now = Date.now();
-  return sh("ps", ["-eo", "pid=,ppid=,etimes=,time=,args="])
+  return sh("ps", ["-eo", "pid=,ppid=,etimes=,args="])
     .split("\n")
-    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/))
+    .map((line) => line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/))
     .filter(Boolean)
-    .map(([, pid, ppid, etimes, cpuTime, args]) => ({
+    .map(([, pid, ppid, etimes, args]) => ({
       pid: Number(pid),
       ppid: Number(ppid),
       name: args.split(/\s+/)[0] ?? "",
       commandLine: args,
       startedAt: now - Number(etimes) * 1000,
-      cpuMs: psTimeToMs(cpuTime),
     }));
-}
-
-/** `ps`'s cumulative CPU column, which is `[[DD-]HH:]MM:SS[.ss]`, in milliseconds. */
-export function psTimeToMs(text) {
-  const m = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)$/.exec(String(text).trim());
-  if (!m) return NaN;
-  const [, days, hours, minutes, seconds] = m;
-  return (
-    ((Number(days ?? 0) * 24 + Number(hours ?? 0)) * 3600 + Number(minutes) * 60 + Number(seconds)) *
-    1000
-  );
 }
 
 /** This process and everything that launched it, so the reaper cannot kill its own caller. */
@@ -400,12 +307,6 @@ export function clearPort(port, { dryRun = false } = {}) {
  */
 export async function reap({ dryRun = false, stale: takeStale = false, say = console.log } = {}) {
   const verb = dryRun ? "would clear" : "cleared";
-
-  // Two snapshots a moment apart: cumulative CPU says only what a process has ever burned, and
-  // the class below turns on what it is burning now.
-  const firstSample = processTable();
-  await new Promise((resolve) => setTimeout(resolve, BURN_SAMPLE_MS));
-
   const now = Date.now();
   const table = processTable();
   const roots = toolingRoots({ repoRoot: checkoutRoot(), home: os.homedir() });
@@ -459,29 +360,7 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   }
   if (!stale.length) say(`reap: nothing of ours older than ${STALE_AGE_MS / 3_600_000}h`);
 
-  // Ownership is what makes the classes above safe, and it is exactly why they could not see the
-  // worst leftover on this machine: a `tr | fold | awk` pipeline reading `/dev/urandom`, orphaned
-  // by a killed Git Bash session with no SIGHUP to end it, holding a core for 62 hours while reap
-  // reported "nothing of ours". Here the conjunction does that work instead — parentless, hours
-  // old, measurably burning, and not the operating system's.
-  const burning = burningOrphans(cpuRatios(firstSample, table, BURN_SAMPLE_MS), {
-    livePids: new Set(table.map((p) => p.pid)),
-    minAgeMs: ORPHAN_AGE_MS,
-    now,
-    keep,
-    minRatio: BURN_MIN_RATIO,
-  }).filter((p) => !parentless.some((q) => q.pid === p.pid));
-  for (const p of burning) {
-    const percent = Math.round(p.cpuRatio * 100);
-    say(
-      `reap: ${dryRun ? "would kill" : "killed"} ${labelOf(p)}, ${hoursOf(p)}h old, ` +
-        `parent ${p.ppid} is gone, burning ${percent}% of a core`
-    );
-    killPid(p.pid, dryRun, say);
-  }
-  if (!burning.length) say("reap: no orphan is burning CPU");
-
-  return staleHolders.length + parentless.length + stale.length + burning.length;
+  return staleHolders.length + parentless.length + stale.length;
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
