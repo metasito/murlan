@@ -425,7 +425,10 @@ function readCi(cwd, branch, head, exec) {
  *
  * `ci` is opt-in because it costs `gh` calls on every read; the gate never needs it.
  *
- * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh }} [options]
+ * `handed` is the phase `queue-loop.mjs` spawned this session at, through `LOOP_PHASE`; a test
+ * passes it, because a test run inside a loop session inherits that session's.
+ *
+ * @param {{ cwd?: string, base?: string, worktree?: string, ci?: boolean, exec?: typeof gh, handed?: string }} [options]
  */
 export function derive({
   cwd = undefined,
@@ -433,6 +436,7 @@ export function derive({
   worktree = process.env.LOOP_WORKTREE,
   ci = false,
   exec = gh,
+  handed = process.env.LOOP_PHASE ?? "",
 } = {}) {
   const at = locateRun(cwd, worktree);
   if (at.detached && at.ticket) {
@@ -522,7 +526,6 @@ export function derive({
     phase = SETTLE;
     why = `pushed, and CI is ${ciRead.state}`;
   }
-  const handed = process.env.LOOP_PHASE ?? "";
   if (HANDED.test(handed)) {
     phase = handed;
     why = `${why}; the supervisor handed this session phase ${handed}`;
