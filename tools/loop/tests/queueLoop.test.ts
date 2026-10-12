@@ -632,6 +632,7 @@ describe("runTicket", () => {
     await runTicket(capturing as never, opts());
     assert.ok(seen?.args.includes("--exclude-dynamic-system-prompt-sections"));
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS, "1", "the git status would break the prefix");
+    assert.equal(seen?.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1", "the owner's memory would ride in every prefix and move it on every write");
     assert.ok(seen?.env.LOOP_TURNS, "loop-status's startup hook is silent only where LOOP_TURNS is set");
     assert.equal(seen?.env.LOOP_CONTEXT, String(contextFor(null)));
     await runTicket(capturing as never, opts({ size: "size:M" }));

@@ -194,5 +194,6 @@ describe("diagnose", () => {
     const spawnFn = (_c: string, _a: string[], o: any) => ((env = o.env), child(reply("x")));
     await diagnose(stop, { spawnFn: spawnFn as never, state: () => "" });
     assert.equal(env.LOOP_TURNS, undefined);
+    assert.equal(env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1", "the owner's memory is no part of a diagnosis");
   });
 });
