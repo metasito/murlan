@@ -27,6 +27,13 @@ describe("a loop dispatch names its model", () => {
     });
   }
 
+  test(`a dispatch without an effort is denied, naming it`, () => {
+    const out = run(dispatch("Agent", { prompt: "y", model: "opus" }));
+    assert.match(out, /"deny"/);
+    assert.match(out, /effort/);
+    assert.equal(run(dispatch("Agent", { prompt: "y", model: "opus" }), false), "");
+  });
+
   test("an empty model is no model", () => {
     assert.match(run(dispatch("Agent", { prompt: "y", model: "" })), /"deny"/);
   });
