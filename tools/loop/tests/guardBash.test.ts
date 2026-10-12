@@ -430,7 +430,7 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
       check("gh run rerun 111\ngh run rerun 222", () => {
         calls += 1;
         throw new Error("rate limited");
-      });
+      }, repo, true);
     });
     assert.equal(calls, 2, "both reruns are still checked");
     assert.equal(
@@ -438,6 +438,27 @@ describe("a workflow lookup that fails is announced, not swallowed", () => {
       1,
       "the skipped check is named once, not once per rerun"
     );
+  });
+});
+
+describe("a loop session reruns a run once", () => {
+  const at = (attempt: number) => () => ({ workflowName: "CI", attempt });
+
+  test("a run already rerun is refused in the loop", () => {
+    assert.match(String(check("gh run rerun 38188271467 --failed", at(2), repo, true)), /already rerun/);
+    assert.match(String(check("gh api -X POST repos/o/r/actions/runs/38188271467/rerun-failed-jobs", at(3), repo, true)), /already rerun/);
+    assert.match(String(check("gh run rerun --job 99710945601", at(2), repo, true)), /already rerun/);
+  });
+
+  test("the first rerun is allowed, and outside the loop any is", () => {
+    assert.equal(check("gh run rerun 38188271467 --failed", at(1), repo, true), null);
+    assert.equal(check("gh run rerun 38188271467 --failed", at(2), repo, false), null);
+  });
+
+  test("one lookup answers both the device and the attempt question", () => {
+    let asked = 0;
+    check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
+    assert.equal(asked, 1);
   });
 });
 
