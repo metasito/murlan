@@ -65,6 +65,11 @@ function budgetGate(ids, pr, gh, until, say) {
   return 0;
 }
 
+/**
+ * @param {string[]} ids
+ * @param {{ view?: (id: string) => any, pause?: (ms: number) => Promise<unknown>, now?: () => number, budgetMs?: number,
+ *   everyMs?: number, say?: (line: string) => unknown, pr?: number, gh?: (args: string[], until: number) => string }} [options]
+ */
 export async function awaitRuns(
   ids,
   { view = ask, pause = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now, budgetMs = BUDGET_MS, everyMs = EVERY_MS, say = console.log, pr, gh } = {},
