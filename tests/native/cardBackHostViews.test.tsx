@@ -1,7 +1,7 @@
 // tests/native/cardBackHostViews.test.tsx — a face-down card is a baked image, not a drawing
 // (#1418): it builds fewer host views than the SVG back did.
 import { describe, it, expect } from "@jest/globals";
-import { Platform } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { render } from "@testing-library/react-native";
 
 import { CardView } from "@/components/CardView";
@@ -26,6 +26,30 @@ const imagesIn = (tree: unknown, testID: string): unknown[] => {
     .filter((n) => n.type === "Image")
     .map((n) => (n.props?.source as { testUri?: string } | undefined)?.testUri);
 };
+
+const artSizesIn = (tree: unknown, testID: string) => {
+  const box = hosts(tree).find((n) => n.props?.testID === testID);
+  return hosts(box?.children)
+    .filter((n) => n.type === "Image")
+    .map((n) => {
+      const { width, height } = StyleSheet.flatten(n.props?.style as never) ?? {};
+      return { width, height };
+    });
+};
+
+describe("a card's baked art", () => {
+  it("fills a face-down card's box rather than taking the asset's size", async () => {
+    const view = await render(<CardView card={CARD} faceDown />);
+    expect(artSizesIn(view.toJSON(), "card-box-back")).toEqual([{ width: "100%", height: "100%" }]);
+    await view.unmount();
+  });
+
+  it("fills a face-up card's box rather than taking the asset's size", async () => {
+    const view = await render(<CardView card={CARD} />);
+    expect(artSizesIn(view.toJSON(), "card-box")).toContainEqual({ width: "100%", height: "100%" });
+    await view.unmount();
+  });
+});
 
 describe("a face-down card", () => {
   it("builds fewer host views than the SVG back", async () => {

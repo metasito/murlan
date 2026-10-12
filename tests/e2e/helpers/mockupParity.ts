@@ -309,7 +309,7 @@ const MOMENTS: Moment[] = [
     appOnset: (f) => f.onsets.includes("sound:deal"),
     mode: "parity",
     fields: ["onset", "live", "level", "breath", "brightness"],
-    regions: ["pool", "hand"],
+    regions: ["pool", "hand", "topFan"],
     regionsAt: [1040, 1200],
     onsets: ["moment:dealt"],
   },
@@ -604,7 +604,12 @@ const MOCKUP_SAMPLE = `(() => {
 const MOCKUP_LAYOUT = `(() => {
   const frame = document.getElementById("frame").getBoundingClientRect();
   const tops = [...document.querySelectorAll("#hand .card")].map((c) => c.getBoundingClientRect().top - frame.top);
-  return { pile: { x: PILE[0], y: PILE[1] }, light: { x: lamp.x, y: lamp.ly }, handTop: Math.min(...tops) };
+  const backs = [...document.querySelector("#seats .fan").children].map((c) => c.getBoundingClientRect());
+  const topFan = {
+    x: (Math.min(...backs.map((r) => r.left)) + Math.max(...backs.map((r) => r.right))) / 2 - frame.left,
+    y: (Math.min(...backs.map((r) => r.top)) + Math.max(...backs.map((r) => r.bottom))) / 2 - frame.top,
+  };
+  return { pile: { x: PILE[0], y: PILE[1] }, light: { x: lamp.x, y: lamp.ly }, handTop: Math.min(...tops), topFan };
 })()`;
 
 async function mockupPillAt(browser: Browser, opens: number[]): Promise<Map<number, PillBox>> {
@@ -822,6 +827,13 @@ async function stripAppSide(side: Awaited<ReturnType<typeof openAppSide>>, decod
     handTop: await page.evaluate(() =>
       Math.min(...[...document.querySelectorAll('[data-hand-state] [data-testid="card-box"]')].map((c) => c.getBoundingClientRect().top))
     ),
+    topFan: await page.evaluate(() => {
+      const backs = [...document.querySelectorAll('[data-testid="top-seat"] [data-testid="seat-back"]')].map((c) => c.getBoundingClientRect());
+      return {
+        x: (Math.min(...backs.map((r) => r.left)) + Math.max(...backs.map((r) => r.right))) / 2,
+        y: (Math.min(...backs.map((r) => r.top)) + Math.max(...backs.map((r) => r.bottom))) / 2,
+      };
+    }),
   }), () => appLayer(page));
   const felts = new Set(capture.trace.frames.map((f) => f.felt));
   expect([...felts], `the felt on screen through ${m.key}`).toEqual([variant]);
