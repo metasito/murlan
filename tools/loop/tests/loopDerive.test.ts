@@ -1,11 +1,11 @@
 // tools/loop/tests/loopDerive.test.ts
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   ticketOf,
@@ -23,6 +23,23 @@ import {
 import { report } from "../loop-status.mjs";
 import { ciRedBody, snapshotWip } from "../queue-loop.mjs";
 import { ticketTally } from "../loop-logs.mjs";
+
+const callersPhase = process.env.LOOP_PHASE;
+before(() => delete process.env.LOOP_PHASE);
+after(() => {
+  if (callersPhase !== undefined) process.env.LOOP_PHASE = callersPhase;
+});
+
+test("a loop session's own LOOP_PHASE does not reach this suite", () => {
+  const run = spawnSync(
+    process.execPath,
+    ["--test", "--test-reporter=tap", "--test-name-pattern=held work", fileURLToPath(import.meta.url)],
+    { encoding: "utf8", env: { ...process.env, NODE_TEST_CONTEXT: undefined, LOOP_PHASE: "D" } }
+  );
+  const out = `${run.stdout}${run.stderr}`;
+  assert.match(out, /^# pass [1-9]/m, out);
+  assert.match(out, /^# fail 0$/m, out);
+});
 
 /**
  * The state file these replace failed in one way over and over: it said something that was no
@@ -477,7 +494,7 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   let head = "";
   let mainSha = "";
   let merged = "";
-  const prior = { script: process.env.LOOP_GH_SCRIPT, phase: process.env.LOOP_PHASE };
+  const priorScript = process.env.LOOP_GH_SCRIPT;
   const git = (cwd: string, ...args: string[]) =>
     execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args], {
       cwd,
@@ -507,10 +524,8 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
 
   after(() => {
     rmSync(root, { recursive: true, force: true });
-    for (const [k, v] of [["LOOP_GH_SCRIPT", prior.script], ["LOOP_PHASE", prior.phase]] as const) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
+    if (priorScript === undefined) delete process.env.LOOP_GH_SCRIPT;
+    else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
   const land = () =>
@@ -520,9 +535,7 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   ];
   const at = (answers: GhAnswers, opts: { base?: string; ci?: boolean; phase?: string } = {}) => {
     process.env.LOOP_GH_SCRIPT = fakeGh(root, answers);
-    if (opts.phase === undefined) delete process.env.LOOP_PHASE;
-    else process.env.LOOP_PHASE = opts.phase;
-    return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true }) as any;
+    return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true, handed: opts.phase }) as any;
   };
   const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, ref: head, prs: [{ number: 5 }], ...extra });
 
@@ -629,7 +642,6 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   });
 
   test("every gh call, tracker and CI alike, runs under CI_BUDGET_MS", () => {
-    delete process.env.LOOP_PHASE;
     const timeouts: (number | undefined)[] = [];
     const answer = (a: string[]) =>
       a[0] === "issue" ? { comments: land() } : a[0] === "api" ? head : a[0] === "pr" ? [{ number: 5 }]
@@ -649,6 +661,15 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   test("LOOP_PHASE=C wins over a head with no verdict", () => {
     assert.equal(at({ issue: { comments: [] } }, { phase: "C" }).phase, "C");
     assert.equal(at({ issue: { comments: [] } }, { phase: "Z" }).phase, "D", "only a phase letter is honoured");
+  });
+
+  test("a session's LOOP_PHASE is the phase it was handed", () => {
+    process.env.LOOP_PHASE = "C";
+    try {
+      assert.equal(at({ issue: { comments: [] } }).phase, "C");
+    } finally {
+      delete process.env.LOOP_PHASE;
+    }
   });
 
   test("a handed phase still computes the fix round", () => {
