@@ -338,6 +338,21 @@ describe("sweep: a directory git no longer registers (#377)", () => {
     assert.equal(fs.readFileSync(path.join(install, "tsc"), "utf8"), "the install");
     assert.match(row?.note ?? "", /agent-17/);
   });
+
+  test("one a process holds open is reported as going when it exits; any other failure keeps it", (t) => {
+    const { repo } = scratchRepo();
+    for (const n of [31, 32]) fs.mkdirSync(path.join(repo, ".worktrees", `agent-${n}`), { recursive: true });
+    const rm = t.mock.method(fs, "rmSync", (p: string) => {
+      throw Object.assign(new Error(`cannot remove ${p}`), { code: p.endsWith("agent-31") ? "EBUSY" : "EACCES" });
+    });
+    const row = sweep({ git: spyGit(repo).git, gh: fakeGh({}).gh });
+    rm.mock.restore();
+    assert.equal(row?.state, "warned");
+    assert.match(row?.detail ?? "", /removed agent-31/);
+    assert.match(row?.note ?? "", /agent-31: unregistered, and held open by another process/);
+    assert.match(row?.detail ?? "", /kept agent-32/);
+    assert.match(row?.note ?? "", /agent-32: could not be removed — cannot remove/);
+  });
 });
 
 type Row = { label: string; state: string; detail?: string; note?: string; ms?: number };
