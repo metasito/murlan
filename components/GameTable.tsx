@@ -464,6 +464,8 @@ export function GameTable({
   const viewer = players[viewerSeat];
   const isMyTurn = viewerOwnsSeat(gameState.currentTurnIndex, viewerSeat, spectating);
   const isFinished = viewer?.finishPosition !== undefined;
+  // The manche's end places the last player too, still holding cards: they keep their hand, untold.
+  const wentOut = viewer?.finishPosition !== undefined && handCountOf(viewer) === 0;
   const isNewRound = gameState.lastPlayedCombination === null;
   const exchange = readExchange(gameState, viewerSeat, spectating);
 
@@ -1574,7 +1576,7 @@ export function GameTable({
                 />
               )}
 
-              {isFinished ? (
+              {wentOut ? (
                 <View style={[styles.finishedRow, { width: frame.handAvailW, height: handVisibleH(handCardH) }]}>
                   <WaitingLine scale={scale} />
                 </View>
