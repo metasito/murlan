@@ -382,9 +382,9 @@ describe("a loop session's rerun is read as its own command, with its own argume
     'MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed',
     "gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs",
   ]) {
-    test(`refuses in the loop a rerun it cannot identify, and allows it outside: ${cmd}`, () => {
+    test(`refuses, in the loop and outside it, a rerun it cannot identify: ${cmd}`, () => {
       assert.match(String(inLoop(cmd, fresh)), UNREADABLE);
-      assert.equal(check(cmd, fresh, repo, false), null);
+      assert.match(String(check(cmd, fresh, repo, false)), UNREADABLE);
     });
   }
 });
@@ -456,6 +456,10 @@ describe("a loop session pushes only its own ticket's branch", () => {
     "git push --force-with-lease origin +HEAD:agent/1529-x",
     "git -C .worktrees/agent-1529 push origin HEAD:refs/heads/agent/1529-x",
     "git push -o ci.skip origin HEAD:agent/1529-x",
+    "git push origin --delete agent/1529-x",
+    "git push -d origin agent/1529-x",
+    "git push origin --delete refs/heads/agent/1529-x",
+    "git push origin :agent/1529-x",
   ]) test(`allows: ${ok}`, () => assert.equal(inLoop(ok), null));
 
   for (const no of [
@@ -471,7 +475,10 @@ describe("a loop session pushes only its own ticket's branch", () => {
     "git push --tags origin",
     "git push origin :agent/1438-other",
     "git push origin --delete agent/1438-other",
-    "git push -d origin agent/1529-x",
+    "git push origin --delete agent/1529-x agent/1438-y",
+    "git push -d origin agent/15290-x",
+    "git push --delete origin HEAD:agent/1529-x",
+    "git push --delete origin",
     "cd .worktrees/agent-1529 && git push origin HEAD:agent/1438-x",
     "gh api -X PATCH repos/metasito/murlan/git/refs/heads/agent/1438-x -f sha=abc",
     "gh api repos/o/r/git/refs -f ref=refs/heads/agent/1438-x -f sha=abc",
@@ -492,7 +499,9 @@ describe("a loop session pushes only its own ticket's branch", () => {
   });
 
   test("push to main is still the main rule's refusal", () => {
-    assert.match(String(inLoop("git push origin HEAD:main")), /Pushing to main is blocked/);
+    const said = String(inLoop("git push origin HEAD:main"));
+    assert.match(said, /Pushing to main is blocked/);
+    assert.match(said, /git push -u origin HEAD:agent\/<n>-<slug>/, "it prescribes the one form the own-ticket rule allows");
   });
 });
 
