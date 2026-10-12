@@ -177,7 +177,7 @@ for (const size of SIZES) {
     await page.getByRole("button", { name: "Impostazioni" }).first().click();
     await expect(page.getByRole("button", { name: "Chiudi impostazioni" })).toBeVisible();
     await settled(page, 1500);
-    await sweepSizes(page, "settings");
+    await sweepSizes(page, "settings", [], [copy["settings.closeA11yLabel"]]);
     await page.getByRole("button", { name: "Chiudi impostazioni" }).click();
     await settled(page, 1500);
 
@@ -274,7 +274,7 @@ for (const size of SIZES) {
     await createRoom(page, { playerCount: 4, gameMode: "free_for_all" });
     await settled(page, 2500);
     await expectNoBuriedControls(page, "room, waiting for players", 4);
-    await sweepSizes(page, "room, waiting for players");
+    await sweepSizes(page, "room, waiting for players", [], [copy["common.copy"], copy["room.share"]]);
   });
 
   test(`no control is buried on the profile and ladder — ${size.name}`, async ({ page, baseURL }) => {
@@ -313,7 +313,8 @@ for (const size of SIZES) {
 
       await page.setViewportSize({ width: size.width, height: size.height });
       await openApp(page, baseURL!);
-      await registerNewAccount(page, uniqueUsername("tapfs"));
+      const sender = uniqueUsername("tapfs");
+      await registerNewAccount(page, sender);
       await page.getByRole("button", { name: /^Amici/ }).first().click();
       await page.waitForURL(/\/friends/);
       await settled(page, 2500);
@@ -325,8 +326,21 @@ for (const size of SIZES) {
         .getByRole("button", { name: copy["friends.sendRequestA11yLabel"].replace("{{username}}", target) })
         .click();
       await expect(page.locator(BANNER)).toContainText(copy["friends.requestSentTitle"], { timeout: 15_000 });
+      const cancel = copy["friends.cancelRequestA11yLabel"].replace("{{username}}", target);
       await settled(page, Reading.notice / 4, BANNER);
       await sweepSizes(page, "notification banner");
+      await page.getByRole("button", { name: cancel }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(page, 1500);
+      await sweepSizes(page, "friends, request sent", [], [cancel]);
+
+      await otherPage.setViewportSize({ width: size.width, height: size.height });
+      await otherPage.getByRole("button", { name: /^Amici/ }).first().click();
+      await otherPage.waitForURL(/\/friends/);
+      const accept = copy["friends.acceptRequestA11yLabel"].replace("{{username}}", sender);
+      const decline = copy["friends.declineRequestA11yLabel"].replace("{{username}}", sender);
+      await otherPage.getByRole("button", { name: accept }).scrollIntoViewIfNeeded({ timeout: 15_000 });
+      await settled(otherPage, 2500);
+      await sweepSizes(otherPage, "friends, incoming request", [], [accept, decline]);
     } finally {
       await other.close();
     }
