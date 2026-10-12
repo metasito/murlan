@@ -327,8 +327,8 @@ export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = fal
       notes.push(`${name}: removed, git had no registration for it`);
     } catch (err) {
       // The ordinary reason one survives: a process is standing in it. It is already unregistered
-      // and empty, so there is nothing here to rescue.
-      if (["EPERM", "EBUSY", "ENOTEMPTY"].includes(err.code)) {
+      // and empty, so there is nothing here to rescue. ENOTEMPTY is not that: files are still in it.
+      if (["EPERM", "EBUSY"].includes(err.code)) {
         notes.push(`${name}: unregistered, and held open by another process; it goes when that process exits`);
       } else {
         gone.pop();
