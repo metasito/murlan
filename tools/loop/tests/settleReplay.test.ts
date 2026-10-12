@@ -207,6 +207,37 @@ describe("settle, replayed against recorded gh payloads", () => {
   });
 });
 
+// Only `Date` is mocked: the pause between rounds stays a real timer, as it does across a standby.
+describe("settle across a standby", () => {
+  const MIN = 60_000;
+  /** The real verdict, with the clock jumping `by` during the pause after the first read. */
+  const sleeper = (t: any, gh: (args: string[]) => string, by: number, fails: number[] = []) => {
+    let reads = 0;
+    return (repo: string, branch: string, pr: number) => {
+      reads += 1;
+      if (reads === 1) setTimeout(() => t.mock.timers.setTime(Date.now() + by), 10);
+      if (fails.includes(reads)) throw new Error("gh: error connecting to api.github.com");
+      return readVerdict(repo, branch, pr, Date.now() + MIN, (args) => gh(args));
+    };
+  };
+  const green = () =>
+    ghFake({ script: [runRow("in_progress", null), runRow("completed", "success")], pr: prRow({ mergeStateStatus: "CLEAN" }) });
+
+  test("a pause the machine slept through does not spend the deadline", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const { gh } = green();
+    const out = await poll(PENDING, () => {}, 30, MIN, { ...io(gh), verdictOf: sleeper(t, gh, 120 * MIN) });
+    assert.equal(out.action, "merge", String(out.reason));
+  });
+
+  test("after a wake, a read the network refused is asked again, and a green one merges", async (t) => {
+    t.mock.timers.enable({ apis: ["Date"] });
+    const { gh } = green();
+    const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), verdictOf: sleeper(t, gh, 10 * MIN, [2]) });
+    assert.equal(out.action, "merge", String(out.reason));
+  });
+});
+
 describe("readHeadCi, replayed against recorded gh payloads", () => {
   test("answers the remote head, its open PR and the verdict", () => {
     const { gh } = ghFake({
