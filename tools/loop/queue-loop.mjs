@@ -2252,7 +2252,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         // An unreadable `ls-remote` is not evidence of a survivor.
       }
     }
-    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log, write);
+    const ledgered = pending.flake;
+    if (!flake && ledgered && ledgered.head === head) flake = { runId: ledgered.runId, tests: ledgered.tests ?? [], step: ledgered.step ?? null };
+    if (flake) fileFlakes({ ...flake, ticket: pending.ticket, pr: pending.pr }, gh, log, write);
     return { action: "already-merged", reason, ...(flake && { flake }) };
   };
   /**
@@ -2415,12 +2417,19 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         continue;
       }
       // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
-      if (reran === head && firstRed && !flake) flake = { runId: firstRed.runId, tests: firstRed.tests };
+      if (reran === head && firstRed && !flake) {
+        flake = firstRed;
+        try {
+          pending.noteArmed?.({ ...flake, head });
+        } catch (err) {
+          log(`could not ledger the flake before arming — ${firstLine(err)}`);
+        }
+      }
       let message;
       try {
         if (flake) {
           mkdir(DIR, { recursive: true });
-          message = flakeMergeFile(firstRed, pending.ticket, write);
+          message = flakeMergeFile(flake, pending.ticket, write);
         }
       } catch (err) {
         log(`could not write the flake into the merge message — ${firstLine(err)}`);
@@ -2758,6 +2767,19 @@ export async function runOnce(io, pinned = null, at = null) {
     ticket: route.number,
     pr: decided.pr,
     branch: after?.branch ?? pr.head,
+    // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
+    flake: tally.armedFlake ?? null,
+    noteArmed: (flake) =>
+      io.record({
+        number: route.number,
+        outcome: "armed",
+        why: "auto-merge armed on a rerun's green",
+        run: { result: null, ms: 0, log: streamLog(route.number), phases: {} },
+        pr: decided.pr,
+        counts: false,
+        head: flake.head,
+        flake: { runId: flake.runId, tests: flake.tests, step: flake.step },
+      }),
   });
   billed.ms += Date.now() - landFrom;
   const cost = settleOutcome(settled);
@@ -2972,7 +2994,7 @@ function realIo(book, screen) {
         : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
-      if (!["handoff", "retry", "pushed", "reparked"].includes(outcome)) {
+      if (!["handoff", "retry", "pushed", "reparked", "armed"].includes(outcome)) {
         screen.say(
           closing(
             {
