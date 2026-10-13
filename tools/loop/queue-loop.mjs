@@ -2087,14 +2087,14 @@ const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an 
 const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
 
 /**
- * One open issue per flaky test, found by its exact title in a listing: GitHub's search trails its
- * own writes. `ready-for-human`, not `ci-flake`: ADR 0011 keeps that label, and the rank it
- * carries, the owner's to add.
+ * One open issue per flaky test, found by its exact title in a listing of every open issue: GitHub's
+ * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
+ * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
 function fileFlakes(red, gh, log) {
   let open;
   try {
-    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--label", "ready-for-human", "--limit", "500", "--json", "number,title"]));
+    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "number,title"]));
   } catch (err) {
     log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
     return;
