@@ -23,8 +23,6 @@ import {
   ticker,
   park,
   repark,
-  shouldHalt,
-  BREAKER,
   takeStopFile,
   settleOutcome,
   watchBuild,
@@ -1280,14 +1278,6 @@ describe("park", () => {
   test("a clean park reports ok", () => {
     const { run } = recorder();
     assert.deepEqual(park(953, opts({ run })), { ok: true, failed: [] });
-  });
-});
-
-describe("shouldHalt", () => {
-  test("one bad ticket is a ticket; three in a row is the loop or the machine", () => {
-    assert.equal(shouldHalt(1), false);
-    assert.equal(shouldHalt(BREAKER - 1), false);
-    assert.equal(shouldHalt(BREAKER), true);
   });
 });
 

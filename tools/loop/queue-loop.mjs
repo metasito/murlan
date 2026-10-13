@@ -510,7 +510,6 @@ const sh = (file, args, opts) => {
 
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
 export const BREAKER = 3;
-export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKER;
 
 /**
  * What a settled ticket costs the run.
@@ -2721,11 +2720,8 @@ function trapSignals(screen) {
  * The night, as a loop over `runOnce`.
  *
  * Every collaborator is a parameter with a real default rather than something this function
- * constructs, which is the whole of what makes the breaker, the fix-round ceiling and the refusal
- * ceiling reachable from a test — five locals mutated across six branches, none of which any test
- * could drive, and `CI_ROUNDS`, `WAIT.TRIES` and `shouldHalt`'s interaction with them appeared in
- * none. A pure `step(state, pass)` beside it would be a second copy of that shape to keep in
- * agreement; driving the real one costs nothing and cannot drift.
+ * constructs, so a test drives the real loop: the counters are `decide()`'s, and what a pass does to
+ * them is only seen here, across passes.
  *
  * @param {{screen?: object, book?: object, io?: object, install?: Function, runId?: string}} [deps]
  */
