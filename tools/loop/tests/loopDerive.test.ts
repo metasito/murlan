@@ -451,6 +451,13 @@ describe("ciRedPosted", () => {
     const fence = "```";
     assert.equal(ciRedPosted([{ body: `see:\n${fence}\nCI-RED ${sha}\n${fence}` }], sha), false);
   });
+
+  // The post's dedupe and derive's read of a red must agree, or a re-claimed ticket is never posted
+  // to while derive keeps reading the red as unposted.
+  test("a CI-RED from before the newest claim is not posted for this claim", () => {
+    const thread = [{ body: `CI-RED ${sha}\nrun: x · step: y` }, { body: "Claimed by `agent/1-x`." }];
+    assert.equal(ciRedPosted(thread, sha), false);
+  });
 });
 
 interface GhAnswers {
