@@ -69,6 +69,8 @@ const ROWS: Row[] = [
     { kind: "repick", n: 9, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: a closed ticket on the re-pick too stops", pick({ skill: "closed" }, { repicked: true }), { kind: "stop", why: "#42 is closed and its worktree still stands" }],
   ["runOnce: an implement route goes on to the spawn", pick({}), { kind: "go", redWhileDown: false }],
+  ["stops on handoff", pick({ skill: "handoff", title: "nothing to do" }), { kind: "stop" }],
+  ...["implement", "triage", "wayfinder"].map((skill): Row => [`keeps going on ${skill}`, pick({ skill }), { kind: "go" }]),
   ["a red round nobody recorded is written down before the fix round; a recorded one is not", fixRoute(), { kind: "go", redWhileDown: true }],
   ["runOnce: a fix route whose red head is already recorded writes nothing", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h3" } }), { kind: "go", redWhileDown: false }],
   ["a red round nobody recorded counts toward the cap, and the last one parks before the refresh", fixRoute({ tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h2" } }),

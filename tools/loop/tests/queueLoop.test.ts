@@ -13,7 +13,6 @@ import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "
 import {
   parseRoute,
   pushedPr,
-  shouldStop,
   queueLoopArgs,
   liveRoute,
   syncCheckout,
@@ -279,18 +278,6 @@ describe("liveRoute", () => {
       resuming: true,
     });
   });
-});
-
-describe("shouldStop", () => {
-  test("stops on handoff", () => {
-    assert.equal(shouldStop({ skill: "handoff" }), true);
-  });
-
-  for (const skill of ["implement", "triage", "wayfinder"]) {
-    test(`keeps going on ${skill}`, () => {
-      assert.equal(shouldStop({ skill }), false);
-    });
-  }
 });
 
 describe("syncCheckout", () => {

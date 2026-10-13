@@ -139,10 +139,6 @@ export function parseStatus(stdout) {
   };
 }
 
-export function shouldStop(route) {
-  return route.skill === "handoff";
-}
-
 /**
  * @param {string[]|null} [labels] the live ticket's labels, null when the tracker could not say
  * @returns {{skill: string, number: number, title: string, phase?: string, resuming: boolean}|null}
