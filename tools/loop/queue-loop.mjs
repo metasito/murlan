@@ -2176,7 +2176,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     woke ||= slept > 0;
   };
   let verdict = {};
-  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
+  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head, ...(flake && { flake }) });
   let flake = null;
   const merged = (reason) => {
     if (pending.branch) {
@@ -2193,6 +2193,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         // An unreadable `ls-remote` is not evidence of a survivor.
       }
     }
+    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
     return { action: "already-merged", reason, ...(flake && { flake }) };
   };
   /**
@@ -2365,11 +2366,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         await wait();
         continue;
       }
-      // A green this process's rerun won: filed, named in the merge and on the row, before it can land.
-      if (reran === head && firstRed && !flake) {
-        flake = { runId: firstRed.runId, tests: firstRed.tests };
-        fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
-      }
+      // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
+      if (reran === head && firstRed && !flake) flake = { runId: firstRed.runId, tests: firstRed.tests };
       const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
       // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
       armed = "maybe";
@@ -2463,7 +2461,7 @@ function worktreeOf(io, number) {
  *   dirty: boolean, run?: object, pr?: number|null, files?: number}} ctx `run` only when this park
  *   is the session's own row; otherwise its cost is already recorded and the row carries none.
  */
-export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
+export function parkAndRecord(io, number, { run = null, pr = null, files = 0, flake = null, ...ctx }) {
   io.bell();
   const failed = io.park(number, { ...ctx, error: run ? errorOf(run) : null })?.failed ?? [];
   if (failed.length) io.log(`#${number}'s park did not reach the tracker (${failed.join(", ")}) — applied again at the start of each pass`, "park");
@@ -2476,6 +2474,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
     files,
     counts: true,
     parkFailed: failed.length ? failed : null,
+    flake,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
@@ -2659,7 +2658,7 @@ export async function runOnce(io, pinned = null, at = null) {
   const files = after?.changed?.length || pr?.changedFiles || 0;
 
   let billed = run;
-  const handBack = (why, phase, log = billed.log, standing = true) =>
+  const handBack = (why, phase, log = billed.log, standing = true, flake = null) =>
     parkAndRecord(io, route.number, {
       phase,
       why,
@@ -2670,6 +2669,7 @@ export async function runOnce(io, pinned = null, at = null) {
       run: billed,
       pr: decided.pr ?? null,
       files,
+      flake,
     });
 
   if (decided.action === "closed") {
@@ -2706,7 +2706,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // claim, the reason on the issue and the worktree, in that one place. Recording the row and
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
-  if (cost.handBack) return handBack(settled.reason, "E");
+  if (cost.handBack) return handBack(settled.reason, "E", undefined, true, settled.flake ?? null);
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
