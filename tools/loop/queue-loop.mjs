@@ -511,26 +511,6 @@ const sh = (file, args, opts) => {
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
 export const BREAKER = 3;
 
-/**
- * What a settled ticket costs the run.
- *
- * `hand-back` is a CI fix round — recorded rather than silent, because each one is a whole session
- * with its own cost and turns. `owner` is the only settled outcome that reaches the tracker;
- * everything else `landing()` decides is mechanical, and the branch and the pull request both
- * survive it for the next iteration to find from `derive()`.
- *
- * @param {{action: string}} settled
- */
-export function settleOutcome({ action }) {
-  if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
-  if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
-  // A red round whose CI-RED could not be posted: recorded as one, and its fix round waits a hold.
-  if (action === "hold") return { countsAsFailure: false, recorded: "retry", handBack: false, hold: true };
-  // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
-  // claim nor its silence. Recording the row and tearing the worktree down without releasing
-  // `in-progress` leaves an issue the picker skips for good.
-  return { countsAsFailure: true, recorded: "parked", handBack: true };
-}
 
 /** `.loop-stop` drains the loop. Left on disk, so a scheduled restart sees it too. */
 export function takeStopFile(fs, file) {

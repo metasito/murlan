@@ -24,7 +24,6 @@ import {
   park,
   repark,
   takeStopFile,
-  settleOutcome,
   watchBuild,
   UNCOMMITTED_SHARE,
   outcomeOf,
@@ -1293,44 +1292,6 @@ describe("takeStopFile", () => {
     const fs = { existsSync: () => true, rmSync: () => { removed = true; } };
     assert.equal(takeStopFile(fs, ".loop-stop"), true);
     assert.equal(removed, false);
-  });
-});
-
-describe("settleOutcome", () => {
-  test("a merge is the landing, and costs the run nothing", () => {
-    assert.deepEqual(settleOutcome({ action: "already-merged" }), {
-      countsAsFailure: false,
-      recorded: "landed",
-      handBack: false,
-    });
-  });
-
-  // A ticket red three times produced three whole sessions and zero rows, so its cost, its turns
-  // and the fact that it needed the rounds at all were absent from the file kept to measure them.
-  test("a hand-back writes a row of its own, and does not count as a failure", () => {
-    const out = settleOutcome({ action: "hand-back" });
-    assert.equal(out.recorded, "retry");
-    assert.equal(out.countsAsFailure, false);
-    assert.equal(out.handBack, false);
-  });
-
-  // Recording the row and tearing the worktree down without releasing the claim leaves the issue
-  // carrying `in-progress`, which classify() skips for good — a ticket nothing returns to.
-  test("an owner decision is parked, and goes through park rather than a bare teardown", () => {
-    const out = settleOutcome({ action: "owner" });
-    assert.equal(out.countsAsFailure, true);
-    assert.equal(out.recorded, "parked");
-    assert.equal(out.handBack, true);
-  });
-
-  test("a hold records its red round and parks nothing: the next pick reads the red again", () => {
-    assert.deepEqual(settleOutcome({ action: "hold" }), { countsAsFailure: false, recorded: "retry", handBack: false, hold: true });
-  });
-
-  test("an unrecognised action parks rather than passing as a landing", () => {
-    const out = settleOutcome({ action: "something-new" });
-    assert.equal(out.countsAsFailure, true);
-    assert.equal(out.handBack, true);
   });
 });
 
