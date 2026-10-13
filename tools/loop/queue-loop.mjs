@@ -1943,7 +1943,7 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
  * mergeability job still running is neither; and a run that has not registered yet is a push seconds
  * old. Sharing a counter parks whichever goes second. A run that *is* running spends none of these.
  */
-export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12 };
+export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12, ready: 2 };
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
@@ -2260,10 +2260,16 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       const at = String(head ?? "an unread head").slice(0, 7);
       const clear = cleared(head);
       if (!clear.ok) return owner(`${clear.why} — ${at} was pushed for review, not cleared`);
-      try {
-        if (pr.isDraft) gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
-      } catch (err) {
-        return owner(`could not mark the draft ready — ${firstLine(err)}`);
+      // A draft's merge state reads DRAFT, so whether it is behind or blocked is only known once it is ready.
+      if (next.action === "ready") {
+        if (left.ready-- === 0) return owner(`${at} is still a draft after gh pr ready`);
+        try {
+          gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
+        } catch (err) {
+          return owner(`could not mark the draft ready — ${firstLine(err)}`);
+        }
+        await wait();
+        continue;
       }
       const argv = armArgs(REPO, pending.pr, head);
       try {

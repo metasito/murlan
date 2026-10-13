@@ -202,11 +202,13 @@ describe("settle, replayed against recorded rollups", () => {
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
   });
 
-  test("a draft gh pr ready could not move is the owner's", async () => {
-    const { gh } = rollupFake({ views: [GREEN], draft: true, refuse: { ready: true } });
+  test("a draft gh pr ready could not move is the owner's, and is never armed", async () => {
+    const { gh, asked } = rollupFake({ views: [GREEN], draft: true, refuse: { ready: true } });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /draft state/);
+    assert.match(String(out.reason), /still a draft/);
+    assert.equal(asked.filter((a) => a[1] === "ready").length, SETTLE_ROUNDS.ready);
+    assert.equal(merges(asked).length, 0);
   });
 
   test("a pull request someone else merged is not a fix round", async () => {
