@@ -30,7 +30,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { COMMITTING, overLine, readLine, scopeEnds } from "./loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   activity,
@@ -1641,7 +1641,6 @@ export function runTicket(
       DISABLE_AUTOUPDATER: "1",
       LOOP_TURNS: String(budget),
       LOOP_TICKET: String(number),
-      LOOP_CONTEXT: String(contextFor(size)),
       CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
       // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
       LOOP_PHASE: at && at !== "A" ? at : undefined,
@@ -1742,7 +1741,7 @@ export function runTicket(
     }
     if (fact.kind === "result" && !fact.origin) {
       state.result = fact;
-      if (fact.declared) state.declared = overLine(state.declared, fact.declared);
+      if (fact.declared) state.declared = fact.declared;
     }
     if (fact.kind === "rate_limit") {
       // Cleared on the next reading that is not a refusal: a session refused early that recovers

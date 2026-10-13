@@ -167,13 +167,13 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
       reason: `${unread.name} could not read the run's over-budget lists, so the run says nothing about the diff`,
     };
   }
+  // The gate's own log names the job it saw fail or cancelled, so it is the fix round's payload.
   if (!realFailure && gate) {
     return {
       pass: false,
       runId: run.databaseId,
-      infrastructure: true,
       failedStep: CI_GATE,
-      reason: `${CI_GATE} failed while no other job did, so the run says nothing about the diff`,
+      reason: `${CI_GATE} failed while no other job did; its log names the job it saw fail`,
     };
   }
 

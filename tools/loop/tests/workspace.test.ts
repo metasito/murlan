@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { housekeeping, sweep } from "../workspace.mjs";
+import { checkoutRoot, reap as realReap } from "../reap.mjs";
 
 // Named for the shape rather than the case: a test file joining the install's literal name trips
 // the scanner in tests/tooling/handBuiltNodeModulesPaths.test.ts.
@@ -176,14 +177,18 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.ok(fs.existsSync(dir));
   });
 
-  test("a detached HEAD has no branch to keep and is removed, without asking the tracker", () => {
+  test("a detached HEAD is kept and named for a person, without asking the tracker", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 11, { detached: true });
+    run(repo, "-C", dir, "commit", "--quiet", "--allow-empty", "-m", "reachable only from this HEAD");
     const { gh, asked } = fakeGh({ 11: CLOSED });
-    const row = sweep({ git: spyGit(repo).git, gh });
+    const { git, removals } = spyGit(repo);
+    const row = sweep({ git, gh });
     assert.deepEqual(asked, []);
-    assert.equal(fs.existsSync(dir), false);
-    assert.match(row?.note ?? "", /agent-11: removed, detached HEAD/);
+    assert.deepEqual(removals(), []);
+    assert.ok(fs.existsSync(dir));
+    assert.equal(row?.state, "warned");
+    assert.match(row?.note ?? "", /agent-11: kept — detached HEAD/);
   });
 
   test("a detached HEAD holding uncommitted work is kept", () => {
@@ -339,6 +344,20 @@ describe("sweep: a directory git no longer registers (#377)", () => {
     assert.match(row?.note ?? "", /agent-17/);
   });
 
+  test("one still holding files after its delete is kept, with the reason", (t) => {
+    const { repo } = scratchRepo();
+    fs.mkdirSync(path.join(repo, ".worktrees", "agent-33"), { recursive: true });
+    const rm = t.mock.method(fs, "rmSync", (p: string) => {
+      throw Object.assign(new Error(`ENOTEMPTY: directory not empty, rmdir '${p}'`), { code: "ENOTEMPTY" });
+    });
+    const row = sweep({ git: spyGit(repo).git, gh: fakeGh({}).gh });
+    rm.mock.restore();
+    assert.equal(row?.state, "warned");
+    assert.doesNotMatch(row?.detail ?? "", /removed agent-33/);
+    assert.match(row?.detail ?? "", /kept agent-33/);
+    assert.match(row?.note ?? "", /agent-33: could not be removed — ENOTEMPTY/);
+  });
+
   test("one a process holds open is reported as going when it exits; any other failure keeps it", (t) => {
     const { repo } = scratchRepo();
     for (const n of [31, 32]) fs.mkdirSync(path.join(repo, ".worktrees", `agent-${n}`), { recursive: true });
@@ -470,6 +489,23 @@ describe("housekeeping", () => {
     const r = await housekeeping(base(repo, { reap: async () => ({ took: 1, blind: "refused to kill pid 7 — no process table shows this reaper" }) }));
     const row = r.rows.at(-1) as Row;
     assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+  });
+
+  test("the real reap's refusal to kill without a table reaches the row as its blind reason", async () => {
+    const { repo } = scratchRepo();
+    // Never a live pid on either platform, so a regressed refusal cannot take anything real.
+    const pid = 999_999_996;
+    const orphan = { pid, ppid: pid - 4, name: "node", commandLine: `node ${checkoutRoot()}/node_modules/jest/bin/jest.js`, startedAt: Date.now() - 3 * 3_600_000 };
+    let reads = 0;
+    const readTable = () => ({
+      rows: reads++ === 0 ? [{ pid: process.pid, ppid: 0, name: "node", commandLine: "node reap", startedAt: Date.now() }, orphan] : [orphan],
+      blind: null,
+    });
+    const r = await housekeeping(base(repo, { reap: (io: object) => realReap({ stale: true, ...io, readTable }) }));
+    const row = r.rows.at(-1) as Row;
+    assert.ok(reads >= 2, "killPid re-reads the table before it kills");
+    assert.deepEqual([row.label, row.state], ["reap", "warned"]);
+    assert.match(row.detail ?? "", new RegExp(`refused to kill pid ${pid} — no process table shows this reaper`));
   });
 
   test("a reap that could not see the processes is a warning row, never silence", async () => {

@@ -1,7 +1,7 @@
 // tools/loop/tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { COMMITTING, overLine, readLine, scopeEnds } from "../loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds } from "../loop-stream.mjs";
 
 test("a scratch write is not the build", () => {
   for (const file of [
@@ -397,16 +397,22 @@ describe("the session's closing declaration", () => {
   const ended = (structured_output: unknown) =>
     readLine(JSON.stringify({ type: "result", subtype: "success", total_cost_usd: 1, num_turns: 3, structured_output })) as any;
 
-  test("a result's structured_output, alone, is the same declaration the line makes", () => {
+  test("a result's structured_output is the same declaration the line makes", () => {
     const line = said('LOOP-RESULT {"ticket":7,"branch":"agent/7-x","phase":"C","handoff":"D","why":"built"}').declared;
-    const out = ended({ ticket: 7, branch: "agent/7-x", phase: "C", handoff: "D", why: "built" }).declared;
-    assert.deepEqual(overLine(null, out), line);
+    const out = ended({ ticket: 7, branch: "agent/7-x", phase: "C", handoff: "D", stoodDown: false, why: "built" }).declared;
+    assert.deepEqual(out, line);
   });
 
-  test("a result carries only the fields its structured_output gives and that read", () => {
-    assert.deepEqual(ended({ ticket: 7, phase: "D", handoff: "done", why: null }).declared, { ticket: 7, phase: "D" });
-    const line = said('LOOP-RESULT {"ticket":7,"phase":"C","handoff":"C","stoodDown":true}').declared;
-    assert.deepEqual(overLine(line, ended({ ticket: 7, phase: "D" }).declared), { ...line, phase: "D" });
+  test("a result's structured_output is the whole declaration: a field it leaves out or cannot read is null", () => {
+    assert.deepEqual(ended({ ticket: 7, phase: "D", handoff: "done", stoodDown: false, why: null }).declared, {
+      ticket: 7,
+      branch: null,
+      pr: null,
+      phase: "D",
+      handoff: null,
+      stoodDown: false,
+      why: null,
+    });
   });
 
   test("a result without an object for structured_output, or with nothing in it, declares nothing", () => {

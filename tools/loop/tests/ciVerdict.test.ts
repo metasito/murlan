@@ -242,14 +242,30 @@ describe("the CI gate job", () => {
     assert.match(v.reason, /cancelled/);
   });
 
-  test("red with no other job red is infrastructure that names it, never an empty red", () => {
+  test("red with no other job red is the diff's red, naming the gate, never infrastructure", () => {
     const v = decideVerdict({ databaseId: 1, status: "completed", conclusion: "failure" } as never, [
       { name: "Lint", conclusion: "success", steps: 5 },
       { name: "Browser tests", conclusion: "skipped", steps: 0 },
       gate,
     ] as never[]);
-    assert.equal(v.infrastructure, true);
+    assert.notEqual(v.infrastructure, true);
     assert.equal(v.failedStep, "CI gate");
+  });
+
+  test("red alone hands the fix round the gate's own log, which names the job it saw fail", () => {
+    const gateLog = "CI gate\tEvery job passed or was skipped by scope\t2026-10-12T01:02:03.0000000Z Native tests 2/2: cancelled";
+    const gh = (args: string[]) => {
+      if (args[0] === "pr") return JSON.stringify({ headRefOid: "h" });
+      if (args[1] === "list") return JSON.stringify([{ databaseId: 5, status: "completed", conclusion: "failure", headSha: "h" }]);
+      if (args.includes("--log-failed")) return gateLog;
+      return JSON.stringify([{ name: "Lint", conclusion: "success", status: "completed", steps: 5, id: 1 }, { ...gate, status: "completed", id: 2 }]);
+    };
+    const v = readVerdict("o/r", "agent/1-x", 1, Date.now() + 60_000, gh);
+    assert.equal(v.pass, false);
+    assert.notEqual(v.infrastructure, true);
+    assert.equal(v.failedStep, "CI gate");
+    assert.deepEqual(v.logArgs, ["run", "view", "5", "--repo", "o/r", "--log-failed"]);
+    assert.match(v.output ?? "", /Native tests 2\/2: cancelled/);
   });
 });
 

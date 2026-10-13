@@ -60,16 +60,14 @@ function declaration(d) {
   };
 }
 
-/** Only the fields a result's `structured_output` gives and that read, or null when it gives none. */
+/**
+ * A result's `structured_output` as the whole declaration, or null when it gives none. Never merged
+ * with a LOOP-RESULT line: an earlier line may be superseded, and a field it filled would survive.
+ */
 function given(out) {
   const said = declaration(out);
-  if (!said) return null;
-  const kept = Object.entries(said).filter(([k, v]) => out[k] != null && v !== null);
-  return kept.length ? Object.fromEntries(kept) : null;
+  return said && Object.values(out).some((v) => v != null) ? said : null;
 }
-
-/** The structured fields over the LOOP-RESULT line's: a field the structured output leaves out keeps the line's value. */
-export const overLine = (line, structured) => ({ ...(line ?? declaration({})), ...structured });
 
 /** @param {string} text */
 function declaredIn(text) {
