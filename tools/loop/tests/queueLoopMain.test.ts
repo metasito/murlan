@@ -9,6 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import {
   parkAsked,
+  poll,
   runOnce,
   afterSession,
   main,
@@ -25,7 +26,6 @@ import {
   WAIT,
 } from "../queue-loop.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { failingTestIds } from "../ciVerdict.ts";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
 
@@ -72,7 +72,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
     phase: "E",
   }),
   pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-  settle: async () => ({ action: "merge", reason: "merged" }),
+  settle: async () => ({ action: "already-merged", reason: "merged" }),
   park: () => {},
   teardown: () => {},
   bell: () => {},
@@ -83,8 +83,6 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   buildPassed: () => true,
   publish: () => {},
   announce: () => {},
-  diagnose: async () => ({ ok: false, error: "no diagnosis here", run: { result: null, ms: 0, log: "l", phases: {} } }),
-  rerun: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
   ledgerRows: () => ledger,
   repark: () => ({ failed: [], why: null }),
@@ -110,7 +108,7 @@ describe("runOnce", () => {
         },
         settle: async () => {
           order.push("settle");
-          return { action: "merge", reason: "" };
+          return { action: "already-merged", reason: "" };
         },
       }),
     );
@@ -159,6 +157,34 @@ describe("runOnce", () => {
         ["retry", 0, false],
       ],
     );
+  });
+
+  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head", async () => {
+    const parked: number[] = [];
+    const rows: any[] = [];
+    const torn: unknown[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hold", reason: "CI-RED could not be posted", head: "abc" }),
+        park: (n: number) => parked.push(n),
+        record: (x: unknown) => rows.push(x),
+        teardown: (cwd: unknown) => torn.push(cwd),
+      }),
+    );
+    assert.equal(r.outcome, "hold");
+    assert.equal(r.ticket, 42);
+    assert.match(String(r.why), /could not be posted/);
+    assert.deepEqual(parked, []);
+    assert.deepEqual(torn, []);
+    // The round's row, so its settle time is billed and the fix round after it is not "while the loop was down".
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["retry", "abc"]]);
+  });
+
+  test("a landing a rerun won writes the flake on its row", async () => {
+    const rows: any[] = [];
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    await runOnce(io({ settle: async () => ({ action: "already-merged", reason: "merged", flake }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
   });
 
   test("a session that pushed nothing parks the ticket", async () => {
@@ -216,7 +242,7 @@ describe("runOnce", () => {
   test("every teardown is told which ticket's claim it is releasing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "merge", reason: "merged" }) },
+      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const torn: unknown[][] = [];
       await runOnce(io({ ...over, teardown: (...args: unknown[]) => torn.push(args) }));
@@ -230,7 +256,7 @@ describe("runOnce", () => {
   test("no terminal outcome leaves the worktree standing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "merge", reason: "merged" }) },
+      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const gone: (string | null)[] = [];
       await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
@@ -443,7 +469,7 @@ describe("runOnce", () => {
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
         announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
-        settle: async () => (order.push("settle"), { action: "merge", reason: "merged" }),
+        settle: async () => (order.push("settle"), { action: "already-merged", reason: "merged" }),
       }),
     );
     assert.deepEqual(order, ["announce 42 G", "settle"]);
@@ -619,10 +645,9 @@ describe("runOnce", () => {
     assert.match(said.join("\n"), /index\.lock exists/);
   });
 
-  test("an expired login stops the run, and neither diagnoses nor parks the ticket it met", async () => {
+  test("an expired login stops the run, and does not park the ticket it met", async () => {
     const parked: string[] = [];
     const ledger: any[] = [];
-    let diagnoses = 0;
     const r = await runOnce(
       io(
         {
@@ -633,12 +658,11 @@ describe("runOnce", () => {
           }),
           pushedPr: () => null,
           park: (_n: number, c: { why: string }) => parked.push(c.why),
-          diagnose: async () => (diagnoses++, { ok: false, error: "x", run: { result: null, ms: 0, log: "l", phases: {} } }),
         },
         ledger,
       ),
     );
-    assert.deepEqual([r.outcome, parked, diagnoses, ledger.map((x) => x.outcome)], ["stop", [], 0, ["halted"]]);
+    assert.deepEqual([r.outcome, parked, ledger.map((x) => x.outcome)], ["stop", [], ["halted"]]);
     assert.match(String(r.why), /log in/);
   });
 
@@ -979,7 +1003,7 @@ describe("runOnce", () => {
               spawned.push(s.retryCount);
               return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
             },
-            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "merge", reason: "" }),
+            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "already-merged", reason: "" }),
           },
           ledger,
         ),
@@ -1179,7 +1203,6 @@ const closedIo = (over: Record<string, unknown> = {}) => {
     spawn: async () => ({ status: 0, blocked: false, result: { cost: 1, turns: 9 }, ms: 1000, log: "l", phase: "F",
       declared: { ticket: 42, branch: "agent/42-x", pr: null, phase: "F", stoodDown: false, why: null } }),
     issueState: () => ({ state: "CLOSED", stateReason: "COMPLETED" }),
-    diagnose: async () => (calls.push("diagnose"), { ok: false, error: "x", run: { result: null, ms: 0, log: null, phases: {} } }),
     park: () => calls.push("park"),
     ...over,
   });
@@ -1187,7 +1210,7 @@ const closedIo = (over: Record<string, unknown> = {}) => {
 };
 
 describe("a ticket closed as done with no diff", () => {
-  test("is recorded closed, with no diagnosis and no park", async () => {
+  test("is recorded closed, with no park", async () => {
     const ledger: any[] = [];
     const { fake, calls } = closedIo({ record: (x: unknown) => ledger.push(rowOf(x)) });
     assert.equal((await runOnce(fake)).outcome, "closed");
@@ -1197,7 +1220,7 @@ describe("a ticket closed as done with no diff", () => {
   test("with commits of its own it still parks", async () => {
     const { fake, calls } = closedIo({ standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 2, changed: ["a.ts"], dirty: false, phase: "F" }) });
     assert.notEqual((await runOnce(fake)).outcome, "closed");
-    assert.ok(calls.includes("diagnose"));
+    assert.ok(calls.includes("park"));
   });
   test("closed as not planned still parks", async () => {
     const { fake, calls } = closedIo({ issueState: () => ({ state: "CLOSED", stateReason: "NOT_PLANNED" }) });
@@ -1480,6 +1503,32 @@ describe("the run recap", () => {
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
 
+  test("a ticket's hold says which ticket and why, not a pre-flight's words", async () => {
+    const notes: string[] = [];
+    const waits: unknown[][] = [];
+    let passes = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: (_k: string, m: string) => notes.push(m),
+      stop: () => {},
+      close: () => {},
+      board: () => {},
+      wait: (...a: unknown[]) => (waits.push(a), { woken: Promise.resolve(), say: null }),
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ > 0,
+      settle: async () => ({ action: "hold", reason: "CI-RED for abc1234 could not be posted", head: "abc" }),
+    };
+    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    const said = [...notes, ...waits.flat().map(String)].join("\n");
+    assert.match(said, /#42/);
+    assert.match(said, /could not be posted/);
+    assert.doesNotMatch(said, /pre-flight/);
+  });
+
   // Only `Date` is mocked: main's own tick stays real, as it does across a standby.
   test("books a standby as asleep, not working", async (t) => {
     t.mock.timers.enable({ apis: ["Date"] });
@@ -1726,7 +1775,7 @@ describe("a session's cost is in the ledger before CI is waited on", () => {
   });
 
   for (const [name, verdict] of Object.entries({
-    merged: { action: "merge", reason: "merged" },
+    merged: { action: "already-merged", reason: "merged" },
     red: { action: "hand-back", reason: "CI failed" },
     owner: { action: "owner", reason: "no settle" },
   })) {
@@ -1748,7 +1797,7 @@ describe("what a ticket's clock covers", () => {
       io({
         settle: async () => {
           await new Promise((r) => setTimeout(r, 30));
-          return { action: "merge", reason: "merged" };
+          return { action: "already-merged", reason: "merged" };
         },
         record: (x: unknown) => rows.push(x),
       }),
@@ -1933,7 +1982,7 @@ describe("a session the API failed", () => {
       pick: (p: number | null, at: string | null) => (picked.push([p, at]), ticket),
       spawn: async (route: { phase: string }) => (phases.push(route.phase), died(overloaded)()),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-      settle: async () => (settled++, { action: "merge" }),
+      settle: async () => (settled++, { action: "already-merged" }),
     });
     assert.equal(settled, 0);
     assert.deepEqual(phases, ["E", "E"]);
@@ -2012,177 +2061,94 @@ describe("a park that never reached the tracker", () => {
   });
 });
 
-describe("an unrecognised stop is diagnosed, once per head", () => {
+describe("a stop no rule names parks; a red was rerun before it came back", () => {
   const RUN = 35661862241;
-  const ciLog = readFileSync(path.join(import.meta.dirname, "fixtures", "ci-red-1100.txt"), "utf8");
-  const answer = (d: object) => async () => ({ ok: true, ...d, run: { result: { cost: 0.2, turns: 6 }, ms: 1, log: "l", phases: {} } });
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
   const redAt1100 = async () => ({
     action: "hand-back",
     reason: "CI failed at Browser test report",
     head: "2f2a885",
     runId: RUN,
-    unnamed: failingTestIds(ciLog).length === 0,
   });
 
-  test("#1100's report-upload red is rerun, not handed to a fix round", async () => {
+  test("#1100's report-upload red, back from its one rerun, is a fix round", async () => {
     const ledger: any[] = [];
-    const reran: number[] = [];
-    const asked: any[] = [];
-    const r = await runOnce(
-      io(
-        {
-          settle: redAt1100,
-          diagnose: async (stop: any) => (asked.push(stop), answer({ action: "rerun", cause: "the artifact store answered 403" })()),
-          rerun: (id: number) => reran.push(id),
-        },
-        ledger,
-      ),
-    );
-    assert.deepEqual([r.outcome, r.phase], ["handoff", "G"]);
-    assert.deepEqual(reran, [RUN]);
-    assert.equal(asked[0].runId, RUN);
-    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "diagnosed", "handoff"]);
-    assert.match(ledger[2].park_reason, /^phase G next — diagnosis: rerun of 35661862241: the artifact store/);
+    const r = await runOnce(io({ settle: redAt1100 }, ledger));
+    assert.equal(r.outcome, "retry");
+    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "retry"]);
   });
 
-  test("a session that exits without a LOOP-RESULT is diagnosed, and resumed where it says", async () => {
+  test("a session that exits without a LOOP-RESULT parks with that reason", async () => {
     const ledger: any[] = [];
     const whys: string[] = [];
-    const r = await runOnce(
-      io(
-        {
-          spawn: silent,
-          pushedPr: () => null,
-          diagnose: async (stop: any) => (whys.push(stop.why), answer({ action: "resume", phase: "C", cause: "tsc is red" })()),
-        },
-        ledger,
-      ),
-    );
+    const r = await runOnce(io({ spawn: silent, pushedPr: () => null, park: (_n: number, c: { why: string }) => whys.push(c.why) }, ledger));
+    assert.equal(r.outcome, "parked");
     assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
-    assert.deepEqual([r.outcome, r.phase], ["handoff", "C"]);
-    assert.equal(ticketTally(42, ledger).handoffsThisRound, 1, "a resume counts toward MAX_HANDOFFS");
-    assert.equal(ticketTally(42, ledger).handoffWhy, "diagnosis: tsc is red");
   });
 
-  test("a park the diagnosis asks for carries its cause, not the exit", async () => {
+  test("a settle that is the owner's parks with its own reason", async () => {
     const whys: string[] = [];
-    await runOnce(
+    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }));
+    assert.deepEqual(whys, ["the branch conflicts with main"]);
+  });
+
+  test("a red on an armed pull request is disarmed before any fix round is spawned", async () => {
+    const calls: string[][] = [];
+    const red = {
+      pr: { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED", headRefOid: "a", armed: true },
+      ci: { pass: false, runId: RUN, head: "a", attempt: 1, failedStep: "Typecheck and tests", testIds: ["x.test.ts › y"], output: "✖ y", reason: "CI failed at Typecheck and tests" },
+      progress: { done: 1, total: 1, running: null, failed: "Typecheck and tests" },
+    };
+    const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "issue" && args[1] === "view" ? JSON.stringify({ comments: [] }) : "");
+    const settle = (p: any) => poll(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
+    const r = await runOnce(
       io({
-        spawn: silent,
-        pushedPr: () => null,
-        diagnose: answer({ action: "park", cause: "the ticket's premise is gone: #900 removed the file" }),
-        park: (_n: number, c: { why: string }) => whys.push(c.why),
+        pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
+        spawn: async () => (calls.push(["spawn"]), null) as never,
+        settle,
       }),
     );
-    assert.deepEqual(whys, ["the ticket's premise is gone: #900 removed the file"]);
+    assert.equal(r.outcome, "retry");
+    const disarm = calls.findIndex((a) => a.includes("--disable-auto"));
+    const spawn = calls.findIndex((a) => a[0] === "spawn");
+    const posted = calls.findIndex((a) => a[0] === "issue" && a[1] === "comment");
+    assert.ok(disarm !== -1 && (spawn === -1 || disarm < spawn) && disarm < posted, JSON.stringify(calls));
   });
 
-  test("a second stop on the same head parks without a second diagnosis", async () => {
-    const ledger: any[] = [{ n: 42, outcome: "diagnosed", cost: 0.2, park_reason: "resume C — x", head: "a" }];
-    let diagnoses = 0;
-    const whys: string[] = [];
-    const r = await runOnce(
-      io(
-        {
-          spawn: silent,
-          pushedPr: () => null,
-          diagnose: async () => (diagnoses++, answer({ action: "resume", phase: "C", cause: "x" })()),
-          park: (_n: number, c: { why: string }) => whys.push(c.why),
-        },
-        ledger,
-      ),
-    );
-    assert.equal(r.outcome, "parked");
-    assert.equal(diagnoses, 0);
-    assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
-  });
-
-  test("a diagnosis the API refused holds the ticket, and the next stop on that head is diagnosed", async () => {
-    const ledger: any[] = [];
-    let diagnoses = 0;
-    const down = async () => (
-      diagnoses++,
-      { ok: false, apiDown: true, error: "it could not reach the API", run: { result: { cost: 0, turns: 1 }, ms: 1, log: "l", phases: {} } }
-    );
-    const first = await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
-    assert.equal(first.outcome, "overloaded");
-    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: down }, ledger));
-    assert.equal(diagnoses, 2, "a head the API kept the diagnosis from reading is not diagnosed");
-  });
-
-  test("a failed diagnosis parks with the original reason", async () => {
-    const ledger: any[] = [];
-    const whys: string[] = [];
-    await runOnce(
-      io({ settle: async () => ({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }, ledger),
-    );
-    assert.deepEqual(whys, ["the branch conflicts with main"]);
-    assert.match(ledger.find((x) => x.outcome === "diagnosed").park_reason, /^the diagnosis failed: /);
-  });
-
-  test("a failed diagnosis keeps the tail of what it wrote", async () => {
-    const ledger: any[] = [];
-    const reply = `${"x".repeat(400)}\n\nDIAGNOSIS: none (ticket complete)`;
-    const failed = async () => ({ ok: false, error: "it gave no DIAGNOSIS line", reply, run: { result: null, ms: 0, log: "l", phases: {} } });
-    await runOnce(io({ spawn: silent, pushedPr: () => null, diagnose: failed }, ledger));
-    const said = ledger.find((x) => x.outcome === "diagnosed").park_reason;
-    assert.match(said, /^the diagnosis failed: it gave no DIAGNOSIS line — it ended: "x+ DIAGNOSIS: none \(ticket complete\)"$/);
-    assert.ok(said.length < 400, said);
-  });
-
-  test("an API 5xx never reaches diagnosis", async () => {
+  test("an API 5xx holds the ticket rather than parking it", async () => {
     const overloaded = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n").map(readLine).find((f: any) => f?.kind === "result");
-    let diagnoses = 0;
     const r = await runOnce(
       io({
         spawn: async () => ({ status: 1, blocked: false, result: overloaded, ms: 1, log: "l", phase: "E", declared: null }),
         pushedPr: () => null,
-        diagnose: async () => (diagnoses++, answer({ action: "park", cause: "x" })()),
       }),
     );
     assert.equal(r.outcome, "overloaded");
-    assert.equal(diagnoses, 0);
   });
 
-  test("a CI red naming its failing tests is a fix round, with no diagnosis", async () => {
-    let diagnoses = 0;
-    const r = await runOnce(io({ settle: async () => ({ ...(await redAt1100()), unnamed: false }), diagnose: async () => (diagnoses++, answer({ action: "park", cause: "x" })()) }));
-    assert.deepEqual([r.outcome, diagnoses], ["retry", 0]);
-  });
-
-  test("nextRoute: a diagnosis handoff outranks the pushed head until a session has run on it", () => {
+  test("nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const row = (outcome: string, park_reason: string | null = null) => ({ n: 42, outcome, cost: 0, park_reason, head: "a" });
-    const route = (rows: object[], derived = "G", fix = false): any =>
-      nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
-        read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: derived, fix, ci: { pushed: true } }),
-        facts,
-        ledger: () => rows,
-      } as never);
-    const toC = [row("diagnosed", "resume C — conflicts with main"), row("handoff", "phase C next — diagnosis: conflicts with main")];
-    assert.equal(route(toC).phase, "C");
-    assert.equal(route([...toC, row("pushed")]).phase, "G", "the resumed session pushed, so its head settles");
-    assert.equal(route([row("handoff", "phase C next — a declared one")]).phase, "G");
-    const toD = [row("diagnosed", "resume D — no LAND"), row("handoff", "phase D next — diagnosis: no LAND")];
-    assert.deepEqual([route(toD, "C", true).phase, route(toD, "C", true).fix], ["D", false], "a red head does not turn it into a fix round");
-    assert.equal(route(toD, "E").phase, "D");
-    const rerun = [row("diagnosed", "rerun — 403"), row("handoff", "phase G next — diagnosis: rerun of 1: 403")];
-    assert.deepEqual([route(rerun, "C", true).phase, route(rerun, "C", true).fix], ["G", false]);
+    const rows = [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase C next — a declared one", head: "a" }];
+    const route: any = nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
+      read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
+      facts,
+      ledger: () => rows,
+    } as never);
+    assert.equal(route.phase, "G");
   });
 
-  test("a resume C on an unnamed red is a counted fix round, and the next session gets the cause", async () => {
-    const ledger: any[] = [];
-    const cause = "the report step found no report: a shard died before writing one";
-    const r = await runOnce(
-      io({ settle: redAt1100, diagnose: answer({ action: "resume", phase: "C", cause }) }, ledger),
-    );
-    assert.equal(r.outcome, "retry");
-    assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "diagnosed", "retry"]);
-    const reasons: (string | null)[] = [];
-    await runOnce(
-      io({ spawn: async (route: any) => (reasons.push(route.reason), silent()), pushedPr: () => null }, ledger),
-    );
-    assert.deepEqual(reasons, [cause]);
+  describe("nextRoute: a red no CI-RED names", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "unposted", sha: "abc" } };
+    const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
+
+    test("is a fix round once the supervisor held it at that head", () => {
+      const r = route([{ n: 42, outcome: "retry", head: "abc", cost: 0 }]);
+      assert.deepEqual([r.phase, r.fix], ["C", true]);
+    });
+
+    test("is still G when the supervisor stopped mid-settle and recorded no red", () => {
+      assert.deepEqual([route([]).phase, route([{ n: 42, outcome: "retry", head: "old", cost: 0 }]).phase], ["G", "G"]);
+    });
   });
 });

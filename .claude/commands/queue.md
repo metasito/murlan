@@ -109,7 +109,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    ```
 3. `CI-RED`'s `on main:` failures also fail on main's latest run: fix their root cause here in a
    commit of its own, naming that run in `FIX-NOTES`.
-   `flaky on main:` failures are neither this diff's nor this round's. Any other failure is this diff's.
+   `flaky on main:` failures are neither this diff's nor this round's. Any other failure is this diff's where `CI-RED` reads `rerun: survived one`; where it reads `rerun: none`, rule out a flake first.
 4. Fix what CI named, then run `npm run agent:check`.
 5. Commit, then post what this round ruled out, each hypothesis on one line with its evidence:
    `gh issue comment <n> --body-file <file>`, first line `FIX-NOTES <sha>` (`git rev-parse --short
@@ -177,14 +177,7 @@ round 1, then the sha the previous round reviewed.
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
    ```
-2. **Then wait for CI** with `node tools/loop/await-run.mjs --pr=<pr> <run-id>`; the verdict needs
-   both. A red this change caused is Blocking; one it did not may be rerun once, the verdict
-   naming the test and attempt.
-   ```sh
-   gh run list --branch agent/<n>-<slug> --commit <full sha> --limit 1 --json databaseId,conclusion
-   gh run view <databaseId> --log-failed | tail -40
-   ```
-3. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
+2. **Post the report** as one comment, first line naming the head it read (`REVIEW <sha> fix`
    in a fix round, under its own cap):
    ```
    REVIEW <sha>
@@ -192,10 +185,9 @@ round 1, then the sha the previous round reviewed.
    ## Nits
    ## Pre-existing
    ```
-4. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
+3. **Post the verdict** as its own comment, first line `VERDICT: LAND <sha>`
    (`git rev-parse --short HEAD`), through `gh issue comment <n> --body-file <file>`.
-   LAND when the report has no Blocking finding and CI is green on this head, or its only red is
-   one already rerun once and named; otherwise
+   LAND when the report has no Blocking finding; CI is the supervisor's. Otherwise
    `VERDICT: HOLD <sha> — <one sentence>`. A HOLD is final for its head (`loop-derive.mjs`
    `verdictFor`). Never write the report yourself (rule 29). Nits go in the PR body, unfixed. Where you disagree with a Blocking finding, put one line in the commit body.
 

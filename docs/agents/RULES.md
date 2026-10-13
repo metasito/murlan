@@ -40,7 +40,7 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
 12. **Never push to `main`.** Branch, open a pull request, let CI speak.
 13. **`Closes #NN` goes in the pull request body, never in a commit message.**
 14. **Merge with `--merge --delete-branch`, never `--squash`, and confirm the remote branch is actually gone** (`git ls-remote origin <branch>` returns nothing).
-    Inside the loop the supervisor does both itself.
+    In the loop the supervisor arms auto-merge with `--merge`, then deletes the merged branch and checks it is gone.
 15. **Bring a stale branch up to date before merging** (`gh pr update-branch`), not after.
 
 ## Reading and writing code

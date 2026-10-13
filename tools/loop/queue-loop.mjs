@@ -85,9 +85,8 @@ import {
   windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
-import { DIAGNOSED, diagnose } from "./diagnose.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
-import { buildReady, MAX_REVIEW_ROUNDS, mergeCleared } from "./loop-gate.mjs";
+import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
@@ -212,18 +211,18 @@ export function nextRoute(
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const tally = ticketTally(live.number, ledger());
-    // A diagnosis reads the pushed head and hands off after it, so until a session has run on its
-    // brief, its handoff outranks everything the head says.
-    const diagnosed = tally.brief !== null && Boolean(tally.handoffWhy?.startsWith(DIAGNOSED));
-    const handed = diagnosed ? tally.lastHandoff : (at ?? (status.fix ? "C" : null) ?? tally.lastHandoff);
-    const settles = live.phase === "G" && status.ci?.pushed === true && !diagnosed;
+    // A held red's retry row names its head; a supervisor that stopped mid-settle wrote none, and owes G.
+    const held = status.ci?.state === "unposted" && status.ci.sha === tally.lastRedHead;
+    const fix = Boolean(status.fix) || held;
+    const handed = at ?? (fix ? "C" : null) ?? tally.lastHandoff;
+    const settles = live.phase === "G" && status.ci?.pushed === true && !held;
     const derived = live.phase === "G" ? "E" : live.phase;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
-    const phase = settles ? "G" : handed === "D" && derived === "E" && !diagnosed ? "E" : (handed ?? derived);
+    const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
-      fix: Boolean(status.fix) && phase !== "G" && !diagnosed,
+      fix: fix && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
@@ -533,9 +532,10 @@ export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKE
  * @param {{action: string}} settled
  */
 export function settleOutcome({ action }) {
-  if (action === "merge" || action === "already-merged")
-    return { countsAsFailure: false, recorded: "landed", handBack: false };
+  if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
   if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
+  // A red round whose CI-RED could not be posted: recorded as one, and its fix round waits a hold.
+  if (action === "hold") return { countsAsFailure: false, recorded: "retry", handBack: false, hold: true };
   // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
   // claim nor its silence. Recording the row and tearing the worktree down without releasing
   // `in-progress` leaves an issue the picker skips for good.
@@ -1815,48 +1815,8 @@ export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12, read
 const SETTLE_PAUSE_MS = 15_000;
 
 /**
- * Reads the pull request's state and asks `landing()` what to do with it.
- *
- * **Every settle round asks, whatever CI said.** The landing question used to be put only behind a
- * green verdict, so a pull request someone else had already merged — whose ci.yml run reads
- * `cancelled`, because merging cancels it — was never asked at all, and spent three fix rounds
- * against a branch that was already in main.
- *
- * @param {Function} run
- */
-function readLanding(prNumber, verdict, run = sh) {
-  const pr = JSON.parse(
-    run("gh", ["pr", "view", String(prNumber), "--repo", REPO, "--json", "state,mergeStateStatus,mergeable,isDraft"]),
-  );
-  return ts("./land.ts").landing(pr, verdict);
-}
-
-/**
- * Merges, then confirms the remote branch is actually gone.
- *
- * RULES.md rule 14 asks for that confirmation and ADR 0004 moved the merge here, which left the
- * rule with no executor at all — it was written for a session or a person doing the merging. A
- * worktree still holding the local branch makes `--delete-branch` fail quietly, and the remote copy
- * survives with it. Harmless over a merged pull request; the identical silence over an unmerged one
- * is #294, where a branch on origin with no open pull request reads as a live claim and the ticket
- * can never be picked up again.
- *
- * @returns {string|null} the branch, if it is still on origin
- */
-function mergeAndConfirm(prNumber, branch, sha, run = sh) {
-  run("gh", ts("./land.ts").mergeArgs(REPO, prNumber, sha));
-  if (!branch) return null;
-  try {
-    return ts("./land.ts").branchSurvives(run("git", ["ls-remote", "origin", branch])) ? branch : null;
-  } catch {
-    // The merge is what mattered, and an unreadable `ls-remote` is not evidence of a survivor.
-    return null;
-  }
-}
-
-/**
- * Waits for the pushed branch's CI and lands it. No judgement here — `readVerdict` says whether the
- * run passed and `landing()` says what that plus the merge state means — which is why the session
+ * Waits for the pushed branch's CI and lands it. No judgement here — `readLandingState` says whether
+ * the gate passed and `landing()` says what that plus the merge state means — which is why the session
  * that built the ticket has already exited by the time this runs.
  *
  * It owns a phase of its own because it is the longest stretch of a ticket and the session is gone:
@@ -1870,7 +1830,7 @@ export async function settle(pending, screen, opts = {}) {
   screen.said(`waiting for ci.yml on ${pending.branch}`);
   try {
     const out = await watch(pending, (m) => screen.said(m), pause, deadline);
-    const landed = out.action === "merge";
+    const landed = out.action === "already-merged";
     screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
     return out;
   } catch (err) {
@@ -1892,9 +1852,9 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
  * fit one into a comment dropped the part that mattered. `onMain` and `flaky` are `onMainLine`'s answers.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string}} args
+ *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string, attempt?: number}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason, attempt }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -1911,6 +1871,8 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
     ...files.map((f) => `- ${f}`),
     `on main: ${onMain}`,
     ...(flaky === "none" ? [] : [`flaky on main: ${flaky}`]),
+    // A rerun the supervisor could not start leaves attempt 1: that red was never asked twice.
+    `rerun: ${attempt > 1 ? "survived one" : "none"}`,
   ];
   if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
   return body.join("\n");
@@ -1946,10 +1908,13 @@ export function onMainLine(failing, main) {
 /**
  * Posted once per red head, checked against the tracker rather than a local marker: the fix
  * session may run on another machine, or after a restart, and reads only the tracker.
+ *
+ * @returns {boolean} whether the tracker carries it now
  */
 function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write, log) {
   const sha = verdict.head;
-  if (!sha || !comments || ciRedPosted(comments, sha)) return;
+  if (!comments) return false;
+  if (!sha || ciRedPosted(comments, sha)) return true;
   const body = ciRedBody({
     sha,
     runUrl: `https://github.com/${REPO}/actions/runs/${verdict.runId}`,
@@ -1961,40 +1926,107 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
     runId: verdict.runId,
     logArgs: verdict.logArgs,
     reason: verdict.reason,
+    attempt: verdict.attempt,
   });
   try {
     const file = ciRedNotePath(ticket);
     write(file, body, "utf8");
     run("gh", ["issue", "comment", String(ticket), "--body-file", file], { timeout: CI_RED_TIMEOUT_MS });
+    return true;
   } catch (err) {
     log(`CI-RED: could not post — ${String(err.message).split("\n")[0]}`);
+    return false;
+  }
+}
+
+/** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
+const CI_RED_TRIES = 3;
+
+/** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
+const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
+
+const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
+
+/**
+ * One open issue per flaky test, found by its exact title in a listing: GitHub's search trails its
+ * own writes. `ready-for-human`, not `ci-flake`: ADR 0011 keeps that label, and the rank it
+ * carries, the owner's to add.
+ */
+function fileFlakes(red, gh, log) {
+  let open;
+  try {
+    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--label", "ready-for-human", "--limit", "500", "--json", "number,title"]));
+  } catch (err) {
+    log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
+    return;
+  }
+  for (const name of flakeNames(red)) {
+    const title = `CI flake: ${name}`;
+    if (open.some((i) => i.title === title)) continue;
+    const body = [
+      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed this; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      "",
+      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same test, so keep it.",
+    ].join("\n");
+    try {
+      gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
+      log(`filed ${title}`);
+    } catch (err) {
+      log(`could not file ${title} — ${firstLine(err)}`);
+    }
   }
 }
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
+
+const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
+
+/** The ticket's stream, every process of it, as facts. */
+function streamFacts(ticket) {
+  const file = streamLog(ticket);
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
+}
+
+/**
+ * Settles a pushed pull request: waits on its `CI gate`, arms GitHub's auto-merge on a green head
+ * that review cleared, and reruns a red once before handing it back.
+ *
+ * **Armed is a state no session may push into.** GitHub merges whatever head carries the arm once
+ * the gate passes, so every exit but the merge disarms first, and a red is disarmed before its
+ * CI-RED is posted — that comment is what starts a fix round, here or after a restart.
+ */
 export async function poll(pending, log, pause, deadline, io = {}) {
   const {
     run = sh,
-    verdictOf = (...args) => ts("./ciVerdict.ts").readVerdict(...args),
+    stateOf = (pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr),
     write = writeFileSync,
     mkdir = mkdirSync,
     mainFailures = () =>
       ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
+    facts = () => streamFacts(pending.ticket),
     cleared = (sha) => {
       const comments = readTicketComments(pending.ticket, run, log);
-      if (!comments || !sha) return false;
       try {
         run("git", ["fetch", "--quiet", "origin", pending.branch, "main"], { timeout: REFRESH_TIMEOUT_MS });
-      } catch {
-        return false;
+      } catch (err) {
+        return { ok: false, why: `could not fetch ${pending.branch} — ${firstLine(err)}` };
       }
-      return mergeCleared(comments, sha, (args) => run("git", args).trim());
+      const v = landable(comments, sha, (args) => run("git", args).trim());
+      if (!v.ok || reviewerRan(facts(), pending.ticket)) return v;
+      return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     },
   } = io;
+  const { armArgs, branchSurvives, deleteBranchArgs, disarmArgs, landing } = ts("./land.ts");
+  const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
   const left = { ...SETTLE_ROUNDS };
   let until = Date.now() + deadline;
   let woke = false;
+  let head = null;
+  let armed = false;
+  let armedAt = null;
+  let reran = null;
+  let firstRed = null;
   // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
   const wait = async () => {
     const clock = sleepClock(pause);
@@ -2005,38 +2037,84 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     woke ||= slept > 0;
   };
   let verdict = {};
-  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head: verdict.head ?? null });
+  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
+  let flake = null;
+  const merged = (reason) => {
+    if (pending.branch) {
+      try {
+        gh(deleteBranchArgs(REPO, pending.branch));
+      } catch {
+        // Already gone is the common refusal, and `ls-remote` below is the judge either way.
+      }
+      try {
+        if (branchSurvives(run("git", ["ls-remote", "origin", pending.branch], { timeout: REFRESH_TIMEOUT_MS }))) {
+          log(`⚠️ #${pending.ticket} ${pending.branch} is still on origin after its merge`);
+        }
+      } catch {
+        // An unreadable `ls-remote` is not evidence of a survivor.
+      }
+    }
+    return { action: "already-merged", reason, ...(flake && { flake }) };
+  };
+  /**
+   * Null once nothing is armed; the owner's otherwise, since GitHub may still merge what is. A
+   * refusal is asked about: GitHub refuses to disarm what never armed, and what already merged.
+   */
+  const disarm = (then) => {
+    if (!armed) return null;
+    try {
+      gh(disarmArgs(REPO, pending.pr));
+      armed = false;
+      return null;
+    } catch (err) {
+      try {
+        const now = stateOf(pending.pr).pr;
+        if (now.state === "MERGED") {
+          armed = false;
+          return merged("the pull request merged before it could be disarmed");
+        }
+        if (now.armed !== true) {
+          armed = false;
+          return null;
+        }
+      } catch {
+        // Unread is not unarmed.
+      }
+      return owner(`could not disarm auto-merge — ${firstLine(err)}; it may still merge${then ? ` — ${then}` : ""}`);
+    }
+  };
+  const leave = (out) => disarm(out.reason) ?? out;
 
   for (;;) {
     if (Date.now() > until) {
-      return owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`);
+      return leave(owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`));
     }
     let next;
     // Which budget a `recheck` spends. A verdict asked again because the runner had nothing to say
     // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
     // answers on its own in seconds. One counter for both parks whichever goes second.
     let asking = "recheck";
-    verdict = {};
+    let pr;
     try {
-      verdict = verdictOf(REPO, pending.branch, pending.pr);
+      ({ pr, ci: verdict } = stateOf(pending.pr));
+      armed = pr.armed === true;
+      if (pr.headRefOid !== head) {
+        head = pr.headRefOid ?? null;
+        until = Date.now() + deadline;
+      }
       if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
-      next = readLanding(pending.pr, verdict, run);
-      // Written before it is handed back, because the session that fixes it is a fresh process
-      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
-      // round one's real failure is already in that file, and this would paint over it.
-      if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
-        mkdir(DIR, { recursive: true });
-        write(ciLogPath(pending.ticket), verdict.output, "utf8");
-        const comments = readTicketComments(pending.ticket, run, log);
-        const failing = verdict.testIds ?? [];
-        const main = failing.length ? mainFailures() : null;
-        const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
-        postCiRedOnce(pending.ticket, verdict, lines, comments, run, write, log);
+      // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
+      // no head but the one cleared. An arm this process did not make is treated the same way.
+      if (armed && armedAt !== head) {
+        const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
+        if (held) return held;
+        pr = { ...pr, armed: false };
       }
+      next = landing(pr, verdict);
       woke = false;
     } catch (err) {
-      const why = String(err.message).split("\n")[0];
+      const why = firstLine(err);
       // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
       if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
         log(`could not read CI since the machine woke — ${why}; asking again`);
@@ -2045,16 +2123,56 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
       // branch is intact, so this goes to the owner rather than ending the night.
-      return owner(`could not read CI — ${why}`);
+      return leave(owner(`could not read CI — ${why}`));
+    }
+
+    if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
+      // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
+      if (verdict.runId && verdict.attempt === 1 && reran !== head) {
+        reran = head;
+        firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
+        try {
+          gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
+          log(`CI is red at ${verdict.failedStep ?? "an unnamed step"} — rerunning ${verdict.runId} once`);
+          until = Date.now() + deadline;
+          await wait();
+          continue;
+        } catch (err) {
+          log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
+        }
+      }
+      const held = disarm(next.reason);
+      if (held) return held;
+      // Written before it is handed back, because the session that fixes it is a fresh process
+      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
+      // round one's real failure is already in that file, and this would paint over it.
+      try {
+        mkdir(DIR, { recursive: true });
+        write(ciLogPath(pending.ticket), verdict.output, "utf8");
+      } catch (err) {
+        log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+      }
+      const failing = verdict.testIds ?? [];
+      const main = failing.length ? mainFailures() : null;
+      const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+      for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
+        // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
+        if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
+        await wait();
+      }
+      return { ...next, head, runId: verdict.runId ?? null };
     }
 
     if (next.action === "update-branch" && left.update > 0) {
       left.update -= 1;
+      // The merge of main is a new head nobody cleared, and an arm would carry over to it.
+      const held = disarm(next.reason);
+      if (held) return held;
       log("main moved — updating the branch and reading CI again");
       try {
-        run("gh", ["pr", "update-branch", String(pending.pr)], { timeout: CI_RED_TIMEOUT_MS });
+        gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
-        return owner(`could not update the branch — ${String(err.message).split("\n")[0]}`);
+        return leave(owner(`could not update the branch — ${firstLine(err)}`));
       }
       await wait();
       continue;
@@ -2076,7 +2194,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         await wait();
         continue;
       }
-      return owner(`CI is red and its log could not be read — ${next.reason}`);
+      return leave(owner(`CI is red and its log could not be read — ${next.reason}`));
     }
     if (next.action === "recheck" && left[asking] > 0) {
       left[asking] -= 1;
@@ -2086,42 +2204,57 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     if (next.action === "update-branch" || next.action === "recheck") {
       const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
-      return owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`);
+      return leave(owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`));
     }
-    if ((next.action === "merge" || next.action === "ready") && !cleared(verdict.head)) {
-      const at = String(verdict.head ?? "an unread head").slice(0, 7);
-      return owner(
-        `no VERDICT: LAND and review within the ${MAX_REVIEW_ROUNDS}-round cap cover ${at} — it was pushed for review, not cleared`,
-      );
-    }
-    if (next.action === "ready") {
-      if (left.ready === 0) return owner("the draft is still a draft after gh pr ready");
-      left.ready -= 1;
+    if (next.action === "arm" || next.action === "ready") {
+      if (armed) {
+        log("auto-merge is armed — waiting for GitHub to merge");
+        await wait();
+        continue;
+      }
+      const at = String(head ?? "an unread head").slice(0, 7);
+      const clear = cleared(head);
+      if (!clear.ok) return leave(owner(`${clear.why} — ${at} was pushed for review, not cleared`));
+      // A draft's merge state reads DRAFT, so whether it is behind or blocked is only known once it is ready.
+      if (next.action === "ready") {
+        if (left.ready-- === 0) return leave(owner(`${at} is still a draft after gh pr ready`));
+        try {
+          gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
+        } catch (err) {
+          return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
+        }
+        await wait();
+        continue;
+      }
+      // A green this process's rerun won: filed, named in the merge and on the row, before it can land.
+      if (reran === head && firstRed && !flake) {
+        flake = { runId: firstRed.runId, tests: firstRed.tests };
+        fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
+      }
+      const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
+      // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
+      armed = "maybe";
+      armedAt = head;
       try {
-        run("gh", ["pr", "ready", String(pending.pr), "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS });
+        gh(argv);
+        armed = true;
+        log(`auto-merge armed at ${at}`);
       } catch (err) {
-        return owner(`could not mark the draft ready — ${String(err.message).split("\n")[0]}`);
+        // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
+        // gate is green here, and `--match-head-commit` still binds the merge to the cleared head.
+        log(`could not arm auto-merge — ${firstLine(err)}; merging ${at} directly`);
+        try {
+          gh(argv.filter((a) => a !== "--auto"));
+        } catch (again) {
+          return leave(owner(`the merge failed — ${firstLine(again)}`));
+        }
       }
       await wait();
       continue;
     }
-    if (next.action === "merge") {
-      try {
-        const survivor = mergeAndConfirm(pending.pr, pending.branch, verdict.head, run);
-        if (survivor) log(`  ⚠️ #${pending.ticket} ${survivor} is still on origin after --delete-branch`);
-      } catch (err) {
-        return owner(`the merge failed — ${String(err.message).split("\n")[0]}`);
-      }
-    }
-    if (next.action === "owner") return owner(next.reason);
-    return next.action === "hand-back"
-      ? {
-          ...next,
-          head: verdict.head ?? null,
-          runId: verdict.runId ?? null,
-          unnamed: !verdict.testIds?.length && !LOCATED.test(verdict.output ?? ""),
-        }
-      : next;
+    if (next.action === "owner") return leave(owner(next.reason));
+    if (next.action === "already-merged") return merged(next.reason);
+    return next;
   }
 }
 
@@ -2256,7 +2389,7 @@ export async function runOnce(io, pinned = null, at = null) {
     : await io.spawn({
         ...route,
         retryCount: Math.max(tally.retries, tally.ciRounds ?? 0),
-        reason: tally.brief ?? (route.phase === tally.lastHandoff ? tally.handoffWhy : null),
+        reason: route.phase === tally.lastHandoff ? tally.handoffWhy : null,
       });
 
   const dirtied = io.sharedCheckoutDirty?.();
@@ -2374,55 +2507,13 @@ export async function runOnce(io, pinned = null, at = null) {
       files,
     });
 
-  const handTo = (phase, why) => {
-    const handed = { phase, why: `${DIAGNOSED}${why}`, said: null };
-    io.record({ number: route.number, outcome: "handoff", why: `phase ${phase} next — ${handed.why}`, run: billed, counts: false, handoff: handed });
-    return { outcome: "handoff", ticket: route.number, phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null };
-  };
-
-  /**
-   * A stop no rule names, diagnosed once per head. `pass` is the pass to return; `resume` is the
-   * phase the diagnosis sends the ticket to, which each caller hands on its own way.
-   *
-   * @returns {Promise<{pass: object}|{resume: string, cause: string}>}
-   */
-  const diagnosed = async (why, phase, { runId = null, head = after?.head ?? null, ciLog = null } = {}) => {
-    if (tally.diagnosed.includes(head)) return { pass: handBack(why, phase) };
-    const cwd = after?.cwd ?? null;
-    const d = await io.diagnose({ ticket: route.number, phase, why, cwd, log: run.log, stderr: run.stderr ?? "", runId, ciLog });
-    // Held, and no `diagnosed` row: that row is what marks the head as read, and this one was not.
-    if (d.apiDown) {
-      keepWip();
-      const down = "the diagnosis could not reach the API";
-      io.record({ number: route.number, outcome: "overloaded", why: `${down} — ${d.error}`, run: d.run, counts: false });
-      io.record({ number: route.number, outcome: "overloaded", why, run: billed, counts: false });
-      return { pass: { outcome: "overloaded", ticket: route.number, why: down, run } };
-    }
-    const tail = d.reply ? ` — it ended: "${d.reply.slice(-300).replace(/\s+/g, " ").trim()}"` : "";
-    const said = d.ok ? `${d.action}${d.phase ? ` ${d.phase}` : ""} — ${d.cause}` : `the diagnosis failed: ${d.error}${tail}`;
-    io.record({ number: route.number, outcome: "diagnosed", why: said, run: d.run, counts: false, head });
-    if (!d.ok) return { pass: handBack(why, phase) };
-    if (d.action === "park") return { pass: handBack(d.cause, phase) };
-    if (d.action === "resume") return { resume: d.phase, cause: d.cause };
-    try {
-      io.rerun(runId);
-    } catch (err) {
-      return { pass: handBack(`${d.cause} — the rerun failed: ${String(err.message).split("\n")[0]}`, phase) };
-    }
-    return { pass: handTo("G", `rerun of ${runId}: ${d.cause}`) };
-  };
-
   if (decided.action === "closed") {
     io.teardown(after?.cwd ?? null, route.number);
     io.record({ number: route.number, outcome: "closed", why: decided.why, run, files });
     return { outcome: "closed", ticket: route.number };
   }
 
-  if (decided.action === "park") {
-    if (reason.hard || exhausted(run)) return handBack(decided.why, after?.phase ?? "?");
-    const told = await diagnosed(decided.why, after?.phase ?? "?");
-    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
-  }
+  if (decided.action === "park") return handBack(decided.why, after?.phase ?? "?");
 
   if (decided.action === "landed") {
     io.teardown(after?.cwd ?? null, route.number);
@@ -2450,19 +2541,7 @@ export async function runOnce(io, pinned = null, at = null) {
   // claim, the reason on the issue and the worktree, in that one place. Recording the row and
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
-  const red = { runId: settled.runId ?? null, head: settled.head ?? pr?.sha ?? null };
-  if (cost.handBack) {
-    const told = await diagnosed(settled.reason, "E", red);
-    return "pass" in told ? told.pass : handTo(told.resume, told.cause);
-  }
-  // A red run that names no test is a failure shape, not a failing test, and a fix round has
-  // nothing to aim at.
-  if (cost.recorded === "retry" && settled.unnamed) {
-    const ciLog = fs.existsSync(ciLogPath(route.number)) ? ciLogPath(route.number) : null;
-    const told = await diagnosed(settled.reason, "E", { ...red, ciLog });
-    if ("pass" in told) return told.pass;
-    if (told.resume !== "C") return handTo(told.resume, told.cause);
-  }
+  if (cost.handBack) return handBack(settled.reason, "E");
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
@@ -2489,7 +2568,10 @@ export async function runOnce(io, pinned = null, at = null) {
     files,
     counts: cost.recorded !== "retry",
     head: settled.head ?? pr?.sha ?? null,
+    flake: settled.flake ?? null,
   });
+  // The worktree stands; the next pick finds the red through `derive` and this row's head.
+  if (cost.hold) return { outcome: "hold", ticket: route.number, why: settled.reason };
   // The worktree and the run come with it: the next round works in that worktree.
   if (cost.recorded === "retry") {
     return {
@@ -2611,14 +2693,6 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
-    diagnose: async (stop) => {
-      screen.start(UNNAMED);
-      screen.said(`diagnosing #${stop.ticket}'s stop in phase ${stop.phase}: ${stop.why}`);
-      const d = await diagnose(stop);
-      screen.close(d.ok ? "done" : "failed", d.ok ? `diagnosis: ${d.action}${d.phase ? ` ${d.phase}` : ""}` : d.error);
-      return d;
-    },
-    rerun: (runId) => sh("gh", ["run", "rerun", String(runId), "--failed", "--repo", REPO], { timeout: CI_RED_TIMEOUT_MS }),
     queue: () => before,
     park,
     /**
@@ -2660,7 +2734,7 @@ function realIo(book, screen) {
     },
     ledgerRows: () => readLedger(),
     repark: (number, steps) => repark(number, steps),
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null }) => {
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null, flake = null }) => {
       const error = errorOf(run);
       const facts = ticketFacts(number);
       const rows = readLedger();
@@ -2714,6 +2788,7 @@ function realIo(book, screen) {
           handoff,
           error,
           parkFailed,
+          flake,
         },
         {
           runId: RUN_ID,
@@ -2920,7 +2995,7 @@ export async function main({
     // Read only here, once the session has exited: a park is never a kill.
     if (pass.ticket != null && parkAsked(pass.ticket)) {
       fs.rmSync(PARK_FILE, { force: true });
-      if (["handoff", "retry", "refused", "overloaded"].includes(pass.outcome)) {
+      if (["handoff", "retry", "refused", "overloaded", "hold"].includes(pass.outcome)) {
         const own = worktreeOf(io, pass.ticket);
         parkAndRecord(io, pass.ticket, {
           ...own,
@@ -2934,14 +3009,18 @@ export async function main({
       screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 
-    // Not a ticket and not a failure: something the machine has to settle before a ticket can
-    // start. Held and asked again, bounded by the same ceiling a usage refusal has.
+    // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
+    // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
       holds += 1;
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
-      screen.notice("waiting", `${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
-      const then = `the pre-flight asks again, then the next pick${queued()}`;
-      if ((await hold(WAIT.FLOOR, "a pre-flight hold", then)) === "stopped") return finish(0, ".loop-stop during the wait");
+      const whose = pass.ticket != null ? `#${pass.ticket} held: ` : "";
+      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
+      const [what, then] =
+        pass.ticket != null
+          ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]
+          : ["a pre-flight hold", `the pre-flight asks again, then the next pick${queued()}`];
+      if ((await hold(WAIT.FLOOR, what, then)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
     holds = 0;

@@ -563,7 +563,7 @@ describe("derive()'s review-round count", () => {
   });
 });
 
-describe("derive({ ci: true }) resumes from what CI said about the pushed head", () => {
+describe("derive({ ci: true }) resumes from the open pull request and the supervisor's CI-RED", () => {
   const BR = "agent/1234-x";
   let root = "";
   let dir = "";
@@ -606,14 +606,12 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
 
   const land = () =>
     [{ body: "Claimed by `agent/1234-x`." }, { body: `VERDICT: LAND ${head}` }].map((c) => ({ ...c, authorAssociation: "OWNER" }));
-  const run = (conclusion: string | null, status = "completed", sha = head) => [
-    { databaseId: 7, status, conclusion, headSha: sha },
-  ];
+  const red = (sha = head) => ({ body: `CI-RED ${sha}\nrun: https://github.com/o/r/actions/runs/7 · step: npm test\nfailing: x` });
   const at = (answers: GhAnswers, opts: { base?: string; ci?: boolean; phase?: string } = {}) => {
     process.env.LOOP_GH_SCRIPT = fakeGh(root, answers);
     return derive({ cwd: dir, base: opts.base ?? "main", ci: opts.ci ?? true, handed: opts.phase }) as any;
   };
-  const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, ref: head, prs: [{ number: 5 }], ...extra });
+  const pushed = (extra: GhAnswers) => ({ issue: { comments: land() }, prs: [{ number: 5, headRefOid: head }], ...extra });
 
   test("claimed and untouched → B, so the scope pass is what the board shows", () => {
     const s = at({ issue: { comments: land() } }, { base: BR });
@@ -631,54 +629,48 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   });
 
   test("no verdict → D, no fix", () => {
-    const s = at({ issue: { comments: [] }, ref: head, prs: [{ number: 5 }], runs: run("failure") });
+    const s = at({ issue: { comments: [red()] }, prs: [{ number: 5, headRefOid: head }] });
     assert.equal(s.phase, "D");
     assert.equal(s.fix, false);
   });
 
   test("HOLD → C, no fix", () => {
-    const s = at({ issue: { comments: [{ body: `VERDICT: HOLD ${head} — no` }] }, ref: head, runs: run("failure") });
+    const s = at({ issue: { comments: [{ body: `VERDICT: HOLD ${head} — no` }, red()] }, prs: [{ number: 5, headRefOid: head }] });
     assert.equal(s.phase, "C");
     assert.equal(s.fix, false);
   });
 
-  test("LAND, never pushed → E", () => {
+  test("LAND, no open pull request → E, whatever the branch holds", () => {
     const s = at({ issue: { comments: land() } });
     assert.equal(s.phase, "E");
-    assert.equal(s.ci.pushed, false);
+    assert.deepEqual([s.ci.pushed, s.ci.pr], [false, null]);
     assert.equal(s.fix, false);
   });
 
-  test("LAND, remote on a commit this head is not under → E", () => {
-    const s = at(pushed({ ref: mainSha, runs: run("failure", "completed", mainSha) }));
+  test("LAND, the pull request on a commit this head is not under → E", () => {
+    const s = at(pushed({ prs: [{ number: 5, headRefOid: mainSha }] }));
     assert.equal(s.phase, "E");
     assert.equal(s.ci.pushed, false);
   });
 
-  test("LAND, pushed, no open PR → E", () => {
-    const s = at(pushed({ prs: [], runs: run("success") }));
-    assert.equal(s.phase, "E");
-    assert.equal(s.ci.pr, null);
+  test("LAND, pushed, no CI-RED for the head → G, no fix: CI is the supervisor's to read", () => {
+    const s = at(pushed({}));
+    assert.equal(s.phase, "G");
+    assert.deepEqual(s.ci, { pushed: true, pr: 5, sha: head, state: "settling", step: null });
+    assert.equal(s.fix, false);
   });
 
-  for (const [name, runs, state] of [
-    ["pending", () => run(null, "in_progress"), "pending"],
-    ["green", () => run("success"), "green"],
-    ["no run yet", () => [], "none"],
-    ["infrastructure", () => run("cancelled"), "infrastructure"],
-  ] as const) {
-    test(`LAND, pushed, CI ${name} → G, no fix`, () => {
-      const s = at(pushed({ runs: runs() }));
-      assert.equal(s.phase, "G");
-      assert.equal(s.ci.state, state);
-      assert.equal(s.ci.pushed, true);
+  test("a CI-RED for another head, or from before the newest claim, is no red on this one", () => {
+    for (const comments of [[...land(), red("aaaaaaa")], [red(), ...land()]]) {
+      const s = at(pushed({ issue: { comments } }));
+      assert.equal(s.phase, "G", JSON.stringify(comments));
       assert.equal(s.fix, false);
-    });
-  }
+    }
+  });
 
-  test("LAND + pushed + red → C with fix and ciRounds from comments", () => {
-    const comments = [...land(), { body: "CI-RED aaaaaaa" }, { body: `CI-RED ${head.slice(0, 7)}` }];
-    const s = at(pushed({ issue: { comments }, runs: run("failure"), jobs: [{ name: "npm test", conclusion: "failure", steps: 4 }] }));
+  test("LAND + pushed + a CI-RED for the head → C with fix, its step, and ciRounds from comments", () => {
+    const comments = [...land(), red("aaaaaaa"), red()];
+    const s = at(pushed({ issue: { comments } }));
     assert.equal(s.phase, "C");
     assert.equal(s.fix, true);
     assert.equal(s.ciRounds, 2);
@@ -686,52 +678,106 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   });
 
   test("LAND + update-branch merge commit on the remote → still pushed", () => {
-    const s = at(pushed({ ref: merged, runs: run("success", "completed", merged) }));
+    const s = at(pushed({ prs: [{ number: 5, headRefOid: merged }] }));
     assert.equal(s.ci.pushed, true, "the merge commit is fetched once and HEAD is under it");
     assert.equal(s.phase, "G");
   });
 
-  test("gh throws → G with state unreadable, never E", () => {
-    for (const fail of ["ref", "prs", "runs", "jobs"]) {
-      const s = at(pushed({ runs: run("failure"), fail: [fail] }));
-      assert.equal(s.phase, "G", `a failing ${fail} read resumed at ${s.phase}`);
-      assert.equal(s.ci.state, "unreadable");
-      assert.equal(s.fix, false);
-    }
+  test("a pull request list gh cannot read → G with state unreadable, never E", () => {
+    const s = at(pushed({ fail: ["prs"] }));
+    assert.equal(s.phase, "G");
+    assert.equal(s.ci.state, "unreadable");
+    assert.equal(s.fix, false);
   });
 
   test("ci:false never calls gh beyond issue view", () => {
     const calls = join(root, "calls.txt");
-    const s = at(pushed({ runs: run("failure"), calls }), { ci: false });
+    const s = at(pushed({ calls }), { ci: false });
     assert.equal(s.phase, "E");
     assert.equal(s.ci, null);
     assert.deepEqual(readFileSync(calls, "utf8").trim().split("\n").map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view"]);
   });
 
-  test("a red head is judged from its jobs, and its failed log is never downloaded", () => {
+  test("reading CI is one pull request listing: no run, job or log is read", () => {
     const calls = join(root, "calls-red.txt");
-    const jobs = [{ name: "npm test", conclusion: "failure", steps: 4 }];
-    const s = at(pushed({ runs: run("failure"), jobs, log: "FAIL x", calls }));
-    assert.equal(s.ci.step, "npm test");
-    assert.ok(readFileSync(calls, "utf8").includes("run view 7"), "the jobs were read");
-    assert.doesNotMatch(readFileSync(calls, "utf8"), /--log-failed/);
+    const s = at(pushed({ issue: { comments: [...land(), red()] }, calls }));
+    assert.equal(s.ci.state, "red");
+    const asked = readFileSync(calls, "utf8").trim().split("\n");
+    assert.deepEqual(asked.map((l) => l.split(" ").slice(0, 2).join(" ")), ["issue view", "pr list"]);
+    assert.match(asked[1], /--head agent\/1234-x .*--state open .*--json number,headRefOid/);
   });
 
   test("every gh call, tracker and CI alike, runs under CI_BUDGET_MS", () => {
     const timeouts: (number | undefined)[] = [];
     const answer = (a: string[]) =>
-      a[0] === "issue" ? { comments: land() } : a[0] === "api" ? head : a[0] === "pr" ? [{ number: 5 }]
-        : a[1] === "list" ? run("failure") : [{ name: "npm test", conclusion: "failure", steps: 4 }];
+      a[0] === "issue" ? { comments: [...land(), { ...red(), authorAssociation: "OWNER" }] } : [{ number: 5, headRefOid: head }];
     const exec = (a: string[], _cwd: string, timeout?: number) => {
       timeouts.push(timeout);
-      const v = answer(a);
-      return typeof v === "string" ? v : JSON.stringify(v);
+      return JSON.stringify(answer(a));
     };
     const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
     assert.equal(s.ci.state, "red");
     assert.equal(CI_BUDGET_MS, 10_000);
-    assert.equal(timeouts.length, 5);
+    assert.equal(timeouts.length, 2);
     for (const t of timeouts) assert.ok(t !== undefined && t > 0 && t <= CI_BUDGET_MS, `timeout ${t}`);
+  });
+
+  describe("a red no CI-RED names is read from the pull request's own CI gate", () => {
+    const gate = (conclusion: string, startedAt: string, status = "COMPLETED") => ({
+      name: "CI gate",
+      status,
+      conclusion,
+      detailsUrl: `https://github.com/o/r/actions/runs/${startedAt.slice(11, 13)}/job/1`,
+      startedAt,
+      completedAt: status === "COMPLETED" ? startedAt : "0001-01-01T00:00:00Z",
+    });
+    const STEPS = [{ name: "Test", conclusion: "failure" }];
+    const RAN = { status: "completed", conclusion: "failure", jobs: [{ name: "Typecheck and tests", conclusion: "failure", steps: STEPS }] };
+    const derived = (rollup: unknown[], attempt: number, run: Record<string, unknown> = RAN) => {
+      const asked: string[][] = [];
+      const exec = (a: string[]) => {
+        asked.push(a);
+        if (a[0] === "issue") return JSON.stringify({ comments: land() });
+        if (a[0] === "run") return JSON.stringify({ attempt, ...run });
+        return JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: rollup }]);
+      };
+      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
+    };
+    const RED_GATE = [gate("FAILURE", "2026-10-13T10:00:00Z")];
+
+    // Whether that red is a held one is the ledger's to say: a supervisor restarted mid-settle,
+    // before its CI-RED went out, still owes G.
+    test("a red gate already rerun is reported, and derive still says G", () => {
+      const { s, asked } = derived(RED_GATE, 2);
+      assert.equal(s.ci.state, "unposted");
+      assert.equal(s.fix, false);
+      assert.equal(s.phase, "G");
+      const view = asked.find((a) => a[0] === "run")!;
+      assert.deepEqual(view.slice(0, 3), ["run", "view", "10"]);
+      assert.equal(view[view.indexOf("--json") + 1], "attempt,status,conclusion,jobs");
+    });
+
+    test("a first red is the supervisor's to rerun", () => {
+      assert.equal(derived(RED_GATE, 1).s.ci.state, "settling");
+    });
+
+    test("a run still going, or a failed job that ran no steps, is no code red", () => {
+      assert.equal(derived(RED_GATE, 2, { status: "in_progress", conclusion: null }).s.ci.state, "settling");
+      const stepless = { ...RAN, jobs: [...RAN.jobs, { name: "Native tests", conclusion: "failure", steps: [] }] };
+      assert.equal(derived(RED_GATE, 2, stepless).s.ci.state, "settling");
+    });
+
+    test("only FAILURE is a code red: a timed-out or never-started gate is not", () => {
+      for (const c of ["TIMED_OUT", "STARTUP_FAILURE"]) {
+        assert.equal(derived([gate(c, "2026-10-13T10:00:00Z")], 2).s.ci.state, "settling", c);
+      }
+    });
+
+    test("the latest gate is the verdict: an older red under a newer running one, and no run is read", () => {
+      const { s, asked } = derived([...RED_GATE, gate("", "2026-10-13T11:00:00Z", "IN_PROGRESS")], 2);
+      assert.equal(s.ci.state, "settling");
+      assert.equal(asked.filter((a) => a[0] === "run").length, 0);
+    });
   });
 
   test("LOOP_PHASE=C wins over a head with no verdict", () => {
@@ -749,7 +795,7 @@ describe("derive({ ci: true }) resumes from what CI said about the pushed head",
   });
 
   test("a handed phase still computes the fix round", () => {
-    const s = at(pushed({ runs: run("failure") }), { phase: "D" });
+    const s = at(pushed({ issue: { comments: [...land(), red()] } }), { phase: "D" });
     assert.equal(s.phase, "D");
     assert.equal(s.fix, true);
   });

@@ -3,7 +3,9 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   landing,
-  mergeArgs,
+  armArgs,
+  disarmArgs,
+  deleteBranchArgs,
   branchSurvives,
   type CiVerdict,
   type Landing,
@@ -11,7 +13,7 @@ import {
 } from "../land.ts";
 
 const ACTIONS: readonly Landing["action"][] = [
-  "merge",
+  "arm",
   "already-merged",
   "update-branch",
   "recheck",
@@ -185,32 +187,63 @@ const cases: Case[] = [
     reason: /DIRTY/,
   },
   {
-    name: "CLEAN merges",
+    name: "CLEAN arms",
     pr: pr(),
     ci: GREEN,
-    action: "merge",
+    action: "arm",
   },
   {
-    name: "CLEAN on a red run is handed back rather than merged",
+    name: "CLEAN on a red run is handed back rather than armed",
     pr: pr(),
     ci: RED,
     action: "hand-back",
   },
   {
-    name: "HAS_HOOKS merges",
+    name: "HAS_HOOKS arms",
     pr: pr({ mergeStateStatus: "HAS_HOOKS" }),
     ci: GREEN,
-    action: "merge",
+    action: "arm",
   },
-  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes *queued*. gh
-  // merges it on the spot. Reaching this arm means the verdict passed the run for this head, which
-  // is the only reading under which a pending check is ignorable.
+  // UNSTABLE is "mergeable with non-passing commit status", and non-passing includes *queued*.
+  // Reaching this arm means the verdict passed the gate for this head, which is the only reading
+  // under which a pending check is ignorable.
   {
-    name: "UNSTABLE merges, and says that CI was already judged",
+    name: "UNSTABLE arms, and says that CI was already judged",
     pr: pr({ mergeStateStatus: "UNSTABLE" }),
     ci: GREEN,
-    action: "merge",
+    action: "arm",
     reason: /ciVerdict/,
+  },
+  {
+    name: "armed while the required check is pending is a recheck, not the owner's",
+    pr: pr({ mergeStateStatus: "BLOCKED", armed: true }),
+    ci: { waiting: true },
+    action: "recheck",
+  },
+  {
+    name: "armed and BLOCKED under a green gate waits for GitHub's merge",
+    pr: pr({ mergeStateStatus: "BLOCKED", armed: true }),
+    ci: GREEN,
+    action: "recheck",
+    reason: /armed/,
+  },
+  {
+    name: "armed and red is still handed back",
+    pr: pr({ mergeStateStatus: "BLOCKED", armed: true }),
+    ci: RED,
+    action: "hand-back",
+  },
+  {
+    name: "BLOCKED and not armed after a green gate is still the owner's",
+    pr: pr({ mergeStateStatus: "BLOCKED" }),
+    ci: GREEN,
+    action: "owner",
+  },
+  {
+    name: "armed and DIRTY is the owner's",
+    pr: pr({ mergeStateStatus: "DIRTY", armed: true }),
+    ci: GREEN,
+    action: "owner",
   },
   {
     name: "UNSTABLE on a red run is handed back",
@@ -285,21 +318,24 @@ describe("landing", () => {
         for (const mergeable of mergeables) {
           for (const ci of verdicts) {
             for (const isDraft of [false, true]) {
-              const d = landing({ state, mergeStateStatus, mergeable, isDraft }, ci);
-              assert.ok(
-                ACTIONS.includes(d.action),
-                `${state}/${mergeStateStatus}/${mergeable}/${isDraft} answered ${d.action}`,
-              );
-              assert.ok(!(isDraft && d.action === "merge"), "a draft is never merged");
-              assert.equal(typeof d.reason, "string");
-              assert.ok(d.reason.length > 0);
-              seen += 1;
+              for (const armed of [false, true]) {
+                const d = landing({ state, mergeStateStatus, mergeable, isDraft, armed }, ci);
+                assert.ok(
+                  ACTIONS.includes(d.action),
+                  `${state}/${mergeStateStatus}/${mergeable}/${isDraft}/${armed} answered ${d.action}`,
+                );
+                assert.ok(!(isDraft && d.action === "arm"), "a draft is never armed");
+                assert.ok(!(ci.pass !== true && d.action === "arm"), "only a green gate is armed");
+                assert.equal(typeof d.reason, "string");
+                assert.ok(d.reason.length > 0);
+                seen += 1;
+              }
             }
           }
         }
       }
     }
-    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length * 2);
+    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length * 4);
   });
 
   test("no open pull request is ever abandoned without a person or a fresh session", () => {
@@ -311,32 +347,30 @@ describe("landing", () => {
   });
 });
 
-describe("mergeArgs", () => {
-  test("merges the cleared head with a merge commit and deletes the branch", () => {
-    assert.deepEqual(mergeArgs("o/r", 7, "abc"), [
-      "pr", "merge", "7", "--repo", "o/r", "--merge", "--delete-branch", "--match-head-commit", "abc",
+describe("armArgs and disarmArgs", () => {
+  test("arm pins the head, with a merge commit", () => {
+    assert.deepEqual(armArgs("metasito/murlan", 7, "abc"), [
+      "pr", "merge", "7", "--repo", "metasito/murlan", "--auto", "--merge", "--match-head-commit", "abc",
     ]);
   });
 
-  // The floor. Asserted as absences because a merge that needs forcing is a decision, and
-  // `--squash` throws away the branch history a later bisect reads.
-  test("never squashes, rebases or forces", () => {
-    const args = mergeArgs("metasito/murlan", 42, "abc");
-    assert.ok(!args.includes("--squash"));
-    assert.ok(!args.includes("--rebase"));
-    assert.ok(!args.includes("--admin"));
+  test("arm never squashes, rebases or forces", () => {
+    const args = armArgs("metasito/murlan", 42, "abc");
+    for (const flag of ["--squash", "--rebase", "--admin"]) assert.ok(!args.includes(flag), flag);
+  });
+
+  test("disarm", () => {
+    assert.deepEqual(disarmArgs("metasito/murlan", 7), ["pr", "merge", "7", "--repo", "metasito/murlan", "--disable-auto"]);
   });
 });
 
-describe("branchSurvives", () => {
-  test("no output means the remote branch is gone", () => {
-    assert.equal(branchSurvives(""), false);
-    assert.equal(branchSurvives("\n"), false);
-    assert.equal(branchSurvives("  \n"), false);
+describe("deleting a merged branch", () => {
+  test("deletes the ref on origin, slashes and all", () => {
+    assert.deepEqual(deleteBranchArgs("o/r", "agent/958-persist"), ["api", "-X", "DELETE", "repos/o/r/git/refs/heads/agent/958-persist"]);
   });
 
-  test("a ref line means --delete-branch did not take", () => {
-    const line = "9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist-vacated-seats\n";
-    assert.equal(branchSurvives(line), true);
+  test("no ls-remote output means the branch is gone; a ref line means it survived", () => {
+    for (const out of ["", "\n", "  \n"]) assert.equal(branchSurvives(out), false);
+    assert.equal(branchSurvives("9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist\n"), true);
   });
 });

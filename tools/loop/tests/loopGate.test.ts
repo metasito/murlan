@@ -6,7 +6,8 @@ import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, pushVerdict, buildPassed, dodVerdict, mergeCleared } from "../loop-gate.mjs";
+import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, buildPassed, dodVerdict, landable, reviewerRan } from "../loop-gate.mjs";
+import { readLine } from "../loop-stream.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -361,46 +362,6 @@ test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
   assert.match(out, /#9900015/);
 });
 
-describe("a LAND is only as good as the report behind it", () => {
-  const state = (extra: Record<string, unknown>) => ({
-    onTicket: true, ticket: 1, branch: "agent/1-x", phase: "E" as const, commits: 1,
-    changed: ["a.ts"], head: "abc1234def", base: "origin/main", cwd: ".", dirty: false,
-    trackerReadable: true, reviewRounds: 1, fixHolds: 0, why: "reviewed and cleared",
-    verdict: { decision: "LAND", line: "VERDICT: LAND abc1234" }, handoff: null, review: null,
-    ci: null, fix: false, ciRounds: 0, ...extra,
-  });
-
-  test("a LAND with no review report on the issue is refused", () => {
-    const v = pushVerdict(state({}));
-    assert.equal(v.ok, false);
-    assert.match(String(v.why), /no review report/);
-  });
-
-  test("a LAND backed by a report for the same head passes", () => {
-    assert.equal(pushVerdict(state({ review: { line: "REVIEW abc1234" } })).ok, true);
-  });
-
-  test("a LAND past the review cap is refused, whatever the session wrote", () => {
-    const review = { line: "REVIEW abc1234" };
-    assert.equal(pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS })).ok, true);
-    const past = pushVerdict(state({ review, reviewRounds: MAX_REVIEW_ROUNDS + 1 }));
-    assert.equal(past.ok, false);
-    assert.match(String(past.why), /past the cap/);
-  });
-
-  test("a round count nobody could take is refused, never read as zero", () => {
-    const v = pushVerdict(state({ review: { line: "REVIEW abc1234" }, reviewRounds: null }));
-    assert.equal(v.ok, false);
-    assert.match(String(v.why), /count the review rounds/);
-  });
-
-  test("an unreadable tracker carries no lines, which is what makes it exit 2", () => {
-    const v = pushVerdict(state({ trackerReadable: false }));
-    assert.equal(v.ok, false);
-    assert.equal(v.lines, undefined);
-  });
-});
-
 /**
  * Phase D's ceiling. It is the largest cost lever in the loop, and it was a sentence in `queue.md`
  * that no test could fail until this branch moved it here — so the point of these is that editing
@@ -580,7 +541,7 @@ describe("--build gates review on a cached local pass", () => {
   });
 });
 
-describe("mergeCleared", () => {
+describe("landable", () => {
   let repo: string;
   const git = (args: string[]) =>
     execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo, encoding: "utf8" }).trim();
@@ -612,7 +573,7 @@ describe("mergeCleared", () => {
   });
   after(() => rmSync(repo, { recursive: true, force: true }));
 
-  const check = (comments: { body: string }[], sha: string) => mergeCleared(comments, sha, git, "main");
+  const check = (comments: { body: string }[], sha: string) => landable(comments, sha, git, "main").ok;
 
   test("a head its LAND and report cover is cleared; a LAND alone, a HOLD or silence is not", () => {
     assert.equal(check(said(...cleared(landed)), landed), true);
@@ -655,5 +616,104 @@ describe("mergeCleared", () => {
   test("an unreviewed commit on a cleared head is not cleared", () => {
     git(["switch", "-q", "-c", "agent/1-more", landed]);
     assert.equal(check(said(...cleared(landed)), edit("more.txt", "more\n")), false);
+  });
+
+  const land = (comments: { body: string }[] | null, sha: string) => landable(comments, sha, git, "main");
+
+  test("landable names what a cleared head has, and what an uncleared one lacks", () => {
+    const at = landed.slice(0, 7);
+    const ok = land(said(...cleared(landed)), landed);
+    assert.equal(ok.ok, true);
+    assert.match(ok.why, new RegExp(`reviewed at ${at}: VERDICT: LAND ${at}`));
+    assert.match(land([], landed).why, /no review of/);
+    assert.match(land(said(`VERDICT: LAND ${at}`), landed).why, /no review report/);
+    assert.match(land(said(`VERDICT: HOLD ${at} — it is wrong`), landed).why, /reviewer held/);
+    assert.match(land(said(...cleared(landed)), git(["rev-parse", "main"])).why, /nothing was built/);
+  });
+
+  test("an unreadable tracker carries no lines, which is what makes the CLI exit 2", () => {
+    const v = land(null, landed);
+    assert.equal(v.ok, false);
+    assert.equal(v.lines, undefined);
+  });
+
+  test("a LAND cannot overturn a HOLD on the same commit, and a quoted verdict is no review", () => {
+    const at = landed.slice(0, 7);
+    assert.match(land(said(`VERDICT: HOLD ${at} — unsafe`, ...cleared(landed)), landed).why, /reviewer held/);
+    for (const body of [`The reviewer must end with:\n\`\`\`\nVERDICT: LAND ${at}\n\`\`\``, `verdict: land ${at}`]) {
+      assert.equal(land(said(cleared(landed)[0], body), landed).ok, false, body);
+    }
+  });
+
+  test("past the review cap it is refused, at the cap it is not", () => {
+    assert.equal(land(said(...holds(MAX_REVIEW_ROUNDS - 1), ...cleared(landed)), landed).ok, true);
+    assert.match(land(said(...holds(MAX_REVIEW_ROUNDS), ...cleared(landed)), landed).why, /past the cap/);
+  });
+
+  test("an unreadable tracker carries no lines, which is what makes the CLI exit 2", () => {
+    const v = land(null, landed);
+    assert.equal(v.ok, false);
+    assert.match(v.why, /cannot reach the tracker/);
+    assert.equal(v.lines, undefined);
+    assert.ok(land([], landed).lines?.length);
+  });
+
+  test("a head git cannot read is refused, never cleared", () => {
+    const v = land(said(...cleared(landed)), "f".repeat(40));
+    assert.equal(v.ok, false);
+  });
+});
+
+describe("reviewerRan: this D round's own reviewer completed, before anything arms", () => {
+  const N = 42;
+  const say = (text: string) => readLine(JSON.stringify({ type: "assistant", message: { id: text, content: [{ type: "text", text }] } }));
+  const init = () => readLine(JSON.stringify({ type: "system", subtype: "init", session_id: "s" }));
+  let tasks = 0;
+  const dispatch = (agent: string, n = N, kind = "review") => {
+    const id = `t${++tasks}`;
+    const prompt = `BRIEF ${kind} #${n} .worktrees/agent-${n} origin/main\n\nRead the change.`;
+    return {
+      id,
+      started: readLine(JSON.stringify({ type: "system", subtype: "task_started", task_id: id, tool_use_id: `u${id}`, subagent_type: agent, description: `Review #${n}`, prompt })),
+      done: readLine(JSON.stringify({ type: "system", subtype: "task_updated", task_id: id, patch: { status: "completed", end_time: 1 } })),
+    };
+  };
+
+  test("a reviewer that completed in this D process", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([say("PHASE C"), init(), say("PHASE D"), r.started, r.done], N), true);
+  });
+
+  test("a reviewer that completed in the D process before a handoff", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([say("PHASE C"), init(), say("PHASE D"), r.started, r.done, init(), say("PHASE D")], N), true);
+  });
+
+  test("a fix round's reviewer counts", () => {
+    const r = dispatch("loop-fix", N, "fix");
+    assert.equal(reviewerRan([say("PHASE C"), say("PHASE D"), r.started, r.done], N), true);
+  });
+
+  test("no reviewer is no clearance", () => {
+    assert.equal(reviewerRan([say("PHASE C"), init(), say("PHASE D")], N), false);
+    assert.equal(reviewerRan([], N), false);
+  });
+
+  test("a reviewer of another issue, or of another kind, is not this one's", () => {
+    const other = dispatch("loop-review", 43);
+    const scope = dispatch("loop-scope", N, "scope");
+    assert.equal(reviewerRan([say("PHASE C"), say("PHASE D"), other.started, other.done, scope.started, scope.done], N), false);
+  });
+
+  test("a reviewer from before the last build does not cover what was built after it", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([say("PHASE D"), r.started, r.done, say("PHASE C"), init(), say("PHASE D")], N), false);
+  });
+
+  test("a reviewer started and never completed is not one that ran", () => {
+    const r = dispatch("loop-review");
+    const failed = readLine(JSON.stringify({ type: "system", subtype: "task_updated", task_id: r.id, patch: { status: "failed" } }));
+    assert.equal(reviewerRan([say("PHASE C"), say("PHASE D"), r.started], N), false);
+    assert.equal(reviewerRan([say("PHASE C"), say("PHASE D"), r.started, failed], N), false);
   });
 });

@@ -441,6 +441,7 @@ describe("a task fact", () => {
       of: "toolu_014oEfToXemWeN4h5trWhVML",
       what: "Inspect ticket 999",
       agent: null,
+      brief: null,
       tool: null,
       status: null,
       background: false,
@@ -448,6 +449,18 @@ describe("a task fact", () => {
       toolUses: 0,
       ms: 0,
     });
+  });
+
+  test("task_started carries the first line of a dispatch's prompt, which names the brief and its ticket", () => {
+    const line = JSON.stringify({
+      type: "system",
+      subtype: "task_started",
+      task_id: "a1",
+      tool_use_id: "toolu_1",
+      subagent_type: "loop-review",
+      prompt: "BRIEF review #42 .worktrees/agent-42 origin/main\n\nRead the change.",
+    });
+    assert.equal((readLine(line) as any).brief, "BRIEF review #42 .worktrees/agent-42 origin/main");
   });
 
   test("task_started opens a dispatched subagent, carrying its type", () => {
@@ -485,6 +498,7 @@ describe("a task fact", () => {
       of: "toolu_019v9u2HmKQQphG5STUL2LaC",
       what: "Reading .worktrees\\agent-999\\tests\\exchangeE2EHold.test.ts",
       agent: "general-purpose",
+      brief: null,
       tool: "Read",
       status: null,
       background: false,
@@ -544,6 +558,7 @@ describe("a task fact", () => {
       of: null,
       what: null,
       agent: null,
+      brief: null,
       tool: null,
       status: "completed",
       background: false,

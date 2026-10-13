@@ -56,14 +56,11 @@ const repo = {
   cwd: (dir?: string | null): string => resolve("/r", dir ?? "."),
   onTicket: () => false,
 };
-const firstRun = (workflowName: string) => ({ workflowName, attempt: 1 });
-const device = () => firstRun("iOS UI (Maestro)");
-const guard = (cmd: string) => check(cmd, device, repo);
+const guard = (cmd: string) => check(cmd, repo);
 
 const ADD = /pathspec/;
 const DISCARD = /Edit tool/;
 const FORCE_DELETE = /before 2\.54\.0[\s\S]*worktrees:remove/;
-const UNREADABLE = /literal id/;
 const MERGE = /not yours to merge/;
 const PIPED = /Piping a Playwright run/;
 
@@ -174,20 +171,20 @@ describe("the bash guard blocks what has a correct alternative, however it is sp
   test("a push with no refspec, or HEAD, is blocked from main", () => {
     const onMain = { ...repo, branch: () => "main", pushTarget: () => null };
     for (const cmd of ["git push", "git push origin", "git push origin HEAD", "git -C d push -f origin @"]) {
-      assert.match(String(check(cmd, device, onMain)), /pull request/, cmd);
+      assert.match(String(check(cmd, onMain)), /pull request/, cmd);
     }
-    assert.match(String(check("git push", device, { ...repo, pushTarget: () => "origin/main" })), /pull request/);
+    assert.match(String(check("git push", { ...repo, pushTarget: () => "origin/main" })), /pull request/);
   });
 
   test("a sourced checkout is blocked when git cannot answer", () => {
-    assert.ok(check("git checkout HEAD -- a.ts", device, { ...repo, isRef: () => true, pathsClean: () => false }));
+    assert.ok(check("git checkout HEAD -- a.ts", { ...repo, isRef: () => true, pathsClean: () => false }));
   });
 });
 
 describe("git add -A inside the ticket's own worktree", () => {
   const top = resolve(tmpdir(), ".worktrees", "agent-7");
   const inTree = (cwd: string, t: string | null = top) => ({ ...repo, top: () => t, cwd: (d?: string) => resolve(cwd, d ?? ".") });
-  const at = (cmd: string, cwd = top, t: string | null = top) => check(cmd, device, inTree(cwd, t));
+  const at = (cmd: string, cwd = top, t: string | null = top) => check(cmd, inTree(cwd, t));
 
   test("is allowed on pathspecs below its root", () => {
     for (const cmd of ["git add -A components tests", "git add -A -- scripts app", "git add -u tools", "git add ."]) {
@@ -208,7 +205,7 @@ describe("git add -A inside the ticket's own worktree", () => {
 
   test("leaves the discard guard where it was", () => {
     const dirty = { ...inTree(top), pathsClean: () => false };
-    assert.match(String(check("git add -A components; git checkout -- f", device, dirty)), DISCARD);
+    assert.match(String(check("git add -A components; git checkout -- f", dirty)), DISCARD);
   });
 });
 
@@ -294,7 +291,7 @@ describe("the bash guard allows correct usage", () => {
   }
 });
 
-describe("a device run's rerun or dispatch is the workflow's own to refuse", () => {
+describe("a device run's dispatch is the workflow's own to refuse", () => {
   // ios.yml and maestro.yml run a job only on attempt 1 of a schedule or a ticket branch
   // (tests/tooling/deviceWorkflowsGate.test.ts): no gh outage opens that, as it opened this guard.
   for (const cmd of [
@@ -302,150 +299,45 @@ describe("a device run's rerun or dispatch is the workflow's own to refuse", () 
     "gh workflow run 123456",
     "gh workflow run ios.yml --ref main",
     "gh api -X POST repos/o/r/actions/workflows/ios.yml/dispatches -f ref=main",
-    "gh run rerun 33428375221 --failed",
-    "gh -R o/r run rerun 33428375221",
-    "gh api -X POST repos/o/r/actions/jobs/99710945601/rerun",
   ]) {
     test(`allows, in the loop and outside it: ${cmd}`, () => {
-      assert.equal(check(cmd, device, repo, false), null);
-      assert.equal(check(cmd, device, repo, true), null);
-    });
-  }
-
-  // A lookup costs a network round trip, so it is spent only where its answer can still refuse.
-  for (const [what, cmd, loop] of [
-    ["a command that reruns nothing", "gh run view 33428373840 --json jobs", true],
-    ["a dispatch", "gh workflow run ios.yml --ref agent/1211-x", true],
-    ["a rerun outside the loop", "gh run rerun 33428375221 --failed", false],
-  ] as const) {
-    test(`does not ask about ${what}`, () => {
-      let asked = 0;
-      check(cmd, () => (asked++, firstRun("iOS UI (Maestro)")), repo, loop);
-      assert.equal(asked, 0, `${cmd} spent a round trip it could not have acted on`);
+      assert.equal(check(cmd, repo, false), null);
+      assert.equal(check(cmd, repo, true), null);
     });
   }
 });
 
-describe("a loop session's rerun is read as its own command, with its own arguments", () => {
-  // Each of these reached the guard as a way past it. A rerun that cannot be read is refused
-  // rather than allowed: `$RUN` must not be the spelling that gets through.
-  const rerun = () => ({ workflowName: "CI", attempt: 2 });
-  const fresh = () => firstRun("CI");
-  const inLoop = (cmd: string, lookup: (t: { run?: string; job?: string }) => unknown) => check(cmd, lookup as never, repo, true);
-
-  test("reads --job, which is not a run id", () => {
-    // `gh run view <job-id>` answers 404, so a job id resolved as a run resolves to nothing.
-    let asked: unknown = null;
-    const message = inLoop("gh run rerun --job 99710945601", (t) => {
-      asked = t;
-      return rerun();
-    });
-    assert.match(String(message), /already rerun/);
-    assert.deepEqual(asked, { job: "99710945601" });
-  });
-
-  test("reads --job= in its joined spelling", () => {
-    assert.ok(inLoop("gh run rerun --job=99710945601", rerun));
-  });
-
-  test("looks at every rerun on the line, not only the first", () => {
-    for (const separator of [" && ", "; ", "\n"]) {
-      const cmd = `gh run rerun 33495876524${separator}gh run rerun 33428375221`;
-      const message = inLoop(cmd, (t) => (t.run === "33428375221" ? rerun() : fresh()));
-      assert.ok(message, `expected the second rerun after a ${JSON.stringify(separator)} to block`);
-    }
-  });
-
-  test("does not take a flag's value for the run id", () => {
-    let asked: unknown = null;
-    inLoop("gh run rerun -R metasito/murlan 33428375221", (t) => {
-      asked = t;
-      return fresh();
-    });
-    assert.deepEqual(asked, { run: "33428375221" }, "the repo was read as the run");
-  });
-
-  test("does not take a later command's id for this one's", () => {
-    // The download named here is the very command the block message prescribes as the way out.
-    let asked: unknown = null;
-    const message = inLoop('gh run rerun "$RUN" --failed\ngh run download 33428375221 -n maestro-debug-ios', (t) => {
-      asked = t;
-      return fresh();
-    });
-    assert.equal(asked, null, "the download's id was read as the rerun's");
-    assert.match(String(message), UNREADABLE);
-  });
-
+describe("a loop session reruns no run: the supervisor reruns a red once per head", () => {
+  const NO_RERUN = /a session does not rerun/;
   for (const cmd of [
+    "gh run rerun 33428375221 --failed",
+    "gh -R o/r run rerun 33428375221",
+    "gh run rerun --job 99710945601",
+    "gh run rerun --job=99710945601",
     'gh run rerun "$RUN" --failed',
     "gh run rerun --failed",
     'MAESTRO_EVIDENCE_READ=1 gh run rerun "$RUN" --failed',
-    "gh api -X POST repos/o/r/actions/runs/$RUN/rerun-failed-jobs",
+    "gh run view 33428373840 --json jobs && gh run rerun 33428375221",
+    "gh run view 33428373840 --json jobs; gh run rerun 33428375221",
+    "gh run view 33428373840 --json jobs\ngh run rerun 33428375221",
+    "gh api -X POST repos/o/r/actions/runs/38188271467/rerun-failed-jobs",
+    "gh api -X POST repos/o/r/actions/runs/$RUN/rerun",
+    "gh api -X POST repos/o/r/actions/jobs/99710945601/rerun",
+    "curl -X POST https://api.github.com/repos/o/r/actions/runs/1/rerun",
   ]) {
-    test(`refuses, in the loop and outside it, a rerun it cannot identify: ${cmd}`, () => {
-      assert.match(String(inLoop(cmd, fresh)), UNREADABLE);
-      assert.match(String(check(cmd, fresh, repo, false)), UNREADABLE);
+    test(`refuses in the loop, and allows outside it: ${cmd}`, () => {
+      assert.match(String(check(cmd, repo, true)), NO_RERUN);
+      assert.equal(check(cmd, repo, false), null);
     });
   }
-});
 
-describe("a workflow lookup that fails is announced, not swallowed", () => {
-  test("a throwing lookup still allows the dispatch, and names what could not be checked", () => {
-    let calls = 0;
-    let message: string | null = null;
-    const stderr = captureStderr(() => {
-      message = check("gh run rerun 33428375221 --failed", () => {
-        calls += 1;
-        throw new Error("connect ETIMEDOUT");
-      }, repo, true);
-    });
-    assert.equal(message, null, "a lookup failure must still allow the dispatch");
-    assert.equal(calls, 1);
-    assert.match(stderr, /could not look up the rerun's workflow/);
-    assert.match(stderr, /ETIMEDOUT/);
-  });
-
-  test("logs the failure once even when a line asks more than once", () => {
-    let calls = 0;
-    const stderr = captureStderr(() => {
-      check("gh run rerun 111\ngh run rerun 222", () => {
-        calls += 1;
-        throw new Error("rate limited");
-      }, repo, true);
-    });
-    assert.equal(calls, 2, "both reruns are still checked");
-    assert.equal(
-      stderr.split("\n").filter(Boolean).length,
-      1,
-      "the skipped check is named once, not once per rerun"
-    );
-  });
-});
-
-describe("a loop session reruns a run once", () => {
-  const at = (attempt: number) => () => ({ workflowName: "CI", attempt });
-
-  test("a run already rerun is refused in the loop", () => {
-    assert.match(String(check("gh run rerun 38188271467 --failed", at(2), repo, true)), /already rerun/);
-    assert.match(String(check("gh api -X POST repos/o/r/actions/runs/38188271467/rerun-failed-jobs", at(3), repo, true)), /already rerun/);
-    assert.match(String(check("gh run rerun --job 99710945601", at(2), repo, true)), /already rerun/);
-  });
-
-  test("the first rerun is allowed, and outside the loop any is", () => {
-    assert.equal(check("gh run rerun 38188271467 --failed", at(1), repo, true), null);
-    assert.equal(check("gh run rerun 38188271467 --failed", at(2), repo, false), null);
-  });
-
-  test("one rerun costs one lookup", () => {
-    let asked = 0;
-    check("gh run rerun 38188271467 --failed", () => (asked++, { workflowName: "CI", attempt: 1 }), repo, true);
-    assert.equal(asked, 1);
+  test("a command that reruns nothing is not a rerun", () => {
+    assert.equal(check("gh run view 33428373840 --json jobs", repo, true), null);
   });
 });
 
 describe("a loop session pushes only its own ticket's branch", () => {
-  const none = () => null;
-  const asTicket = (ticket: string | undefined, cmd: string) => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, none, repo, true));
+  const asTicket = (ticket: string | undefined, cmd: string) => withEnv({ LOOP_TICKET: ticket }, () => check(cmd, repo, true));
   const inLoop = (cmd: string) => asTicket("1529", cmd);
   const OWN_ONLY = /agent\/1529-<slug>/;
 
@@ -494,7 +386,7 @@ describe("a loop session pushes only its own ticket's branch", () => {
 
   test("an owner session is not bound by it", () => {
     for (const cmd of ["git push origin HEAD:agent/1438-x", "git push", "git push origin --delete side/x"]) {
-      assert.equal(withEnv({ LOOP_TICKET: "1529" }, () => check(cmd, none, repo, false)), null, cmd);
+      assert.equal(withEnv({ LOOP_TICKET: "1529" }, () => check(cmd, repo, false)), null, cmd);
     }
   });
 
@@ -506,7 +398,6 @@ describe("a loop session pushes only its own ticket's branch", () => {
 });
 
 describe("a loop session reads comments only through rule 25's filter", () => {
-  const none = () => null;
   for (const cmd of [
     "gh issue view 5 --comments",
     "gh pr view 5 -c",
@@ -518,8 +409,8 @@ describe("a loop session reads comments only through rule 25's filter", () => {
     "gh api -X GET repos/o/r/pulls/5/comments -f per_page=100",
     "gh api repos/o/r/issues/comments --paginate",
   ]) {
-    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, none, repo, true)), /--json title,body,comments --jq/));
-    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, false), null));
+    test(`refuses in the loop: ${cmd}`, () => assert.match(String(check(cmd, repo, true)), /--json title,body,comments --jq/));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
   }
   for (const cmd of [
     readIssue(5),
@@ -532,7 +423,7 @@ describe("a loop session reads comments only through rule 25's filter", () => {
     "gh api -X POST repos/o/r/pulls/5/reviews --input r.json",
     "gh api repos/o/r/issues/5 --jq .state",
   ]) {
-    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, none, repo, true), null));
+    test(`allows in the loop: ${cmd}`, () => assert.equal(check(cmd, repo, true), null));
   }
 });
 
@@ -558,18 +449,18 @@ describe("an MSYS drive path is the Windows path it names", () => {
 
 describe("loop sessions only", () => {
   for (const cmd of ["sed -i 's/a/b/' tools/loop/guard-bash.mjs", "perl -pi -e 's/a/b/' x.ts"]) {
-    test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, () => null, repo,true), null));
-    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, () => null, repo,false), null));
+    test(`refuses in the loop: ${cmd}`, () => assert.notEqual(check(cmd, repo, true), null));
+    test(`allows outside the loop: ${cmd}`, () => assert.equal(check(cmd, repo, false), null));
   }
   test("a worktree added anywhere is git's own business, in the loop as outside it", () => {
     for (const cmd of ["git worktree add -B agent/12-x .worktrees/agent-12 origin/agent/12-x", "git worktree add -b side/x ../murlan-side-1 origin/main", "git worktree add ../x"]) {
-      assert.equal(check(cmd, () => null, repo, true), null, cmd);
+      assert.equal(check(cmd, repo, true), null, cmd);
     }
   });
   test("gh run watch is refused in the loop and names the helper", () => {
-    assert.match(String(check("gh run watch 123 --exit-status", () => null, repo, true)), /await-run\.mjs/);
-    assert.equal(check("gh run watch 123", () => null, repo, false), null);
-    assert.equal(check("gh run view 123 --json status", () => null, repo, true), null);
+    assert.match(String(check("gh run watch 123 --exit-status", repo, true)), /await-run\.mjs/);
+    assert.equal(check("gh run watch 123", repo, false), null);
+    assert.equal(check("gh run view 123 --json status", repo, true), null);
   });
   test("a sleep loop polling a run, or gh pr checks --watch, is refused in the loop and nowhere else", () => {
     for (const cmd of [
@@ -589,8 +480,8 @@ describe("loop sessions only", () => {
       "for f in a{1,2}; do gh run view 1; sleep 30; done",
       "bash -c 'for i in {1..9}; do gh run view 1; sleep 30; done'",
     ]) {
-      assert.match(String(check(cmd, () => null, repo, true)), /await-run\.mjs/, cmd);
-      assert.equal(check(cmd, () => null, repo, false), null, cmd);
+      assert.match(String(check(cmd, repo, true)), /await-run\.mjs/, cmd);
+      assert.equal(check(cmd, repo, false), null, cmd);
     }
     for (const cmd of [
       "gh workflow run ios.yml --ref agent/1-x && sleep 8 && gh run list --branch agent/1-x --limit 5",
@@ -602,14 +493,14 @@ describe("loop sessions only", () => {
       "for i in 1 2; do sleep 1; done; gh run view 1",
       "1..2 | % { Start-Sleep 1 }; gh pr checks 12",
       "bash -c 'for f in a; do echo $f; done; sleep 1; gh run view 1'",
-    ]) assert.equal(check(cmd, () => null, repo, true), null, cmd);
+    ]) assert.equal(check(cmd, repo, true), null, cmd);
   });
   test("a timeout in front of a command does not hide it", () => {
-    assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", () => null, repo, true)), /await-run\.mjs/);
-    assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", () => null, repo, false), null);
-    assert.equal(check("timeout 60 gh run view 123", () => null, repo, true), null);
+    assert.match(String(check("timeout 1480 gh run watch 123 > /dev/null", repo, true)), /await-run\.mjs/);
+    assert.notEqual(check("timeout -k 5s --preserve-status 60 gh pr merge 12", repo, false), null);
+    assert.equal(check("timeout 60 gh run view 123", repo, true), null);
     for (const opts of ["--signal KILL", "--kill-after 5", "--signal=KILL --kill-after=5"]) {
-      assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, () => null, repo, false), null, opts);
+      assert.notEqual(check(`timeout ${opts} 60 gh pr merge 12`, repo, false), null, opts);
     }
   });
 });
@@ -619,7 +510,7 @@ describe("a redirect under git -C is judged by the path git sees", () => {
     const seen: string[][] = [];
     const spy = { ...repo, pathsClean: (p: string[]) => (seen.push(p), !p.includes("dirty.ts")) };
     const cmd = "git -C .worktrees/agent-5 show HEAD:dirty.ts > .worktrees/agent-5/dirty.ts";
-    assert.match(String(check(cmd, device, spy)), DISCARD);
+    assert.match(String(check(cmd, spy)), DISCARD);
     assert.deepEqual(seen, [["dirty.ts"]]);
   });
   test("a redirect after a cd is refused with the absolute-path way out", () => {
@@ -628,7 +519,6 @@ describe("a redirect under git -C is judged by the path git sees", () => {
 });
 
 describe("an implement session files no agent work", () => {
-  const none = () => null;
   // A worktree on a ticket branch stands in both: in the triage case it is a stale one.
   const stale = { ...repo, onTicket: () => true };
   const implementing = { implementing: () => true };
@@ -648,10 +538,10 @@ describe("an implement session files no agent work", () => {
     "gh api repos/o/r/issues --input new.json",
   ];
   for (const cmd of refused) {
-    test(`refuses in an implement session: ${cmd}`, () => assert.match(String(check(cmd, none, stale, true, implementing)), AGENT_WORK));
+    test(`refuses in an implement session: ${cmd}`, () => assert.match(String(check(cmd, stale, true, implementing)), AGENT_WORK));
     test(`allows in a triage or wayfinder session beside a stale worktree, or outside the loop: ${cmd}`, () => {
-      assert.equal(check(cmd, none, stale, true, triaging), null);
-      assert.equal(check(cmd, none, stale, false, implementing), null);
+      assert.equal(check(cmd, stale, true, triaging), null);
+      assert.equal(check(cmd, stale, false, implementing), null);
     });
   }
   for (const cmd of [
@@ -665,7 +555,7 @@ describe("an implement session files no agent work", () => {
     "gh api repos/o/r/issues/5/comments -f body=x",
     "gh api repos/o/r/issues --jq '.[].number'",
   ]) {
-    test(`allows in an implement session: ${cmd}`, () => assert.equal(check(cmd, none, stale, true, implementing), null));
+    test(`allows in an implement session: ${cmd}`, () => assert.equal(check(cmd, stale, true, implementing), null));
   }
 });
 
