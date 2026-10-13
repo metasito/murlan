@@ -352,7 +352,9 @@ function unbilled({ step, run, diagnosis }) {
 function capped(action, input) {
   const { asked, route, after, tally, limits } = input;
   const { kind } = action;
-  const carried = { disarm: action.disarm, ciRed: action.ciRed, pr: action.pr, head: action.head };
+  // `publish` survives the park: the branch goes up before the park's WIP commit, so a capped
+  // ticket loses none of its work.
+  const carried = { disarm: action.disarm, ciRed: action.ciRed, pr: action.pr, head: action.head, publish: action.publish };
   const park = (why, phase) => ({ kind: "park", n: action.n, phase, why, ...carried });
 
   if (asked && action.n != null && (kind === "handoff" || kind === "retry" || kind === "hold")) {
