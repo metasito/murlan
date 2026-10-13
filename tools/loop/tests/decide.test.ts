@@ -349,71 +349,72 @@ test("every row's name is its own", () => {
 
 /**
  * queueLoopMain's tests that check something other than the routing decision: the I/O around it,
- * the picker, the ledger's tally, the recap, or a helper tested where it lives.
+ * the picker, the ledger's tally, the recap, or a helper tested where it lives. Each names the test
+ * file that holds a test of that name, and what it checks instead.
  */
-const ELSEWHERE: Record<string, string> = {
-  "settle runs before the pass returns": "io",
-  "every teardown is told which ticket's claim it is releasing": "io",
-  "no terminal outcome leaves the worktree standing": "io",
-  "housekeeping is asked about the pinned ticket, and waited for": "io",
-  "a pinned ticket is what the picker is asked for": "picker",
-  "a park rings once and a landing does not": "io",
-  "a G route announces itself before it settles": "io",
-  "loopMoved answers a diff, not an error": "io",
-  "a snapshot that throws during an account error is logged, and the run still stops": "io",
-  "the sweep in housekeeping runs before the pick": "io",
-  "nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed": "picker",
-  "nextRoute: a pinned ticket with no worktree rebuilds at A": "picker",
-  "nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker": "picker",
-  "nextRoute: a LAND on the head outranks a handoff to review, and nothing else does": "picker",
-  "nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push": "picker",
-  "is a fix round once the supervisor held it at that head": "picker",
-  "is still G when the supervisor stopped mid-settle and recorded no red": "picker",
-  "refreshWorktree fetches the branch and fast-forwards onto it": "io",
-  "publishForReview pushes, then opens a draft only when no pull request is open": "io",
-  "a landed or parked ticket removes the worktree from the main checkout": "io",
-  "an unreadable CI read on a head not known pushed is not a no-spawn G": "picker",
-  "a handed phase wins over a derived fix; only a pushed G outranks it": "picker",
-  "a fix round's spawn carries the rounds already spent": "io",
-  "landing deletes the branch after the worktree, from the shared checkout": "io",
-  "a branch -d refuses is said, and the land still returns": "io",
-  "a worktree kept for its unwritten leftovers keeps its branch too": "io",
-  "a landed worktree with leftovers is saved as a binary patch, then force-removed": "io",
-  "a leftover patch that cannot be written keeps the worktree": "io",
-  "a clean landed worktree is removed without --force": "io",
-  "a dirtied shared checkout is named, not fatal": "io",
-  "nothing said and nothing derived is nothing": "helper: afterSession",
-  "the declaration alone is enough once the worktree is gone": "helper: afterSession",
-  "derive alone still answers, for a session that declared nothing": "helper: afterSession",
-  "the phase is the session's own, not the one derive computed": "helper: afterSession",
-  "the worktree's own readings are never taken from the declaration": "helper: afterSession",
-  "boot names the session the last supervisor died with": "io",
-  "the run file says why the run stopped, not only its total": "io",
-  "a restart's run file says restarting, not stopped": "io",
-  "a standing() that throws still releases the claim": "io",
-  "a park that itself throws is reported, not raised": "io",
-  "counts a wait still running as waiting, not working": "recap",
-  "books a standby as asleep, not working": "recap",
-  "says so when the picker read no open Launch tickets": "recap",
-  "names a size this run's busiest process left short of turn headroom": "recap",
-  "names a red nightly parity run, read once per pass": "recap",
-  "a supervisor that dies in the CI wait still counts the session, and the restarted G pass adds nothing": "tally",
-  "merged: the session is counted once, and the tally reads as before": "tally",
-  "red: the session is counted once, and the tally reads as before": "tally",
-  "owner: the session is counted once, and the tally reads as before": "tally",
-  "the recorded time carries the land, not just the session": "io",
-  "a retry resets handoffsThisRound and the handed phase": "tally",
-  "overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row": "io",
-  "a throw during a resumed run parks with standing().cwd": "io",
-  "a hold is not a handoff: the ticket's handoff count stays where it was": "tally",
-  "is recorded with the steps that failed": "repark",
-  "is applied again at the start of the next pass, once, and a restart does not repeat it": "repark",
-  "a landing a rerun won writes the flake on its row": "io",
-  "a rerun's green whose merge then failed still writes the flake, on the park row": "io",
-  "posted, the session that spawns reads its fix round": "io: the post before the refresh and the spawn",
-  "a ticket's hold says which ticket and why, not a pre-flight's words": "io: main's notice",
-  "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": "io",
-  "a red on an armed pull request is disarmed before any fix round is spawned": "io: poll's call order",
+const ELSEWHERE: Record<string, [file: string, why: string]> = {
+  "settle runs before the pass returns": ["queueLoopMain.test.ts", "io"],
+  "every teardown is told which ticket's claim it is releasing": ["queueLoopMain.test.ts", "io"],
+  "no terminal outcome leaves the worktree standing": ["queueLoopMain.test.ts", "io"],
+  "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
+  "a pinned ticket is what the picker is asked for": ["queueLoopMain.test.ts", "picker"],
+  "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
+  "a G route announces itself before it settles": ["queueLoopMain.test.ts", "io"],
+  "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
+  "a snapshot that throws during an account error is logged, and the run still stops": ["queueLoopMain.test.ts", "io"],
+  "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
+  "nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed": ["queueLoopMain.test.ts", "picker"],
+  "nextRoute: a pinned ticket with no worktree rebuilds at A": ["queueLoopMain.test.ts", "picker"],
+  "nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker": ["queueLoopMain.test.ts", "picker"],
+  "nextRoute: a LAND on the head outranks a handoff to review, and nothing else does": ["queueLoopMain.test.ts", "picker"],
+  "nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push": ["queueLoopMain.test.ts", "picker"],
+  "is a fix round once the supervisor held it at that head": ["queueLoopMain.test.ts", "picker"],
+  "is still G when the supervisor stopped mid-settle and recorded no red": ["queueLoopMain.test.ts", "picker"],
+  "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
+  "publishForReview pushes, then opens a draft only when no pull request is open": ["queueLoopMain.test.ts", "io"],
+  "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
+  "an unreadable CI read on a head not known pushed is not a no-spawn G": ["queueLoopMain.test.ts", "picker"],
+  "a handed phase wins over a derived fix; only a pushed G outranks it": ["queueLoopMain.test.ts", "picker"],
+  "a fix round's spawn carries the rounds already spent": ["queueLoopMain.test.ts", "io"],
+  "landing deletes the branch after the worktree, from the shared checkout": ["queueLoopMain.test.ts", "io"],
+  "a branch -d refuses is said, and the land still returns": ["queueLoopMain.test.ts", "io"],
+  "a worktree kept for its unwritten leftovers keeps its branch too": ["queueLoopMain.test.ts", "io"],
+  "a landed worktree with leftovers is saved as a binary patch, then force-removed": ["queueLoopMain.test.ts", "io"],
+  "a leftover patch that cannot be written keeps the worktree": ["queueLoopMain.test.ts", "io"],
+  "a clean landed worktree is removed without --force": ["queueLoopMain.test.ts", "io"],
+  "a dirtied shared checkout is named, not fatal": ["queueLoopMain.test.ts", "io"],
+  "nothing said and nothing derived is nothing": ["queueLoopMain.test.ts", "helper: afterSession"],
+  "the declaration alone is enough once the worktree is gone": ["queueLoopMain.test.ts", "helper: afterSession"],
+  "derive alone still answers, for a session that declared nothing": ["queueLoopMain.test.ts", "helper: afterSession"],
+  "the phase is the session's own, not the one derive computed": ["queueLoopMain.test.ts", "helper: afterSession"],
+  "the worktree's own readings are never taken from the declaration": ["queueLoopMain.test.ts", "helper: afterSession"],
+  "boot names the session the last supervisor died with": ["queueLoopMain.test.ts", "io"],
+  "the run file says why the run stopped, not only its total": ["queueLoopMain.test.ts", "io"],
+  "a restart's run file says restarting, not stopped": ["queueLoopMain.test.ts", "io"],
+  "a standing() that throws still releases the claim": ["queueLoopMain.test.ts", "io"],
+  "a park that itself throws is reported, not raised": ["queueLoopMain.test.ts", "io"],
+  "counts a wait still running as waiting, not working": ["queueLoopMain.test.ts", "recap"],
+  "books a standby as asleep, not working": ["queueLoopMain.test.ts", "recap"],
+  "says so when the picker read no open Launch tickets": ["queueLoopMain.test.ts", "recap"],
+  "names a size this run's busiest process left short of turn headroom": ["queueLoopMain.test.ts", "recap"],
+  "names a red nightly parity run, read once per pass": ["queueLoopMain.test.ts", "recap"],
+  "a supervisor that dies in the CI wait still counts the session, and the restarted G pass adds nothing": ["queueLoopMain.test.ts", "tally"],
+  "merged: the session is counted once, and the tally reads as before": ["queueLoopMain.test.ts", "tally"],
+  "red: the session is counted once, and the tally reads as before": ["queueLoopMain.test.ts", "tally"],
+  "owner: the session is counted once, and the tally reads as before": ["queueLoopMain.test.ts", "tally"],
+  "the recorded time carries the land, not just the session": ["queueLoopMain.test.ts", "io"],
+  "a retry resets handoffsThisRound and the handed phase": ["queueLoopMain.test.ts", "tally"],
+  "overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row": ["queueLoopMain.test.ts", "io"],
+  "a throw during a resumed run parks with standing().cwd": ["queueLoopMain.test.ts", "io"],
+  "a hold is not a handoff: the ticket's handoff count stays where it was": ["queueLoopMain.test.ts", "tally"],
+  "is recorded with the steps that failed": ["queueLoopMain.test.ts", "repark"],
+  "is applied again at the start of the next pass, once, and a restart does not repeat it": ["queueLoopMain.test.ts", "repark"],
+  "a landing a rerun won writes the flake on its row": ["queueLoopMain.test.ts", "io"],
+  "a rerun's green whose merge then failed still writes the flake, on the park row": ["queueLoopMain.test.ts", "io"],
+  "posted, the session that spawns reads its fix round": ["queueLoopMain.test.ts", "io: the post before the refresh and the spawn"],
+  "a ticket's hold says which ticket and why, not a pre-flight's words": ["queueLoopMain.test.ts", "io: main's notice"],
+  "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": ["queueLoopMain.test.ts", "io"],
+  "a red on an armed pull request is disarmed before any fix round is spawned": ["queueLoopMain.test.ts", "io: poll's call order"],
 };
 
 // The two parameterised tables in queueLoopMain, spelled out: a name the regex below cannot expand
@@ -423,17 +424,19 @@ const EXPANDED: Record<string, string[]> = {
   "`${name} is ${outcome}`": ["the 529 #1156 parked on is overloaded", "a 429 is overloaded", "an error naming no status is parked", "a non-zero exit with no result line is parked"],
 };
 
-test("every routing test in queueLoopMain has a row of the same name", () => {
-  const source = readFileSync(new URL("./queueLoopMain.test.ts", import.meta.url), "utf8");
-  const names = [...source.matchAll(/\btest\(\s*("(?:[^"\\]|\\.)*"|`[^`]*`)/g)].flatMap(([, quoted]) => {
+const testNames = (file: string) =>
+  [...readFileSync(new URL(`./${file}`, import.meta.url), "utf8").matchAll(/\btest\(\s*("(?:[^"\\]|\\.)*"|`[^`]*`)/g)].flatMap(([, quoted]) => {
     if (quoted.startsWith('"')) return [JSON.parse(quoted)];
     if (EXPANDED[quoted]) return EXPANDED[quoted];
     const plain = quoted.slice(1, -1).replaceAll("${WAIT.TRIES}", String(WAIT.TRIES));
     assert.doesNotMatch(plain, /\$\{/, `${quoted} is a template this guard cannot expand: add it to EXPANDED`);
     return [plain];
   });
+
+test("every routing test in queueLoopMain has a row of the same name", () => {
+  const names = testNames("queueLoopMain.test.ts");
   assert.ok(names.length >= 120, `read ${names.length} test names; the regex has stopped matching`);
-  for (const name of Object.keys(ELSEWHERE)) assert.ok(names.includes(name), `ELSEWHERE names a test that no longer exists: ${name}`);
+  for (const [name, [file]] of Object.entries(ELSEWHERE)) assert.ok(testNames(file).includes(name), `ELSEWHERE says ${file} has a test named "${name}", and it has none`);
   const rows = new Set(ROWS.map(([name]) => name));
   const missing = names.filter((n) => !(n in ELSEWHERE) && !rows.has(n));
   assert.deepEqual(missing, []);
