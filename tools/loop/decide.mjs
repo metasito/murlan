@@ -2,8 +2,6 @@ import { STALL_MS } from "./limits.mjs";
 
 const PARK = { remove: ["in-progress", "ready-for-agent"], add: ["ready-for-human"] };
 const RELEASE = { remove: ["in-progress"], add: [] };
-/** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
-export const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
