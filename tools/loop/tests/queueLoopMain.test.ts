@@ -39,6 +39,7 @@ const rowOf = (x: any) => ({
   head: x.head ?? null,
   handoff: x.handoff ?? null,
   park_failed: x.parkFailed ?? null,
+  flake: x.flake ?? null,
 });
 
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
@@ -185,6 +186,29 @@ describe("runOnce", () => {
     const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
     await runOnce(io({ settle: async () => ({ action: "already-merged", reason: "merged", flake }), record: (x: unknown) => rows.push(x) }));
     assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
+  });
+
+  test("the settle is handed the flake the ledger armed with, and writes an armed row when it arms", async () => {
+    const flake = { runId: 7, tests: ["t"], step: "Test" };
+    const ledger: any[] = [{ n: 42, outcome: "armed", cost: 0, head: "h1", flake }];
+    const rows: any[] = [];
+    let handed: any = null;
+    await runOnce(
+      io(
+        {
+          settle: async (p: any) => {
+            handed = p.flake;
+            p.noteArmed({ ...flake, head: "h2" });
+            return { action: "already-merged", reason: "merged" };
+          },
+          record: (x: any) => (rows.push(x), ledger.push(rowOf(x))),
+        },
+        ledger,
+      ),
+    );
+    assert.deepEqual(handed, { ...flake, head: "h1" });
+    const armed = rows.find((x) => x.outcome === "armed");
+    assert.deepEqual([armed?.flake, armed?.head, armed?.counts], [flake, "h2", false]);
   });
 
   test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {

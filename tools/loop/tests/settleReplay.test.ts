@@ -488,6 +488,32 @@ describe("a red is rerun once per head", () => {
       assert.equal(creates(asked).length, 0);
     });
 
+    describe("the flake outlives the process that armed it", () => {
+      test("it is handed to the ledger before the arm, naming the head", async () => {
+        const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
+        const noted: { flake: any; asked: number }[] = [];
+        await poll({ ...PENDING, noteArmed: (flake: unknown) => noted.push({ flake, asked: fake.asked.length }) } as never, () => {}, 0, DEADLINE, io(fake.gh));
+        assert.equal(noted.length, 1);
+        assert.deepEqual([noted[0].flake.runId, noted[0].flake.tests, noted[0].flake.head], [RED_RUN, [ID], SHA]);
+        assert.ok(!fake.asked.slice(0, noted[0].asked).some((a) => a.includes("--auto")), "noted before the arm");
+      });
+
+      test("a restart that finds it merged still files the issue and names the flake", async () => {
+        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
+        const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
+        const out = await poll({ ...PENDING, flake } as never, () => {}, 0, DEADLINE, io(gh));
+        assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
+        assert.equal(creates(asked).length, 1);
+      });
+
+      test("one ledgered for another head is not this merge's", async () => {
+        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
+        const out = await poll({ ...PENDING, flake: { runId: RED_RUN, tests: [ID], step: "Test", head: NEW } } as never, () => {}, 0, DEADLINE, io(gh));
+        assert.equal(out.flake, undefined);
+        assert.equal(creates(asked).length, 0);
+      });
+    });
+
     // Promotion swaps `ready-for-human` for `ci-flake`, so a listing by either label misses it.
     test("a test filed and since promoted is not filed again, whatever its labels", async () => {
       const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
