@@ -2102,14 +2102,19 @@ function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
 }
 
 /** A held red's CI-RED, posted by the supervisor from the run itself; whether the tracker carries it now. */
-function postHeldRed(ticket, pr, log) {
-  const run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts });
+export function postHeldRed(ticket, pr, log, io = {}) {
+  const {
+    run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts }),
+    stateOf = (n) => ts("./ciVerdict.ts").readLandingState(REPO, n),
+    write = writeFileSync,
+    mkdir = mkdirSync,
+    mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
+  } = io;
   try {
-    const { ci } = ts("./ciVerdict.ts").readLandingState(REPO, pr);
+    const { ci } = stateOf(pr);
     if (ci.pass || ci.waiting || ci.infrastructure || !ci.output || ci.logUnread) return false;
-    const mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args), REPO);
-    const lines = prepareRed(ticket, ci, { mkdir: mkdirSync, write: writeFileSync, mainFailures, log });
-    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, writeFileSync, log);
+    const lines = prepareRed(ticket, ci, { mkdir, write, mainFailures, log });
+    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, write, log);
   } catch (err) {
     log(`CI-RED: could not read #${pr}'s red — ${firstLine(err)}`);
     return false;
