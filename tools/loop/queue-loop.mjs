@@ -609,6 +609,7 @@ export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKE
 export function settleOutcome({ action }) {
   if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
   if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
+  if (action === "hold") return { countsAsFailure: false, recorded: "held", handBack: false };
   // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
   // claim nor its silence. Recording the row and tearing the worktree down without releasing
   // `in-progress` leaves an issue the picker skips for good.
@@ -2040,10 +2041,13 @@ export function onMainLine(failing, main) {
 /**
  * Posted once per red head, checked against the tracker rather than a local marker: the fix
  * session may run on another machine, or after a restart, and reads only the tracker.
+ *
+ * @returns {boolean} whether the tracker carries it now
  */
 function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write, log) {
   const sha = verdict.head;
-  if (!sha || !comments || ciRedPosted(comments, sha)) return;
+  if (!comments) return false;
+  if (!sha || ciRedPosted(comments, sha)) return true;
   const body = ciRedBody({
     sha,
     runUrl: `https://github.com/${REPO}/actions/runs/${verdict.runId}`,
@@ -2060,10 +2064,15 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
     const file = ciRedNotePath(ticket);
     write(file, body, "utf8");
     run("gh", ["issue", "comment", String(ticket), "--body-file", file], { timeout: CI_RED_TIMEOUT_MS });
+    return true;
   } catch (err) {
     log(`CI-RED: could not post — ${String(err.message).split("\n")[0]}`);
+    return false;
   }
 }
+
+/** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
+const CI_RED_TRIES = 3;
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
@@ -2212,13 +2221,16 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       try {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
-        const comments = readTicketComments(pending.ticket, run, log);
-        const failing = verdict.testIds ?? [];
-        const main = failing.length ? mainFailures() : null;
-        const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
-        postCiRedOnce(pending.ticket, verdict, lines, comments, run, write, log);
       } catch (err) {
         log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+      }
+      const failing = verdict.testIds ?? [];
+      const main = failing.length ? mainFailures() : null;
+      const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+      for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
+        // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
+        if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
+        await wait();
       }
       return { ...next, head, runId: verdict.runId ?? null };
     }
@@ -2636,6 +2648,8 @@ export async function runOnce(io, pinned = null, at = null) {
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
   if (cost.handBack) return handBack(settled.reason, "E");
+  // The branch, the pull request and the claim all stand; `derive` reads the red from CI on the next pick.
+  if (cost.recorded === "held") return { outcome: "hold", ticket: route.number, why: settled.reason };
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
@@ -3085,7 +3099,7 @@ export async function main({
     // Read only here, once the session has exited: a park is never a kill.
     if (pass.ticket != null && parkAsked(pass.ticket)) {
       fs.rmSync(PARK_FILE, { force: true });
-      if (["handoff", "retry", "refused", "overloaded"].includes(pass.outcome)) {
+      if (["handoff", "retry", "refused", "overloaded", "hold"].includes(pass.outcome)) {
         const own = worktreeOf(io, pass.ticket);
         parkAndRecord(io, pass.ticket, {
           ...own,

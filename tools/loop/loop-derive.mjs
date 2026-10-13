@@ -430,9 +430,31 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
+const RED_GATE = new Set(["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"]);
+const RUN_OF = /\/actions\/runs\/(\d+)\//;
+/** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
+const lastMoved = (e) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
+
+/**
+ * Whether the head's latest `CI gate` is red past attempt 1, for a red no `CI-RED` names: the
+ * supervisor reruns a first red itself, and holds one whose CI-RED it could not post.
+ */
+function gateRedRerun(rollup, cwd, exec, until, failed) {
+  const gate = (rollup ?? []).filter((e) => e.name === "CI gate").reduce((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
+  const runId = RUN_OF.exec(gate?.detailsUrl ?? "")?.[1];
+  if (gate?.status !== "COMPLETED" || !RED_GATE.has(gate.conclusion) || !runId) return false;
+  try {
+    const args = ["run", "view", runId, "--repo", REPO, "--json", "attempt"];
+    return JSON.parse(exec(args, cwd, Math.max(1, until - Date.now()))).attempt > 1;
+  } catch {
+    failed.push("gh");
+    return false;
+  }
+}
+
 /**
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
- * that head: it reads the gate, and a session needs only to know a fix round is owed.
+ * that head, or failing that the gate itself once the supervisor's rerun of it is spent.
  */
 function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;
@@ -440,14 +462,19 @@ function readCi(cwd, branch, head, comments, exec) {
   let open;
   try {
     [open] = JSON.parse(
-      exec(["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid"], cwd, CI_BUDGET_MS),
+      exec(
+        ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid,statusCheckRollup"],
+        cwd,
+        CI_BUDGET_MS,
+      ),
     );
   } catch {
     return { pushed: false, pr: null, sha: null, state: "unreadable", step: null };
   }
   if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
   const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
-  const step = ciRedStep(comments, open.headRefOid);
+  const posted = ciRedStep(comments, open.headRefOid);
+  const step = posted !== undefined || !gateRedRerun(open.statusCheckRollup, cwd, exec, until, failed) ? posted : null;
   const state = failed.length ? "unreadable" : step === undefined ? "settling" : "red";
   return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }

@@ -600,7 +600,7 @@ describe("poll posts CI-RED once per red head", () => {
       return gh(args, file);
     };
     await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
-    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["run rerun", "issue view", "run list", "issue comment"]);
+    assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["run rerun", "run list", "issue view", "issue comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
 });
