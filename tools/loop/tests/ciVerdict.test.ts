@@ -254,13 +254,14 @@ describe("the CI gate job", () => {
 
   test("red alone hands the fix round the gate's own log, which names the job it saw fail", () => {
     const gateLog = "CI gate\tEvery job passed or was skipped by scope\t2026-10-12T01:02:03.0000000Z Native tests 2/2: cancelled";
+    const rollup = [{ name: "CI gate", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://github.com/o/r/actions/runs/5/job/2" }];
     const gh = (args: string[]) => {
-      if (args[0] === "pr") return JSON.stringify({ headRefOid: "h" });
-      if (args[1] === "list") return JSON.stringify([{ databaseId: 5, status: "completed", conclusion: "failure", headSha: "h" }]);
+      if (args[0] === "pr") return JSON.stringify({ headRefOid: "h", state: "OPEN", statusCheckRollup: rollup });
+      if (args[args.indexOf("--json") + 1]?.startsWith("databaseId")) return JSON.stringify({ databaseId: 5, status: "completed", conclusion: "failure", headSha: "h" });
       if (args.includes("--log-failed")) return gateLog;
       return JSON.stringify([{ name: "Lint", conclusion: "success", status: "completed", steps: 5, id: 1 }, { ...gate, status: "completed", id: 2 }]);
     };
-    const v = readVerdict("o/r", "agent/1-x", 1, Date.now() + 60_000, gh);
+    const v = readLandingState("o/r", 1, gh, Date.now() + 60_000).ci;
     assert.equal(v.pass, false);
     assert.notEqual(v.infrastructure, true);
     assert.equal(v.failedStep, "CI gate");
