@@ -1606,6 +1606,45 @@ describe("the run recap", () => {
 
   // poll parks a red whose log stays unreadable after its bound; a held red whose post keeps failing
   // is the same ticket's problem, and stopping the whole night on it is not.
+  // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
+  // reading the value it pins moves with it.
+  const TICKET_HOLDS = 10;
+  const heldNight = async (stopAfter: number, preflights = 0) => {
+    const parked: number[] = [];
+    let passes = 0;
+    let checks = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: () => {},
+      stop: () => {},
+      close: () => {},
+      board: () => {},
+      wait: () => ({ woken: Promise.resolve(), say: null }),
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ >= stopAfter,
+      housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
+      pick: () => route,
+      postRed: () => false,
+      park: (n: number) => parked.push(n),
+    };
+    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    return parked;
+  };
+
+  test("pre-flight holds spend nothing of a ticket's hold bound", async () => {
+    assert.deepEqual(await heldNight(3 + 1, 3), []);
+  });
+
+  test("a ticket parks at its own bound of holds, not before", async () => {
+    assert.deepEqual(await heldNight(TICKET_HOLDS), []);
+    assert.deepEqual(await heldNight(TICKET_HOLDS + 1), [42]);
+  });
+
   test("a ticket held past its bound is parked for the owner, and the loop carries on", async () => {
     const parked: { n: number; why: string }[] = [];
     const notes: string[] = [];
@@ -1623,7 +1662,7 @@ describe("the run recap", () => {
     const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
     const spy = {
       ...(io() as any),
-      stopFile: () => passes++ > 6,
+      stopFile: () => passes++ > TICKET_HOLDS + 1,
       pick: () => route,
       postRed: () => false,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
