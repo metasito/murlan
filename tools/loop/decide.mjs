@@ -370,7 +370,8 @@ function tallied(action, { loop, limits, step, now }) {
   const { failures, holds, waits, overloads, pinned } = loop;
   const { WAIT: wait, BREAKER } = limits;
   const breaker = (f) => (f >= BREAKER ? `${f} tickets in a row did not land` : null);
-  const stop = (why, next) => ({ kind: "stop", why, halt: why, loop: next });
+  // The hold's own row is still written: a refused or an API-failed session spent real money.
+  const stop = (why, next) => ({ kind: "stop", why, halt: why, loop: next, instead: action });
   switch (action.kind) {
     case "landed":
     case "closed":
