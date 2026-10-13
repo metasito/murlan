@@ -2105,7 +2105,8 @@ function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
 export function postHeldRed(ticket, pr, log, io = {}) {
   const {
     run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts }),
-    stateOf = (n) => ts("./ciVerdict.ts").readLandingState(REPO, n),
+    // The held path's own bound, not the settle's: it runs before a spawn, on every pass that holds.
+    stateOf = (n) => ts("./ciVerdict.ts").readLandingState(REPO, n, undefined, Date.now() + CI_RED_TIMEOUT_MS),
     write = writeFileSync,
     mkdir = mkdirSync,
     mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
@@ -3238,6 +3239,20 @@ export async function main({
     // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
       holds += 1;
+      // A ticket's hold is that ticket's, bounded as `poll` bounds an unreadable red: parked for the owner.
+      if (pass.ticket != null && holds > SETTLE_ROUNDS.retry) {
+        parkAndRecord(io, pass.ticket, {
+          ...worktreeOf(io, pass.ticket),
+          phase: "C",
+          why: `${pass.why}, ${holds} times running`,
+          log: streamLog(pass.ticket),
+        });
+        holds = 0;
+        pinned = null;
+        failures += 1;
+        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+        continue;
+      }
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
       const whose = pass.ticket != null ? `#${pass.ticket} held: ` : "";
       screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
