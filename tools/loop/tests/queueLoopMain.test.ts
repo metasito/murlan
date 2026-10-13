@@ -2007,7 +2007,7 @@ describe("a park that never reached the tracker", () => {
   });
 });
 
-describe("a stop no rule names parks; a red no test names was rerun before it came back", () => {
+describe("a stop no rule names parks; a red was rerun before it came back", () => {
   const RUN = 35661862241;
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
   const redAt1100 = async () => ({

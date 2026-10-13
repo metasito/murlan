@@ -2078,7 +2078,7 @@ function streamFacts(ticket) {
 
 /**
  * Settles a pushed pull request: waits on its `CI gate`, arms GitHub's auto-merge on a green head
- * that review cleared, reruns a red no test names once, and hands any other red back.
+ * that review cleared, and reruns a red once before handing it back.
  *
  * **Armed is a state no session may push into.** GitHub merges whatever head carries the arm once
  * the gate passes, so every exit but the merge disarms first, and a red is disarmed before its
