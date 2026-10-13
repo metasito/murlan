@@ -261,6 +261,8 @@ const STEPS = {
     // whose check never ran.
     const status = apiFailure(ran);
     if (status) return { kind: "hold", wait: "api", n, why: status === "unreachable" ? "the API could not be reached" : `the API answered ${status}` };
+    // `blocked` is advisory and read after the PR lookup: a session refused mid-run that had
+    // already pushed has done its half, and settles.
     if (pushed === undefined) return ask("pushed");
     if (!pushed && ran.blocked) return { kind: "hold", wait: "usage", n, why: "the usage window is spent", until: ran.blockedUntil ?? 0 };
 
@@ -373,7 +375,8 @@ function tallied(action, { loop, limits, step, now }) {
   const breaker = (f) => (f >= BREAKER ? `${f} tickets in a row did not land` : null);
   // The hold's own row is still written: a refused or an API-failed session spent real money.
   const stop = (why, next) => ({ kind: "stop", why, halt: why, loop: next, instead: action });
-  // Every pass but a hold ends a run of holds.
+  // Every pass but a hold ends a run of holds. `waits` is not reset here: only a finished ticket
+  // clears it, or refusals interleaved with parks would never reach their ceiling.
   const unheld = { ...loop, holds: 0, heldTicket: null };
   switch (action.kind) {
     case "landed":
