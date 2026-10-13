@@ -519,6 +519,21 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     assert.match(runView[runView.indexOf("--json") + 1], /\battempt\b/);
   });
 
+  // A workflow_dispatch run of ci.yml on the same head reports a second `CI gate` beside the first.
+  test("with two CI gate entries on one head, the later one is the verdict, in whichever order they are listed", () => {
+    const green = fixture("green");
+    const gateOf = (f: Fixture) => f.view.statusCheckRollup.find((e) => e.name === "CI gate")!;
+    const older = { ...gateOf(fixture("red")), startedAt: "2026-10-12T18:00:00Z", completedAt: "2026-10-12T18:20:00Z" };
+    const newer = { ...gateOf(green), startedAt: "2026-10-12T19:00:00Z", completedAt: "2026-10-12T19:20:00Z" };
+    const others = green.view.statusCheckRollup.filter((e) => e.name !== "CI gate");
+    for (const rollup of [[older, newer], [newer, older]]) {
+      const { state } = read(green, { statusCheckRollup: [...others, ...rollup] });
+      assert.equal(state.ci.pass, true, JSON.stringify(rollup.map((e) => e.conclusion)));
+    }
+    const running = { ...newer, status: "IN_PROGRESS", conclusion: "", completedAt: "0001-01-01T00:00:00Z" };
+    assert.equal(read(green, { statusCheckRollup: [...others, older, running] }).state.ci.waiting, true);
+  });
+
   test("autoMergeRequest set is armed", () => {
     const { state } = read(fixture("red"), { autoMergeRequest: { mergeMethod: "MERGE", enabledAt: "2026-10-12T19:05:00Z" } });
     assert.equal(state.pr.armed, true);
