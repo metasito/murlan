@@ -261,9 +261,6 @@ export const USD_BY_SIZE = {
 };
 export const USD_DEFAULT = 40;
 
-/** @param {number} spent @param {string|null} size */
-export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? USD_DEFAULT);
-
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 
@@ -474,7 +471,7 @@ export const CI_ROUNDS = 3;
  * Processes one ticket may be spawned as. A+B+C is one, each review round is one and the last also
  * lands — five for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
  *
- * A ceiling, not a budget: the thing that actually stops a runaway ticket is `overSpend`.
+ * A ceiling, not a budget: the thing that actually stops a runaway ticket is `USD_BY_SIZE`.
  */
 export const MAX_HANDOFFS = 8;
 

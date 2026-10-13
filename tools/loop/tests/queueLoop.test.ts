@@ -34,9 +34,7 @@ import {
   WAIT,
   settle,
   runOnce,
-  overSpend,
   USD_BY_SIZE,
-  USD_DEFAULT,
   loopSha,
   CHECK_BASH_TIMEOUT_MS,
   BASH_DEFAULT_TIMEOUT_MS,
@@ -1798,12 +1796,6 @@ describe("a phase handoff", () => {
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);
-  });
-
-  test("a ticket's ceiling is its size's, and an unlabelled one gets the default", () => {
-    assert.equal(overSpend(5, "size:S"), false);
-    assert.equal(overSpend(USD_BY_SIZE["size:S"], "size:S"), true);
-    assert.equal(overSpend(USD_DEFAULT, null), true);
   });
 
   test("every size's ceiling is above the fleet median it is meant to bound", () => {
