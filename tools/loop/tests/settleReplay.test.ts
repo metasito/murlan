@@ -490,6 +490,26 @@ describe("a red is rerun once per head", () => {
       assert.equal(creates(fake.asked).length, 0);
     });
 
+    // More than three reds one rerun cleared reads as a starved runner, not as that many flakes.
+    describe("a rerun that clears more than three tests", () => {
+      const P = "Typecheck and tests\tTest\t2026-10-12T19:07:30Z ";
+      const many = ["a", "b", "c", "d"].flatMap((x) => [`${P}test at tools/loop/tests/${x}.test.ts:9:5`, `${P}✖ breaks (2.1ms)`]).join("\n");
+      const TITLE = `CI flake: 4 tests in run ${RED_RUN}`;
+
+      test("files one issue for the run, and one gh listing before it", async () => {
+        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many });
+        await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+        assert.deepEqual(creates(asked).map((c) => c[c.indexOf("--title") + 1]), [TITLE]);
+        assert.equal(asked.filter((a) => a[0] === "issue" && a[1] === "list").length, 1);
+      });
+
+      test("and dedupes that issue by its title the same way", async () => {
+        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many, open: [TITLE] });
+        await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+        assert.equal(creates(asked).length, 0);
+      });
+    });
+
     test("a red handed back after its rerun is no flake", async () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
       const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
