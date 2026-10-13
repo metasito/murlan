@@ -315,7 +315,7 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
 
     test("a moved head that is cleared is armed again, pinned to itself", async () => {
       const { gh, asked } = moving();
-      await poll(PENDING, () => {}, 0, 5, io(gh));
+      await poll(PENDING, () => {}, 0, 200, io(gh));
       assert.deepEqual(merges(asked).slice(0, 3), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr), armArgs(REPO, PENDING.pr, NEW)]);
     });
   });

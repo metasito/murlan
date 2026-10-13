@@ -2115,6 +2115,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   let woke = false;
   let head = null;
   let armed = false;
+  let armedAt = null;
   let reran = null;
   // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
   const wait = async () => {
@@ -2159,6 +2160,13 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
       if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
+      // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
+      // no head but the one cleared. An arm this process did not make is treated the same way.
+      if (armed && armedAt !== head) {
+        const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
+        if (held) return held;
+        pr = { ...pr, armed: false };
+      }
       next = landing(pr, verdict);
       woke = false;
     } catch (err) {
@@ -2275,6 +2283,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       try {
         gh(argv);
         armed = true;
+        armedAt = head;
         log(`auto-merge armed at ${at}`);
       } catch (err) {
         // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
