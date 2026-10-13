@@ -447,7 +447,6 @@ export function syncCheckout(
  * ceiling, which `agent:check` needs and a stall must outlast.
  */
 export { STALL_MS, CHECK_BASH_TIMEOUT_MS };
-export { afterRefusal, afterSession, apiFailure, exhausted, handoffOf, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "./decide.mjs";
 
 /**
  * Every other call's: a command waiting on a stdin nothing will write is killed at this, not at the

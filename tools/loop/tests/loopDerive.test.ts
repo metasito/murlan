@@ -23,7 +23,8 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody, park, reasonFor, snapshotWip } from "../queue-loop.mjs";
+import { ciRedBody, park, snapshotWip } from "../queue-loop.mjs";
+import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
 const callersPhase = process.env.LOOP_PHASE;

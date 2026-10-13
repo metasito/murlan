@@ -11,7 +11,6 @@ import {
   parkAsked,
   poll,
   runOnce,
-  afterSession,
   main,
   nextRoute,
   park,
@@ -23,8 +22,8 @@ import {
   RESTART,
   loopMoved,
   USD_BY_SIZE,
-  WAIT,
 } from "../queue-loop.mjs";
+import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";

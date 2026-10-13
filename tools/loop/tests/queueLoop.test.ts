@@ -26,12 +26,7 @@ import {
   takeStopFile,
   watchBuild,
   UNCOMMITTED_SHARE,
-  outcomeOf,
-  reasonFor,
-  waitFor,
-  afterRefusal,
   holdFor,
-  WAIT,
   settle,
   runOnce,
   USD_BY_SIZE,
@@ -39,12 +34,10 @@ import {
   CHECK_BASH_TIMEOUT_MS,
   BASH_DEFAULT_TIMEOUT_MS,
   STALL_MS,
-  apiFailure,
   ticketFacts,
-  exhausted,
-  resumePhase,
   contextFor,
 } from "../queue-loop.mjs";
+import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
 const stubIo = () => ({
