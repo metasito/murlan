@@ -159,7 +159,7 @@ describe("runOnce", () => {
     );
   });
 
-  test("a red whose CI-RED could not be posted is held: no park, no retry row, the worktree kept", async () => {
+  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head", async () => {
     const parked: number[] = [];
     const rows: any[] = [];
     const torn: unknown[] = [];
@@ -176,7 +176,15 @@ describe("runOnce", () => {
     assert.match(String(r.why), /could not be posted/);
     assert.deepEqual(parked, []);
     assert.deepEqual(torn, []);
-    assert.deepEqual(rows.map((x) => x.outcome), ["pushed"]);
+    // The round's row, so its settle time is billed and the fix round after it is not "while the loop was down".
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["retry", "abc"]]);
+  });
+
+  test("a landing a rerun won writes the flake on its row", async () => {
+    const rows: any[] = [];
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    await runOnce(io({ settle: async () => ({ action: "already-merged", reason: "merged", flake }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
   });
 
   test("a session that pushed nothing parks the ticket", async () => {
@@ -1495,6 +1503,32 @@ describe("the run recap", () => {
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
 
+  test("a ticket's hold says which ticket and why, not a pre-flight's words", async () => {
+    const notes: string[] = [];
+    const waits: unknown[][] = [];
+    let passes = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: (_k: string, m: string) => notes.push(m),
+      stop: () => {},
+      close: () => {},
+      board: () => {},
+      wait: (...a: unknown[]) => (waits.push(a), { woken: Promise.resolve(), say: null }),
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ > 0,
+      settle: async () => ({ action: "hold", reason: "CI-RED for abc1234 could not be posted", head: "abc" }),
+    };
+    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    const said = [...notes, ...waits.flat().map(String)].join("\n");
+    assert.match(said, /#42/);
+    assert.match(said, /could not be posted/);
+    assert.doesNotMatch(said, /pre-flight/);
+  });
+
   // Only `Date` is mocked: main's own tick stays real, as it does across a standby.
   test("books a standby as asleep, not working", async (t) => {
     t.mock.timers.enable({ apis: ["Date"] });
@@ -2101,5 +2135,20 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
       ledger: () => rows,
     } as never);
     assert.equal(route.phase, "G");
+  });
+
+  describe("nextRoute: a red no CI-RED names", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "unposted", sha: "abc" } };
+    const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
+
+    test("is a fix round once the supervisor held it at that head", () => {
+      const r = route([{ n: 42, outcome: "retry", head: "abc", cost: 0 }]);
+      assert.deepEqual([r.phase, r.fix], ["C", true]);
+    });
+
+    test("is still G when the supervisor stopped mid-settle and recorded no red", () => {
+      assert.deepEqual([route([]).phase, route([{ n: 42, outcome: "retry", head: "old", cost: 0 }]).phase], ["G", "G"]);
+    });
   });
 });

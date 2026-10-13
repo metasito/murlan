@@ -46,8 +46,11 @@ function rollupFake({
   refuse = {},
   issueComments = [],
   deleted = false,
+  open = [],
 }: {
   deleted?: boolean;
+  /** The titles of the open issues `issue list` answers with; `issue create` adds to it. */
+  open?: string[];
   views: Fixture[];
   log?: string | null;
   attempt?: number;
@@ -117,6 +120,11 @@ function rollupFake({
       return JSON.stringify({ comments: issueComments.map((c) => ({ authorAssociation: "OWNER", ...c })) });
     }
     if (cmd === "issue" && sub === "comment") return "";
+    if (cmd === "issue" && sub === "list") return JSON.stringify(open.map((title, i) => ({ number: 2000 + i, title })));
+    if (cmd === "issue" && sub === "create") {
+      open.push(args[args.indexOf("--title") + 1]);
+      return `https://github.com/${REPO}/issues/${1999 + open.length}\n`;
+    }
     if (cmd === "api" && args.includes("DELETE")) {
       if (branchGone) throw new Error("gh: Reference does not exist (HTTP 422)");
       branchGone = true;
@@ -224,9 +232,17 @@ describe("settle, replayed against recorded rollups", () => {
       const fake = rollupFake({ views: [at(GREEN, { state: "MERGED" })], deleted });
       const said: string[] = [];
       const gits: string[][] = [];
-      const run = (file: string, args: string[]) => (file === "git" ? (gits.push(args), lsRemote) : fake.gh(args, file));
-      return { ...fake, said, gits, io: { ...io(fake.gh), run }, log: (m: string) => said.push(m) };
+      const gitOpts: ({ timeout?: number } | undefined)[] = [];
+      const run = (file: string, args: string[], opts?: { timeout?: number }) =>
+        file === "git" ? (gits.push(args), gitOpts.push(opts), lsRemote) : fake.gh(args, file);
+      return { ...fake, said, gits, gitOpts, io: { ...io(fake.gh), run }, log: (m: string) => said.push(m) };
     };
+
+    test("the look on origin is bounded, as every other call the supervisor makes is", async () => {
+      const { gitOpts, io: withGit, log } = merged(false);
+      await poll(PENDING, log, 0, DEADLINE, withGit);
+      assert.ok((gitOpts[0]?.timeout ?? 0) > 0, JSON.stringify(gitOpts));
+    });
     const deletes = (asked: string[][]) => asked.filter((a) => a[0] === "api" && a.includes("DELETE"));
 
     test("the branch is deleted on origin, then looked for there", async () => {
@@ -396,6 +412,17 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
     });
   });
 
+  test("a disarm refused because the pull request merged reads as merged", async () => {
+    const fake = rollupFake({ views: [RED], armed: true, refuse: { disarm: "GraphQL: Pull request is already merged" } });
+    const gh = (args: string[], file = "gh") => {
+      if (args.includes("--disable-auto")) fake.pr.merged = true;
+      return fake.gh(args, file);
+    };
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(out.action, "already-merged");
+    assert.ok(!fake.asked.some(isComment), "a merged pull request has no fix round");
+  });
+
   test("a disarm GitHub refuses is the owner's, and says the pull request may still merge", async () => {
     const { gh, asked } = rollupFake({ views: [RED], armed: true, refuse: { disarm: "HTTP 502" } });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
@@ -420,6 +447,37 @@ describe("a red is rerun once per head", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(reruns(asked).length, 1);
     assert.equal(out.action, "already-merged");
+  });
+
+  describe("a red a rerun turned green is a flake, said everywhere it lands", () => {
+    const ID = "tools/loop/tests/x.test.ts › breaks";
+    const creates = (asked: string[][]) => asked.filter((a) => a[0] === "issue" && a[1] === "create");
+
+    test("the settle names the run and its tests, the merge says so, and one issue is filed per test", async () => {
+      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(out.action, "already-merged");
+      assert.deepEqual(out.flake, { runId: RED_RUN, tests: [ID] });
+      const arm = merges(asked).find((a) => a.includes("--auto"))!;
+      assert.match(arm[arm.indexOf("--body") + 1] ?? "", new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
+      const [create, ...more] = creates(asked);
+      assert.equal(more.length, 0);
+      assert.equal(create[create.indexOf("--title") + 1], `CI flake: ${ID}`);
+      assert.ok(indexOf(asked, (a) => a[1] === "create") < indexOf(asked, (a) => a.includes("--auto")), "filed before the merge it is named in");
+    });
+
+    test("a test already filed open is not filed again", async () => {
+      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
+      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(creates(asked).length, 0);
+    });
+
+    test("a red handed back after its rerun is no flake", async () => {
+      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(out.flake, undefined);
+      assert.equal(creates(asked).length, 0);
+    });
   });
 
   test("a red already on its second attempt is not rerun again, whoever reran it", async () => {
@@ -679,6 +737,21 @@ describe("ciRedBody", () => {
     assert.equal(lines[0], `CI-RED ${SHA}`);
     assert.match(lines[1], /^run: .+ · step: Native tests$/);
     assert.match(body, /^on main: none$/m);
+  });
+
+  // queue.md lets a fix round call a failure its own only where a rerun failed it again.
+  test("says whether the red survived a rerun, from the run's attempt", () => {
+    const body = (attempt?: number) => ciRedBody({ sha: SHA, runUrl, failedStep: "Test", testIds: ["a.ts › b"], runId: 7, attempt });
+    assert.match(body(2), /^rerun: survived one$/m);
+    for (const attempt of [1, undefined]) assert.match(body(attempt), /^rerun: none$/m);
+  });
+
+  test("a hand-back's CI-RED carries the attempt it was read from", async () => {
+    const written: string[][] = [];
+    const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    const post = asked.find(isComment)!;
+    assert.match(String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]), /^rerun: survived one$/m);
   });
 
   test("no failing file is dropped, however long the others are", () => {

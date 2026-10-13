@@ -731,33 +731,50 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       startedAt,
       completedAt: status === "COMPLETED" ? startedAt : "0001-01-01T00:00:00Z",
     });
-    const derived = (rollup: unknown[], attempt: number) => {
+    const STEPS = [{ name: "Test", conclusion: "failure" }];
+    const RAN = { status: "completed", conclusion: "failure", jobs: [{ name: "Typecheck and tests", conclusion: "failure", steps: STEPS }] };
+    const derived = (rollup: unknown[], attempt: number, run: Record<string, unknown> = RAN) => {
       const asked: string[][] = [];
       const exec = (a: string[]) => {
         asked.push(a);
         if (a[0] === "issue") return JSON.stringify({ comments: land() });
-        if (a[0] === "run") return JSON.stringify({ attempt });
+        if (a[0] === "run") return JSON.stringify({ attempt, ...run });
         return JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: rollup }]);
       };
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
     };
+    const RED_GATE = [gate("FAILURE", "2026-10-13T10:00:00Z")];
 
-    test("a red gate already rerun → C with fix, the CI-RED it lacks notwithstanding", () => {
-      const { s, asked } = derived([gate("FAILURE", "2026-10-13T10:00:00Z")], 2);
-      assert.equal(s.ci.state, "red");
-      assert.equal(s.fix, true);
-      assert.equal(s.phase, "C");
-      assert.deepEqual(asked.find((a) => a[0] === "run")?.slice(0, 3), ["run", "view", "10"]);
-    });
-
-    test("a first red is the supervisor's to rerun → G", () => {
-      const { s } = derived([gate("FAILURE", "2026-10-13T10:00:00Z")], 1);
-      assert.equal(s.ci.state, "settling");
+    // Whether that red is a held one is the ledger's to say: a supervisor restarted mid-settle,
+    // before its CI-RED went out, still owes G.
+    test("a red gate already rerun is reported, and derive still says G", () => {
+      const { s, asked } = derived(RED_GATE, 2);
+      assert.equal(s.ci.state, "unposted");
+      assert.equal(s.fix, false);
       assert.equal(s.phase, "G");
+      const view = asked.find((a) => a[0] === "run")!;
+      assert.deepEqual(view.slice(0, 3), ["run", "view", "10"]);
+      assert.equal(view[view.indexOf("--json") + 1], "attempt,status,conclusion,jobs");
     });
 
-    test("the latest gate is the verdict: an older red under a newer running one → G, and no run is read", () => {
-      const { s, asked } = derived([gate("FAILURE", "2026-10-13T10:00:00Z"), gate("", "2026-10-13T11:00:00Z", "IN_PROGRESS")], 2);
+    test("a first red is the supervisor's to rerun", () => {
+      assert.equal(derived(RED_GATE, 1).s.ci.state, "settling");
+    });
+
+    test("a run still going, or a failed job that ran no steps, is no code red", () => {
+      assert.equal(derived(RED_GATE, 2, { status: "in_progress", conclusion: null }).s.ci.state, "settling");
+      const stepless = { ...RAN, jobs: [...RAN.jobs, { name: "Native tests", conclusion: "failure", steps: [] }] };
+      assert.equal(derived(RED_GATE, 2, stepless).s.ci.state, "settling");
+    });
+
+    test("only FAILURE is a code red: a timed-out or never-started gate is not", () => {
+      for (const c of ["TIMED_OUT", "STARTUP_FAILURE"]) {
+        assert.equal(derived([gate(c, "2026-10-13T10:00:00Z")], 2).s.ci.state, "settling", c);
+      }
+    });
+
+    test("the latest gate is the verdict: an older red under a newer running one, and no run is read", () => {
+      const { s, asked } = derived([...RED_GATE, gate("", "2026-10-13T11:00:00Z", "IN_PROGRESS")], 2);
       assert.equal(s.ci.state, "settling");
       assert.equal(asked.filter((a) => a[0] === "run").length, 0);
     });

@@ -17,6 +17,7 @@ import {
   type MainRun,
 } from "../mainHealth.ts";
 import type { JobRow } from "../ciVerdict.ts";
+import { UNREAD_STEP } from "../../ci/budget-gate.mjs";
 
 const RED: MainRun = {
   databaseId: 34647545165,
@@ -114,6 +115,18 @@ describe("the DoD path, off a fixture gh payload", () => {
     const gh = (args: string[]) => (args[0] === "run" && args[1] === "list" ? JSON.stringify(runs) : hub.gh(args));
     checkMain({ repo: "metasito/murlan", gh });
     assert.equal(hub.created().length, 2, "a new red run is news, whatever was filed before it");
+  });
+
+  test("a budget gate that could not read its lists is infrastructure on main too, and files nothing", () => {
+    const hub = fakeGh([RED]);
+    const steps = [
+      { name: "Set up job", conclusion: "success" },
+      { name: UNREAD_STEP, conclusion: "failure" },
+    ];
+    const gh = (args: string[]) =>
+      args[0] === "run" && args[1] === "view" ? JSON.stringify({ jobs: [{ name: "Timing budget", conclusion: "failure", steps }] }) : hub.gh(args);
+    assert.equal(checkMain({ repo: "metasito/murlan", gh }).state, "unknown");
+    assert.equal(hub.created().length, 0);
   });
 
   test("an unreachable gh is an unknown, never a throw", () => {

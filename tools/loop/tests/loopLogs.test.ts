@@ -165,6 +165,12 @@ describe("sessionRow", () => {
     assert.equal(r.reruns, null);
   });
 
+  test("carries the run and tests a rerun turned green, null when none did", () => {
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    assert.deepEqual(sessionRow(session({ flake })).flake, flake);
+    assert.equal(r.flake, null);
+  });
+
   test("carries the park steps the tracker never received", () => {
     assert.deepEqual(sessionRow(session({ parkFailed: ["label"] })).park_failed, ["label"]);
     assert.equal(r.park_failed, null);
