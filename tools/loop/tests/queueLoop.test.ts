@@ -13,7 +13,6 @@ import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "
 import {
   parseRoute,
   pushedPr,
-  shouldStop,
   queueLoopArgs,
   liveRoute,
   syncCheckout,
@@ -23,35 +22,21 @@ import {
   ticker,
   park,
   repark,
-  shouldHalt,
-  BREAKER,
   takeStopFile,
-  settleOutcome,
   watchBuild,
   UNCOMMITTED_SHARE,
-  outcomeOf,
-  reasonFor,
-  waitFor,
-  afterRefusal,
   holdFor,
-  WAIT,
   settle,
   runOnce,
-  overHandoffs,
-  MAX_HANDOFFS,
-  overSpend,
   USD_BY_SIZE,
-  USD_DEFAULT,
   loopSha,
   CHECK_BASH_TIMEOUT_MS,
   BASH_DEFAULT_TIMEOUT_MS,
   STALL_MS,
-  apiFailure,
   ticketFacts,
-  exhausted,
-  resumePhase,
   contextFor,
 } from "../queue-loop.mjs";
+import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
 const stubIo = () => ({
@@ -293,18 +278,6 @@ describe("liveRoute", () => {
       resuming: true,
     });
   });
-});
-
-describe("shouldStop", () => {
-  test("stops on handoff", () => {
-    assert.equal(shouldStop({ skill: "handoff" }), true);
-  });
-
-  for (const skill of ["implement", "triage", "wayfinder"]) {
-    test(`keeps going on ${skill}`, () => {
-      assert.equal(shouldStop({ skill }), false);
-    });
-  }
 });
 
 describe("syncCheckout", () => {
@@ -1283,14 +1256,6 @@ describe("park", () => {
   });
 });
 
-describe("shouldHalt", () => {
-  test("one bad ticket is a ticket; three in a row is the loop or the machine", () => {
-    assert.equal(shouldHalt(1), false);
-    assert.equal(shouldHalt(BREAKER - 1), false);
-    assert.equal(shouldHalt(BREAKER), true);
-  });
-});
-
 describe("takeStopFile", () => {
   test("absent means carry on", () => {
     assert.equal(takeStopFile({ existsSync: () => false }, ".loop-stop"), false);
@@ -1303,44 +1268,6 @@ describe("takeStopFile", () => {
     const fs = { existsSync: () => true, rmSync: () => { removed = true; } };
     assert.equal(takeStopFile(fs, ".loop-stop"), true);
     assert.equal(removed, false);
-  });
-});
-
-describe("settleOutcome", () => {
-  test("a merge is the landing, and costs the run nothing", () => {
-    assert.deepEqual(settleOutcome({ action: "already-merged" }), {
-      countsAsFailure: false,
-      recorded: "landed",
-      handBack: false,
-    });
-  });
-
-  // A ticket red three times produced three whole sessions and zero rows, so its cost, its turns
-  // and the fact that it needed the rounds at all were absent from the file kept to measure them.
-  test("a hand-back writes a row of its own, and does not count as a failure", () => {
-    const out = settleOutcome({ action: "hand-back" });
-    assert.equal(out.recorded, "retry");
-    assert.equal(out.countsAsFailure, false);
-    assert.equal(out.handBack, false);
-  });
-
-  // Recording the row and tearing the worktree down without releasing the claim leaves the issue
-  // carrying `in-progress`, which classify() skips for good — a ticket nothing returns to.
-  test("an owner decision is parked, and goes through park rather than a bare teardown", () => {
-    const out = settleOutcome({ action: "owner" });
-    assert.equal(out.countsAsFailure, true);
-    assert.equal(out.recorded, "parked");
-    assert.equal(out.handBack, true);
-  });
-
-  test("a hold records its red round and parks nothing: the next pick reads the red again", () => {
-    assert.deepEqual(settleOutcome({ action: "hold" }), { countsAsFailure: false, recorded: "retry", handBack: false, hold: true });
-  });
-
-  test("an unrecognised action parks rather than passing as a landing", () => {
-    const out = settleOutcome({ action: "something-new" });
-    assert.equal(out.countsAsFailure, true);
-    assert.equal(out.handBack, true);
   });
 });
 
@@ -1849,17 +1776,6 @@ describe("a phase handoff", () => {
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);
-  });
-
-  test("a handoff cannot run for ever", () => {
-    assert.equal(overHandoffs(MAX_HANDOFFS), true);
-    assert.equal(overHandoffs(MAX_HANDOFFS - 1), false);
-  });
-
-  test("a ticket's ceiling is its size's, and an unlabelled one gets the default", () => {
-    assert.equal(overSpend(5, "size:S"), false);
-    assert.equal(overSpend(USD_BY_SIZE["size:S"], "size:S"), true);
-    assert.equal(overSpend(USD_DEFAULT, null), true);
   });
 
   test("every size's ceiling is above the fleet median it is meant to bound", () => {

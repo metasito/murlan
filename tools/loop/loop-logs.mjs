@@ -444,45 +444,102 @@ export function windowCost({ n, outcome, own }, rows) {
 
 /**
  * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
- * everything for `n` since its last `landed`, `closed` or `parked` row, which is where the tally
+ * everything for `n` since its last row `closesWindow` names, which is where the tally
  * must have read zero even before this session existed.
  *
  * @param {number} n @param {object[]} rows
  */
 export function ticketTally(n, rows) {
-  const forTicket = rows.filter((r) => r.n === n && r.outcome !== "started");
-  let start = 0;
-  forTicket.forEach((r, i) => {
-    if (["landed", "closed", "parked", "reparked"].includes(r.outcome)) start = i + 1;
-  });
-  const since = forTicket.slice(start);
+  const mine = rows.filter((r) => r.n === n && r.outcome !== "started");
+  return tallyOf(mine.slice(mine.findLastIndex(closesWindow) + 1));
+}
 
-  let spend = 0;
-  let ms = 0;
-  let turns = 0;
-  let handoffsThisRound = 0;
-  let lastHandoff = null;
-  let handoffWhy = null;
-  let retries = 0;
-  let lastRedHead = null;
-  let armedFlake = null;
-  for (const r of since) {
-    if (r.outcome === "armed") armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
-    spend += r.cost ?? 0;
-    ms += r.ms ?? 0;
-    turns += r.turns ?? 0;
+const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
+export const closesWindow = (row) => CLOSERS.has(row.outcome);
+
+/** A session's row: any row but a start that ran turns. */
+export const isProcess = (row) => row.outcome !== "started" && row.turns !== 0;
+
+/**
+ * The phase a process was spawned at: `withSpawnPhase` reads it from the start row, and only a row
+ * older than start rows falls back to the first phase it timed.
+ */
+export const atOf = (row) => row.at ?? Object.keys(row.phases ?? {})[0] ?? null;
+
+/**
+ * The rows without their start rows, each earlier process row given the `at` its start row named.
+ * The first phase a session timed is B for most fresh claims, and D for one that reached review.
+ *
+ * @param {{n: number, [field: string]: any}[]} rows the ledger with its start rows
+ * @returns {{n: number, [field: string]: any}[]}
+ */
+export function withSpawnPhase(rows) {
+  const pending = new Map();
+  const out = [];
+  for (const r of rows) {
+    const key = `${r.n} ${r.run_id ?? ""}`;
+    if (r.outcome === "started") {
+      pending.set(key, r.phase ?? null);
+      continue;
+    }
+    const at = isProcess(r) ? pending.get(key) : undefined;
+    if (at !== undefined) pending.delete(key);
+    out.push(at == null ? r : { ...r, at });
+  }
+  return out;
+}
+
+/**
+ * A review that held: a process that reviewed and handed back to C or D. Read from the phase it
+ * timed first, not the one it was spawned at: a fresh claim that found its branch at review ran D.
+ * A handoff on to E was a LAND that left E to the next process.
+ */
+export const holdRound = (row) =>
+  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(handoffIn(row)?.phase ?? "");
+
+/**
+ * One window's rows folded together: `ticketTally`'s open window, and each of the gauge's. A row
+ * carries no `fix`, so a process after the window's first `retry` is the fix round's.
+ *
+ * @param {object[]} rows one ticket's rows, oldest first, start rows excluded
+ */
+export function tallyOf(rows) {
+  const t = {
+    sessions: 0,
+    spend: 0,
+    ms: 0,
+    turns: 0,
+    processes: 0,
+    fixSpend: 0,
+    handoffsThisRound: 0,
+    lastHandoff: /** @type {string|null} */ (null),
+    handoffWhy: /** @type {string|null} */ (null),
+    lastRedHead: /** @type {string|null} */ (null),
+    retries: 0,
+    armedFlake: /** @type {object|null} */ (null),
+  };
+  let fixing = false;
+  for (const r of rows) {
+    const cost = r.cost ?? 0;
+    if (r.outcome === "armed") t.armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
+    else if (r.outcome !== "pushed") t.sessions += 1;
+    t.spend += cost;
+    t.ms += r.ms ?? 0;
+    t.turns += r.turns ?? 0;
+    if (isProcess(r)) t.processes += 1;
+    if (fixing || holdRound(r)) t.fixSpend += cost;
     if (r.outcome === "retry") {
-      retries += 1;
-      handoffsThisRound = 0;
-      lastHandoff = null;
-      handoffWhy = null;
-      lastRedHead = r.head ?? null;
+      t.retries += 1;
+      t.handoffsThisRound = 0;
+      t.lastHandoff = null;
+      t.handoffWhy = null;
+      t.lastRedHead = r.head ?? null;
+      fixing = true;
     } else if (r.outcome === "handoff") {
-      handoffsThisRound += 1;
+      t.handoffsThisRound += 1;
       const handed = handoffIn(r);
-      if (handed) [lastHandoff, handoffWhy] = [handed.phase, handed.why];
+      if (handed) [t.lastHandoff, t.handoffWhy] = [handed.phase, handed.why];
     }
   }
-  const sessions = since.filter((r) => r.outcome !== "pushed" && r.outcome !== "armed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, armedFlake };
+  return t;
 }

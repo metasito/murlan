@@ -92,6 +92,7 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { commands, withoutQuotedBodies } from "./shell.mjs";
 import { OWNER_LABELS } from "./next-ticket.mjs";
+import { afterSession, decide, WAIT } from "./decide.mjs";
 import { createRequire } from "node:module";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -136,10 +137,6 @@ export function parseStatus(stdout) {
     wayfinder: read("wayfinder") ?? 0,
     launch: read("launch"),
   };
-}
-
-export function shouldStop(route) {
-  return route.skill === "handoff";
 }
 
 /**
@@ -259,9 +256,6 @@ export const USD_BY_SIZE = {
   "size:XL": 90,
 };
 export const USD_DEFAULT = 40;
-
-/** @param {number} spent @param {string|null} size */
-export const overSpend = (spent, size) => spent >= (USD_BY_SIZE[size ?? ""] ?? USD_DEFAULT);
 
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
@@ -472,104 +466,12 @@ export const CI_ROUNDS = 3;
  * Processes one ticket may be spawned as. A+B+C is one, each review round is one and the last also
  * lands — five for a ticket that uses every round, and the slack is for a resume that re-enters a phase.
  *
- * A ceiling, not a budget: the thing that actually stops a runaway ticket is `overSpend`.
+ * A ceiling, not a budget: the thing that actually stops a runaway ticket is `USD_BY_SIZE`.
  */
 export const MAX_HANDOFFS = 8;
-export const overHandoffs = (n) => n >= MAX_HANDOFFS;
-
-/** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
-export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
-
-/** Cut off by the turn cap or the dollar cap. */
-export const exhausted = (run) =>
-  run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
-
-/** The phases a synthesised handoff may name. E and G are the pushed head's, which `settle` owns. */
-const RESUMABLE = new Set(["B", "C", "D"]);
-
-/**
- * Where a cut-off session's successor resumes, or null. `declared` is the whole test of being cut
- * off: a session that said anything — a handoff, a stand-down, a finished `LOOP-RESULT` — chose its
- * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
- * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
- */
-export function resumePhase(run, after, ticket) {
-  if (run.declared || !exhausted(run)) return null;
-  if (!after?.cwd || after.ticket !== ticket) return null;
-  return RESUMABLE.has(after.phase) ? after.phase : null;
-}
 
 /** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
 export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
-
-/**
- * The API status a session died on, when it is one that passes on its own — an overload, an outage,
- * a 429, or no answer at all (a dropped connection carries no status) — or null. Not a verdict on
- * the ticket, so it is held and respawned, never parked.
- * A session that declared its ending chose it, whatever its last turn met. A spent usage window
- * ends on a 429 too, and is `blocked`'s to wait out until its reset, not a minute at a time.
- * A session the watchdog killed mid-retry never wrote a result, and is the same outage.
- */
-export function apiFailure(run) {
-  if (run.declared || run.blocked || run.accountError) return null;
-  if (run.status === "stalled" && run.lastFact === "api_retry") return "unreachable";
-  if (!run.result?.isError) return null;
-  const s = run.result.apiStatus;
-  if (s >= 500 || s === 429) return s;
-  return s == null && run.apiErrorCode === "server_error" ? "unreachable" : null;
-}
-
-/**
- * How long to wait out a spent usage window.
- *
- * The loop must not exit on a refusal: the owner is away, and an exit that nothing recovers costs
- * every remaining ticket of the night. `CAP` bounds one hold against a wrong clock, not the total
- * — a gap longer than it is held in pieces and asked again, so a seven-day window resumes within
- * `CAP` of its reset rather than never. `TRIES` is the floor under all of it: that many refusals
- * in a row, each after a full wait, is an account that is not coming back on its own.
- */
-export const WAIT = {
-  CAP: 12 * 60 * 60_000,
-  FLOOR: 60_000,
-  MARGIN: 30_000,
-  TRIES: 20,
-};
-
-/** @param {{blocked?: boolean, blockedUntil?: number, done?: boolean}} run */
-export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
-  if (!blocked || done) return 0;
-  if (!blockedUntil) return WAIT.FLOOR;
-  const gap = blockedUntil - now;
-  if (gap <= 0) return 0;
-  return Math.min(gap + WAIT.MARGIN, WAIT.CAP);
-}
-
-/**
- * What a refused session costs the run: a wait, and nothing else.
- *
- * A usage refusal is a property of the *account*, so the counter is the run's, not the ticket's.
- * Keyed per ticket it was inert — twenty tickets refused once each never reached the ceiling — and
- * cruel when it did fire, parking one ticket for a limit it had no part in.
- *
- * @param {{waits: number, blocked?: boolean, blockedUntil?: number, done?: boolean}} run
- * @returns {{action: "proceed"|"wait"|"give-up", hold: number, waits: number, why?: string}}
- */
-export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.now()) {
-  if (!blocked || done) return { action: "proceed", hold: 0, waits: 0 };
-  if (waits >= WAIT.TRIES) {
-    return {
-      action: "give-up",
-      hold: 0,
-      waits,
-      why: `refused ${waits} times running, each after waiting out the window it named`,
-    };
-  }
-  // Floored, always: a reset timestamp already in the past — clock skew, a stale window, a
-  // seven-day limit reported with an expired short-window reset — makes `waitFor` answer 0, and a
-  // hold of 0 is a knob with no floor, spawning back to back until the ceiling stops it.
-  const hold = Math.max(waitFor({ blocked, blockedUntil, done }, now), WAIT.FLOOR);
-  return { action: "wait", hold, waits: waits + 1 };
-}
 
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync — measured here: `execFileSync("npx", ["--version"])` throws ENOENT while `gh`
@@ -599,89 +501,7 @@ const sh = (file, args, opts) => {
 
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
 export const BREAKER = 3;
-export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKER;
 
-/**
- * What a settled ticket costs the run.
- *
- * `hand-back` is a CI fix round — recorded rather than silent, because each one is a whole session
- * with its own cost and turns. `owner` is the only settled outcome that reaches the tracker;
- * everything else `landing()` decides is mechanical, and the branch and the pull request both
- * survive it for the next iteration to find from `derive()`.
- *
- * @param {{action: string}} settled
- */
-export function settleOutcome({ action }) {
-  if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
-  if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
-  // A red round whose CI-RED could not be posted: recorded as one, and its fix round waits a hold.
-  if (action === "hold") return { countsAsFailure: false, recorded: "retry", handBack: false, hold: true };
-  // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
-  // claim nor its silence. Recording the row and tearing the worktree down without releasing
-  // `in-progress` leaves an issue the picker skips for good.
-  return { countsAsFailure: true, recorded: "parked", handBack: true };
-}
-
-/**
- * What the session's exit leaves the supervisor to do.
- *
- * **The pull request outranks every reason the session's exit gives, bar two.** A branch that was
- * pushed is a fact, and how the session ended is not a fact about it: a session that ran out of
- * turns after pushing has done its half, and from there CI and the merge are the supervisor's.
- * Reading the exit first parked eleven tickets whose pull requests merged anyway, throwing away the
- * work and the claim together.
- *
- * The two exceptions are the two things only the session can know: it stood the ticket down, or it
- * worked a different one. Both make its branch not this ticket's answer, so neither yields.
- *
- * @param {{pr: {number: number, state: string}|null,
- *   reason: {why: string|null, hard: boolean},
- *   issue?: {state: string|null, stateReason: string|null}|null, commits?: number|null}} run
- * @returns {{action: "settle"|"landed"|"closed"|"park", pr?: number, why?: string}}
- */
-export function outcomeOf({ pr, reason, issue = null, commits = null }) {
-  if (reason.hard && reason.why) return { action: "park", why: reason.why, pr: pr?.number };
-  if (!pr && commits === 0 && issue?.state === "CLOSED" && issue?.stateReason === "COMPLETED")
-    return { action: "closed", why: "the session closed the issue as done, with no diff to land" };
-  if (pr?.state === "MERGED")
-    return { action: "landed", pr: pr.number, why: `pull request #${pr.number} was already merged` };
-  if (pr?.state === "OPEN") return { action: "settle", pr: pr.number };
-  if (pr)
-    return { action: "park", pr: pr.number, why: `pull request #${pr.number} is ${String(pr.state).toLowerCase()}` };
-  return { action: "park", why: reason.why ?? "the session pushed no pull request" };
-}
-
-/**
- * Why this session did not finish its ticket, and whether that reason outranks a pushed branch.
- *
- * `hard` is the short list of things that make the session's own work not this ticket's answer.
- * Everything else is a reason the *session* ended, which says nothing about whether the branch it
- * left behind is good — that is CI's question, and `outcomeOf` lets the pull request answer first.
- *
- * @param {{status: number|string, phase?: string|null, stderr?: string, result?: object|null,
- *   declared?: {pr: number|null, stoodDown: boolean, why: string|null}|null}} run
- * @returns {{why: string|null, hard: boolean}}
- */
-export function reasonFor(run, after, ticket) {
-  const said = run.declared;
-  const hard = (why) => ({ why, hard: true });
-  const soft = (why) => ({ why, hard: false });
-
-  if (said?.stoodDown) return hard(said.why ?? "the session stood down");
-  if (after?.ticket && after.ticket !== ticket) return hard(`the session worked #${after.ticket}, not #${ticket}`);
-  // The only place "Budget limit reached ($15.08 of $15); stopping background agents." is ever
-  // said — the result event for that session still reads subtype "success".
-  if (/Budget limit reached/.test(run.stderr ?? "")) return soft("the session spent its budget mid-phase");
-  if (run.result?.subtype === "error_max_turns") return soft("the session ran out of turns");
-  if (run.status === "stalled")
-    return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
-  if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
-  // Phase F's LOOP-RESULT is not optional, and this is where its absence becomes visible rather than
-  // absorbed. A session that exits clean without declaring has left every fact about itself to be
-  // inferred.
-  if (!said) return soft("the session exited without a LOOP-RESULT");
-  return soft(null);
-}
 
 /** `.loop-stop` drains the loop. Left on disk, so a scheduled restart sees it too. */
 export function takeStopFile(fs, file) {
@@ -2084,7 +1904,7 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 const CI_RED_TRIES = 3;
 
 /** Passes one ticket may hold in a row before it is parked: `WAIT.FLOOR` apart, they outlast a short GitHub outage. */
-const TICKET_HOLDS = 10;
+export const TICKET_HOLDS = 10;
 
 /**
  * The CI log a fix round reads, written before the red is handed back: that session is a fresh
@@ -2220,7 +2040,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   } = io;
   const { armArgs, branchSurvives, deleteBranchArgs, disarmArgs, landing } = ts("./land.ts");
   const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
-  const left = { ...SETTLE_ROUNDS };
+  const spent = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
   let until = Date.now() + deadline;
   let woke = false;
   let head = null;
@@ -2289,136 +2109,87 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   };
   const leave = (out) => disarm(out.reason) ?? out;
 
+  const handBack = async (next) => {
+    const held = disarm(next.reason);
+    if (held) return held;
+    const lines = prepareRed(pending.ticket, verdict, { mkdir, write, mainFailures, log });
+    for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
+      // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
+      if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
+      await wait();
+    }
+    return { ...next, head, runId: verdict.runId ?? null };
+  };
+
   for (;;) {
-    if (Date.now() > until) {
-      return leave(owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`));
-    }
-    let next;
-    // Which budget a `recheck` spends. A verdict asked again because the runner had nothing to say
-    // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
-    // answers on its own in seconds. One counter for both parks whichever goes second.
-    let asking = "recheck";
-    let pr;
-    try {
-      ({ pr, ci: verdict } = stateOf(pending.pr));
-      armed = pr.armed === true;
-      if (pr.headRefOid !== head) {
-        head = pr.headRefOid ?? null;
-        until = Date.now() + deadline;
-      }
-      if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
-      if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
-      // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
-      // no head but the one cleared. An arm this process did not make is treated the same way.
-      if (armed && armedAt !== head) {
-        const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
-        if (held) return held;
-        pr = { ...pr, armed: false };
-      }
-      next = landing(pr, verdict);
-      woke = false;
-    } catch (err) {
-      const why = firstLine(err);
-      // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
-      if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
-        log(`could not read CI since the machine woke — ${why}; asking again`);
-        await wait();
-        continue;
-      }
-      // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
-      // branch is intact, so this goes to the owner rather than ending the night.
-      return leave(owner(`could not read CI — ${why}`));
-    }
-
-    if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
-      // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
-      if (verdict.runId && verdict.attempt === 1 && reran !== head) {
-        reran = head;
-        firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
-        try {
-          gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
-          log(`CI is red at ${verdict.failedStep ?? "an unnamed step"} — rerunning ${verdict.runId} once`);
+    let next = null;
+    let error = null;
+    const overdue = Date.now() > until;
+    if (!overdue) {
+      try {
+        let pr;
+        ({ pr, ci: verdict } = stateOf(pending.pr));
+        armed = pr.armed === true;
+        if (pr.headRefOid !== head) {
+          head = pr.headRefOid ?? null;
           until = Date.now() + deadline;
-          await wait();
-          continue;
-        } catch (err) {
-          log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
         }
+        if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
+        // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
+        // no head but the one cleared. An arm this process did not make is treated the same way.
+        if (armed && armedAt !== head) {
+          const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
+          if (held) return held;
+          pr = { ...pr, armed: false };
+        }
+        next = landing(pr, verdict);
+        woke = false;
+      } catch (err) {
+        // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
+        error = { why: firstLine(err), offline: OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`), woke };
       }
-      const held = disarm(next.reason);
-      if (held) return held;
-      const lines = prepareRed(pending.ticket, verdict, { mkdir, write, mainFailures, log });
-      for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
-        // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
-        if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
-        await wait();
-      }
-      return { ...next, head, runId: verdict.runId ?? null };
     }
+    // Landing reads move no run counter.
+    const read = { step: "landing", limits: LIMITS, loop: {} };
+    const facts = { ...next, head, armed, overdue, deadline, rounds: spent, ci: verdict, error, reran, cleared: undefined };
+    let step = decide({ ...read, landing: facts });
+    if (step.kind === "ask") step = decide({ ...read, landing: { ...facts, cleared: cleared(head) } });
 
-    if (next.action === "update-branch" && left.update > 0) {
-      left.update -= 1;
+    if (step.kind === "settled") {
+      if (step.action === "hand-back") return handBack(next);
+      if (step.action === "owner") return leave(owner(step.why));
+      if (step.action === "already-merged") return merged(step.why);
+      return next;
+    }
+    if (step.spend) spent[step.spend] += 1;
+    if (step.act === "rerun") {
+      reran = head;
+      firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
+      try {
+        gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
+      } catch (err) {
+        log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
+        return handBack(next);
+      }
+      until = Date.now() + deadline;
+    } else if (step.act === "update-branch") {
       // The merge of main is a new head nobody cleared, and an arm would carry over to it.
       const held = disarm(next.reason);
       if (held) return held;
-      log("main moved — updating the branch and reading CI again");
+      log(step.why);
       try {
         gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
         return leave(owner(`could not update the branch — ${firstLine(err)}`));
       }
-      await wait();
-      continue;
-    }
-    // A run that has not finished is not a round spent: `left.recheck` is eight of them, and any
-    // real ci.yml outlasts that. Its ceiling is `deadline`, read at the top of this loop — which no
-    // round could reach while `gh run watch` held the process inside one.
-    if (verdict.waiting && next.action === "recheck") {
-      log(verdict.reason);
-      await wait();
-      continue;
-    }
-    // A hand-back's whole payload is the log the fix round reads. Without it that round is five
-    // turns of phase A and a close — #1028 spent three of them, and only the park said anything.
-    if (next.action === "hand-back" && (!verdict.output || verdict.logUnread)) {
-      if (left.retry > 0) {
-        left.retry -= 1;
-        log("CI is red but named no log — asking once more");
-        await wait();
-        continue;
+    } else if (step.act === "ready") {
+      try {
+        gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
+      } catch (err) {
+        return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
       }
-      return leave(owner(`CI is red and its log could not be read — ${next.reason}`));
-    }
-    if (next.action === "recheck" && left[asking] > 0) {
-      left[asking] -= 1;
-      log(`${next.reason} — asking once more`);
-      await wait();
-      continue;
-    }
-    if (next.action === "update-branch" || next.action === "recheck") {
-      const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
-      return leave(owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`));
-    }
-    if (next.action === "arm" || next.action === "ready") {
-      if (armed) {
-        log("auto-merge is armed — waiting for GitHub to merge");
-        await wait();
-        continue;
-      }
+    } else if (step.act === "arm") {
       const at = String(head ?? "an unread head").slice(0, 7);
-      const clear = cleared(head);
-      if (!clear.ok) return leave(owner(`${clear.why} — ${at} was pushed for review, not cleared`));
-      // A draft's merge state reads DRAFT, so whether it is behind or blocked is only known once it is ready.
-      if (next.action === "ready") {
-        if (left.ready-- === 0) return leave(owner(`${at} is still a draft after gh pr ready`));
-        try {
-          gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
-        } catch (err) {
-          return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
-        }
-        await wait();
-        continue;
-      }
       // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
       if (reran === head && firstRed && !flake) {
         flake = firstRed;
@@ -2455,12 +2226,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
           return leave(owner(`the merge failed — ${firstLine(again)}`));
         }
       }
-      await wait();
-      continue;
     }
-    if (next.action === "owner") return leave(owner(next.reason));
-    if (next.action === "already-merged") return merged(next.reason);
-    return next;
+    if (step.act === "rerun" || step.act === "wait") log(step.why);
+    await wait();
   }
 }
 
@@ -2480,32 +2248,6 @@ const standing = () => {
       }
     : null;
 };
-
-/**
- * What the supervisor knows about the session that just exited.
- *
- * The session's own `LOOP-RESULT` first, `derive()` second, which is all there is when the
- * declaration is missing.
- *
- * @param {{declared: object|null, phase: string|null}} run
- * @param {object|null} derived
- */
-export function afterSession(run, derived) {
-  const said = run.declared;
-  if (!said && !derived) return null;
-  return {
-    ticket: said?.ticket ?? derived?.ticket ?? null,
-    branch: said?.branch ?? derived?.branch ?? null,
-    cwd: derived?.cwd ?? null,
-    head: derived?.head ?? null,
-    dirty: derived?.dirty ?? false,
-    changed: derived?.changed ?? [],
-    commits: derived?.commits ?? null,
-    // The session's own marker, not derive()'s: derive computes a phase from commit count and
-    // verdict, so it can only ever answer C, D, E or ?.
-    phase: said?.phase ?? run.phase ?? derived?.phase ?? "?",
-  };
-}
 
 /** The ticket's worktree as git has it now: a retry or refused pass carries none of it. */
 function worktreeOf(io, number) {
@@ -2548,74 +2290,109 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, fl
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
 
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+
+/** Read in order, and only as far as the first that ends the pass. */
+async function preflight(io, pinned) {
+  if (io.stopFile()) return { stop: true };
+  if (!io.syncCheckout(pinned)) return { unusable: true };
+  const moved = io.loopMoved?.();
+  if (moved) return { moved };
+  return { housekeeping: await io.housekeeping(pinned) };
+}
+
+const HELD_AS = { preflight: "hold", usage: "refused", api: "overloaded" };
+
+/** The passes that leave the ticket standing, which the owner's park takes over. */
+const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold"]);
+
 /**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
  * one's CI wait buys ~22% wall clock and costs pending state nothing recovers when the process
  * dies, a worktree released under a live `derive()`, and two sessions cutting branches from a
  * `main` neither has yet.
  *
+ * Every routing choice is `decide()`'s: this reads the facts it asks for and does what it answers.
+ *
  * @param {object} io
  * @param {number|null} [pinned] a ticket a previous pass handed back unfinished
  * @param {string|null} [at] the phase a handoff said the next process starts at
+ * @param {{failures: number, holds: number, waits: number, overloads: number, pinned: number|null}} [loop]
+ *   the run's counters, which the pass returns updated
  * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff"|"restart",
- *   ticket?: number, why?: string, until?: number, cwd?: string|null, branch?: string|null,
- *   pr?: number, files?: number, phase?: string, run?: any, size?: string|null, tally?: any}>}
+ *   loop: object, halt: string|null, ticket?: number, why?: string, until?: number, hold?: number, byOwner?: boolean,
+ *   cwd?: string|null, branch?: string|null, pr?: number, files?: number, phase?: string, run?: any, size?: string|null}>}
  */
-export async function runOnce(io, pinned = null, at = null) {
-  if (io.stopFile()) return { outcome: "stop", why: ".loop-stop" };
-  if (!io.syncCheckout(pinned)) return { outcome: "stop", why: "the shared checkout is not usable" };
-  const moved = io.loopMoved?.();
-  if (moved) return { outcome: "restart", why: `tools/loop moved on main (now ${moved})` };
-  const pre = await io.housekeeping(pinned);
-  if (pre.verdict === "hold") return { outcome: "hold", why: pre.why };
-  if (pre.verdict !== "ok") return { outcome: "stop", why: `a pre-flight check refused: ${pre.why}` };
+export async function runOnce(io, pinned = null, at = null, loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned }) {
+  const decideAt = (step, facts) => {
+    const action = decide({ limits: LIMITS, now: Date.now(), asked: false, own: null, ...facts, step, loop });
+    loop = action.loop;
+    return action;
+  };
+  const pass = (action, more = {}) => ({
+    outcome: action.kind === "hold" ? HELD_AS[action.wait] : action.kind,
+    ...(action.n != null && { ticket: action.n }),
+    ...(action.why != null && { why: action.why }),
+    ...(action.hold != null && { hold: action.hold }),
+    ...more,
+    loop,
+    halt: action.halt ?? null,
+  });
+
+  const begun = decideAt("pre", { pre: await preflight(io, pinned) });
+  if (begun.kind !== "go") return pass(begun);
 
   let route = io.pick(pinned, at);
-  if (route.skill === "closed") {
+  let picking = { route: { ...route, n: route.number }, tally: io.tally(route.number), repicked: false };
+  let picked = decideAt("pick", picking);
+  if (picked.kind === "repick") {
     io.teardown(route.cwd, route.number);
-    const stillPinned = pinned !== null && pinned !== route.number;
-    route = io.pick(stillPinned ? pinned : null, stillPinned ? at : null);
-    if (route.skill === "closed") return { outcome: "stop", why: `#${route.number} is closed and its worktree still stands` };
+    route = io.pick(loop.pinned, loop.pinned === null ? null : at);
+    picking = { route: { ...route, n: route.number }, tally: io.tally(route.number), repicked: true };
+    picked = decideAt("pick", picking);
   }
-  if (route.skill === "handoff") return { outcome: "stop", why: route.title };
-  if (route.skill === "ambiguous") return { outcome: "stop", why: route.title };
-  let tally = io.tally(route.number);
+  const n = route.number;
+  const ticket = { ...route, n };
   const size = route.size ?? null;
+  const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(io, n) } : { asked: false, own: null });
+  const parkHere = (action, ctx) => {
+    if (action.byOwner) fs.rmSync(PARK_FILE, { force: true });
+    const parked = parkAndRecord(io, n, { ...ctx, phase: action.phase, why: action.why });
+    return { ...parked, loop, halt: action.halt ?? null, ...(action.byOwner && { byOwner: true }) };
+  };
+  // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
+  // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
+  // run to resume.
+  const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(io, n)), log });
+  if (picked.kind === "ask") {
+    picking = { ...picking, posted: Boolean(io.postRed(n, route.unposted)), ...owner() };
+    picked = decideAt("pick", picking);
+  }
+  let { tally } = picking;
+  const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
+  if (picked.kind === "park") return picked.instead ? parkOver(picked, picking.own, streamLog(n)) : parkHere(picked, unrun);
+  if (picked.kind !== "go") return pass(picked);
 
+  if (picked.redWhileDown) {
+    io.record({
+      number: n,
+      outcome: "retry",
+      why: "CI went red while the loop was down",
+      run: { result: null, ms: 0, log: streamLog(n), phases: {} },
+      counts: false,
+      head: route.head,
+    });
+    tally = io.tally(n);
+  }
   if (route.fix) {
-    if (route.unposted && !io.postRed(route.number, route.unposted)) {
-      return { outcome: "hold", ticket: route.number, why: `CI-RED for ${String(route.head).slice(0, 7)} could not be posted` };
-    }
-    const parkFix = (why) =>
-      parkAndRecord(io, route.number, {
-        phase: "C",
-        why,
-        log: streamLog(route.number),
-        cwd: route.cwd ?? null,
-        branch: route.branch ?? null,
-        dirty: route.dirty ?? false,
-      });
-    if (route.head && route.head !== tally.lastRedHead) {
-      if (Math.max(tally.retries + 1, tally.ciRounds ?? 0) >= CI_ROUNDS) {
-        return parkFix(`${Math.max(tally.retries + 1, tally.ciRounds ?? 0)} CI rounds on the same branch did not go green — the last one while the loop was down`);
-      }
-      io.record({
-        number: route.number,
-        outcome: "retry",
-        why: "CI went red while the loop was down",
-        run: { result: null, ms: 0, log: streamLog(route.number), phases: {} },
-        counts: false,
-        head: route.head,
-      });
-      tally = io.tally(route.number);
-    }
+    let error = null;
     try {
       io.refreshWorktree(route.cwd, route.branch);
     } catch (err) {
-      return parkFix(
-        `could not fast-forward the worktree before the fix round — ${String(err.stderr || err.message).trim().split("\n")[0]}`,
-      );
+      error = String(err.stderr || err.message).trim().split("\n")[0];
     }
+    const refreshed = decideAt("refresh", { route: ticket, error });
+    if (refreshed.kind === "park") return parkHere(refreshed, unrun);
   }
 
   const settling = route.phase === "G";
@@ -2631,217 +2408,122 @@ export async function runOnce(io, pinned = null, at = null) {
   const dirtied = io.sharedCheckoutDirty?.();
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
-  const after = afterSession(run, io.standing());
-  // Not the ticket's fault, so not a park: every next ticket would load the same plugin.
-  if (run.strayPlugin) {
-    io.record({ number: route.number, outcome: "halted", why: run.strayPlugin, run, counts: false });
-    return { outcome: "stop", why: run.strayPlugin };
-  }
+  const derived = io.standing();
+  const after = afterSession(run, derived);
   const keepWip = () => {
     try {
-      const kept = io.snapshotWip?.(after?.cwd ?? null, route.number);
-      if (kept) io.log(`#${route.number}'s uncommitted work is kept at refs/loop/wip/${route.number} (${kept.slice(0, 7)})`, "session");
+      const kept = io.snapshotWip?.(after?.cwd ?? null, n);
+      if (kept) io.log(`#${n}'s uncommitted work is kept at refs/loop/wip/${n} (${kept.slice(0, 7)})`, "session");
     } catch (err) {
-      io.log(`#${route.number}'s uncommitted work could not be snapshotted — ${String(err.message).split("\n")[0]}`, "session");
+      io.log(`#${n}'s uncommitted work could not be snapshotted — ${String(err.message).split("\n")[0]}`, "session");
     }
   };
-  if (run.accountError) {
-    keepWip();
-    io.record({ number: route.number, outcome: "halted", why: run.accountError, run, counts: false });
-    return { outcome: "stop", why: `the account cannot run sessions (${run.accountError}) — log in, then npm run queue:loop; #${route.number} resumes from its worktree` };
-  }
-  if (run.wrongModel) {
-    return parkAndRecord(io, route.number, {
-      phase: after?.phase ?? route.phase ?? "A",
-      why: run.wrongModel,
-      log: run.log,
-      cwd: after?.cwd ?? null,
-      branch: after?.branch ?? null,
-      dirty: after?.dirty ?? false,
-      run,
-    });
-  }
-  // Before the pull request is looked for: a session that handed off has not pushed and is not
-  // finished, and every reading below is about a session that meant to be its ticket's last.
-  const declaredHandoff = handoffOf(run);
-  let handoff = declaredHandoff ?? resumePhase(run, after, route.number);
-  let because = handoff && !declaredHandoff ? reasonFor(run, after, route.number).why : null;
-  if (handoff === "D" && !io.buildPassed(after?.cwd ?? null, route.number)) {
-    io.log(`#${route.number} handed off to review with no local pass or no full DOD-CHECK on HEAD — back to C`, "build");
-    handoff = "C";
-    because = "the D handoff had no local pass or no full DOD-CHECK on HEAD: commit, agent:check, post DOD-CHECK, then loop-gate --build";
-  } else if (handoff === "D" && after?.branch) {
-    // CI runs while the review does; `poll` merges only a head a LAND covers.
-    io.publish(route.number, after.branch, after.cwd);
-  } else if (handoff === "C" && after?.phase === "E") {
-    because = "phase E's agent:check was red: fix what it names, then go through D again";
-  }
-  if (handoff) {
-    const why = `phase ${handoff} next${because ? ` — ${because}` : ""}`;
-    const handed = { phase: handoff, why: because, said: run.declared?.why ?? null };
-    io.record({ number: route.number, outcome: "handoff", why, run, counts: false, handoff: handed });
-    // The worktree comes with it: a handoff leaves one standing on purpose, so a park that does not
-    // carry it leaves `derive()` a live run to resume — the ticket it just handed to the owner.
-    return {
-      outcome: "handoff",
-      ticket: route.number,
-      phase: handoff,
-      run,
-      size,
-      cwd: after?.cwd ?? null,
-      branch: after?.branch ?? null,
-    };
-  }
-  // Before the pull request too: in phase E one is already open, and settling it would land a head
-  // whose check never ran.
-  const status = apiFailure(run);
-  if (status) {
-    keepWip();
-    const why = status === "unreachable" ? "the API could not be reached" : `the API answered ${status}`;
-    io.record({ number: route.number, outcome: "overloaded", why, run, counts: false });
-    return { outcome: "overloaded", ticket: route.number, why, run };
-  }
-  const pr = io.pushedPr(after?.branch ?? null, route.number, run.declared?.pr ?? null, settling ? 0 : Date.now() - run.ms);
-  // `blocked` is advisory, checked here rather than before the pull request is looked for: a
-  // session refused mid-run that recovered and pushed has done its half, and reporting it refused
-  // stranded the branch and left the claim on.
-  if (!pr && run.blocked) {
-    keepWip();
-    // Recorded like any other session that ended. A refusal spends real money before it stops, and
-    // adding that to the run's total anywhere but here is the third writer that made the ledger
-    // need a flag to stop double-counting itself.
-    io.record({
-      number: route.number,
-      outcome: "refused",
-      why: "the usage window is spent",
-      run,
-      counts: false,
-    });
-    return { outcome: "refused", ticket: route.number, until: run.blockedUntil ?? 0, run };
+  // Read once the session has exited: a park is never a kill.
+  const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
+  // `null`, never `undefined`, for a fact read: `undefined` is `decide`'s "not read yet".
+  const read = {
+    built: () => {
+      const built = Boolean(io.buildPassed(after?.cwd ?? null, n));
+      if (!built) io.log(`#${n} handed off to review with no local pass or no full DOD-CHECK on HEAD — back to C`, "build");
+      return built;
+    },
+    pushed: () => io.pushedPr(after?.branch ?? null, n, run.declared?.pr ?? null, settling ? 0 : Date.now() - run.ms) ?? null,
+    issue: () => io.issueState(n) ?? null,
+  };
+  let action = decideAt("session", facts);
+  while (action.kind === "ask") {
+    facts[action.fact] = read[action.fact]();
+    action = decideAt("session", facts);
   }
 
-  const reason =
-    settling && !pr
-      ? { why: "phase G found no open pull request for the pushed head", hard: false }
-      : reasonFor(run, after, route.number);
-  const declaredDone = !pr && run.declared?.phase === "F" && !run.declared?.stoodDown;
-  const decided = outcomeOf({ pr, reason, issue: declaredDone ? io.issueState(route.number) : null, commits: after?.commits ?? null });
   // The pull request's own count when derive() read no worktree.
-  const files = after?.changed?.length || pr?.changedFiles || 0;
-
+  const files = () => (facts.pushed === undefined ? 0 : after?.changed?.length || facts.pushed?.changedFiles || 0);
   let billed = run;
-  const handBack = (why, phase, log = billed.log, standing = true, flake = null) =>
-    parkAndRecord(io, route.number, {
-      phase,
-      why,
-      log,
-      cwd: standing ? (after?.cwd ?? null) : null,
-      branch: after?.branch ?? null,
-      dirty: standing && (after?.dirty ?? false),
-      run: billed,
-      pr: decided.pr ?? null,
-      files,
-      flake,
-    });
+  const worked = (pr, log = billed.log) => ({ log, cwd: after?.cwd ?? null, branch: after?.branch ?? null, dirty: after?.dirty ?? false, run: billed, pr: pr ?? null, files: files() });
 
-  if (decided.action === "closed") {
-    io.teardown(after?.cwd ?? null, route.number);
-    io.record({ number: route.number, outcome: "closed", why: decided.why, run, files });
-    return { outcome: "closed", ticket: route.number };
+  const replaced = action.instead ?? action;
+  if (replaced.kind === "handoff" || replaced.kind === "hold") {
+    if (replaced.kind === "handoff") {
+      // CI runs while the review does; `poll` merges only a head a LAND covers.
+      if (replaced.publish) io.publish(n, after.branch, after.cwd);
+      const why = `phase ${replaced.phase} next${replaced.why ? ` — ${replaced.why}` : ""}`;
+      io.record({ number: n, outcome: "handoff", why, run, counts: false, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
+    } else {
+      keepWip();
+      // A refusal spends real money before it stops, and this row is the one place it is recorded.
+      io.record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run, counts: false });
+    }
+    if (action.kind === "park") return parkOver(action, facts.own, run.log);
+    if (action.kind === "handoff") return pass(action, { phase: action.phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null });
+    return pass(action, { run, until: replaced.until });
   }
-
-  if (decided.action === "park") return handBack(decided.why, after?.phase ?? "?");
-
-  if (decided.action === "landed") {
-    io.teardown(after?.cwd ?? null, route.number);
-    io.record({ number: route.number, outcome: "landed", why: decided.why, run, pr: decided.pr, merged: true, files });
-    return { outcome: "landed", ticket: route.number };
+  if (action.kind === "stop") {
+    if (run.accountError) keepWip();
+    io.record({ number: n, outcome: "halted", why: run.strayPlugin ?? run.accountError, run, counts: false });
+    return pass(action);
+  }
+  if (action.kind === "park") return parkHere(action, worked(action.pr));
+  if (action.kind === "closed") {
+    io.teardown(after?.cwd ?? null, n);
+    io.record({ number: n, outcome: "closed", why: action.why, run, files: files() });
+    return pass(action);
+  }
+  if (action.kind === "landed") {
+    io.teardown(after?.cwd ?? null, n);
+    io.record({ number: n, outcome: "landed", why: action.why, run, pr: action.pr, merged: true, files: files() });
+    return pass(action);
   }
 
   // The session's own row, before a wait the supervisor may not survive: every row below is the
   // land alone, so a restarted G pass adds its clock and never the session's cost a second time.
   if (!settling) {
-    const head = pr?.sha ?? null;
-    io.record({ number: route.number, outcome: "pushed", why: "CI next", run, pr: decided.pr, files, counts: false, head });
+    io.record({ number: n, outcome: "pushed", why: "CI next", run, pr: action.pr, files: files(), counts: false, head: action.head });
     billed = { result: null, ms: 0, log: run.log, phases: {} };
   }
   const landFrom = Date.now();
   const settled = await io.settle({
-    ticket: route.number,
-    pr: decided.pr,
-    branch: after?.branch ?? pr.head,
+    ticket: n,
+    pr: action.pr,
+    branch: after?.branch ?? facts.pushed.head,
     // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
     flake: tally.armedFlake ?? null,
     noteArmed: (flake) =>
       io.record({
-        number: route.number,
+        number: n,
         outcome: "armed",
         why: "auto-merge armed on a rerun's green",
-        run: { result: null, ms: 0, log: streamLog(route.number), phases: {} },
-        pr: decided.pr,
+        run: { result: null, ms: 0, log: streamLog(n), phases: {} },
+        pr: action.pr,
         counts: false,
         head: flake.head,
         flake: { runId: flake.runId, tests: flake.tests, step: flake.step },
       }),
   });
   billed.ms += Date.now() - landFrom;
-  const cost = settleOutcome(settled);
-
-  // Every exit from a settle that did not merge and is not a fix round goes through `park` — the
-  // claim, the reason on the issue and the worktree, in that one place. Recording the row and
-  // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
-  // good, which is a ticket nothing will ever return to.
-  if (cost.handBack) return handBack(settled.reason, "E", undefined, true, settled.flake ?? null);
-
-  // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
-  // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
-  // every other hand-back: one park, one row, one release of the claim. Counted from the round this
-  // session is, so the last red round is a park rather than a retry nothing comes back to.
-  const roundsUsed = Math.max(tally.retries, tally.ciRounds ?? 0);
-  if (cost.recorded === "retry" && roundsUsed + 1 >= CI_ROUNDS) {
-    return handBack(
-      `${roundsUsed + 1} CI rounds on the same branch did not go green — last: ${settled.reason}`,
-      "E",
-      // The failed CI log, when there is one: it is what the owner needs and the session's own
-      // stream log is not.
-      fs.existsSync(ciLogPath(route.number)) ? ciLogPath(route.number) : run.log,
-    );
+  // What the next round is judged against: a round that leaves this where it was cannot change
+  // what CI answers.
+  const head = settled.head ?? facts.pushed?.sha ?? null;
+  const owned = owner();
+  const verdict = decideAt("settled", { route: ticket, settled: { ...settled, head }, tally: io.tally(n), ...owned });
+  const red = verdict.instead ?? verdict;
+  if (red.kind === "retry" || red.record === "retry") {
+    io.record({ number: n, outcome: "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), counts: false, head, flake: settled.flake ?? null });
+    if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
+    // The worktree and the run come with it: the next round works in that worktree.
+    if (verdict.kind === "retry") {
+      return pass(verdict, { cwd: after?.cwd ?? null, branch: after?.branch ?? facts.pushed.head, pr: action.pr, sha: head, files: files(), run, size });
+    }
+    return pass(verdict);
   }
-
-  io.record({
-    number: route.number,
-    outcome: cost.recorded,
-    why: settled.reason,
-    run: billed,
-    pr: decided.pr,
-    merged: cost.recorded === "landed",
-    files,
-    counts: cost.recorded !== "retry",
-    head: settled.head ?? pr?.sha ?? null,
-    flake: settled.flake ?? null,
-  });
-  // The worktree stands; the next pick finds the red through `derive` and this row's head.
-  if (cost.hold) return { outcome: "hold", ticket: route.number, why: settled.reason };
-  // The worktree and the run come with it: the next round works in that worktree.
-  if (cost.recorded === "retry") {
-    return {
-      outcome: "retry",
-      ticket: route.number,
-      why: settled.reason,
-      cwd: after?.cwd ?? null,
-      branch: after?.branch ?? pr.head,
-      pr: decided.pr,
-      // What the next round is judged against: a round that leaves this where it was cannot change
-      // what CI answers, so `main` refuses to spend one on it.
-      sha: settled.head ?? pr?.sha ?? null,
-      files,
-      run,
-      size,
-      tally,
-    };
+  if (verdict.kind === "landed") {
+    io.record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), counts: true, head, flake: settled.flake ?? null });
+    io.teardown(after?.cwd ?? null, n);
+    return pass(verdict);
   }
-  io.teardown(after?.cwd ?? null, route.number);
-  return { outcome: "landed", ticket: route.number };
+  // The failed CI log, when there is one: it is what the owner needs and the session's own stream
+  // log is not.
+  const log = verdict.ciRed && fs.existsSync(ciLogPath(n)) ? ciLogPath(n) : billed.log;
+  return parkHere(verdict, { ...worked(action.pr, log), flake: verdict.ciRed ? null : (settled.flake ?? null) });
 }
 
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
@@ -2959,7 +2641,7 @@ function realIo(book, screen) {
           sh("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
         } catch (err) {
           // Said out loud, because silence here is permanent: the picker skips `in-progress`, so a
-          // swallowed failure leaves a finished ticket nothing will ever take again. #1026 merged.
+          // swallowed failure leaves a finished ticket nothing will ever take again.
           screen.notice("claim", `#${number} is still in-progress — ${String(err.message).split("\n")[0]}`);
         }
       }
@@ -3066,11 +2748,8 @@ function trapSignals(screen) {
  * The night, as a loop over `runOnce`.
  *
  * Every collaborator is a parameter with a real default rather than something this function
- * constructs, which is the whole of what makes the breaker, the fix-round ceiling and the refusal
- * ceiling reachable from a test — five locals mutated across six branches, none of which any test
- * could drive, and `CI_ROUNDS`, `WAIT.TRIES` and `shouldHalt`'s interaction with them appeared in
- * none. A pure `step(state, pass)` beside it would be a second copy of that shape to keep in
- * agreement; driving the real one costs nothing and cannot drift.
+ * constructs, so a test drives the real loop: the counters are `decide()`'s, and what a pass does to
+ * them is only seen here, across passes.
  *
  * @param {{screen?: object, book?: object, io?: object, install?: Function, runId?: string}} [deps]
  */
@@ -3082,14 +2761,8 @@ export async function main({
   runId = RUN_ID,
   tick = 30_000,
 } = {}) {
-  let failures = 0;
-  let waits = 0;
-  let holds = 0;
-  let heldTicket = null;
-  let ticketHolds = 0;
-  let overloads = 0;
-  /** The ticket a red CI round or a handoff handed back. Its counts are the ledger's. */
-  let pinned = null;
+  /** `pinned` is the ticket a red CI round or a handoff handed back; its counts are the ledger's. */
+  let loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 
   install(screen);
   io ??= realIo(book, screen);
@@ -3219,158 +2892,76 @@ export async function main({
     let pass;
     claimed = null;
     try {
-      pass = await runOnce(watched, pinned, pinned ? io.tally(pinned).lastHandoff : null);
+      pass = await runOnce(watched, loop.pinned, loop.pinned ? io.tally(loop.pinned).lastHandoff : null, loop);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
       // No row: there is no run to write one from, and inventing one is how the ledger came to be
       // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
-      if (claimed !== null) {
+      const own = claimed === null ? null : worktreeOf(io, claimed);
+      const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, limits: LIMITS, now: Date.now() });
+      if (threw.kind === "park") {
         try {
-          const own = worktreeOf(io, claimed);
-          parkAndRecord(io, claimed, {
-            ...own,
-            phase: own.phase ?? "?",
-            why: `the loop threw: ${String(err?.message ?? err)}`,
-            log: streamLog(claimed),
-          });
+          parkAndRecord(io, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
         }
       }
-      failures += 1;
-      if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+      loop = threw.loop;
+      if (threw.halt) return finish(1, threw.halt);
       continue;
     }
+    loop = pass.loop;
 
-    if (pass.outcome === "stop") return finish(0, pass.why);
+    if (pass.outcome === "stop") return finish(pass.halt ? 1 : 0, pass.why);
     if (pass.outcome === "restart") return finish(RESTART, pass.why);
 
-    // Read only here, once the session has exited: a park is never a kill.
-    if (pass.ticket != null && parkAsked(pass.ticket)) {
+    // A pass that left the ticket standing was the park's to take, and `runOnce` took it; this one
+    // ended the ticket first.
+    if (pass.ticket != null && !PARKABLE.has(pass.outcome) && parkAsked(pass.ticket)) {
       fs.rmSync(PARK_FILE, { force: true });
-      if (["handoff", "retry", "refused", "overloaded", "hold"].includes(pass.outcome)) {
-        const own = worktreeOf(io, pass.ticket);
-        parkAndRecord(io, pass.ticket, {
-          ...own,
-          phase: pass.phase ?? own.phase ?? "?",
-          why: "parked by owner",
-          log: pass.run?.log ?? streamLog(pass.ticket),
-        });
-        pinned = null;
-        continue;
-      }
       screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 
     // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
     // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
-      // A ticket's holds are that ticket's alone, and past their bound it is parked for the owner, as
-      // `poll` parks an unreadable red; a pre-flight's spend the run's ceiling instead.
       const mine = pass.ticket != null;
-      const count = mine ? (ticketHolds = heldTicket === pass.ticket ? ticketHolds + 1 : 1) : (holds += 1);
-      heldTicket = mine ? pass.ticket : heldTicket;
-      if (mine && count > TICKET_HOLDS) {
-        parkAndRecord(io, pass.ticket, {
-          ...worktreeOf(io, pass.ticket),
-          phase: "C",
-          why: `${pass.why}, ${count} times running`,
-          log: streamLog(pass.ticket),
-        });
-        heldTicket = null;
-        pinned = null;
-        failures += 1;
-        if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
-        continue;
-      }
-      if (!mine && count > WAIT.TRIES) return finish(1, `${pass.why}, ${count} times running`);
       const whose = mine ? `#${pass.ticket} held: ` : "";
-      const bound = mine ? TICKET_HOLDS : WAIT.TRIES;
+      const [count, bound] = mine ? [loop.ticketHolds, TICKET_HOLDS] : [loop.holds, WAIT.TRIES];
       screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${count} of ${bound})`);
       const [what, then] =
         pass.ticket != null
           ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]
           : ["a pre-flight hold", `the pre-flight asks again, then the next pick${queued()}`];
-      if ((await hold(WAIT.FLOOR, what, then)) === "stopped") return finish(0, ".loop-stop during the wait");
+      if ((await hold(pass.hold, what, then)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
-    holds = 0;
-    heldTicket = null;
 
     // A refusal is not a failure and not a ticket: the account is out of usage, which the branch,
     // the pull request and the label all survive. It waits, then goes again — an exit here costs
     // every remaining ticket of an unattended night.
     if (pass.outcome === "refused") {
-      const step = afterRefusal({ waits, blocked: true, blockedUntil: pass.until });
-      waits = step.waits;
-      if (step.action === "give-up") return finish(1, step.why);
       screen.notice(
         "usage",
-        `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + step.hold)} (wait ${waits} of ${WAIT.TRIES})`,
+        `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + pass.hold)} (wait ${loop.waits} of ${WAIT.TRIES})`,
       );
-      const resets = `usage resets ${clockAt(Date.now() + step.hold)}`;
-      if ((await hold(step.hold, resets, `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
+      const resets = `usage resets ${clockAt(Date.now() + pass.hold)}`;
+      if ((await hold(pass.hold, resets, `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
         return finish(0, ".loop-stop during the wait");
       }
       continue;
     }
 
-    // Counted in a row, not per landing like a refusal: any session the API served ends the outage.
     if (pass.outcome === "overloaded") {
-      overloads += 1;
-      if (overloads >= WAIT.TRIES) return finish(1, `${pass.why}, ${overloads} sessions in a row`);
-      pinned = pass.ticket;
-      const back = clockAt(Date.now() + WAIT.FLOOR);
-      screen.notice("api", `#${pass.ticket} paused: ${pass.why} — trying again at ${back} (${overloads} of ${WAIT.TRIES})`);
-      if ((await hold(WAIT.FLOOR, "the API is failing", `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
+      const back = clockAt(Date.now() + pass.hold);
+      screen.notice("api", `#${pass.ticket} paused: ${pass.why} — trying again at ${back} (${loop.overloads} of ${WAIT.TRIES})`);
+      if ((await hold(pass.hold, "the API is failing", `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
         return finish(0, ".loop-stop during the wait");
       }
       continue;
     }
-    overloads = 0;
 
-    const giveUp = (why) => {
-      parkAndRecord(io, pass.ticket, { ...worktreeOf(io, pass.ticket), phase: pass.phase ?? "E", why, log: pass.run.log });
-      pinned = null;
-      failures += 1;
-      return shouldHalt(failures);
-    };
-    const halted = () => finish(1, `${failures} tickets in a row did not land`);
-
-    // A red CI round is the same ticket again, not the next one: the picker would leave this one
-    // labelled `in-progress` with an open pull request and take a different ticket, and nothing
-    // would ever come back to it. `runOnce` owns the ceiling, so reaching here means there is
-    // another round to spend.
-    if (pass.outcome === "handoff" || pass.outcome === "retry") {
-      // A round that left the head where it found it cannot change what CI answers, so spending the
-      // next one on it buys nothing.
-      if (pass.outcome === "retry" && pass.sha && pass.sha === pass.tally?.lastRedHead) {
-        if (giveUp(`the fix round pushed no commit — CI would answer ${pass.why} again`)) return halted();
-        continue;
-      }
-      pinned = pass.ticket;
-      const tally = io.tally(pass.ticket);
-      if (overSpend(tally.spend, pass.size ?? null)) {
-        const why = `$${tally.spend.toFixed(2)} across ${tally.sessions} processes — over this ticket's ceiling`;
-        if (giveUp(why)) return halted();
-        continue;
-      }
-      if (overHandoffs(tally.handoffsThisRound)) {
-        if (giveUp(`${tally.handoffsThisRound} phase handoffs on one ticket`)) return halted();
-        continue;
-      }
-      continue;
-    }
-    pinned = null;
-    if (pass.outcome === "landed" || pass.outcome === "closed") {
-      failures = 0;
-      // Only a finished ticket clears the refusal counter. Cleared on any non-refused outcome,
-      // refusals interleaved with parks never reach the ceiling: a suspend knob with no floor.
-      waits = 0;
-    } else {
-      failures += 1;
-    }
-    if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
+    if (pass.halt) return finish(1, pass.halt);
   }
 }
 

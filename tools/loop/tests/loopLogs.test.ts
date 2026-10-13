@@ -8,6 +8,7 @@ import {
   ARTEFACTS,
   errorOf,
   handoffIn,
+  holdRound,
   killedStarts,
   ledger,
   parkReasonOf,
@@ -17,12 +18,20 @@ import {
   prune,
   readLedger,
   sessionRow,
+  tallyOf,
   ticketTally,
   pendingReparks,
   typicalMs,
   usageSplit,
   windowCost,
+  withSpawnPhase,
 } from "../loop-logs.mjs";
+
+const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
+const golden = {
+  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
+  main: JSON.parse(fixture("ledger-golden.main.json")),
+};
 
 const RESULT = {
   kind: "result",
@@ -614,6 +623,8 @@ describe("ticketTally", () => {
       spend: 0,
       ms: 0,
       turns: 0,
+      processes: 0,
+      fixSpend: 0,
       handoffsThisRound: 0,
       lastHandoff: null,
       handoffWhy: null,
@@ -643,6 +654,85 @@ describe("ticketTally", () => {
     const t = ticketTally(1, [row({ n: 2, outcome: "retry", cost: 5 })]);
     assert.equal(t.sessions, 0);
     assert.equal(t.spend, 0);
+  });
+});
+
+describe("tallyOf", () => {
+  const proc = (over: object) => ({ schema: 8, n: 1, cost: 0, turns: 10, ms: 0, phases: { C: 60 }, ...over });
+  const out = (over: object) => ({ schema: 8, n: 1, cost: 0, turns: 0, phases: {}, ...over });
+
+  test("a HOLD round is a review handing back to C or D, and its spend is fix spend", () => {
+    const t = tallyOf([
+      proc({ cost: 5, outcome: "handoff", handoff: { phase: "D" } }),
+      proc({ phases: { D: 60 }, cost: 2, outcome: "handoff", handoff: { phase: "C" } }),
+      proc({ cost: 3, outcome: "handoff", handoff: { phase: "D" } }),
+      proc({ phases: { D: 60 }, cost: 4, outcome: "handoff", handoff: { phase: "D" } }),
+      proc({ phases: { D: 60 }, cost: 1, outcome: "handoff", handoff: { phase: "E" } }),
+    ]);
+    assert.deepEqual([t.fixSpend, t.spend], [6, 15]);
+  });
+
+  test("a CI fix round is fix spend, by following a retry", () => {
+    const rows = [{ n: 1, outcome: "pushed", cost: 4, turns: 20 }, { n: 1, outcome: "retry", cost: 0, turns: 0 }, { n: 1, outcome: "pushed", cost: 1.5, turns: 9 }];
+    assert.equal(tallyOf(rows).fixSpend, 1.5);
+  });
+
+  test("a retry restarts the handoff streak, clears the handed phase and names the red head", () => {
+    const t = tallyOf([
+      proc({ outcome: "handoff", handoff: { phase: "D", why: null, said: null } }),
+      out({ outcome: "retry", head: "a" }),
+      proc({ outcome: "handoff", handoff: { phase: "D", why: null, said: "round 1 HOLD" } }),
+    ]);
+    assert.deepEqual([t.handoffsThisRound, t.retries, t.lastRedHead], [1, 1, "a"]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["D", "round 1 HOLD"]);
+    assert.equal(tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "retry" })]).lastHandoff, null);
+  });
+
+  test("the supervisor's reason outranks what the session said", () => {
+    const t = tallyOf([proc({ outcome: "handoff", handoff: { phase: "C", why: "no local pass", said: "x" } })]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "no local pass"]);
+  });
+
+  test("a process is a row that ran turns, and a settle row is none", () => {
+    const t = tallyOf([{ n: 1, outcome: "pushed", cost: 3, turns: 20, ms: 100 }, { n: 1, outcome: "retry", cost: 0, turns: 0, ms: 50 }]);
+    assert.deepEqual([t.processes, t.spend, t.ms], [1, 3, 150]);
+  });
+
+  test("before schema 6 a handoff is read from its prose", () => {
+    const v5 = { schema: 5, n: 1, outcome: "handoff", cost: 2, turns: 30, phases: { D: 600 }, park_reason: "phase C next — HOLD on abc" };
+    const t = tallyOf([v5]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "HOLD on abc"]);
+    assert.equal(holdRound(v5), true);
+    assert.equal(holdRound({ ...v5, park_reason: "phase E next" }), false);
+  });
+});
+
+test("ticketTally matches what main's ticketTally recorded on every prefix of a ledger of schema 3 to 8", () => {
+  const rows = golden.rows.filter((r) => r.outcome !== "started");
+  assert.equal(rows.length, golden.main.tallies.length);
+  rows.forEach((r, i) => {
+    const t = ticketTally(r.n, rows.slice(0, i + 1));
+    assert.deepEqual([r.n, t.spend, t.retries, t.handoffsThisRound, t.lastRedHead, t.lastHandoff], golden.main.tallies[i], `row ${i + 1}`);
+  });
+});
+
+describe("withSpawnPhase", () => {
+  const start = (phase: string, over: object = {}) => ({ schema: 8, n: 1, outcome: "started", phase, run_id: "r", ...over });
+  const row = (over: object) => ({ schema: 8, n: 1, run_id: "r", turns: 20, cost: 1, phases: { B: 60 }, ...over });
+
+  test("gives a process the phase its start row named, and drops the start rows", () => {
+    const out = withSpawnPhase([start("A"), row({ outcome: "handoff" })]);
+    assert.deepEqual(out.map((r) => [r.outcome, r.at]), [["handoff", "A"]]);
+  });
+
+  test("a supervisor row in between does not take the next process's start", () => {
+    const out = withSpawnPhase([start("D"), row({ outcome: "retry", turns: 0, phases: {} }), row({ outcome: "pushed" })]);
+    assert.deepEqual(out.map((r) => r.at), [undefined, "D"]);
+  });
+
+  test("a row with no start row of its run keeps its own phase", () => {
+    const out = withSpawnPhase([start("A", { run_id: "other" }), row({ outcome: "pushed" })]);
+    assert.deepEqual(out.map((r) => r.at), [undefined]);
   });
 });
 
