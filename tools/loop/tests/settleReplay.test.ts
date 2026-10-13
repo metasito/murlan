@@ -288,6 +288,74 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
     assert.equal(pr.armed, false);
   });
 
+  // `--match-head-commit` is checked when GitHub arms, and is not documented to be checked again at merge.
+  describe("a head that moves under an arm", () => {
+    const moving = () => {
+      const fake = rollupFake({ views: [GREEN], autoMerges: false });
+      const gh = (args: string[], file = "gh") => {
+        const out = fake.gh(args, file);
+        if (args.includes("--auto")) fake.pr.head = NEW;
+        return out;
+      };
+      return { ...fake, gh };
+    };
+
+    test("is disarmed before anything else, and the new head is not armed unless it is cleared", async () => {
+      const { gh, asked, pr } = moving();
+      const said: string[] = [];
+      const judged: string[] = [];
+      const cleared = (sha: string) => (judged.push(sha), sha === SHA ? REVIEWED(sha) : { ok: false, why: `no review of ${sha.slice(0, 7)}` });
+      const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, [], cleared));
+      assert.equal(out.action, "owner");
+      assert.deepEqual(judged, [SHA, NEW]);
+      assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr)]);
+      assert.ok(!said.some((m) => /waiting for GitHub to merge/.test(m)), JSON.stringify(said));
+      assert.equal(pr.armed, false);
+    });
+
+    test("a moved head that is cleared is armed again, pinned to itself", async () => {
+      const { gh, asked } = moving();
+      await poll(PENDING, () => {}, 0, 5, io(gh));
+      assert.deepEqual(merges(asked).slice(0, 3), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr), armArgs(REPO, PENDING.pr, NEW)]);
+    });
+  });
+
+  describe("an arm whose answer never came back may still have armed", () => {
+    const TIMEOUT = "gh: Post \"https://api.github.com/graphql\": net/http: request canceled (Client.Timeout exceeded)";
+    const silently = (tookEffect: boolean, disarmUnarmed?: string) => {
+      const fake = rollupFake({ views: [GREEN], refuse: { merge: "GraphQL: Base branch was modified" } });
+      const gh = (args: string[], file = "gh") => {
+        if (args.includes("--auto")) {
+          fake.asked.push(args);
+          if (tookEffect) fake.pr.armed = true;
+          throw new Error(TIMEOUT);
+        }
+        if (args.includes("--disable-auto") && !fake.pr.armed && disarmUnarmed) {
+          fake.asked.push(args);
+          throw new Error(disarmUnarmed);
+        }
+        return fake.gh(args, file);
+      };
+      return { ...fake, gh };
+    };
+
+    test("a refused direct merge after it still ends in a disarm", async () => {
+      const { gh, asked, pr } = silently(true);
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(out.action, "owner");
+      assert.match(String(out.reason), /the merge failed/);
+      assert.ok(indexOf(asked, isDisarm) > indexOf(asked, (a) => a[1] === "merge" && !a.includes("--auto")), JSON.stringify(asked));
+      assert.equal(pr.armed, false);
+    });
+
+    test("a disarm refused because nothing was armed is no failure", async () => {
+      const { gh, asked } = silently(false, "GraphQL: Auto merge is not enabled for this pull request");
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.ok(asked.some(isDisarm), JSON.stringify(asked));
+      assert.match(String(out.reason), /^the merge failed/);
+    });
+  });
+
   test("a disarm GitHub refuses is the owner's, and says the pull request may still merge", async () => {
     const { gh, asked } = rollupFake({ views: [RED], armed: true, refuse: { disarm: "HTTP 502" } });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
