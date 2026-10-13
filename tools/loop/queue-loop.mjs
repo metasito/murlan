@@ -2126,14 +2126,25 @@ const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an 
 
 const FLAKES_PER_RUN = 3;
 
-const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
+/** Bounds what a merge message or an issue body lists: a starved runner fails hundreds. */
+const FLAKES_LISTED = 20;
+
+const listed = (names) =>
+  (names.length > FLAKES_LISTED ? [...names.slice(0, FLAKES_LISTED), `and ${names.length - FLAKES_LISTED} more`] : names).map((n) => `- ${n}`);
+
+/** The merge message's body, written to a file: an inline argument has no bound. */
+function flakeMergeFile(red, ticket, write) {
+  const file = path.join(DIR, `flake-merge-${ticket}.md`);
+  write(file, [`Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed`, ...listed(flakeNames(red))].join("\n"), "utf8");
+  return file;
+}
 
 /**
  * One open issue per flaky test, found by its exact title in a listing of every open issue: GitHub's
  * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
  * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
-function fileFlakes(red, gh, log) {
+function fileFlakes(red, gh, log, write) {
   let open;
   try {
     open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "number,title"]));
@@ -2148,12 +2159,14 @@ function fileFlakes(red, gh, log) {
     if (open.some((i) => i.title === title)) continue;
     const body = [
       `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed ${titles.length < names.length ? "these" : "this"}; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
-      ...(titles.length < names.length ? ["", ...names.map((n) => `- ${n}`)] : []),
+      ...(titles.length < names.length ? ["", ...listed(names)] : []),
       "",
       "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
-      gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
+      const file = path.join(DIR, `flake-issue-${red.ticket}.md`);
+      write(file, body, "utf8");
+      gh(["issue", "create", "--repo", REPO, "--title", title, "--body-file", file, "--label", "ready-for-human"]);
       log(`filed ${title}`);
     } catch (err) {
       log(`could not file ${title} — ${firstLine(err)}`);
@@ -2238,7 +2251,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         // An unreadable `ls-remote` is not evidence of a survivor.
       }
     }
-    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
+    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log, write);
     return { action: "already-merged", reason, ...(flake && { flake }) };
   };
   /**
@@ -2402,7 +2415,16 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
       if (reran === head && firstRed && !flake) flake = { runId: firstRed.runId, tests: firstRed.tests };
-      const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
+      let message;
+      try {
+        if (flake) {
+          mkdir(DIR, { recursive: true });
+          message = flakeMergeFile(firstRed, pending.ticket, write);
+        }
+      } catch (err) {
+        log(`could not write the flake into the merge message — ${firstLine(err)}`);
+      }
+      const argv = armArgs(REPO, pending.pr, head, message);
       // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
       armed = "maybe";
       armedAt = head;
