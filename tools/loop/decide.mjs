@@ -1,7 +1,5 @@
 import { STALL_MS } from "./limits.mjs";
 
-const PARK = { remove: ["in-progress", "ready-for-agent"], add: ["ready-for-human"] };
-const RELEASE = { remove: ["in-progress"], add: [] };
 const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
@@ -210,7 +208,7 @@ const STEPS = {
     if (route.skill === "closed") {
       return repicked
         ? { kind: "stop", why: `#${n} is closed and its worktree still stands` }
-        : { kind: "repick", n, why: `#${n} is closed`, label: RELEASE };
+        : { kind: "repick", n, why: `#${n} is closed` };
     }
     if (route.skill === "handoff" || route.skill === "ambiguous") return { kind: "stop", why: route.title };
     // The session's own derive reads a red only from CI-RED, so a held red's fix round waits for one.
@@ -380,15 +378,15 @@ function tallied(action, { loop, limits, step, now }) {
   switch (action.kind) {
     case "landed":
     case "closed":
-      return { ...action, label: RELEASE, loop: { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 } };
+      return { ...action, loop: { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 } };
     case "park": {
       // The owner's own park is not a ticket failing, and resets nothing.
-      if (action.byOwner) return { ...action, label: PARK, halt: null, loop: { ...loop, pinned: null } };
+      if (action.byOwner) return { ...action, halt: null, loop: { ...loop, pinned: null } };
       const f = failures + 1;
       // A throw's park leaves the pin to `nextRoute`, which passes over a pinned ticket whose labels
       // say it was released.
       const next = step === "threw" ? { ...loop, failures: f } : { ...unheld, failures: f, overloads: 0, pinned: null };
-      return { ...action, label: PARK, halt: breaker(f), loop: next };
+      return { ...action, halt: breaker(f), loop: next };
     }
     case "fail":
       return { ...action, halt: breaker(failures + 1), loop: { ...loop, failures: failures + 1 } };
@@ -400,7 +398,7 @@ function tallied(action, { loop, limits, step, now }) {
         if (t > limits.TICKET_HOLDS) {
           const f = failures + 1;
           const why = `${action.why}, ${t} times running`;
-          return { kind: "park", n: action.n, phase: "C", why, head: action.head, instead: action, label: PARK, halt: breaker(f), loop: { ...loop, failures: f, pinned: null, heldTicket: null, ticketHolds: 0 } };
+          return { kind: "park", n: action.n, phase: "C", why, head: action.head, instead: action, halt: breaker(f), loop: { ...loop, failures: f, pinned: null, heldTicket: null, ticketHolds: 0 } };
         }
         return { ...action, hold: wait.FLOOR, loop: { ...loop, heldTicket: action.n, ticketHolds: t } };
       }

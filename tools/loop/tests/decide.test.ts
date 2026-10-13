@@ -8,8 +8,6 @@ import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, SETTLE_ROUNDS, TICKET_HOLDS, 
 
 const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
 const NOW = Date.parse("2026-10-12T20:00:00Z");
-const PARK = { remove: ["in-progress", "ready-for-agent"], add: ["ready-for-human"] };
-const RELEASE = { remove: ["in-progress"], add: [] };
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
 const empty = { ...ticketTally(42, []), ciRounds: 0 };
@@ -64,7 +62,7 @@ const ROWS: Row[] = [
   ["a handoff route stops", pick({ skill: "handoff", title: "queue empty" }), { kind: "stop", why: "queue empty" }],
   ["an ambiguous pick stops rather than taking a third ticket", pick({ skill: "ambiguous", title: "two live worktrees" }), { kind: "stop", why: "two live worktrees" }],
   ["a closed ticket whose worktree still stands is torn down and the queue picked again, with no spawn on it", pick({ skill: "closed" }, { loop: { ...fresh, pinned: 42 } }),
-    { kind: "repick", n: 42, label: RELEASE, loop: fresh }],
+    { kind: "repick", n: 42, loop: fresh }],
   ["a closed ticket unrelated to the pinned one keeps the pin, and its phase, on re-pick", pick({ skill: "closed", n: 9 }, { loop: { ...fresh, pinned: 42 } }),
     { kind: "repick", n: 9, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: a closed ticket on the re-pick too stops", pick({ skill: "closed" }, { repicked: true }), { kind: "stop", why: "#42 is closed and its worktree still stands" }],
@@ -74,7 +72,7 @@ const ROWS: Row[] = [
   ["a red round nobody recorded is written down before the fix round; a recorded one is not", fixRoute(), { kind: "go", redWhileDown: true }],
   ["runOnce: a fix route whose red head is already recorded writes nothing", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h3" } }), { kind: "go", redWhileDown: false }],
   ["a red round nobody recorded counts toward the cap, and the last one parks before the refresh", fixRoute({ tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h2" } }),
-    { kind: "park", phase: "C", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down`, label: PARK }],
+    { kind: "park", phase: "C", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — the last one while the loop was down` }],
   ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h2", ciRounds: 2 } }),
     { kind: "go", redWhileDown: true }],
   ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute({ tally: { ...empty, ciRounds: CI_ROUNDS } }), { kind: "park", phase: "C" }],
@@ -87,7 +85,7 @@ const ROWS: Row[] = [
   ["main: a park asked from the board takes a held red whose CI-RED is unposted", heldRed({ posted: false, asked: true }),
     { kind: "park", why: "parked by owner", byOwner: true, phase: "C", instead: { kind: "hold" } }],
   ["an ff failure before a fix parks", { ...base, step: "refresh", error: "fatal: Not possible to fast-forward" },
-    { kind: "park", phase: "C", why: "could not fast-forward the worktree before the fix round — fatal: Not possible to fast-forward", label: PARK }],
+    { kind: "park", phase: "C", why: "could not fast-forward the worktree before the fix round — fatal: Not possible to fast-forward" }],
   ["runOnce: a fast-forwarded worktree goes on to the fix round", { ...base, step: "refresh", error: null }, { kind: "go" }],
 
   // runOnce, the facts a session's exit is read against, each asked for only where it decides
@@ -104,7 +102,7 @@ const ROWS: Row[] = [
   ["an expired login stops the run, and does not park the ticket it met", session({ run: silent({ accountError: "authentication_failed", status: 1 }) }),
     { kind: "stop", why: /^the account cannot run sessions \(authentication_failed\) — log in.*#42 resumes from its worktree$/, loop: fresh }],
   ["a session on the wrong model parks with the reason", session({ run: run({ wrongModel: "the session ran on claude-sonnet-5, not opus" }) }),
-    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", label: PARK, loop: { ...fresh, failures: 1 } }],
+    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", loop: { ...fresh, failures: 1 } }],
   ["starts the next process at the phase the session named", session(), { kind: "handoff", n: 42, phase: "D", why: null, publish: true, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: the session's own why rides with its handoff", session({ run: run({ declared: said({ handoff: "D", why: "review abc" }) }) }), { kind: "handoff", said: "review abc" }],
   ["a D handoff without a --build pass re-routes to C, recorded as a C handoff", session({ built: false }),
@@ -119,7 +117,7 @@ const ROWS: Row[] = [
     { kind: "handoff", phase: "C", why: "phase E's agent:check was red: fix what it names, then go through D again" }],
   ["a declared stand-down parks on the session's own reason",
     session({ run: run({ declared: said({ handoff: "D", stoodDown: true, why: "premise false" }) }) }),
-    { kind: "park", n: 42, phase: "C", why: "premise false", label: PARK, loop: { ...fresh, failures: 1 } }],
+    { kind: "park", n: 42, phase: "C", why: "premise false", loop: { ...fresh, failures: 1 } }],
   ["a session that worked a different ticket stops the pass", session({ run: finished({ ticket: 41 }), pushed: pr("OPEN") }),
     { kind: "park", why: "the session worked #41, not #42", pr: 7 }],
   ["a handoff the supervisor makes for a cut-off session says why",
@@ -156,13 +154,13 @@ const ROWS: Row[] = [
     { kind: "settle", pr: 7 }],
   ["is recorded closed, with no park",
     session({ run: finished(), after: { ...derived, commits: 0 }, issue: { state: "CLOSED", stateReason: "COMPLETED" } }),
-    { kind: "closed", n: 42, why: "the session closed the issue as done, with no diff to land", label: RELEASE, loop: fresh }],
+    { kind: "closed", n: 42, why: "the session closed the issue as done, with no diff to land", loop: fresh }],
   ["with commits of its own it still parks", session({ run: finished(), issue: { state: "CLOSED", stateReason: "COMPLETED" } }),
     { kind: "park", why: "the session pushed no pull request" }],
   ["closed as not planned still parks", session({ run: finished(), after: { ...derived, commits: 0 }, issue: { state: "CLOSED", stateReason: "NOT_PLANNED" } }),
     { kind: "park" }],
   ["a pull request already merged is a landing, and the claim comes off", session({ run: finished(), pushed: pr("MERGED") }),
-    { kind: "landed", n: 42, pr: 7, why: "pull request #7 was already merged", label: RELEASE }],
+    { kind: "landed", n: 42, pr: 7, why: "pull request #7 was already merged" }],
   ["a torn-down worktree with a pull request open is settled, not parked", session({ run: finished(), after: null, pushed: pr("OPEN") }), { kind: "settle", pr: 7, head: "h1" }],
   ["a torn-down worktree with no pull request anywhere still parks", session({ run: finished(), after: null }),
     { kind: "park", why: "the session pushed no pull request" }],
@@ -170,7 +168,7 @@ const ROWS: Row[] = [
     { kind: "park", why: "pull request #7 is closed", pr: 7 }],
   ["a session that pushed nothing parks the ticket", session({ run: finished() }), { kind: "park", why: "the session pushed no pull request", phase: "F" }],
   ["a session that exits without a LOOP-RESULT parks with that reason", session({ run: silent() }),
-    { kind: "park", n: 42, why: "the session exited without a LOOP-RESULT", phase: "C", label: PARK }],
+    { kind: "park", n: 42, why: "the session exited without a LOOP-RESULT", phase: "C" }],
   ["a G route settles without spawning", g(pr("OPEN")), { kind: "settle", pr: 7 }],
   ["runOnce: phase G whose pull request merged meanwhile lands", g(pr("MERGED")), { kind: "landed", pr: 7 }],
   ["a G pass with no open pull request says so", g(null), { kind: "park", phase: "G", why: "phase G found no open pull request for the pushed head" }],
@@ -216,7 +214,7 @@ const ROWS: Row[] = [
 
   // runOnce, what poll's verdict costs the ticket
   ["a ticket that pushes and merges is landed, in one pass", settled({ action: "already-merged", reason: "the pull request is already merged" }),
-    { kind: "landed", n: 42, head: "h2", label: RELEASE, loop: fresh }],
+    { kind: "landed", n: 42, head: "h2", loop: fresh }],
   ["a red verdict hands the ticket back, and still writes its row", settled(), { kind: "retry", n: 42, head: "h2", why: "CI failed at Typecheck and tests", loop: { ...fresh, pinned: 42 } }],
   ["a CI fix round keeps the worktree, and hands it back", settled(), { kind: "retry" }],
   ["a red settle leaves the worktree standing and the next pass spawns C with the fix", settled(), { kind: "retry", loop: { ...fresh, pinned: 42 } }],
@@ -232,7 +230,7 @@ const ROWS: Row[] = [
   ["runOnce: an unposted CI-RED on the last round parks", settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI-RED for abc could not be posted` }],
   ["a settle only a person can move parks the ticket rather than dropping it", settled({ action: "owner", reason: "update-branch did not settle in 3 rounds" }),
-    { kind: "park", phase: "E", why: "update-branch did not settle in 3 rounds", label: PARK }],
+    { kind: "park", phase: "E", why: "update-branch did not settle in 3 rounds" }],
   ["a settle that is the owner's parks with its own reason", settled({ action: "owner", reason: "the branch conflicts with main" }), { kind: "park", why: "the branch conflicts with main" }],
   ["an unrecognised settle action parks too, rather than returning silently", settled({ action: "something-new", reason: "?" }), { kind: "park", why: "?" }],
   ["a merge is the landing, and costs the run nothing", settled({ action: "already-merged", reason: "merged" }, { loop: { ...fresh, failures: 2 } }),
@@ -240,11 +238,11 @@ const ROWS: Row[] = [
   ["a hand-back writes a row of its own, and does not count as a failure", settled({}, { loop: { ...fresh, failures: 1 } }),
     { kind: "retry", loop: { ...fresh, failures: 1, pinned: 42 } }],
   ["an owner decision is parked, and goes through park rather than a bare teardown", settled({ action: "owner", reason: "r" }),
-    { kind: "park", label: PARK, loop: { ...fresh, failures: 1 } }],
+    { kind: "park", loop: { ...fresh, failures: 1 } }],
   ["a hold records its red round and parks nothing: the next pick reads the red again", settled({ action: "hold", reason: "r", head: "abc" }),
     { kind: "hold", record: "retry", head: "abc", loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["an unrecognised action parks rather than passing as a landing", settled({ action: "something-new", reason: "?" }),
-    { kind: "park", label: PARK, loop: { ...fresh, failures: 1 } }],
+    { kind: "park", loop: { ...fresh, failures: 1 } }],
 
   // main, over a handoff or a fix round
   ["runOnce: a handoff that takes the ticket over its dollar ceiling parks",
@@ -268,7 +266,7 @@ const ROWS: Row[] = [
     { kind: "park", phase: "E", why: "the fix round pushed no commit — CI would answer CI failed at Typecheck and tests again" }],
   ["a fix round whose head equals lastRedHead parks even after a restart", settled({}, { tally: { ...empty, retries: 1, lastRedHead: "h2" } }), { kind: "park" }],
   ["parks the ticket once its session exits, and forgets the request", session({ asked: true }),
-    { kind: "park", phase: "D", why: "parked by owner", label: PARK, halt: null, loop: fresh }],
+    { kind: "park", phase: "D", why: "parked by owner", halt: null, loop: fresh }],
   ["a red CI round parks in the phase git reports, with its worktree", settled({}, { asked: true, own: { ...own, phase: "E" } }), { kind: "park", phase: "E", why: "parked by owner" }],
   ["a ticket that lands before the park can act says the request was dropped", session({ asked: true, run: finished(), pushed: pr("MERGED") }), { kind: "landed" }],
   ["a request naming another ticket parks nothing", session({ asked: false }), { kind: "handoff" }],
@@ -313,7 +311,7 @@ const ROWS: Row[] = [
     { kind: "hold", loop: { heldTicket: 42, ticketHolds: 1 } }],
   ["a ticket held past its bound is parked for the owner, and the loop carries on",
     heldRed({ posted: false, loop: { ...fresh, holds: 2, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
-    { kind: "park", n: 42, phase: "C", why: `CI-RED for h1abcde could not be posted, ${TICKET_HOLDS + 1} times running`, label: PARK, halt: null,
+    { kind: "park", n: 42, phase: "C", why: `CI-RED for h1abcde could not be posted, ${TICKET_HOLDS + 1} times running`, halt: null,
       instead: { kind: "hold" }, loop: { ...fresh, failures: 1, holds: 2, heldTicket: null } }],
   ["main: a ticket parked at its hold bound counts toward the breaker", heldRed({ posted: false, loop: { ...fresh, failures: BREAKER - 1, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
     { kind: "park", halt: `${BREAKER} tickets in a row did not land` }],
@@ -325,7 +323,7 @@ const ROWS: Row[] = [
   ["main: a usage refusal neither pins nor touches the API count", session({ run: silent({ result: null, blocked: true, blockedUntil: 0 }), loop: { ...fresh, holds: 2, overloads: 3 } }),
     { kind: "hold", loop: { ...fresh, waits: 1, overloads: 3 } }],
   ["releases the claim on the ticket it was holding", { ...base, step: "threw", error: "boom", own: { ...own, phase: "D" }, loop: { ...fresh, holds: 2, pinned: 42 } },
-    { kind: "park", n: 42, phase: "D", why: "the loop threw: boom", label: PARK, loop: { ...fresh, failures: 1, holds: 2, pinned: 42 } }],
+    { kind: "park", n: 42, phase: "D", why: "the loop threw: boom", loop: { ...fresh, failures: 1, holds: 2, pinned: 42 } }],
   ["main: a throw with no worktree to read parks in phase ?", { ...base, step: "threw", error: "boom", own: null }, { kind: "park", phase: "?" }],
   ["a throw before anything is claimed parks nothing", { ...base, step: "threw", route: null, error: "boom" },
     { kind: "fail", why: "the loop threw: boom", loop: { ...fresh, failures: 1 } }],
