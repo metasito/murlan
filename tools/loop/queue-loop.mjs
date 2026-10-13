@@ -2084,6 +2084,8 @@ const CI_RED_TRIES = 3;
 /** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
 const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
 
+const FLAKES_PER_RUN = 3;
+
 const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
 
 /**
@@ -2099,13 +2101,16 @@ function fileFlakes(red, gh, log) {
     log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
     return;
   }
-  for (const name of flakeNames(red)) {
-    const title = `CI flake: ${name}`;
+  const names = flakeNames(red);
+  // More reds than this cleared by one rerun reads as a starved runner, and it bounds the `gh` calls.
+  const titles = names.length > FLAKES_PER_RUN ? [`CI flake: ${names.length} tests in run ${red.runId}`] : names.map((n) => `CI flake: ${n}`);
+  for (const title of titles) {
     if (open.some((i) => i.title === title)) continue;
     const body = [
-      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed this; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed ${titles.length < names.length ? "these" : "this"}; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      ...(titles.length < names.length ? ["", ...names.map((n) => `- ${n}`)] : []),
       "",
-      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same test, so keep it.",
+      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
       gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
