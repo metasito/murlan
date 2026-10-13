@@ -1983,12 +1983,12 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
 /**
  * The CI-RED comment's exact shape, so `ciRedRounds` can count it and a fix round can find the
  * failure. Not a summary of the failure: the reference to it, because every budget that tried to
- * fit one into a comment dropped the part that mattered.
+ * fit one into a comment dropped the part that mattered. `onMain` and `flaky` are `onMainLine`'s answers.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   runId?: number, logArgs?: string[], reason?: string}} args
+ *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", runId, logArgs, reason }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -2003,6 +2003,8 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
     `gh ${logArgs?.join(" ") ?? `run view ${runId} --log-failed`} | grep -E "✖|AssertionError|error TS|FAIL " -A5`,
     "```",
     ...files.map((f) => `- ${f}`),
+    `on main: ${onMain}`,
+    ...(flaky === "none" ? [] : [`flaky on main: ${flaky}`]),
   ];
   if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
   return body.join("\n");
@@ -2024,10 +2026,22 @@ function readTicketComments(ticket, run, log) {
 }
 
 /**
+ * @param {string[]} failing the red head's test ids
+ * @param {{url?: string, ids: string[], flaky?: boolean}|null} main `mainFailures()`'s answer
+ */
+export function onMainLine(failing, main) {
+  const onMain = new Set(main?.ids ?? []);
+  const ids = failing.filter((id) => onMain.has(id));
+  if (!main || ids.length === 0) return "none";
+  const how = main.flaky ? "failed attempt 1 of main's rerun-won green" : "also fail on main";
+  return `${ids.length} of ${failing.length} ${how} (${main.url ?? "main's latest run"}): ${ids.join(", ")}`;
+}
+
+/**
  * Posted once per red head, checked against the tracker rather than a local marker: the fix
  * session may run on another machine, or after a restart, and reads only the tracker.
  */
-function postCiRedOnce(ticket, verdict, comments, run, write, log) {
+function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write, log) {
   const sha = verdict.head;
   if (!sha || !comments || ciRedPosted(comments, sha)) return;
   const body = ciRedBody({
@@ -2036,6 +2050,8 @@ function postCiRedOnce(ticket, verdict, comments, run, write, log) {
     failedStep: verdict.failedStep,
     testIds: verdict.testIds ?? [],
     excerpt: verdict.output,
+    onMain,
+    flaky,
     runId: verdict.runId,
     logArgs: verdict.logArgs,
     reason: verdict.reason,
@@ -2077,6 +2093,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     stateOf = (pr) => ts("./ciVerdict.ts").readLandingState(REPO, pr),
     write = writeFileSync,
     mkdir = mkdirSync,
+    mainFailures = () =>
+      ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
     facts = () => streamFacts(pending.ticket),
     cleared = (sha) => {
       const comments = readTicketComments(pending.ticket, run, log);
@@ -2179,7 +2197,11 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       try {
         mkdir(DIR, { recursive: true });
         write(ciLogPath(pending.ticket), verdict.output, "utf8");
-        postCiRedOnce(pending.ticket, verdict, readTicketComments(pending.ticket, run, log), run, write, log);
+        const comments = readTicketComments(pending.ticket, run, log);
+        const failing = verdict.testIds ?? [];
+        const main = failing.length ? mainFailures() : null;
+        const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+        postCiRedOnce(pending.ticket, verdict, lines, comments, run, write, log);
       } catch (err) {
         log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
       }
