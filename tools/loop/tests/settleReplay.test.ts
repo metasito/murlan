@@ -482,6 +482,14 @@ describe("a red is rerun once per head", () => {
       assert.equal(creates(asked).length, 0);
     });
 
+    // Promotion swaps `ready-for-human` for `ci-flake`, so a listing by either label misses it.
+    test("a test filed and since promoted is not filed again, whatever its labels", async () => {
+      const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
+      const gh = (args: string[], file = "gh") => (args[1] === "list" && args.includes("--label") ? (fake.asked.push(args), "[]") : fake.gh(args, file));
+      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(creates(fake.asked).length, 0);
+    });
+
     test("a red handed back after its rerun is no flake", async () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
       const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
