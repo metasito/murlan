@@ -405,7 +405,7 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
   });
 });
 
-describe("a red no test names is rerun once per head", () => {
+describe("a red is rerun once per head", () => {
   const reruns = (asked: string[][]) => asked.filter((a) => a[0] === "run" && a[1] === "rerun");
 
   test("rerun once, then handed back when the rerun is red too", async () => {
@@ -428,10 +428,11 @@ describe("a red no test names is rerun once per head", () => {
     assert.equal(reruns(asked).length, 0);
   });
 
-  test("a red naming its failing test is a fix round at once", async () => {
+  test("a red naming its failing test is rerun once too, before any CI-RED starts a fix round", async () => {
     const { gh, asked } = rollupFake({ views: [RED] });
     assert.equal((await poll(PENDING, () => {}, 0, DEADLINE, io(gh))).action, "hand-back");
-    assert.equal(reruns(asked).length, 0);
+    assert.equal(reruns(asked).length, 1);
+    assert.ok(indexOf(asked, (a) => a[1] === "rerun") < indexOf(asked, isComment), JSON.stringify(asked));
   });
 
   test("a rerun GitHub refuses hands the red back as it is", async () => {
