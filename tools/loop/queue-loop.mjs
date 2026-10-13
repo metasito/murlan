@@ -2083,6 +2083,9 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 /** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
 
+/** Passes one ticket may hold in a row before it is parked: `WAIT.FLOOR` apart, they outlast a short GitHub outage. */
+const TICKET_HOLDS = 10;
+
 /**
  * The CI log a fix round reads, written before the red is handed back: that session is a fresh
  * process with no way to ask this one anything. Then the `on main:` lines its CI-RED carries.
@@ -3082,6 +3085,8 @@ export async function main({
   let failures = 0;
   let waits = 0;
   let holds = 0;
+  let heldTicket = null;
+  let ticketHolds = 0;
   let overloads = 0;
   /** The ticket a red CI round or a handoff handed back. Its counts are the ledger's. */
   let pinned = null;
@@ -3260,24 +3265,28 @@ export async function main({
     // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
     // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
-      holds += 1;
-      // A ticket's hold is that ticket's, bounded as `poll` bounds an unreadable red: parked for the owner.
-      if (pass.ticket != null && holds > SETTLE_ROUNDS.retry) {
+      // A ticket's holds are that ticket's alone, and past their bound it is parked for the owner, as
+      // `poll` parks an unreadable red; a pre-flight's spend the run's ceiling instead.
+      const mine = pass.ticket != null;
+      const count = mine ? (ticketHolds = heldTicket === pass.ticket ? ticketHolds + 1 : 1) : (holds += 1);
+      heldTicket = mine ? pass.ticket : heldTicket;
+      if (mine && count > TICKET_HOLDS) {
         parkAndRecord(io, pass.ticket, {
           ...worktreeOf(io, pass.ticket),
           phase: "C",
-          why: `${pass.why}, ${holds} times running`,
+          why: `${pass.why}, ${count} times running`,
           log: streamLog(pass.ticket),
         });
-        holds = 0;
+        heldTicket = null;
         pinned = null;
         failures += 1;
         if (shouldHalt(failures)) return finish(1, `${failures} tickets in a row did not land`);
         continue;
       }
-      if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
-      const whose = pass.ticket != null ? `#${pass.ticket} held: ` : "";
-      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
+      if (!mine && count > WAIT.TRIES) return finish(1, `${pass.why}, ${count} times running`);
+      const whose = mine ? `#${pass.ticket} held: ` : "";
+      const bound = mine ? TICKET_HOLDS : WAIT.TRIES;
+      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${count} of ${bound})`);
       const [what, then] =
         pass.ticket != null
           ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]
@@ -3286,6 +3295,7 @@ export async function main({
       continue;
     }
     holds = 0;
+    heldTicket = null;
 
     // A refusal is not a failure and not a ticket: the account is out of usage, which the branch,
     // the pull request and the label all survive. It waits, then goes again — an exit here costs
