@@ -5,28 +5,37 @@ import {
   alreadyFiled,
   bodyFor,
   checkMain,
+  decideMainHealth,
   filedIssueArgs,
+  jobArgs,
   MAIN_RED_LABEL,
+  mainFailures,
   mainRunArgs,
   titleFor,
   WINDOW,
   type FiledIssue,
   type MainRun,
 } from "../mainHealth.ts";
+import type { JobRow } from "../ciVerdict.ts";
 
 const RED: MainRun = {
   databaseId: 34647545165,
   conclusion: "failure",
+  status: "completed",
   headSha: "2646def6abc",
   url: "https://github.com/metasito/murlan/actions/runs/34647545165",
 };
 
 const GREEN: MainRun = { ...RED, conclusion: "success" };
 
+const JOBS: JobRow[] = [
+  { name: "Typecheck and tests", conclusion: "failure", steps: 9 },
+  { name: "Build", conclusion: "success", steps: 4 },
+];
+
 /**
  * A GitHub that keeps the issues filed against it, so "the same red run twice" is answered by the
- * state a second call would really read rather than by a stub told what to say. It answers nothing
- * about jobs or logs: main's latest run's own conclusion is the whole verdict.
+ * state a second call would really read rather than by a stub told what to say.
  */
 function fakeGh(runs: MainRun[], seed: FiledIssue[] = []) {
   const issues = [...seed];
@@ -36,6 +45,7 @@ function fakeGh(runs: MainRun[], seed: FiledIssue[] = []) {
     calls.push(args);
     const [verb, noun] = args;
     if (verb === "run" && noun === "list") return JSON.stringify(runs);
+    if (verb === "run" && noun === "view") return JSON.stringify({ jobs: JOBS.map((j) => ({ ...j, steps: Array(j.steps).fill(0) })) });
     if (verb === "issue" && noun === "list") {
       // Newest first, and only the window asked for, as `gh` itself answers.
       const limit = Number(args[args.indexOf("--limit") + 1]);
@@ -60,34 +70,36 @@ function fakeGh(runs: MainRun[], seed: FiledIssue[] = []) {
   return { gh, calls, created, closed, issues };
 }
 
-const REPO = "metasito/murlan";
-
-describe("main's latest ci.yml run files and closes main-red", () => {
-  test("a red main files exactly one issue, carrying the run and the commit", () => {
+describe("the DoD path, off a fixture gh payload", () => {
+  test("a red main files exactly one issue, carrying the run id and the failing step", () => {
     const hub = fakeGh([RED]);
-    const health = checkMain({ repo: REPO, gh: hub.gh });
+    const health = checkMain({ repo: "metasito/murlan", gh: hub.gh });
 
     assert.equal(health.state, "filed");
     assert.equal(hub.created().length, 1);
     const [args] = hub.created();
     assert.equal(args[args.indexOf("--title") + 1], titleFor(RED.databaseId));
     const body = args[args.indexOf("--body") + 1];
-    assert.match(body, new RegExp(String(RED.databaseId)), "the run belongs in the body");
+    assert.match(body, /Typecheck and tests/, "the failing job belongs in the body");
+    assert.match(body, new RegExp(String(RED.databaseId)), "so does the run");
     assert.match(body, /2646def6abc/, "and the commit it ran against");
   });
 
-  test("a green main files nothing", () => {
+  test("a green main files nothing, and never asks for the jobs", () => {
     const hub = fakeGh([GREEN]);
-    assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "green");
+    assert.equal(checkMain({ repo: "metasito/murlan", gh: hub.gh }).state, "green");
     assert.equal(hub.created().length, 0);
+    assert.equal(hub.calls.some((c) => c[1] === "view"), false);
   });
 
   test("the same red main twice files once", () => {
     const hub = fakeGh([RED]);
-    const first = checkMain({ repo: REPO, gh: hub.gh });
-    const second = checkMain({ repo: REPO, gh: hub.gh });
+    const first = checkMain({ repo: "metasito/murlan", gh: hub.gh });
+    const second = checkMain({ repo: "metasito/murlan", gh: hub.gh });
 
     assert.equal(hub.created().length, 1, "the second call must find the first call's issue");
+    assert.equal(first.state, "filed");
+    assert.equal(second.state, "filed");
     assert.deepEqual(
       [first, second].map((h) => (h.state === "filed" ? h.runId : null)),
       [RED.databaseId, RED.databaseId],
@@ -97,24 +109,16 @@ describe("main's latest ci.yml run files and closes main-red", () => {
   test("a second, different red run files again", () => {
     const later: MainRun = { ...RED, databaseId: RED.databaseId + 1 };
     const hub = fakeGh([RED]);
-    checkMain({ repo: REPO, gh: hub.gh });
-    const gh = (args: string[]) => (args[0] === "run" && args[1] === "list" ? JSON.stringify([later]) : hub.gh(args));
-    checkMain({ repo: REPO, gh });
+    checkMain({ repo: "metasito/murlan", gh: hub.gh });
+    const runs = [later];
+    const gh = (args: string[]) => (args[0] === "run" && args[1] === "list" ? JSON.stringify(runs) : hub.gh(args));
+    checkMain({ repo: "metasito/murlan", gh });
     assert.equal(hub.created().length, 2, "a new red run is news, whatever was filed before it");
-  });
-
-  // A push to main is never cancelled by ci.yml's concurrency group, which cancels pull requests only.
-  test("only failure files: a cancelled, unfinished or absent run is unknown", () => {
-    for (const runs of [[{ ...RED, conclusion: "cancelled" }], [{ ...RED, conclusion: null }], [{ ...RED, conclusion: "" }], []]) {
-      const hub = fakeGh(runs);
-      assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "unknown", JSON.stringify(runs));
-      assert.equal(hub.created().length, 0);
-    }
   });
 
   test("an unreachable gh is an unknown, never a throw", () => {
     const health = checkMain({
-      repo: REPO,
+      repo: "metasito/murlan",
       gh: () => {
         throw new Error("gh: could not connect\nand a second line");
       },
@@ -126,7 +130,7 @@ describe("main's latest ci.yml run files and closes main-red", () => {
 
   test("the issue carries the label the duplicate check reads", () => {
     const hub = fakeGh([RED]);
-    checkMain({ repo: REPO, gh: hub.gh });
+    checkMain({ repo: "metasito/murlan", gh: hub.gh });
     const [args] = hub.created();
     const labels = args.flatMap((a, i) => (a === "--label" ? [args[i + 1]] : []));
     assert.ok(labels.includes(MAIN_RED_LABEL), `create must carry ${MAIN_RED_LABEL}`);
@@ -137,13 +141,13 @@ describe("main's latest ci.yml run files and closes main-red", () => {
 });
 
 describe("a green main closes the main-red issues it filed", () => {
+  const REPO = "metasito/murlan";
   const filed = (number: number, runId: number, state = "OPEN"): FiledIssue => ({ number, title: titleFor(runId), state });
   const closedNumbers = (hub: ReturnType<typeof fakeGh>) => hub.closed().map((c) => Number(c[2]));
 
   test("green closes an open older main-red issue, with a comment naming the green run", () => {
     const hub = fakeGh([GREEN], [filed(5, GREEN.databaseId - 3)]);
-    const health = checkMain({ repo: REPO, gh: hub.gh });
-    assert.deepEqual(health, { state: "green", why: "ci.yml passed", runId: GREEN.databaseId, close: [5] });
+    assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "green");
     const [args] = hub.closed();
     assert.equal(args?.[2], "5");
     assert.equal(args[args.indexOf("--repo") + 1], REPO);
@@ -172,8 +176,8 @@ describe("a green main closes the main-red issues it filed", () => {
   test("unknown closes nothing; the same issue closes once main is really green", () => {
     const runs: MainRun[] = [];
     const hub = fakeGh(runs, [filed(5, GREEN.databaseId - 3)]);
-    for (const conclusion of [undefined, null, ""]) {
-      runs.splice(0, 1, ...(conclusion === undefined ? [] : [{ ...GREEN, conclusion }]));
+    for (const status of [undefined, "in_progress", "queued"]) {
+      runs.splice(0, 1, ...(status ? [{ ...GREEN, status, conclusion: null }] : []));
       assert.equal(checkMain({ repo: REPO, gh: hub.gh }).state, "unknown");
     }
     assert.deepEqual(closedNumbers(hub), []);
@@ -192,12 +196,66 @@ describe("a green main closes the main-red issues it filed", () => {
     assert.deepEqual(closedNumbers(hub), [5]);
   });
 
+  test("the close is decided as data, before any gh call", () => {
+    const health = decideMainHealth(GREEN, [], [filed(5, GREEN.databaseId - 3), filed(6, GREEN.databaseId + 1)]);
+    assert.deepEqual(health, { state: "green", why: "ci.yml passed", runId: GREEN.databaseId, close: [5] });
+  });
+
   test("closing does not make the same red run file twice", () => {
     const hub = fakeGh([RED]);
     checkMain({ repo: REPO, gh: hub.gh });
     hub.issues[0].state = "CLOSED";
     checkMain({ repo: REPO, gh: hub.gh });
     assert.equal(hub.created().length, 1);
+  });
+});
+
+describe("decideMainHealth", () => {
+  const none: FiledIssue[] = [];
+
+  test("green is green", () => {
+    assert.equal(decideMainHealth(GREEN, [], none).state, "green");
+  });
+
+  test("a run still going is unknown, not red", () => {
+    const health = decideMainHealth({ ...RED, status: "in_progress", conclusion: null }, [], none);
+    assert.equal(health.state, "unknown");
+  });
+
+  test("a cancelled run is not main being broken", () => {
+    const health = decideMainHealth({ ...RED, conclusion: "cancelled" }, [], none);
+    assert.equal(health.state, "unknown", "ci.yml cancels its own in-progress runs on every push");
+  });
+
+  test("a stepless runner failure is not main being broken", () => {
+    const jobs: JobRow[] = [{ name: "Typecheck and tests", conclusion: "failure", steps: 0 }];
+    assert.equal(decideMainHealth(RED, jobs, none).state, "unknown");
+  });
+
+  test("a CI gate red with no other job red is main being broken, and files naming the gate", () => {
+    const jobs: JobRow[] = [
+      { name: "Typecheck and tests", conclusion: "success", steps: 9 },
+      { name: "CI gate", conclusion: "failure", steps: 3 },
+    ];
+    const health = decideMainHealth(RED, jobs, none);
+    assert.equal(health.state, "file");
+    assert.match(health.why, /CI gate/);
+  });
+
+  test("a timed-out run and a startup failure are main being broken", () => {
+    const timedOut: JobRow[] = [{ name: "Typecheck and tests", conclusion: "cancelled", steps: 13, timedOut: true }];
+    assert.equal(decideMainHealth({ ...RED, conclusion: "timed_out" }, timedOut, none).state, "file");
+    assert.equal(decideMainHealth({ ...RED, conclusion: "startup_failure" }, [], none).state, "file");
+  });
+
+  test("no run at all is unknown rather than red", () => {
+    assert.equal(decideMainHealth(undefined, [], none).state, "unknown");
+  });
+
+  test("a red run names the failing job in `why`", () => {
+    const health = decideMainHealth(RED, JOBS, none);
+    assert.equal(health.state, "file");
+    assert.match(health.why, /Typecheck and tests/);
   });
 });
 
@@ -219,16 +277,18 @@ describe("alreadyFiled", () => {
 });
 
 describe("the gh arguments", () => {
-  test("the run list is main's latest ci.yml run, and asks only what the verdict and the issue use", () => {
-    const args = mainRunArgs(REPO);
+  test("the run list is pinned to ci.yml on main", () => {
+    const args = mainRunArgs("metasito/murlan");
     assert.equal(args[args.indexOf("--workflow") + 1], "ci.yml", "another workflow's green would read as main's");
     assert.equal(args[args.indexOf("--branch") + 1], "main");
-    assert.equal(args[args.indexOf("--limit") + 1], "1");
-    assert.deepEqual(args[args.indexOf("--json") + 1].split(","), ["databaseId", "conclusion", "headSha", "url"]);
+    const fields = args[args.indexOf("--json") + 1].split(",");
+    assert.ok(fields.includes("url"), "the issue is worth little without a link to the run");
+    assert.ok(fields.includes("status"), "a run still going must be distinguishable from a red one");
+    assert.ok(fields.includes("databaseId"), "the run id is the dedupe key");
   });
 
   test("the dedupe window is a list, never a search", () => {
-    const args = filedIssueArgs(REPO);
+    const args = filedIssueArgs("metasito/murlan");
     assert.equal(args.includes("--search"), false, "search trails its own writes by minutes");
     assert.equal(Number(args[args.indexOf("--limit") + 1]), WINDOW);
     assert.equal(args[args.indexOf("--state") + 1], "all", "a closed issue still means this run was reported");
@@ -238,8 +298,135 @@ describe("the gh arguments", () => {
 
 describe("bodyFor", () => {
   test("says what is missing rather than printing undefined", () => {
-    const body = bodyFor({ databaseId: 5, conclusion: "failure" });
+    const body = bodyFor({ state: "file", runId: 5, title: titleFor(5), why: "x" }, undefined);
     assert.equal(body.includes("undefined"), false);
     assert.match(body, /id 5/);
+  });
+});
+
+describe("mainFailures", () => {
+  const REPO = "metasito/murlan";
+  const keyed = (run: MainRun, jobs: JobRow[]) => (args: string[]) => {
+    const key = args.join(" ");
+    if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([run]);
+    if (key === jobArgs(REPO, run.databaseId).join(" ")) {
+      return JSON.stringify({ jobs: jobs.map((j) => ({ ...j, steps: Array(j.steps).fill(0) })) });
+    }
+    if (key === ["run", "view", String(run.databaseId), "--repo", REPO, "--log-failed"].join(" ")) {
+      return "Typecheck and tests\tRun jest\t2026-09-21T10:00:00.0000000Z FAIL android tests/native/a.test.tsx\n";
+    }
+    throw new Error(`unexpected gh call: ${key}`);
+  };
+
+  test("a green main has no failures to give", () => {
+    assert.equal(mainFailures(keyed(GREEN, JOBS), REPO), null);
+  });
+
+  test("a red main gives its run and the failing test paths from its failed log", () => {
+    assert.deepEqual(mainFailures(keyed(RED, JOBS), REPO), {
+      runId: RED.databaseId,
+      url: RED.url,
+      ids: ["tests/native/a.test.tsx"],
+    });
+  });
+
+  test("a red main whose jobs never ran a step is infrastructure, not failures", () => {
+    const stepless = JOBS.map((j) => ({ ...j, conclusion: "failure", steps: 0 }));
+    assert.equal(mainFailures(keyed(RED, stepless), REPO), null);
+  });
+
+  test("a main run stopped by a job's own timeout-minutes is red, not infrastructure", () => {
+    const cancelled = { ...RED, conclusion: "cancelled" };
+    const jobs = [{ name: "Typecheck and tests", conclusion: "cancelled", steps: 13, databaseId: 112945168721 }];
+    const base = keyed(cancelled, jobs as never);
+    const gh = (args: string[]) => {
+      if (args[1] === `repos/${REPO}/check-runs/112945168721/annotations`) {
+        return JSON.stringify(["The job has exceeded the maximum execution time of 20m0s"]);
+      }
+      if (args.join(" ") === `run view --job 112945168721 --repo ${REPO} --log`) {
+        return "Typecheck and tests\tRun jest\t2026-10-07T18:39:00.0000000Z FAIL node tests/native/slow.test.tsx\n";
+      }
+      return base(args);
+    };
+    assert.deepEqual(mainFailures(gh, REPO), { runId: RED.databaseId, url: RED.url, ids: ["tests/native/slow.test.tsx"] });
+  });
+
+  test("an unreachable gh is null, never a throw", () => {
+    const gh = () => {
+      throw new Error("gh: could not connect");
+    };
+    assert.equal(mainFailures(gh, REPO), null);
+  });
+
+  // Main 38189115110 skipped its suite and inherited 38188271467, green only at attempt 2.
+  describe("a green main vouches for the pull-request run it inherited", () => {
+    const HEAD = "83e4d520240d82398dba3ca8b15a57c9376bd1f8";
+    const PR_RUN = 38188271467;
+    const PR_URL = `https://github.com/${REPO}/actions/runs/${PR_RUN}`;
+    const WOBBLE =
+      "tests/e2e/reducedMotionWobbleReset.spec.ts › the landing wobble's reset survives a live reduced-motion toggle (#786)" +
+      " › a toggle mid-wobble brings the cards to rest instead of freezing them scaled";
+    const inherited = (attempt: number, asked: string[] = [], mainTree = "f00d") => (args: string[]) => {
+      const key = args.join(" ");
+      asked.push(key);
+      if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([GREEN]);
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha}/pulls --jq .[0].head.sha // empty`) return `${HEAD}\n`;
+      if (key === `api repos/${REPO}/commits/${GREEN.headSha} --jq .commit.tree.sha`) return `${mainTree}\n`;
+      if (key === `api repos/${REPO}/commits/${HEAD} --jq .commit.tree.sha`) return "f00d\n";
+      if (key === `run list --repo ${REPO} --workflow ci.yml --commit ${HEAD} --status success --limit 1 --json databaseId,attempt,url`) {
+        return JSON.stringify([{ databaseId: PR_RUN, attempt, url: PR_URL }]);
+      }
+      if (key === `run view ${PR_RUN} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
+        const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
+        return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
+      }
+      if (key === `run view ${PR_RUN} --repo ${REPO} --log-failed --attempt 1`) {
+        return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
+      }
+      throw new Error(`unexpected gh call: ${key}`);
+    };
+
+    test("a failure at attempt 1 is flaky on main, not on main", () => {
+      const asked: string[] = [];
+      assert.deepEqual(mainFailures(inherited(2, asked), REPO), {
+        runId: PR_RUN,
+        url: `${PR_URL}/attempts/1`,
+        ids: [WOBBLE],
+        flaky: true,
+      });
+      assert.ok(asked.some((k) => k.endsWith("--log-failed --attempt 1")), asked.join("\n"));
+    });
+
+    test("an inherited run green at attempt 1 has nothing to give, and its log is never read", () => {
+      const asked: string[] = [];
+      assert.equal(mainFailures(inherited(1, asked), REPO), null);
+      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+    });
+
+    test("main's own green won at attempt 2 gives attempt 1's failures as flaky, before any inherited run", () => {
+      const own = { ...GREEN, attempt: 2 };
+      const asked: string[] = [];
+      const gh = (args: string[]) => {
+        const key = args.join(" ");
+        asked.push(key);
+        if (key === mainRunArgs(REPO).join(" ")) return JSON.stringify([own]);
+        if (key === `run view ${own.databaseId} --repo ${REPO} --attempt 1 --json status,conclusion,jobs`) {
+          const jobs = [{ name: "Browser tests 12/17", conclusion: "failure", steps: Array(16).fill({}), databaseId: 7 }];
+          return JSON.stringify({ status: "completed", conclusion: "failure", jobs });
+        }
+        if (key === `run view ${own.databaseId} --repo ${REPO} --log-failed --attempt 1`) {
+          return `Browser tests 12/17\tUNKNOWN STEP\t2026-10-12T00:33:53.4326052Z   1) [chromium] › ${WOBBLE.replace(" › ", ":28:7 › ")} \n`;
+        }
+        throw new Error(`unexpected gh call: ${key}`);
+      };
+      assert.deepEqual(mainFailures(gh, REPO), { runId: own.databaseId, url: `${own.url}/attempts/1`, ids: [WOBBLE], flaky: true });
+      assert.ok(!asked.some((k) => k.includes("/pulls")), asked.join("\n"));
+    });
+
+    test("a main whose tree differs from the pull request's ran its own suite, and its green is its own", () => {
+      const asked: string[] = [];
+      assert.equal(mainFailures(inherited(2, asked, "beef"), REPO), null);
+      assert.ok(!asked.some((k) => k.includes("--attempt")), asked.join("\n"));
+    });
   });
 });
