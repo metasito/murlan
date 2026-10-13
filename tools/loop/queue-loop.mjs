@@ -2108,7 +2108,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     },
   } = io;
-  const { armArgs, disarmArgs, landing } = ts("./land.ts");
+  const { armArgs, branchSurvives, deleteBranchArgs, disarmArgs, landing } = ts("./land.ts");
   const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
   const left = { ...SETTLE_ROUNDS };
   let until = Date.now() + deadline;
@@ -2312,6 +2312,20 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       continue;
     }
     if (next.action === "owner") return leave(owner(next.reason));
+    if (next.action === "already-merged" && pending.branch) {
+      try {
+        gh(deleteBranchArgs(REPO, pending.branch));
+      } catch {
+        // Already gone is the common refusal, and `ls-remote` below is the judge either way.
+      }
+      try {
+        if (branchSurvives(run("git", ["ls-remote", "origin", pending.branch]))) {
+          log(`⚠️ #${pending.ticket} ${pending.branch} is still on origin after its merge`);
+        }
+      } catch {
+        // An unreadable `ls-remote` is not evidence of a survivor.
+      }
+    }
     return next;
   }
 }
