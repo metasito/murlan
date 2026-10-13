@@ -2008,7 +2008,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   } = io;
   const { armArgs, branchSurvives, deleteBranchArgs, disarmArgs, landing } = ts("./land.ts");
   const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
-  const left = { ...SETTLE_ROUNDS };
+  const spent = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
   let until = Date.now() + deadline;
   let woke = false;
   let head = null;
@@ -2074,147 +2074,98 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   };
   const leave = (out) => disarm(out.reason) ?? out;
 
-  for (;;) {
-    if (Date.now() > until) {
-      return leave(owner(`CI did not settle in ${Math.round(deadline / 60_000)}m`));
-    }
-    let next;
-    // Which budget a `recheck` spends. A verdict asked again because the runner had nothing to say
-    // is a sick branch; a mergeability job still computing is neither sick nor healthy, and it
-    // answers on its own in seconds. One counter for both parks whichever goes second.
-    let asking = "recheck";
-    let pr;
+  const handBack = async (next) => {
+    const held = disarm(next.reason);
+    if (held) return held;
+    // Written before it is handed back, because the session that fixes it is a fresh process
+    // with no way to ask this one anything. Never when `output` is the reason rather than the log:
+    // round one's real failure is already in that file, and this would paint over it.
     try {
-      ({ pr, ci: verdict } = stateOf(pending.pr));
-      armed = pr.armed === true;
-      if (pr.headRefOid !== head) {
-        head = pr.headRefOid ?? null;
-        until = Date.now() + deadline;
-      }
-      if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
-      if (verdict.infrastructure) asking = verdict.appearing ? "appear" : "retry";
-      // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
-      // no head but the one cleared. An arm this process did not make is treated the same way.
-      if (armed && armedAt !== head) {
-        const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
-        if (held) return held;
-        pr = { ...pr, armed: false };
-      }
-      next = landing(pr, verdict);
-      woke = false;
+      mkdir(DIR, { recursive: true });
+      write(ciLogPath(pending.ticket), verdict.output, "utf8");
     } catch (err) {
-      const why = firstLine(err);
-      // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
-      if (woke && OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`)) {
-        log(`could not read CI since the machine woke — ${why}; asking again`);
-        await wait();
-        continue;
-      }
-      // `gh` refusing, a rate limit, or anything that is not JSON. The ticket is pushed and its
-      // branch is intact, so this goes to the owner rather than ending the night.
-      return leave(owner(`could not read CI — ${why}`));
+      log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
     }
+    const failing = verdict.testIds ?? [];
+    const main = failing.length ? mainFailures() : null;
+    const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+    for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
+      // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
+      if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
+      await wait();
+    }
+    return { ...next, head, runId: verdict.runId ?? null };
+  };
 
-    if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
-      // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
-      if (verdict.runId && verdict.attempt === 1 && reran !== head) {
-        reran = head;
-        firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
-        try {
-          gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
-          log(`CI is red at ${verdict.failedStep ?? "an unnamed step"} — rerunning ${verdict.runId} once`);
-          until = Date.now() + deadline;
-          await wait();
-          continue;
-        } catch (err) {
-          log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
-        }
-      }
-      const held = disarm(next.reason);
-      if (held) return held;
-      // Written before it is handed back, because the session that fixes it is a fresh process
-      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
-      // round one's real failure is already in that file, and this would paint over it.
+  for (;;) {
+    let next = null;
+    let error = null;
+    const overdue = Date.now() > until;
+    if (!overdue) {
       try {
-        mkdir(DIR, { recursive: true });
-        write(ciLogPath(pending.ticket), verdict.output, "utf8");
+        let pr;
+        ({ pr, ci: verdict } = stateOf(pending.pr));
+        armed = pr.armed === true;
+        if (pr.headRefOid !== head) {
+          head = pr.headRefOid ?? null;
+          until = Date.now() + deadline;
+        }
+        if (verdict.progress) log(ciLine(pending.pr, verdict.progress));
+        // `--match-head-commit` is checked when GitHub arms, not again when it merges: an arm outlives
+        // no head but the one cleared. An arm this process did not make is treated the same way.
+        if (armed && armedAt !== head) {
+          const held = disarm(`the head moved to ${String(head).slice(0, 7)} under the arm`);
+          if (held) return held;
+          pr = { ...pr, armed: false };
+        }
+        next = landing(pr, verdict);
+        woke = false;
       } catch (err) {
-        log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+        // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
+        error = { why: firstLine(err), offline: OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`), woke };
       }
-      const failing = verdict.testIds ?? [];
-      const main = failing.length ? mainFailures() : null;
-      const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
-      for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
-        // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
-        if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
-        await wait();
-      }
-      return { ...next, head, runId: verdict.runId ?? null };
     }
+    // Landing reads move no run counter.
+    const read = { step: "landing", limits: LIMITS, loop: {} };
+    const facts = { ...next, head, armed, overdue, deadline, rounds: spent, ci: verdict, error, reran, cleared: undefined };
+    let step = decide({ ...read, landing: facts });
+    if (step.kind === "ask") step = decide({ ...read, landing: { ...facts, cleared: cleared(head) } });
 
-    if (next.action === "update-branch" && left.update > 0) {
-      left.update -= 1;
+    if (step.kind === "settled") {
+      if (step.action === "hand-back") return handBack(next);
+      if (step.action === "owner") return leave(owner(step.why));
+      if (step.action === "already-merged") return merged(step.why);
+      return next;
+    }
+    if (step.spend) spent[step.spend] += 1;
+    if (step.act === "rerun") {
+      reran = head;
+      firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
+      try {
+        gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
+      } catch (err) {
+        log(`could not rerun ${verdict.runId} — ${firstLine(err)}; handing the red back`);
+        return handBack(next);
+      }
+      until = Date.now() + deadline;
+    } else if (step.act === "update-branch") {
       // The merge of main is a new head nobody cleared, and an arm would carry over to it.
       const held = disarm(next.reason);
       if (held) return held;
-      log("main moved — updating the branch and reading CI again");
+      log(step.why);
       try {
         gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
         return leave(owner(`could not update the branch — ${firstLine(err)}`));
       }
-      await wait();
-      continue;
-    }
-    // A run that has not finished is not a round spent: `left.recheck` is eight of them, and any
-    // real ci.yml outlasts that. Its ceiling is `deadline`, read at the top of this loop — which no
-    // round could reach while `gh run watch` held the process inside one.
-    if (verdict.waiting && next.action === "recheck") {
-      log(verdict.reason);
-      await wait();
-      continue;
-    }
-    // A hand-back's whole payload is the log the fix round reads. Without it that round is five
-    // turns of phase A and a close — #1028 spent three of them, and only the park said anything.
-    if (next.action === "hand-back" && (!verdict.output || verdict.logUnread)) {
-      if (left.retry > 0) {
-        left.retry -= 1;
-        log("CI is red but named no log — asking once more");
-        await wait();
-        continue;
+    } else if (step.act === "ready") {
+      try {
+        gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
+      } catch (err) {
+        return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
       }
-      return leave(owner(`CI is red and its log could not be read — ${next.reason}`));
-    }
-    if (next.action === "recheck" && left[asking] > 0) {
-      left[asking] -= 1;
-      log(`${next.reason} — asking once more`);
-      await wait();
-      continue;
-    }
-    if (next.action === "update-branch" || next.action === "recheck") {
-      const spent = next.action === "update-branch" ? SETTLE_ROUNDS.update : SETTLE_ROUNDS[asking];
-      return leave(owner(`${next.action} did not settle in ${spent} rounds — last: ${next.reason}`));
-    }
-    if (next.action === "arm" || next.action === "ready") {
-      if (armed) {
-        log("auto-merge is armed — waiting for GitHub to merge");
-        await wait();
-        continue;
-      }
+    } else if (step.act === "arm") {
       const at = String(head ?? "an unread head").slice(0, 7);
-      const clear = cleared(head);
-      if (!clear.ok) return leave(owner(`${clear.why} — ${at} was pushed for review, not cleared`));
-      // A draft's merge state reads DRAFT, so whether it is behind or blocked is only known once it is ready.
-      if (next.action === "ready") {
-        if (left.ready-- === 0) return leave(owner(`${at} is still a draft after gh pr ready`));
-        try {
-          gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
-        } catch (err) {
-          return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
-        }
-        await wait();
-        continue;
-      }
       // A green this process's rerun won: filed, named in the merge and on the row, before it can land.
       if (reran === head && firstRed && !flake) {
         flake = { runId: firstRed.runId, tests: firstRed.tests };
@@ -2238,12 +2189,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
           return leave(owner(`the merge failed — ${firstLine(again)}`));
         }
       }
-      await wait();
-      continue;
     }
-    if (next.action === "owner") return leave(owner(next.reason));
-    if (next.action === "already-merged") return merged(next.reason);
-    return next;
+    if (step.act === "rerun" || step.act === "wait") log(step.why);
+    await wait();
   }
 }
 
