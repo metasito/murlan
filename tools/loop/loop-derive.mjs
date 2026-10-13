@@ -85,13 +85,14 @@ function ciRedStep(comments, sha) {
 }
 
 /**
- * Whether a `CI-RED <sha>` comment for this exact head is already on the thread — the dedup the
- * supervisor checks before posting another one for the same red head.
+ * Whether a `CI-RED <sha>` comment for this exact head stands since the newest claim — the dedup the
+ * supervisor checks before posting, read by the same `ciRedStep` derive reads a red with, so the
+ * two cannot disagree on a re-claimed ticket.
  *
  * @param {{body: string}[]} comments @param {string} sha
  */
 export function ciRedPosted(comments, sha) {
-  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
+  return ciRedStep(comments, sha) !== undefined;
 }
 
 /** @returns {string|null} */

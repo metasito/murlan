@@ -631,7 +631,18 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      armedFlake: null,
     });
+  });
+
+  // Written when poll arms on a rerun's green, so a restart before the merge still knows the flake.
+  test("an armed row carries its flake and head to the tally, is no session, and a landing clears it", () => {
+    const flake = { runId: 7, tests: ["t"], step: "Test" };
+    const armed = row({ outcome: "armed", head: "h1", flake });
+    const t = ticketTally(1, [row({ outcome: "pushed" }), armed]);
+    assert.deepEqual(t.armedFlake, { ...flake, head: "h1" });
+    assert.equal(t.sessions, 0);
+    assert.equal(ticketTally(1, [armed, row({ outcome: "landed" })]).armedFlake, null);
   });
 
   test("a pushed row and its settle row are one session", () => {
@@ -830,6 +841,10 @@ describe("windowCost", () => {
     assert.equal(windowCost({ n: 1, outcome: "landed", own: 2 }, [pushed, { n: 1, outcome: "retry", cost: 0 }]), 2);
     assert.equal(windowCost({ n: 1, outcome: "pushed", own: 3 }, [pushed]), 3);
     assert.equal(windowCost({ n: 1, outcome: "parked", own: 1 }, []), 1);
+  });
+
+  test("an armed row between the push and its settle does not close the window", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 0.5 }, [pushed, { n: 1, outcome: "armed", cost: 0 }]), 4.5);
   });
 });
 

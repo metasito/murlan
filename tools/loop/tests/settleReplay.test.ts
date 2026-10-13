@@ -152,6 +152,11 @@ const merges = (asked: string[][]) => asked.filter((a) => a[0] === "pr" && a[1] 
 const indexOf = (asked: string[][], match: (a: string[]) => boolean) => asked.findIndex(match);
 const isDisarm = (a: string[]) => a[1] === "merge" && a.includes("--disable-auto");
 const isComment = (a: string[]) => a[0] === "issue" && a[1] === "comment";
+/** The text a `--body-file` argument names, from what `io`'s `write` captured; "" when it names none. */
+const fileOf = (written: string[][], args: string[]) => {
+  const at = args.indexOf("--body-file");
+  return at === -1 ? "" : (written.findLast(([p]) => p === args[at + 1])?.[1] ?? "");
+};
 
 describe("settle, replayed against recorded rollups", () => {
   test("a gate still running is waited on, then handed back once it is red — with its log", async () => {
@@ -454,12 +459,13 @@ describe("a red is rerun once per head", () => {
     const creates = (asked: string[][]) => asked.filter((a) => a[0] === "issue" && a[1] === "create");
 
     test("the settle names the run and its tests, the merge says so, and one issue is filed per test", async () => {
+      const written: string[][] = [];
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
       assert.equal(out.action, "already-merged");
-      assert.deepEqual(out.flake, { runId: RED_RUN, tests: [ID] });
+      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
       const arm = merges(asked).find((a) => a.includes("--auto"))!;
-      assert.match(arm[arm.indexOf("--body") + 1] ?? "", new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
+      assert.match(fileOf(written, arm), new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
       const [create, ...more] = creates(asked);
       assert.equal(more.length, 0);
       assert.equal(create[create.indexOf("--title") + 1], `CI flake: ${ID}`);
@@ -472,7 +478,7 @@ describe("a red is rerun once per head", () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
       const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(out.action, "owner");
-      assert.deepEqual(out.flake, { runId: RED_RUN, tests: [ID] });
+      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
       assert.equal(creates(asked).length, 0);
     });
 
@@ -480,6 +486,32 @@ describe("a red is rerun once per head", () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
       await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(creates(asked).length, 0);
+    });
+
+    describe("the flake outlives the process that armed it", () => {
+      test("it is handed to the ledger before the arm, naming the head", async () => {
+        const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
+        const noted: { flake: any; asked: number }[] = [];
+        await poll({ ...PENDING, noteArmed: (flake: unknown) => noted.push({ flake, asked: fake.asked.length }) } as never, () => {}, 0, DEADLINE, io(fake.gh));
+        assert.equal(noted.length, 1);
+        assert.deepEqual([noted[0].flake.runId, noted[0].flake.tests, noted[0].flake.head], [RED_RUN, [ID], SHA]);
+        assert.ok(!fake.asked.slice(0, noted[0].asked).some((a) => a.includes("--auto")), "noted before the arm");
+      });
+
+      test("a restart that finds it merged still files the issue and names the flake", async () => {
+        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
+        const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
+        const out = await poll({ ...PENDING, flake } as never, () => {}, 0, DEADLINE, io(gh));
+        assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
+        assert.equal(creates(asked).length, 1);
+      });
+
+      test("one ledgered for another head is not this merge's", async () => {
+        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
+        const out = await poll({ ...PENDING, flake: { runId: RED_RUN, tests: [ID], step: "Test", head: NEW } } as never, () => {}, 0, DEADLINE, io(gh));
+        assert.equal(out.flake, undefined);
+        assert.equal(creates(asked).length, 0);
+      });
     });
 
     // Promotion swaps `ready-for-human` for `ci-flake`, so a listing by either label misses it.
@@ -501,6 +533,21 @@ describe("a red is rerun once per head", () => {
         await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
         assert.deepEqual(creates(asked).map((c) => c[c.indexOf("--title") + 1]), [TITLE]);
         assert.equal(asked.filter((a) => a[0] === "issue" && a[1] === "list").length, 1);
+      });
+
+      test("names at most twenty tests in the merge and the issue, both passed as files", async () => {
+        const lots = Array.from({ length: 25 }, (_, i) => [`${P}test at tools/loop/tests/t${i}.test.ts:9:5`, `${P}✖ breaks (2.1ms)`]).flat().join("\n");
+        const written: string[][] = [];
+        const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: lots });
+        await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+        const arm = merges(asked).find((a) => a.includes("--auto"))!;
+        const [create] = creates(asked);
+        for (const args of [arm, create]) {
+          assert.ok(!args.includes("--body"), `no inline body: ${args.join(" ")}`);
+          const text = fileOf(written, args);
+          assert.equal((text.match(/t\d+\.test\.ts › breaks/g) ?? []).length, 20, text);
+          assert.match(text, /and 5 more/);
+        }
       });
 
       test("and dedupes that issue by its title the same way", async () => {
@@ -629,6 +676,24 @@ describe("poll posts CI-RED once per red head", () => {
     const file = posted[0][posted[0].indexOf("--body-file") + 1];
     const body = written.find(([p]) => p === file)?.[1];
     assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
+  });
+
+  describe("a CI-RED from before the newest claim is no CI-RED for this one", () => {
+    const thread = [{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }, { body: "Claimed by `agent/1028-the-turn-chip`." }];
+
+    test("poll posts it again", async () => {
+      const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
+      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(asked.filter(isComment).length, 1);
+    });
+
+    test("so does the supervisor's post of a held red", async () => {
+      const { postHeldRed } = (await import("../queue-loop.mjs")) as any;
+      const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
+      assert.equal(typeof postHeldRed, "function", "postHeldRed is exported, so its glue is tested");
+      assert.equal(postHeldRed(PENDING.ticket, PENDING.pr, () => {}, io(gh)), true);
+      assert.equal(asked.filter(isComment).length, 1);
+    });
   });
 
   test("the same head red twice posts once", async () => {

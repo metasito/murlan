@@ -375,22 +375,35 @@ function tallied(action, { loop, limits, step, now }) {
   const breaker = (f) => (f >= BREAKER ? `${f} tickets in a row did not land` : null);
   // The hold's own row is still written: a refused or an API-failed session spent real money.
   const stop = (why, next) => ({ kind: "stop", why, halt: why, loop: next, instead: action });
+  // Every pass but a hold ends a run of holds.
+  const unheld = { ...loop, holds: 0, heldTicket: null };
   switch (action.kind) {
     case "landed":
     case "closed":
-      return { ...action, label: RELEASE, loop: { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null } };
+      return { ...action, label: RELEASE, loop: { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 } };
     case "park": {
       // The owner's own park is not a ticket failing, and resets nothing.
       if (action.byOwner) return { ...action, label: PARK, halt: null, loop: { ...loop, pinned: null } };
       const f = failures + 1;
       // A throw's park leaves the pin to `nextRoute`, which passes over a pinned ticket whose labels
       // say it was released.
-      const next = step === "threw" ? { ...loop, failures: f } : { failures: f, holds: 0, waits, overloads: 0, pinned: null };
+      const next = step === "threw" ? { ...loop, failures: f } : { ...unheld, failures: f, overloads: 0, pinned: null };
       return { ...action, label: PARK, halt: breaker(f), loop: next };
     }
     case "fail":
       return { ...action, halt: breaker(failures + 1), loop: { ...loop, failures: failures + 1 } };
     case "hold": {
+      // A ticket's holds are that ticket's alone, and past their bound it is parked for the owner, as
+      // `poll` parks an unreadable red; a pre-flight's spend the run's ceiling instead.
+      if (action.wait === "preflight" && action.n != null) {
+        const t = loop.heldTicket === action.n ? loop.ticketHolds + 1 : 1;
+        if (t > limits.TICKET_HOLDS) {
+          const f = failures + 1;
+          const why = `${action.why}, ${t} times running`;
+          return { kind: "park", n: action.n, phase: "C", why, head: action.head, instead: action, label: PARK, halt: breaker(f), loop: { ...loop, failures: f, pinned: null, heldTicket: null, ticketHolds: 0 } };
+        }
+        return { ...action, hold: wait.FLOOR, loop: { ...loop, heldTicket: action.n, ticketHolds: t } };
+      }
       if (action.wait === "preflight") {
         const h = holds + 1;
         if (h > wait.TRIES) return stop(`${action.why}, ${h} times running`, { ...loop, holds: h });
@@ -398,17 +411,17 @@ function tallied(action, { loop, limits, step, now }) {
       }
       if (action.wait === "usage") {
         const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now);
-        if (refused.action === "give-up") return stop(refused.why, { ...loop, holds: 0 });
-        return { ...action, hold: refused.hold, loop: { ...loop, holds: 0, waits: refused.waits } };
+        if (refused.action === "give-up") return stop(refused.why, unheld);
+        return { ...action, hold: refused.hold, loop: { ...unheld, waits: refused.waits } };
       }
       // Counted in a row: any session the API served ends the outage.
       const o = overloads + 1;
-      if (o >= wait.TRIES) return stop(`${action.why}, ${o} sessions in a row`, { ...loop, holds: 0, overloads: o });
-      return { ...action, hold: wait.FLOOR, loop: { ...loop, holds: 0, overloads: o, pinned: action.n } };
+      if (o >= wait.TRIES) return stop(`${action.why}, ${o} sessions in a row`, { ...unheld, overloads: o });
+      return { ...action, hold: wait.FLOOR, loop: { ...unheld, overloads: o, pinned: action.n } };
     }
     case "handoff":
     case "retry":
-      return { ...action, loop: { ...loop, holds: 0, overloads: 0, pinned: action.n } };
+      return { ...action, loop: { ...unheld, overloads: 0, pinned: action.n } };
     case "repick":
       return { ...action, loop: { ...loop, pinned: pinned === action.n ? null : pinned } };
     default:

@@ -4,16 +4,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, SETTLE_ROUNDS, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, SETTLE_ROUNDS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 const PARK = { remove: ["in-progress", "ready-for-agent"], add: ["ready-for-human"] };
 const RELEASE = { remove: ["in-progress"], add: [] };
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
 const empty = { ...ticketTally(42, []), ciRounds: 0 };
-const fresh = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null };
+const fresh = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 const own = { cwd: "/w/agent-42", branch: "agent/42-x", dirty: false, phase: "C" };
 const base = { route, tally: empty, loop: fresh, limits: LIMITS, now: NOW, asked: false, own };
 
@@ -80,7 +80,7 @@ const ROWS: Row[] = [
   ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute({ tally: { ...empty, ciRounds: CI_ROUNDS } }), { kind: "park", phase: "C" }],
   ["runOnce: a held red's fix round asks for its CI-RED to be posted first", heldRed(), { kind: "ask", fact: "posted" }],
   ["a post that still fails holds, and spawns nothing", heldRed({ posted: false }),
-    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for h1abcde could not be posted", hold: WAIT.FLOOR, loop: { ...fresh, holds: 1 } }],
+    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for h1abcde could not be posted", hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["runOnce: a posted CI-RED goes on to the fix round", heldRed({ posted: true }), { kind: "go" }],
   ["runOnce: an unposted red holds before the cap on rounds missed while down parks", heldRed({ posted: false, tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h0" } }),
     { kind: "hold" }],
@@ -228,7 +228,7 @@ const ROWS: Row[] = [
   ["runOnce: the tracker's CI-RED count stands in for rounds the ledger missed", settled({}, { tally: { ...empty, ciRounds: CI_ROUNDS - 1 } }), { kind: "park", ciRed: true }],
   ["a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head",
     settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }),
-    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for abc could not be posted", head: "abc", record: "retry", hold: WAIT.FLOOR, loop: { ...fresh, holds: 1 } }],
+    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for abc could not be posted", head: "abc", record: "retry", hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["runOnce: an unposted CI-RED on the last round parks", settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI-RED for abc could not be posted` }],
   ["a settle only a person can move parks the ticket rather than dropping it", settled({ action: "owner", reason: "update-branch did not settle in 3 rounds" }),
@@ -242,7 +242,7 @@ const ROWS: Row[] = [
   ["an owner decision is parked, and goes through park rather than a bare teardown", settled({ action: "owner", reason: "r" }),
     { kind: "park", label: PARK, loop: { ...fresh, failures: 1 } }],
   ["a hold records its red round and parks nothing: the next pick reads the red again", settled({ action: "hold", reason: "r", head: "abc" }),
-    { kind: "hold", record: "retry", head: "abc", loop: { ...fresh, holds: 1 } }],
+    { kind: "hold", record: "retry", head: "abc", loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["an unrecognised action parks rather than passing as a landing", settled({ action: "something-new", reason: "?" }),
     { kind: "park", label: PARK, loop: { ...fresh, failures: 1 } }],
 
@@ -305,8 +305,21 @@ const ROWS: Row[] = [
     { kind: "stop", why: `busy, ${WAIT.TRIES + 1} times running`, halt: `busy, ${WAIT.TRIES + 1} times running` }],
   [`main: pre-flight hold ${WAIT.TRIES} still holds`, pre({ housekeeping: { verdict: "hold", why: "busy" } }, { loop: { ...fresh, holds: WAIT.TRIES - 1, pinned: 42 } }),
     { kind: "hold", loop: { ...fresh, holds: WAIT.TRIES, pinned: 42 } }],
-  ["main: a held red round counts as a pre-flight hold and keeps the pin", settled({ action: "hold", reason: "r", head: "abc" }, { loop: { ...fresh, overloads: 2, pinned: 9 } }),
-    { kind: "hold", loop: { ...fresh, holds: 1, overloads: 2, pinned: 9 } }],
+  ["pre-flight holds spend nothing of a ticket's hold bound", pre({ housekeeping: { verdict: "hold", why: "drift" } }, { loop: { ...fresh, heldTicket: 42, ticketHolds: 3 } }),
+    { kind: "hold", loop: { ...fresh, holds: 1, heldTicket: 42, ticketHolds: 3 } }],
+  ["a ticket parks at its own bound of holds, not before", heldRed({ posted: false, loop: { ...fresh, heldTicket: 42, ticketHolds: TICKET_HOLDS - 1 } }),
+    { kind: "hold", loop: { ...fresh, heldTicket: 42, ticketHolds: TICKET_HOLDS } }],
+  ["main: a ticket's holds count afresh when another ticket held last", heldRed({ posted: false, loop: { ...fresh, heldTicket: 9, ticketHolds: TICKET_HOLDS } }),
+    { kind: "hold", loop: { heldTicket: 42, ticketHolds: 1 } }],
+  ["a ticket held past its bound is parked for the owner, and the loop carries on",
+    heldRed({ posted: false, loop: { ...fresh, holds: 2, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
+    { kind: "park", n: 42, phase: "C", why: `CI-RED for h1abcde could not be posted, ${TICKET_HOLDS + 1} times running`, label: PARK, halt: null,
+      instead: { kind: "hold" }, loop: { ...fresh, failures: 1, holds: 2, heldTicket: null } }],
+  ["main: a ticket parked at its hold bound counts toward the breaker", heldRed({ posted: false, loop: { ...fresh, failures: BREAKER - 1, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
+    { kind: "park", halt: `${BREAKER} tickets in a row did not land` }],
+  ["main: any pass but a hold forgets the held ticket", session({ loop: { ...fresh, heldTicket: 42, ticketHolds: 4 } }), { kind: "handoff", loop: { heldTicket: null } }],
+  ["main: a held red round is the ticket's hold, not the run's, and keeps the pin", settled({ action: "hold", reason: "r", head: "abc" }, { loop: { ...fresh, holds: 2, overloads: 2, pinned: 9 } }),
+    { kind: "hold", loop: { ...fresh, holds: 2, overloads: 2, pinned: 9, heldTicket: 42, ticketHolds: 1 } }],
   [`main: usage refusal ${WAIT.TRIES + 1} stops the run`, session({ run: silent({ result: null, blocked: true, blockedUntil: 0 }), loop: { ...fresh, waits: WAIT.TRIES } }),
     { kind: "stop", why: `refused ${WAIT.TRIES} times running, each after waiting out the window it named`, halt: `refused ${WAIT.TRIES} times running, each after waiting out the window it named`, instead: { kind: "hold", wait: "usage" } }],
   ["main: a usage refusal neither pins nor touches the API count", session({ run: silent({ result: null, blocked: true, blockedUntil: 0 }), loop: { ...fresh, holds: 2, overloads: 3 } }),
@@ -401,6 +414,7 @@ const ELSEWHERE: Record<string, string> = {
   "a rerun's green whose merge then failed still writes the flake, on the park row": "io",
   "posted, the session that spawns reads its fix round": "io: the post before the refresh and the spawn",
   "a ticket's hold says which ticket and why, not a pre-flight's words": "io: main's notice",
+  "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": "io",
   "a red on an armed pull request is disarmed before any fix round is spawned": "io: poll's call order",
 };
 

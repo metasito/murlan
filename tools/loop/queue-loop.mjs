@@ -1903,6 +1903,9 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 /** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
 
+/** Passes one ticket may hold in a row before it is parked: `WAIT.FLOOR` apart, they outlast a short GitHub outage. */
+export const TICKET_HOLDS = 10;
+
 /**
  * The CI log a fix round reads, written before the red is handed back: that session is a fresh
  * process with no way to ask this one anything. Then the `on main:` lines its CI-RED carries.
@@ -1922,14 +1925,20 @@ function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
 }
 
 /** A held red's CI-RED, posted by the supervisor from the run itself; whether the tracker carries it now. */
-function postHeldRed(ticket, pr, log) {
-  const run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts });
+export function postHeldRed(ticket, pr, log, io = {}) {
+  const {
+    run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts }),
+    // The held path's own bound, not the settle's: it runs before a spawn, on every pass that holds.
+    stateOf = (n) => ts("./ciVerdict.ts").readLandingState(REPO, n, undefined, Date.now() + CI_RED_TIMEOUT_MS),
+    write = writeFileSync,
+    mkdir = mkdirSync,
+    mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
+  } = io;
   try {
-    const { ci } = ts("./ciVerdict.ts").readLandingState(REPO, pr);
+    const { ci } = stateOf(pr);
     if (ci.pass || ci.waiting || ci.infrastructure || !ci.output || ci.logUnread) return false;
-    const mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args), REPO);
-    const lines = prepareRed(ticket, ci, { mkdir: mkdirSync, write: writeFileSync, mainFailures, log });
-    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, writeFileSync, log);
+    const lines = prepareRed(ticket, ci, { mkdir, write, mainFailures, log });
+    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, write, log);
   } catch (err) {
     log(`CI-RED: could not read #${pr}'s red — ${firstLine(err)}`);
     return false;
@@ -1941,14 +1950,25 @@ const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an 
 
 const FLAKES_PER_RUN = 3;
 
-const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
+/** Bounds what a merge message or an issue body lists: a starved runner fails hundreds. */
+const FLAKES_LISTED = 20;
+
+const listed = (names) =>
+  (names.length > FLAKES_LISTED ? [...names.slice(0, FLAKES_LISTED), `and ${names.length - FLAKES_LISTED} more`] : names).map((n) => `- ${n}`);
+
+/** The merge message's body, written to a file: an inline argument has no bound. */
+function flakeMergeFile(red, ticket, write) {
+  const file = path.join(DIR, `flake-merge-${ticket}.md`);
+  write(file, [`Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed`, ...listed(flakeNames(red))].join("\n"), "utf8");
+  return file;
+}
 
 /**
  * One open issue per flaky test, found by its exact title in a listing of every open issue: GitHub's
  * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
  * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
-function fileFlakes(red, gh, log) {
+function fileFlakes(red, gh, log, write) {
   let open;
   try {
     open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "number,title"]));
@@ -1963,12 +1983,14 @@ function fileFlakes(red, gh, log) {
     if (open.some((i) => i.title === title)) continue;
     const body = [
       `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed ${titles.length < names.length ? "these" : "this"}; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
-      ...(titles.length < names.length ? ["", ...names.map((n) => `- ${n}`)] : []),
+      ...(titles.length < names.length ? ["", ...listed(names)] : []),
       "",
       "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
-      gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
+      const file = path.join(DIR, `flake-issue-${red.ticket}.md`);
+      write(file, body, "utf8");
+      gh(["issue", "create", "--repo", REPO, "--title", title, "--body-file", file, "--label", "ready-for-human"]);
       log(`filed ${title}`);
     } catch (err) {
       log(`could not file ${title} — ${firstLine(err)}`);
@@ -2053,7 +2075,9 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         // An unreadable `ls-remote` is not evidence of a survivor.
       }
     }
-    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
+    const ledgered = pending.flake;
+    if (!flake && ledgered && ledgered.head === head) flake = { runId: ledgered.runId, tests: ledgered.tests ?? [], step: ledgered.step ?? null };
+    if (flake) fileFlakes({ ...flake, ticket: pending.ticket, pr: pending.pr }, gh, log, write);
     return { action: "already-merged", reason, ...(flake && { flake }) };
   };
   /**
@@ -2167,8 +2191,24 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     } else if (step.act === "arm") {
       const at = String(head ?? "an unread head").slice(0, 7);
       // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
-      if (reran === head && firstRed && !flake) flake = { runId: firstRed.runId, tests: firstRed.tests };
-      const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
+      if (reran === head && firstRed && !flake) {
+        flake = firstRed;
+        try {
+          pending.noteArmed?.({ ...flake, head });
+        } catch (err) {
+          log(`could not ledger the flake before arming — ${firstLine(err)}`);
+        }
+      }
+      let message;
+      try {
+        if (flake) {
+          mkdir(DIR, { recursive: true });
+          message = flakeMergeFile(flake, pending.ticket, write);
+        }
+      } catch (err) {
+        log(`could not write the flake into the merge message — ${firstLine(err)}`);
+      }
+      const argv = armArgs(REPO, pending.pr, head, message);
       // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
       armed = "maybe";
       armedAt = head;
@@ -2250,7 +2290,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, fl
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
 
 /** Read in order, and only as far as the first that ends the pass. */
 async function preflight(io, pinned) {
@@ -2441,7 +2481,24 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     billed = { result: null, ms: 0, log: run.log, phases: {} };
   }
   const landFrom = Date.now();
-  const settled = await io.settle({ ticket: n, pr: action.pr, branch: after?.branch ?? facts.pushed.head });
+  const settled = await io.settle({
+    ticket: n,
+    pr: action.pr,
+    branch: after?.branch ?? facts.pushed.head,
+    // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
+    flake: tally.armedFlake ?? null,
+    noteArmed: (flake) =>
+      io.record({
+        number: n,
+        outcome: "armed",
+        why: "auto-merge armed on a rerun's green",
+        run: { result: null, ms: 0, log: streamLog(n), phases: {} },
+        pr: action.pr,
+        counts: false,
+        head: flake.head,
+        flake: { runId: flake.runId, tests: flake.tests, step: flake.step },
+      }),
+  });
   billed.ms += Date.now() - landFrom;
   // What the next round is judged against: a round that leaves this where it was cannot change
   // what CI answers.
@@ -2622,7 +2679,7 @@ function realIo(book, screen) {
         : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
-      if (!["handoff", "retry", "pushed", "reparked"].includes(outcome)) {
+      if (!["handoff", "retry", "pushed", "reparked", "armed"].includes(outcome)) {
         screen.say(
           closing(
             {
@@ -2705,7 +2762,7 @@ export async function main({
   tick = 30_000,
 } = {}) {
   /** `pinned` is the ticket a red CI round or a handoff handed back; its counts are the ledger's. */
-  let loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null };
+  let loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 
   install(screen);
   io ??= realIo(book, screen);
@@ -2868,8 +2925,10 @@ export async function main({
     // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
     // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
-      const whose = pass.ticket != null ? `#${pass.ticket} held: ` : "";
-      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${loop.holds} of ${WAIT.TRIES})`);
+      const mine = pass.ticket != null;
+      const whose = mine ? `#${pass.ticket} held: ` : "";
+      const [count, bound] = mine ? [loop.ticketHolds, TICKET_HOLDS] : [loop.holds, WAIT.TRIES];
+      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${count} of ${bound})`);
       const [what, then] =
         pass.ticket != null
           ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]

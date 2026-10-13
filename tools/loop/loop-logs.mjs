@@ -491,7 +491,7 @@ export function handoffIn(row) {
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
-  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed"
+  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed" || outcome === "armed"
     ? null
     : outcome === "parked" && error && why
       ? `${why} — ${errorLine(error)}`
@@ -504,7 +504,8 @@ export const parkReasonOf = (outcome, why, error = null) =>
  * @param {{n: number, outcome: string, own: number}} row @param {object[]} rows
  */
 export function windowCost({ n, outcome, own }, rows) {
-  const last = rows.filter((r) => r.n === n).at(-1);
+  // An `armed` row is the settle's note in passing, not the end of its window.
+  const last = rows.filter((r) => r.n === n && r.outcome !== "armed").at(-1);
   return own + (outcome !== "pushed" && last?.outcome === "pushed" ? (last.cost ?? 0) : 0);
 }
 
@@ -531,7 +532,9 @@ export function ticketTally(n, rows) {
   let handoffWhy = null;
   let retries = 0;
   let lastRedHead = null;
+  let armedFlake = null;
   for (const r of since) {
+    if (r.outcome === "armed") armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
     spend += r.cost ?? 0;
     ms += r.ms ?? 0;
     turns += r.turns ?? 0;
@@ -547,8 +550,8 @@ export function ticketTally(n, rows) {
       if (handed) [lastHandoff, handoffWhy] = [handed.phase, handed.why];
     }
   }
-  const sessions = since.filter((r) => r.outcome !== "pushed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries };
+  const sessions = since.filter((r) => r.outcome !== "pushed" && r.outcome !== "armed").length;
+  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, armedFlake };
 }
 
 const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
