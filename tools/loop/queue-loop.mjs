@@ -477,7 +477,6 @@ export const CI_ROUNDS = 3;
  * A ceiling, not a budget: the thing that actually stops a runaway ticket is `overSpend`.
  */
 export const MAX_HANDOFFS = 8;
-export const overHandoffs = (n) => n >= MAX_HANDOFFS;
 
 /** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
 export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);

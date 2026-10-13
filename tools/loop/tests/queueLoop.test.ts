@@ -34,8 +34,6 @@ import {
   WAIT,
   settle,
   runOnce,
-  overHandoffs,
-  MAX_HANDOFFS,
   overSpend,
   USD_BY_SIZE,
   USD_DEFAULT,
@@ -1800,11 +1798,6 @@ describe("a phase handoff", () => {
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);
-  });
-
-  test("a handoff cannot run for ever", () => {
-    assert.equal(overHandoffs(MAX_HANDOFFS), true);
-    assert.equal(overHandoffs(MAX_HANDOFFS - 1), false);
   });
 
   test("a ticket's ceiling is its size's, and an unlabelled one gets the default", () => {
