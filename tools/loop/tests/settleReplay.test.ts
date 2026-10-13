@@ -185,13 +185,21 @@ describe("settle, replayed against recorded rollups", () => {
     assert.ok(!asked.some((a) => a[1] === "merge" || a[1] === "ready"));
   });
 
-  test("a green draft is marked ready, then armed at the head the gate passed", async () => {
+  test("a green draft is marked ready, and armed only on a later read of the head the gate passed", async () => {
     const { gh, asked } = rollupFake({ views: [GREEN], draft: true });
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
-    const order = asked.filter((a) => a[1] === "ready" || a[1] === "merge");
-    assert.deepEqual(order.map((a) => a[1]), ["ready", "merge"]);
-    assert.deepEqual(order[1], armArgs(REPO, PENDING.pr, SHA));
+    const order = asked.filter((a) => a[1] === "ready" || a[1] === "merge" || a[1] === "view");
+    assert.deepEqual(order.slice(0, 4).map((a) => a[1]), ["view", "ready", "view", "merge"]);
+    assert.deepEqual(order[3], armArgs(REPO, PENDING.pr, SHA));
+  });
+
+  test("a draft found behind main once it is ready is updated before anything is armed", async () => {
+    const { gh, asked } = rollupFake({ views: [GREEN, at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN], draft: true });
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(out.action, "already-merged");
+    assert.ok(indexOf(asked, (a) => a[1] === "update-branch") < indexOf(asked, (a) => a[1] === "merge"), JSON.stringify(asked));
+    assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
   });
 
   test("a draft gh pr ready could not move is the owner's", async () => {
