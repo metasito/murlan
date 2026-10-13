@@ -444,47 +444,14 @@ export function windowCost({ n, outcome, own }, rows) {
 
 /**
  * A ticket's rounds, spend and handoffs, rebuilt from the rows a restart cannot otherwise see:
- * everything for `n` since its last `landed`, `closed` or `parked` row, which is where the tally
+ * everything for `n` since its last row `closesWindow` names, which is where the tally
  * must have read zero even before this session existed.
  *
  * @param {number} n @param {object[]} rows
  */
 export function ticketTally(n, rows) {
-  const forTicket = rows.filter((r) => r.n === n && r.outcome !== "started");
-  let start = 0;
-  forTicket.forEach((r, i) => {
-    if (["landed", "closed", "parked", "reparked"].includes(r.outcome)) start = i + 1;
-  });
-  const since = forTicket.slice(start);
-
-  let spend = 0;
-  let ms = 0;
-  let turns = 0;
-  let handoffsThisRound = 0;
-  let lastHandoff = null;
-  let handoffWhy = null;
-  let retries = 0;
-  let lastRedHead = null;
-  let armedFlake = null;
-  for (const r of since) {
-    if (r.outcome === "armed") armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
-    spend += r.cost ?? 0;
-    ms += r.ms ?? 0;
-    turns += r.turns ?? 0;
-    if (r.outcome === "retry") {
-      retries += 1;
-      handoffsThisRound = 0;
-      lastHandoff = null;
-      handoffWhy = null;
-      lastRedHead = r.head ?? null;
-    } else if (r.outcome === "handoff") {
-      handoffsThisRound += 1;
-      const handed = handoffIn(r);
-      if (handed) [lastHandoff, handoffWhy] = [handed.phase, handed.why];
-    }
-  }
-  const sessions = since.filter((r) => r.outcome !== "pushed" && r.outcome !== "armed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, armedFlake };
+  const mine = rows.filter((r) => r.n === n && r.outcome !== "started");
+  return tallyOf(mine.slice(mine.findLastIndex(closesWindow) + 1));
 }
 
 const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
@@ -531,26 +498,31 @@ export const holdRound = (row) =>
   isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(handoffIn(row)?.phase ?? "");
 
 /**
- * One window's rows folded together. A row carries no `fix`, so a process after the window's first
- * `retry` is the fix round's.
+ * One window's rows folded together: `ticketTally`'s open window, and each of the gauge's. A row
+ * carries no `fix`, so a process after the window's first `retry` is the fix round's.
  *
  * @param {object[]} rows one ticket's rows, oldest first, start rows excluded
  */
 export function tallyOf(rows) {
   const t = {
+    sessions: 0,
     spend: 0,
     ms: 0,
     turns: 0,
     processes: 0,
-    handoffs: 0,
-    lastHandoff: /** @type {{phase: string, why: string|null}|null} */ (null),
-    retries: 0,
-    lastRedHead: /** @type {string|null} */ (null),
     fixSpend: 0,
+    handoffsThisRound: 0,
+    lastHandoff: /** @type {string|null} */ (null),
+    handoffWhy: /** @type {string|null} */ (null),
+    lastRedHead: /** @type {string|null} */ (null),
+    retries: 0,
+    armedFlake: /** @type {object|null} */ (null),
   };
   let fixing = false;
   for (const r of rows) {
     const cost = r.cost ?? 0;
+    if (r.outcome === "armed") t.armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
+    else if (r.outcome !== "pushed") t.sessions += 1;
     t.spend += cost;
     t.ms += r.ms ?? 0;
     t.turns += r.turns ?? 0;
@@ -558,13 +530,15 @@ export function tallyOf(rows) {
     if (fixing || holdRound(r)) t.fixSpend += cost;
     if (r.outcome === "retry") {
       t.retries += 1;
-      t.handoffs = 0;
+      t.handoffsThisRound = 0;
       t.lastHandoff = null;
+      t.handoffWhy = null;
       t.lastRedHead = r.head ?? null;
       fixing = true;
     } else if (r.outcome === "handoff") {
-      t.handoffs += 1;
-      t.lastHandoff = handoffIn(r) ?? t.lastHandoff;
+      t.handoffsThisRound += 1;
+      const handed = handoffIn(r);
+      if (handed) [t.lastHandoff, t.handoffWhy] = [handed.phase, handed.why];
     }
   }
   return t;

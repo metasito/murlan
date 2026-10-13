@@ -623,6 +623,8 @@ describe("ticketTally", () => {
       spend: 0,
       ms: 0,
       turns: 0,
+      processes: 0,
+      fixSpend: 0,
       handoffsThisRound: 0,
       lastHandoff: null,
       handoffWhy: null,
@@ -681,14 +683,14 @@ describe("tallyOf", () => {
       out({ outcome: "retry", head: "a" }),
       proc({ outcome: "handoff", handoff: { phase: "D", why: null, said: "round 1 HOLD" } }),
     ]);
-    assert.deepEqual([t.handoffs, t.retries, t.lastRedHead], [1, 1, "a"]);
-    assert.deepEqual(t.lastHandoff, { phase: "D", why: "round 1 HOLD" });
+    assert.deepEqual([t.handoffsThisRound, t.retries, t.lastRedHead], [1, 1, "a"]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["D", "round 1 HOLD"]);
     assert.equal(tallyOf([proc({ outcome: "handoff", handoff: { phase: "E" } }), out({ outcome: "retry" })]).lastHandoff, null);
   });
 
   test("the supervisor's reason outranks what the session said", () => {
     const t = tallyOf([proc({ outcome: "handoff", handoff: { phase: "C", why: "no local pass", said: "x" } })]);
-    assert.deepEqual(t.lastHandoff, { phase: "C", why: "no local pass" });
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "no local pass"]);
   });
 
   test("a process is a row that ran turns, and a settle row is none", () => {
@@ -698,7 +700,8 @@ describe("tallyOf", () => {
 
   test("before schema 6 a handoff is read from its prose", () => {
     const v5 = { schema: 5, n: 1, outcome: "handoff", cost: 2, turns: 30, phases: { D: 600 }, park_reason: "phase C next — HOLD on abc" };
-    assert.deepEqual(tallyOf([v5]).lastHandoff, { phase: "C", why: "HOLD on abc" });
+    const t = tallyOf([v5]);
+    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "HOLD on abc"]);
     assert.equal(holdRound(v5), true);
     assert.equal(holdRound({ ...v5, park_reason: "phase E next" }), false);
   });
