@@ -722,6 +722,47 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     for (const t of timeouts) assert.ok(t !== undefined && t > 0 && t <= CI_BUDGET_MS, `timeout ${t}`);
   });
 
+  describe("a red no CI-RED names is read from the pull request's own CI gate", () => {
+    const gate = (conclusion: string, startedAt: string, status = "COMPLETED") => ({
+      name: "CI gate",
+      status,
+      conclusion,
+      detailsUrl: `https://github.com/o/r/actions/runs/${startedAt.slice(11, 13)}/job/1`,
+      startedAt,
+      completedAt: status === "COMPLETED" ? startedAt : "0001-01-01T00:00:00Z",
+    });
+    const derived = (rollup: unknown[], attempt: number) => {
+      const asked: string[][] = [];
+      const exec = (a: string[]) => {
+        asked.push(a);
+        if (a[0] === "issue") return JSON.stringify({ comments: land() });
+        if (a[0] === "run") return JSON.stringify({ attempt });
+        return JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: rollup }]);
+      };
+      return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
+    };
+
+    test("a red gate already rerun → C with fix, the CI-RED it lacks notwithstanding", () => {
+      const { s, asked } = derived([gate("FAILURE", "2026-10-13T10:00:00Z")], 2);
+      assert.equal(s.ci.state, "red");
+      assert.equal(s.fix, true);
+      assert.equal(s.phase, "C");
+      assert.deepEqual(asked.find((a) => a[0] === "run")?.slice(0, 3), ["run", "view", "10"]);
+    });
+
+    test("a first red is the supervisor's to rerun → G", () => {
+      const { s } = derived([gate("FAILURE", "2026-10-13T10:00:00Z")], 1);
+      assert.equal(s.ci.state, "settling");
+      assert.equal(s.phase, "G");
+    });
+
+    test("the latest gate is the verdict: an older red under a newer running one → G, and no run is read", () => {
+      const { s, asked } = derived([gate("FAILURE", "2026-10-13T10:00:00Z"), gate("", "2026-10-13T11:00:00Z", "IN_PROGRESS")], 2);
+      assert.equal(s.ci.state, "settling");
+      assert.equal(asked.filter((a) => a[0] === "run").length, 0);
+    });
+  });
+
   test("LOOP_PHASE=C wins over a head with no verdict", () => {
     assert.equal(at({ issue: { comments: [] } }, { phase: "C" }).phase, "C");
     assert.equal(at({ issue: { comments: [] } }, { phase: "Z" }).phase, "D", "only a phase letter is honoured");

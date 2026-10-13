@@ -159,6 +159,26 @@ describe("runOnce", () => {
     );
   });
 
+  test("a red whose CI-RED could not be posted is held: no park, no retry row, the worktree kept", async () => {
+    const parked: number[] = [];
+    const rows: any[] = [];
+    const torn: unknown[] = [];
+    const r = await runOnce(
+      io({
+        settle: async () => ({ action: "hold", reason: "CI-RED could not be posted", head: "abc" }),
+        park: (n: number) => parked.push(n),
+        record: (x: unknown) => rows.push(x),
+        teardown: (cwd: unknown) => torn.push(cwd),
+      }),
+    );
+    assert.equal(r.outcome, "hold");
+    assert.equal(r.ticket, 42);
+    assert.match(String(r.why), /could not be posted/);
+    assert.deepEqual(parked, []);
+    assert.deepEqual(torn, []);
+    assert.deepEqual(rows.map((x) => x.outcome), ["pushed"]);
+  });
+
   test("a session that pushed nothing parks the ticket", async () => {
     const parked: number[] = [];
     const r = await runOnce(io({ pushedPr: () => null, park: (n: number) => parked.push(n) }));

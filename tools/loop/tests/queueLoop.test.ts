@@ -1333,6 +1333,10 @@ describe("settleOutcome", () => {
     assert.equal(out.handBack, true);
   });
 
+  test("a hold is neither a park nor a round: the next pick reads the red again", () => {
+    assert.deepEqual(settleOutcome({ action: "hold" }), { countsAsFailure: false, recorded: "held", handBack: false });
+  });
+
   test("an unrecognised action parks rather than passing as a landing", () => {
     const out = settleOutcome({ action: "something-new" });
     assert.equal(out.countsAsFailure, true);

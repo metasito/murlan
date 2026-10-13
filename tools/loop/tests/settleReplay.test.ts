@@ -541,14 +541,42 @@ describe("poll posts CI-RED once per red head", () => {
     assert.equal(asked.filter(isComment).length, 0);
   });
 
-  test("an unreadable tracker skips posting rather than posting blind", async () => {
-    const { gh: base, asked } = redFake();
+  // The CI-RED is what starts a fix round, so a red handed back without one stalls the ticket.
+  const failing = (what: (a: string[]) => boolean, times = Infinity) => {
+    const fake = redFake();
+    let left = times;
     const gh = (args: string[], file = "gh") => {
-      if (args[0] === "issue" && args[1] === "view") throw new Error("gh: connection reset");
-      return base(args, file);
+      if (what(args) && left-- > 0) {
+        fake.asked.push(args);
+        throw new Error("gh: connection reset");
+      }
+      return fake.gh(args, file);
     };
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    return { ...fake, gh };
+  };
+  const isRead = (a: string[]) => a[0] === "issue" && a[1] === "view";
+
+  test("an unreadable tracker is asked again, never posted to blind, and then held rather than handed back", async () => {
+    const { gh, asked } = failing(isRead);
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 0);
+    assert.ok(asked.filter(isRead).length > 1, "the tracker is read more than once");
+    assert.equal(out.action, "hold");
+    assert.equal(out.head, SHA);
+  });
+
+  test("a post that keeps failing is tried again, then held", async () => {
+    const { gh, asked } = failing(isComment);
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.ok(asked.filter(isComment).length > 1, "the post is tried more than once");
+    assert.equal(out.action, "hold");
+  });
+
+  test("a post that fails once and then lands hands the red back", async () => {
+    const { gh, asked } = failing(isComment, 1);
+    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(asked.filter(isComment).length, 2);
+    assert.equal(out.action, "hand-back");
   });
 
   // `output` is only the log's last 400 lines; `testIds` come from the full failed log.
