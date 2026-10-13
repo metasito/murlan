@@ -256,7 +256,9 @@ const merged = (git, branch) => {
 function judgeWorktree(entry, ticket, { git, gh }) {
   if (entry.locked) return { keep: "locked" };
   if (dirty(git, entry.path)) return { keep: "uncommitted changes" };
-  if (entry.branch === null) return { remove: "detached HEAD, no branch to keep" };
+  // A peer mid-rebase reads detached, and a commit reachable only from this HEAD goes with the
+  // reflog: nothing here can tell which, so a person decides.
+  if (entry.branch === null) return { keep: "detached HEAD — a rebase in progress or commits only it reaches; decide by hand" };
   const issue = JSON.parse(gh(["issue", "view", String(ticket), "--json", "state,labels"], { timeout: 30_000 }));
   if (issue.state === "CLOSED") return { remove: "its issue is closed", state: issue.state };
   if (issue.labels.some((l) => l.name === "in-progress")) return null;
@@ -325,8 +327,8 @@ export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = fal
       notes.push(`${name}: removed, git had no registration for it`);
     } catch (err) {
       // The ordinary reason one survives: a process is standing in it. It is already unregistered
-      // and empty, so there is nothing here to rescue.
-      if (["EPERM", "EBUSY", "ENOTEMPTY"].includes(err.code)) {
+      // and empty, so there is nothing here to rescue. ENOTEMPTY is not that: files are still in it.
+      if (["EPERM", "EBUSY"].includes(err.code)) {
         notes.push(`${name}: unregistered, and held open by another process; it goes when that process exits`);
       } else {
         gone.pop();

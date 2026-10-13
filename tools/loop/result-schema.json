@@ -1,14 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "The JSON of the LOOP-RESULT line you emitted last: the same fields, the same values.",
+  "description": "The JSON of the LOOP-RESULT line you emitted last: the same fields, the same values. handoff is null and stoodDown false where that line has none.",
   "type": "object",
-  "required": ["ticket"],
+  "required": ["ticket", "handoff", "stoodDown"],
   "properties": {
     "ticket": { "type": "integer" },
     "branch": { "type": "string" },
     "pr": { "type": "integer" },
     "phase": { "enum": ["A", "B", "C", "D", "E", "F", "G"] },
-    "handoff": { "enum": ["A", "B", "C", "D", "E", "F"] },
+    "handoff": { "enum": ["A", "B", "C", "D", "E", "F", null] },
     "stoodDown": { "type": "boolean" },
     "why": { "type": "string", "maxLength": 1500 }
   }
