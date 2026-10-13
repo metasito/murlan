@@ -206,7 +206,3 @@
 {"schema":8,"n":1562,"outcome":"started","phase":"D","started":"2026-10-12T20:47:21.797Z","run_id":"2026-10-12-20-00","park_reason":null}
 {"schema":8,"n":9001,"outcome":"started","phase":"A","started":"2026-10-12T08:00:00.000Z","run_id":"mixed-1"}
 {"schema":8,"n":9001,"outcome":"handoff","size":"size:S","cost":4.5,"turns":90,"ms":1800000,"phases":{"B":600,"C":1200},"started":"2026-10-12T08:00:00.000Z","run_id":"mixed-1","review_rounds":0,"review_holds_total":0,"usage":{"mainModels":{"claude-opus-5-5":4.1}},"handoff":{"phase":"D","why":null,"said":null}}
-{"schema":9,"kind":"process","n":9001,"run_id":"mixed-2","started":"2026-10-12T09:00:00.000Z","ms":900000,"at":"D","size":"size:S","model":null,"cost":2.25,"turns":40,"phases":{"D":800,"E":100},"outcome":"pushed","head":"abc"}
-{"schema":9,"kind":"outcome","n":9001,"run_id":"mixed-2","started":"2026-10-12T09:20:00.000Z","ms":600000,"outcome":"retry","head":"abc"}
-{"schema":9,"kind":"process","n":9001,"run_id":"mixed-2","started":"2026-10-12T09:30:00.000Z","ms":1200000,"at":"C","size":"size:S","model":null,"cost":3,"turns":60,"phases":{"C":1100},"outcome":"pushed","head":"abd"}
-{"schema":9,"kind":"outcome","n":9001,"run_id":"mixed-2","started":"2026-10-12T10:00:00.000Z","ms":300000,"outcome":"landed","head":"abd"}

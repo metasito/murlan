@@ -79,19 +79,19 @@ describe("sinceWindow", () => {
   });
 });
 
-const proc = (over: object) => ({
-  schema: 9, kind: "process", n: 1, at: "C", fix: false, model: "claude-opus-5-5", size: "size:S",
-  cost: 0, turns: 10, ms: 60_000, subtype: "success", phases: {}, outcome: "handoff", handoff: null, ...over,
+const proc = ({ at = "C", model = "claude-opus-5-5", ...over }: { at?: string; model?: string | null; [field: string]: unknown }) => ({
+  schema: 8, n: 1, size: "size:S", cost: 0, turns: 10, ms: 60_000, phases: { [at]: 60 },
+  usage: { mainModels: model ? { [model]: 1 } : {} }, outcome: "handoff", handoff: null, ...over,
 });
-const out = (over: object) => ({ schema: 9, kind: "outcome", n: 1, ...over });
+const out = (over: object) => ({ schema: 8, n: 1, cost: 0, turns: 0, phases: {}, ...over });
 
 describe("summary", () => {
-  test("a HOLD round is a D process that hands to C or D", () => {
+  test("a review that hands to C or D is fix spend, and HOLD rounds are the row's own count", () => {
     const rows = [
       proc({ n: 1, at: "C", cost: 5 }),
       proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
       proc({ n: 1, at: "C", cost: 3 }),
-      proc({ n: 1, at: "D", cost: 1 }),
+      proc({ n: 1, at: "D", cost: 1, review_holds_total: 1 }),
       out({ n: 1, outcome: "landed" }),
     ];
     const s = summary(rows);
@@ -128,15 +128,15 @@ describe("summary", () => {
 
   test("max-turns hits are counted exactly", () => {
     const rows = [
-      proc({ subtype: "error_max_turns" }),
-      proc({ subtype: "success" }),
+      proc({ error: { status: null, reason: "error_max_turns", stderr: null } }),
+      proc({}),
       { schema: 8, n: 1, outcome: "parked", cost: 1, turns: 320, phases: { C: 9 }, error: { status: null, reason: "error_max_turns", stderr: null } },
     ];
     assert.equal(summary(rows).maxTurnsHit, 2);
   });
 
   test("a CI fix round's processes are fix spend, and the share is of all spend", () => {
-    const s = summary([proc({ cost: 6 }), out({ outcome: "retry", head: "a" }), proc({ fix: true, cost: 2 }), out({ outcome: "landed" })]);
+    const s = summary([proc({ cost: 6 }), out({ outcome: "retry", head: "a" }), proc({ cost: 2 }), out({ outcome: "landed" })]);
     assert.deepEqual([s.fixSpend, s.fixShare], [2, 25]);
   });
 
@@ -156,11 +156,6 @@ describe("summary", () => {
     assert.deepEqual([s.tickets, s.perTicket.mean, s.perTicket.median, s.processesMedian], [2, 3.5, 6, 1]);
   });
 
-  test("a review round is a D-spawned process, beside schema 8's own count", () => {
-    const s = summary([proc({ at: "D" }), proc({ at: "D" }), proc({ n: 2, at: "C" }), { schema: 8, n: 3, outcome: "pushed", cost: 1, turns: 9, review_rounds: 3 }]);
-    assert.equal(s.reviewRoundsMedian, 3);
-  });
-
   test("a process spawned at A that reached review is a HOLD round by what it ran, and spawned at A", () => {
     const rows = [
       { schema: 8, n: 5, outcome: "started", phase: "A", run_id: "r" },
@@ -171,7 +166,7 @@ describe("summary", () => {
   });
 
   describe("on a ledger of schema 3 to 8, against what main's gauge recorded of it", () => {
-    const rows = golden.rows.filter((r) => r.schema !== 9);
+    const rows = golden.rows;
     const s = summary(rows);
     const firstTimed = (r: { phases?: object }) => Object.keys(r.phases ?? {})[0];
 
@@ -196,11 +191,6 @@ describe("summary", () => {
       assert.ok(Math.abs(s.fixSpend - (golden.main.fixCost - landedReviews)) < 1e-9);
     });
   });
-
-  test("a claim spanning schema 8 and 9 is one ticket, and a fix round with no flag is counted by order", () => {
-    const s = summary(golden.rows.filter((r) => r.n === 9001));
-    assert.deepEqual([s.tickets, s.spend, s.fixSpend, s.processesMedian, s.unjudged], [1, 9.75, 3, 3, 2]);
-  });
 });
 
 describe("report", () => {
@@ -208,7 +198,7 @@ describe("report", () => {
     proc({ n: 1, at: "C", cost: 5 }),
     proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
     proc({ n: 1, at: "C", cost: 3 }),
-    proc({ n: 1, at: "D", cost: 1, outcome: "pushed" }),
+    proc({ n: 1, at: "D", cost: 1, outcome: "pushed", review_rounds: 2, review_holds_total: 1 }),
     out({ n: 1, outcome: "landed", ms: 600_000 }),
     proc({ n: 2, at: "A", cost: 4 }),
     out({ n: 2, outcome: "parked" }),
@@ -233,7 +223,7 @@ describe("report", () => {
 
   test("names mismatches, unjudged processes, max-turns hits and a short cap only when there are some", () => {
     assert.doesNotMatch(report(rows), /model mismatch|model unjudged|turn cap|busiest/);
-    const odd = [...rows, proc({ n: 3, at: "E", model: "claude-opus-5-5" }), proc({ n: 4, model: null, subtype: "error_max_turns", turns: 400 })];
+    const odd = [...rows, proc({ n: 3, at: "E", model: "claude-opus-5-5" }), proc({ n: 4, model: null, error: { status: null, reason: "error_max_turns", stderr: null }, turns: 400 })];
     const text = report(odd, { "size:S": 320 });
     assert.match(text, /^model mismatch: #3$/m);
     assert.match(text, /^model unjudged: 1 processes name no model$/m);
@@ -300,11 +290,6 @@ describe("by loop sha", () => {
     const summed = [...shaTable(rows).matchAll(/^\S+\s+\d+\s+([\d.]+)/gm)].reduce((a, m) => a + Number(m[1]), 0);
     assert.equal(summed, rows.reduce((a, r) => a + r.cost, 0));
     assert.equal(report(rows), report(rows.map(({ loop_sha: _, ...r }) => r)));
-  });
-
-  test("a schema 9 outcome row is the supervisor's, not a session", () => {
-    const v9 = [proc({ cost: 2, loop_sha: "bbbbbbb222" }), out({ outcome: "landed", loop_sha: "bbbbbbb222" })];
-    assert.match(shaTable(v9), /^bbbbbbb\s+1\s+2\.00\s+1\s+0\s+0$/m);
   });
 
   test("a killed session is named with its phase and time, and the last may still be running", () => {

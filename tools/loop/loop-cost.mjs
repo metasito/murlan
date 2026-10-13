@@ -6,7 +6,7 @@
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { DIR, ARTEFACTS, atOf, closesWindow, holdRound, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
+import { DIR, ARTEFACTS, atOf, closesWindow, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -64,8 +64,8 @@ export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => Strin
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
-/** The main session's own model: schema 9 records it, and before it the one most of its turns ran on. */
-const modelOf = (row) => row.model ?? Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+/** The main session's own model: the one most of its turns ran on. */
+const modelOf = (row) => Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 
@@ -90,20 +90,18 @@ function windowsOf(rows) {
 /**
  * A ticket's HOLD verdicts. Schema 8 carries `review_holds_total` across claims and fix rounds; a
  * ticket with no row carrying it is approximated as its `review_rounds` less its landings, a count
- * a re-claim resets. From schema 9 each HOLD round is a process of its own.
+ * a re-claim resets.
  */
 function holdsOf(rows) {
   let total = null;
   let rounds = 0;
   let landed = 0;
-  let own = 0;
   for (const r of rows) {
     if (typeof r.review_holds_total === "number") total = Math.max(total ?? 0, r.review_holds_total);
     rounds = Math.max(rounds, r.review_rounds ?? 0);
     if (r.outcome === "landed") landed += 1;
-    if (r.kind && holdRound(r)) own += 1;
   }
-  return (total ?? Math.max(0, rounds - landed)) + own;
+  return total ?? Math.max(0, rounds - landed);
 }
 
 /**
@@ -119,7 +117,7 @@ export function summary(input, caps = TURNS_BY_SIZE) {
   const tickets = byTicket(rows).map((mine) => ({
     spend: sum(mine.map((r) => r.cost ?? 0)),
     minutes: sum(mine.map((r) => r.ms ?? 0)) / 6e4,
-    rounds: Math.max(0, ...mine.map((r) => r.review_rounds ?? 0)) + mine.filter((r) => r.kind === "process" && atOf(r) === "D").length,
+    rounds: Math.max(0, ...mine.map((r) => r.review_rounds ?? 0)),
     holds: holdsOf(mine),
   }));
   const spent = tickets.filter((t) => t.spend > 0);
@@ -152,7 +150,7 @@ export function summary(input, caps = TURNS_BY_SIZE) {
     }),
     unjudged: processes.filter((r) => !modelOf(r)).length,
     headroom: turnHeadroom(processes, caps),
-    maxTurnsHit: processes.filter((r) => (r.subtype ?? r.error?.reason) === "error_max_turns").length,
+    maxTurnsHit: processes.filter((r) => r.error?.reason === "error_max_turns").length,
     byAt: Object.fromEntries(Object.entries(byAt).map(([at, b]) => [at, { processes: b.processes, spend: b.spend, minutes: median(b.ms) / 6e4 }])),
   };
 }
