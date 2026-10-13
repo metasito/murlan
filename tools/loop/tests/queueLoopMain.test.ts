@@ -187,6 +187,13 @@ describe("runOnce", () => {
     assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
   });
 
+  test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {
+    const rows: any[] = [];
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the merge failed", flake }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.find((x) => x.outcome === "parked")?.flake, flake);
+  });
+
   test("a session that pushed nothing parks the ticket", async () => {
     const parked: number[] = [];
     const r = await runOnce(io({ pushedPr: () => null, park: (n: number) => parked.push(n) }));

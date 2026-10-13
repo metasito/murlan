@@ -463,7 +463,17 @@ describe("a red is rerun once per head", () => {
       const [create, ...more] = creates(asked);
       assert.equal(more.length, 0);
       assert.equal(create[create.indexOf("--title") + 1], `CI flake: ${ID}`);
-      assert.ok(indexOf(asked, (a) => a[1] === "create") < indexOf(asked, (a) => a.includes("--auto")), "filed before the merge it is named in");
+      const mergedAt = asked.findIndex((a, i) => i > indexOf(asked, (b) => b.includes("--auto")) && a[1] === "view" && a[0] === "pr");
+      assert.ok(indexOf(asked, (a) => a[1] === "create") > mergedAt, "filed once the merge is read back, never before it");
+    });
+
+    // The issue says the pull request merged on that green; the ledger row is the record either way.
+    test("a merge that fails files nothing, and the settle still names the flake", async () => {
+      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
+      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      assert.equal(out.action, "owner");
+      assert.deepEqual(out.flake, { runId: RED_RUN, tests: [ID] });
+      assert.equal(creates(asked).length, 0);
     });
 
     test("a test already filed open is not filed again", async () => {
