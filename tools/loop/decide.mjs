@@ -98,8 +98,8 @@ export function waitFor({ blocked, blockedUntil, done }, now = Date.now()) {
  * What a refused session costs the run: a wait, and nothing else.
  *
  * A usage refusal is a property of the *account*, so the counter is the run's, not the ticket's.
- * Keyed per ticket it was inert — twenty tickets refused once each never reached the ceiling — and
- * cruel when it did fire, parking one ticket for a limit it had no part in.
+ * Keyed per ticket it would be inert — twenty tickets refused once each never reach the ceiling —
+ * and cruel when it did fire, parking one ticket for a limit it had no part in.
  *
  * @param {{waits: number, blocked?: boolean, blockedUntil?: number, done?: boolean}} run
  * @returns {{action: "proceed"|"wait"|"give-up", hold: number, waits: number, why?: string}}
@@ -127,8 +127,8 @@ export function afterRefusal({ waits, blocked, blockedUntil, done }, now = Date.
  * **The pull request outranks every reason the session's exit gives, bar two.** A branch that was
  * pushed is a fact, and how the session ended is not a fact about it: a session that ran out of
  * turns after pushing has done its half, and from there CI and the merge are the supervisor's.
- * Reading the exit first parked eleven tickets whose pull requests merged anyway, throwing away the
- * work and the claim together.
+ * Reading the exit first parks tickets whose pull requests then merge anyway, throwing away the work
+ * and the claim together.
  *
  * The two exceptions are the two things only the session can know: it stood the ticket down, or it
  * worked a different one. Both make its branch not this ticket's answer, so neither yields.

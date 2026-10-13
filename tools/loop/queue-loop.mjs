@@ -2584,7 +2584,7 @@ function realIo(book, screen) {
           sh("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
         } catch (err) {
           // Said out loud, because silence here is permanent: the picker skips `in-progress`, so a
-          // swallowed failure leaves a finished ticket nothing will ever take again. #1026 merged.
+          // swallowed failure leaves a finished ticket nothing will ever take again.
           screen.notice("claim", `#${number} is still in-progress — ${String(err.message).split("\n")[0]}`);
         }
       }
