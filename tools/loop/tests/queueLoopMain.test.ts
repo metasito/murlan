@@ -1580,6 +1580,36 @@ describe("the run recap", () => {
     assert.doesNotMatch(said, /pre-flight/);
   });
 
+  // poll parks a red whose log stays unreadable after its bound; a held red whose post keeps failing
+  // is the same ticket's problem, and stopping the whole night on it is not.
+  test("a ticket held past its bound is parked for the owner, and the loop carries on", async () => {
+    const parked: { n: number; why: string }[] = [];
+    const notes: string[] = [];
+    let passes = 0;
+    const board = {
+      say: () => {},
+      warn: () => {},
+      notice: (_k: string, m: string) => notes.push(m),
+      stop: () => {},
+      close: () => {},
+      board: () => {},
+      wait: () => ({ woken: Promise.resolve(), say: null }),
+    };
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
+    const spy = {
+      ...(io() as any),
+      stopFile: () => passes++ > 6,
+      pick: () => route,
+      postRed: () => false,
+      park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
+    };
+    const code = await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
+    assert.notEqual(code, 1, notes.join("\n"));
+    assert.ok(parked.length >= 1 && parked[0].n === 42, JSON.stringify(parked));
+    assert.match(parked[0].why, /could not be posted/);
+  });
+
   // Only `Date` is mocked: main's own tick stays real, as it does across a standby.
   test("books a standby as asleep, not working", async (t) => {
     t.mock.timers.enable({ apis: ["Date"] });
