@@ -187,6 +187,13 @@ describe("runOnce", () => {
     assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
   });
 
+  test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {
+    const rows: any[] = [];
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the merge failed", flake }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.find((x) => x.outcome === "parked")?.flake, flake);
+  });
+
   test("a session that pushed nothing parks the ticket", async () => {
     const parked: number[] = [];
     const r = await runOnce(io({ pushedPr: () => null, park: (n: number) => parked.push(n) }));
@@ -1018,6 +1025,50 @@ describe("runOnce", () => {
     assert.deepEqual(await pass([], 3, false), ["parked", null]);
     assert.deepEqual(await pass([retryRow("h1")], 1, false), ["landed", 2]);
     assert.deepEqual(await pass([retryRow("h1")], 1, true), ["parked", 2]);
+  });
+
+  // The session's own derive reads a red only from CI-RED, so a held red's fix round must find one.
+  describe("a held red is posted before its fix round spawns", () => {
+    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const held = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, pr: 5, state: "unposted", sha: "h1" } };
+    const posted = { ...held, phase: "C", fix: true, ci: { ...held.ci, state: "red", step: "Test" } };
+
+    const pass = async (posts: boolean) => {
+      const comments: string[] = [];
+      const order: string[] = [];
+      const seen: boolean[] = [];
+      const ledger: any[] = [retryRow("h1")];
+      const read = () => (comments.length ? posted : held);
+      const r = await runOnce(
+        io(
+          {
+            pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
+            postRed: (n: number, pr: number) => (order.push(`post #${n} pr ${pr}`), posts && comments.push("CI-RED h1"), posts),
+            refreshWorktree: () => order.push("refresh"),
+            spawn: async () => {
+              order.push("spawn");
+              seen.push(read().fix);
+              return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+            },
+          },
+          ledger,
+        ),
+        42,
+      );
+      return { r, order, seen };
+    };
+
+    test("posted, the session that spawns reads its fix round", async () => {
+      const { order, seen } = await pass(true);
+      assert.deepEqual(order.slice(0, 3), ["post #42 pr 5", "refresh", "spawn"]);
+      assert.deepEqual(seen, [true]);
+    });
+
+    test("a post that still fails holds, and spawns nothing", async () => {
+      const { r, order } = await pass(false);
+      assert.equal(r.outcome, "hold");
+      assert.deepEqual(order, ["post #42 pr 5"]);
+    });
   });
 
   test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {

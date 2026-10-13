@@ -219,6 +219,8 @@ export function nextRoute(
       size: known?.size ?? null,
       ciRounds: known?.ciRounds ?? 0,
       queue: null,
+      // The pull request whose CI-RED `runOnce` posts before the fix round: the session reads only that.
+      ...(held && { unposted: status.ci.pr }),
     };
   }
   if (pinned) {
@@ -1931,31 +1933,69 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 /** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
 
+/**
+ * The CI log a fix round reads, written before the red is handed back: that session is a fresh
+ * process with no way to ask this one anything. Then the `on main:` lines its CI-RED carries.
+ * Never call it when `output` is the reason rather than the log: round one's real failure is
+ * already in that file, and this would paint over it.
+ */
+function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
+  try {
+    mkdir(DIR, { recursive: true });
+    write(ciLogPath(ticket), verdict.output, "utf8");
+  } catch (err) {
+    log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+  }
+  const failing = verdict.testIds ?? [];
+  const main = failing.length ? mainFailures() : null;
+  return { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+}
+
+/** A held red's CI-RED, posted by the supervisor from the run itself; whether the tracker carries it now. */
+function postHeldRed(ticket, pr, log) {
+  const run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts });
+  try {
+    const { ci } = ts("./ciVerdict.ts").readLandingState(REPO, pr);
+    if (ci.pass || ci.waiting || ci.infrastructure || !ci.output || ci.logUnread) return false;
+    const mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args), REPO);
+    const lines = prepareRed(ticket, ci, { mkdir: mkdirSync, write: writeFileSync, mainFailures, log });
+    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, writeFileSync, log);
+  } catch (err) {
+    log(`CI-RED: could not read #${pr}'s red — ${firstLine(err)}`);
+    return false;
+  }
+}
+
 /** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
 const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
+
+const FLAKES_PER_RUN = 3;
 
 const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
 
 /**
- * One open issue per flaky test, found by its exact title in a listing: GitHub's search trails its
- * own writes. `ready-for-human`, not `ci-flake`: ADR 0011 keeps that label, and the rank it
- * carries, the owner's to add.
+ * One open issue per flaky test, found by its exact title in a listing of every open issue: GitHub's
+ * search trails its own writes, and promoting one swaps its label. `ready-for-human`, not
+ * `ci-flake`: ADR 0011 keeps that label, and the rank it carries, the owner's to add.
  */
 function fileFlakes(red, gh, log) {
   let open;
   try {
-    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--label", "ready-for-human", "--limit", "500", "--json", "number,title"]));
+    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--limit", "1000", "--json", "number,title"]));
   } catch (err) {
     log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
     return;
   }
-  for (const name of flakeNames(red)) {
-    const title = `CI flake: ${name}`;
+  const names = flakeNames(red);
+  // More reds than this cleared by one rerun reads as a starved runner, and it bounds the `gh` calls.
+  const titles = names.length > FLAKES_PER_RUN ? [`CI flake: ${names.length} tests in run ${red.runId}`] : names.map((n) => `CI flake: ${n}`);
+  for (const title of titles) {
     if (open.some((i) => i.title === title)) continue;
     const body = [
-      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed this; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed ${titles.length < names.length ? "these" : "this"}; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      ...(titles.length < names.length ? ["", ...names.map((n) => `- ${n}`)] : []),
       "",
-      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same test, so keep it.",
+      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same failure, so keep it.",
     ].join("\n");
     try {
       gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
@@ -2026,7 +2066,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     woke ||= slept > 0;
   };
   let verdict = {};
-  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
+  const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head, ...(flake && { flake }) });
   let flake = null;
   const merged = (reason) => {
     if (pending.branch) {
@@ -2043,6 +2083,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         // An unreadable `ls-remote` is not evidence of a survivor.
       }
     }
+    if (flake) fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
     return { action: "already-merged", reason, ...(flake && { flake }) };
   };
   /**
@@ -2077,18 +2118,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   const handBack = async (next) => {
     const held = disarm(next.reason);
     if (held) return held;
-    // Written before it is handed back, because the session that fixes it is a fresh process
-    // with no way to ask this one anything. Never when `output` is the reason rather than the log:
-    // round one's real failure is already in that file, and this would paint over it.
-    try {
-      mkdir(DIR, { recursive: true });
-      write(ciLogPath(pending.ticket), verdict.output, "utf8");
-    } catch (err) {
-      log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
-    }
-    const failing = verdict.testIds ?? [];
-    const main = failing.length ? mainFailures() : null;
-    const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+    const lines = prepareRed(pending.ticket, verdict, { mkdir, write, mainFailures, log });
     for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
       // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
       if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
@@ -2166,11 +2196,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
     } else if (step.act === "arm") {
       const at = String(head ?? "an unread head").slice(0, 7);
-      // A green this process's rerun won: filed, named in the merge and on the row, before it can land.
-      if (reran === head && firstRed && !flake) {
-        flake = { runId: firstRed.runId, tests: firstRed.tests };
-        fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
-      }
+      // A green this process's rerun won: named in the merge and on the row; filed once it has merged.
+      if (reran === head && firstRed && !flake) flake = { runId: firstRed.runId, tests: firstRed.tests };
       const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
       // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
       armed = "maybe";
@@ -2235,7 +2262,7 @@ function worktreeOf(io, number) {
  *   dirty: boolean, run?: object, pr?: number|null, files?: number}} ctx `run` only when this park
  *   is the session's own row; otherwise its cost is already recorded and the row carries none.
  */
-export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ...ctx }) {
+export function parkAndRecord(io, number, { run = null, pr = null, files = 0, flake = null, ...ctx }) {
   io.bell();
   const failed = io.park(number, { ...ctx, error: run ? errorOf(run) : null })?.failed ?? [];
   if (failed.length) io.log(`#${number}'s park did not reach the tracker (${failed.join(", ")}) — applied again at the start of each pass`, "park");
@@ -2248,6 +2275,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, ..
     files,
     counts: true,
     parkFailed: failed.length ? failed : null,
+    flake,
   });
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
@@ -2305,24 +2333,34 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (begun.kind !== "go") return pass(begun);
 
   let route = io.pick(pinned, at);
-  let tally = io.tally(route.number);
-  let picked = decideAt("pick", { route: { ...route, n: route.number }, tally, repicked: false });
+  let picking = { route: { ...route, n: route.number }, tally: io.tally(route.number), repicked: false };
+  let picked = decideAt("pick", picking);
   if (picked.kind === "repick") {
     io.teardown(route.cwd, route.number);
     route = io.pick(loop.pinned, loop.pinned === null ? null : at);
-    tally = io.tally(route.number);
-    picked = decideAt("pick", { route: { ...route, n: route.number }, tally, repicked: true });
+    picking = { route: { ...route, n: route.number }, tally: io.tally(route.number), repicked: true };
+    picked = decideAt("pick", picking);
   }
   const n = route.number;
   const ticket = { ...route, n };
   const size = route.size ?? null;
+  const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(io, n) } : { asked: false, own: null });
   const parkHere = (action, ctx) => {
     if (action.byOwner) fs.rmSync(PARK_FILE, { force: true });
     const parked = parkAndRecord(io, n, { ...ctx, phase: action.phase, why: action.why });
     return { ...parked, loop, halt: action.halt ?? null, ...(action.byOwner && { byOwner: true }) };
   };
+  // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
+  // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
+  // run to resume.
+  const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(io, n)), log });
+  if (picked.kind === "ask") {
+    picking = { ...picking, posted: Boolean(io.postRed(n, route.unposted)), ...owner() };
+    picked = decideAt("pick", picking);
+  }
+  let { tally } = picking;
   const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
-  if (picked.kind === "park") return parkHere(picked, unrun);
+  if (picked.kind === "park") return picked.instead ? parkOver(picked, picking.own, streamLog(n)) : parkHere(picked, unrun);
   if (picked.kind !== "go") return pass(picked);
 
   if (picked.redWhileDown) {
@@ -2371,7 +2409,6 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     }
   };
   // Read once the session has exited: a park is never a kill.
-  const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(io, n) } : { asked: false, own: null });
   const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
   // `null`, never `undefined`, for a fact read: `undefined` is `decide`'s "not read yet".
   const read = {
@@ -2393,11 +2430,6 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const files = () => (facts.pushed === undefined ? 0 : after?.changed?.length || facts.pushed?.changedFiles || 0);
   let billed = run;
   const worked = (pr, log = billed.log) => ({ log, cwd: after?.cwd ?? null, branch: after?.branch ?? null, dirty: after?.dirty ?? false, run: billed, pr: pr ?? null, files: files() });
-  // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
-  // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
-  // run to resume.
-  const parkOver = (over, replaced, own) =>
-    parkHere(over, { ...(own ?? worktreeOf(io, n)), log: replaced.wait === "preflight" ? streamLog(n) : run.log });
 
   const replaced = action.instead ?? action;
   if (replaced.kind === "handoff" || replaced.kind === "hold") {
@@ -2411,7 +2443,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
       // A refusal spends real money before it stops, and this row is the one place it is recorded.
       io.record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run, counts: false });
     }
-    if (action.kind === "park") return parkOver(action, replaced, facts.own);
+    if (action.kind === "park") return parkOver(action, facts.own, run.log);
     if (action.kind === "handoff") return pass(action, { phase: action.phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null });
     return pass(action, { run, until: replaced.until });
   }
@@ -2449,7 +2481,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const red = verdict.instead ?? verdict;
   if (red.kind === "retry" || red.record === "retry") {
     io.record({ number: n, outcome: "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), counts: false, head, flake: settled.flake ?? null });
-    if (verdict.kind === "park") return parkOver(verdict, red, owned.own);
+    if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
     if (verdict.kind === "retry") {
       return pass(verdict, { cwd: after?.cwd ?? null, branch: after?.branch ?? facts.pushed.head, pr: action.pr, sha: head, files: files(), run, size });
@@ -2464,7 +2496,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   // The failed CI log, when there is one: it is what the owner needs and the session's own stream
   // log is not.
   const log = verdict.ciRed && fs.existsSync(ciLogPath(n)) ? ciLogPath(n) : billed.log;
-  return parkHere(verdict, worked(action.pr, log));
+  return parkHere(verdict, { ...worked(action.pr, log), flake: verdict.ciRed ? null : (settled.flake ?? null) });
 }
 
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
@@ -2566,6 +2598,7 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
+    postRed: (number, pr) => postHeldRed(number, pr, (m) => screen.notice("ci", m)),
     queue: () => before,
     park,
     /**

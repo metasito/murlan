@@ -20,6 +20,7 @@ const base = { route, tally: empty, loop: fresh, limits: LIMITS, now: NOW, asked
 const pre = (over: object, top: object = {}) => ({ ...base, step: "pre", pre: { stop: false, unusable: false, moved: null, housekeeping: { verdict: "ok", why: null }, ...over }, ...top });
 const pick = (over: object, top: object = {}) => ({ ...base, step: "pick", route: { ...route, ...over }, repicked: false, ...top });
 const fixRoute = (top: object = {}) => pick({ fix: true, head: "h3" }, top);
+const heldRed = (top: object = {}) => pick({ fix: true, head: "h1abcdef9", unposted: 5 }, { tally: { ...empty, retries: 1, lastRedHead: "h1abcdef9" }, ...top });
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
 const ok = { subtype: "success", isError: false, apiStatus: null, cost: 2, turns: 30 };
@@ -75,6 +76,14 @@ const ROWS: Row[] = [
   ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h2", ciRounds: 2 } }),
     { kind: "go", redWhileDown: true }],
   ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute({ tally: { ...empty, ciRounds: CI_ROUNDS } }), { kind: "park", phase: "C" }],
+  ["runOnce: a held red's fix round asks for its CI-RED to be posted first", heldRed(), { kind: "ask", fact: "posted" }],
+  ["a post that still fails holds, and spawns nothing", heldRed({ posted: false }),
+    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for h1abcde could not be posted", hold: WAIT.FLOOR, loop: { ...fresh, holds: 1 } }],
+  ["runOnce: a posted CI-RED goes on to the fix round", heldRed({ posted: true }), { kind: "go" }],
+  ["runOnce: an unposted red holds before the cap on rounds missed while down parks", heldRed({ posted: false, tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h0" } }),
+    { kind: "hold" }],
+  ["main: a park asked from the board takes a held red whose CI-RED is unposted", heldRed({ posted: false, asked: true }),
+    { kind: "park", why: "parked by owner", byOwner: true, phase: "C", instead: { kind: "hold" } }],
   ["an ff failure before a fix parks", { ...base, step: "refresh", error: "fatal: Not possible to fast-forward" },
     { kind: "park", phase: "C", why: "could not fast-forward the worktree before the fix round — fatal: Not possible to fast-forward", label: PARK }],
   ["runOnce: a fast-forwarded worktree goes on to the fix round", { ...base, step: "refresh", error: null }, { kind: "go" }],
@@ -370,6 +379,8 @@ const ELSEWHERE: Record<string, string> = {
   "is recorded with the steps that failed": "repark",
   "is applied again at the start of the next pass, once, and a restart does not repeat it": "repark",
   "a landing a rerun won writes the flake on its row": "io",
+  "a rerun's green whose merge then failed still writes the flake, on the park row": "io",
+  "posted, the session that spawns reads its fix round": "io: the post before the refresh and the spawn",
   "a ticket's hold says which ticket and why, not a pre-flight's words": "io: main's notice",
   "a red on an armed pull request is disarmed before any fix round is spawned": "io: poll's call order",
 };

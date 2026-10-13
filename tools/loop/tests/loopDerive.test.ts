@@ -757,6 +757,18 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       assert.equal(view[view.indexOf("--json") + 1], "attempt,status,conclusion,jobs");
     });
 
+    test("once the supervisor posts the CI-RED it writes, the session reads a fix round", () => {
+      const body = ciRedBody({ sha: head, runUrl: "https://github.com/o/r/actions/runs/10", failedStep: "Test", testIds: ["a.ts › b"], runId: 10, attempt: 2 });
+      const exec = (a: string[]) =>
+        a[0] === "issue"
+          ? JSON.stringify({ comments: [...land(), { body, authorAssociation: "OWNER" }] })
+          : a[0] === "run"
+            ? JSON.stringify({ attempt: 2, ...RAN })
+            : JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: RED_GATE }]);
+      const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
+      assert.deepEqual([s.ci.state, s.fix, s.phase, s.ci.step], ["red", true, "C", "Test"]);
+    });
+
     test("a first red is the supervisor's to rerun", () => {
       assert.equal(derived(RED_GATE, 1).s.ci.state, "settling");
     });
