@@ -33,3 +33,5 @@ A plan, a research note or a design spec is a working artefact: it is deleted on
 describes has landed, and anything in it worth keeping past that point is a record here, not a
 file kept alive by habit. `docs/README.md` is where a reader finds this index; nothing links
 into a deleted plan/research/specs/design file, because nothing does anymore.
+
+<!-- auto-merge probe A1, #1573 -->
