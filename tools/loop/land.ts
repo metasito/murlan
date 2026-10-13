@@ -130,8 +130,8 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
  * when it arms: a head that moved past the cleared commit is refused. It is not documented to be
  * checked again at merge time, so the caller disarms before anything can push.
  */
-export function armArgs(repo: string, prNumber: number, sha: string): string[] {
-  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha];
+export function armArgs(repo: string, prNumber: number, sha: string, body?: string): string[] {
+  return ["pr", "merge", String(prNumber), "--repo", repo, "--auto", "--merge", "--match-head-commit", sha, ...(body ? ["--body", body] : [])];
 }
 
 export function disarmArgs(repo: string, prNumber: number): string[] {

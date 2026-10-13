@@ -178,7 +178,7 @@ export const errorLine = (error) =>
  *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
  *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
- *   error?: object|null}} session
+ *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
 export function sessionRow({
   number,
@@ -204,6 +204,7 @@ export function sessionRow({
   handoff = null,
   error = null,
   parkFailed = null,
+  flake = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -239,6 +240,8 @@ export function sessionRow({
     handoff,
     error,
     park_failed: parkFailed,
+    // The run whose rerun went green, and the tests its first attempt failed: a landing a flake let through.
+    flake,
   };
 }
 

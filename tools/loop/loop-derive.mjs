@@ -430,22 +430,23 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
-const RED_GATE = new Set(["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"]);
 const RUN_OF = /\/actions\/runs\/(\d+)\//;
 /** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
 const lastMoved = (e) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
 
 /**
- * Whether the head's latest `CI gate` is red past attempt 1, for a red no `CI-RED` names: the
- * supervisor reruns a first red itself, and holds one whose CI-RED it could not post.
+ * Whether the head's latest `CI gate` failed on code past attempt 1. The supervisor reruns a first
+ * red itself, and a timeout, a run that never started or a job that ran no steps is no code red.
  */
 function gateRedRerun(rollup, cwd, exec, until, failed) {
   const gate = (rollup ?? []).filter((e) => e.name === "CI gate").reduce((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
   const runId = RUN_OF.exec(gate?.detailsUrl ?? "")?.[1];
-  if (gate?.status !== "COMPLETED" || !RED_GATE.has(gate.conclusion) || !runId) return false;
+  if (gate?.status !== "COMPLETED" || gate.conclusion !== "FAILURE" || !runId) return false;
   try {
-    const args = ["run", "view", runId, "--repo", REPO, "--json", "attempt"];
-    return JSON.parse(exec(args, cwd, Math.max(1, until - Date.now()))).attempt > 1;
+    const args = ["run", "view", runId, "--repo", REPO, "--json", "attempt,status,conclusion,jobs"];
+    const run = JSON.parse(exec(args, cwd, Math.max(1, until - Date.now())));
+    const red = (run.jobs ?? []).filter((j) => j.conclusion === "failure");
+    return run.status === "completed" && run.attempt > 1 && red.length > 0 && red.every((j) => j.steps?.length > 0);
   } catch {
     failed.push("gh");
     return false;
@@ -454,7 +455,8 @@ function gateRedRerun(rollup, cwd, exec, until, failed) {
 
 /**
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
- * that head, or failing that the gate itself once the supervisor's rerun of it is spent.
+ * that head. A code red past its rerun that none names is `unposted`: whether the supervisor held it
+ * or stopped before posting is the ledger's to say, so `nextRoute` decides between C and G.
  */
 function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;
@@ -473,9 +475,9 @@ function readCi(cwd, branch, head, comments, exec) {
   }
   if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
   const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
-  const posted = ciRedStep(comments, open.headRefOid);
-  const step = posted !== undefined || !gateRedRerun(open.statusCheckRollup, cwd, exec, until, failed) ? posted : null;
-  const state = failed.length ? "unreadable" : step === undefined ? "settling" : "red";
+  const step = ciRedStep(comments, open.headRefOid);
+  const unposted = step === undefined && gateRedRerun(open.statusCheckRollup, cwd, exec, until, failed);
+  const state = failed.length ? "unreadable" : unposted ? "unposted" : step === undefined ? "settling" : "red";
   return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 

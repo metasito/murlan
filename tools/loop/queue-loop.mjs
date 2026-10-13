@@ -199,15 +199,18 @@ export function nextRoute(
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const tally = ticketTally(live.number, ledger());
-    const handed = at ?? (status.fix ? "C" : null) ?? tally.lastHandoff;
-    const settles = live.phase === "G" && status.ci?.pushed === true;
+    // A held red's retry row names its head; a supervisor that stopped mid-settle wrote none, and owes G.
+    const held = status.ci?.state === "unposted" && status.ci.sha === tally.lastRedHead;
+    const fix = Boolean(status.fix) || held;
+    const handed = at ?? (fix ? "C" : null) ?? tally.lastHandoff;
+    const settles = live.phase === "G" && status.ci?.pushed === true && !held;
     const derived = live.phase === "G" ? "E" : live.phase;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
     const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
       phase,
-      fix: Boolean(status.fix) && phase !== "G",
+      fix: fix && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
       cwd: status.cwd ?? null,
       branch: status.branch ?? null,
@@ -609,7 +612,8 @@ export const shouldHalt = (consecutiveFailures) => consecutiveFailures >= BREAKE
 export function settleOutcome({ action }) {
   if (action === "already-merged") return { countsAsFailure: false, recorded: "landed", handBack: false };
   if (action === "hand-back") return { countsAsFailure: false, recorded: "retry", handBack: false };
-  if (action === "hold") return { countsAsFailure: false, recorded: "held", handBack: false };
+  // A red round whose CI-RED could not be posted: recorded as one, and its fix round waits a hold.
+  if (action === "hold") return { countsAsFailure: false, recorded: "retry", handBack: false, hold: true };
   // Parked, not stalled, and handed back: a ticket nothing mechanical can move keeps neither its
   // claim nor its silence. Recording the row and tearing the worktree down without releasing
   // `in-progress` leaves an issue the picker skips for good.
@@ -1987,9 +1991,9 @@ export const failingFiles = (testIds) => [...new Set(testIds.map((id) => id.spli
  * fit one into a comment dropped the part that mattered. `onMain` and `flaky` are `onMainLine`'s answers.
  *
  * @param {{sha: string, runUrl: string, failedStep?: string, testIds?: string[], excerpt?: string,
- *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string}} args
+ *   onMain?: string, flaky?: string, runId?: number, logArgs?: string[], reason?: string, attempt?: number}} args
  */
-export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason }) {
+export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "", onMain = "none", flaky = "none", runId, logArgs, reason, attempt }) {
   const files = failingFiles(testIds);
   // A count of zero would be a target a round meets by diagnosing nothing, so a step whose output
   // parses as no test id says that instead of stating one.
@@ -2006,6 +2010,8 @@ export function ciRedBody({ sha, runUrl, failedStep, testIds = [], excerpt = "",
     ...files.map((f) => `- ${f}`),
     `on main: ${onMain}`,
     ...(flaky === "none" ? [] : [`flaky on main: ${flaky}`]),
+    // A rerun the supervisor could not start leaves attempt 1: that red was never asked twice.
+    `rerun: ${attempt > 1 ? "survived one" : "none"}`,
   ];
   if (files.length === 0) body.push("```", ...excerpt.split("\n").slice(-EXCERPT_LINES), "```");
   return body.join("\n");
@@ -2059,6 +2065,7 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
     runId: verdict.runId,
     logArgs: verdict.logArgs,
     reason: verdict.reason,
+    attempt: verdict.attempt,
   });
   try {
     const file = ciRedNotePath(ticket);
@@ -2073,6 +2080,41 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 
 /** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
+
+/** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
+const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
+
+const flakeLine = (red) => `Merged on a rerun's green: attempt 1 of ci.yml run ${red.runId} failed ${flakeNames(red).join(", ")}.`;
+
+/**
+ * One open issue per flaky test, found by its exact title in a listing: GitHub's search trails its
+ * own writes. `ready-for-human`, not `ci-flake`: ADR 0011 keeps that label, and the rank it
+ * carries, the owner's to add.
+ */
+function fileFlakes(red, gh, log) {
+  let open;
+  try {
+    open = JSON.parse(gh(["issue", "list", "--repo", REPO, "--state", "open", "--label", "ready-for-human", "--limit", "500", "--json", "number,title"]));
+  } catch (err) {
+    log(`could not list the open flake issues — ${firstLine(err)}; the merge and the ledger still name it`);
+    return;
+  }
+  for (const name of flakeNames(red)) {
+    const title = `CI flake: ${name}`;
+    if (open.some((i) => i.title === title)) continue;
+    const body = [
+      `Attempt 1 of https://github.com/${REPO}/actions/runs/${red.runId} failed this; its rerun went green and #${red.pr} (ticket #${red.ticket}) merged on that green.`,
+      "",
+      "Filed by the supervisor (`tools/loop/queue-loop.mjs`). The title is what stops a second issue for the same test, so keep it.",
+    ].join("\n");
+    try {
+      gh(["issue", "create", "--repo", REPO, "--title", title, "--body", body, "--label", "ready-for-human"]);
+      log(`filed ${title}`);
+    } catch (err) {
+      log(`could not file ${title} — ${firstLine(err)}`);
+    }
+  }
+}
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
@@ -2123,6 +2165,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   let armed = false;
   let armedAt = null;
   let reran = null;
+  let firstRed = null;
   // Only the pause is measured for a standby: a `gh` call that took long is real time and counts.
   const wait = async () => {
     const clock = sleepClock(pause);
@@ -2134,9 +2177,27 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   };
   let verdict = {};
   const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
+  let flake = null;
+  const merged = (reason) => {
+    if (pending.branch) {
+      try {
+        gh(deleteBranchArgs(REPO, pending.branch));
+      } catch {
+        // Already gone is the common refusal, and `ls-remote` below is the judge either way.
+      }
+      try {
+        if (branchSurvives(run("git", ["ls-remote", "origin", pending.branch], { timeout: REFRESH_TIMEOUT_MS }))) {
+          log(`⚠️ #${pending.ticket} ${pending.branch} is still on origin after its merge`);
+        }
+      } catch {
+        // An unreadable `ls-remote` is not evidence of a survivor.
+      }
+    }
+    return { action: "already-merged", reason, ...(flake && { flake }) };
+  };
   /**
    * Null once nothing is armed; the owner's otherwise, since GitHub may still merge what is. A
-   * refusal after an arm with no answer is asked about: GitHub refuses to disarm what never armed.
+   * refusal is asked about: GitHub refuses to disarm what never armed, and what already merged.
    */
   const disarm = (then) => {
     if (!armed) return null;
@@ -2146,7 +2207,12 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       return null;
     } catch (err) {
       try {
-        if (armed === "maybe" && stateOf(pending.pr).pr.armed !== true) {
+        const now = stateOf(pending.pr).pr;
+        if (now.state === "MERGED") {
+          armed = false;
+          return merged("the pull request merged before it could be disarmed");
+        }
+        if (now.armed !== true) {
           armed = false;
           return null;
         }
@@ -2203,6 +2269,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
       if (verdict.runId && verdict.attempt === 1 && reran !== head) {
         reran = head;
+        firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
         try {
           gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
           log(`CI is red at ${verdict.failedStep ?? "an unnamed step"} — rerunning ${verdict.runId} once`);
@@ -2298,7 +2365,12 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         await wait();
         continue;
       }
-      const argv = armArgs(REPO, pending.pr, head);
+      // A green this process's rerun won: filed, named in the merge and on the row, before it can land.
+      if (reran === head && firstRed && !flake) {
+        flake = { runId: firstRed.runId, tests: firstRed.tests };
+        fileFlakes({ ...firstRed, ticket: pending.ticket, pr: pending.pr }, gh, log);
+      }
+      const argv = armArgs(REPO, pending.pr, head, flake ? flakeLine(firstRed) : undefined);
       // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
       armed = "maybe";
       armedAt = head;
@@ -2320,20 +2392,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       continue;
     }
     if (next.action === "owner") return leave(owner(next.reason));
-    if (next.action === "already-merged" && pending.branch) {
-      try {
-        gh(deleteBranchArgs(REPO, pending.branch));
-      } catch {
-        // Already gone is the common refusal, and `ls-remote` below is the judge either way.
-      }
-      try {
-        if (branchSurvives(run("git", ["ls-remote", "origin", pending.branch]))) {
-          log(`⚠️ #${pending.ticket} ${pending.branch} is still on origin after its merge`);
-        }
-      } catch {
-        // An unreadable `ls-remote` is not evidence of a survivor.
-      }
-    }
+    if (next.action === "already-merged") return merged(next.reason);
     return next;
   }
 }
@@ -2648,8 +2707,6 @@ export async function runOnce(io, pinned = null, at = null) {
   // tearing the worktree down without it leaves `in-progress` on an issue the picker skips for
   // good, which is a ticket nothing will ever return to.
   if (cost.handBack) return handBack(settled.reason, "E");
-  // The branch, the pull request and the claim all stand; `derive` reads the red from CI on the next pick.
-  if (cost.recorded === "held") return { outcome: "hold", ticket: route.number, why: settled.reason };
 
   // A ticket that cannot go green is not the loop's to keep paying for, and the ceiling is checked
   // here rather than by the caller so that a ticket which runs out of rounds takes the same exit as
@@ -2676,7 +2733,10 @@ export async function runOnce(io, pinned = null, at = null) {
     files,
     counts: cost.recorded !== "retry",
     head: settled.head ?? pr?.sha ?? null,
+    flake: settled.flake ?? null,
   });
+  // The worktree stands; the next pick finds the red through `derive` and this row's head.
+  if (cost.hold) return { outcome: "hold", ticket: route.number, why: settled.reason };
   // The worktree and the run come with it: the next round works in that worktree.
   if (cost.recorded === "retry") {
     return {
@@ -2839,7 +2899,7 @@ function realIo(book, screen) {
     },
     ledgerRows: () => readLedger(),
     repark: (number, steps) => repark(number, steps),
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null }) => {
+    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null, flake = null }) => {
       const error = errorOf(run);
       const facts = ticketFacts(number);
       const rows = readLedger();
@@ -2893,6 +2953,7 @@ function realIo(book, screen) {
           handoff,
           error,
           parkFailed,
+          flake,
         },
         {
           runId: RUN_ID,
@@ -3113,14 +3174,18 @@ export async function main({
       screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 
-    // Not a ticket and not a failure: something the machine has to settle before a ticket can
-    // start. Held and asked again, bounded by the same ceiling a usage refusal has.
+    // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
+    // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
     if (pass.outcome === "hold") {
       holds += 1;
       if (holds > WAIT.TRIES) return finish(1, `${pass.why}, ${holds} times running`);
-      screen.notice("waiting", `${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
-      const then = `the pre-flight asks again, then the next pick${queued()}`;
-      if ((await hold(WAIT.FLOOR, "a pre-flight hold", then)) === "stopped") return finish(0, ".loop-stop during the wait");
+      const whose = pass.ticket != null ? `#${pass.ticket} held: ` : "";
+      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${holds} of ${WAIT.TRIES})`);
+      const [what, then] =
+        pass.ticket != null
+          ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]
+          : ["a pre-flight hold", `the pre-flight asks again, then the next pick${queued()}`];
+      if ((await hold(WAIT.FLOOR, what, then)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
     holds = 0;
