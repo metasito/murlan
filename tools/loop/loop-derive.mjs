@@ -16,7 +16,6 @@
  * git will not let you be on two at once.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { basename, dirname } from "node:path";
 
 export const BRANCH = /^agent\/(\d+)-/;
@@ -59,26 +58,41 @@ const CI_RED_RE = /^CI-RED\s+([0-9a-f]{7,40})\b/;
  * @param {{body: string}[]} comments
  */
 export function ciRedRounds(comments) {
-  let since = 0;
-  comments.forEach((c, i) => {
-    if (CLAIM_RE.test(fenceStripped(c.body))) since = i + 1;
-  });
   const shas = new Set();
-  for (let i = since; i < comments.length; i++) {
-    const m = CI_RED_RE.exec(fenceStripped(comments[i].body).trimStart());
+  for (const c of sinceClaim(comments)) {
+    const m = CI_RED_RE.exec(fenceStripped(c.body).trimStart());
     if (m) shas.add(m[1].slice(0, 7));
   }
   return shas.size;
 }
 
+/** The comments after the newest claim. */
+function sinceClaim(comments) {
+  let since = 0;
+  comments.forEach((c, i) => {
+    if (CLAIM_RE.test(fenceStripped(c.body))) since = i + 1;
+  });
+  return comments.slice(since);
+}
+
+/** The step the supervisor's `CI-RED` for this head names since the newest claim; undefined when none is posted. */
+function ciRedStep(comments, sha) {
+  for (const c of sinceClaim(comments)) {
+    const body = fenceStripped(c.body).trimStart();
+    if (CI_RED_RE.exec(body)?.[1].slice(0, 7) === sha.slice(0, 7)) return /· step: (.+)$/m.exec(body)?.[1] ?? null;
+  }
+  return undefined;
+}
+
 /**
- * Whether a `CI-RED <sha>` comment for this exact head is already on the thread — the dedup the
- * supervisor checks before posting another one for the same red head.
+ * Whether a `CI-RED <sha>` comment for this exact head stands since the newest claim — the dedup the
+ * supervisor checks before posting, read by the same `ciRedStep` derive reads a red with, so the
+ * two cannot disagree on a re-claimed ticket.
  *
  * @param {{body: string}[]} comments @param {string} sha
  */
 export function ciRedPosted(comments, sha) {
-  return comments.some((c) => CI_RED_RE.exec(fenceStripped(c.body).trimStart())?.[1].slice(0, 7) === sha.slice(0, 7));
+  return ciRedStep(comments, sha) !== undefined;
 }
 
 /** @returns {string|null} */
@@ -402,20 +416,6 @@ export const CI_BUDGET_MS = 10_000;
 
 const HANDED = /^[A-G]$/;
 
-function ciGh(cwd, until, failed, exec) {
-  return (args, deadline) => {
-    try {
-      const left = Math.min(until, deadline) - Date.now();
-      if (left <= 0) throw new Error("CI read budget spent");
-      return exec(args, cwd, left);
-    } catch (err) {
-      const absent = args[0] === "api" && /HTTP 404/.test(String(err?.stderr ?? ""));
-      if (!absent) failed.push(args[0]);
-      throw err;
-    }
-  };
-}
-
 function under(cwd, head, remote, branch, until, failed) {
   if (remote === head) return true;
   const git = (args) =>
@@ -431,29 +431,55 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
-function readCi(cwd, branch, head, exec) {
+const RUN_OF = /\/actions\/runs\/(\d+)\//;
+/** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
+const lastMoved = (e) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
+
+/**
+ * Whether the head's latest `CI gate` failed on code past attempt 1. The supervisor reruns a first
+ * red itself, and a timeout, a run that never started or a job that ran no steps is no code red.
+ */
+function gateRedRerun(rollup, cwd, exec, until, failed) {
+  const gate = (rollup ?? []).filter((e) => e.name === "CI gate").reduce((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
+  const runId = RUN_OF.exec(gate?.detailsUrl ?? "")?.[1];
+  if (gate?.status !== "COMPLETED" || gate.conclusion !== "FAILURE" || !runId) return false;
+  try {
+    const args = ["run", "view", runId, "--repo", REPO, "--json", "attempt,status,conclusion,jobs"];
+    const run = JSON.parse(exec(args, cwd, Math.max(1, until - Date.now())));
+    const red = (run.jobs ?? []).filter((j) => j.conclusion === "failure");
+    return run.status === "completed" && run.attempt > 1 && red.length > 0 && red.every((j) => j.steps?.length > 0);
+  } catch {
+    failed.push("gh");
+    return false;
+  }
+}
+
+/**
+ * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
+ * that head. A code red past its rerun that none names is `unposted`: whether the supervisor held it
+ * or stopped before posting is the ledger's to say, so `nextRoute` decides between C and G.
+ */
+function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;
   const failed = [];
-  // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
-  const { readHeadCi } = createRequire(import.meta.url)("./ciVerdict.ts");
-  const read = readHeadCi(REPO, branch, ciGh(cwd, until, failed, exec), until);
-  if (read.remoteSha === null && !failed.includes("api")) {
-    return { pushed: false, pr: read.pr, sha: read.remoteSha, state: "none", step: null };
+  let open;
+  try {
+    [open] = JSON.parse(
+      exec(
+        ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid,statusCheckRollup"],
+        cwd,
+        CI_BUDGET_MS,
+      ),
+    );
+  } catch {
+    return { pushed: false, pr: null, sha: null, state: "unreadable", step: null };
   }
-  const pushed = read.remoteSha !== null && under(cwd, head, read.remoteSha, branch, until, failed);
-  const v = read.verdict;
-  const state = failed.length
-    ? "unreadable"
-    : v.pass
-      ? "green"
-      : v.waiting
-        ? "pending"
-        : v.appearing
-          ? "none"
-          : v.infrastructure
-            ? "infrastructure"
-            : "red";
-  return { pushed, pr: read.pr, sha: read.remoteSha, state, step: v.failedStep ?? null };
+  if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
+  const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
+  const step = ciRedStep(comments, open.headRefOid);
+  const unposted = step === undefined && gateRedRerun(open.statusCheckRollup, cwd, exec, until, failed);
+  const state = failed.length ? "unreadable" : unposted ? "unposted" : step === undefined ? "settling" : "red";
+  return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 
 /**
@@ -533,7 +559,7 @@ export function derive({
 
   const verdict = trackerReadable ? verdictFor(comments, head) : null;
   const land = commits > 0 && verdict?.decision === "LAND";
-  const ciRead = ci && land ? readCi(cwd, branch, head, exec) : null;
+  const ciRead = ci && land ? readCi(cwd, branch, head, comments, exec) : null;
   const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
   // scope pass. Deriving C there made every session declare `PHASE C` and then, on reading
@@ -559,17 +585,15 @@ export function derive({
             : "the reviewer held it";
   if (ciRead?.state === "unreadable") {
     phase = SETTLE;
-    why = "reviewed and cleared, but CI could not be read in time — the supervisor settles it";
+    why = "reviewed and cleared, but its pull request could not be read in time — the supervisor settles it";
   } else if (ciRead && !ciRead.pushed) {
-    why = "reviewed and cleared, and this head is not pushed yet";
-  } else if (ciRead && ciRead.pr === null) {
-    why = "pushed, but no pull request is open for it";
+    why = "reviewed and cleared, and no open pull request carries this head yet";
   } else if (fix) {
     phase = "C";
     why = `CI failed at ${ciRead.step ?? "an unnamed step"} on the pushed head`;
   } else if (ciRead) {
     phase = SETTLE;
-    why = `pushed, and CI is ${ciRead.state}`;
+    why = "pushed, and CI is the supervisor's to settle";
   }
   if (HANDED.test(handed)) {
     phase = handed;

@@ -1,7 +1,7 @@
 // tools/loop/tests/verdictSeam.test.ts
 //
 // `decideVerdict` produces the verdict and `landing` consumes it. Each has its own suite, each was
-// green, and the defect lived between them: `readVerdict` used to block until the run settled, so
+// green, and the defect lived between them: the verdict read used to block until the run settled, so
 // `landing` could read `pass !== true` as "red". Removing that block made an in-flight run read as
 // a red branch, and #1028 burned three fix rounds on a log that was never written.
 //
@@ -25,6 +25,7 @@ const PR_STATES: PrState[] = [
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "CLEAN" },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "UNSTABLE" },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED" },
+  { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED", armed: true },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BEHIND" },
   { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "DIRTY" },
   { state: "OPEN", mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" },
@@ -76,7 +77,7 @@ describe("what landing may do with every verdict decideVerdict can produce", () 
   });
 
   test("every verdict maps to an action the supervisor handles, and each is reachable", () => {
-    const handled = new Set(["merge", "already-merged", "update-branch", "recheck", "hand-back", "owner", "ready"]);
+    const handled = new Set(["arm", "already-merged", "update-branch", "recheck", "hand-back", "owner", "ready"]);
     const seen = new Set<string>();
     for (const c of every()) {
       const out = landing(c.pr, decideVerdict(c.run, JOB_SETS[c.jobs]));

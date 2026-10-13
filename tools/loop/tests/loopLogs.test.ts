@@ -165,6 +165,12 @@ describe("sessionRow", () => {
     assert.equal(r.reruns, null);
   });
 
+  test("carries the run and tests a rerun turned green, null when none did", () => {
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
+    assert.deepEqual(sessionRow(session({ flake })).flake, flake);
+    assert.equal(r.flake, null);
+  });
+
   test("carries the park steps the tracker never received", () => {
     assert.deepEqual(sessionRow(session({ parkFailed: ["label"] })).park_failed, ["label"]);
     assert.equal(r.park_failed, null);
@@ -613,25 +619,18 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
-      diagnosed: [],
-      brief: null,
+      armedFlake: null,
     });
   });
 
-  test("a head is diagnosed until the window closes, whatever rounds pass on it", () => {
-    const rows = [row({ outcome: "diagnosed", head: "a" }), row({ outcome: "retry", head: "a" }), row({ outcome: "diagnosed", head: "b" })];
-    assert.deepEqual(ticketTally(1, rows).diagnosed, ["a", "b"]);
-    assert.deepEqual(ticketTally(1, [...rows, row({ outcome: "parked" })]).diagnosed, []);
-  });
-
-  test("a resume's cause is the brief until a session has run on it", () => {
-    const resume = row({ outcome: "diagnosed", park_reason: "resume C — tsc is red" });
-    const brief = (...later: object[]) => ticketTally(1, [resume, ...later]).brief;
-    assert.equal(brief(), "tsc is red");
-    assert.equal(brief(row({ outcome: "retry" }), row({ outcome: "handoff", park_reason: "phase C next — diagnosis: tsc is red" })), "tsc is red");
-    assert.equal(brief(row({ outcome: "pushed" })), null);
-    assert.equal(brief(row({ outcome: "handoff", park_reason: "phase D next" })), null);
-    assert.equal(ticketTally(1, [row({ outcome: "diagnosed", park_reason: "rerun — 403" })]).brief, null);
+  // Written when poll arms on a rerun's green, so a restart before the merge still knows the flake.
+  test("an armed row carries its flake and head to the tally, is no session, and a landing clears it", () => {
+    const flake = { runId: 7, tests: ["t"], step: "Test" };
+    const armed = row({ outcome: "armed", head: "h1", flake });
+    const t = ticketTally(1, [row({ outcome: "pushed" }), armed]);
+    assert.deepEqual(t.armedFlake, { ...flake, head: "h1" });
+    assert.equal(t.sessions, 0);
+    assert.equal(ticketTally(1, [armed, row({ outcome: "landed" })]).armedFlake, null);
   });
 
   test("a pushed row and its settle row are one session", () => {
@@ -659,6 +658,10 @@ describe("windowCost", () => {
     assert.equal(windowCost({ n: 1, outcome: "landed", own: 2 }, [pushed, { n: 1, outcome: "retry", cost: 0 }]), 2);
     assert.equal(windowCost({ n: 1, outcome: "pushed", own: 3 }, [pushed]), 3);
     assert.equal(windowCost({ n: 1, outcome: "parked", own: 1 }, []), 1);
+  });
+
+  test("an armed row between the push and its settle does not close the window", () => {
+    assert.equal(windowCost({ n: 1, outcome: "landed", own: 0.5 }, [pushed, { n: 1, outcome: "armed", cost: 0 }]), 4.5);
   });
 });
 
@@ -710,7 +713,7 @@ describe("a session's error", () => {
   test("goes into a park's reason, and into no other row's", () => {
     const e = { status: null, reason: "error_during_execution", stderr: "spawn EPERM" };
     assert.equal(parkReasonOf("parked", "exited 1", e), "exited 1 — error_during_execution · spawn EPERM");
-    assert.equal(parkReasonOf("diagnosed", "resume C — x", e), "resume C — x");
+    assert.equal(parkReasonOf("handoff", "phase D next", e), "phase D next");
   });
 });
 

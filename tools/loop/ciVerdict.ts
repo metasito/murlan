@@ -1,8 +1,7 @@
 // tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
-import { budgetListArgs, budgetReport, overBudget, UNREAD_STEP } from "../ci/budget-gate.mjs";
-
-export { budgetReport, overBudget };
+import { UNREAD_STEP } from "../ci/budget-gate.mjs";
+import type { PrState } from "./land.ts";
 
 const CI_GATE = "CI gate";
 
@@ -12,6 +11,7 @@ export interface RunRow {
   status: string;
   /** Optional so a caller reasoning about a single run need not invent one. */
   headSha?: string;
+  attempt?: number;
 }
 
 export interface JobRow {
@@ -86,6 +86,8 @@ export interface Verdict {
   /** The `gh` arguments that read the log `output` and `testIds` came from. */
   logArgs?: string[];
   progress?: CiProgress;
+  /** The red run's attempt: the supervisor reruns only an attempt 1, so a red is rerun once. */
+  attempt?: number;
   reason: string;
 }
 
@@ -115,7 +117,7 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   // `CI gate` runs under `always()` and fails whenever another job did not pass: its red is the
   // cause only when no other job's is.
   const gate = jobs.find((j) => j.name === CI_GATE && j.conclusion === "failure");
-  // Lists storage never served say nothing about the diff, as `gated()` below calls them.
+  // Lists storage never served say nothing about the diff.
   const unread = jobs.find((j) => j.conclusion === "failure" && j.failedSteps?.length && j.failedSteps.every((s) => s === UNREAD_STEP));
   jobs = jobs.filter((j) => j.name !== CI_GATE && j !== unread);
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
@@ -183,30 +185,6 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
       ? `${realFailure.name} ran past its timeout-minutes`
       : `ci.yml concluded ${run.conclusion}`,
   };
-}
-
-/**
- * ci.yml is the gate, and the branch carries other workflows — the Maestro suites, EAS — that
- * finish on their own schedule. Unfiltered, `--limit 1` answers with whichever of them ran last,
- * so a green Maestro over a red ci.yml reads as a green branch.
- */
-export function runListArgs(repo: string, branch: string): string[] {
-  // prettier-ignore
-  return [
-    "run", "list", "--repo", repo, "--branch", branch,
-    "--workflow", "ci.yml", "--limit", "5",
-    "--json", "databaseId,conclusion,status,headSha",
-  ];
-}
-
-/**
- * A fix round pushes and asks immediately. For the seconds before the new run registers, the
- * newest row on the branch belongs to the previous push — completed, and red, which is why the
- * round ran at all. Answering from it sends another fix agent after a failure already fixed.
- */
-export function runForHead(runs: RunRow[], headSha: string | undefined): RunRow | undefined {
-  if (!headSha) return runs[0];
-  return runs.find((r) => r.headSha === headSha);
 }
 
 /**
@@ -291,8 +269,7 @@ function jobsAndLog(
   repo: string,
   run: RunRow | undefined,
   gh: GhExec,
-  until: number,
-  withLog = true
+  until: number
 ): { verdict: Verdict; testIds: string[] } {
   if (!run || run.conclusion === "success") {
     return { verdict: decideVerdict(run, []), testIds: [] };
@@ -319,7 +296,7 @@ function jobsAndLog(
   markTimedOut(jobs, (args) => gh(args, until), repo);
   const verdict = decideVerdict(run, jobs);
   let testIds: string[] = [];
-  if (withLog && !verdict.pass && !verdict.infrastructure) {
+  if (!verdict.pass && !verdict.infrastructure) {
     verdict.logArgs = failedLogArgs(repo, run.databaseId, jobs, verdict.failedStep);
     try {
       const strippedLines = gh(verdict.logArgs, until)
@@ -338,92 +315,100 @@ function jobsAndLog(
   return { verdict, testIds };
 }
 
-export interface HeadCi {
-  remoteSha: string | null;
-  pr: number | null;
-  verdict: Verdict;
+/** One entry of `gh pr view --json statusCheckRollup`; a commit status carries `context` instead of `name`. */
+interface RollupEntry {
+  name?: string;
+  status?: string;
+  conclusion?: string;
+  detailsUrl?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+/** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
+const lastMoved = (e: RollupEntry) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
+
+export interface LandingState {
+  pr: PrState & { headRefOid: string };
+  ci: Verdict;
+  progress: CiProgress;
+}
+
+const RUN_OF = /\/actions\/runs\/(\d+)\//;
+
+function rollupProgress(entries: RollupEntry[]): CiProgress {
+  return ciProgress(
+    entries
+      .filter((e) => e.name && e.name !== CI_GATE)
+      .map((e) => ({ name: e.name!, steps: 0, status: e.status?.toLowerCase(), conclusion: e.conclusion?.toLowerCase() || null })),
+  );
+}
+
+function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: number): Verdict {
+  // A workflow_dispatch run on the same head reports a gate of its own beside the push's.
+  const gate = entries.filter((e) => e.name === CI_GATE).reduce<RollupEntry | undefined>((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
+  if (!gate) {
+    return entries.length
+      ? { pass: false, waiting: true, reason: `${CI_GATE} has not reported` }
+      : { pass: false, appearing: true, infrastructure: true, reason: "no check has reported on this head" };
+  }
+  const runId = Number(RUN_OF.exec(gate.detailsUrl ?? "")?.[1]) || undefined;
+  if (gate.status !== "COMPLETED") {
+    return { pass: false, waiting: true, runId, reason: `${CI_GATE} is ${String(gate.status).toLowerCase()}` };
+  }
+  if (gate.conclusion === "SUCCESS") return { pass: true, runId, reason: `${CI_GATE} passed` };
+  if (!runId) {
+    return { pass: false, infrastructure: true, reason: `${CI_GATE} concluded ${gate.conclusion} on a run its link does not name` };
+  }
+  const run = ghJson<RunRow | undefined>(
+    gh,
+    ["run", "view", String(runId), "--repo", repo, "--json", "databaseId,status,conclusion,headSha,attempt"],
+    undefined,
+    until
+  );
+  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
+  return { ...verdict, testIds, attempt: run?.attempt };
 }
 
 /**
- * Reads for the branch's real remote head, not a PR's `headRefOid`, so the verdict still belongs
- * to what is actually pushed after a `gh pr update-branch` moves the head without a new push.
+ * The pull request and its required gate, from one read. The gate's own run is read only when the
+ * gate is red, for the jobs and log a fix round is built on. A `pr view` that fails throws: whether
+ * that is the network or GitHub's refusal is the caller's to judge.
  */
-export function readHeadCi(
+export function readLandingState(
   repo: string,
-  branch: string,
-  gh: GhExec,
-  until = Date.now() + READ_DEADLINE_MS
-): HeadCi {
-  let remoteSha: string | null;
-  try {
-    remoteSha = gh(["api", `repos/${repo}/git/ref/heads/${branch}`, "--jq", ".object.sha"], until).trim() || null;
-  } catch {
-    remoteSha = null;
-  }
-  const prRows = ghJson<{ number: number }[]>(
-    gh,
-    ["pr", "list", "--repo", repo, "--head", branch, "--state", "open", "--json", "number"],
-    [],
-    until
-  );
-  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), remoteSha ?? undefined);
-  const { verdict } = jobsAndLog(repo, run, gh, until, false);
-  const pr = prRows[0]?.number ?? null;
-  return { remoteSha, pr, verdict: pr === null ? verdict : gated(repo, pr, run, verdict, gh, until) };
-}
-
-export function readVerdict(
-  repo: string,
-  branch: string,
   prNumber: number,
-  until = Date.now() + READ_DEADLINE_MS,
-  gh: GhExec = realGh
-): Verdict {
-  // The pull request carries other checks — the Maestro suites — that settle on their own
-  // schedule and are not the gate. Waiting on all of them cost eleven minutes a run for a job
-  // that is red on main anyway, so only ci.yml's own run is watched.
-  const headSha = ghJson<{ headRefOid?: string }>(
-    gh,
-    ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefOid"],
-    {},
-    until
-  ).headRefOid;
-
-  // Waiting belongs to `settle`, which polls anyway; `gh run watch` here froze the whole event loop.
-  const run = runForHead(ghJson<RunRow[]>(gh, runListArgs(repo, branch), [], until), headSha);
-  const { verdict, testIds } = jobsAndLog(repo, run, gh, until);
-  return { ...gated(repo, prNumber, run, { ...verdict, testIds }, gh, until), head: headSha ?? null };
-}
-
-/** A green verdict through RULES.md 46's land gate; any other verdict as it is. */
-function gated(repo: string, prNumber: number, run: RunRow | undefined, verdict: Verdict, gh: GhExec, until: number): Verdict {
-  if (!verdict.pass || !run) return verdict;
-  let found: ReturnType<typeof overBudget>;
-  try {
-    found = overBudget(repo, prNumber, run.databaseId, gh, until);
-  } catch (error) {
-    return {
-      pass: false,
-      infrastructure: true,
-      runId: run.databaseId,
-      testIds: verdict.testIds,
-      reason: `the run's over-budget lists could not be read: ${String((error as Error)?.message ?? error).split("\n")[0]}`,
-    };
-  }
-  if (found.files.length === 0) {
-    const exempt = found.exempt.length ? `; no recorded time, so no budget yet: ${found.exempt.join(", ")}` : "";
-    return { ...verdict, reason: `${verdict.reason}${exempt}` };
-  }
+  gh: GhExec = realGh,
+  until = Date.now() + READ_DEADLINE_MS
+): LandingState {
+  const view = JSON.parse(
+    gh(
+      [
+        "pr",
+        "view",
+        String(prNumber),
+        "--repo",
+        repo,
+        "--json",
+        "headRefOid,state,mergeable,mergeStateStatus,isDraft,autoMergeRequest,statusCheckRollup",
+      ],
+      until
+    )
+  );
+  const entries: RollupEntry[] = view.statusCheckRollup ?? [];
+  const progress = rollupProgress(entries);
+  const ci = gateVerdict(repo, entries, gh, until);
   return {
-    pass: false,
-    runId: run.databaseId,
-    failedStep: TIMING_STEP,
-    testIds: found.files,
-    logArgs: budgetListArgs(repo, run.databaseId),
-    output: budgetReport(found),
-    reason: `${found.files.join(", ")} ran over its time budget, and this pull request changes it`,
+    pr: {
+      headRefOid: view.headRefOid,
+      state: view.state,
+      mergeable: view.mergeable,
+      mergeStateStatus: view.mergeStateStatus,
+      isDraft: Boolean(view.isDraft),
+      armed: view.autoMergeRequest != null,
+    },
+    ci: { ...ci, head: view.headRefOid ?? null, ...(ci.waiting ? { progress } : {}) },
+    progress,
   };
 }
-
-export const TIMING_STEP = "timing budget";
 

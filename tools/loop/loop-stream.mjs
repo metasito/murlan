@@ -110,6 +110,7 @@ function taskFact(event, e) {
     of: e.tool_use_id ?? null,
     what: trimmedOrNull(e.description ?? e.summary ?? e.patch?.error),
     agent: e.subagent_type ?? null,
+    brief: typeof e.prompt === "string" ? e.prompt.split("\n")[0] : null,
     tool: e.last_tool_name ?? null,
     status: e.status ?? e.patch?.status ?? null,
     background: e.is_backgrounded ?? e.patch?.is_backgrounded ?? false,

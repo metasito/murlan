@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { allowedTools } from "../loop-tools.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
+import { ciRedBody, queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 
 /**
@@ -343,4 +343,12 @@ test("queue.md reads CI-RED's on main: line and knows no shared issue", () => {
   assert.match(q, /`on main:`/);
   assert.match(q, /`flaky on main:`[^.]*neither this diff's nor this round's/);
   assert.doesNotMatch(q, /shared:|shared issue|owned here/);
+});
+
+test("queue.md quotes CI-RED's rerun line in both the forms ciRedBody writes it", () => {
+  const q = read(QUEUE);
+  for (const attempt of [1, 2]) {
+    const line = /^rerun: .+$/m.exec(ciRedBody({ sha: "a", runUrl: "u", runId: 1, attempt }))?.[0] ?? "(no rerun line)";
+    assert.ok(q.includes(`\`${line}\``), line);
+  }
 });

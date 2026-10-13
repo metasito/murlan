@@ -90,8 +90,8 @@ export function decideMainHealth(
 }
 
 /**
- * `--workflow ci.yml` for the reason `ciVerdict.runListArgs` gives: `main` carries other workflows
- * that finish on their own schedule, and unfiltered `--limit 1` answers with whichever ran last.
+ * `--workflow ci.yml`: `main` carries other workflows that finish on their own schedule, and
+ * unfiltered `--limit 1` answers with whichever ran last.
  */
 export function mainRunArgs(repo: string): string[] {
   // prettier-ignore
@@ -155,7 +155,7 @@ const ghCli: Gh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuff
 
 const parse = <T,>(text: string, fallback: T): T => (text.trim() ? JSON.parse(text) : fallback);
 
-type RawJobs = { jobs?: { name: string; conclusion: string | null; steps?: unknown[]; databaseId?: number }[] };
+type RawJobs = { jobs?: { name: string; conclusion: string | null; steps?: { name?: string; conclusion?: string | null }[]; databaseId?: number }[] };
 
 function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
   const jobs: JobRow[] = (raw.jobs ?? []).map((j) => ({
@@ -163,6 +163,7 @@ function jobRows(gh: Gh, repo: string, raw: RawJobs): JobRow[] {
     conclusion: j.conclusion,
     steps: j.steps?.length ?? 0,
     id: j.databaseId,
+    failedSteps: (j.steps ?? []).filter((s) => s?.conclusion === "failure").map((s) => String(s.name)),
   }));
   markTimedOut(jobs, gh, repo);
   return jobs;

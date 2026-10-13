@@ -16,7 +16,6 @@
 import fsNode from "node:fs";
 import path from "node:path";
 import { PLAIN, reportRow } from "./loop-render.mjs";
-import { DIAGNOSED } from "./diagnose.mjs";
 
 export const DIR = ".loop-logs";
 
@@ -179,7 +178,7 @@ export const errorLine = (error) =>
  *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
  *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
- *   error?: object|null}} session
+ *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
 export function sessionRow({
   number,
@@ -205,6 +204,7 @@ export function sessionRow({
   handoff = null,
   error = null,
   parkFailed = null,
+  flake = null,
 }) {
   const models = Object.fromEntries(
     Object.entries(result?.models ?? {}).map(([name, u]) => [name, u.costUSD ?? 0]),
@@ -240,6 +240,8 @@ export function sessionRow({
     handoff,
     error,
     park_failed: parkFailed,
+    // The run whose rerun went green, and the tests its first attempt failed: a landing a flake let through.
+    flake,
   };
 }
 
@@ -422,7 +424,7 @@ export function handoffIn(row) {
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
-  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed"
+  outcome === "landed" || outcome === "closed" || outcome === "retry" || outcome === "pushed" || outcome === "armed"
     ? null
     : outcome === "parked" && error && why
       ? `${why} — ${errorLine(error)}`
@@ -435,7 +437,8 @@ export const parkReasonOf = (outcome, why, error = null) =>
  * @param {{n: number, outcome: string, own: number}} row @param {object[]} rows
  */
 export function windowCost({ n, outcome, own }, rows) {
-  const last = rows.filter((r) => r.n === n).at(-1);
+  // An `armed` row is the settle's note in passing, not the end of its window.
+  const last = rows.filter((r) => r.n === n && r.outcome !== "armed").at(-1);
   return own + (outcome !== "pushed" && last?.outcome === "pushed" ? (last.cost ?? 0) : 0);
 }
 
@@ -462,12 +465,9 @@ export function ticketTally(n, rows) {
   let handoffWhy = null;
   let retries = 0;
   let lastRedHead = null;
-  const diagnosed = [];
-  /** A diagnosis's cause, until a session has run on it. */
-  let brief = null;
+  let armedFlake = null;
   for (const r of since) {
-    const handed = r.outcome === "handoff" ? handoffIn(r) : null;
-    if (r.outcome === "pushed" || (r.outcome === "handoff" && !handed?.why?.startsWith(DIAGNOSED))) brief = null;
+    if (r.outcome === "armed") armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
     spend += r.cost ?? 0;
     ms += r.ms ?? 0;
     turns += r.turns ?? 0;
@@ -479,12 +479,10 @@ export function ticketTally(n, rows) {
       lastRedHead = r.head ?? null;
     } else if (r.outcome === "handoff") {
       handoffsThisRound += 1;
+      const handed = handoffIn(r);
       if (handed) [lastHandoff, handoffWhy] = [handed.phase, handed.why];
-    } else if (r.outcome === "diagnosed") {
-      diagnosed.push(r.head ?? null);
-      brief = /^resume [BCD] — (.+)$/s.exec(r.park_reason ?? "")?.[1] ?? null;
     }
   }
-  const sessions = since.filter((r) => r.outcome !== "pushed").length;
-  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, diagnosed, brief };
+  const sessions = since.filter((r) => r.outcome !== "pushed" && r.outcome !== "armed").length;
+  return { sessions, spend, ms, turns, handoffsThisRound, lastHandoff, handoffWhy, lastRedHead, retries, armedFlake };
 }
