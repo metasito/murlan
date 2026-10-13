@@ -2128,7 +2128,10 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   };
   let verdict = {};
   const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head });
-  /** Null once nothing is armed; the owner's otherwise, since GitHub may still merge what is. */
+  /**
+   * Null once nothing is armed; the owner's otherwise, since GitHub may still merge what is. A
+   * refusal after an arm with no answer is asked about: GitHub refuses to disarm what never armed.
+   */
   const disarm = (then) => {
     if (!armed) return null;
     try {
@@ -2136,6 +2139,14 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       armed = false;
       return null;
     } catch (err) {
+      try {
+        if (armed === "maybe" && stateOf(pending.pr).pr.armed !== true) {
+          armed = false;
+          return null;
+        }
+      } catch {
+        // Unread is not unarmed.
+      }
       return owner(`could not disarm auto-merge — ${firstLine(err)}; it may still merge${then ? ` — ${then}` : ""}`);
     }
   };
@@ -2225,7 +2236,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       try {
         gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
-        return owner(`could not update the branch — ${firstLine(err)}`);
+        return leave(owner(`could not update the branch — ${firstLine(err)}`));
       }
       await wait();
       continue;
@@ -2267,23 +2278,25 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       const at = String(head ?? "an unread head").slice(0, 7);
       const clear = cleared(head);
-      if (!clear.ok) return owner(`${clear.why} — ${at} was pushed for review, not cleared`);
+      if (!clear.ok) return leave(owner(`${clear.why} — ${at} was pushed for review, not cleared`));
       // A draft's merge state reads DRAFT, so whether it is behind or blocked is only known once it is ready.
       if (next.action === "ready") {
-        if (left.ready-- === 0) return owner(`${at} is still a draft after gh pr ready`);
+        if (left.ready-- === 0) return leave(owner(`${at} is still a draft after gh pr ready`));
         try {
           gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
         } catch (err) {
-          return owner(`could not mark the draft ready — ${firstLine(err)}`);
+          return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
         }
         await wait();
         continue;
       }
       const argv = armArgs(REPO, pending.pr, head);
+      // An arm whose answer was lost may have taken effect, so every way out disarms from here on.
+      armed = "maybe";
+      armedAt = head;
       try {
         gh(argv);
         armed = true;
-        armedAt = head;
         log(`auto-merge armed at ${at}`);
       } catch (err) {
         // GitHub refuses `--auto` where auto-merge is off or the head is already mergeable; the
@@ -2292,7 +2305,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         try {
           gh(argv.filter((a) => a !== "--auto"));
         } catch (again) {
-          return owner(`the merge failed — ${firstLine(again)}`);
+          return leave(owner(`the merge failed — ${firstLine(again)}`));
         }
       }
       await wait();
