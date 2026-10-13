@@ -2070,9 +2070,6 @@ const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT
 
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
-/** A compiler or linter error with a place in a file: a red a fix round can aim at without a test id. */
-const LOCATED = /error TS\d+|:\d+:\d+:? +error\b|^\s+\d+:\d+ +error /m;
-
 /** The ticket's stream, every process of it, as facts. */
 function streamFacts(ticket) {
   const file = streamLog(ticket);
@@ -2194,13 +2191,12 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
 
     if (next.action === "hand-back" && verdict.output && !verdict.logUnread) {
-      const unnamed = !verdict.testIds?.length && !LOCATED.test(verdict.output);
       // `attempt` rather than a note of our own: a restart, or the owner's own rerun, is counted too.
-      if (unnamed && verdict.runId && verdict.attempt === 1 && reran !== head) {
+      if (verdict.runId && verdict.attempt === 1 && reran !== head) {
         reran = head;
         try {
           gh(["run", "rerun", String(verdict.runId), "--failed", "--repo", REPO]);
-          log(`CI is red at a step no test names — rerunning ${verdict.runId} once`);
+          log(`CI is red at ${verdict.failedStep ?? "an unnamed step"} — rerunning ${verdict.runId} once`);
           until = Date.now() + deadline;
           await wait();
           continue;
