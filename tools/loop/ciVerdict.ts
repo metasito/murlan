@@ -321,7 +321,12 @@ interface RollupEntry {
   status?: string;
   conclusion?: string;
   detailsUrl?: string;
+  startedAt?: string;
+  completedAt?: string;
 }
+
+/** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
+const lastMoved = (e: RollupEntry) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
 
 export interface LandingState {
   pr: PrState & { headRefOid: string };
@@ -340,7 +345,8 @@ function rollupProgress(entries: RollupEntry[]): CiProgress {
 }
 
 function gateVerdict(repo: string, entries: RollupEntry[], gh: GhExec, until: number): Verdict {
-  const gate = entries.find((e) => e.name === CI_GATE);
+  // A workflow_dispatch run on the same head reports a gate of its own beside the push's.
+  const gate = entries.filter((e) => e.name === CI_GATE).reduce<RollupEntry | undefined>((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
   if (!gate) {
     return entries.length
       ? { pass: false, waiting: true, reason: `${CI_GATE} has not reported` }

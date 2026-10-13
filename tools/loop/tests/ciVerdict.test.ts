@@ -528,7 +528,7 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     const others = green.view.statusCheckRollup.filter((e) => e.name !== "CI gate");
     for (const rollup of [[older, newer], [newer, older]]) {
       const { state } = read(green, { statusCheckRollup: [...others, ...rollup] });
-      assert.equal(state.ci.pass, true, JSON.stringify(rollup.map((e) => e.conclusion)));
+      assert.equal(state.ci.pass, true, JSON.stringify(rollup));
     }
     const running = { ...newer, status: "IN_PROGRESS", conclusion: "", completedAt: "0001-01-01T00:00:00Z" };
     assert.equal(read(green, { statusCheckRollup: [...others, older, running] }).state.ci.waiting, true);
