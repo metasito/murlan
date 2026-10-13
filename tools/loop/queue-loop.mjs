@@ -218,6 +218,8 @@ export function nextRoute(
       size: known?.size ?? null,
       ciRounds: known?.ciRounds ?? 0,
       queue: null,
+      // The pull request whose CI-RED `runOnce` posts before the fix round: the session reads only that.
+      ...(held && { unposted: status.ci.pr }),
     };
   }
   if (pinned) {
@@ -2081,6 +2083,39 @@ function postCiRedOnce(ticket, verdict, { onMain, flaky }, comments, run, write,
 /** How many times `poll` reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
 
+/**
+ * The CI log a fix round reads, written before the red is handed back: that session is a fresh
+ * process with no way to ask this one anything. Then the `on main:` lines its CI-RED carries.
+ * Never call it when `output` is the reason rather than the log: round one's real failure is
+ * already in that file, and this would paint over it.
+ */
+function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
+  try {
+    mkdir(DIR, { recursive: true });
+    write(ciLogPath(ticket), verdict.output, "utf8");
+  } catch (err) {
+    log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
+  }
+  const failing = verdict.testIds ?? [];
+  const main = failing.length ? mainFailures() : null;
+  return { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+}
+
+/** A held red's CI-RED, posted by the supervisor from the run itself; whether the tracker carries it now. */
+function postHeldRed(ticket, pr, log) {
+  const run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts });
+  try {
+    const { ci } = ts("./ciVerdict.ts").readLandingState(REPO, pr);
+    if (ci.pass || ci.waiting || ci.infrastructure || !ci.output || ci.logUnread) return false;
+    const mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args), REPO);
+    const lines = prepareRed(ticket, ci, { mkdir: mkdirSync, write: writeFileSync, mainFailures, log });
+    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, writeFileSync, log);
+  } catch (err) {
+    log(`CI-RED: could not read #${pr}'s red — ${firstLine(err)}`);
+    return false;
+  }
+}
+
 /** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
 const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
 
@@ -2288,18 +2323,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       }
       const held = disarm(next.reason);
       if (held) return held;
-      // Written before it is handed back, because the session that fixes it is a fresh process
-      // with no way to ask this one anything. Never when `output` is the reason rather than the log:
-      // round one's real failure is already in that file, and this would paint over it.
-      try {
-        mkdir(DIR, { recursive: true });
-        write(ciLogPath(pending.ticket), verdict.output, "utf8");
-      } catch (err) {
-        log(`CI-RED: could not write the CI log — ${firstLine(err)}`);
-      }
-      const failing = verdict.testIds ?? [];
-      const main = failing.length ? mainFailures() : null;
-      const lines = { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
+      const lines = prepareRed(pending.ticket, verdict, { mkdir, write, mainFailures, log });
       for (let tries = 1; !postCiRedOnce(pending.ticket, verdict, lines, readTicketComments(pending.ticket, run, log), run, write, log); tries++) {
         // A hand-back without its CI-RED is a fix round nothing starts; a hold leaves the red for the next pick to read.
         if (tries === CI_RED_TRIES) return { action: "hold", reason: `CI-RED for ${String(head).slice(0, 7)} could not be posted`, head, runId: verdict.runId ?? null };
@@ -2519,6 +2543,9 @@ export async function runOnce(io, pinned = null, at = null) {
   const size = route.size ?? null;
 
   if (route.fix) {
+    if (route.unposted && !io.postRed(route.number, route.unposted)) {
+      return { outcome: "hold", ticket: route.number, why: `CI-RED for ${String(route.head).slice(0, 7)} could not be posted` };
+    }
     const parkFix = (why) =>
       parkAndRecord(io, route.number, {
         phase: "C",
@@ -2863,6 +2890,7 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
+    postRed: (number, pr) => postHeldRed(number, pr, (m) => screen.notice("ci", m)),
     queue: () => before,
     park,
     /**
