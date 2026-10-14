@@ -390,7 +390,7 @@ export function readLandingState(
         "--repo",
         repo,
         "--json",
-        "headRefOid,state,mergeable,mergeStateStatus,isDraft,autoMergeRequest,statusCheckRollup",
+        "headRefOid,state,mergeable,mergeStateStatus,autoMergeRequest,statusCheckRollup",
       ],
       until
     )
@@ -404,7 +404,6 @@ export function readLandingState(
       state: view.state,
       mergeable: view.mergeable,
       mergeStateStatus: view.mergeStateStatus,
-      isDraft: Boolean(view.isDraft),
       armed: view.autoMergeRequest != null,
     },
     ci: { ...ci, head: view.headRefOid ?? null, ...(ci.waiting ? { progress } : {}) },

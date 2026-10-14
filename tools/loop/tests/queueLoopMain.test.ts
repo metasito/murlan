@@ -886,7 +886,7 @@ describe("runOnce", () => {
     ]);
   });
 
-  test("publishForReview pushes, then opens a draft only when no pull request is open", () => {
+  test("publishForReview pushes, then opens it ready only when no pull request is open", () => {
     for (const open of [[], [{ number: 7 }]]) {
       const calls: string[][] = [];
       const timeouts: unknown[] = [];
@@ -902,7 +902,7 @@ describe("runOnce", () => {
         assert.equal(create, undefined);
         continue;
       }
-      assert.ok(create?.includes("--draft"));
+      assert.ok(create && !create.includes("--draft"));
       assert.match(String(create?.[create.indexOf("--body") + 1]), /^Closes #42\n/);
       assert.equal(create?.[create.indexOf("--head") + 1], "agent/42-x");
     }
