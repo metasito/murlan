@@ -1,10 +1,11 @@
 // tools/loop/tests/lockDrift.test.ts
-import { test, describe } from "node:test";
+import { test, describe, mock } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { lockDrift, checkLockDrift } from "../workspace.mjs";
+import { syncCheckout } from "../queue-loop.mjs";
 
 describe("node_modules drift from package-lock.json", () => {
   const packageJson = { dependencies: { "react-native": "0.86.3" }, devDependencies: { typescript: "5.0.0" } };
@@ -99,6 +100,44 @@ describe("checkLockDrift reads a real root, not just in-memory objects", () => {
     try {
       assert.deepEqual(checkLockDrift(dir), []);
     } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("syncCheckout's reinstall, against the lockfile npm last installed from", () => {
+  // On disk, as npm leaves it: `npm ci` writes node_modules/.package-lock.json after the lockfile it read.
+  test("a fast-forward that rewrites the lockfile reinstalls; the same tree twice does not", () => {
+    const prior = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), "loop-lock-"));
+    let clock = 1_000_000;
+    const lockfile = (content: string) => {
+      writeFileSync(join(dir, "package-lock.json"), JSON.stringify({ packages: {}, content }));
+      clock += 10;
+      utimesSync(join(dir, "package-lock.json"), clock, clock);
+    };
+    const reinstall = mock.fn(() => {
+      mkdirSync(join(dir, "node_modules"), { recursive: true });
+      writeFileSync(join(dir, "node_modules", ".package-lock.json"), "{}");
+      utimesSync(join(dir, "node_modules", ".package-lock.json"), clock + 1, clock + 1);
+      return "";
+    });
+    let next: string | null = null;
+    const git = (...args: string[]) => {
+      if (args[0] === "merge" && next !== null) lockfile(next);
+      return ({ "rev-parse": "main" } as Record<string, string>)[args[0]] ?? "";
+    };
+    try {
+      process.chdir(dir);
+      writeFileSync("package.json", "{}");
+      lockfile("a");
+      for (const lock of [null, null, "b", null]) {
+        next = lock;
+        assert.equal(syncCheckout(git, () => {}, reinstall), true);
+      }
+      assert.equal(reinstall.mock.calls.length, 2, "the first install, then the rewrite's");
+    } finally {
+      process.chdir(prior);
       rmSync(dir, { recursive: true, force: true });
     }
   });

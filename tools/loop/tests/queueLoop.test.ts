@@ -3,7 +3,7 @@ import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -291,42 +291,6 @@ describe("syncCheckout", () => {
       },
     };
   };
-
-  // On disk, as npm leaves it: `npm ci` writes node_modules/.package-lock.json after the lockfile it read.
-  test("a fast-forward that rewrites the lockfile reinstalls; the same tree twice does not", () => {
-    const prior = process.cwd();
-    const dir = mkdtempSync(path.join(tmpdir(), "loop-lock-"));
-    let clock = 1_000_000;
-    const lockfile = (content: string) => {
-      writeFileSync(path.join(dir, "package-lock.json"), JSON.stringify({ packages: {}, content }));
-      clock += 10;
-      utimesSync(path.join(dir, "package-lock.json"), clock, clock);
-    };
-    const install = mock.fn(() => {
-      mkdirSync(path.join(dir, "node_modules"), { recursive: true });
-      writeFileSync(path.join(dir, "node_modules", ".package-lock.json"), "{}");
-      utimesSync(path.join(dir, "node_modules", ".package-lock.json"), clock + 1, clock + 1);
-      return "";
-    });
-    let next: string | null = null;
-    const git = (...args: string[]) => {
-      if (args[0] === "merge" && next !== null) lockfile(next);
-      return { "rev-parse": "main" }[args[0]] ?? "";
-    };
-    try {
-      process.chdir(dir);
-      writeFileSync("package.json", "{}");
-      lockfile("a");
-      for (const lock of [null, null, "b", null]) {
-        next = lock;
-        assert.equal(syncCheckout(git, () => {}, install), true);
-      }
-      assert.equal(install.mock.calls.length, 2, "the first install, then the rewrite's");
-    } finally {
-      process.chdir(prior);
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
 
   test("drift with an unchanged lockfile reinstalls once for that lockfile, then holds", () => {
     const said: string[] = [];
