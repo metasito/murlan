@@ -743,10 +743,11 @@ describe("runOnce", () => {
   });
 
   test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const facts = () => ({ title: "Fix the card fan!", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
-    const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
+    const stranded: any = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
+    assert.equal(stranded.branch, "agent/42-fix-the-card-fan", "no claim runs on a resume, so the route names the branch the claim would");
   });
 
   test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
