@@ -1,4 +1,3 @@
-// tools/loop/mainHealth.ts
 import { execFileSync } from "node:child_process";
 import { decideVerdict, failedLogArgs, failingTestIds, markTimedOut, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
 
