@@ -16,6 +16,7 @@ import { allowedOrigins, isAllowedOrigin, trustProxySetting } from "./http/cors.
 import { checkMailConfigOnBoot } from "./http/mail.ts";
 import { ANSWERED_BY_SHELL, CONTENT_HASHED } from "./http/staticPaths.ts";
 import { testOnlyEnv } from "./http/testOnlyEnv.ts";
+import { registerAppLinks } from "./http/appLinks.ts";
 import { CANVASKIT_URL } from "../lib/canvaskit.ts";
 import { createHash } from "node:crypto";
 import * as fs from "fs";
@@ -123,6 +124,8 @@ function configureWebBuild(app: express.Application) {
   const distPath = distRoot();
   const webIndexPath = path.join(distPath, "index.html");
   const hasWebBuild = fs.existsSync(webIndexPath);
+
+  registerAppLinks(app);
 
   // scripts/moveSourceMaps.mjs already moves every .map out of dist/ after
   // export, so this never matches a real file — it exists so that guarantee

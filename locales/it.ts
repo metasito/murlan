@@ -847,7 +847,7 @@ export const it: Record<keyof typeof en, string> = {
   "room.leaveConfirmTitle": "Lascia la stanza",
   "room.leaveConfirmBody": "Sei sicuro di voler lasciare la stanza?",
   "room.leaveConfirmConfirm": "Lascia",
-  "room.shareMessage": "Unisciti alla mia stanza Murlan! Codice: {{code}}",
+  "room.shareMessage": "Unisciti alla mia stanza Murlan! Codice: {{code}} {{link}}",
   "room.fillWithBotsLabel": "Riempi con bot",
   "room.botsComingIn": "I bot possono occupare i posti tra {{seconds}}s",
   "room.fillWithBotsSubtitle": "I posti liberi saranno occupati da giocatori virtuali",
