@@ -161,7 +161,13 @@ describe("sessionRow", () => {
   test("stamps the schema, so two readings of a field are never averaged together", () => {
     // The literal, not the module's own constant: a test that reads the value it is pinning moves
     // with it and pins nothing. Bump it here deliberately when a field changes what it holds.
-    assert.equal(r.schema, 8);
+    assert.equal(r.schema, 9);
+  });
+
+  test("carries the session's own model, read off its init line, and no token split", () => {
+    assert.equal(sessionRow(session({ model: "claude-opus-5-5" })).model, "claude-opus-5-5");
+    assert.equal(r.model, null);
+    assert.equal("usage" in r, false);
   });
 
   test("carries the time the session's machine was asleep, null when none was measured", () => {

@@ -828,6 +828,13 @@ describe("runTicket", () => {
     assert.equal(run.status, 0);
   });
 
+  test("the run carries the model its init line named, which the ledger judges it by", async () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5" });
+    const run = await runTicket(fakeSpawn([init, RESULT]), opts({ at: "E" }));
+    assert.equal(run.model, "claude-sonnet-5");
+    assert.equal((await runTicket(fakeSpawn([RESULT]), opts({ at: "E" }))).model, null);
+  });
+
   // `--model` passes an alias, and ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps it.
   test("an init model of another family than planned kills the session and says why; one of no known family does not", async () => {
     const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });

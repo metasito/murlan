@@ -120,6 +120,12 @@ describe("summary", () => {
     assert.deepEqual(summary([v8({ "claude-opus-5": 9 })]).mismatched.map((r: { n: number }) => r.n), [4]);
   });
 
+  test("a v9 row is judged by the model its init line named", () => {
+    const v9 = (model: string) => ({ schema: 9, n: 4, outcome: "pushed", cost: 1, turns: 9, phases: { E: 60 }, model, models: { "claude-opus-5": 99 } });
+    assert.equal(summary([v9("claude-sonnet-5")]).mismatched.length, 0);
+    assert.deepEqual(summary([v9("claude-opus-5")]).mismatched.map((r: { n: number }) => r.n), [4]);
+  });
+
   test("model mismatch reads the main session's model against its spawn phase", () => {
     assert.equal(summary([proc({ n: 3, at: "E", model: "claude-opus-5-5" }), out({ n: 3, outcome: "landed" })]).mismatched.length, 1);
     assert.equal(summary([proc({ n: 3, at: "E", model: "claude-sonnet-5-5" })]).mismatched.length, 0);
