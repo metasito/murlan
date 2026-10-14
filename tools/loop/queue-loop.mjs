@@ -391,7 +391,7 @@ export const BASH_DEFAULT_TIMEOUT_MS = 10 * 60_000;
  * asking for one more round cannot hold the night open. Each individual `gh` call carries its own
  * ceiling in `ciVerdict.ts`'s `ghExecOptions`, which is where the one that can block lives.
  */
-export const SETTLE = { DEADLINE_MS: 90 * 60_000 };
+export const SETTLE = { DEADLINE_MS: 90 * 60_000, STUCK_MS: 3 * 60_000 };
 
 /** Consecutive red CI rounds on one ticket before it stops being the loop's to fix. */
 export const CI_ROUNDS = 3;
@@ -1353,6 +1353,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     mainFailures = () =>
       ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
     facts = () => streamFacts(pending.ticket),
+    stuckMs = SETTLE.STUCK_MS,
     cleared = (sha) => {
       const comments = readTicketComments(pending.ticket, run, log);
       try {
@@ -1370,6 +1371,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   let updates = 0;
   let last = null;
   let until = Date.now() + deadline;
+  let seen = null;
+  let stuckSince = Date.now();
   let woke = false;
   let head = null;
   let armed = false;
@@ -1383,6 +1386,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     await new Promise((r) => setTimeout(r, pause));
     const slept = clock.lap();
     until += slept;
+    stuckSince += slept;
     woke ||= slept > 0;
   };
   let verdict = {};
@@ -1459,14 +1463,18 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         }
         next = landing(pr, verdict);
         woke = false;
+        const now = JSON.stringify([head, verdict.runId, verdict.attempt, verdict.reason, pr.mergeStateStatus, pr.mergeable, pr.isDraft]);
+        if (now !== seen) [seen, stuckSince] = [now, Date.now()];
       } catch (err) {
+        seen = null;
         // A machine waking from standby has no network for minutes to hours; the deadline still bounds it.
         error = { why: firstLine(err), offline: OFFLINE.test(`${err.code ?? ""} ${err.message} ${err.stderr ?? ""}`), woke };
       }
     }
     // Landing reads move no run counter.
     const read = { step: "landing", limits: LIMITS, loop: {} };
-    const facts = { ...next, head, armed, overdue, deadline, updates, last, ci: verdict, error, reran, cleared: undefined };
+    const stuck = Date.now() - stuckSince >= stuckMs;
+    const facts = { ...next, head, armed, overdue, deadline, updates, last, stuck, ci: verdict, error, reran, cleared: undefined };
     let step = decide({ ...read, landing: facts });
     if (step.kind === "ask") step = decide({ ...read, landing: { ...facts, cleared: cleared(head) } });
 

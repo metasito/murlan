@@ -273,8 +273,10 @@ const STEPS = {
   // One read of a pushed pull request inside `poll`: a step to take and read again, or the verdict
   // `settled` turns into the ticket's outcome. The actions are `land.ts`'s `landing()`.
   // One deadline bounds every wait; only update-branch, which moves the head and so the deadline, has a cap.
+  // `stuck` is the second bound: nothing poll reads has changed for SETTLE.STUCK_MS. A run still going
+  // and an armed head are exempt, since one long job or GitHub's merge queue changes nothing for minutes.
   landing({ landing, limits }) {
-    const { action, reason, head, armed, overdue, updates, last, ci, reran } = landing;
+    const { action, reason, head, armed, overdue, updates, last, ci, reran, stuck } = landing;
     const { UPDATES } = limits;
     const step = (act, why) => ({ kind: "settle", act, why });
     const verdict = (as, why) => ({ kind: "settled", action: as, why });
@@ -295,8 +297,9 @@ const STEPS = {
         : verdict("owner", `update-branch did not settle in ${UPDATES} rounds — last: ${reason}`);
     }
     if (action === "recheck" && ci.waiting) return step("wait", ci.reason ?? reason);
-    if (action === "hand-back") return step("wait", "CI is red but named no log — asking again");
-    if (action === "recheck") return step("wait", `${reason} — asking again`);
+    if (action === "hand-back") return stuck ? verdict("owner", `CI is red and its log could not be read — ${reason}`) : step("wait", "CI is red but named no log — asking again");
+    if (action === "recheck") return stuck && !armed ? verdict("owner", `recheck did not settle — last: ${reason}`) : step("wait", `${reason} — asking again`);
+    if (action === "ready" && stuck) return verdict("owner", `${sha7(head)} is still a draft after gh pr ready`);
     if (action === "arm" || action === "ready") {
       if (armed) return step("wait", "auto-merge is armed — waiting for GitHub to merge");
       if (landing.cleared === undefined) return ask("cleared");

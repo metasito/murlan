@@ -188,6 +188,8 @@ const ROWS: Row[] = [
     { kind: "settled", action: "owner", why: "recheck did not settle — last: GitHub is still computing mergeability" }],
   ["poll: a draft that stays a draft is the owner's at the stuck bound", green({ action: "ready", stuck: true }),
     { kind: "settled", action: "owner", why: "h2abcde is still a draft after gh pr ready" }],
+  ["poll: an armed head GitHub holds at BLOCKED gets the whole deadline", land({ armed: true, reason: "auto-merge is armed and the required check has not passed yet", stuck: true }),
+    { kind: "settle", act: "wait", why: "auto-merge is armed and the required check has not passed yet — asking again" }],
   ["poll: a run still going gets the whole deadline, however long one job takes", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }), stuck: true }),
     { kind: "settle", act: "wait", why: "3 of 9 jobs done" }],
   ["poll: a green head asks whether review cleared it", green({ cleared: undefined }), { kind: "ask", fact: "cleared" }],
