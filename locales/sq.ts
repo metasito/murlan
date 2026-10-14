@@ -854,7 +854,7 @@ export const sq: Record<keyof typeof en, string> = {
   "room.leaveConfirmTitle": "Largohu nga dhoma",
   "room.leaveConfirmBody": "Je i sigurt që dëshiron të largohesh nga dhoma?",
   "room.leaveConfirmConfirm": "Largohu",
-  "room.shareMessage": "Bashkohu në dhomën time të Murlanit! Kodi: {{code}}",
+  "room.shareMessage": "Bashkohu në dhomën time të Murlanit! Kodi: {{code}} {{link}}",
   "room.fillWithBotsLabel": "Plotëso me bot",
   "room.botsComingIn": "Botët mund t’i zënë vendet pas {{seconds}}s",
   "room.fillWithBotsSubtitle": "Vendet e lira do të zihen nga lojtarë virtualë",

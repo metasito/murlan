@@ -114,6 +114,15 @@ warning and skips the send, so signup and email verification still complete with
 - `RESEND_API_KEY` — Resend API key for `server/http/mail.ts`
 - `MAIL_FROM_ADDRESS` — the verified "from" address Resend sends as
 
+These prove the app owns the host's `/join/<CODE>` links (`server/http/appLinks.ts`, #1089).
+Neither is needed to boot; while one is unset its file answers 404 and that platform's links open
+the web app instead:
+
+- `APPLE_TEAM_ID` — the Apple developer team id; with it,
+  `/.well-known/apple-app-site-association` names `<APPLE_TEAM_ID>.<app.json ios.bundleIdentifier>`
+- `ANDROID_CERT_SHA256` — the SHA-256 fingerprint of the Android signing certificate, colon-separated
+  hex; with it, `/.well-known/assetlinks.json` names it for `app.json`'s `android.package`
+
 The runtime shape any host must provide is `deploy/runtime.json`: the Node and Postgres
 majors, the number of proxy hops in front of the app (`trustProxySetting()` in
 `server/http/cors.ts`), the SIGTERM grace period, and the Postgres connection budget per
