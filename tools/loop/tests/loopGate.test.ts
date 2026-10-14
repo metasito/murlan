@@ -484,6 +484,25 @@ describe("--build gates review on a cached local pass", () => {
     }
   });
 
+  test("a draft named after --build is judged before it is posted", () => {
+    const wt = worktree(probeBranch(44, "build-draft"));
+    commit(wt, "docs/probe.md");
+    writeCache(wt, { pass: true, head: head(wt), clean: true });
+    const draft = (name: string, boxes: string) => {
+      const p = join(dir, `dod-${name}.md`);
+      writeFileSync(p, `DOD-CHECK ${head(wt).slice(0, 7)}\n\n${boxes}`);
+      return p;
+    };
+    const open = gate(wt, [], BASE, wt, ["--build", draft("open", "- [x] chip enters, done")]);
+    assert.equal(open.code, 1, open.out);
+    assert.match(open.out, /leaves open: - \[x\] chip enters, done/);
+    const full = gate(wt, [], BASE, wt, ["--build", draft("full", "- [x] chip enters — package.json:2")]);
+    assert.equal(full.code, 0, full.out);
+    assert.match(full.out, /1 box\(es\) ticked/);
+    const missing = gate(wt, [], BASE, wt, ["--build", join(dir, "dod-never-written.md")]);
+    assert.equal(missing.code, 2, missing.out);
+  });
+
   test("the agent:check box is closed by the cached pass, never by its own word", () => {
     const comments = [{ body: "DOD-CHECK abc1234\n\n- [x] `npm run agent:check` green" }];
     assert.equal(dodVerdict(comments, "abc1234def", () => false, true).ok, true);

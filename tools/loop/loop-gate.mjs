@@ -15,8 +15,9 @@
  *        node tools/loop/loop-gate.mjs --review-round
  *        exit 0 - phase D may run another round; exit 1 - the cap is reached
  *
- *        node tools/loop/loop-gate.mjs --build            exit 0 iff a cached LOCAL PASS for a clean HEAD
- *                                                         and a DOD-CHECK of HEAD with every box ticked
+ *        node tools/loop/loop-gate.mjs --build [draft]    exit 0 iff a cached LOCAL PASS for a clean HEAD
+ *                                                         and a DOD-CHECK of HEAD with every box ticked —
+ *                                                         the draft file's, when one is named, else the tracker's
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -221,13 +222,23 @@ function reviewRound() {
   return 1;
 }
 
-function buildGate() {
+function buildGate(draft) {
   const at = locateRun(undefined, process.env.LOOP_WORKTREE);
   if (!at.ticket) {
     console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
     return 2;
   }
-  const v = buildReady(at.cwd, at.ticket);
+  let comments = ticketComments;
+  if (draft) {
+    try {
+      const body = readFileSync(draft, "utf8");
+      comments = () => [{ body }];
+    } catch (err) {
+      console.error(`loop-gate: cannot read the draft ${draft} — ${err.message}`);
+      return 2;
+    }
+  }
+  const v = buildReady(at.cwd, at.ticket, comments);
   (v.ok ? console.log : console.error)(`loop-gate: #${at.ticket} — ${v.why}`);
   return v.ok ? 0 : 1;
 }
@@ -270,6 +281,7 @@ function main() {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const args = process.argv.slice(2);
-  const code = args.includes("--review-round") ? reviewRound() : args.includes("--build") ? buildGate() : main();
+  const draft = args[args.indexOf("--build") + 1];
+  const code = args.includes("--review-round") ? reviewRound() : args.includes("--build") ? buildGate(draft) : main();
   process.exit(code);
 }

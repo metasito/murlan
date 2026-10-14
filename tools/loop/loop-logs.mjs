@@ -29,6 +29,7 @@ export const ARTEFACTS = {
   // `_` so every builder takes the same two arguments: the table is only useful if one loop can
   // call all of them.
   ledger: { path: (_, dir = DIR) => path.join(dir, "tickets.jsonl"), name: /^tickets\.jsonl$/, ephemeral: false },
+  supervisor: { path: (_, dir = DIR) => path.join(dir, "supervisor.log"), name: /^supervisor\.log$/, ephemeral: false },
 };
 
 export const streamLog = ARTEFACTS.stream.path;
@@ -38,6 +39,13 @@ export const parkNotePath = ARTEFACTS.parkNote.path;
 export const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
+export const supervisorLogPath = ARTEFACTS.supervisor.path;
+
+/** Throws on a failed write: `journaled` in `queue-loop.mjs` is what keeps that out of the loop. */
+export function appendSupervisor(line, dir = DIR) {
+  fsNode.mkdirSync(dir, { recursive: true });
+  fsNode.appendFileSync(supervisorLogPath(null, dir), line);
+}
 
 /**
  * An entry in `.loop-logs/` the pruner may delete once it is old enough: anything but the record,

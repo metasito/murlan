@@ -51,6 +51,7 @@ import {
   DIR,
   ciLogPath,
   ciRedNotePath,
+  appendSupervisor,
   errorLine,
   errorOf,
   killedStarts,
@@ -1112,7 +1113,15 @@ export async function settle(pending, screen, opts = {}) {
   screen.set({ pr: prUrl(pending.pr) });
   screen.said(`waiting for ci.yml on ${pending.branch}`);
   try {
-    const out = await watch(pending, (m) => screen.said(m), pause, deadline);
+    const out = await watch(
+      pending,
+      (m) => {
+        screen.said(m);
+        screen.keep(m);
+      },
+      pause,
+      deadline,
+    );
     const landed = out.action === "already-merged";
     screen.close(landed ? "done" : "failed", landed ? `#${pending.pr} merged` : out.reason);
     return out;
@@ -1823,6 +1832,34 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   return parkHere(verdict, { ...worked(action.pr, log), flake: verdict.ciRed ? null : (settled.flake ?? null) });
 }
 
+/**
+ * `screen`, with every line the supervisor says also handed to `keep` as one line of
+ * `.loop-logs/supervisor.log`: the board scrolls away, and the file is what a monitor reads after.
+ * `settle` keeps its lines through `keep` itself, since its `said` carries the session's words too.
+ */
+export function journaled(screen, ticket, keep) {
+  const write = (text) => {
+    try {
+      const n = ticket();
+      keep(`${new Date().toISOString()}${n == null ? "" : ` #${n}`} ${String(text).replace(/\r?\n/g, " | ")}\n`);
+    } catch {
+      // A disk that refuses the line costs the line, never the night.
+    }
+  };
+  // Not a spread: `theme` is a getter a resize replaces, and a spread would freeze it.
+  return Object.assign(Object.create(screen), {
+    notice: (label, text) => {
+      write(`${label}: ${text}`);
+      screen.notice(label, text);
+    },
+    warn: (text) => {
+      write(text);
+      screen.warn(text);
+    },
+    keep: write,
+  });
+}
+
 /** The real IO, bound once so `runOnce` can be driven without git, the tracker or a binary. */
 function realIo(book, screen) {
   // The queue as the *previous* pick read it. The direction is what a night is made of, and this
@@ -1924,7 +1961,8 @@ function realIo(book, screen) {
       }
     },
     pushedPr,
-    settle: (pending) => settle(pending, screen),
+    settle,
+    journal: (line) => appendSupervisor(line),
     queue: () => before,
     park,
     /**
@@ -2000,6 +2038,15 @@ export async function main({
   /** `pinned` is the ticket a red CI round or a handoff handed back; its counts are the ledger's. */
   let loop = { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: null, heldTicket: null, ticketHolds: 0 };
 
+  /**
+   * The ticket phase A has claimed, so a throw anywhere in the iteration can still release it.
+   *
+   * `runOnce`'s own exits all route through `park`, but a throw routes through none of them, and
+   * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good. `io.pick`
+   * is the claim, so wrapping it is where the answer is knowable.
+   */
+  let claimed = null;
+  screen = journaled(screen, () => claimed, (line) => io.journal?.(line));
   install(screen);
   io ??= realIo(book, screen);
   const killed = io.killed?.();
@@ -2056,14 +2103,6 @@ export async function main({
     );
   screen.board?.({ recap: recapOf });
 
-  /**
-   * The ticket phase A has claimed, so a throw anywhere in the iteration can still release it.
-   *
-   * `runOnce`'s own exits all route through `park`, but a throw routes through none of them, and
-   * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good. `io.pick`
-   * is the claim, so wrapping it is where the answer is knowable.
-   */
-  let claimed = null;
   const watched = {
     ...io,
     pick: (p, at) => {
@@ -2072,7 +2111,7 @@ export async function main({
       if (route?.queue) launch = route.queue.launch ?? null;
       return route;
     },
-    settle: (pending) => timed("ci", () => io.settle(pending)),
+    settle: (pending) => timed("ci", () => io.settle(pending, screen)),
   };
 
   /** Every exit writes the total to the report file, not only the screen. */
@@ -2110,6 +2149,7 @@ export async function main({
   };
 
   for (;;) {
+    claimed = null;
     // Per iteration, not once per process: a run lasting past midnight would never prune.
     pruneLogs();
     parity = io.parity?.() ?? null;
@@ -2128,7 +2168,6 @@ export async function main({
     }
 
     let pass;
-    claimed = null;
     try {
       pass = await runOnce(watched, loop.pinned, loop.pinned ? io.tally(loop.pinned).lastHandoff : null, loop);
     } catch (err) {

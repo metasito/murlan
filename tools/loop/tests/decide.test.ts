@@ -365,6 +365,8 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
   "a pinned ticket is what the picker is asked for": ["queueLoopMain.test.ts", "picker"],
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
+  "each with its timestamp and, once a ticket is picked, its number": ["queueLoopMain.test.ts", "io"],
+  "a journal that throws costs the line, never the loop": ["queueLoopMain.test.ts", "io"],
   "a G route announces itself before it settles": ["queueLoopMain.test.ts", "io"],
   "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
   "a refused session's dirty worktree is left standing as it is, with no copy taken": ["queueLoopMain.test.ts", "io"],
