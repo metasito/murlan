@@ -69,9 +69,9 @@ that goes stays as `*(retired)*`, and nothing cites it. The *why* lives in `CLAU
     through `/wayfinder`.
 28. **An item needing an owner decision gets `ready-for-human`, not closed** — and
     `ready-for-agent` comes off at the same time.
-29. **Name a model and an effort on every sub-agent.** Implementing: opus. Independent review: one opus reviewer
+29. **Every sub-agent runs on a named model and effort.** Implementing: opus. Independent review: one opus reviewer
     at `medium` effort, and only a Blocking finding holds (a nit never costs a round).
-    Recon and verification: sonnet at `medium`. Mechanical: haiku, outside the loop (ADR 0010 decision 5). Give every dispatch a label. A `loop-<kind>` agent (`.claude/agents/`) names both in its own file, so its dispatch names neither.
+    Recon and verification: sonnet at `medium`. Mechanical: haiku, outside the loop (ADR 0010 decision 5). Give every dispatch a label. A scope, completeness, review or fix check runs only as its `loop-<kind>` agent (`.claude/agents/`), whose file names both and holds the role, with `node tools/loop/brief.mjs <kind>`'s output as its prompt and no model or effort of its own; any other dispatch names both.
 
 ## Finishing
 

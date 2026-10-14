@@ -51,48 +51,29 @@ const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
 const agent = (description: string, prompt: string, extra: object = {}) =>
   ({ tool_name: "Agent", tool_input: { description, prompt, model: "sonnet", effort: "medium" }, ...extra });
 
-describe("a loop dispatch of a brief passes it verbatim", () => {
+describe("a review, scope or completeness check runs only as its loop agent", () => {
   const exact = brief("completeness", { n: 42, worktree: WT });
 
-  test("the exact brief is allowed", () => {
-    assert.equal(run(agent("Completeness check #42", exact)), "");
-  });
-
-  test("the exact brief with material appended is allowed", () => {
-    const later = agent("Review #42 round 2", brief("review", { n: 42, worktree: WT, base: "abc1234" }) + "\n## Blocking\n- x");
-    assert.equal(run({ ...later, tool_input: { ...later.tool_input, model: "opus" } }), "");
-  });
-
-  test("a brief dispatched on another model than its kind's is denied", () => {
+  test("a brief dispatched to any other agent is denied, whatever its model", () => {
+    assert.match(run(agent("Completeness check #42", exact)), /runs as its loop agent.*`loop-completeness`/);
     const review = agent("Code review", brief("review", { n: 42, worktree: WT }));
-    assert.match(run(review), /review brief runs on `opus`/);
-    assert.equal(run({ ...review, tool_input: { ...review.tool_input, model: "claude-opus-5-5" } }), "");
-  });
-
-  test("an edited brief is denied", () => {
-    const edited = exact.replace("env var, ", "");
-    assert.match(run(agent("Completeness check #42", edited)), /brief was edited/);
+    assert.match(run({ ...review, tool_input: { ...review.tool_input, model: "claude-opus-5-5" } }), /runs as its loop agent/);
   });
 
   test("a named review dispatch with no brief header is denied", () => {
     for (const d of ["Completeness check 1103", "Fix review #1102", "Review #1102 round 2", "Spec review round 2", "Refute review findings", "Scope issue 1103"]) {
-      assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /must start with its brief/, d);
+      assert.match(run(agent(d, "You are the reviewer. Read the diff.")), /runs as its loop agent/, d);
     }
   });
 
-  test("a review dispatch worded any other way still needs its brief", () => {
+  test("a review dispatch worded any other way still runs as its loop agent", () => {
     for (const d of ["Review: Standards axis", "spec compliance review", "refute the findings"]) {
-      assert.match(run(agent(d, "Review the diff")), /must start with its brief/, d);
+      assert.match(run(agent(d, "Review the diff")), /runs as its loop agent/, d);
     }
     for (const d of ["Implement the settings sheet", "Check spec coverage of the socket layer", "Fix the scope issue in Card.tsx",
       "Address review round 2 findings", "Trace callers for the code review fix", "Check ticket review comments"]) {
       assert.equal(run(agent(d, "anything")), "", d);
     }
-  });
-
-  test("the brief arriving with CRLF line endings, or with its final newline stripped, is allowed", () => {
-    assert.equal(run(agent("Completeness check #42", exact.replace(/\n/g, "\r\n"))), "");
-    assert.equal(run(agent("Completeness check #42", exact.trimEnd())), "");
   });
 
   test("a builder's own dispatch that merely says spec, scope or standards is allowed", () => {
@@ -121,16 +102,20 @@ describe("a named loop agent carries its own model and effort", () => {
     assert.equal(run(named("loop-scope", brief("scope", { n: 42, worktree: WT }))), "");
   });
 
+  test("its brief with a later round's findings appended, or with CRLF line endings, is allowed", () => {
+    assert.equal(run(named("loop-review", brief("review", { n: 42, worktree: WT, base: "abc1234" }) + "\n## Blocking\n- x")), "");
+    assert.equal(run(named("loop-review", review.replace(/\n/g, "\r\n"))), "");
+  });
+
   test("a per-call model or effort is an override, and is denied", () => {
     for (const extra of [{ model: "haiku" }, { effort: "low" }, { model: "opus", effort: "medium" }]) {
       assert.match(run(named("loop-review", review, extra)), /override/, JSON.stringify(extra));
     }
   });
 
-  test("it runs only its own kind's brief, verbatim", () => {
+  test("it runs only its own kind's brief", () => {
     assert.match(run(named("loop-review", "Review the diff")), /loop-review.*review brief/);
     assert.match(run(named("loop-scope", review)), /loop-scope.*scope brief/);
-    assert.match(run(named("loop-review", review.replace("every caller", "some callers"))), /brief was edited/);
   });
 
   test("a loop agent that does not exist is denied, naming the ones that do", () => {

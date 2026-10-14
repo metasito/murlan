@@ -56,7 +56,8 @@ Claude Code 2.1.293 accepts Haiku 5.5 as both main model and advisor. Anthropic'
    round, and either is a whole Opus process. Opus 5.5 at `medium` costs about 1.4 times a
    Sonnet 5.5 reviewer at `high`. The refuter stays, but on Opus: a weaker model refuting a
    stronger one's findings would kill true ones. `MODEL_BY_KIND` in `brief.mjs` holds each brief
-   kind's model, and `guard-agent-model.mjs` denies a dispatch on any other.
+   kind's model, its `.claude/agents/loop-<kind>.md` names it, and `guard-agent-model.mjs` denies
+   a per-call override.
 4. **Recon and verification subagents run Sonnet at `medium`.** This covers scope, completeness
    and long reads. The effort is set with the Agent tool's `effort` parameter (Claude Code 2.1.292).
 5. **Haiku 5.5 is not adopted for any loop subagent yet.** Its coding gap makes a wrong scope map

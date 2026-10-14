@@ -83,8 +83,8 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
 
 `PHASE B`
 
-1. One `sonnet` subagent at `medium` effort maps the change. Its prompt starts with the output of
-   `node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>`, verbatim.
+1. `loop-scope` maps the change; its prompt is the output of
+   `node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>`.
 2. No file is out of scope. If the report names the schema, socket protocol, deploy runtime
    contract or a workflow, the PR body says what getting it wrong costs.
 
@@ -141,8 +141,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 `git rev-list --count origin/main..HEAD` must be non-zero. Then:
 
 1. **The completeness check, once per ticket**: skipped when a `DOD-CHECK` follows the issue's
-   newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent at `medium` effort whose
-   prompt starts with the output of this, verbatim:
+   newest `Claimed by` comment (a HOLD or CI round). `loop-completeness`, its prompt the output of:
    ```sh
    node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
    ```
@@ -169,10 +168,10 @@ Only then declare handoff D and exit. The supervisor re-gates it.
 One reviewer reads the change; only a Blocking finding sends it back. `<base>` is `origin/main` in
 round 1, then the sha the previous round reviewed.
 
-1. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
-   starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
-   it a fix round: the `fix` kind, labelled `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's
-   Blocking findings.
+1. **Dispatch `loop-review`**, labelled `Review #<n> round <k>`, its prompt this output. A `CI-RED`
+   newer than the last `VERDICT: LAND <landSha>` makes it a fix round: `loop-fix`, labelled
+   `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's Blocking
+   findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
