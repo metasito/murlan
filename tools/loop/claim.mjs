@@ -1,9 +1,7 @@
 /**
- * Claims a ticket and stands its worktree up, as one subprocess.
- *
- * Six `gh` and `git` calls that need no judgement were six model turns of phase A, each paying a
- * full context read; and the claim comment's backticks are what `next-ticket.mjs` matches a peer's
- * claim on, which PowerShell turns into a BEL when a model writes it inline.
+ * Claims a ticket and stands its worktree up, as one subprocess: the claim comment's backticks are
+ * what `next-ticket.mjs` matches a peer's claim on, and PowerShell turns them into a BEL when a
+ * model writes the comment inline.
  *
  * Usage: node tools/loop/claim.mjs <n> "<title>"
  *        exit 0 - claimed, worktree standing; exit 1 - lost the race, or could not
@@ -29,10 +27,9 @@ export function slugOf(title) {
 export const branchOf = (number, title) => `agent/${number}-${slugOf(title)}`;
 
 /**
- * The steps. `worktree` is last because it is the mutex: `.worktrees/agent-<n>` is one directory and
- * `git worktree add` refuses a second claim on it atomically, which a comment-reading race check
- * cannot do — the slug is derived from the title now, so a real peer writes the *same* branch name
- * and reads as us, while a dead run's model-chosen slug reads as a peer. #1043 was parked by that.
+ * `worktree` is last because it is the mutex: `git worktree add` refuses a second claim on
+ * `.worktrees/agent-<n>` atomically. A comment-reading race check cannot: a real peer writes the
+ * same title-derived branch name and reads as us.
  */
 export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   const branch = branchOf(number, title);
@@ -56,8 +53,8 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
 }
 
 /**
- * git's two ways of saying the directory is spoken for. Its other failures are not this one. Read
- * from git's own stderr: node's `message` opens with the command line, which names the path.
+ * git's two ways of saying the directory is spoken for. Read from git's own stderr: node's
+ * `message` opens with the command line, which names the path.
  */
 const taken = (err, cwd) => {
   const said = String(err?.stderr ?? "");
