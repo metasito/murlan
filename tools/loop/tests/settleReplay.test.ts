@@ -613,7 +613,8 @@ describe("arming waits for the reviewer", () => {
   });
 
   test("a LAND with no reviewer completed since the last build is the owner's, never armed", async () => {
-    const { asked, io: withFacts } = real([...reviewer(PENDING.ticket), say("PHASE C"), say("PHASE D")]);
+    const built = readLine(JSON.stringify({ type: "assistant", message: { id: "c", content: [{ type: "tool_use", id: "u", name: "Bash", input: { command: "git commit -m fix" } }] } }));
+    const { asked, io: withFacts } = real([...reviewer(PENDING.ticket), say("PHASE C"), built, say("PHASE D")]);
     const out = await poll(PENDING, () => {}, 0, DEADLINE, withFacts);
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /no loop-review or loop-fix completed for #1028/);
