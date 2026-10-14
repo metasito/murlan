@@ -373,6 +373,29 @@ describe("the open issues, from one query", () => {
   });
 });
 
+describe("nextPick", () => {
+  // In-process, the supervisor picks many times in one process: a listing cached across picks would
+  // never see a pull request opened since the first.
+  test("two picks in one process each read the open pull requests afresh", async () => {
+    const { nextPick } = await import("../next-ticket.mjs");
+    const node = (number: number, labels: string[]) => ({
+      number, title: `issue ${number}`, authorAssociation: "OWNER", labels: { nodes: labels.map((name) => ({ name })) },
+      milestone: null, issueDependenciesSummary: { blockedBy: 0 },
+    });
+    let prs: object[] = [];
+    const run = (args: string[]) =>
+      args[0] === "api"
+        ? JSON.stringify({ data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node(990007, ["in-progress"]), node(990008, ["ready-for-agent", "size:S"])] } } } })
+        : JSON.stringify(prs);
+    assert.deepEqual(nextPick(run), {
+      skill: "implement", number: 990008, title: "issue 990008", size: "size:S",
+      queue: { implement: 1, triage: 0, wayfinder: 0, launch: 0 },
+    });
+    prs = [{ number: 1, state: "OPEN", headRefName: "agent/990007-x" }];
+    assert.equal(nextPick(run).number, 990007, "the claimed ticket's pull request opened since the first pick strands it");
+  });
+});
+
 describe("sizeOf", () => {
   test("reads the size label the spawn's turn bound is derived from", () => {
     assert.equal(sizeOf(issue(1, ["ready-for-agent", "size:L"])), "size:L");
