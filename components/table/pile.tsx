@@ -295,22 +295,28 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
       if (!pile || !felt || !motion || out) return null;
       const g = groupPose(group, turned.value);
       if (g.opacity <= 0) return null;
-      const p = flightPose(still ? AT_REST : elapsed.value, i, spec.n, from, to, spec.catchUp);
       const c = catching?.value ?? 0;
-      const drawn = pileCard(pile, g, wobbleAt(elapsed.value, spec.end, still), {
-        slotX,
-        slotY,
-        x: p.x,
-        y: p.y,
-        rot: p.rot,
-        scale: p.scale,
-        liftY: catchLift(c, cardScale),
-        w: box.width,
-        h: box.height,
-        lift: c,
-        glow: c,
-      });
-      return designRect(drawn, felt, motion.value);
+      const at = (t: number, held: boolean) => {
+        const p = flightPose(t, i, spec.n, from, to, spec.catchUp);
+        const drawn = pileCard(pile, g, wobbleAt(elapsed.value, spec.end, held), {
+          slotX,
+          slotY,
+          x: p.x,
+          y: p.y,
+          rot: p.rot,
+          scale: p.scale,
+          liftY: catchLift(c, cardScale),
+          w: box.width,
+          h: box.height,
+          lift: c,
+          glow: c,
+        });
+        return designRect(drawn, felt, motion.value);
+      };
+      const rect = at(still ? AT_REST : elapsed.value, still);
+      if (still || elapsed.value < spec.contact || elapsed.value >= spec.end + LAND_WOBBLE_MS) return rect;
+      const { x, y, w, h, rot } = at(AT_REST, true);
+      return { ...rect, shadow: { x, y, w, h, rot } };
     }
   );
   const style = useAnimatedStyle(() => {
