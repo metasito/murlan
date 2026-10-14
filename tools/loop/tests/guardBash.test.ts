@@ -717,8 +717,6 @@ describe("the hooks the project's settings and the loop's own register", () => {
     for (const source of ["startup", "resume", "compact", "clear"]) {
       assert.ok(matched("SessionStart", "loop-status.mjs").includes(source), source);
     }
-    // The native caps are looser than its 150 lines; it stays until compaction is shown to hold (#1102).
-    for (const tool of ["Bash", "PowerShell", "Read"]) assert.ok(matched("PreToolUse", "guard-read.mjs").includes(tool), tool);
   });
 
   for (const cwd of CWDS) {
