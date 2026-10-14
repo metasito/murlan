@@ -17,7 +17,6 @@ const ACTIONS: readonly Landing["action"][] = [
   "recheck",
   "hand-back",
   "owner",
-  "ready",
 ];
 
 const pr = (over: Partial<PrState> = {}): PrState => ({

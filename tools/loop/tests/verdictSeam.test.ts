@@ -77,7 +77,7 @@ describe("what landing may do with every verdict decideVerdict can produce", () 
   });
 
   test("every verdict maps to an action the supervisor handles, and each is reachable", () => {
-    const handled = new Set(["arm", "already-merged", "update-branch", "recheck", "hand-back", "owner", "ready"]);
+    const handled = new Set(["arm", "already-merged", "update-branch", "recheck", "hand-back", "owner"]);
     const seen = new Set<string>();
     for (const c of every()) {
       const out = landing(c.pr, decideVerdict(c.run, JOB_SETS[c.jobs]));

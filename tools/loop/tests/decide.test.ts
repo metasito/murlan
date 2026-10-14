@@ -366,7 +366,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "nextRoute: a LAND on the head outranks a handoff to review, and nothing else does": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push": ["queueLoopMain.test.ts", "picker"],
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
-  "publishForReview pushes, then opens a draft only when no pull request is open": ["queueLoopMain.test.ts", "io"],
+  "publishForReview pushes, then opens it ready only when no pull request is open": ["queueLoopMain.test.ts", "io"],
   "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
   "an unreadable CI read on a head not known pushed is not a no-spawn G": ["queueLoopMain.test.ts", "picker"],
   "a handed phase wins over a derived fix; only a pushed G outranks it": ["queueLoopMain.test.ts", "picker"],
