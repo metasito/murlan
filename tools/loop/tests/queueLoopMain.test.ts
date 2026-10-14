@@ -8,7 +8,6 @@ import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
-  parkAsked,
   poll,
   runOnce,
   main,
@@ -27,6 +26,7 @@ import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
+import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 

@@ -1,6 +1,6 @@
 /**
  * What the loop prints: state in, strings out. Nothing here writes, moves a cursor, or reads a key —
- * `ticker` in queue-loop.mjs is the only thing in the loop that knows those exist.
+ * `ticker` in loop-screen.mjs is the only thing in the loop that knows those exist.
  *
  * Three rules the whole file rests on.
  *

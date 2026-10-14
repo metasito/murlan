@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { ticker } from "../loop-screen.mjs";
 import {
   parseRoute,
   pushedPr,
@@ -19,7 +20,6 @@ import {
   reinstall,
   parseStatus,
   runTicket,
-  ticker,
   park,
   repark,
   takeStopFile,

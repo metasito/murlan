@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ticker } from "../queue-loop.mjs";
+import { ticker } from "../loop-screen.mjs";
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
