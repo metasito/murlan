@@ -518,6 +518,26 @@ describe("runTicket", () => {
     assert.ok(def < max && max < STALL_MS, `${def} < ${max} < ${STALL_MS}`);
   });
 
+  test("a session killed before its result still records what its messages billed", async () => {
+    const message = (id: string, model: string) =>
+      JSON.stringify({
+        type: "assistant",
+        message: {
+          id,
+          model,
+          content: [{ type: "text", text: "working" }],
+          usage: { input_tokens: 100_000, output_tokens: 10_000, cache_read_input_tokens: 1_000_000, cache_creation_input_tokens: 50_000 },
+        },
+      });
+    // One message streamed as two lines, each repeating its usage: it is billed once.
+    const lines = [message("m1", "claude-opus-5-5"), message("m1", "claude-opus-5-5"), message("m2", "claude-opus-5-5")];
+    const run = await runTicket(fakeSpawn(lines, 1), opts());
+    assert.equal(run.result, null);
+    assert.ok(Math.abs(run.estimatedCost - 2 * (0.5 + 0.25 + 0.5 + 0.3125)) < 1e-9, String(run.estimatedCost));
+    const done = await runTicket(fakeSpawn([...lines, RESULT], 0), opts());
+    assert.equal(done.estimatedCost, null, "a reported cost is never second-guessed");
+  });
+
   test("the night #1156 met an overloaded API reaches the caller as a 529, not as a bare exit", async () => {
     const lines = readFileSync(path.join(import.meta.dirname, "fixtures", "api-529.jsonl"), "utf8").trim().split("\n");
     const run = await runTicket(fakeSpawn(lines, 1), opts());

@@ -1,7 +1,7 @@
 // tools/loop/tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { COMMITTING, readLine, scopeEnds } from "../loop-stream.mjs";
+import { COMMITTING, readLine, scopeEnds, usageOf } from "../loop-stream.mjs";
 
 test("a scratch write is not the build", () => {
   for (const file of [
@@ -629,5 +629,22 @@ describe("a result's origin", () => {
 
   test("a task notification's is carried through, so the reader can skip it", () => {
     assert.deepEqual(result({ origin: { kind: "task-notification" } }).origin, { kind: "task-notification" });
+  });
+});
+
+describe("usageOf", () => {
+  const line = (message: object) => JSON.stringify({ type: "assistant", message });
+  const usage = { input_tokens: 3, output_tokens: 4, cache_read_input_tokens: 5, cache_creation_input_tokens: 6 };
+
+  test("an assistant message's four token counts, keyed by its id", () => {
+    assert.deepEqual(usageOf(line({ id: "m1", model: "claude-opus-5-5", usage, content: [] })), {
+      id: "m1", model: "claude-opus-5-5", input: 3, output: 4, cacheRead: 5, cacheCreated: 6,
+    });
+  });
+
+  test("a synthetic message, a result and a line with no usage bill nothing", () => {
+    assert.equal(usageOf(line({ id: "m2", model: "<synthetic>", usage })), null);
+    assert.equal(usageOf(JSON.stringify({ type: "result", usage })), null);
+    assert.equal(usageOf(line({ id: "m3", content: [] })), null);
   });
 });
