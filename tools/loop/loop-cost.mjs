@@ -64,8 +64,8 @@ export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => Strin
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
-/** The main session's own model: the one most of its turns ran on. */
-const modelOf = (row) => Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+/** The main session's own model; a v8 row names the one most of its turns ran on. */
+const modelOf = (row) => row.model ?? Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 

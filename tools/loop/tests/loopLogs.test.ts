@@ -22,7 +22,6 @@ import {
   ticketTally,
   pendingReparks,
   typicalMs,
-  usageSplit,
   windowCost,
   withSpawnPhase,
 } from "../loop-logs.mjs";
@@ -282,45 +281,6 @@ describe("sessionRow", () => {
     const line = JSON.stringify(withNewlines);
     assert.equal(line.split("\n").length, 1, "a row spanning two lines is two rows to the reader");
     assert.deepEqual(JSON.parse(line), withNewlines);
-  });
-});
-
-describe("usageSplit", () => {
-  const line = (over: object) =>
-    JSON.stringify({
-      type: "assistant",
-      request_id: "req_1",
-      parent_tool_use_id: null,
-      message: { model: "claude-opus-5", usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 100, cache_creation_input_tokens: 20 } },
-      ...over,
-    });
-
-  test("splits on parent_tool_use_id, which is the only thing that tells a subagent apart", () => {
-    const out = usageSplit(
-      [line({}), line({ request_id: "req_2", parent_tool_use_id: "toolu_1" })].join("\n"),
-    );
-    assert.equal(out.main.input, 10);
-    assert.equal(out.subagents.input, 10);
-    assert.equal(out.subagents.cacheRead, 100);
-  });
-
-  // The stream repeats one request's usage across its events. Counted as they arrive, a session's
-  // tokens read several times over.
-  test("dedupes on request_id, because the stream repeats one request's usage", () => {
-    const out = usageSplit([line({}), line({}), line({})].join("\n"));
-    assert.equal(out.main.input, 10);
-    assert.equal(out.main.output, 5);
-  });
-
-  test("a truncated or non-JSON line is skipped rather than thrown on", () => {
-    const out = usageSplit(["{not json", "", line({}), '{"type":"assistant"}'].join("\n"));
-    assert.equal(out.main.input, 10);
-  });
-
-  test("an empty log is zeros, not a throw", () => {
-    const out = usageSplit("");
-    assert.deepEqual(out.main, { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
-    assert.deepEqual(out.models, {});
   });
 });
 

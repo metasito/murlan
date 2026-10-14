@@ -66,7 +66,6 @@ import {
   streamLog,
   ticketTally,
   typicalMs,
-  usageSplit,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
@@ -720,16 +719,6 @@ export function closesTask({ event, status }) {
   return event === "updated" && status !== null && status !== "in_progress";
 }
 
-/** A log too large or too broken to read is not worth ending a finished ticket over. */
-function readUsageSplit(logPath) {
-  try {
-    return usageSplit(fs.readFileSync(logPath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-
 /**
  * Spawns one session and reports what it did.
  *
@@ -780,6 +769,7 @@ export function runTicket(
     result: null,
     declared: null,
     version: null,
+    model: null,
     lastFactAt: Date.now(),
     asleepMs: 0,
     lastFact: null,
@@ -882,6 +872,7 @@ export function runTicket(
     state.lastFact = fact.kind;
     if (fact.kind === "init") {
       state.version = fact.version;
+      state.model = fact.model;
       screen.set({ session: fact.sessionId });
       // `--model` passes an alias, which ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps.
       const family = familyOf(fact.model);
@@ -1015,6 +1006,7 @@ export function runTicket(
           phases: state.phases,
           stderr: state.stderr,
           version: state.version,
+          model: state.model,
           accountError: state.accountError,
           wrongModel: state.wrongModel,
           apiErrorCode: state.apiErrorCode,
@@ -1023,9 +1015,6 @@ export function runTicket(
           asleepMs: state.asleepMs,
           lastFact: state.lastFact,
           log: logPath,
-          // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
-          // file is complete and nothing is writing to it.
-          usage: readUsageSplit(logPath),
         }),
       );
     }

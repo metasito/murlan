@@ -78,58 +78,6 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
 }
 
 /**
- * How a session's tokens split between the session itself and the subagents it spawned.
- *
- * Read back off the finished stream log rather than accumulated as it arrives: the log is complete
- * and on disk by the time anyone asks, so this costs one pass over a file nobody is writing any
- * more, and the hot path stays a line in and a fact out.
- *
- * Two things the raw events do that have to be undone, both measured: per-event `usage` is
- * **duplicated** across the events of one request, so it is deduped on `request_id`; and the
- * subagent's own events are the ones carrying a non-null `parent_tool_use_id`, which is the only
- * thing that tells the two apart.
- *
- * Tokens, not dollars. A price table in here would be a second copy of Anthropic's, silently wrong
- * from the first time it moved.
- *
- * @param {string} text the stream log's contents
- */
-export function usageSplit(text) {
-  const empty = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
-  const split = { main: empty(), subagents: empty(), models: {}, mainModels: {} };
-  const seen = new Set();
-
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    let e;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (e.type !== "assistant") continue;
-    const id = e.request_id;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-
-    const u = e.message?.usage;
-    if (!u) continue;
-    const into = e.parent_tool_use_id ? split.subagents : split.main;
-    into.input += u.input_tokens ?? 0;
-    into.output += u.output_tokens ?? 0;
-    into.cacheRead += u.cache_read_input_tokens ?? 0;
-    into.cacheCreate += u.cache_creation_input_tokens ?? 0;
-
-    const model = e.message?.model;
-    if (model) {
-      split.models[model] = (split.models[model] ?? 0) + 1;
-      if (!e.parent_tool_use_id) split.mainModels[model] = (split.mainModels[model] ?? 0) + 1;
-    }
-  }
-  return split;
-}
-
-/**
  * `schema` is what lets a measurement span a change of meaning: a field that starts holding
  * something else gets a new number, and rows with no `schema` predate the first one.
  *
@@ -144,9 +92,11 @@ export function usageSplit(text) {
  * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session. 7 adds
  * `park_failed` and the `reparked` row, which closes it, `asleep_ms`, the part of `ms` the
  * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
- * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads.
+ * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads. 9 adds
+ * `model`, the one the session's init line named, and drops `usage`, a token split read back off
+ * the stream log.
  */
-export const SCHEMA = 8;
+export const SCHEMA = 9;
 
 export const STDERR_CAP = 2000;
 
@@ -168,15 +118,10 @@ export const errorLine = (error) =>
  * review deadlock and one written by a genuine blocker were four identical characters in the file,
  * so "why do tickets park" could not be asked of the record kept to answer it.
  *
- * `usage` splits deduped token counts between this session and the subagents it spawned, rather
- * than carrying a dollar figure for them. A price table in here would be a second copy of
- * Anthropic's, silently wrong from the first time it moved; tokens are a measurement, and the
- * reader multiplies.
- *
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, head?: string|null, runId?: string|null,
+ *   model?: string|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
@@ -195,7 +140,7 @@ export function sessionRow({
   ms,
   asleepMs = null,
   version,
-  usage = null,
+  model = null,
   head = null,
   runId = null,
   loopSha = null,
@@ -219,9 +164,9 @@ export function sessionRow({
     turns: result?.turns ?? 0,
     ms,
     asleep_ms: asleepMs,
+    model,
     models,
     subagents: result?.subagents ?? null,
-    usage,
     cache: result?.cache ?? { created: 0, read: 0 },
     merged: Boolean(merged),
     review_rounds: reviewRounds ?? null,
@@ -375,7 +320,7 @@ export function ledger(io = {}) {
         ms: run.ms,
         asleepMs: run.asleepMs ?? null,
         version: run.version,
-        usage: run.usage ?? null,
+        model: run.model ?? null,
         head,
         runId,
         loopSha,
