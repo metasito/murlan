@@ -27,7 +27,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { readLine, scopeEnds } from "./loop-stream.mjs";
+import { readLine, scopeEnds, usageOf } from "./loop-stream.mjs";
 import {
   act,
   bell,
@@ -71,7 +71,7 @@ import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { branchOf } from "./claim.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, estimateCost, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
@@ -768,6 +768,8 @@ export function runTicket(
     phaseAt: Date.now(),
     phases: {},
     result: null,
+    /** Each message's billed tokens by id, for a session that dies before it reports a cost. */
+    usage: new Map(),
     declared: null,
     version: null,
     model: null,
@@ -868,6 +870,8 @@ export function runTicket(
   createInterface({ input: child.stdout }).on("line", (line) => {
     sink.write(`${line}\n`);
     state.lastFactAt = Date.now();
+    const billed = usageOf(line);
+    if (billed) state.usage.set(billed.id, billed);
     const fact = readLine(line);
     if (!fact) return;
     state.lastFact = fact.kind;
@@ -1001,6 +1005,7 @@ export function runTicket(
           blocked: state.blocked,
           blockedUntil: state.blockedUntil,
           result: state.result,
+          estimatedCost: state.result || !state.usage.size ? null : estimateCost(state.usage.values()),
           declared: state.declared,
           size,
           phase: state.phase,

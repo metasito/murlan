@@ -133,6 +133,7 @@ export function sessionRow({
   pr,
   phases,
   result,
+  estimatedCost = null,
   merged,
   reviewRounds,
   startedAt,
@@ -159,7 +160,9 @@ export function sessionRow({
     park_reason: parkReason ?? null,
     pr: pr ?? null,
     phases,
-    cost: result?.cost ?? 0,
+    cost: result?.cost ?? estimatedCost ?? 0,
+    // Priced from the messages' usage because the session died before its `result`: not a bill.
+    cost_estimated: !result && estimatedCost != null,
     turns: result?.turns ?? 0,
     ms,
     asleep_ms: asleepMs,
@@ -313,6 +316,7 @@ export function ledger(io = {}) {
         pr,
         phases: run.phases ?? {},
         result: run.result,
+        estimatedCost: run.estimatedCost ?? null,
         merged,
         reviewRounds,
         // A park recorded hours after its session ended did not start at `now - ms`.
