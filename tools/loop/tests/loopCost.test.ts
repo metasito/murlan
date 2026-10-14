@@ -2,7 +2,8 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { familyOf, killedLine, lastStamp, report, shaTable, sinceWindow, summary, turnHeadroom, wanted } from "../loop-cost.mjs";
@@ -46,6 +47,33 @@ describe("wanted", () => {
   test("several arguments are the union of what each names", () => {
     assert.deepEqual(wanted(files, ["70", "1050"]), ["70.jsonl", "1050.jsonl"]);
     assert.deepEqual(wanted(files, ["70", "1050+"]), ["70.jsonl", "1050.jsonl"]);
+  });
+});
+
+describe("the CLI reads the ledger's rows alone", () => {
+  const cli = fileURLToPath(new URL("../loop-cost.mjs", import.meta.url));
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const gauge = (rows: object[], args: string[] = []) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "loop-cost-"));
+    try {
+      mkdirSync(path.join(dir, ".loop-logs"));
+      writeFileSync(path.join(dir, ".loop-logs", "tickets.jsonl"), rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+      return spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: "utf8" }).stdout;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const proc = (n: number, started: string, over: object = {}) => ({ schema: 9, n, outcome: "pushed", cost: n, turns: 9, phases: { C: 60 }, started, run_id: "r", ...over });
+
+  test("no stream log on disk is needed, and the last fourteen days are the default", () => {
+    const out = gauge([proc(2, ago(60)), proc(5, ago(20 * 24 * 60))]);
+    assert.match(out, /^loop-cost: 1 tickets, \$2\.00 spent$/m);
+  });
+
+  test("a killed session is timed to the next start", () => {
+    const start = (at: string, run_id: string) => ({ schema: 9, n: 3, outcome: "started", phase: "D", started: at, run_id });
+    const out = gauge([start(ago(60), "r1"), start(ago(50), "r2"), proc(3, ago(50), { run_id: "r2" })]);
+    assert.match(out, /^killed: 1 sessions left no row — #3 D 10m$/m);
   });
 });
 
