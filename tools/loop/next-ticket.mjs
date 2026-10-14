@@ -91,11 +91,13 @@ const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder"
  * evidence separating "a peer is working it right now" from "nobody is" — the one distinction that
  * must not be got wrong in the direction of taking a live ticket.
  *
- * @param {Issue} issue @param {{openPr: boolean, liveWorktree: boolean}} evidence
+ * An armed pull request is landing, not stranded: the supervisor visits it every pass.
+ *
+ * @param {Issue} issue @param {{openPr: boolean, liveWorktree: boolean, armed?: boolean}} evidence
  */
-export function stranded(issue, { openPr, liveWorktree }) {
+export function stranded(issue, { openPr, liveWorktree, armed = false }) {
   const ours = labelNames(issue).includes("in-progress") || routeOf(issue) === "implement";
-  return ours && openPr && !liveWorktree;
+  return ours && openPr && !liveWorktree && !armed;
 }
 
 /** The Launch milestone's open issues, whatever their labels: zero means launch-first ordering orders nothing. */
@@ -105,6 +107,7 @@ export function launchOpen(/** @type {Issue[]} */ openIssues) {
 
 /**
  * @param {Issue[]} openIssues
+ * @param {{openPr: (n: number) => any, armed?: (n: number) => boolean, liveWorktrees: () => Set<number>|null}} [io]
  * @returns {{ frontier: Issue[], triage: Issue[], wayfinder: Issue[], owner: Issue[], stranded: Issue[] }}
  */
 export function classify(openIssues, io = realClassifyIo()) {
@@ -118,7 +121,7 @@ export function classify(openIssues, io = realClassifyIo()) {
     if (!openPr) return { openPr, liveWorktree: false };
     if (live === undefined) live = io.liveWorktrees();
     // `live === null` is git unreadable: every ticket reads as live, which fails closed.
-    return { openPr, liveWorktree: !live || live.has(issue.number) };
+    return { openPr, liveWorktree: !live || live.has(issue.number), armed: io.armed?.(issue.number) ?? false };
   };
   for (const issue of openIssues) {
     const ls = labelNames(issue);
@@ -146,6 +149,7 @@ export function classify(openIssues, io = realClassifyIo()) {
 function realClassifyIo(run = gh) {
   return {
     openPr: (n) => claimedElsewhere(n, (k) => openPrsFor(k, run)),
+    armed: (n) => openPrsFor(n, run).some((pr) => pr.autoMergeRequest != null),
     liveWorktrees: () => {
       try {
         const live = new Set();
@@ -178,7 +182,7 @@ export function claimedElsewhere(number, list) {
 let openPrs = null;
 /** One listing per pick (`nextPick` clears it), matched on the head ref: `#42` in a body also matches PR #942. */
 function openPrsFor(number, run = gh) {
-  openPrs ??= JSON.parse(run(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]));
+  openPrs ??= JSON.parse(run(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName,autoMergeRequest"]));
   return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
 }
 

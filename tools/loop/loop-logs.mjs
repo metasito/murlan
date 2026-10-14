@@ -201,6 +201,26 @@ export function pendingReparks(rows) {
   });
 }
 
+const LANDING = new Set(["pushed", "armed", "retry"]);
+
+/**
+ * The pull requests the loop pushed and nothing has ended since: each ticket whose last row is one
+ * of `LANDING`, with the pull request its window named. The supervisor visits each once a pass.
+ *
+ * @param {{n: number, outcome: string, pr?: number|null}[]} rows
+ * @returns {{n: number, pr: number}[]}
+ */
+export function inFlight(rows) {
+  const at = new Map();
+  for (const r of rows) {
+    if (r.outcome === "started") continue;
+    const pr = r.pr ?? at.get(r.n)?.pr ?? null;
+    if (LANDING.has(r.outcome) && pr) at.set(r.n, { n: r.n, pr });
+    else at.delete(r.n);
+  }
+  return [...at.values()];
+}
+
 /** A spawn, written before the session can die with its supervisor and leave no row of its own. */
 export const startRow = ({ number, phase = null, runId = null, loopSha = null, at = new Date() }) => ({
   schema: SCHEMA,
@@ -408,7 +428,7 @@ export const parkReasonOf = (outcome, why, error = null) =>
  * @param {{n: number, outcome: string, own: number}} row @param {object[]} rows
  */
 export function windowCost({ n, outcome, own }, rows) {
-  // An `armed` row is the settle's note in passing, not the end of its window.
+  // An `armed` row is the landing's note in passing, not the end of its window.
   const last = rows.filter((r) => r.n === n && r.outcome !== "armed").at(-1);
   return own + (outcome !== "pushed" && last?.outcome === "pushed" ? (last.cost ?? 0) : 0);
 }
@@ -488,13 +508,22 @@ export function tallyOf(rows) {
     handoffWhy: /** @type {string|null} */ (null),
     lastRedHead: /** @type {string|null} */ (null),
     retries: 0,
-    armedFlake: /** @type {object|null} */ (null),
+    /** Rows since the last `retry` that are not an `armed` note: a fix round's own. */
+    sinceRed: 0,
+    armedHead: /** @type {string|null} */ (null),
+    armedFlake: /** @type {{runId: number, tests: string[], step: string|null, head: string|null}|null} */ (null),
   };
   let fixing = false;
   for (const r of rows) {
     const cost = r.cost ?? 0;
-    if (r.outcome === "armed") t.armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : null;
-    else if (r.outcome !== "pushed") t.sessions += 1;
+    if (r.outcome === "armed") {
+      // A head re-armed after its rerun keeps the rerun's note: the green it merges on is still that rerun's.
+      t.armedFlake = r.flake ? { ...r.flake, head: r.head ?? null } : t.armedFlake?.head === r.head ? t.armedFlake : null;
+      t.armedHead = r.head ?? null;
+    } else {
+      t.sinceRed = r.outcome === "retry" ? 0 : t.sinceRed + 1;
+      if (r.outcome !== "pushed") t.sessions += 1;
+    }
     t.spend += cost;
     t.ms += r.ms ?? 0;
     t.turns += r.turns ?? 0;

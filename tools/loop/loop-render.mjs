@@ -153,7 +153,7 @@ export const PHASES = [
   ["D", "review", "one independent reviewer reads the diff; LAND or HOLD"],
   ["E", "push", "pushes the reviewed head and readies the pull request"],
   ["F", "close", "ticks the Definition of done against the code"],
-  ["G", "merge", "waits for ci.yml on that head, then merges"],
+  ["G", "merge", "arms auto-merge on that head; GitHub merges it once ci.yml passes"],
 ];
 
 export const LAND = "G";

@@ -41,18 +41,27 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
     { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
     { name: "comment", file: "gh", args: ["issue", "comment", String(number), "--body-file", noteFile] },
     { name: "fetch", file: "git", args: ["fetch", "origin", "--prune", "--quiet"] },
-    {
-      name: "worktree",
-      file: "git",
-      // `-B` off the branch's own remote, never off main: a ticket whose supervisor died between CI
-      // rounds already has that branch, and cutting a fresh one discards what it pushed. A branch
-      // only this machine holds — a run parked before it pushed — is checked out as it stands.
-      args:
-        base === branch
-          ? ["worktree", "add", cwd, branch]
-          : ["worktree", "add", base === "origin/main" ? "-b" : "-B", branch, cwd, base],
-    },
+    { name: "worktree", file: "git", args: worktreeArgs(branch, cwd, base) },
   ];
+}
+
+/**
+ * `-B` off the branch's own remote, never off main: a ticket already pushed has that branch, and
+ * cutting a fresh one discards what it pushed. A branch only this machine holds — a run parked
+ * before it pushed — is checked out as it stands.
+ */
+const worktreeArgs = (branch, cwd, base) =>
+  base === branch ? ["worktree", "add", cwd, branch] : ["worktree", "add", base === "origin/main" ? "-b" : "-B", branch, cwd, base];
+
+/**
+ * A claimed ticket's worktree again, with no second claim comment: `ciRedRounds` and the fix round's
+ * CI-RED are read since the newest claim, so a re-claim would hide the red the round is for.
+ */
+export function rebuild(number, branch, run = (file, args) => execFileSync(file, args, { encoding: "utf8" })) {
+  run("git", ["fetch", "origin", "--prune", "--quiet"]);
+  const cwd = `${WORKTREE_DIR}/agent-${number}`;
+  run("git", worktreeArgs(branch, cwd, baseOf(branch, run)));
+  return cwd;
 }
 
 /**

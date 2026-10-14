@@ -70,7 +70,7 @@ export function ciProgress(jobs: JobRow[]): CiProgress {
 
 export interface Verdict {
   pass: boolean;
-  /** A live run has not answered yet, which is not a failure: `settle` waits rather than budgeting it. */
+  /** A live run has not answered yet, which is not a failure: the landing waits rather than counting it red. */
   waiting?: boolean;
   /** No run at all yet — waited for on its own budget, since one that never appears never will. */
   appearing?: boolean;

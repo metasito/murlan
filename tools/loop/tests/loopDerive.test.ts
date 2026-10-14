@@ -723,7 +723,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
     };
 
-    // `poll` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
+    // The landing reads the run, reruns it once and posts the CI-RED; until then the head is G's.
     test("a head no CI-RED names is still G, whatever its CI says, and no run is read", () => {
       const { s, asked } = derived(land());
       assert.deepEqual([s.ci.state, s.fix, s.phase], ["settling", false, "G"]);

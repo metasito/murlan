@@ -81,7 +81,7 @@ the same GitHub account.
   query of the open issues, read a page of 100 at a time. A bare issue number
   inspects that ticket without picking it. Precedence: implement → triage → wayfinder → handoff. Implement takes *stranded*
   tickets first (`in-progress` or `ready-for-agent`, an open pull request on its own `agent/<n>-`
-  branch, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
+  branch with auto-merge not armed, no worktree on this machine: a run whose supervisor died between CI rounds, or a park the
   owner sent back), then a `main-red` or `ci-flake` issue, then the oldest in the Launch
   milestone, then the oldest open `ready-for-agent` issue with no open
   native blocker and no open pull request on an `agent/<n>-` branch. It prints the route, the body,
