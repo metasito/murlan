@@ -438,7 +438,7 @@ const RULES = [
       }),
     message:
       "Waiting on a run inside one call — gh run watch, gh pr checks --watch, or a sleep loop over gh run view/list, gh pr checks|view|status or gh api …actions/runs|check-runs — outlasts the Bash timeout on a device run: the call is killed and returns nothing.\n" +
-      "Wait with `node tools/loop/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
+      "Wait with `node scripts/await-run.mjs <run-id> [<run-id>…]`. It returns before the default Bash timeout; exit 3 means run the same command again.",
   },
 ];
 
