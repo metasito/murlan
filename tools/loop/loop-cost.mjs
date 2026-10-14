@@ -60,6 +60,31 @@ export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
  */
 export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => String(model).includes(f)) ?? null;
 
+/**
+ * USD per million tokens by family, from https://platform.claude.com/docs/en/about-claude/pricing
+ * (read 2026-10-14): Opus 5, Sonnet 5, Haiku 4.5, cache writes at the 5-minute rate. A family's
+ * dearest current tier, so an estimate over-counts a session before it under-counts one.
+ */
+export const RATES = {
+  opus: { input: 5, cacheCreated: 6.25, cacheRead: 0.5, output: 25 },
+  sonnet: { input: 2, cacheCreated: 2.5, cacheRead: 0.2, output: 10 },
+  haiku: { input: 1, cacheCreated: 1.25, cacheRead: 0.1, output: 5 },
+};
+
+/**
+ * What a session cost when it never emitted a `result`, from its messages' own usage. A model no
+ * family names is priced as Opus.
+ * @param {Iterable<{model: string|null, input: number, output: number, cacheRead: number, cacheCreated: number}>} messages
+ */
+export function estimateCost(messages) {
+  let usd = 0;
+  for (const m of messages) {
+    const r = RATES[/** @type {keyof typeof RATES} */ (familyOf(m.model) ?? "opus")];
+    usd += (m.input * r.input + m.output * r.output + m.cacheRead * r.cacheRead + m.cacheCreated * r.cacheCreated) / 1e6;
+  }
+  return usd;
+}
+
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
 /** The main session's own model; a v8 row names the one most of its turns ran on. */

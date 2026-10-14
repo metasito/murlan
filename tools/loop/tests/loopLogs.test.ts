@@ -154,7 +154,7 @@ describe("sessionRow", () => {
     const killed = sessionRow(session({ result: null, estimatedCost: 3.5 }));
     assert.deepEqual([killed.cost, killed.cost_estimated], [3.5, true]);
     assert.equal(sessionRow(session()).cost_estimated, false);
-    assert.equal(ticketTally(953, [{ n: 953, outcome: "parked", cost: killed.cost }]).spend, 3.5);
+    assert.equal(ticketTally(953, [{ n: 953, outcome: "retry", cost: killed.cost }]).spend, 3.5);
   });
 
   test("carries the ticket, its size and its outcome", () => {

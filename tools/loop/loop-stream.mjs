@@ -120,6 +120,31 @@ function taskFact(event, e) {
   };
 }
 
+/**
+ * The tokens one `assistant` line billed, or null for any other line. A message streams as one line
+ * per content block, each repeating the message's usage, so callers key on `id`.
+ * @param {string} line
+ */
+export function usageOf(line) {
+  if (!line.includes('"usage"') || !line.includes('"assistant"')) return null;
+  let e;
+  try {
+    e = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const u = e?.type === "assistant" ? e.message?.usage : null;
+  if (!u || !e.message?.id || e.message.model === "<synthetic>") return null;
+  return {
+    id: String(e.message.id),
+    model: e.message.model ?? null,
+    input: u.input_tokens ?? 0,
+    output: u.output_tokens ?? 0,
+    cacheRead: u.cache_read_input_tokens ?? 0,
+    cacheCreated: u.cache_creation_input_tokens ?? 0,
+  };
+}
+
 export function readLine(line) {
   let e;
   try {

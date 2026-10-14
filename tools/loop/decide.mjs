@@ -349,7 +349,7 @@ function capped(action, input) {
   if (kind === "retry" && action.head && action.head === tally.lastRedHead) {
     return park(`the fix round pushed no commit — CI would answer ${action.why} again`, "E");
   }
-  const spend = tally.spend + (step === "session" ? (run?.result?.cost ?? 0) : 0);
+  const spend = tally.spend + (step === "session" ? (run?.result?.cost ?? run?.estimatedCost ?? 0) : 0);
   const sessions = tally.sessions + 1;
   if (spend >= (limits.USD_BY_SIZE[route.size ?? ""] ?? limits.USD_DEFAULT)) {
     return park(`$${spend.toFixed(2)} across ${sessions} processes — over this ticket's ceiling`, action.phase ?? "E");
