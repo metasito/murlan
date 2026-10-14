@@ -207,7 +207,7 @@ describe("runOnce", () => {
     );
     assert.deepEqual(handed, { ...flake, head: "h1" });
     const armed = rows.find((x) => x.outcome === "armed");
-    assert.deepEqual([armed?.flake, armed?.head, armed?.counts], [flake, "h2", false]);
+    assert.deepEqual([armed?.flake, armed?.head], [flake, "h2"]);
   });
 
   test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {

@@ -295,22 +295,29 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
-/** What a run's rows add up to: a ticket is a row that closed one, landed or parked. */
+/** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
+const ENDS_TICKET = new Set(["landed", "closed", "parked"]);
+
+/** What a run's rows add up to. */
 export function totalsOf(rows) {
   const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
-  const landed = rows.filter((r) => r.outcome === "landed" || r.outcome === "closed").length;
-  const parked = rows.filter((r) => r.outcome === "parked").length;
-  return { tickets: landed + parked, landed, parked, cost: sum("cost"), ms: sum("ms") };
+  const ended = rows.filter((r) => ENDS_TICKET.has(r.outcome));
+  const parked = ended.filter((r) => r.outcome === "parked").length;
+  return { tickets: ended.length, landed: ended.length - parked, parked, cost: sum("cost"), ms: sum("ms") };
+}
+
+/** What a row's report line shows: a landing the ticket's whole bill, a settle the push it closes. */
+function billOf(entry, prior) {
+  if (entry.outcome !== "landed" && entry.outcome !== "closed") {
+    return { ms: entry.ms, turns: entry.turns, cost: windowCost({ n: entry.n, outcome: entry.outcome, own: entry.cost }, prior) };
+  }
+  const whole = ticketTally(entry.n, prior);
+  return { ms: whole.ms + entry.ms, turns: whole.turns + entry.turns, cost: whole.spend + entry.cost };
 }
 
 /**
- * The run's record, and its running totals, with one owner.
- *
- * Totals used to be added up in three places — the row writer, the refusal branch and the
- * retry-park branch — and a `counted` flag existed to patch the double count the third one caused.
- * Here every session that ends calls `record` exactly once, the totals are whatever the rows say,
- * and a session that spent money without finishing a ticket (a usage refusal) is a row like any
- * other rather than an adjustment nothing can audit.
+ * The run's record, and its running totals, with one owner: every session that ends calls `record`
+ * exactly once, and the totals are whatever the rows say.
  *
  * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function,
  *   loopSha?: string|null}} [io]
@@ -336,30 +343,60 @@ export function ledger(io = {}) {
     },
     rows,
     tickets,
-    /**
-     * @param {object} session what `sessionRow` needs
-     * @param {{runId: string, report: object, counts?: boolean}} into what `reportRow` renders,
-     *   and whether this session closes a ticket — a retry round is a session, not a ticket.
-     */
     loopSha,
     /** @param {number} number @param {string|null} phase @param {string} runId */
     start(number, phase, runId) {
       mkdir();
       append(ledgerPath(), `${JSON.stringify(startRow({ number, phase, runId, loopSha }))}\n`);
     },
-    record(session, { runId, report, counts = true }) {
-      const entry = sessionRow({ ...session, runId, loopSha });
+    /**
+     * @param {{number: number, outcome: string, why?: string|null, run: object, title?: string|null,
+     *   size?: string|null, reviewRounds?: number|null, totalHolds?: number|null, pr?: number|null,
+     *   merged?: boolean, head?: string|null, handoff?: object|null, parkFailed?: string[]|null,
+     *   flake?: object|null}} session
+     * @param {string} runId
+     */
+    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, totalHolds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null, flake = null }, runId) {
+      const prior = exists(ledgerPath()) ? parsed(read(ledgerPath())) : [];
+      const error = errorOf(run);
+      const entry = sessionRow({
+        number,
+        size,
+        outcome,
+        parkReason: parkReasonOf(outcome, why, error),
+        pr,
+        phases: run.phases ?? {},
+        result: run.result,
+        merged,
+        reviewRounds,
+        totalHolds,
+        // A park recorded hours after its session ended did not start at `now - ms`.
+        startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
+        ms: run.ms,
+        asleepMs: run.asleepMs ?? null,
+        version: run.version,
+        usage: run.usage ?? null,
+        head,
+        runId,
+        loopSha,
+        handoff,
+        error,
+        parkFailed,
+        flake,
+      });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
+      const bill = billOf(entry, prior);
+      const report = { number, title: title ?? `ticket #${number}`, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined };
       const file = reportPath(runId);
       const sha = loopSha ? ` · loop ${loopSha.slice(0, 7)}` : "";
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
       append(file, `${reportRow(report, PLAIN())}\n`);
 
-      if (counts) tickets.push(report);
+      if (ENDS_TICKET.has(outcome)) tickets.push(report);
       rows.push(entry);
-      return entry;
+      return { entry, bill };
     },
     /** The closing total under the night's rows, and the recap above them, under the title. */
     close(runId, line, recap = "") {
@@ -374,20 +411,19 @@ export function ledger(io = {}) {
   };
 }
 
-/** Session rows only, unless `starts` asks for the spawns between them too. @param {string} [file] */
-export function readLedger(file = ledgerPath(), { starts = false } = {}) {
-  if (!fsNode.existsSync(file)) return [];
-  const rows = [];
-  for (const line of fsNode.readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
+const parsed = (text, starts = false) =>
+  text.split("\n").flatMap((line) => {
     try {
       const row = JSON.parse(line);
-      if (starts || row.outcome !== "started") rows.push(row);
+      return starts || row.outcome !== "started" ? [row] : [];
     } catch {
-      continue;
+      return [];
     }
-  }
-  return rows;
+  });
+
+/** Session rows only, unless `starts` asks for the spawns between them too. @param {string} [file] */
+export function readLedger(file = ledgerPath(), { starts = false } = {}) {
+  return fsNode.existsSync(file) ? parsed(fsNode.readFileSync(file, "utf8"), starts) : [];
 }
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
