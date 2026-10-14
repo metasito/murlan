@@ -85,6 +85,8 @@ const ROWS: Row[] = [
   ["runOnce: a session that did not hand off asks for its pull request", session({ run: finished(), pushed: undefined }), { kind: "ask", fact: "pushed" }],
   ["runOnce: an API failure is held before any pull request is asked for", session({ run: api(529), pushed: undefined }), { kind: "hold", wait: "api" }],
   ["runOnce: a finished session with no pull request asks after the issue", session({ run: finished(), issue: undefined }), { kind: "ask", fact: "issue" }],
+  ["a session on the wrong model parks with the reason", session({ run: run({ wrongModel: "the session ran on claude-sonnet-5, not opus" }) }),
+    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", loop: { ...fresh, failures: 1 } }],
   ["a stood-down session is never asked about the issue", session({ run: finished({ stoodDown: true, why: "moot" }), issue: undefined }), { kind: "park", why: "moot" }],
 
   // runOnce, after the session

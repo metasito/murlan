@@ -632,6 +632,19 @@ describe("runOnce", () => {
     assert.equal(await next(ledger, "D"), "round 1 HOLD: model the Modal root", "a session's own handoff why is the next process's brief");
   });
 
+  test("a session on the wrong model parks with the reason", async () => {
+    const parked: string[] = [];
+    const why = "the session started on claude-opus-5, but phase E runs on sonnet";
+    const r = await runOnce(
+      io({
+        spawn: async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: null, declared: null, wrongModel: why }),
+        park: (_n: number, c: { why: string }) => parked.push(c.why),
+      }),
+    );
+    assert.equal(r.outcome, "parked");
+    assert.deepEqual(parked, [why]);
+  });
+
   test("an expired login stops the run, and does not park the ticket it met", async () => {
     const parked: string[] = [];
     const ledger: any[] = [];

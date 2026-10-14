@@ -819,13 +819,27 @@ describe("runTicket", () => {
     assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
   });
 
-  // `--model`, `--settings` and `--setting-sources project` pin both before the session starts.
-  test("the init line's model and plugins are never a reason to kill the session", async () => {
-    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: [{ source: "ponytail@ponytail" }] });
+  // `--settings` and `--setting-sources project` pin the plugins before the session starts.
+  test("a plugin on the init line is never a reason to kill the session", async () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5", plugins: [{ source: "ponytail@ponytail" }] });
     const session = spawned([init, RESULT]);
     const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual(session.seen.killed, []);
     assert.equal(run.status, 0);
+  });
+
+  // `--model` passes an alias, and ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps it.
+  test("an init model of another family than planned kills the session and says why; one of no known family does not", async () => {
+    const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
+    const wrong = spawned([init("claude-opus-5"), RESULT]);
+    const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
+    assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
+    for (const model of ["claude-sonnet-5", "some-future-model"]) {
+      const fine = spawned([init(model), RESULT]);
+      const ok = await runTicket(fine.spawnFn as never, opts({ at: "E" }));
+      assert.deepEqual([fine.seen.killed, ok.wrongModel], [[], null], model);
+    }
   });
 
   test("a fix round is named on the board with its round", async () => {
