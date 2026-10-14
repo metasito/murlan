@@ -398,6 +398,8 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "red: the session is counted once, and the tally reads as before": ["queueLoopMain.test.ts", "tally"],
   "owner: the session is counted once, and the tally reads as before": ["queueLoopMain.test.ts", "tally"],
   "the recorded time carries the land, not just the session": ["queueLoopMain.test.ts", "io"],
+  "a row names the route's title and size and the review rounds read after the session, with no tracker read of its own": ["queueLoopMain.test.ts", "io"],
+  "nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name": ["queueLoopMain.test.ts", "picker"],
   "a retry resets handoffsThisRound and the handed phase": ["queueLoopMain.test.ts", "tally"],
   "overSpend, overHandoffs, the no-commit park and a thrown iteration each write exactly one parked row": ["queueLoopMain.test.ts", "io"],
   "a throw during a resumed run parks with standing().cwd": ["queueLoopMain.test.ts", "io"],
