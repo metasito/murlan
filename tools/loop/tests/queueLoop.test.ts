@@ -48,6 +48,7 @@ const stubIo = () => ({
   teardown: () => {},
   bell: () => {},
   record: () => {},
+  facts: () => ({ title: "t", size: null, reviewRounds: null }),
   tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
   log: () => {},
   buildPassed: () => true,

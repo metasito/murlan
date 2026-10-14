@@ -1748,7 +1748,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const derived = io.standing();
-  about.reviewRounds = derived?.reviewRounds ?? about.reviewRounds;
+  about.reviewRounds = derived?.ticket === n && derived.reviewRounds != null ? derived.reviewRounds : io.facts(n).reviewRounds;
   const after = afterSession(run, derived);
   // Read once the session has exited: a park is never a kill.
   const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
@@ -1873,6 +1873,7 @@ function realIo(book, screen) {
         say: (row) => screen.say([stepRow(row, screen.theme), ...(row.note?.trim() ? [note(row.note, screen.theme)] : [])].join("\n")),
       }),
     parity: () => parityRed(),
+    facts: ticketFacts,
     issueState: (n) => {
       const f = ticketFacts(n);
       return { state: f.state ?? null, stateReason: f.stateReason ?? null };
@@ -2139,6 +2140,10 @@ export async function main({
     const q = io.queue?.();
     return q ? ` · queue ${q.implement} to implement, ${q.triage} to triage` : "";
   };
+  const record = (row) => {
+    const { title, size } = io.facts(row.number);
+    io.record({ title, size, ...row });
+  };
 
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
@@ -2154,7 +2159,7 @@ export async function main({
         continue;
       }
       const why = [moot ?? "the park reached the tracker", ...(failed.length ? [`still owed: ${failed.join(", ")}`] : [])].join(" — ");
-      io.record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, parkFailed: failed.length ? failed : null });
+      record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, parkFailed: failed.length ? failed : null });
       io.log(`#${n}: ${why}`, "park");
     }
 
@@ -2170,7 +2175,7 @@ export async function main({
       const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, limits: LIMITS, now: Date.now() });
       if (threw.kind === "park") {
         try {
-          parkAndRecord(io, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
+          parkAndRecord({ ...io, record }, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
         }

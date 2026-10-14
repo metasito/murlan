@@ -85,6 +85,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   publish: () => {},
   announce: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
+  facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
   ledgerRows: () => ledger,
   repark: () => ({ failed: [], why: null }),
   ...over,
