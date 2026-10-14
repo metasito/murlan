@@ -1,6 +1,5 @@
 /**
- * Every subagent brief the loop dispatches, so a session passes it on rather than rewriting it:
- * #1103's builder narrowed "callers" to "file, function or npm script" and missed an env var.
+ * Every subagent brief the loop dispatches, so a session passes it on rather than rewriting it.
  * `guard-agent-model.mjs` denies a loop dispatch that names a kind here without this exact text.
  *
  * Usage: node tools/loop/brief.mjs <kind> <n> <worktree> [base]

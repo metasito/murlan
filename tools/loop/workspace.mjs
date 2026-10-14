@@ -22,8 +22,7 @@ const ghCli = (args, opts = {}) =>
 const firstLine = (err) => String(err?.stderr || err?.message || err).trim().split("\n")[0];
 
 /**
- * Parses `git worktree list --porcelain` into one entry per worktree, in the order git printed
- * them - the first is always the primary worktree, never a linked one.
+ * In git's order: the first is always the primary worktree, never a linked one.
  * @returns {{ path: string, branch: string | null, locked: boolean }[]}
  */
 export function parseWorktreeList(porcelain) {
@@ -59,12 +58,10 @@ export function reparsePointNames(entries) {
 /**
  * Removes the links at a worktree's top level, and nothing they point at.
  *
- * `git worktree remove` deletes the directory tree, and on Git for Windows before 2.54.0 it walks
- * **into** a junction rather than unlinking it: this repo's parallel-worktree convention junctions
- * `node_modules` at the real install, and one such remove emptied `node_modules/.bin` of all 177
- * shims before failing with "Invalid argument". From 2.54.0 it leaves the junction standing in the
- * unregistered directory instead. `rmdir` on a junction detaches it and leaves the target alone,
- * so doing that first is what makes the remove that follows safe and complete.
+ * `git worktree remove` on Git for Windows before 2.54.0 walks **into** a junction rather than
+ * unlinking it, and this repo junctions `node_modules` at the real install; from 2.54.0 it leaves
+ * the junction standing in the unregistered directory instead. `rmdir` on a junction detaches it
+ * and leaves the target alone, so doing that first makes the remove that follows safe and complete.
  *
  * Failures are swallowed: a link that cannot be detached is a reason to let the caller's remove
  * fail on its own, not to abort the whole sweep.
@@ -111,7 +108,7 @@ export function listWorktreeDirNames(worktreesDir) {
 /**
  * `.worktrees/` directory names `git worktree list` registers no path for: `git worktree remove`
  * unregisters before it deletes, and on Windows the delete can lose to a file handle a just-exited
- * process still holds, leaving the registration gone and the directory behind (#377).
+ * process still holds, leaving the registration gone and the directory behind.
  */
 export function findOrphanedWorktreeDirs(dirNames, registeredPaths) {
   const key = (name) => (process.platform === "win32" ? name.toLowerCase() : name);
@@ -143,7 +140,7 @@ const isAtOrUnder = (child, parent) => {
   return c === p || c.startsWith(p + path.sep);
 };
 
-/** Includes untracked files - the near-miss #292 was filed over. */
+/** Includes untracked files. */
 const dirty = (git, worktreePath) => git(["-C", worktreePath, "status", "--porcelain"]).trim().length > 0;
 
 /**
@@ -253,7 +250,7 @@ function judgeWorktree(entry, ticket, { git, gh }) {
  * Removes the loop's leftover ticket worktrees under `.worktrees/agent-<n>` (`judgeWorktree` says
  * which). Never forced; the branch survives every removal, and `claim.mjs` rebuilds from it.
  *
- * Then removes the directories under `.worktrees/` git has no registration for (#377). There is
+ * Then removes the directories under `.worktrees/` git has no registration for. There is
  * no branch or issue left to check for one of these, so non-empty is not a reason to keep it.
  *
  * @returns {Result}
@@ -472,7 +469,6 @@ function installedVersion(root, name) {
   }
 }
 
-/** Reads `root`'s own `package.json`/`package-lock.json`/`node_modules` and compares them. */
 export function checkLockDrift(root) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const packageLock = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));

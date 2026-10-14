@@ -1,16 +1,9 @@
 /**
  * The loop's gate: refuses to push work that was not built, or not reviewed.
  *
- * It asks git and the tracker directly, so there is nothing to keep in sync and nothing that can
- * be stale. Four things must hold, and each is read rather than believed:
- *
- * - you are on an `agent/<n>-...` branch, which is what says the work belongs to ticket n;
- * - the branch has commits and a non-empty diff, so something was actually built;
- * - the issue carries `VERDICT: LAND <sha>` for **this** head, so the review read this code.
- *
- * That last binding is the whole point. The review names the commit it read, so committing again
- * after a review invalidates it automatically — there is no way to land a diff nobody looked at,
- * and no bookkeeping to forget.
+ * It asks git and the tracker directly, so nothing can be stale. The review names the commit it
+ * read, so committing again after a review invalidates it: there is no way to land a diff nobody
+ * looked at.
  *
  * Run it from anywhere in the repo. It finds the run's worktree itself, because the loop works in
  * `.worktrees/agent-<n>` and rule 40 keeps the shell out of it.
@@ -95,7 +88,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
  * between a bound a test can fail and a sentence.
  *
  * The full review, then at most two reviews of a fix. A third review that still blocks means each fix
- * is making the next defect (#1424), which a reviewer owes the owner, not another round.
+ * is making the next defect, which a reviewer owes the owner, not another round.
  */
 export const MAX_REVIEW_ROUNDS = 3;
 
@@ -119,7 +112,6 @@ export function roundVerdict({ reviewRounds, fixHolds = 0 }) {
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }
 
-/** How many update-branch merges `landable` walks back through before it gives up. */
 const MERGE_WALK = 8;
 
 /**
