@@ -21,7 +21,6 @@ import {
 export const STOP_FILE = ".loop-stop";
 export const PARK_FILE = ".loop-park";
 
-/** Whether the owner asked, from the board, to park this ticket once its session has exited. */
 export const parkAsked = (number, read = (f) => fs.readFileSync(f, "utf8")) => {
   if (number == null) return false;
   try {
@@ -46,9 +45,8 @@ const BEL = String.fromCharCode(7);
 const CHROME = 8;
 
 /**
- * How much of the stream the `e` key can reach back through. A phase can run for hours and both
- * `call()` and `said()` push on every turn, while `stream()` only ever reads the last screenful —
- * so without a ceiling this grows all night and nothing past the first screen is reachable anyway.
+ * How much of the stream the `e` key can reach back through: without a ceiling the feed grows all
+ * night, and `stream()` only ever reads the last screenful.
  */
 const FEED = 200;
 
@@ -56,7 +54,7 @@ const FEED = 200;
  * The only thing in the loop that knows a cursor or a keyboard exists.
  *
  * The board is a block, not a line, and a block is redrawn by counting rows back up. Three rules
- * hold that together, and each was a bug before it was a rule.
+ * hold that together.
  *
  * **Erase before the text, never after.** `[2K` clears the whole row the cursor sits on, so a row
  * written and then erased is a row that was never on screen.
@@ -80,10 +78,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   // mid-run, so this is re-read on resize rather than settled at start-up.
   let live = Boolean(out.isTTY) && !capabilities(out).tight;
   let t = theme(capabilities(out));
-  // A window resized mid-run leaves a board wider than the terminal, and every row of it then
-  // wraps — which puts the next carriage return on the wrong line and takes the redraw with it for
-  // the rest of the night. Rebuilt only when the width actually moves, since the block is
-  // reassembled eight times a second and the detection is not free.
+  // Rebuilt only when the width actually moves: the block is reassembled eight times a second and
+  // the detection is not free.
   const resized = () => {
     const caps = capabilities(out);
     const drawable = Boolean(out.isTTY) && !caps.tight;
@@ -231,8 +227,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   /**
    * One chunk from the keyboard, which is not one keystroke: raw flowing mode delivers whatever
    * arrived in one read, so an autorepeat, two quick presses or a paste come through as `"es"` or
-   * `"\u0003x"`. Compared whole, none of those matched anything — including the interrupt, which
-   * raw mode has already taken off the OS's hands.
+   * `"\u0003x"`, and are read a character at a time — the interrupt included, which raw mode has
+   * already taken off the OS's hands.
    */
   const keys = (chunk) => {
     const text = String(chunk);
@@ -337,9 +333,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   // `api.close()`, not `this.close()`: the object is destructured by its callers and `this` does
   // not survive that.
   const api = {
-    // The painter this screen is drawing with, so a caller rendering a permanent line paints it
-    // for the same terminal the live block is drawn for — one detection, not one per call site.
-    // A getter, because a resize replaces it and a snapshot taken at start-up would outlive it.
+    // A getter, because a resize replaces the painter and a snapshot taken at start-up would outlive it.
     get theme() {
       return t;
     },
@@ -427,7 +421,6 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
       remember({ kind: "call", name, what });
       draw();
     },
-    /** The session's own account of what it is doing — the only channel that says why. */
     said(text) {
       if (!open || !text) return;
       open.said = text;
