@@ -3,7 +3,8 @@ import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -22,7 +23,6 @@ import {
   runTicket,
   park,
   repark,
-  takeStopFile,
   watchBuild,
   UNCOMMITTED_SHARE,
   holdFor,
@@ -1231,21 +1231,6 @@ describe("park", () => {
   });
 });
 
-describe("takeStopFile", () => {
-  test("absent means carry on", () => {
-    assert.equal(takeStopFile({ existsSync: () => false }, ".loop-stop"), false);
-  });
-
-  // holdFor honoured it without consuming it and takeStopFile consumed it, so a stop during a wait
-  // silently killed the next run too. A scheduled restart must see it as well.
-  test("present means drain, and the file survives being read", () => {
-    let removed = false;
-    const fs = { existsSync: () => true, rmSync: () => { removed = true; } };
-    assert.equal(takeStopFile(fs, ".loop-stop"), true);
-    assert.equal(removed, false);
-  });
-});
-
 describe("outcomeOf", () => {
   const open = { number: 984, state: "OPEN", head: "agent/42-x" };
   const fine = { why: null, hard: false };
@@ -1517,6 +1502,21 @@ describe("holdFor", () => {
 
   test("otherwise it waits the time out", async () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
+  });
+
+  // A stop consumed on reading silently killed the next run too, and a scheduled restart must see it.
+  test(".loop-stop on disk ends the wait and is still there afterwards", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "loop-stop-"));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      writeFileSync(".loop-stop", "");
+      assert.equal(await holdFor(60_000, undefined, 5), "stopped");
+      assert.equal(existsSync(".loop-stop"), true);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // The hold is the one stretch of the run that prints nothing, and for up to twelve hours. A

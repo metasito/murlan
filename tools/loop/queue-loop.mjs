@@ -476,12 +476,6 @@ const sh = (file, args, opts) => {
 /** One bad ticket is a ticket. Three in a row is the loop or the machine, and a night proving it. */
 export const BREAKER = 3;
 
-
-/** `.loop-stop` drains the loop. Left on disk, so a scheduled restart sees it too. */
-export function takeStopFile(fs, file) {
-  return fs.existsSync(file);
-}
-
 /**
  * How often a long hold says it is still there. The hold is the one stretch of the run that
  * prints nothing, and a silent terminal reads exactly like a dead one — which is the complaint
@@ -2015,7 +2009,8 @@ function realIo(book, screen) {
   let picked = null;
   const started = loopSha();
   return {
-    stopFile: () => takeStopFile(fs, STOP_FILE),
+    // Read, never removed: a scheduled restart must see the stop too.
+    stopFile: () => fs.existsSync(STOP_FILE),
     loopMoved: () => loopMoved(started),
     snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),

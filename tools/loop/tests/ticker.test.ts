@@ -647,8 +647,8 @@ describe("ticker", () => {
     });
 
     // The bar reported what it had been asked for rather than what happened, so a press whose
-    // write or removal failed left it promising something the loop would not do. `takeStopFile`
-    // is `existsSync`, so the disk is the only thing that decides, and the bar has to say the same.
+    // write or removal failed left it promising something the loop would not do. The loop
+    // reads the stop with `existsSync`, so the disk is the only thing that decides, and the bar has to say the same.
     test("s reports the disk, not the press", (t) => {
       t.mock.timers.enable({ apis: ["setInterval", "Date"] });
       const out = fake();
