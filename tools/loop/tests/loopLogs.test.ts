@@ -635,6 +635,7 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      undeclared: 0,
       armedFlake: null,
     });
   });

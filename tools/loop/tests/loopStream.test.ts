@@ -102,7 +102,6 @@ describe("readLine", () => {
       kind: "assistant",
       id: "msg_1",
       letter: null,
-      declared: null,
       text: "",
       // Whole, not just the command: what names a call best differs by tool, and choosing between
       // a path, a pattern and a description is the renderer's job rather than this one's.
@@ -327,14 +326,11 @@ describe("a PHASE line from the session", () => {
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a
 // process that has already exited, and phase F deletes five of them. This one is a statement.
 describe("the session's closing declaration", () => {
-  const said = (text: string) =>
-    readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } })) as any;
+  const ended = (structured_output: unknown) =>
+    readLine(JSON.stringify({ type: "result", subtype: "success", total_cost_usd: 1, num_turns: 3, structured_output })) as any;
 
   test("carries the ticket, the branch, the pull request and the phase", () => {
-    const fact = said(
-      'LOOP-RESULT {"ticket":891,"branch":"agent/891-x","pr":1003,"phase":"F","stoodDown":false}',
-    );
-    assert.deepEqual(fact.declared, {
+    assert.deepEqual(ended({ ticket: 891, branch: "agent/891-x", pr: 1003, phase: "F", handoff: null, stoodDown: false }).declared, {
       ticket: 891,
       branch: "agent/891-x",
       pr: 1003,
@@ -346,61 +342,30 @@ describe("the session's closing declaration", () => {
   });
 
   test("a stand-down says why, which is what releases the claim", () => {
-    const fact = said('LOOP-RESULT {"ticket":42,"stoodDown":true,"why":"an older claim won the race"}');
-    assert.equal(fact.declared.stoodDown, true);
-    assert.match(fact.declared.why, /older claim/);
-    assert.equal(fact.declared.pr, null);
-  });
-
-  test("it rides in the same message as the teardown command", () => {
-    const fact = readLine(
-      JSON.stringify({
-        type: "assistant",
-        message: {
-          content: [
-            { type: "text", text: 'LOOP-RESULT {"ticket":7,"pr":9}' },
-            { type: "tool_use", id: "t1", name: "Bash", input: { command: "git worktree list" } },
-          ],
-        },
-      }),
-    ) as any;
-    assert.equal(fact.declared.pr, 9);
-    assert.equal(fact.calls.length, 1);
-  });
-
-  // Half a line, a truncated write, a model that decided to pretty-print it. The supervisor falls
-  // back to deriving; what it must not do is take a broken declaration as a good one.
-  test("a declaration that is not JSON is no declaration, not a throw", () => {
-    assert.equal(said("LOOP-RESULT {ticket: 891"), null);
-  });
-
-  test("prose about the marker is not a declaration", () => {
-    assert.equal(said("I will now emit LOOP-RESULT {\"ticket\":1} when done"), null);
+    const said = ended({ ticket: 42, handoff: null, stoodDown: true, why: "an older claim won the race" }).declared;
+    assert.equal(said.stoodDown, true);
+    assert.match(said.why, /older claim/);
+    assert.equal(said.pr, null);
   });
 
   test("a declaration carries the phase it hands off at", () => {
-    assert.equal(said('LOOP-RESULT {"ticket":7,"phase":"C","handoff":"D"}').declared.handoff, "D");
-    const told = said('LOOP-RESULT {"ticket":7,"phase":"D","handoff":"D","why":"round 1 HOLD: model the Modal root"}').declared;
+    const told = ended({ ticket: 7, phase: "D", handoff: "D", stoodDown: false, why: "round 1 HOLD: model the Modal root" }).declared;
     assert.deepEqual([told.handoff, told.why], ["D", "round 1 HOLD: model the Modal root"]);
   });
 
   test("a settle declaration keeps its phase", () => {
-    const fact = said('LOOP-RESULT {"ticket":7,"phase":"G"}');
-    assert.equal(fact.declared.phase, "G");
-    assert.equal(fact.declared.handoff, null);
+    const said = ended({ ticket: 7, phase: "G", handoff: null, stoodDown: false }).declared;
+    assert.deepEqual([said.phase, said.handoff], ["G", null]);
   });
 
-  test("a handoff that is not a phase letter is dropped", () => {
-    assert.equal(said('LOOP-RESULT {"ticket":7,"handoff":"done"}').declared.handoff, null);
-  });
-
-  const ended = (structured_output: unknown) =>
-    readLine(JSON.stringify({ type: "result", subtype: "success", total_cost_usd: 1, num_turns: 3, structured_output })) as any;
-
-  test("a result's structured_output is the same declaration the line makes", () => {
-    const line = said('LOOP-RESULT {"ticket":7,"branch":"agent/7-x","phase":"C","handoff":"D","why":"built"}').declared;
-    const out = ended({ ticket: 7, branch: "agent/7-x", phase: "C", handoff: "D", stoodDown: false, why: "built" }).declared;
-    assert.deepEqual(out, line);
+  test("an assistant message's text is never a declaration", () => {
+    const fact = readLine(
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "text", text: '{"ticket":7,"pr":9}' }, { type: "tool_use", id: "t1", name: "Bash", input: { command: "git status" } }] },
+      }),
+    ) as any;
+    assert.equal(fact.declared, undefined);
   });
 
   test("a result's structured_output is the whole declaration: a field it leaves out or cannot read is null", () => {
@@ -416,7 +381,7 @@ describe("the session's closing declaration", () => {
   });
 
   test("a result without an object for structured_output, or with nothing in it, declares nothing", () => {
-    for (const out of [undefined, null, "LOOP-RESULT {}", 7, [], {}]) assert.equal(ended(out).declared, null, JSON.stringify(out));
+    for (const out of [undefined, null, "{}", 7, [], {}]) assert.equal(ended(out).declared, null, JSON.stringify(out));
   });
 });
 

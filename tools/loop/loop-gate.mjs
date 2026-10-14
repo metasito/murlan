@@ -215,7 +215,7 @@ function reviewRound() {
   console.error(
     `loop-gate: #${s.ticket} — ${round.why}\n\n` +
       "  Do not review again and do not land. Say on the issue which Blocking finding is still open,\n" +
-      '  then stand down: LOOP-RESULT {"ticket":<n>,"phase":"D","stoodDown":true,"why":"<the finding>"}',
+      '  then stand down: declare {"ticket":<n>,"phase":"D","handoff":null,"stoodDown":true,"why":"<the finding>"}',
   );
   return 1;
 }

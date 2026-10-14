@@ -25,10 +25,10 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
   ```
 
-  Then declare, as text:
+  Then declare:
 
   ```
-  LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}
+  {"ticket":<n>,"handoff":null,"stoodDown":true,"why":"<one sentence>"}
   ```
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds with nothing committed, commit what works
   and narrow the slice.
@@ -52,7 +52,7 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
    - **It names G**: the head is pushed and CI is the supervisor's. Declare and exit, touching
      nothing:
      ```
-     LOOP-RESULT {"ticket":<n>,"phase":"G"}
+     {"ticket":<n>,"phase":"G","handoff":null,"stoodDown":false}
      ```
    - **Silent**: no live worktree. Go on to step 2.
 2. **Pick.**
@@ -159,7 +159,7 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 Only then declare handoff D and exit. The supervisor re-gates it.
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what-is-left>"}
+{"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","stoodDown":false,"why":"<what-is-left>"}
 ```
 
 ## D — Review
@@ -201,7 +201,7 @@ A failure only a local run showed, which neither the review nor CI named, is rul
 and named in `FIX-NOTES`. Then hand off:
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}
+{"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","stoodDown":false,"why":"<what-is-left>"}
 ```
 
 After a `LAND`, continue to E and F in this process.
@@ -218,7 +218,7 @@ Phase D's LAND continues here; a process starts at E only to resume.
    headline and any `NOT run` suites in the PR body. **If it is red, hand off to C**. Never push a
    red check or re-run it hoping for a different answer.
    ```
-   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what-is-red>"}
+   {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","stoodDown":false,"why":"<what-is-red>"}
    ```
 3. Push and write the PR body: `git push -u origin HEAD:agent/<n>-<slug>`, then
    `gh pr edit <pr> --body-file <file>`. The supervisor opened the pull request as a draft when
@@ -240,15 +240,14 @@ CI and the merge are `tools/loop/queue-loop.mjs`'s; a red CI run comes back as a
 3. **Leave your worktree standing**; the supervisor removes it once the ticket ends.
    `git -C .worktrees/agent-<n> status --short` should print nothing; commit and push what it
    names, or explain it on the issue.
-4. **Say what you did, on one line, as the last thing you emit.**
+4. **Declare what you did.**
    ```
-   LOOP-RESULT {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","stoodDown":false}
+   {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","handoff":null,"stoodDown":false}
    ```
-   Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
-   none. Verification-only work posts its DOD-CHECK, runs `gh issue close <n> --reason completed`
-   and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
+   Omit `pr` only if you pushed none. Verification-only work posts its DOD-CHECK, runs
+   `gh issue close <n> --reason completed` and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
    you gave the ticket up, with `"why"` in one sentence. Phase F never sets `handoff`. Exiting
-   without it records an error: emit it even on bad news.
+   without it records an error: declare even on bad news.
 5. **Exit.** Never loop back to phase A.
 
 ## Halt
@@ -259,4 +258,5 @@ the exact failure, and the one decision needed. `.loop-stop` is the supervisor's
 
 ## Output
 
-Phase F step 4's `LOOP-RESULT` line is the last thing you emit, and the only summary you write.
+Every declaration here is your structured output: the last thing you emit, and the only summary
+you write.

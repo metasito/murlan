@@ -1532,7 +1532,6 @@ export function runTicket(
         state.phase = letter;
         screen.start(letter, round());
       }
-      if (fact.declared) state.declared = fact.declared;
       state.reruns += rerunsIn(fact.calls);
       // The only sign of life during phase D, which is the longest one and the one that read as a
       // hang: its work happens entirely inside a review subagent.
@@ -1732,8 +1731,8 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   // far enough for a branch pushed minutes ago. `gh` lists newest first.
   const json = ["--json", "number,state,headRefName,headRefOid,mergedAt,changedFiles"];
   // The head ref is the only thing that makes a pull request this ticket's, and it is checked on
-  // every path including the declared one. `declared` is a number a model wrote into a line of
-  // text, and what it reaches is `gh pr merge`.
+  // every path including the declared one. `declared` is a number a model wrote, and what it
+  // reaches is `gh pr merge`.
   const mine = (pr) =>
     branch ? pr?.headRefName === branch : new RegExp(`^agent/${ticket}-`).test(pr?.headRefName ?? "");
   const stale = (pr) =>
@@ -2301,10 +2300,10 @@ async function preflight(io, pinned) {
   return { housekeeping: await io.housekeeping(pinned) };
 }
 
-const HELD_AS = { preflight: "hold", usage: "refused", api: "overloaded" };
+const HELD_AS = { preflight: "hold", usage: "refused", api: "overloaded", undeclared: "undeclared" };
 
 /** The passes that leave the ticket standing, which the owner's park takes over. */
-const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold"]);
+const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold", "undeclared"]);
 
 /**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
@@ -2319,7 +2318,7 @@ const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold"]);
  * @param {string|null} [at] the phase a handoff said the next process starts at
  * @param {{failures: number, holds: number, waits: number, overloads: number, pinned: number|null}} [loop]
  *   the run's counters, which the pass returns updated
- * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"handoff"|"restart",
+ * @returns {Promise<{outcome: "landed"|"closed"|"parked"|"stop"|"hold"|"retry"|"refused"|"overloaded"|"undeclared"|"handoff"|"restart",
  *   loop: object, halt: string|null, ticket?: number, why?: string, until?: number, hold?: number, byOwner?: boolean,
  *   cwd?: string|null, branch?: string|null, pr?: number, files?: number, phase?: string, run?: any, size?: string|null}>}
  */

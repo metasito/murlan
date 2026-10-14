@@ -2221,12 +2221,12 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "retry"]);
   });
 
-  test("a session that exits without a LOOP-RESULT parks with that reason", async () => {
+  test("a session that exits without a declaration parks with that reason", async () => {
     const ledger: any[] = [];
     const whys: string[] = [];
     const r = await runOnce(io({ spawn: silent, pushedPr: () => null, park: (_n: number, c: { why: string }) => whys.push(c.why) }, ledger));
     assert.equal(r.outcome, "parked");
-    assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
+    assert.deepEqual(whys, ["the session exited without a declaration"]);
   });
 
   test("a settle that is the owner's parks with its own reason", async () => {
