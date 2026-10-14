@@ -467,6 +467,11 @@ describe("ticketTally", () => {
     assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "red"]);
   });
 
+  test("a handoff is the row's own field: a park reason's prose is none", () => {
+    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next — x" })]);
+    assert.deepEqual([t.handoffsThisRound, t.lastHandoff, t.handoffWhy], [1, null, null]);
+  });
+
   test("a declared handoff's own why reaches the next process when the supervisor gave none", () => {
     assert.deepEqual(handoffIn({ handoff: { phase: "D", why: null, said: "round 1 HOLD: model the Modal root" } }), { phase: "D", why: "round 1 HOLD: model the Modal root" });
     assert.deepEqual(handoffIn({ handoff: { phase: "C", why: "the D handoff had no local pass", said: "x" } }), { phase: "C", why: "the D handoff had no local pass" });

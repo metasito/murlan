@@ -100,6 +100,12 @@ describe("summary", () => {
     assert.equal(s.perTicket.median, 11);
   });
 
+  test("HOLD rounds are the reviews that handed back, counted from the rows and never the tracker's figure", () => {
+    const held = proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } });
+    assert.equal(summary([held, out({ n: 1, outcome: "landed", review_rounds: 3 })]).holdsPerTicket, 1);
+    assert.equal(summary([held, out({ n: 1, outcome: "landed", review_holds_total: 5 })]).holdsPerTicket, 1);
+  });
+
   test("a v8 row counts in spend and processes and is unjudged for the model", () => {
     const s = summary([{ schema: 8, n: 2, cost: 4, turns: 10, phases: { C: 100 } }, out({ n: 2, outcome: "landed" })]);
     assert.equal(s.perTicket.median, 4);
