@@ -203,7 +203,7 @@ const STEPS = {
     return { kind: "go" };
   },
 
-  pick({ route, repicked, tally, limits, posted }) {
+  pick({ route, repicked, tally, limits }) {
     const { n } = route;
     if (route.skill === "closed") {
       return repicked
@@ -211,11 +211,6 @@ const STEPS = {
         : { kind: "repick", n, why: `#${n} is closed` };
     }
     if (route.skill === "handoff" || route.skill === "ambiguous") return { kind: "stop", why: route.title };
-    // The session's own derive reads a red only from CI-RED, so a held red's fix round waits for one.
-    if (route.fix && route.unposted) {
-      if (posted === undefined) return ask("posted");
-      if (!posted) return { kind: "hold", wait: "preflight", n, why: `CI-RED for ${String(route.head).slice(0, 7)} could not be posted` };
-    }
     const redWhileDown = Boolean(route.fix && route.head && route.head !== tally.lastRedHead);
     if (redWhileDown) {
       const rounds = Math.max(tally.retries + 1, tally.ciRounds ?? 0);
@@ -326,10 +321,10 @@ const STEPS = {
     const { action, reason, head } = settled;
     if (action === "already-merged") return { kind: "landed", n, why: reason, head };
     if (action === "hand-back") return redRound({ n, why: reason, head }, input);
-    // A red whose CI-RED the tracker would not take: its round is recorded, and its fix round waits.
+    // A red whose CI-RED the tracker would not take: no round is spent until a later settle posts it.
     if (action === "hold") {
       const round = redRound({ n, why: reason, head }, input);
-      return round.kind === "park" ? round : { kind: "hold", wait: "preflight", n, why: reason, head, record: "retry" };
+      return round.kind === "park" ? round : { kind: "hold", wait: "preflight", n, why: reason, head };
     }
     return { kind: "park", n, phase: "E", why: reason, head };
   },

@@ -159,7 +159,7 @@ describe("runOnce", () => {
     );
   });
 
-  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head", async () => {
+  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and no round spent until it is posted", async () => {
     const parked: number[] = [];
     const rows: any[] = [];
     const torn: unknown[] = [];
@@ -176,8 +176,8 @@ describe("runOnce", () => {
     assert.match(String(r.why), /could not be posted/);
     assert.deepEqual(parked, []);
     assert.deepEqual(torn, []);
-    // The round's row, so its settle time is billed and the fix round after it is not "while the loop was down".
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["retry", "abc"]]);
+    // A row, so its settle time is billed; a hold, so the settle that posts it counts the round once.
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["hold", "abc"]]);
   });
 
   test("a landing a rerun won writes the flake on its row", async () => {
@@ -1053,48 +1053,30 @@ describe("runOnce", () => {
   // The session's own derive reads a red only from CI-RED, so a held red's fix round must find one.
   describe("a held red is posted before its fix round spawns", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const held = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, pr: 5, state: "unposted", sha: "h1" } };
+    const held = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, pr: 5, state: "settling", sha: "h1" } };
     const posted = { ...held, phase: "C", fix: true, ci: { ...held.ci, state: "red", step: "Test" } };
 
-    const pass = async (posts: boolean) => {
-      const comments: string[] = [];
+    test("a post that still fails holds, and spawns nothing", async () => {
+      const ledger: any[] = [];
       const order: string[] = [];
-      const seen: boolean[] = [];
-      const ledger: any[] = [retryRow("h1")];
-      const read = () => (comments.length ? posted : held);
       const r = await runOnce(
         io(
           {
-            pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
-            postRed: (n: number, pr: number) => (order.push(`post #${n} pr ${pr}`), posts && comments.push("CI-RED h1"), posts),
-            refreshWorktree: () => order.push("refresh"),
-            spawn: async () => {
-              order.push("spawn");
-              seen.push(read().fix);
-              return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
-            },
+            pick: () => nextRoute(null, null, { read: () => held, facts, ledger: () => ledger } as never),
+            pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
+            settle: async () => (order.push("settle"), { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }),
+            spawn: async () => order.push("spawn") as never,
           },
           ledger,
         ),
         42,
       );
-      return { r, order, seen };
-    };
-
-    test("posted, the session that spawns reads its fix round", async () => {
-      const { order, seen } = await pass(true);
-      assert.deepEqual(order.slice(0, 3), ["post #42 pr 5", "refresh", "spawn"]);
-      assert.deepEqual(seen, [true]);
-    });
-
-    test("a post that still fails holds, and spawns nothing", async () => {
-      const { r, order } = await pass(false);
       assert.equal(r.outcome, "hold");
-      assert.deepEqual(order, ["post #42 pr 5"]);
+      assert.deepEqual(order, ["settle"]);
     });
 
-    // From the settle that could not post, through every pass, to the fix round: whichever path
-    // posts it, the session spawns onto exactly one CI-RED for its head and one round spent.
+    // From the settle that could not post, through every pass, to the fix round: the session spawns
+    // onto exactly one CI-RED for its head and one round spent.
     test("a red whose CI-RED a settle could not post reaches its fix round with exactly one posted", async () => {
       const comments: string[] = [];
       const ledger: any[] = [];
@@ -1109,7 +1091,6 @@ describe("runOnce", () => {
         {
           pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
           pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
-          postRed: post,
           refreshWorktree: () => {},
           settle: async () =>
             settles++ === 0
@@ -1643,6 +1624,8 @@ describe("the run recap", () => {
   // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
   // reading the value it pins moves with it.
   const TICKET_HOLDS = 10;
+  const heldRoute = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G", cwd: "w", branch: "agent/42-x" };
+  const unposted = { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" };
   const heldNight = async (stopAfter: number, preflights = 0) => {
     const parked: number[] = [];
     let passes = 0;
@@ -1657,13 +1640,12 @@ describe("the run recap", () => {
       wait: () => ({ woken: Promise.resolve(), say: null }),
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
     const spy = {
       ...(io() as any),
       stopFile: () => passes++ >= stopAfter,
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
-      pick: () => route,
-      postRed: () => false,
+      pick: () => heldRoute,
+      settle: async () => unposted,
       park: (n: number) => parked.push(n),
     };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -1693,12 +1675,11 @@ describe("the run recap", () => {
       wait: () => ({ woken: Promise.resolve(), say: null }),
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
     const spy = {
       ...(io() as any),
       stopFile: () => passes++ > TICKET_HOLDS + 1,
-      pick: () => route,
-      postRed: () => false,
+      pick: () => heldRoute,
+      settle: async () => unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
     };
     const code = await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -2317,16 +2298,13 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
 
   describe("nextRoute: a red no CI-RED names", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "unposted", sha: "abc" } };
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "settling", sha: "abc" } };
     const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
 
-    test("is a fix round once the supervisor held it at that head", () => {
-      const r = route([{ n: 42, outcome: "retry", head: "abc", cost: 0 }]);
-      assert.deepEqual([r.phase, r.fix], ["C", true]);
-    });
-
-    test("is still G when the supervisor stopped mid-settle and recorded no red", () => {
-      assert.deepEqual([route([]).phase, route([{ n: 42, outcome: "retry", head: "old", cost: 0 }]).phase], ["G", "G"]);
+    test("is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle", () => {
+      const held = [{ n: 42, outcome: "hold", head: "abc", cost: 0 }];
+      const earlier = [{ n: 42, outcome: "retry", head: "old", cost: 0 }];
+      assert.deepEqual([route(held), route([]), route(earlier)].map((r) => [r.phase, r.fix]), [["G", false], ["G", false], ["G", false]]);
     });
   });
 });

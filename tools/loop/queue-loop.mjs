@@ -170,11 +170,10 @@ export function nextRoute(
   const live = liveRoute(status, known?.labels ?? null);
   if (live) {
     const tally = ticketTally(live.number, ledger());
-    // A held red's retry row names its head; a supervisor that stopped mid-settle wrote none, and owes G.
-    const held = status.ci?.state === "unposted" && status.ci.sha === tally.lastRedHead;
-    const fix = Boolean(status.fix) || held;
+    // A red with no CI-RED is G's too: `poll` posts it, once per head, before it hands the red back.
+    const fix = Boolean(status.fix);
     const handed = at ?? (fix ? "C" : null) ?? tally.lastHandoff;
-    const settles = live.phase === "G" && status.ci?.pushed === true && !held;
+    const settles = live.phase === "G" && status.ci?.pushed === true;
     const derived = live.phase === "G" ? "E" : live.phase;
     // A LAND on this head ends the review the handoff was for; D lands its own, so no row says E.
     const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
@@ -189,8 +188,6 @@ export function nextRoute(
       size: known?.size ?? null,
       ciRounds: known?.ciRounds ?? 0,
       queue: null,
-      // The pull request whose CI-RED `runOnce` posts before the fix round: the session reads only that.
-      ...(held && { unposted: status.ci.pr }),
     };
   }
   if (pinned) {
@@ -1412,27 +1409,6 @@ function prepareRed(ticket, verdict, { mkdir, write, mainFailures, log }) {
   return { onMain: onMainLine(failing, main?.flaky ? null : main), flaky: onMainLine(failing, main?.flaky ? main : null) };
 }
 
-/** A held red's CI-RED, posted by the supervisor from the run itself; whether the tracker carries it now. */
-export function postHeldRed(ticket, pr, log, io = {}) {
-  const {
-    run = (file, args, opts) => sh(file, args, { timeout: CI_RED_TIMEOUT_MS, ...opts }),
-    // The held path's own bound, not the settle's: it runs before a spawn, on every pass that holds.
-    stateOf = (n) => ts("./ciVerdict.ts").readLandingState(REPO, n, undefined, Date.now() + CI_RED_TIMEOUT_MS),
-    write = writeFileSync,
-    mkdir = mkdirSync,
-    mainFailures = () => ts("./mainHealth.ts").mainFailures((args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS }), REPO),
-  } = io;
-  try {
-    const { ci } = stateOf(pr);
-    if (ci.pass || ci.waiting || ci.infrastructure || !ci.output || ci.logUnread) return false;
-    const lines = prepareRed(ticket, ci, { mkdir, write, mainFailures, log });
-    return postCiRedOnce(ticket, ci, lines, readTicketComments(ticket, run, log), run, write, log);
-  } catch (err) {
-    log(`CI-RED: could not read #${pr}'s red — ${firstLine(err)}`);
-    return false;
-  }
-}
-
 /** What a red a rerun turned green failed on, one name per issue: its tests, or its step when it named none. */
 const flakeNames = ({ tests, step }) => (tests.length ? tests : [`${step ?? "an unnamed step"} (no test named)`]);
 
@@ -1839,13 +1815,9 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   // with it: a handoff leaves one standing on purpose, so a park without it leaves `derive()` a live
   // run to resume.
   const parkOver = (over, own, log) => parkHere(over, { ...(own ?? worktreeOf(io, n)), log });
-  if (picked.kind === "ask") {
-    picking = { ...picking, posted: Boolean(io.postRed(n, route.unposted)), ...owner() };
-    picked = decideAt("pick", picking);
-  }
   let { tally } = picking;
   const unrun = { log: streamLog(n), cwd: route.cwd ?? null, branch: route.branch ?? null, dirty: route.dirty ?? false };
-  if (picked.kind === "park") return picked.instead ? parkOver(picked, picking.own, streamLog(n)) : parkHere(picked, unrun);
+  if (picked.kind === "park") return parkHere(picked, unrun);
   if (picked.kind !== "go") return pass(picked);
 
   if (picked.redWhileDown) {
@@ -1981,8 +1953,8 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const owned = owner();
   const verdict = decideAt("settled", { route: ticket, settled: { ...settled, head }, tally: io.tally(n), ...owned });
   const red = verdict.instead ?? verdict;
-  if (red.kind === "retry" || red.record === "retry") {
-    io.record({ number: n, outcome: "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), counts: false, head, flake: settled.flake ?? null });
+  if (red.kind === "retry" || red.kind === "hold") {
+    io.record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), counts: false, head, flake: settled.flake ?? null });
     if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
     if (verdict.kind === "retry") {
@@ -2101,7 +2073,6 @@ function realIo(book, screen) {
     },
     pushedPr,
     settle: (pending) => settle(pending, screen),
-    postRed: (number, pr) => postHeldRed(number, pr, (m) => screen.notice("ci", m)),
     queue: () => before,
     park,
     /**

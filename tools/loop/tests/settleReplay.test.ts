@@ -630,22 +630,11 @@ describe("poll posts CI-RED once per red head", () => {
     assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
   });
 
-  describe("a CI-RED from before the newest claim is no CI-RED for this one", () => {
+  test("a CI-RED from before the newest claim is no CI-RED for this one: poll posts it again", async () => {
     const thread = [{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }, { body: "Claimed by `agent/1028-the-turn-chip`." }];
-
-    test("poll posts it again", async () => {
-      const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
-      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-      assert.equal(asked.filter(isComment).length, 1);
-    });
-
-    test("so does the supervisor's post of a held red", async () => {
-      const { postHeldRed } = (await import("../queue-loop.mjs")) as any;
-      const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
-      assert.equal(typeof postHeldRed, "function", "postHeldRed is exported, so its glue is tested");
-      assert.equal(postHeldRed(PENDING.ticket, PENDING.pr, () => {}, io(gh)), true);
-      assert.equal(asked.filter(isComment).length, 1);
-    });
+    const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
+    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    assert.equal(asked.filter(isComment).length, 1);
   });
 
   test("the same head red twice posts once", async () => {
