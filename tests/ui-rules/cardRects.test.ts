@@ -12,6 +12,8 @@ import {
   legCard,
   panShown,
   pileCard,
+  sameRect,
+  type CardRect,
   type DrawnCard,
 } from "../../components/table/cardRects.ts";
 import { seatFanArc } from "../../components/fanGeometry.ts";
@@ -143,4 +145,14 @@ test("a leaned fan foreshortens along the lean and shrinks what recedes", () => 
   close(flat.w, CARD_BACK_W(1), "flat w");
   close(flat.h, CARD_BACK_H(1), "flat h");
   close(leaned.h / leaned.w, (CARD_BACK_H(1) * Math.cos((17 * Math.PI) / 180)) / CARD_BACK_W(1), "leaned aspect");
+});
+
+test("a rect republishes when only its shadow pose moves, comes or goes", () => {
+  const card: CardRect = { x: 1, y: 2, w: 3, h: 4, rot: 0, back: false, lift: 0, glow: 0, seen: 1 };
+  const held = (x: number): CardRect => ({ ...card, shadow: { x, y: 2, w: 3, h: 4, rot: 0 } });
+  assert.equal(sameRect(card, { ...card }), true);
+  assert.equal(sameRect(held(5), held(5)), true);
+  assert.equal(sameRect(card, held(5)), false);
+  assert.equal(sameRect(held(5), card), false);
+  assert.equal(sameRect(held(5), held(6)), false);
 });

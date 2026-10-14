@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo } from "react";
 import { makeMutable, startMapper, stopMapper, useSharedValue, type SharedValue } from "react-native-reanimated";
 import type { OpponentSide } from "@/components/seatLayout";
-import { designRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
+import { designRect, sameRect, type CardRect, type CardRects, type DrawnCard, type Felt, type Point, type TableMotion } from "./cardRects";
 import type { GlossLight } from "./cardGloss";
 
 /**
@@ -108,12 +108,6 @@ export function useCardRect(table: CardTable | null, key: string, drawn: boolean
     };
   }, [rects, own, key, drawn, read]);
   return own;
-}
-
-function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
-  "worklet";
-  if (!a || !b) return !a && !b;
-  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.rot === b.rot && a.back === b.back && a.lift === b.lift && a.glow === b.glow && a.seen === b.seen;
 }
 
 /** Publishes cards laid out by a render, all under `prefix`: replaced in the commit that draws them, moved with the table. */
