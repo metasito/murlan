@@ -99,7 +99,7 @@ is red on any rerun or any job that did not pass, so neither goes green with no 
 (`tests/tooling/deviceWorkflowsGate.test.ts`). A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
-mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
+mixes in main's scheduled runs. Wait on runs with `node scripts/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
 and 3 when some are still going: then run the same command again. With `--pr <n>` a passed run is
 also 1 when its over-budget list (`tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`) names a

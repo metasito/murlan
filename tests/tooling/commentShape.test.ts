@@ -1,7 +1,7 @@
-// tools/loop/tests/commentShape.test.ts
+// tests/tooling/commentShape.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify } from "../commentShape.ts";
+import { classify } from "../../scripts/lib/commentShape.ts";
 
 const kinds = (text: string, path = "src/x.ts") => classify(text, path).map((l) => l.kind);
 

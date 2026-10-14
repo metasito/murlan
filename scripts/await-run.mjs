@@ -4,8 +4,8 @@
  * cannot find a run. 3: still going.
  */
 import { execFileSync } from "node:child_process";
-import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { BASH_DEFAULT_TIMEOUT_MS } from "./queue-loop.mjs";
+import { isInvokedDirectly } from "./lib/entry.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS } from "../tools/loop/queue-loop.mjs";
 
 export const BUDGET_MS = BASH_DEFAULT_TIMEOUT_MS - 60_000;
 export const EVERY_MS = 30_000;
@@ -69,7 +69,7 @@ export async function awaitRuns(
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const ids = runArgs(process.argv.slice(2));
   if (!ids) {
-    console.error("usage: node tools/loop/await-run.mjs <run-id> [<run-id>…]");
+    console.error("usage: node scripts/await-run.mjs <run-id> [<run-id>…]");
     process.exit(2);
   }
   process.exit(await awaitRuns(ids));
