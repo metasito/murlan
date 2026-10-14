@@ -118,6 +118,11 @@ describe("a named loop agent carries its own model and effort", () => {
     assert.match(run(named("loop-scope", review)), /loop-scope.*scope brief/);
   });
 
+  test("a brief whose diff range or issue read was edited is denied, so the session cannot narrow what is reviewed", () => {
+    assert.match(run(named("loop-review", review.replace("origin/main...HEAD", "HEAD~1..HEAD"))), /brief was edited/);
+    assert.match(run(named("loop-review", review.replace(/\|select\([^)]*\)\)/, ""))), /brief was edited/);
+  });
+
   test("a loop agent that does not exist is denied, naming the ones that do", () => {
     assert.match(run(named("loop-builder", review)), /no loop agent `loop-builder`.*loop-review/);
   });
