@@ -851,7 +851,7 @@ export const en = {
   "room.leaveConfirmTitle": "Leave the room",
   "room.leaveConfirmBody": "Are you sure you want to leave the room?",
   "room.leaveConfirmConfirm": "Leave",
-  "room.shareMessage": "Join my Murlan room! Code: {{code}}",
+  "room.shareMessage": "Join my Murlan room! Code: {{code}} {{link}}",
   "room.fillWithBotsLabel": "Fill with bots",
   "room.botsComingIn": "Bots can fill the seats in {{seconds}}s",
   "room.fillWithBotsSubtitle": "Empty seats will be taken by virtual players",

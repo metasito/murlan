@@ -432,7 +432,10 @@ moments, each a checkable frame property rather than a claim of quality:
   landing sound by `tests/e2e/landingContact.spec.ts`) the trace's `live`
   count rises by `16 + 5n` dust and three puffs for `n` cards, and the landed cards' scale
   departs from 1 by under 3.5% (`landWobble`) and is back at exactly 1 by `LAND_WOBBLE_MS` —
-  held to the mockup by `trick-landings` in `tests/e2e/helpers/mockupParity.ts`.
+  held to the mockup by `trick-landings` in `tests/e2e/helpers/mockupParity.ts`. Their shadow
+  does not wobble: from contact it lies at the cards' rest, on the felt and on the cards beneath
+  alike, so no felt shadow cluster they belong to is rebuilt through the wobble
+  (`tests/e2e/landingShadowStill.spec.ts`, `tests/native/handShadeRebuild.test.tsx`, #1414).
 - **Turn hand-off.** At the single frame nearest the midpoint of a hand-off, the outgoing
   seat's indicator and the incoming seat's indicator never both measure at full opacity —
   their combined opacity at that frame stays under a named ceiling (e.g. 140%) — so the

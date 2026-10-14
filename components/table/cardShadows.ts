@@ -95,12 +95,17 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
   sink.close();
 }
 
+export function shadowRect(r: CardRect): CardRect {
+  "worklet";
+  return r.shadow ? { ...r, ...r.shadow } : r;
+}
+
 /** Every field `buildShadow` reads, per card: equal for two registries whose shadow paths are equal. */
 export function shadowShape(rects: CardRects, keys: readonly string[] = Object.keys(rects)): string {
   "worklet";
   let shape = "";
   for (const key of keys) {
-    const r = rects[key];
+    const r = shadowRect(rects[key]);
     shape += `${key}:${r.x},${r.y},${r.w},${r.h},${r.rot},${r.back},${r.seen};`;
   }
   return shape;
@@ -172,9 +177,10 @@ export function shadeShape(rects: CardRects, { stack, over }: ShadeCards, felt: 
   "worklet";
   const q = (v: number) => Math.round(v / SHADE_STEP);
   let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${stack.join(",")}|`;
+  const outline = (r: CardRect) => `${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)}`;
   for (const key of [...stack, ...over]) {
     const r = rects[key];
-    shape += `${key}:${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)},${r.back};`;
+    shape += `${key}:${outline(r)},${outline(shadowRect(r))},${r.back};`;
   }
   return shape;
 }
@@ -229,7 +235,7 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
   "worklet";
   let clusters: { keys: string[]; box: Box }[] = [];
   for (const key of Object.keys(rects)) {
-    const r = rects[key];
+    const r = shadowRect(rects[key]);
     const box = inPath(path, shadowKind(key, r)) ? outlineBox(r, felt, midX) : null;
     if (!box) continue;
     let joined = { keys: [key], box };
@@ -250,7 +256,7 @@ export function shadowClusters(path: ShadowPath, rects: CardRects, felt: Pick<Fe
 export function buildShadow(sink: PathSink, path: ShadowPath, rects: CardRects, felt: Pick<Felt, "sx" | "sy" | "s">, midX: number, keys: readonly string[] = Object.keys(rects)): void {
   "worklet";
   for (const key of keys) {
-    const r = rects[key];
+    const r = shadowRect(rects[key]);
     if (inPath(path, shadowKind(key, r))) addOutline(sink, r, felt, midX);
   }
 }
