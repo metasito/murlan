@@ -299,6 +299,14 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
+/** What a run's rows add up to: a ticket is a row that closed one, landed or parked. */
+export function totalsOf(rows) {
+  const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
+  const landed = rows.filter((r) => r.outcome === "landed" || r.outcome === "closed").length;
+  const parked = rows.filter((r) => r.outcome === "parked").length;
+  return { tickets: landed + parked, landed, parked, cost: sum("cost"), ms: sum("ms") };
+}
+
 /**
  * The run's record, and its running totals, with one owner.
  *
@@ -321,14 +329,15 @@ export function ledger(io = {}) {
     loopSha = null,
   } = io;
 
-  const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
   /** @type {object[]} */
   const rows = [];
   /** The report row of every ticket this run closed — what the exit summary prints. */
   const tickets = [];
 
   return {
-    totals,
+    get totals() {
+      return totalsOf(rows);
+    },
     rows,
     tickets,
     /**
@@ -352,14 +361,7 @@ export function ledger(io = {}) {
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
       append(file, `${reportRow(report, PLAIN())}\n`);
 
-      totals.cost += entry.cost;
-      totals.ms += entry.ms;
-      if (counts) {
-        totals.tickets += 1;
-        if (entry.outcome === "landed" || entry.outcome === "closed") totals.landed += 1;
-        else totals.parked += 1;
-        tickets.push(report);
-      }
+      if (counts) tickets.push(report);
       rows.push(entry);
       return entry;
     },
