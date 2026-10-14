@@ -268,15 +268,16 @@ describe("syncCheckout", () => {
   };
   const clean = { "rev-parse --abbrev-ref": "main", "status --porcelain": "" };
   const noInstall = {
-    stamp: { current: () => "same", stored: () => "same", write: () => {}, peers: () => [], drifted: () => false },
+    stamp: { lockfile: () => 1, installed: () => 2, stored: () => null, write: () => {}, peers: () => [], drifted: () => false },
   };
-  const stampOf = (over: Partial<{ current: string; stored: string; peers: string[]; drifted: boolean }> = {}) => {
+  const stampOf = (over: Partial<{ lockfile: number; installed: number; stored: string; peers: string[]; drifted: boolean }> = {}) => {
     const writes: string[] = [];
-    let stored = over.stored ?? "old-hash";
+    let stored = over.stored ?? null;
     return {
       writes,
       stamp: {
-        current: () => over.current ?? "new-hash",
+        lockfile: () => over.lockfile ?? 3,
+        installed: () => over.installed ?? 2,
         stored: () => stored,
         write: (h: string) => {
           writes.push(h);
@@ -327,27 +328,30 @@ describe("syncCheckout", () => {
   test("drift with an unchanged lockfile reinstalls once for that lockfile, then holds", () => {
     const said: string[] = [];
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true });
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true });
     for (let pass = 0; pass < 3; pass++) {
       assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
     }
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["h drift-reinstalled"]);
+    assert.deepEqual(writes, ["1"]);
     assert.match(said.join("\n"), /drifted/);
   });
 
   test("drift waits for a live peer like a lockfile change does", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true, peers: ["agent-7"] });
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true, peers: ["agent-7"] });
     assert.equal(syncCheckout(fake(clean).git, () => {}, install, { stamp }), true);
     assert.deepEqual([install.mock.calls.length, writes], [0, []]);
   });
 
   test("a new lockfile after a drift reinstall reinstalls again", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h2", stored: "h drift-reinstalled", drifted: true });
+    const { stamp } = stampOf({ lockfile: 3, installed: 2, stored: "1", drifted: true });
     syncCheckout(fake(clean).git, () => {}, install, { stamp });
-    assert.deepEqual([install.mock.calls.length, writes], [1, ["h2"]]);
+    assert.equal(install.mock.calls.length, 1);
+    const after = stampOf({ lockfile: 3, installed: 4, stored: "1", drifted: true });
+    syncCheckout(fake(clean).git, () => {}, install, { stamp: after.stamp });
+    assert.deepEqual([install.mock.calls.length, after.writes], [2, ["3"]], "the mark was for the old lockfile");
   });
 
   test("a clean main fast-forwards and says nothing about drift", () => {
@@ -367,13 +371,14 @@ describe("syncCheckout", () => {
     assert.equal(said.some((s) => /differs/.test(s)), false);
   });
 
-  test("the stamp differs, no ff diff → reinstall", () => {
+  test("a lockfile newer than the install, no ff diff → reinstall", () => {
     const said: string[] = [];
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf();
+    const { stamp } = stampOf();
     assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["new-hash"]);
+    assert.equal(syncCheckout(fake(clean).git, () => {}, install, { stamp: stampOf({ installed: null as never }).stamp }), true);
+    assert.equal(install.mock.calls.length, 2, "no install at all is one no lockfile has run against");
   });
 
   test("a peer worktree is live → skip, and retry next call", () => {
@@ -389,19 +394,18 @@ describe("syncCheckout", () => {
 
   test("only the pinned ticket's worktree is live → reinstall", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ peers: ["agent-123"] });
+    const { stamp } = stampOf({ peers: ["agent-123"] });
     const ok = syncCheckout(fake(clean).git, () => {}, install, { stamp, pinned: 123 });
     assert.equal(ok, true);
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["new-hash"]);
   });
 
-  test("reinstall fails → the stamp is unchanged", () => {
+  test("a drift reinstall that fails leaves no mark", () => {
     const said: string[] = [];
     const install = mock.fn(() => {
       throw new Error("npm ci failed");
     });
-    const { stamp, writes } = stampOf();
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true });
     const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp });
     assert.equal(ok, false);
     assert.deepEqual(writes, []);

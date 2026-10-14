@@ -14,7 +14,6 @@
  * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
 import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -270,29 +269,22 @@ function peerWorktrees(dir = WORKTREE_DIR) {
   return listWorktreeDirNames(dir).filter((name) => name.startsWith("agent-"));
 }
 
-const LOCK_STAMP = "node_modules/.loop-lock-hash";
+const mtime = (file) => (fs.existsSync(file) ? fs.statSync(file).mtimeMs : null);
+const DRIFT_MARK = "node_modules/.loop-drift-reinstalled";
 
-/** The install's own record of the lockfile it was run against — a fact about `node_modules`. */
+/**
+ * npm's hidden lockfile, which every install writes after reading `package-lock.json`: a lockfile
+ * newer than it is one no install has run against. The drift mark names the lockfile a drift
+ * reinstall already ran for, so drift that `npm ci` cannot cure costs one install, not one a pass.
+ */
 const defaultStamp = {
-  current: () => {
-    try {
-      return createHash("sha256").update(fs.readFileSync("package-lock.json")).digest("hex");
-    } catch {
-      return null;
-    }
-  },
-  stored: () => {
-    try {
-      return fs.readFileSync(LOCK_STAMP, "utf8").trim();
-    } catch {
-      return null;
-    }
-  },
-  write: (hash) => writeFileSync(LOCK_STAMP, hash),
+  lockfile: () => mtime("package-lock.json"),
+  installed: () => mtime("node_modules/.package-lock.json"),
+  stored: () => (fs.existsSync(DRIFT_MARK) ? fs.readFileSync(DRIFT_MARK, "utf8").trim() : null),
+  write: (lock) => writeFileSync(DRIFT_MARK, lock),
   peers: peerWorktrees,
   drifted: () => checkLockDrift(".").length > 0,
 };
-const DRIFT_MARK = "drift-reinstalled";
 
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
@@ -302,8 +294,8 @@ const DRIFT_MARK = "drift-reinstalled";
  * merges the checkout differs from origin until it is fast-forwarded — which is staleness,
  * repaired here rather than reported. Only an uncommitted edit is drift, and it belongs to someone.
  *
- * @param {{current: () => string|null, stored: () => string|null, write: (hash: string) => void,
- *   peers: () => string[], drifted: () => boolean}} [stamp]
+ * @param {{lockfile: () => number|null, installed: () => number|null, stored: () => string|null,
+ *   write: (lock: string) => void, peers: () => string[], drifted: () => boolean}} [stamp]
  * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
 /** Captured, not inherited: npm's own report would draw over the board. A failure still carries it. */
@@ -354,17 +346,17 @@ export function syncCheckout(
     return false;
   }
 
-  // Keyed on the installed stamp, not the fast-forward's own diff: a diff seen once and skipped
+  // Keyed on what was installed, not the fast-forward's own diff: a diff seen once and skipped
   // for a live peer is gone for good, so a worktree standing at merge time must not cost the loop
   // its only chance to notice. `housekeeping` refuses to start a ticket on top of a drifted install,
   // so leaving the repair to the next iteration is the loop poisoning its own precondition. It
   // runs only when no *other* ticket's worktree is standing: every worktree's node_modules is a
   // junction into this install, so reinstalling under a live session empties the tree it is in.
   try {
-    const current = stamp.current();
-    const [stored, mark] = (stamp.stored() ?? "").split(" ");
-    const changed = current !== stored;
-    if (current !== null && (changed || (mark !== DRIFT_MARK && stamp.drifted()))) {
+    const lock = stamp.lockfile();
+    const installed = stamp.installed();
+    const changed = installed === null || lock > installed;
+    if (lock !== null && (changed || (stamp.stored() !== String(lock) && stamp.drifted()))) {
       const what = changed ? "package-lock.json differs from the last install" : "node_modules has drifted from package-lock.json";
       const live = stamp.peers().filter((name) => name !== `agent-${pinned}`);
       if (live.length) {
@@ -373,7 +365,7 @@ export function syncCheckout(
       }
       log(`${what} — reinstalling before the next ticket`);
       install();
-      stamp.write(changed ? current : `${current} ${DRIFT_MARK}`);
+      if (!changed) stamp.write(String(lock));
     }
   } catch (err) {
     log(`could not reinstall — ${String(err.message).split("\n")[0]}`);
