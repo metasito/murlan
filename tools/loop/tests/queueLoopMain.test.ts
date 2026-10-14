@@ -742,6 +742,19 @@ describe("runOnce", () => {
     assert.equal(replayed, 86);
   });
 
+  test("a row names the route's title and size and the review rounds read after the session, with no tracker read of its own", async () => {
+    const rows: any[] = [];
+    await runOnce(io({ standing: () => ({ ...(io() as any).standing(), reviewRounds: 2 }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.map((x) => [x.outcome, x.title, x.size, x.reviewRounds]), [["pushed", "t", "size:S", 2], ["landed", "t", "size:S", 2]]);
+  });
+
+  test("nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name", () => {
+    const facts = () => ({ title: "Fix the card fan!", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const read = () => ({ onTicket: true, ticket: 42, branch: "agent/42-fix-the-card-fan", cwd: "w", phase: "D", reviewRounds: 3 });
+    const route: any = nextRoute(null, null, { read, facts, ledger: () => [] } as never);
+    assert.deepEqual([route.title, route.reviewRounds], ["Fix the card fan!", 3]);
+  });
+
   test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
     const facts = () => ({ title: "Fix the card fan!", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
