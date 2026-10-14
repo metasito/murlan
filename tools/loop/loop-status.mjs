@@ -2,9 +2,8 @@
  * Where the run stands, for a session that has just lost its memory of it.
  *
  * `SessionStart` fires on compact, resume and startup, and this is what stands between an
- * auto-compaction and a restarted ticket. It replaces a state file that was read back verbatim:
- * everything here is derived from git and the tracker, so it cannot describe a run that is not
- * happening, and cannot miss one that is.
+ * auto-compaction and a restarted ticket. Everything here is derived from git and the tracker, so
+ * it cannot describe a run that is not happening, and cannot miss one that is.
  *
  * It runs in the shared checkout, never in the run's worktree — `derive` finds that itself.
  *
