@@ -18,8 +18,8 @@ const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
 
 /**
  * A later round's delta, net of the main a merge brought in: `base` merged with that main, diffed
- * to HEAD, leaves only the fix and the merge's own resolution. It reads the worktree, so the
- * guard's copy of a brief matches the CLI's only while HEAD has not moved between the two.
+ * to HEAD, leaves only the fix and the merge's own resolution. It reads the worktree, so
+ * guard-agent-model.mjs's rebuild of a brief matches the CLI's only while HEAD has not moved between the two.
  */
 function laterDelta(wt, base) {
   const git = (...args) => spawnSync("git", ["-C", wt, ...args], { encoding: "utf8" });

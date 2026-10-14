@@ -6,14 +6,17 @@
  * Exit 0 always. stdout carries the deny, or nothing.
  */
 import { readFileSync } from "node:fs";
-import { KINDS, parseHeader } from "./brief.mjs";
+import { brief, KINDS, parseHeader } from "./brief.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue|review #\d+ round \d+)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
 const ROLE = /\b(review\w*|axis|findings?)\b/i;
 const AGENTS = KINDS.map((k) => `\`loop-${k}\``).join(", ");
 
-/** A `loop-<kind>` agent's file sets its model and effort, so the dispatch may not; its prompt still opens with that kind's brief. */
+/**
+ * A `loop-<kind>` agent's file sets its model and effort, so the dispatch may not. Its prompt opens with that kind's
+ * brief exactly as brief.mjs prints it: an edited diff range or issue read narrows what the agent is shown.
+ */
 function namedDenial(input) {
   const type = String(input.subagent_type);
   const kind = type.slice("loop-".length);
@@ -21,8 +24,14 @@ function namedDenial(input) {
   if ("model" in input || "effort" in input) {
     return `\`${type}\` sets its own model and effort in .claude/agents/${type}.md. Dispatch it again without a per-call override.`;
   }
-  if (parseHeader(String(input.prompt ?? "").replace(/\r\n/g, "\n"))?.kind !== kind) {
+  const prompt = String(input.prompt ?? "").replace(/\r\n/g, "\n");
+  const header = parseHeader(prompt);
+  if (header?.kind !== kind) {
     return `\`${type}\` runs a ${kind} brief: start its prompt with the output of \`node tools/loop/brief.mjs ${kind} <n> <worktree> [base]\`.`;
+  }
+  if (!prompt.startsWith(brief(kind, header).trimEnd())) {
+    return "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> [base]` verbatim as the " +
+      "start of the prompt, and add anything else (an earlier round's Blocking findings) after it.";
   }
   return null;
 }
