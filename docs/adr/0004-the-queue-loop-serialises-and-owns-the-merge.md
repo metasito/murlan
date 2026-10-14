@@ -57,10 +57,8 @@ Recovery is re-derivation. Restarting the loop after any failure is safe and is 
 supported repair — there is no state file to reconcile, and `.loop-stop` is read without
 being consumed so a scheduled restart sees it too. A merge touching `tools/loop/` or
 `scripts/lib/` restarts the supervisor between passes (`run-loop.mjs`, exit 75). A held
-ticket's uncommitted work is at `refs/loop/wip/<n>`; restore with
-`git -C .worktrees/agent-<n> checkout refs/loop/wip/<n> -- .`. The ref goes when the ticket
-lands, or when its worktree is removed (`worktrees:remove`, `worktrees:prune`) with the issue
-closed; an open ticket's ref is kept.
+ticket's uncommitted work stays in its standing worktree: a park commits it before the removal,
+the sweep never forces one, and a landed tree's leftovers are saved as a patch first.
 
 A mechanical failure no longer reaches the tracker. `settleOutcome` counts it toward the
 breaker and leaves the branch, the pull request and the labels intact for the next

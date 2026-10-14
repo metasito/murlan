@@ -355,7 +355,7 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
   "a G route announces itself before it settles": ["queueLoopMain.test.ts", "io"],
   "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
-  "a snapshot that throws during an account error is logged, and the run still stops": ["queueLoopMain.test.ts", "io"],
+  "a refused session's dirty worktree is left standing as it is, with no copy taken": ["queueLoopMain.test.ts", "io"],
   "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
   "nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a pinned ticket with no worktree rebuilds at A": ["queueLoopMain.test.ts", "picker"],

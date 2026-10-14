@@ -16,7 +16,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import {
@@ -517,22 +516,6 @@ export async function holdFor(
   return wake ? "woken" : "waited";
 }
 
-/** Keeps a held session's uncommitted work in `refs/loop/wip/<n>` without touching HEAD, the index or the branch. */
-export function snapshotWip(cwd, number, run = sh) {
-  if (!cwd || !run("git", ["-C", cwd, "status", "--porcelain"]).trim()) return null;
-  const env = { ...process.env, GIT_INDEX_FILE: path.join(os.tmpdir(), `loop-wip-${number}-${process.pid}`) };
-  try {
-    run("git", ["-C", cwd, "read-tree", "HEAD"], { env });
-    run("git", ["-C", cwd, "add", "-A", "--", "."], { env });
-    const tree = run("git", ["-C", cwd, "write-tree"], { env }).trim();
-    const sha = run("git", ["-C", cwd, "commit-tree", tree, "-p", "HEAD", "-m", `wip(#${number}): held`]).trim();
-    run("git", ["-C", cwd, "update-ref", `refs/loop/wip/${number}`, sha]);
-    return sha;
-  } finally {
-    fs.rmSync(env.GIT_INDEX_FILE, { force: true });
-  }
-}
-
 /**
  * Hands a ticket back to the owner: the work committed, the claim released, the reason on the
  * issue, the worktree gone.
@@ -672,11 +655,6 @@ export function removeLanded(cwd, number, { run = sh, write = writeLeftover, say
   const branch = run("git", ["-C", cwd, "branch", "--show-current"]).trim();
   const removed = removeLandedTree(cwd, number, { run, write, say });
   if (removed === null || !branch) return removed;
-  try {
-    run("git", ["update-ref", "-d", `refs/loop/wip/${number}`], { cwd: ROOT });
-  } catch {
-    // a failed cleanup must not undo the removal
-  }
   try {
     run("git", ["branch", "-d", branch], { cwd: ROOT });
   } catch (err) {
@@ -1877,14 +1855,6 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
 
   const derived = io.standing();
   const after = afterSession(run, derived);
-  const keepWip = () => {
-    try {
-      const kept = io.snapshotWip?.(after?.cwd ?? null, n);
-      if (kept) io.log(`#${n}'s uncommitted work is kept at refs/loop/wip/${n} (${kept.slice(0, 7)})`, "session");
-    } catch (err) {
-      io.log(`#${n}'s uncommitted work could not be snapshotted — ${String(err.message).split("\n")[0]}`, "session");
-    }
-  };
   // Read once the session has exited: a park is never a kill.
   const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
   // `null`, never `undefined`, for a fact read: `undefined` is `decide`'s "not read yet".
@@ -1916,7 +1886,6 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
       const why = `phase ${replaced.phase} next${replaced.why ? ` — ${replaced.why}` : ""}`;
       io.record({ number: n, outcome: "handoff", why, run, counts: false, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
     } else {
-      keepWip();
       // A refusal spends real money before it stops, and this row is the one place it is recorded.
       io.record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run, counts: false });
     }
@@ -1925,7 +1894,6 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     return pass(action, { run, until: replaced.until });
   }
   if (action.kind === "stop") {
-    if (run.accountError) keepWip();
     io.record({ number: n, outcome: "halted", why: run.strayPlugin ?? run.accountError, run, counts: false });
     return pass(action);
   }
@@ -2004,7 +1972,6 @@ function realIo(book, screen) {
     // Read, never removed: a scheduled restart must see the stop too.
     stopFile: () => fs.existsSync(STOP_FILE),
     loopMoved: () => loopMoved(started),
-    snapshotWip,
     syncCheckout: (pinned) => syncCheckout(git, (m) => screen.notice("checkout", m), undefined, { pinned }),
     housekeeping: (pinned) =>
       housekeeping({

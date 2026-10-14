@@ -93,10 +93,9 @@ const hasRef = (repo: string, ref: string) => {
 };
 
 describe("sweep: a leftover ticket worktree goes only by a removal that does not force", () => {
-  test("a closed issue's worktree is removed without --force; its branch stays, its held work ref goes", () => {
+  test("a closed issue's worktree is removed without --force, and its branch stays", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 7);
-    run(repo, "update-ref", "refs/loop/wip/7", "HEAD");
     const { git, calls, removals } = spyGit(repo);
 
     const row = sweep({ git, gh: fakeGh({ 7: CLOSED }).gh });
@@ -107,18 +106,15 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     assert.equal(fs.existsSync(dir), false);
     assert.equal(registered(repo, dir), false);
     assert.ok(hasRef(repo, "refs/heads/agent/7-x"), "the branch is what claim.mjs rebuilds from");
-    assert.equal(hasRef(repo, "refs/loop/wip/7"), false);
     assert.equal(row?.state, "done");
     assert.match(row?.detail ?? "", /removed agent-7/);
   });
 
-  test("an open issue that lost its claim, with a pull request, is removed, and its held work ref is kept", () => {
+  test("an open issue that lost its claim, with a pull request, is removed", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 8);
-    run(repo, "update-ref", "refs/loop/wip/8", "HEAD");
     sweep({ git: spyGit(repo).git, gh: fakeGh({ 8: { state: "OPEN", labels: ["ready-for-human"] } }, { "agent/8-x": "CLOSED" }).gh });
     assert.equal(fs.existsSync(dir), false);
-    assert.ok(hasRef(repo, "refs/loop/wip/8"), "an open ticket's ref is parked work");
   });
 
   test("an open issue that lost its claim, its branch merged into origin/main, is removed", () => {
@@ -251,14 +247,12 @@ describe("sweep: a leftover ticket worktree goes only by a removal that does not
     if (linked) assert.ok(fs.lstatSync(path.join(dir, LINK)).isSymbolicLink());
   });
 
-  test("a removal git refuses keeps the worktree and its ref, and the row carries git's reason", () => {
+  test("a removal git refuses keeps the worktree, and the row carries git's reason", () => {
     const { repo } = scratchRepo();
     const dir = ticketTree(repo, 14);
-    run(repo, "update-ref", "refs/loop/wip/14", "HEAD");
     const refusal = "fatal: '.worktrees/agent-14' contains modified or untracked files, use --force to delete it";
     const row = sweep({ git: spyGit(repo, { "agent-14": refusal }).git, gh: fakeGh({ 14: CLOSED }).gh });
     assert.ok(fs.existsSync(dir));
-    assert.ok(hasRef(repo, "refs/loop/wip/14"), "a kept tree keeps its ref");
     assert.equal(row?.state, "warned");
     assert.match(row?.note ?? "", /contains modified or untracked files/);
   });

@@ -23,7 +23,7 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody, park, snapshotWip } from "../queue-loop.mjs";
+import { ciRedBody, park } from "../queue-loop.mjs";
 import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
@@ -344,21 +344,8 @@ describe("held work", () => {
     else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
-  test("a clean tree takes no snapshot", () => assert.equal(snapshotWip(dir, 9), null));
-
-  test("a snapshot keeps the dirty tree in a ref and moves nothing", () => {
-    writeFileSync(join(dir, "a.txt"), "edited\n");
-    writeFileSync(join(dir, "new.txt"), "untracked\n");
-    const status = git("status", "--porcelain");
-    const head = git("rev-parse", "HEAD");
-    assert.ok(snapshotWip(dir, 9));
-    assert.equal(git("status", "--porcelain"), status);
-    assert.equal(git("rev-parse", "HEAD"), head);
-    assert.equal(git("show", "refs/loop/wip/9:a.txt"), "edited\n");
-    assert.equal(git("show", "refs/loop/wip/9:new.txt"), "untracked\n");
-  });
-
   test("a wip head with no verdict resumes the build, not the review", () => {
+    writeFileSync(join(dir, "a.txt"), "edited\n");
     git("add", "-A");
     git("commit", "-qm", "wip(#9): parked in phase C");
     process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
