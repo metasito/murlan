@@ -2,16 +2,6 @@
  * PreToolUse guard for Bash. Reads the tool call on stdin, blocks a command only when a correct
  * alternative always exists, and says what to run instead.
  *
- * Blocked:
- *   git add -A / . / --all / -u      sessions share an index; a bare add absorbs another session's work
- *                                    (allowed on pathspecs inside the current .worktrees/agent-N)
- *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
- *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
- *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
- *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
- *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
- *   a loop session's rerun of any run    the supervisor reruns a red once per head
- *
  * Not here: a push to main. The repository's `main` ruleset refuses it server-side, and no account
  * a session pushes as can bypass it (`current_user_can_bypass: never`).
  *
@@ -32,7 +22,6 @@ import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
 
-/** A failure's first line — enough to name it on stderr without dumping a stack there. */
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
@@ -41,7 +30,6 @@ const isRerun = (c) =>
   (c.cmd === "gh" && c.args[0] === "run" && c.args[1] === "rerun") ||
   (HTTP_CLIENT.test(c.cmd) && /actions\/(runs|jobs)\/[^\s/?]+\/rerun/i.test(c.args.join(" ")));
 
-/** Git as the discard rule asks it, from the directory the tool call runs in. */
 export function gitAt(base) {
   const quietly = (args, dir) => {
     try {
@@ -78,7 +66,6 @@ export function gitAt(base) {
 const CHANNELS = /^(ready-for-human|noticed)$/;
 const AGENT_WORK = /^(ready-for-agent|ci-flake|main-red)$/;
 
-/** Every label the flags name, `--flag a,b` and `--flag=a,b` alike. */
 function labelsOf(args, flags) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
@@ -89,7 +76,6 @@ function labelsOf(args, flags) {
   return out.map((l) => l.trim());
 }
 
-/** The labels a `gh api` call's `labels`/`labels[]` fields carry. */
 function apiLabels(args) {
   const out = [];
   for (let i = 0; i < args.length; i++) {
@@ -225,7 +211,6 @@ function discards(c, repo) {
 
 const PUSH_TAKES_A_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/;
 
-/** The ticket the supervisor spawned this session for, or null when its env names none. */
 const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
 
 /**
@@ -310,8 +295,8 @@ const RULES = [
       "Confirm with `git status --short` and `git diff` afterwards.",
   },
   {
-    // Measured, not theorised: a recursive delete of a worktree whose node_modules is a junction
-    // deletes through it into the target and exits 0. `worktrees:remove` detaches the link first.
+    // A recursive delete of a worktree whose node_modules is a junction deletes through it into the
+    // target and exits 0. `worktrees:remove` detaches the link first.
     test: (c) =>
       deletesWorktree(c) ||
       (c.cmd === "git" && c.args[0] === "worktree" && c.args[1] === "remove" && has(c.args, /^(--force|-f+)$/)),
@@ -450,8 +435,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     cwd = payload.cwd ?? cwd;
     transcript = payload.transcript_path ?? null;
   } catch (err) {
-    // unreadable payload must never block a tool call, but silence here is the other half of
-    // the same bug the RULES above exist to catch — say what could not be checked.
+    // An unreadable payload must never block a tool call, nor pass silently.
     process.stderr.write(`guard-bash: could not read the tool call on stdin (${firstLine(err)}); allowing it.\n`);
     process.exit(0);
   }
