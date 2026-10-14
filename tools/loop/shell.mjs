@@ -18,7 +18,6 @@ const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().
 
 export const has = (args, re) => args.some((a) => re.test(a));
 
-/** Every spelling of a command that moves the shell's directory. */
 export const MOVES = /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/;
 
 /** The words of `args` that are neither a flag nor the value a flag matching `takesValue` consumes. */
@@ -37,7 +36,6 @@ export const toNative = (p, platform = process.platform) =>
     ? p.replace(/^\/tmp(?=\/|$)/, tmpdir().replace(/\\/g, "/")).replace(/^\/([A-Za-z])(\/|$)/, (_, d) => `${d.toUpperCase()}:/`)
     : p;
 
-/** Index of the `)` closing the `(` at `open`, or the end of the text. */
 function closing(text, open) {
   let depth = 0;
   for (let i = open; i < text.length; i++) {
@@ -222,7 +220,6 @@ export function withoutQuotedBodies(command) {
 const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
 export const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
 
-/** Each bare `X=…` statement's value, a later one replacing an earlier. */
 function assignmentsIn(text) {
   const vars = {};
   for (const w of segments(text, MAX_DEPTH)) {
