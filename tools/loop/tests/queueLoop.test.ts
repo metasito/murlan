@@ -1595,6 +1595,7 @@ describe("the land phase", () => {
       start: (letter: string) => rows.push(`start ${letter}`),
       set: () => {},
       said: (text: string) => rows.push(`said ${text}`),
+      keep: (text: string) => rows.push(`kept ${text}`),
       close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
     };
   };
@@ -1643,6 +1644,7 @@ describe("the land phase", () => {
       },
     });
     assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
+    assert.ok(screen.rows.some((r) => r.startsWith("kept main moved")));
   });
 });
 
