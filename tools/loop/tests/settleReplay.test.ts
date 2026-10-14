@@ -247,6 +247,15 @@ describe("settle, replayed against recorded rollups", () => {
     assert.equal(said.length, SETTLE_ROUNDS.appear, "it asks its budget and stops, never the deadline");
   });
 
+  test("a head no check ever reports on is the owner's at the deadline, which names what it last waited on", async () => {
+    const { gh } = rollupFake({ views: [at(ABSENT, { statusCheckRollup: [] })] });
+    const started = Date.now();
+    const out = await poll(PENDING, () => {}, 5, 300, io(gh));
+    assert.equal(out.action, "owner");
+    assert.ok(Date.now() - started >= 300, "it waits out the deadline, not a round budget of its own");
+    assert.match(String(out.reason), /^CI did not settle in \d+m — last: /);
+  });
+
   test("update-branch re-arms on the new head, never the old one", async () => {
     const { gh, asked } = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN] });
     const judged: string[] = [];
