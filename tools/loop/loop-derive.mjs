@@ -431,33 +431,9 @@ function under(cwd, head, remote, branch, until, failed) {
   return ancestor() === 0;
 }
 
-const RUN_OF = /\/actions\/runs\/(\d+)\//;
-/** An unfinished check reports `completedAt` as year 1, which parses to a time before any start. */
-const lastMoved = (e) => Math.max(Date.parse(e.startedAt ?? "") || 0, Date.parse(e.completedAt ?? "") || 0);
-
-/**
- * Whether the head's latest `CI gate` failed on code past attempt 1. The supervisor reruns a first
- * red itself, and a timeout, a run that never started or a job that ran no steps is no code red.
- */
-function gateRedRerun(rollup, cwd, exec, until, failed) {
-  const gate = (rollup ?? []).filter((e) => e.name === "CI gate").reduce((a, e) => (a && lastMoved(a) > lastMoved(e) ? a : e), undefined);
-  const runId = RUN_OF.exec(gate?.detailsUrl ?? "")?.[1];
-  if (gate?.status !== "COMPLETED" || gate.conclusion !== "FAILURE" || !runId) return false;
-  try {
-    const args = ["run", "view", runId, "--repo", REPO, "--json", "attempt,status,conclusion,jobs"];
-    const run = JSON.parse(exec(args, cwd, Math.max(1, until - Date.now())));
-    const red = (run.jobs ?? []).filter((j) => j.conclusion === "failure");
-    return run.status === "completed" && run.attempt > 1 && red.length > 0 && red.every((j) => j.steps?.length > 0);
-  } catch {
-    failed.push("gh");
-    return false;
-  }
-}
-
 /**
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
- * that head. A code red past its rerun that none names is `unposted`: whether the supervisor held it
- * or stopped before posting is the ledger's to say, so `nextRoute` decides between C and G.
+ * that head; a head none names is still `poll`'s to settle, red or not.
  */
 function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;
@@ -466,7 +442,7 @@ function readCi(cwd, branch, head, comments, exec) {
   try {
     [open] = JSON.parse(
       exec(
-        ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid,statusCheckRollup"],
+        ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number,headRefOid"],
         cwd,
         CI_BUDGET_MS,
       ),
@@ -477,8 +453,7 @@ function readCi(cwd, branch, head, comments, exec) {
   if (!open) return { pushed: false, pr: null, sha: null, state: "none", step: null };
   const pushed = under(cwd, head, open.headRefOid, branch, until, failed);
   const step = ciRedStep(comments, open.headRefOid);
-  const unposted = step === undefined && gateRedRerun(open.statusCheckRollup, cwd, exec, until, failed);
-  const state = failed.length ? "unreadable" : unposted ? "unposted" : step === undefined ? "settling" : "red";
+  const state = failed.length ? "unreadable" : step === undefined ? "settling" : "red";
   return { pushed, pr: open.number, sha: open.headRefOid, state, step: step ?? null };
 }
 

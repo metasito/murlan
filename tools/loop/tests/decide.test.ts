@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, SETTLE_ROUNDS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
@@ -18,11 +18,10 @@ const base = { route, tally: empty, loop: fresh, limits: LIMITS, now: NOW, asked
 const pre = (over: object, top: object = {}) => ({ ...base, step: "pre", pre: { stop: false, unusable: false, moved: null, housekeeping: { verdict: "ok", why: null }, ...over }, ...top });
 const pick = (over: object, top: object = {}) => ({ ...base, step: "pick", route: { ...route, ...over }, repicked: false, ...top });
 const fixRoute = (top: object = {}) => pick({ fix: true, head: "h3" }, top);
-const heldRed = (top: object = {}) => pick({ fix: true, head: "h1abcdef9", unposted: 5 }, { tally: { ...empty, retries: 1, lastRedHead: "h1abcdef9" }, ...top });
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
 const ok = { subtype: "success", isError: false, apiStatus: null, cost: 2, turns: 30 };
-const run = (over: object = {}) => ({ status: 0, phase: "C", declared: said({ handoff: "D" }), result: ok, stderr: "", blocked: false, blockedUntil: 0, accountError: null, apiErrorCode: null, lastFact: "result", wrongModel: null, strayPlugin: null, ...over });
+const run = (over: object = {}) => ({ status: 0, phase: "C", declared: said({ handoff: "D" }), result: ok, stderr: "", blocked: false, blockedUntil: 0, accountError: null, apiErrorCode: null, lastFact: "result", ...over });
 const derived = { ticket: 42, branch: "agent/42-x", cwd: "/w/agent-42", head: "h1", commits: 3, changed: [], dirty: false, phase: "C" };
 const session = (over: object = {}) => ({ ...base, step: "session", run: run(), after: derived, built: true, pushed: null, issue: null, ...over });
 const silent = (over: object = {}) => run({ declared: null, ...over });
@@ -32,15 +31,15 @@ const g = (pushed: object | null) => ({ ...base, step: "session", route: { ...ro
 const api = (apiStatus: number | null, over: object = {}) => silent({ status: 1, result: { ...ok, isError: true, apiStatus }, ...over });
 
 const ci = (over: object = {}) => ({ testIds: ["tests/a.test.ts › adds"], output: "✖ adds", logUnread: false, waiting: false, infrastructure: false, appearing: false, runId: 99, attempt: 2, failedStep: "Typecheck and tests", ...over });
-const rounds = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
 const land = (over: object = {}) => ({
   ...base,
   step: "landing",
-  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, rounds, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
+  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, stuck: false, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
 });
 const red = (over: object = {}) => land({ action: "hand-back", reason: "CI failed at Typecheck and tests", ...over });
 const green = (over: object = {}) => land({ action: "arm", reason: "mergeStateStatus is CLEAN", ...over });
 const settled = (over: object = {}, top: object = {}) => ({ ...base, step: "settled", settled: { action: "hand-back", reason: "CI failed at Typecheck and tests", head: "h2", ...over }, ...top });
+const heldRed = (top: object = {}) => settled({ action: "hold", reason: "CI-RED for h1abcde could not be posted", head: "h1abcdef9" }, top);
 
 type Row = [name: string, input: object, want: Record<string, unknown>];
 
@@ -76,14 +75,6 @@ const ROWS: Row[] = [
   ["a CI-RED already posted for the unrecorded head counts that round once, not twice", fixRoute({ tally: { ...empty, retries: 1, lastRedHead: "h2", ciRounds: 2 } }),
     { kind: "go", redWhileDown: true }],
   ["runOnce: a tracker's CI-RED count past the ledger's reaches the cap", fixRoute({ tally: { ...empty, ciRounds: CI_ROUNDS } }), { kind: "park", phase: "C" }],
-  ["runOnce: a held red's fix round asks for its CI-RED to be posted first", heldRed(), { kind: "ask", fact: "posted" }],
-  ["a post that still fails holds, and spawns nothing", heldRed({ posted: false }),
-    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for h1abcde could not be posted", hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
-  ["runOnce: a posted CI-RED goes on to the fix round", heldRed({ posted: true }), { kind: "go" }],
-  ["runOnce: an unposted red holds before the cap on rounds missed while down parks", heldRed({ posted: false, tally: { ...empty, retries: CI_ROUNDS - 1, lastRedHead: "h0" } }),
-    { kind: "hold" }],
-  ["main: a park asked from the board takes a held red whose CI-RED is unposted", heldRed({ posted: false, asked: true }),
-    { kind: "park", why: "parked by owner", byOwner: true, phase: "C", instead: { kind: "hold" } }],
   ["an ff failure before a fix parks", { ...base, step: "refresh", error: "fatal: Not possible to fast-forward" },
     { kind: "park", phase: "C", why: "could not fast-forward the worktree before the fix round — fatal: Not possible to fast-forward" }],
   ["runOnce: a fast-forwarded worktree goes on to the fix round", { ...base, step: "refresh", error: null }, { kind: "go" }],
@@ -94,15 +85,13 @@ const ROWS: Row[] = [
   ["runOnce: a session that did not hand off asks for its pull request", session({ run: finished(), pushed: undefined }), { kind: "ask", fact: "pushed" }],
   ["runOnce: an API failure is held before any pull request is asked for", session({ run: api(529), pushed: undefined }), { kind: "hold", wait: "api" }],
   ["runOnce: a finished session with no pull request asks after the issue", session({ run: finished(), issue: undefined }), { kind: "ask", fact: "issue" }],
+  ["a session on the wrong model parks with the reason", session({ run: run({ wrongModel: "the session ran on claude-sonnet-5, not opus" }) }),
+    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", loop: { ...fresh, failures: 1 } }],
   ["a stood-down session is never asked about the issue", session({ run: finished({ stoodDown: true, why: "moot" }), issue: undefined }), { kind: "park", why: "moot" }],
 
   // runOnce, after the session
-  ["a stray plugin stops the run instead of parking the ticket it happened to meet", session({ run: run({ strayPlugin: "plugin superpowers loaded from user settings" }) }),
-    { kind: "stop", why: "plugin superpowers loaded from user settings", halt: undefined, loop: fresh }],
   ["an expired login stops the run, and does not park the ticket it met", session({ run: silent({ accountError: "authentication_failed", status: 1 }) }),
     { kind: "stop", why: /^the account cannot run sessions \(authentication_failed\) — log in.*#42 resumes from its worktree$/, loop: fresh }],
-  ["a session on the wrong model parks with the reason", session({ run: run({ wrongModel: "the session ran on claude-sonnet-5, not opus" }) }),
-    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", loop: { ...fresh, failures: 1 } }],
   ["starts the next process at the phase the session named", session(), { kind: "handoff", n: 42, phase: "D", why: null, publish: true, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: the session's own why rides with its handoff", session({ run: run({ declared: said({ handoff: "D", why: "review abc" }) }) }), { kind: "handoff", said: "review abc" }],
   ["a D handoff without a --build pass re-routes to C, recorded as a C handoff", session({ built: false }),
@@ -179,29 +168,35 @@ const ROWS: Row[] = [
   ["poll: a head this process already reran is handed back", red({ ci: ci({ attempt: 1 }), reran: "h2abcdef9" }), { kind: "settled", action: "hand-back", why: "CI failed at Typecheck and tests" }],
   ["poll: a red on its second attempt is handed back", red(), { kind: "settled", action: "hand-back" }],
   ["poll: a red with no run to rerun is handed back", red({ ci: ci({ attempt: 1, runId: null }) }), { kind: "settled", action: "hand-back" }],
-  ["poll: a red whose log is unread is asked again, from the retry budget", red({ ci: ci({ logUnread: true }) }),
-    { kind: "settle", act: "wait", spend: "retry", why: "CI is red but named no log — asking once more" }],
-  ["poll: a red whose log never comes goes to the owner once the retry budget is spent", red({ ci: ci({ output: "" }), rounds: { ...rounds, retry: SETTLE_ROUNDS.retry } }),
-    { kind: "settled", action: "owner", why: "CI is red and its log could not be read — CI failed at Typecheck and tests" }],
+  ["poll: a red whose log is unread is asked again", red({ ci: ci({ logUnread: true }) }),
+    { kind: "settle", act: "wait", why: "CI is red but named no log — asking again" }],
   ["poll: main moved, so the branch is updated", land({ action: "update-branch", reason: "main moved" }),
-    { kind: "settle", act: "update-branch", spend: "update", why: "main moved — updating the branch and reading CI again" }],
-  [`poll: update-branch past ${SETTLE_ROUNDS.update} rounds goes to the owner`, land({ action: "update-branch", reason: "main moved", rounds: { ...rounds, update: SETTLE_ROUNDS.update } }),
-    { kind: "settled", action: "owner", why: `update-branch did not settle in ${SETTLE_ROUNDS.update} rounds — last: main moved` }],
-  ["poll: a run still going is waited on, spending no budget", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }) }), { kind: "settle", act: "wait", spend: null, why: "3 of 9 jobs done" }],
-  ["poll: a recheck spends the recheck budget", land(), { kind: "settle", act: "wait", spend: "recheck", why: "the run has not finished — asking once more" }],
-  [`poll: recheck ${SETTLE_ROUNDS.recheck + 1} goes to the owner`, land({ rounds: { ...rounds, recheck: SETTLE_ROUNDS.recheck } }),
-    { kind: "settled", action: "owner", why: `recheck did not settle in ${SETTLE_ROUNDS.recheck} rounds — last: the run has not finished` }],
-  ["poll: a run not yet appearing spends the appear budget", land({ ci: ci({ infrastructure: true, appearing: true }), rounds: { ...rounds, recheck: SETTLE_ROUNDS.recheck } }),
-    { kind: "settle", act: "wait", spend: "appear" }],
-  [`poll: appear ${SETTLE_ROUNDS.appear + 1} goes to the owner`, land({ ci: ci({ infrastructure: true, appearing: true }), rounds: { ...rounds, appear: SETTLE_ROUNDS.appear } }),
-    { kind: "settled", action: "owner", why: `recheck did not settle in ${SETTLE_ROUNDS.appear} rounds — last: the run has not finished` }],
-  ["poll: a runner that said nothing spends the retry budget", land({ ci: ci({ infrastructure: true }) }), { kind: "settle", act: "wait", spend: "retry" }],
+    { kind: "settle", act: "update-branch", why: "main moved — updating the branch and reading CI again" }],
+  [`poll: update-branch past ${UPDATES} rounds goes to the owner`, land({ action: "update-branch", reason: "main moved", updates: UPDATES }),
+    { kind: "settled", action: "owner", why: `update-branch did not settle in ${UPDATES} rounds — last: main moved` }],
+  ["poll: a run still going is waited on", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }) }), { kind: "settle", act: "wait", why: "3 of 9 jobs done" }],
+  ["poll: a recheck is asked again", land(), { kind: "settle", act: "wait", why: "the run has not finished — asking again" }],
+  ["poll: a run not yet appearing, or a runner that said nothing, is asked again", land({ ci: ci({ infrastructure: true, appearing: true }) }), { kind: "settle", act: "wait" }],
   ["poll: a head past its deadline goes to the owner", land({ overdue: true }), { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m` }],
-  ["poll: a green head asks whether review cleared it", green({ cleared: undefined }), { kind: "ask", fact: "cleared" }],
-  ["poll: a cleared green head is armed", green(), { kind: "settle", act: "arm", spend: null }],
-  ["poll: a cleared green draft is marked ready, from the ready budget", green({ action: "ready", reason: "CI passed on the draft" }), { kind: "settle", act: "ready", spend: "ready" }],
-  ["poll: a draft still a draft after its ready rounds goes to the owner", green({ action: "ready", rounds: { ...rounds, ready: SETTLE_ROUNDS.ready } }),
+  ["poll: the deadline's verdict names what it last waited on", land({ overdue: true, last: "CI is red but named no log — asking again" }),
+    { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m — last: CI is red but named no log — asking again` }],
+  ["poll: a run that never registers is the owner's once nothing has changed for the stuck bound", land({ ci: ci({ infrastructure: true, appearing: true }), reason: "no check has reported on this head", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: no check has reported on this head" }],
+  ["poll: a red whose log stays unreadable is the owner's at the stuck bound", red({ ci: ci({ logUnread: true }), stuck: true }),
+    { kind: "settled", action: "owner", why: "CI is red and its log could not be read — CI failed at Typecheck and tests" }],
+  ["poll: a cancelled or infrastructure run that stays so is the owner's at the stuck bound", land({ ci: ci({ infrastructure: true }), reason: "the run was cancelled", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: the run was cancelled" }],
+  ["poll: mergeability stuck at UNKNOWN is the owner's at the stuck bound", land({ ci: ci({ pass: true }), reason: "GitHub is still computing mergeability", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: GitHub is still computing mergeability" }],
+  ["poll: a draft that stays a draft is the owner's at the stuck bound", green({ action: "ready", stuck: true }),
     { kind: "settled", action: "owner", why: "h2abcde is still a draft after gh pr ready" }],
+  ["poll: an armed head GitHub holds at BLOCKED gets the whole deadline", land({ armed: true, reason: "auto-merge is armed and the required check has not passed yet", stuck: true }),
+    { kind: "settle", act: "wait", why: "auto-merge is armed and the required check has not passed yet — asking again" }],
+  ["poll: a run still going gets the whole deadline, however long one job takes", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }), stuck: true }),
+    { kind: "settle", act: "wait", why: "3 of 9 jobs done" }],
+  ["poll: a green head asks whether review cleared it", green({ cleared: undefined }), { kind: "ask", fact: "cleared" }],
+  ["poll: a cleared green head is armed", green(), { kind: "settle", act: "arm" }],
+  ["poll: a cleared green draft is marked ready", green({ action: "ready", reason: "CI passed on the draft" }), { kind: "settle", act: "ready" }],
   ["poll: a green head no review clears goes to the owner", green({ cleared: { ok: false, why: "no VERDICT: LAND names h2abcde" } }),
     { kind: "settled", action: "owner", why: "no VERDICT: LAND names h2abcde — h2abcde was pushed for review, not cleared" }],
   ["poll: a head already armed is waited on, and clearance is not asked again", green({ armed: true, cleared: undefined }),
@@ -209,7 +204,7 @@ const ROWS: Row[] = [
   ["poll: what only a person can move goes to the owner", land({ action: "owner", reason: "the branch conflicts with main" }), { kind: "settled", action: "owner", why: "the branch conflicts with main" }],
   ["poll: a merged pull request is the verdict", land({ action: "already-merged", reason: "the pull request is already merged" }), { kind: "settled", action: "already-merged" }],
   ["poll: CI unreadable since the machine woke is asked again", land({ error: { why: "ENOTFOUND api.github.com", offline: true, woke: true } }),
-    { kind: "settle", act: "wait", spend: null, why: "could not read CI since the machine woke — ENOTFOUND api.github.com; asking again" }],
+    { kind: "settle", act: "wait", why: "could not read CI since the machine woke — ENOTFOUND api.github.com; asking again" }],
   ["poll: CI unreadable for any other reason goes to the owner", land({ error: { why: "HTTP 403", offline: false, woke: false } }), { kind: "settled", action: "owner", why: "could not read CI — HTTP 403" }],
 
   // runOnce, what poll's verdict costs the ticket
@@ -224,9 +219,11 @@ const ROWS: Row[] = [
     { kind: "park", phase: "E", ciRed: true, why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI failed at Typecheck and tests` }],
   ["a restart mid fix round keeps the round count: the third red run parks", settled({}, { tally: { ...empty, retries: CI_ROUNDS - 1 } }), { kind: "park" }],
   ["runOnce: the tracker's CI-RED count stands in for rounds the ledger missed", settled({}, { tally: { ...empty, ciRounds: CI_ROUNDS - 1 } }), { kind: "park", ciRed: true }],
-  ["a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head",
+  ["a red whose CI-RED could not be posted is held: no park, the worktree kept, and no round spent until it is posted",
     settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }),
-    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for abc could not be posted", head: "abc", record: "retry", hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
+    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for abc could not be posted", head: "abc", record: undefined, hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
+  ["a post that still fails holds, and spawns nothing", heldRed(),
+    { kind: "hold", wait: "preflight", n: 42, why: "CI-RED for h1abcde could not be posted", hold: WAIT.FLOOR, loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["runOnce: an unposted CI-RED on the last round parks", settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }, { tally: { ...empty, retries: CI_ROUNDS - 1 } }),
     { kind: "park", why: `${CI_ROUNDS} CI rounds on the same branch did not go green — last: CI-RED for abc could not be posted` }],
   ["a settle only a person can move parks the ticket rather than dropping it", settled({ action: "owner", reason: "update-branch did not settle in 3 rounds" }),
@@ -239,8 +236,8 @@ const ROWS: Row[] = [
     { kind: "retry", loop: { ...fresh, failures: 1, pinned: 42 } }],
   ["an owner decision is parked, and goes through park rather than a bare teardown", settled({ action: "owner", reason: "r" }),
     { kind: "park", loop: { ...fresh, failures: 1 } }],
-  ["a hold records its red round and parks nothing: the next pick reads the red again", settled({ action: "hold", reason: "r", head: "abc" }),
-    { kind: "hold", record: "retry", head: "abc", loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
+  ["a hold spends no red round and parks nothing: the next pass settles the red again", settled({ action: "hold", reason: "r", head: "abc" }),
+    { kind: "hold", record: undefined, head: "abc", loop: { ...fresh, heldTicket: 42, ticketHolds: 1 } }],
   ["an unrecognised action parks rather than passing as a landing", settled({ action: "something-new", reason: "?" }),
     { kind: "park", loop: { ...fresh, failures: 1 } }],
 
@@ -273,17 +270,17 @@ const ROWS: Row[] = [
   ["main: a park asked from the board takes a usage hold", session({ asked: true, run: silent({ result: null, blocked: true, blockedUntil: 0 }) }), { kind: "park", phase: "C", why: "parked by owner" }],
   ["main: a park asked from the board takes an API hold", session({ asked: true, run: api(529) }), { kind: "park", why: "parked by owner" }],
   ["main: a park asked from the board takes a held red round", settled({ action: "hold", reason: "CI-RED for abc could not be posted", head: "abc" }, { asked: true }),
-    { kind: "park", why: "parked by owner", instead: { kind: "hold", record: "retry" } }],
+    { kind: "park", why: "parked by owner", instead: { kind: "hold" } }],
   ["main: a pre-flight hold has no ticket for the owner to park", pre({ housekeeping: { verdict: "hold", why: "busy" } }, { asked: true }), { kind: "hold" }],
   ["main: the owner's park neither counts toward the breaker nor resets a counter",
     session({ asked: true, loop: { failures: BREAKER - 1, holds: 2, waits: 3, overloads: 4, pinned: 42 } }),
     { kind: "park", halt: null, loop: { failures: BREAKER - 1, holds: 2, waits: 3, overloads: 4, pinned: null } }],
 
   // main, the run's own counters
-  ["three tickets in a row that do not land stop the night", session({ run: run({ wrongModel: "w" }), loop: { ...fresh, failures: BREAKER - 1 } }),
+  ["three tickets in a row that do not land stop the night", session({ run: finished({ stoodDown: true, why: "w" }), loop: { ...fresh, failures: BREAKER - 1 } }),
     { kind: "park", halt: `${BREAKER} tickets in a row did not land`, loop: { ...fresh, failures: BREAKER } }],
-  ["main: a park short of the breaker does not halt", session({ run: run({ wrongModel: "w" }) }), { kind: "park", halt: null }],
-  ["one bad ticket is a ticket; three in a row is the loop or the machine", session({ run: run({ wrongModel: "w" }), loop: { ...fresh, failures: BREAKER - 2 } }),
+  ["main: a park short of the breaker does not halt", session({ run: finished({ stoodDown: true, why: "w" }) }), { kind: "park", halt: null }],
+  ["one bad ticket is a ticket; three in a row is the loop or the machine", session({ run: finished({ stoodDown: true, why: "w" }), loop: { ...fresh, failures: BREAKER - 2 } }),
     { kind: "park", halt: null, loop: { ...fresh, failures: BREAKER - 1 } }],
   ["a landing clears the breaker, so a bad ticket between good ones is not fatal",
     settled({ action: "already-merged", reason: "merged" }, { loop: { failures: 2, holds: 1, waits: 5, overloads: 3, pinned: 42 } }), { kind: "landed", loop: fresh }],
@@ -292,7 +289,7 @@ const ROWS: Row[] = [
     { kind: "closed", loop: fresh }],
   ["main: a handoff resets the pre-flight and API counts, and neither the breaker nor the usage count",
     session({ loop: { failures: 2, holds: 3, waits: 4, overloads: 5, pinned: null } }), { kind: "handoff", loop: { failures: 2, holds: 0, waits: 4, overloads: 0, pinned: 42 } }],
-  ["main: a park resets the pre-flight and API counts, and keeps the usage count", session({ run: run({ wrongModel: "w" }), loop: { failures: 0, holds: 3, waits: 4, overloads: 5, pinned: 42 } }),
+  ["main: a park resets the pre-flight and API counts, and keeps the usage count", session({ run: finished({ stoodDown: true, why: "w" }), loop: { failures: 0, holds: 3, waits: 4, overloads: 5, pinned: 42 } }),
     { kind: "park", loop: { failures: 1, holds: 0, waits: 4, overloads: 0, pinned: null } }],
   [`${WAIT.TRIES} in a row end the run and say why; a served session in between resets the count`,
     session({ run: api(529), loop: { ...fresh, overloads: WAIT.TRIES - 1, pinned: 42 } }),
@@ -305,15 +302,15 @@ const ROWS: Row[] = [
     { kind: "hold", loop: { ...fresh, holds: WAIT.TRIES, pinned: 42 } }],
   ["pre-flight holds spend nothing of a ticket's hold bound", pre({ housekeeping: { verdict: "hold", why: "drift" } }, { loop: { ...fresh, heldTicket: 42, ticketHolds: 3 } }),
     { kind: "hold", loop: { ...fresh, holds: 1, heldTicket: 42, ticketHolds: 3 } }],
-  ["a ticket parks at its own bound of holds, not before", heldRed({ posted: false, loop: { ...fresh, heldTicket: 42, ticketHolds: TICKET_HOLDS - 1 } }),
+  ["a ticket parks at its own bound of holds, not before", heldRed({loop: { ...fresh, heldTicket: 42, ticketHolds: TICKET_HOLDS - 1 } }),
     { kind: "hold", loop: { ...fresh, heldTicket: 42, ticketHolds: TICKET_HOLDS } }],
-  ["main: a ticket's holds count afresh when another ticket held last", heldRed({ posted: false, loop: { ...fresh, heldTicket: 9, ticketHolds: TICKET_HOLDS } }),
+  ["main: a ticket's holds count afresh when another ticket held last", heldRed({loop: { ...fresh, heldTicket: 9, ticketHolds: TICKET_HOLDS } }),
     { kind: "hold", loop: { heldTicket: 42, ticketHolds: 1 } }],
   ["a ticket held past its bound is parked for the owner, and the loop carries on",
-    heldRed({ posted: false, loop: { ...fresh, holds: 2, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
+    heldRed({loop: { ...fresh, holds: 2, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
     { kind: "park", n: 42, phase: "C", why: `CI-RED for h1abcde could not be posted, ${TICKET_HOLDS + 1} times running`, halt: null,
       instead: { kind: "hold" }, loop: { ...fresh, failures: 1, holds: 2, heldTicket: null } }],
-  ["main: a ticket parked at its hold bound counts toward the breaker", heldRed({ posted: false, loop: { ...fresh, failures: BREAKER - 1, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
+  ["main: a ticket parked at its hold bound counts toward the breaker", heldRed({loop: { ...fresh, failures: BREAKER - 1, heldTicket: 42, ticketHolds: TICKET_HOLDS } }),
     { kind: "park", halt: `${BREAKER} tickets in a row did not land` }],
   ["main: any pass but a hold forgets the held ticket", session({ loop: { ...fresh, heldTicket: 42, ticketHolds: 4 } }), { kind: "handoff", loop: { heldTicket: null } }],
   ["main: a held red round is the ticket's hold, not the run's, and keeps the pin", settled({ action: "hold", reason: "r", head: "abc" }, { loop: { ...fresh, holds: 2, overloads: 2, pinned: 9 } }),
@@ -361,15 +358,13 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
   "a G route announces itself before it settles": ["queueLoopMain.test.ts", "io"],
   "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
-  "a snapshot that throws during an account error is logged, and the run still stops": ["queueLoopMain.test.ts", "io"],
+  "a refused session's dirty worktree is left standing as it is, with no copy taken": ["queueLoopMain.test.ts", "io"],
   "the sweep in housekeeping runs before the pick": ["queueLoopMain.test.ts", "io"],
   "nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a pinned ticket with no worktree rebuilds at A": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a LAND on the head outranks a handoff to review, and nothing else does": ["queueLoopMain.test.ts", "picker"],
   "nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push": ["queueLoopMain.test.ts", "picker"],
-  "is a fix round once the supervisor held it at that head": ["queueLoopMain.test.ts", "picker"],
-  "is still G when the supervisor stopped mid-settle and recorded no red": ["queueLoopMain.test.ts", "picker"],
   "refreshWorktree fetches the branch and fast-forwards onto it": ["queueLoopMain.test.ts", "io"],
   "publishForReview pushes, then opens a draft only when no pull request is open": ["queueLoopMain.test.ts", "io"],
   "a landed or parked ticket removes the worktree from the main checkout": ["queueLoopMain.test.ts", "io"],
@@ -411,7 +406,8 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "is applied again at the start of the next pass, once, and a restart does not repeat it": ["queueLoopMain.test.ts", "repark"],
   "a landing a rerun won writes the flake on its row": ["queueLoopMain.test.ts", "io"],
   "a rerun's green whose merge then failed still writes the flake, on the park row": ["queueLoopMain.test.ts", "io"],
-  "posted, the session that spawns reads its fix round": ["queueLoopMain.test.ts", "io: the post before the refresh and the spawn"],
+  "a red whose CI-RED a settle could not post reaches its fix round with exactly one posted": ["queueLoopMain.test.ts", "io: three passes, one CI-RED"],
+  "is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle": ["queueLoopMain.test.ts", "picker"],
   "a ticket's hold says which ticket and why, not a pre-flight's words": ["queueLoopMain.test.ts", "io: main's notice"],
   "the settle is handed the flake the ledger armed with, and writes an armed row when it arms": ["queueLoopMain.test.ts", "io"],
   "a red on an armed pull request is disarmed before any fix round is spawned": ["queueLoopMain.test.ts", "io: poll's call order"],

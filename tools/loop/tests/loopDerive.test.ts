@@ -23,7 +23,7 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody, park, snapshotWip } from "../queue-loop.mjs";
+import { ciRedBody, park } from "../queue-loop.mjs";
 import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
@@ -344,21 +344,8 @@ describe("held work", () => {
     else process.env.LOOP_GH_SCRIPT = priorScript;
   });
 
-  test("a clean tree takes no snapshot", () => assert.equal(snapshotWip(dir, 9), null));
-
-  test("a snapshot keeps the dirty tree in a ref and moves nothing", () => {
-    writeFileSync(join(dir, "a.txt"), "edited\n");
-    writeFileSync(join(dir, "new.txt"), "untracked\n");
-    const status = git("status", "--porcelain");
-    const head = git("rev-parse", "HEAD");
-    assert.ok(snapshotWip(dir, 9));
-    assert.equal(git("status", "--porcelain"), status);
-    assert.equal(git("rev-parse", "HEAD"), head);
-    assert.equal(git("show", "refs/loop/wip/9:a.txt"), "edited\n");
-    assert.equal(git("show", "refs/loop/wip/9:new.txt"), "untracked\n");
-  });
-
   test("a wip head with no verdict resumes the build, not the review", () => {
+    writeFileSync(join(dir, "a.txt"), "edited\n");
     git("add", "-A");
     git("commit", "-qm", "wip(#9): parked in phase C");
     process.env.LOOP_GH_SCRIPT = fakeGh(dir, { issue: { comments: [] } });
@@ -730,73 +717,27 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
     for (const t of timeouts) assert.ok(t !== undefined && t > 0 && t <= CI_BUDGET_MS, `timeout ${t}`);
   });
 
-  describe("a red no CI-RED names is read from the pull request's own CI gate", () => {
-    const gate = (conclusion: string, startedAt: string, status = "COMPLETED") => ({
-      name: "CI gate",
-      status,
-      conclusion,
-      detailsUrl: `https://github.com/o/r/actions/runs/${startedAt.slice(11, 13)}/job/1`,
-      startedAt,
-      completedAt: status === "COMPLETED" ? startedAt : "0001-01-01T00:00:00Z",
-    });
-    const STEPS = [{ name: "Test", conclusion: "failure" }];
-    const RAN = { status: "completed", conclusion: "failure", jobs: [{ name: "Typecheck and tests", conclusion: "failure", steps: STEPS }] };
-    const derived = (rollup: unknown[], attempt: number, run: Record<string, unknown> = RAN) => {
+  describe("a red is the session's only once a CI-RED names it", () => {
+    const derived = (comments: unknown[]) => {
       const asked: string[][] = [];
       const exec = (a: string[]) => {
         asked.push(a);
-        if (a[0] === "issue") return JSON.stringify({ comments: land() });
-        if (a[0] === "run") return JSON.stringify({ attempt, ...run });
-        return JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: rollup }]);
+        return a[0] === "issue" ? JSON.stringify({ comments }) : JSON.stringify([{ number: 5, headRefOid: head }]);
       };
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
     };
-    const RED_GATE = [gate("FAILURE", "2026-10-13T10:00:00Z")];
 
-    // Whether that red is a held one is the ledger's to say: a supervisor restarted mid-settle,
-    // before its CI-RED went out, still owes G.
-    test("a red gate already rerun is reported, and derive still says G", () => {
-      const { s, asked } = derived(RED_GATE, 2);
-      assert.equal(s.ci.state, "unposted");
-      assert.equal(s.fix, false);
-      assert.equal(s.phase, "G");
-      const view = asked.find((a) => a[0] === "run")!;
-      assert.deepEqual(view.slice(0, 3), ["run", "view", "10"]);
-      assert.equal(view[view.indexOf("--json") + 1], "attempt,status,conclusion,jobs");
+    // `poll` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
+    test("a head no CI-RED names is still G, whatever its CI says, and no run is read", () => {
+      const { s, asked } = derived(land());
+      assert.deepEqual([s.ci.state, s.fix, s.phase], ["settling", false, "G"]);
+      assert.equal(asked.filter((a) => a[0] === "run").length, 0);
     });
 
     test("once the supervisor posts the CI-RED it writes, the session reads a fix round", () => {
       const body = ciRedBody({ sha: head, runUrl: "https://github.com/o/r/actions/runs/10", failedStep: "Test", testIds: ["a.ts › b"], runId: 10, attempt: 2 });
-      const exec = (a: string[]) =>
-        a[0] === "issue"
-          ? JSON.stringify({ comments: [...land(), { body, authorAssociation: "OWNER" }] })
-          : a[0] === "run"
-            ? JSON.stringify({ attempt: 2, ...RAN })
-            : JSON.stringify([{ number: 5, headRefOid: head, statusCheckRollup: RED_GATE }]);
-      const s = (derive as any)({ cwd: dir, base: "main", ci: true, exec });
+      const { s } = derived([...land(), { body, authorAssociation: "OWNER" }]);
       assert.deepEqual([s.ci.state, s.fix, s.phase, s.ci.step], ["red", true, "C", "Test"]);
-    });
-
-    test("a first red is the supervisor's to rerun", () => {
-      assert.equal(derived(RED_GATE, 1).s.ci.state, "settling");
-    });
-
-    test("a run still going, or a failed job that ran no steps, is no code red", () => {
-      assert.equal(derived(RED_GATE, 2, { status: "in_progress", conclusion: null }).s.ci.state, "settling");
-      const stepless = { ...RAN, jobs: [...RAN.jobs, { name: "Native tests", conclusion: "failure", steps: [] }] };
-      assert.equal(derived(RED_GATE, 2, stepless).s.ci.state, "settling");
-    });
-
-    test("only FAILURE is a code red: a timed-out or never-started gate is not", () => {
-      for (const c of ["TIMED_OUT", "STARTUP_FAILURE"]) {
-        assert.equal(derived([gate(c, "2026-10-13T10:00:00Z")], 2).s.ci.state, "settling", c);
-      }
-    });
-
-    test("the latest gate is the verdict: an older red under a newer running one, and no run is read", () => {
-      const { s, asked } = derived([...RED_GATE, gate("", "2026-10-13T11:00:00Z", "IN_PROGRESS")], 2);
-      assert.equal(s.ci.state, "settling");
-      assert.equal(asked.filter((a) => a[0] === "run").length, 0);
     });
   });
 

@@ -203,7 +203,7 @@ const STEPS = {
     return { kind: "go" };
   },
 
-  pick({ route, repicked, tally, limits, posted }) {
+  pick({ route, repicked, tally, limits }) {
     const { n } = route;
     if (route.skill === "closed") {
       return repicked
@@ -211,11 +211,6 @@ const STEPS = {
         : { kind: "repick", n, why: `#${n} is closed` };
     }
     if (route.skill === "handoff" || route.skill === "ambiguous") return { kind: "stop", why: route.title };
-    // The session's own derive reads a red only from CI-RED, so a held red's fix round waits for one.
-    if (route.fix && route.unposted) {
-      if (posted === undefined) return ask("posted");
-      if (!posted) return { kind: "hold", wait: "preflight", n, why: `CI-RED for ${String(route.head).slice(0, 7)} could not be posted` };
-    }
     const redWhileDown = Boolean(route.fix && route.head && route.head !== tally.lastRedHead);
     if (redWhileDown) {
       const rounds = Math.max(tally.retries + 1, tally.ciRounds ?? 0);
@@ -236,8 +231,7 @@ const STEPS = {
     const settling = run === null;
     const ran = run ?? { status: 0, phase: "G", declared: null, result: null };
     const at = afterSession(ran, after);
-    // Not the ticket's fault, so neither a park nor a failure: every next ticket would load it too.
-    if (ran.strayPlugin) return { kind: "stop", why: ran.strayPlugin };
+    // Not the ticket's fault, so neither a park nor a failure: every next ticket would meet it too.
     if (ran.accountError) {
       return { kind: "stop", why: `the account cannot run sessions (${ran.accountError}) — log in, then npm run queue:loop; #${n} resumes from its worktree` };
     }
@@ -279,13 +273,16 @@ const STEPS = {
 
   // One read of a pushed pull request inside `poll`: a step to take and read again, or the verdict
   // `settled` turns into the ticket's outcome. The actions are `land.ts`'s `landing()`.
+  // One deadline bounds every wait; only update-branch, which moves the head and so the deadline, has a cap.
+  // `stuck` is the second bound: nothing poll reads has changed for SETTLE.STUCK_MS. A run still going
+  // and an armed head are exempt, since one long job or GitHub's merge queue changes nothing for minutes.
   landing({ landing, limits }) {
-    const { action, reason, head, armed, overdue, rounds, ci, reran } = landing;
-    const { ROUNDS } = limits;
-    const step = (act, why, spend = null) => ({ kind: "settle", act, why, spend });
+    const { action, reason, head, armed, overdue, updates, last, ci, reran, stuck } = landing;
+    const { UPDATES } = limits;
+    const step = (act, why) => ({ kind: "settle", act, why });
     const verdict = (as, why) => ({ kind: "settled", action: as, why });
 
-    if (overdue) return verdict("owner", `CI did not settle in ${Math.round(landing.deadline / 60_000)}m`);
+    if (overdue) return verdict("owner", `CI did not settle in ${Math.round(landing.deadline / 60_000)}m${last ? ` — last: ${last}` : ""}`);
     if (landing.error) {
       const { why, offline, woke } = landing.error;
       return offline && woke ? step("wait", `could not read CI since the machine woke — ${why}; asking again`) : verdict("owner", `could not read CI — ${why}`);
@@ -296,25 +293,19 @@ const STEPS = {
       return verdict("hand-back", reason);
     }
     if (action === "update-branch") {
-      return rounds.update < ROUNDS.update
-        ? step("update-branch", "main moved — updating the branch and reading CI again", "update")
-        : verdict("owner", `update-branch did not settle in ${ROUNDS.update} rounds — last: ${reason}`);
+      return updates < UPDATES
+        ? step("update-branch", "main moved — updating the branch and reading CI again")
+        : verdict("owner", `update-branch did not settle in ${UPDATES} rounds — last: ${reason}`);
     }
-    // A run that has not finished is not a round spent; the deadline bounds it.
     if (action === "recheck" && ci.waiting) return step("wait", ci.reason ?? reason);
-    if (action === "hand-back") {
-      return rounds.retry < ROUNDS.retry ? step("wait", "CI is red but named no log — asking once more", "retry") : verdict("owner", `CI is red and its log could not be read — ${reason}`);
-    }
-    if (action === "recheck") {
-      const asking = ci.infrastructure ? (ci.appearing ? "appear" : "retry") : "recheck";
-      return rounds[asking] < ROUNDS[asking] ? step("wait", `${reason} — asking once more`, asking) : verdict("owner", `recheck did not settle in ${ROUNDS[asking]} rounds — last: ${reason}`);
-    }
+    if (action === "hand-back") return stuck ? verdict("owner", `CI is red and its log could not be read — ${reason}`) : step("wait", "CI is red but named no log — asking again");
+    if (action === "recheck") return stuck && !armed ? verdict("owner", `recheck did not settle — last: ${reason}`) : step("wait", `${reason} — asking again`);
+    if (action === "ready" && stuck) return verdict("owner", `${sha7(head)} is still a draft after gh pr ready`);
     if (action === "arm" || action === "ready") {
       if (armed) return step("wait", "auto-merge is armed — waiting for GitHub to merge");
       if (landing.cleared === undefined) return ask("cleared");
       if (!landing.cleared.ok) return verdict("owner", `${landing.cleared.why} — ${sha7(head)} was pushed for review, not cleared`);
-      if (action === "ready") return rounds.ready < ROUNDS.ready ? step("ready", reason, "ready") : verdict("owner", `${sha7(head)} is still a draft after gh pr ready`);
-      return step("arm", reason);
+      return step(action, reason);
     }
     return verdict(action, reason);
   },
@@ -326,10 +317,10 @@ const STEPS = {
     const { action, reason, head } = settled;
     if (action === "already-merged") return { kind: "landed", n, why: reason, head };
     if (action === "hand-back") return redRound({ n, why: reason, head }, input);
-    // A red whose CI-RED the tracker would not take: its round is recorded, and its fix round waits.
+    // A red whose CI-RED the tracker would not take: no round is spent until a later settle posts it.
     if (action === "hold") {
       const round = redRound({ n, why: reason, head }, input);
-      return round.kind === "park" ? round : { kind: "hold", wait: "preflight", n, why: reason, head, record: "retry" };
+      return round.kind === "park" ? round : { kind: "hold", wait: "preflight", n, why: reason, head };
     }
     return { kind: "park", n, phase: "E", why: reason, head };
   },

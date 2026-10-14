@@ -3,28 +3,24 @@ import { test, describe, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { ticker } from "../loop-screen.mjs";
 import {
-  parseRoute,
   pushedPr,
   queueLoopArgs,
   liveRoute,
   syncCheckout,
   reinstall,
-  parseStatus,
   runTicket,
-  ticker,
   park,
   repark,
-  takeStopFile,
-  watchBuild,
-  UNCOMMITTED_SHARE,
   holdFor,
   settle,
   runOnce,
@@ -56,36 +52,6 @@ const stubIo = () => ({
   log: () => {},
   buildPassed: () => true,
   announce: () => {},
-});
-
-describe("parseRoute", () => {
-  test("reads the ROUTE line next-ticket.mjs prints", () => {
-    const stdout = "ROUTE\timplement\t824\tFix the lamp swing\tsize:M\nSTATUS\timplement:3\ttriage:1\n";
-    assert.deepEqual(parseRoute(stdout), {
-      skill: "implement",
-      number: 824,
-      title: "Fix the lamp swing",
-      size: "size:M",
-    });
-  });
-
-  test("handles the handoff route, which carries no ticket", () => {
-    const stdout = "ROUTE\thandoff\t0\tnothing agent-takeable\t\n";
-    assert.deepEqual(parseRoute(stdout), {
-      skill: "handoff",
-      number: 0,
-      title: "nothing agent-takeable",
-      size: null,
-    });
-  });
-
-  test("an unlabelled ticket reads as no size, not as the empty string", () => {
-    assert.equal(parseRoute("ROUTE\timplement\t70\tx\t\n").size, null);
-  });
-
-  test("throws on output with no ROUTE line, rather than silently looping forever", () => {
-    assert.throws(() => parseRoute("some unrelated error\n"), /no ROUTE line/);
-  });
 });
 
 describe("queueLoopArgs", () => {
@@ -122,12 +88,17 @@ describe("queueLoopArgs", () => {
     assert.equal(schema.properties.stoodDown.type, "boolean");
   });
 
-  test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
+  // These three are the whole guard on a session's plugins and model: nothing watches its init line.
+  test("a loop session reads the project's settings and the loop's file, never the owner's, on its phase's model", () => {
     const args = queueLoopArgs(1529, "size:M", "C");
     const at = args.indexOf("--setting-sources");
     assert.notEqual(at, -1, "without it the owner's ~/.claude and the checkout's local settings ride in every session");
     assert.equal(args[at + 1], "project");
     assert.match(args[args.indexOf("--settings") + 1], /[\\/]tools[\\/]loop[\\/]loop-settings\.json$/);
+    for (const phase of ["A", "C", "D", "E"] as const) {
+      const spawned = queueLoopArgs(1529, "size:M", phase);
+      assert.equal(spawned[spawned.indexOf("--model") + 1], MODEL_BY_PHASE[phase], phase);
+    }
   });
 
   test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
@@ -300,15 +271,16 @@ describe("syncCheckout", () => {
   };
   const clean = { "rev-parse --abbrev-ref": "main", "status --porcelain": "" };
   const noInstall = {
-    stamp: { current: () => "same", stored: () => "same", write: () => {}, peers: () => [], drifted: () => false },
+    stamp: { lockfile: () => 1, installed: () => 2, stored: () => null, write: () => {}, peers: () => [], drifted: () => false },
   };
-  const stampOf = (over: Partial<{ current: string; stored: string; peers: string[]; drifted: boolean }> = {}) => {
+  const stampOf = (over: Partial<{ lockfile: number; installed: number; stored: string; peers: string[]; drifted: boolean }> = {}) => {
     const writes: string[] = [];
-    let stored = over.stored ?? "old-hash";
+    let stored = over.stored ?? null;
     return {
       writes,
       stamp: {
-        current: () => over.current ?? "new-hash",
+        lockfile: () => over.lockfile ?? 3,
+        installed: () => over.installed ?? 2,
         stored: () => stored,
         write: (h: string) => {
           writes.push(h);
@@ -323,27 +295,30 @@ describe("syncCheckout", () => {
   test("drift with an unchanged lockfile reinstalls once for that lockfile, then holds", () => {
     const said: string[] = [];
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true });
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true });
     for (let pass = 0; pass < 3; pass++) {
       assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
     }
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["h drift-reinstalled"]);
+    assert.deepEqual(writes, ["1"]);
     assert.match(said.join("\n"), /drifted/);
   });
 
   test("drift waits for a live peer like a lockfile change does", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h", stored: "h", drifted: true, peers: ["agent-7"] });
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true, peers: ["agent-7"] });
     assert.equal(syncCheckout(fake(clean).git, () => {}, install, { stamp }), true);
     assert.deepEqual([install.mock.calls.length, writes], [0, []]);
   });
 
   test("a new lockfile after a drift reinstall reinstalls again", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ current: "h2", stored: "h drift-reinstalled", drifted: true });
+    const { stamp } = stampOf({ lockfile: 3, installed: 2, stored: "1", drifted: true });
     syncCheckout(fake(clean).git, () => {}, install, { stamp });
-    assert.deepEqual([install.mock.calls.length, writes], [1, ["h2"]]);
+    assert.equal(install.mock.calls.length, 1);
+    const after = stampOf({ lockfile: 3, installed: 4, stored: "1", drifted: true });
+    syncCheckout(fake(clean).git, () => {}, install, { stamp: after.stamp });
+    assert.deepEqual([install.mock.calls.length, after.writes], [2, ["3"]], "the mark was for the old lockfile");
   });
 
   test("a clean main fast-forwards and says nothing about drift", () => {
@@ -363,13 +338,14 @@ describe("syncCheckout", () => {
     assert.equal(said.some((s) => /differs/.test(s)), false);
   });
 
-  test("the stamp differs, no ff diff → reinstall", () => {
+  test("a lockfile newer than the install, no ff diff → reinstall", () => {
     const said: string[] = [];
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf();
+    const { stamp } = stampOf();
     assert.equal(syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp }), true);
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["new-hash"]);
+    assert.equal(syncCheckout(fake(clean).git, () => {}, install, { stamp: stampOf({ installed: null as never }).stamp }), true);
+    assert.equal(install.mock.calls.length, 2, "no install at all is one no lockfile has run against");
   });
 
   test("a peer worktree is live → skip, and retry next call", () => {
@@ -385,19 +361,18 @@ describe("syncCheckout", () => {
 
   test("only the pinned ticket's worktree is live → reinstall", () => {
     const install = mock.fn((): string => "");
-    const { stamp, writes } = stampOf({ peers: ["agent-123"] });
+    const { stamp } = stampOf({ peers: ["agent-123"] });
     const ok = syncCheckout(fake(clean).git, () => {}, install, { stamp, pinned: 123 });
     assert.equal(ok, true);
     assert.equal(install.mock.calls.length, 1);
-    assert.deepEqual(writes, ["new-hash"]);
   });
 
-  test("reinstall fails → the stamp is unchanged", () => {
+  test("a drift reinstall that fails leaves no mark", () => {
     const said: string[] = [];
     const install = mock.fn(() => {
       throw new Error("npm ci failed");
     });
-    const { stamp, writes } = stampOf();
+    const { stamp, writes } = stampOf({ lockfile: 1, installed: 2, drifted: true });
     const ok = syncCheckout(fake(clean).git, (m: string) => said.push(m), install, { stamp });
     assert.equal(ok, false);
     assert.deepEqual(writes, []);
@@ -449,23 +424,6 @@ describe("syncCheckout", () => {
     const { git } = fake(clean, "merge");
     assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
     assert.match(said.join("\n"), /cannot fast-forward main/);
-  });
-});
-
-describe("parseStatus", () => {
-  test("reads the bucket depths the picker prints beside the route", () => {
-    const stdout = "ROUTE\timplement\t824\tx\nSTATUS\timplement:7\ttriage:2\twayfinder:1\towner:4\tlaunch:3\n";
-    assert.deepEqual(parseStatus(stdout), { implement: 7, triage: 2, wayfinder: 1, launch: 3 });
-    assert.equal(parseStatus(stdout.replace("launch:3", "launch:0")).launch, 0);
-  });
-
-  test("no STATUS line reads as an empty queue rather than throwing, and says nothing about Launch", () => {
-    assert.deepEqual(parseStatus("ROUTE\thandoff\t0\tnothing\n"), {
-      implement: 0,
-      triage: 0,
-      wayfinder: 0,
-      launch: null,
-    });
   });
 });
 
@@ -599,7 +557,6 @@ describe("runTicket", () => {
     };
     const run = await runTicket(replayed, opts({ at: "D", stallMs: 50, tick: 10 }));
     assert.equal(run.status, "stalled");
-    assert.equal(run.wrongModel, null);
     assert.equal(apiFailure(run), "unreachable");
   });
 
@@ -632,6 +589,16 @@ describe("runTicket", () => {
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS, "1", "the git status would break the prefix");
     assert.equal(seen?.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1", "the owner's memory would ride in every prefix and move it on every write");
     assert.ok(seen?.env.LOOP_TURNS, "loop-status's startup hook is silent only where LOOP_TURNS is set");
+  });
+
+  test("the keys act on the branch the claim or the resumed route named", async () => {
+    const { screen } = sink();
+    const seen: unknown[] = [];
+    const context = screen.context;
+    screen.context = (next: any) => (seen.push(next.branch), context(next));
+    await runTicket(fakeSpawn([RESULT]), opts({ screen, branch: "agent/953-x" }));
+    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    assert.deepEqual(seen.filter((b) => b !== undefined), ["agent/953-x", null]);
   });
 
   test("a session compacts at its size's context ceiling, and is told its ticket", async () => {
@@ -822,7 +789,6 @@ describe("runTicket", () => {
     };
     return { seen, spawnFn };
   };
-  const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
 
   test("the session is told the phase it resumes at; a fresh one is told none and derives its own", async () => {
     const resumed = spawned([RESULT]);
@@ -853,34 +819,27 @@ describe("runTicket", () => {
     assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
   });
 
-  test("an init model of no family the loop knows is named, not parked", async () => {
-    const { said, screen } = sink();
-    const odd = spawned([init("some-future-model"), RESULT]);
-    const run = await runTicket(odd.spawnFn as never, opts({ at: "E", screen }));
-    assert.deepEqual([odd.seen.killed, run.wrongModel], [[], null]);
-    assert.match(said.join("\n"), /some-future-model/);
+  // `--settings` and `--setting-sources project` pin the plugins before the session starts.
+  test("a plugin on the init line is never a reason to kill the session", async () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5", plugins: [{ source: "ponytail@ponytail" }] });
+    const session = spawned([init, RESULT]);
+    const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual(session.seen.killed, []);
+    assert.equal(run.status, 0);
   });
 
-  test("an init model other than planned kills the session and says why", async () => {
+  // `--model` passes an alias, and ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps it.
+  test("an init model of another family than planned kills the session and says why; one of no known family does not", async () => {
+    const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
     const wrong = spawned([init("claude-opus-5"), RESULT]);
     const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
     assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
-    const right = spawned([init("claude-sonnet-5"), RESULT]);
-    const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
-    assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
-  });
-
-  test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
-    const withPlugins = (...sources: string[]) =>
-      JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
-    const stray = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "ponytail@ponytail"), RESULT]);
-    const run = await runTicket(stray.spawnFn as never, opts({ at: "C" }));
-    assert.deepEqual(stray.seen.killed, ["SIGTERM"]);
-    assert.match(String(run.strayPlugin), /ponytail@ponytail/);
-    const clean = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "agents-md@builtin"), RESULT]);
-    const ok = await runTicket(clean.spawnFn as never, opts({ at: "C" }));
-    assert.deepEqual([clean.seen.killed, ok.strayPlugin], [[], null]);
+    for (const model of ["claude-sonnet-5", "some-future-model"]) {
+      const fine = spawned([init(model), RESULT]);
+      const ok = await runTicket(fine.spawnFn as never, opts({ at: "E" }));
+      assert.deepEqual([fine.seen.killed, ok.wrongModel], [[], null], model);
+    }
   });
 
   test("a fix round is named on the board with its round", async () => {
@@ -1038,31 +997,6 @@ describe("runTicket", () => {
     const run = await runTicket(chatty, opts({ stallMs: 60, tick: 10 }));
     assert.deepEqual(killed, [], "a session still emitting is working, not stalled");
     assert.equal(run.status, 0);
-  });
-
-  // F2: six of eleven landings in the audit window rode an attempt-2 green the session itself rerun.
-  test("counts the CI reruns the session itself ran, not ones it only quoted", async () => {
-    const bash = (command: string, parent: string | null = null) =>
-      JSON.stringify({
-        type: "assistant",
-        parent_tool_use_id: parent,
-        message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] },
-      });
-    const lines = [
-      bash("RUN=38166186124 && gh run rerun $RUN --failed && echo rerun"),
-      bash(`gh issue comment 1466 --body "I will not run gh run rerun 1 again"`),
-      bash("gh run rerun 2 --failed", "toolu_sub"),
-      RESULT,
-    ];
-    const run = await runTicket(fakeSpawn(lines), opts());
-    assert.equal(run.reruns, 1);
-  });
-
-  test("a rerun behind gh's own --repo flag is counted too", async () => {
-    const bash = (command: string) =>
-      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] } });
-    const lines = [bash("gh -R metasito/murlan run rerun 1 --failed"), bash("gh --repo=metasito/murlan run rerun 2"), RESULT];
-    assert.equal((await runTicket(fakeSpawn(lines), opts())).reruns, 2);
   });
 
   test("a non-zero exit is reported, not thrown", async () => {
@@ -1256,21 +1190,6 @@ describe("park", () => {
   });
 });
 
-describe("takeStopFile", () => {
-  test("absent means carry on", () => {
-    assert.equal(takeStopFile({ existsSync: () => false }, ".loop-stop"), false);
-  });
-
-  // holdFor honoured it without consuming it and takeStopFile consumed it, so a stop during a wait
-  // silently killed the next run too. A scheduled restart must see it as well.
-  test("present means drain, and the file survives being read", () => {
-    let removed = false;
-    const fs = { existsSync: () => true, rmSync: () => { removed = true; } };
-    assert.equal(takeStopFile(fs, ".loop-stop"), true);
-    assert.equal(removed, false);
-  });
-});
-
 describe("outcomeOf", () => {
   const open = { number: 984, state: "OPEN", head: "agent/42-x" };
   const fine = { why: null, hard: false };
@@ -1434,71 +1353,6 @@ describe("a session cut off mid-phase", () => {
   });
 });
 
-describe("watchBuild", () => {
-  const state = (over: object = {}) => ({
-    phase: "C",
-    buildTurns: 0,
-    committed: false,
-    warnedUncommitted: false,
-    ...over,
-  });
-  const edits = { calls: [{ name: "Edit", command: "" }] };
-  const commits = { calls: [{ name: "Bash", command: "git add -- a.ts && git commit -m 'x'" }] };
-  const said: string[] = [];
-  const warn = (m: string) => said.push(m);
-
-  test("a message split across stream lines is one build turn", () => {
-    const s = state();
-    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
-    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
-    assert.equal(s.buildTurns, 1);
-  });
-
-  test("a commit in phase C is what it is watching for, and ends the watch", () => {
-    const s = state();
-    watchBuild(s, commits, 200, warn);
-    assert.equal(s.committed, true);
-    assert.equal(s.buildTurns, 0);
-  });
-
-  test("`git -C <dir> commit` counts, because that is how a worktree is committed to", () => {
-    const s = state();
-    watchBuild(s, { calls: [{ name: "Bash", command: "git -C .worktrees/agent-42 commit -m 'y'" }] }, 200, warn);
-    assert.equal(s.committed, true);
-  });
-
-  test("a `git add` is not a commit — the one failed ticket made ten of them and no commits", () => {
-    const s = state();
-    watchBuild(s, { calls: [{ name: "Bash", command: "git add -- lib/x.ts" }] }, 200, warn);
-    assert.equal(s.committed, false);
-    assert.equal(s.buildTurns, 1);
-  });
-
-  test("it says so once, and only once, past its share of the budget", () => {
-    const s = state();
-    const lines: string[] = [];
-    for (let i = 0; i < 200; i++) watchBuild(s, edits, 100, (m) => lines.push(m));
-    assert.equal(lines.length, 1);
-    assert.match(lines[0], /no commit/);
-    assert.match(lines[0], /100-turn budget/);
-  });
-
-  test("the threshold moves with the budget, so an XS ticket is not warned on turn one", () => {
-    const small = state();
-    for (let i = 0; i < Math.round(60 * UNCOMMITTED_SHARE) - 1; i++) watchBuild(small, edits, 60, warn);
-    assert.equal(small.warnedUncommitted, false);
-    watchBuild(small, edits, 60, warn);
-    assert.equal(small.warnedUncommitted, true);
-  });
-
-  test("phase D is not the build phase, and its turns are not counted against it", () => {
-    const s = state({ phase: "D" });
-    for (let i = 0; i < 500; i++) watchBuild(s, edits, 60, warn);
-    assert.equal(s.buildTurns, 0);
-    assert.equal(s.warnedUncommitted, false);
-  });
-});
-
 /** Every way a wait goes wrong: waiting on nothing, for ever, on a passed reset, or on done work. */
 describe("waitFor", () => {
   const now = 1_000_000_000_000;
@@ -1542,6 +1396,21 @@ describe("holdFor", () => {
 
   test("otherwise it waits the time out", async () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
+  });
+
+  // Reading .loop-stop must not delete it: the next run, and a scheduled restart, must see it too.
+  test(".loop-stop on disk ends the wait and is still there afterwards", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "loop-stop-"));
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      writeFileSync(".loop-stop", "");
+      assert.equal(await holdFor(60_000, undefined, 5), "stopped");
+      assert.equal(existsSync(".loop-stop"), true);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   // The hold is the one stretch of the run that prints nothing, and for up to twelve hours. A

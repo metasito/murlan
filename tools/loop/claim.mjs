@@ -26,6 +26,8 @@ export function slugOf(title) {
     .replace(/-$/, "");
 }
 
+export const branchOf = (number, title) => `agent/${number}-${slugOf(title)}`;
+
 /**
  * The steps. `worktree` is last because it is the mutex: `.worktrees/agent-<n>` is one directory and
  * `git worktree add` refuses a second claim on it atomically, which a comment-reading race check
@@ -33,7 +35,7 @@ export function slugOf(title) {
  * and reads as us, while a dead run's model-chosen slug reads as a peer. #1043 was parked by that.
  */
 export function claimSteps(number, title, noteFile = "", base = "origin/main") {
-  const branch = `agent/${number}-${slugOf(title)}`;
+  const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
   return [
     { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
@@ -85,7 +87,7 @@ export function baseOf(branch, run) {
 }
 
 export function claim(number, title, run = (file, args) => execFileSync(file, args, { encoding: "utf8" })) {
-  const branch = `agent/${number}-${slugOf(title)}`;
+  const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
   const noteFile = join(mkdtempSync(join(tmpdir(), "claim-")), "claim.md");
   writeFileSync(noteFile, `Claimed by \`${branch}\`.\n`, "utf8");

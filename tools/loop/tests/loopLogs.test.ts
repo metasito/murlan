@@ -169,11 +169,6 @@ describe("sessionRow", () => {
     assert.equal(r.asleep_ms, null);
   });
 
-  test("carries the CI reruns the session ran itself", () => {
-    assert.equal(sessionRow(session({ reruns: 1 })).reruns, 1);
-    assert.equal(r.reruns, null);
-  });
-
   test("carries the run and tests a rerun turned green, null when none did", () => {
     const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
     assert.deepEqual(sessionRow(session({ flake })).flake, flake);

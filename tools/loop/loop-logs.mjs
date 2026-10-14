@@ -176,7 +176,7 @@ export const errorLine = (error) =>
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
+ *   usage?: object|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
@@ -194,10 +194,8 @@ export function sessionRow({
   startedAt,
   ms,
   asleepMs = null,
-  reruns = null,
   version,
   usage = null,
-  committed = null,
   head = null,
   runId = null,
   loopSha = null,
@@ -221,15 +219,11 @@ export function sessionRow({
     turns: result?.turns ?? 0,
     ms,
     asleep_ms: asleepMs,
-    reruns,
     models,
     subagents: result?.subagents ?? null,
     usage,
     cache: result?.cache ?? { created: 0, read: 0 },
     merged: Boolean(merged),
-    // Whether phase C ever ran `git commit`. The one ticket in nineteen that produced nothing made
-    // 74 edits and no commits, and the record it left said only "parked".
-    committed,
     review_rounds: reviewRounds ?? null,
     review_holds_total: totalHolds,
     claude_version: version ?? null,
@@ -301,6 +295,14 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
+/** What a run's rows add up to: a ticket is a row that closed one, landed or parked. */
+export function totalsOf(rows) {
+  const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
+  const landed = rows.filter((r) => r.outcome === "landed" || r.outcome === "closed").length;
+  const parked = rows.filter((r) => r.outcome === "parked").length;
+  return { tickets: landed + parked, landed, parked, cost: sum("cost"), ms: sum("ms") };
+}
+
 /**
  * The run's record, and its running totals, with one owner.
  *
@@ -323,14 +325,15 @@ export function ledger(io = {}) {
     loopSha = null,
   } = io;
 
-  const totals = { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 };
   /** @type {object[]} */
   const rows = [];
   /** The report row of every ticket this run closed — what the exit summary prints. */
   const tickets = [];
 
   return {
-    totals,
+    get totals() {
+      return totalsOf(rows);
+    },
     rows,
     tickets,
     /**
@@ -354,14 +357,7 @@ export function ledger(io = {}) {
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
       append(file, `${reportRow(report, PLAIN())}\n`);
 
-      totals.cost += entry.cost;
-      totals.ms += entry.ms;
-      if (counts) {
-        totals.tickets += 1;
-        if (entry.outcome === "landed" || entry.outcome === "closed") totals.landed += 1;
-        else totals.parked += 1;
-        tickets.push(report);
-      }
+      if (counts) tickets.push(report);
       rows.push(entry);
       return entry;
     },
