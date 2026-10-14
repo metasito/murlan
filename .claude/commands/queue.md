@@ -149,12 +149,13 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
    Build what it reports partial or missing, failing test first; post what you leave as
    `FIX-NOTES <sha>` under `Completeness left:`. Where wrong, check the code, not memory.
 2. Then commit the last slice, and run `npm run agent:check`.
-3. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
-   (`git rev-parse --short HEAD`), then every box:
+3. Write the Definition of done ticked against this head to `.loop-logs/dod-<n>.md`, first line
+   `DOD-CHECK <sha>` (`git rev-parse --short HEAD`), then every box:
    `- [x] <box> — <path>:<line> · <test path>:<line> · red: <its failure line before the fix>`.
    The agent:check box cites nothing; a box with no code site says `n/a: <reason>`.
    A box you cannot close stays `- [ ]` with why: keep building or park it (**Never stall**).
-4. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
+4. `node tools/loop/loop-gate.mjs --build .loop-logs/dod-<n>.md` must exit 0, and prints what is
+   missing. Only then post it: `gh issue comment <n> --body-file .loop-logs/dod-<n>.md`.
 
 Only then declare handoff D and exit. The supervisor re-gates it.
 
