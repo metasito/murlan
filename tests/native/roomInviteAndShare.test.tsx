@@ -7,6 +7,8 @@ import { render, fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { en as locale } from '@/locales/en';
+import { it as itLocale } from '@/locales/it';
+import { sq as sqLocale } from '@/locales/sq';
 
 type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
 const mockAcks: Ack[] = [];
@@ -172,6 +174,13 @@ describe('share', () => {
     expect(message).not.toContain('//join');
     spy.mockRestore();
     await view.unmount();
+  });
+
+  it('carries the code and the link in every locale', () => {
+    for (const messages of [locale, itLocale, sqLocale]) {
+      expect(messages['room.shareMessage']).toContain('{{code}}');
+      expect(messages['room.shareMessage']).toContain('{{link}}');
+    }
   });
 
   it('copies the invite on a web browser with no share sheet', async () => {
