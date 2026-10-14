@@ -203,6 +203,15 @@ describe("a ticket stranded between CI rounds", () => {
     assert.equal(stranded(inProgress, { openPr: true, liveWorktree: true }), false);
   });
 
+  // The supervisor arms at the push and takes the worktree down: that pull request is landing, and
+  // its own visit each pass is what lands it or starts its fix round.
+  test("an in-progress ticket whose open PR is armed is landing, not stranded, and is not picked", () => {
+    assert.equal(stranded(inProgress, { openPr: true, liveWorktree: false, armed: true }), false);
+    const io = { openPr: (n: number) => n === 1043, liveWorktrees: () => new Set<number>(), armed: (n: number) => n === 1043 };
+    const b = classify([inProgress, issue(1100, ["ready-for-agent"])], io);
+    assert.deepEqual([b.stranded, b.frontier.map((i) => i.number)], [[], [1100]]);
+  });
+
   test("an in-progress ticket that never pushed is mid-build, not stranded", () => {
     assert.equal(stranded(inProgress, { openPr: false, liveWorktree: false }), false);
   });

@@ -8,7 +8,7 @@ import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
-  poll,
+  landOne,
   runOnce,
   main,
   nextRoute,
@@ -42,6 +42,14 @@ const rowOf = (x: any) => ({
   flake: x.flake ?? null,
 });
 
+/** A visit whose read is `landing`, routed by the real `decide` as `landOne` routes it. */
+const lands =
+  (landing: object = MERGED, order?: string[]) =>
+  async (_p: unknown, decideAt: (l: object) => any) => (order?.push("land"), decideAt({ n: 42, pr: 984, head: "judged", armed: false, ci: RED_CI, ...landing }));
+const MERGED = { action: "already-merged", reason: "merged" };
+const HAND_BACK = { action: "hand-back", reason: "CI failed at Lint" };
+const RED_CI = { output: "✖ x", runId: 1, attempt: 2, failedStep: "Lint" };
+
 const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   stopFile: () => false,
   syncCheckout: () => true,
@@ -73,7 +81,10 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
     phase: "E",
   }),
   pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-  settle: async () => ({ action: "already-merged", reason: "merged" }),
+  land: lands(),
+  inFlight: () => [],
+  live: () => [],
+  rebuild: () => {},
   park: () => {},
   teardown: () => {},
   bell: () => {},
@@ -98,9 +109,9 @@ describe("runOnce", () => {
     assert.equal(r.ticket, 42);
   });
 
-  // The whole point of serialising: settle() runs before the pass returns, so there is no slot to
-  // orphan when the process dies and no second ticket in flight to confuse derive().
-  test("settle runs before the pass returns", async () => {
+  // The pushed head is visited before the pass returns: a head already merged or already red is
+  // dealt with at once, and anything else is in the ledger for the next pass's sweep.
+  test("the pushed head is visited before the pass returns", async () => {
     const order: string[] = [];
     await runOnce(
       io({
@@ -108,38 +119,25 @@ describe("runOnce", () => {
           order.push("spawn");
           return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
         },
-        settle: async () => {
-          order.push("settle");
-          return { action: "already-merged", reason: "" };
-        },
+        land: lands(MERGED, order),
       }),
     );
-    assert.deepEqual(order, ["spawn", "settle"]);
+    assert.deepEqual(order, ["spawn", "land"]);
   });
 
-  // #1001, exactly: the settle ended in a verdict nothing recognised, `runOnce` wrote its row, tore
-  // the worktree down and returned — without calling park. `in-progress` stayed on the issue, and
-  // classify() skips those for good, so the ticket became unpickable and needed a hand rescue.
-  test("a settle only a person can move parks the ticket rather than dropping it", async () => {
+  // #1001: a verdict that tore the worktree down and returned without calling park left
+  // `in-progress` on the issue, and classify() skips those for good.
+  test("a landing only a person can move parks the ticket rather than dropping it", async () => {
     const parked: number[] = [];
     const r = await runOnce(
       io({
-        settle: async () => ({ action: "owner", reason: "update-branch did not settle in 3 rounds" }),
+        land: lands({ action: "owner", reason: "the branch conflicts with main" }),
         park: (n: number) => parked.push(n),
       }),
     );
     assert.equal(r.outcome, "parked");
     assert.deepEqual(parked, [42], "no exit path may tear the worktree down and keep the claim");
-    assert.match(String(r.why), /did not settle/);
-  });
-
-  test("an unrecognised settle action parks too, rather than returning silently", async () => {
-    const parked: number[] = [];
-    const r = await runOnce(
-      io({ settle: async () => ({ action: "something-new", reason: "?" }), park: (n: number) => parked.push(n) }),
-    );
-    assert.equal(r.outcome, "parked");
-    assert.deepEqual(parked, [42]);
+    assert.match(String(r.why), /conflicts with main/);
   });
 
   // Three full sessions on a ticket that kept going red produced three sessions and zero rows: no
@@ -148,7 +146,7 @@ describe("runOnce", () => {
   test("a red verdict hands the ticket back, and still writes its row", async () => {
     const rows: any[] = [];
     const r = await runOnce(
-      io({ settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }), record: (x: unknown) => rows.push(x) }),
+      io({ land: lands(HAND_BACK), record: (x: unknown) => rows.push(x) }),
     );
     assert.equal(r.outcome, "retry");
     assert.equal(r.ticket, 42);
@@ -161,62 +159,49 @@ describe("runOnce", () => {
     );
   });
 
-  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and no round spent until it is posted", async () => {
+  test("a red whose CI-RED could not be posted is held in flight: no park, the claim kept, and no round spent until it is posted", async () => {
     const parked: number[] = [];
     const rows: any[] = [];
-    const torn: unknown[] = [];
+    const torn: unknown[][] = [];
     const r = await runOnce(
       io({
-        settle: async () => ({ action: "hold", reason: "CI-RED could not be posted", head: "abc" }),
+        land: lands({ error: "CI-RED for abc could not be posted" }),
         park: (n: number) => parked.push(n),
         record: (x: unknown) => rows.push(x),
-        teardown: (cwd: unknown) => torn.push(cwd),
+        teardown: (...args: unknown[]) => torn.push(args),
       }),
     );
-    assert.equal(r.outcome, "hold");
+    assert.equal(r.outcome, "landing");
     assert.equal(r.ticket, 42);
     assert.match(String(r.why), /could not be posted/);
     assert.deepEqual(parked, []);
-    assert.deepEqual(torn, []);
-    // A row, so its settle time is billed; a hold, so the settle that posts it counts the round once.
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["hold", "abc"]]);
+    assert.deepEqual(torn, [[".worktrees/agent-42", 42, false]]);
+    assert.equal(r.loop.held[42], 1);
+    assert.deepEqual(rows.map((x) => x.outcome), ["pushed"], "the pushed row keeps it in flight for the next pass");
   });
 
   test("a landing a rerun won writes the flake on its row", async () => {
     const rows: any[] = [];
-    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
-    await runOnce(io({ settle: async () => ({ action: "already-merged", reason: "merged", flake }), record: (x: unknown) => rows.push(x) }));
-    assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, flake);
+    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"], step: "Test" };
+    const ledger: any[] = [{ n: 42, outcome: "armed", cost: 0, head: "judged", flake }];
+    await runOnce(io({ record: (x: unknown) => rows.push(x) }, ledger));
+    assert.deepEqual(rows.find((x) => x.outcome === "landed")?.flake, { ...flake, head: "judged" });
   });
 
-  test("the settle is handed the flake the ledger armed with, and writes an armed row when it arms", async () => {
+  test("a visit's note is an armed row naming its head and any flake", async () => {
     const flake = { runId: 7, tests: ["t"], step: "Test" };
-    const ledger: any[] = [{ n: 42, outcome: "armed", cost: 0, head: "h1", flake }];
     const rows: any[] = [];
-    let handed: any = null;
     await runOnce(
-      io(
-        {
-          settle: async (p: any) => {
-            handed = p.flake;
-            p.noteArmed({ ...flake, head: "h2" });
-            return { action: "already-merged", reason: "merged" };
-          },
-          record: (x: any) => (rows.push(x), ledger.push(rowOf(x))),
+      io({
+        land: async (_p: unknown, decideAt: (l: object) => any, note: (h: string, f: object | null) => void) => {
+          note("h2", flake);
+          return decideAt({ n: 42, pr: 984, head: "h2", ...MERGED });
         },
-        ledger,
-      ),
+        record: (x: any) => rows.push(x),
+      }),
     );
-    assert.deepEqual(handed, { ...flake, head: "h1" });
     const armed = rows.find((x) => x.outcome === "armed");
-    assert.deepEqual([armed?.flake, armed?.head], [flake, "h2"]);
-  });
-
-  test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {
-    const rows: any[] = [];
-    const flake = { runId: 7, tests: ["tests/e2e/x.spec.ts › y"] };
-    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the merge failed", flake }), record: (x: unknown) => rows.push(x) }));
-    assert.deepEqual(rows.find((x) => x.outcome === "parked")?.flake, flake);
+    assert.deepEqual([armed?.flake, armed?.head, armed?.pr, armed?.run.result], [flake, "h2", 984, null]);
   });
 
   test("a session that pushed nothing parks the ticket", async () => {
@@ -261,12 +246,12 @@ describe("runOnce", () => {
       io({
         pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }),
         teardown: (_cwd: string | null, n: number) => released.push(n),
-        settle: async () => settled.push(1) as never,
+        land: async () => settled.push(1) as never,
       }),
     );
     assert.equal(r.outcome, "landed");
     assert.deepEqual(released, [42]);
-    assert.deepEqual(settled, [], "there is nothing left to settle");
+    assert.deepEqual(settled, [], "there is nothing left to visit");
   });
 
   // Releasing the claim beside each teardown call let an exit path take one without the other, and
@@ -274,7 +259,7 @@ describe("runOnce", () => {
   test("every teardown is told which ticket's claim it is releasing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
+      { land: lands() },
     ]) {
       const torn: unknown[][] = [];
       await runOnce(io({ ...over, teardown: (...args: unknown[]) => torn.push(args) }));
@@ -288,7 +273,7 @@ describe("runOnce", () => {
   test("no terminal outcome leaves the worktree standing", async () => {
     for (const over of [
       { pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }) },
-      { settle: async () => ({ action: "already-merged", reason: "merged" }) },
+      { land: lands() },
     ]) {
       const gone: (string | null)[] = [];
       await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
@@ -298,7 +283,7 @@ describe("runOnce", () => {
     const handed: (string | null)[] = [];
     await runOnce(
       io({
-        settle: async () => ({ action: "owner", reason: "no settle" }),
+        land: lands({ action: "owner", reason: "the pull request was closed without merging" }),
         park: (_n: number, ctx: { cwd: string | null }) => handed.push(ctx.cwd),
       }),
     );
@@ -310,7 +295,7 @@ describe("runOnce", () => {
     const gone: (string | null)[] = [];
     const r = await runOnce(
       io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+        land: lands(HAND_BACK),
         teardown: (cwd: string | null) => gone.push(cwd),
       }),
     );
@@ -480,17 +465,17 @@ describe("runOnce", () => {
     const ring = () => { rings += 1; };
     await runOnce(io({ bell: ring }));
     assert.equal(rings, 0, "a landed ticket needs nobody");
-    await runOnce(io({ bell: ring, settle: async () => ({ action: "hand-back", reason: "CI failed" }) }));
+    await runOnce(io({ bell: ring, land: lands(HAND_BACK) }));
     assert.equal(rings, 0, "a red verdict is the next session's, not a person's");
     await runOnce(io({ bell: ring, pushedPr: () => null }));
     assert.equal(rings, 1);
-    // A settle that ends in `owner` now goes to the tracker with `ready-for-human` on it, so it is
+    // A landing that ends in `owner` goes to the tracker with `ready-for-human` on it, so it is
     // a hand-off like any other. Left silent, it was a ticket dropped without anyone being told.
-    await runOnce(io({ bell: ring, settle: async () => ({ action: "owner", reason: "no settle" }) }));
+    await runOnce(io({ bell: ring, land: lands({ action: "owner", reason: "the branch conflicts with main" }) }));
     assert.equal(rings, 2);
   });
 
-  test("a G route settles without spawning", async () => {
+  test("a G route lands without spawning", async () => {
     const rows: any[] = [];
     const torn: unknown[] = [];
     let spawns = 0;
@@ -507,22 +492,23 @@ describe("runOnce", () => {
     assert.equal(spawns, 0);
     assert.equal(r.outcome, "landed");
     assert.deepEqual(torn, [".worktrees/agent-42"]);
+    // Its `pushed` row too, at no cost: a supervisor that died before writing one leaves nothing in flight.
     assert.deepEqual(
-      rows.map((x) => [x.outcome, x.run.result, x.run.declared]),
-      [["landed", null, null]],
+      rows.map((x) => [x.outcome, x.run.result, x.run.ms]),
+      [["pushed", null, 0], ["landed", null, 0]],
     );
   });
 
-  test("a G route announces itself before it settles", async () => {
+  test("a G route announces itself before it lands", async () => {
     const order: string[] = [];
     await runOnce(
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
         announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
-        settle: async () => (order.push("settle"), { action: "already-merged", reason: "merged" }),
+        land: lands(MERGED, order),
       }),
     );
-    assert.deepEqual(order, ["announce 42 G", "settle"]);
+    assert.deepEqual(order, ["announce 42 G", "land"]);
   });
 
   const handingOff = (from: string, to: string) => async () => ({
@@ -679,12 +665,12 @@ describe("runOnce", () => {
     assert.deepEqual(order, ["pre", "pick"]);
   });
 
-  test("a red settle leaves the worktree standing and the next pass spawns C with the fix", async () => {
+  test("a red landing leaves the worktree standing and the next pass spawns C with the fix", async () => {
     const torn: unknown[] = [];
     const parked: number[] = [];
     const red = await runOnce(
       io({
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+        land: lands(HAND_BACK),
         teardown: (cwd: string | null) => torn.push(cwd),
         park: (n: number) => parked.push(n),
       }),
@@ -1054,7 +1040,7 @@ describe("runOnce", () => {
               spawned.push(s.retryCount);
               return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
             },
-            settle: async () => (red ? { action: "hand-back", reason: "CI failed" } : { action: "already-merged", reason: "" }),
+            land: lands(red ? { ...HAND_BACK, head: "h9" } : MERGED),
           },
           ledger,
         ),
@@ -1085,20 +1071,20 @@ describe("runOnce", () => {
           {
             pick: () => nextRoute(null, null, { read: () => held, facts, ledger: () => ledger } as never),
             pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
-            settle: async () => (order.push("settle"), { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }),
+            land: lands({ error: "CI-RED for h1 could not be posted", head: "h1" }, order),
             spawn: async () => order.push("spawn") as never,
           },
           ledger,
         ),
         42,
       );
-      assert.equal(r.outcome, "hold");
-      assert.deepEqual(order, ["settle"]);
+      assert.equal(r.outcome, "landing");
+      assert.deepEqual(order, ["land"]);
     });
 
-    // From the settle that could not post, through every pass, to the fix round: the session spawns
+    // From the visit that could not post, through every pass, to the fix round: the session spawns
     // onto exactly one CI-RED for its head and one round spent.
-    test("a red whose CI-RED a settle could not post reaches its fix round with exactly one posted", async () => {
+    test("a red whose CI-RED a visit could not post reaches its fix round with exactly one posted", async () => {
       const comments: string[] = [];
       const ledger: any[] = [];
       const spawned: { fix: boolean; retryCount: number }[] = [];
@@ -1113,10 +1099,8 @@ describe("runOnce", () => {
           pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
           pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
           refreshWorktree: () => {},
-          settle: async () =>
-            settles++ === 0
-              ? { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }
-              : (post(), { action: "hand-back", reason: "CI failed at Test", head: "h1" }),
+          land: (p: unknown, decideAt: (l: object) => any) =>
+            lands(settles++ === 0 ? { error: "CI-RED for h1 could not be posted", head: "h1" } : (post(), { action: "hand-back", reason: "CI failed at Test", head: "h1" }))(p, decideAt),
           spawn: async (s: { fix: boolean; retryCount: number }) => {
             spawned.push({ fix: s.fix, retryCount: s.retryCount });
             return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
@@ -1139,7 +1123,7 @@ describe("runOnce", () => {
       ["retry", "h1", 1],
       ["retry", "h2", 0],
       ["pushed", null, 0],
-      ["landed", null, 0],
+      ["landed", "judged", 0],
     ]);
     const recorded: any[] = [retryRow("h1")];
     await runOnce(io({ pick: () => fixRoute("h1"), refreshWorktree: () => {}, spawn }, recorded), 42);
@@ -1173,7 +1157,7 @@ describe("runOnce", () => {
     const r = await runOnce(
       io({
         pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "before" }),
-        settle: async () => ({ action: "hand-back", reason: "CI failed at Lint", head: "judged" }),
+        land: lands(HAND_BACK),
         record: (x: unknown) => rows.push(x),
       }),
     );
@@ -1614,39 +1598,12 @@ describe("the run recap", () => {
     assert.match(shown, /working 0:00 · CI 0:00 · waiting 1:00:00/);
   });
 
-  test("a ticket's hold says which ticket and why, not a pre-flight's words", async () => {
-    const notes: string[] = [];
-    const waits: unknown[][] = [];
-    let passes = 0;
-    const board = {
-      say: () => {},
-      warn: () => {},
-      notice: (_k: string, m: string) => notes.push(m),
-      stop: () => {},
-      close: () => {},
-      board: () => {},
-      wait: (...a: unknown[]) => (waits.push(a), { woken: Promise.resolve(), say: null }),
-    };
-    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const spy = {
-      ...(io() as any),
-      stopFile: () => passes++ > 0,
-      settle: async () => ({ action: "hold", reason: "CI-RED for abc1234 could not be posted", head: "abc" }),
-    };
-    await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
-    const said = [...notes, ...waits.flat().map(String)].join("\n");
-    assert.match(said, /#42/);
-    assert.match(said, /could not be posted/);
-    assert.doesNotMatch(said, /pre-flight/);
-  });
-
-  // poll parks a red whose log stays unreadable after its bound; a held red whose post keeps failing
-  // is the same ticket's problem, and stopping the whole night on it is not.
-  // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
-  // reading the value it pins moves with it.
+  // A held red whose post keeps failing is the same ticket's problem, and stopping the whole night
+  // on it is not. The literal, not the module's constant: ten passes outlast a short GitHub outage,
+  // and a test reading the value it pins moves with it.
   const TICKET_HOLDS = 10;
   const heldRoute = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G", cwd: "w", branch: "agent/42-x" };
-  const unposted = { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" };
+  const unposted = lands({ error: "CI-RED for h1 could not be posted", head: "h1" });
   const heldNight = async (stopAfter: number, preflights = 0) => {
     const parked: number[] = [];
     let passes = 0;
@@ -1666,7 +1623,7 @@ describe("the run recap", () => {
       stopFile: () => passes++ >= stopAfter,
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
       pick: () => heldRoute,
-      settle: async () => unposted,
+      land: unposted,
       park: (n: number) => parked.push(n),
     };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -1700,7 +1657,7 @@ describe("the run recap", () => {
       ...(io() as any),
       stopFile: () => passes++ > TICKET_HOLDS + 1,
       pick: () => heldRoute,
-      settle: async () => unposted,
+      land: unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
     };
     const code = await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -1874,7 +1831,7 @@ describe("a park asked from the board", () => {
       ...(io() as any),
       spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null }),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
-      settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
+      land: lands({ action: "hand-back", reason: "CI failed at Native tests", head: "aaa111" }),
       park: (_n: number, { why, phase, cwd }: { why: string; phase: string; cwd: string | null }) => parked.push({ why, phase, cwd }),
     };
     try {
@@ -1929,7 +1886,7 @@ describe("a fix round that changed nothing", () => {
         return { status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "F", declared: null };
       },
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha: "aaa111", changedFiles: 2 }),
-      settle: async () => ({ action: "hand-back", reason: "CI failed at Native tests" }),
+      land: lands({ action: "hand-back", reason: "CI failed at Native tests", head: "aaa111" }),
       park: (_n: number, note: { why: string }) => parked.push(note.why),
     };
     await main({ io: spy, book: book(), screen: screen(), install: () => {}, runId: "t" });
@@ -1944,7 +1901,7 @@ describe("a fix round that changed nothing", () => {
 describe("a session's cost is in the ledger before CI is waited on", () => {
   test("a supervisor that dies in the CI wait still counts the session, and the restarted G pass adds nothing", async () => {
     const ledger: any[] = [];
-    const died = runOnce(io({ settle: () => Promise.reject(new Error("killed")) }, ledger));
+    const died = runOnce(io({ land: () => Promise.reject(new Error("killed")) }, ledger));
     await assert.rejects(died, /killed/);
     assert.equal(ticketTally(42, ledger).spend, 1);
 
@@ -1955,37 +1912,18 @@ describe("a session's cost is in the ledger before CI is waited on", () => {
   });
 
   for (const [name, verdict] of Object.entries({
-    merged: { action: "already-merged", reason: "merged" },
-    red: { action: "hand-back", reason: "CI failed" },
-    owner: { action: "owner", reason: "no settle" },
+    merged: MERGED,
+    red: HAND_BACK,
+    owner: { action: "owner", reason: "the branch conflicts with main" },
   })) {
     test(`${name}: the session is counted once, and the tally reads as before`, async () => {
       const ledger: any[] = [];
-      await runOnce(io({ settle: async () => verdict }, ledger));
+      await runOnce(io({ land: lands(verdict) }, ledger));
       assert.equal(ledger.reduce((a, x) => a + x.cost, 0), 1);
       const t = ticketTally(42, ledger);
       assert.deepEqual([t.handoffsThisRound, t.lastHandoff, t.retries], [0, null, name === "red" ? 1 : 0]);
     });
   }
-});
-
-describe("what a ticket's clock covers", () => {
-  // The land is the longest stretch of a ticket and the session that built it has already exited.
-  test("the recorded time carries the land, not just the session", async () => {
-    const rows: any[] = [];
-    await runOnce(
-      io({
-        settle: async () => {
-          await new Promise((r) => setTimeout(r, 30));
-          return { action: "already-merged", reason: "merged" };
-        },
-        record: (x: unknown) => rows.push(x),
-      }),
-    );
-    assert.deepEqual(rows.map((x) => x.outcome), ["pushed", "landed"]);
-    assert.equal(rows[0].run.ms, 1000);
-    assert.ok(rows[1].run.ms >= 25, `the land's row has no clock of its own: ${rows[1].run.ms}ms`);
-  });
 });
 
 describe("a ticket's tally comes from the ledger, not from memory", () => {
@@ -2000,7 +1938,7 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
   };
   const red = (sha: string) => ({
     pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x", sha }),
-    settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
+    land: lands({ ...HAND_BACK, head: sha }),
   });
   const session = (cost: number, handoff: string | null) => ({
     status: 0,
@@ -2153,7 +2091,7 @@ describe("a session the API failed", () => {
     assert.deepEqual([r.outcome, r.until], ["refused", 1789000000000]);
   });
 
-  test("in phase E, with a pull request open, E is spawned again rather than the head settled", async () => {
+  test("in phase E, with a pull request open, E is spawned again rather than the head landed", async () => {
     const picked: [number | null, string | null][] = [];
     const phases: string[] = [];
     let settled = 0;
@@ -2162,7 +2100,7 @@ describe("a session the API failed", () => {
       pick: (p: number | null, at: string | null) => (picked.push([p, at]), ticket),
       spawn: async (route: { phase: string }) => (phases.push(route.phase), died(overloaded)()),
       pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-      settle: async () => (settled++, { action: "already-merged" }),
+      land: async () => (settled++, { kind: "landed" }),
     });
     assert.equal(settled, 0);
     assert.deepEqual(phases, ["E", "E"]);
@@ -2244,16 +2182,16 @@ describe("a park that never reached the tracker", () => {
 describe("a stop no rule names parks; a red was rerun before it came back", () => {
   const RUN = 35661862241;
   const silent = async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", phase: "C", declared: null });
-  const redAt1100 = async () => ({
+  const redAt1100 = lands({
     action: "hand-back",
     reason: "CI failed at Browser test report",
     head: "2f2a885",
-    runId: RUN,
+    ci: { ...RED_CI, runId: RUN, attempt: 2 },
   });
 
   test("#1100's report-upload red, back from its one rerun, is a fix round", async () => {
     const ledger: any[] = [];
-    const r = await runOnce(io({ settle: redAt1100 }, ledger));
+    const r = await runOnce(io({ land: redAt1100 }, ledger));
     assert.equal(r.outcome, "retry");
     assert.deepEqual(ledger.map((x) => x.outcome), ["pushed", "retry"]);
   });
@@ -2266,9 +2204,9 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     assert.deepEqual(whys, ["the session exited without a LOOP-RESULT"]);
   });
 
-  test("a settle that is the owner's parks with its own reason", async () => {
+  test("a landing that is the owner's parks with its own reason", async () => {
     const whys: string[] = [];
-    await runOnce(io({ settle: async () => ({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }));
+    await runOnce(io({ land: lands({ action: "owner", reason: "the branch conflicts with main" }), park: (_n: number, c: { why: string }) => whys.push(c.why) }));
     assert.deepEqual(whys, ["the branch conflicts with main"]);
   });
 
@@ -2276,16 +2214,15 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     const calls: string[][] = [];
     const red = {
       pr: { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "BLOCKED", headRefOid: "a", armed: true },
-      ci: { pass: false, runId: RUN, head: "a", attempt: 1, failedStep: "Typecheck and tests", testIds: ["x.test.ts › y"], output: "✖ y", reason: "CI failed at Typecheck and tests" },
-      progress: { done: 1, total: 1, running: null, failed: "Typecheck and tests" },
+      ci: { pass: false, runId: RUN, head: "a", attempt: 2, failedStep: "Typecheck and tests", testIds: ["x.test.ts › y"], output: "✖ y", reason: "CI failed at Typecheck and tests" },
     };
     const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "issue" && args[1] === "view" ? JSON.stringify({ comments: [] }) : "");
-    const settle = (p: any) => poll(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
+    const land = (p: any, decideAt: any, note: any) => landOne(p, decideAt, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null, note, log: () => {} });
     const r = await runOnce(
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
         spawn: async () => (calls.push(["spawn"]), null) as never,
-        settle,
+        land,
       }),
     );
     assert.equal(r.outcome, "retry");
@@ -2322,10 +2259,113 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
     const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "settling", sha: "abc" } };
     const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
 
-    test("is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle", () => {
+    test("is G, so landOne posts its CI-RED, whether the supervisor held it or stopped mid-visit", () => {
       const held = [{ n: 42, outcome: "hold", head: "abc", cost: 0 }];
       const earlier = [{ n: 42, outcome: "retry", head: "old", cost: 0 }];
       assert.deepEqual([route(held), route([]), route(earlier)].map((r) => [r.phase, r.fix]), [["G", false], ["G", false], ["G", false]]);
     });
+  });
+});
+
+describe("each pass visits every pull request in flight, once, before the pick", () => {
+  const ticket = { skill: "implement", number: 42, title: "t", size: "size:S", queue: null };
+  /** Ticket 7's visit reads `seven`; the pass's own ticket lands. */
+  const visits = (seven: object, order: string[] = []) => async (p: { n: number; pr: number }, decideAt: (l: object) => any) => {
+    order.push(`land ${p.n}`);
+    return decideAt({ n: p.n, pr: p.pr, head: "h7", armed: false, ci: RED_CI, ...(p.n === 7 ? seven : MERGED) });
+  };
+
+  test("one that merged is recorded and released before the pick, and a live worktree's is not visited", async () => {
+    const order: string[] = [];
+    const rows: any[] = [];
+    const torn: unknown[][] = [];
+    await runOnce(
+      io({
+        inFlight: () => [{ n: 7, pr: 70 }, { n: 8, pr: 80 }],
+        live: () => [8],
+        land: visits(MERGED, order),
+        pick: () => (order.push("pick"), ticket),
+        record: (x: unknown) => rows.push(x),
+        teardown: (...a: unknown[]) => torn.push(a),
+      }),
+    );
+    assert.deepEqual(order, ["land 7", "pick", "land 42"]);
+    assert.deepEqual(rows.filter((x) => x.number === 7).map((x) => [x.outcome, x.pr, x.run.ms]), [["landed", 70, 0]]);
+    assert.deepEqual(torn[0], [null, 7]);
+  });
+
+  test("a red is rebuilt from its branch and pinned when no worktree stands, so the pick is its fix round", async () => {
+    const rebuilt: unknown[][] = [];
+    const picks: unknown[][] = [];
+    const rows: any[] = [];
+    await runOnce(
+      io({
+        inFlight: () => [{ n: 7, pr: 70 }],
+        land: visits(HAND_BACK),
+        rebuild: (...a: unknown[]) => rebuilt.push(a),
+        pick: (...a: unknown[]) => (picks.push(a), ticket),
+        record: (x: unknown) => rows.push(x),
+      }),
+    );
+    assert.deepEqual(rebuilt, [[7, 70]]);
+    assert.deepEqual(picks[0], [7, null]);
+    assert.deepEqual(rows.filter((x) => x.number === 7).map((x) => [x.outcome, x.head]), [["retry", "h7"]]);
+  });
+
+  test("a red waits for the slot while another ticket's worktree stands", async () => {
+    const rebuilt: unknown[][] = [];
+    const picks: unknown[][] = [];
+    await runOnce(
+      io({
+        inFlight: () => [{ n: 7, pr: 70 }],
+        live: () => [42],
+        land: visits(HAND_BACK),
+        rebuild: (...a: unknown[]) => rebuilt.push(a),
+        pick: (...a: unknown[]) => (picks.push(a), ticket),
+      }),
+    );
+    assert.deepEqual(rebuilt, []);
+    assert.deepEqual(picks[0], [null, null]);
+  });
+
+  test("one only a person can move is parked from the ledger, with no worktree to carry", async () => {
+    const parked: [number, { cwd: string | null; why: string }][] = [];
+    await runOnce(
+      io({
+        inFlight: () => [{ n: 7, pr: 70 }],
+        land: visits({ action: "owner", reason: "the branch conflicts with main" }),
+        park: (n: number, c: { cwd: string | null; why: string }) => parked.push([n, c]),
+      }),
+    );
+    assert.deepEqual(parked.map(([n, c]) => [n, c.cwd, c.why]), [[7, null, "the branch conflicts with main"]]);
+  });
+
+  test("an empty queue holds while pull requests are landing, rather than ending the night", async () => {
+    const armed = [{ n: 7, outcome: "armed", head: "h7" }];
+    const r = await runOnce(
+      io({
+        inFlight: () => [{ n: 7, pr: 70 }],
+        land: visits({ action: "recheck", reason: "the run has not finished", armed: true, ci: { waiting: true } }),
+        tally: (n: number) => ({ ...ticketTally(n, armed), ciRounds: 0 }),
+        pick: () => ({ skill: "handoff", number: 0, title: "queue empty" }),
+      }),
+    );
+    assert.equal(r.outcome, "hold");
+    assert.match(String(r.why), /^queue empty; 1 pull request\(s\) landing$/);
+    const stopped = await runOnce(io({ pick: () => ({ skill: "handoff", number: 0, title: "queue empty" }) }));
+    assert.equal(stopped.outcome, "stop");
+  });
+
+  test("a head armed at its push comes down to its branch with the claim kept, and the slot is the next pick's", async () => {
+    const torn: unknown[][] = [];
+    const r = await runOnce(
+      io({ land: lands({ action: "recheck", reason: "the run has not finished", cleared: { ok: true, why: null } }), teardown: (...a: unknown[]) => torn.push(a) }),
+      42,
+      null,
+      { failures: 0, holds: 0, waits: 0, overloads: 0, pinned: 42, held: {} },
+    );
+    assert.equal(r.outcome, "landing");
+    assert.deepEqual(torn, [[".worktrees/agent-42", 42, false]]);
+    assert.equal(r.loop.pinned, null);
   });
 });

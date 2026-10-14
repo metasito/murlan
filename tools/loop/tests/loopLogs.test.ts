@@ -9,6 +9,7 @@ import {
   errorOf,
   handoffIn,
   holdRound,
+  inFlight,
   killedStarts,
   ledger,
   parkReasonOf,
@@ -585,18 +586,39 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      sinceRed: 0,
+      armedHead: null,
       armedFlake: null,
     });
   });
 
-  // Written when poll arms on a rerun's green, so a restart before the merge still knows the flake.
+  // Written when a red is rerun, so a restart before the merge still knows the flake.
   test("an armed row carries its flake and head to the tally, is no session, and a landing clears it", () => {
     const flake = { runId: 7, tests: ["t"], step: "Test" };
     const armed = row({ outcome: "armed", head: "h1", flake });
     const t = ticketTally(1, [row({ outcome: "pushed" }), armed]);
     assert.deepEqual(t.armedFlake, { ...flake, head: "h1" });
+    assert.equal(t.armedHead, "h1");
     assert.equal(t.sessions, 0);
-    assert.equal(ticketTally(1, [armed, row({ outcome: "landed" })]).armedFlake, null);
+    assert.deepEqual([ticketTally(1, [armed, row({ outcome: "landed" })]).armedFlake, ticketTally(1, [armed, row({ outcome: "landed" })]).armedHead], [null, null]);
+  });
+
+  test("the arm is the newest armed row's head, and a re-arm of the same head keeps its rerun's flake", () => {
+    const flake = { runId: 7, tests: ["t"], step: "Test" };
+    const reran = row({ outcome: "armed", head: "h1", flake });
+    const again = ticketTally(1, [reran, row({ outcome: "armed", head: "h1" })]);
+    assert.deepEqual([again.armedHead, again.armedFlake?.runId], ["h1", 7]);
+    const moved = ticketTally(1, [reran, row({ outcome: "armed", head: "h2" })]);
+    assert.deepEqual([moved.armedHead, moved.armedFlake], ["h2", null]);
+  });
+
+  // A red round is owed until a process has run since; a round that ran and left the head red changed nothing.
+  test("sinceRed counts the rows after the last retry, and no armed note among them", () => {
+    const retry = row({ outcome: "retry", head: "h1" });
+    assert.equal(ticketTally(1, [retry]).sinceRed, 0);
+    assert.equal(ticketTally(1, [retry, row({ outcome: "armed", head: "h1" })]).sinceRed, 0);
+    assert.equal(ticketTally(1, [retry, row({ outcome: "handoff" }), row({ outcome: "pushed" })]).sinceRed, 2);
+    assert.equal(ticketTally(1, [retry, row({ outcome: "pushed" }), row({ outcome: "retry", head: "h2" })]).sinceRed, 0);
   });
 
   test("a pushed row and its settle row are one session", () => {
@@ -609,6 +631,31 @@ describe("ticketTally", () => {
     const t = ticketTally(1, [row({ n: 2, outcome: "retry", cost: 5 })]);
     assert.equal(t.sessions, 0);
     assert.equal(t.spend, 0);
+  });
+});
+
+describe("inFlight", () => {
+  const r = (n: number, outcome: string, pr: number | null = null) => ({ n, outcome, pr });
+
+  test("a pushed pull request is in flight until a row ends its ticket", () => {
+    assert.deepEqual(inFlight([r(1, "pushed", 10)]), [{ n: 1, pr: 10 }]);
+    for (const end of ["landed", "parked", "closed", "reparked"]) assert.deepEqual(inFlight([r(1, "pushed", 10), r(1, end)]), [], end);
+  });
+
+  test("an armed note or a red round keeps it in flight, with the pull request its window named", () => {
+    assert.deepEqual(inFlight([r(1, "pushed", 10), r(1, "armed"), r(1, "retry")]), [{ n: 1, pr: 10 }]);
+  });
+
+  // The fix round's worktree is the session's again; the next push puts it back in flight.
+  test("a session's row after a red takes it out of flight until it pushes again", () => {
+    const rows = [r(1, "pushed", 10), r(1, "retry"), r(1, "handoff")];
+    assert.deepEqual(inFlight(rows), []);
+    assert.deepEqual(inFlight([...rows, r(1, "pushed", 10)]), [{ n: 1, pr: 10 }]);
+  });
+
+  test("a start row is no evidence either way, and tickets are kept apart", () => {
+    const rows = [r(1, "pushed", 10), r(2, "pushed", 20), r(1, "started"), r(2, "landed")];
+    assert.deepEqual(inFlight(rows), [{ n: 1, pr: 10 }]);
   });
 });
 

@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { LAND } from "../loop-render.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
@@ -22,7 +21,6 @@ import {
   park,
   repark,
   holdFor,
-  settle,
   runOnce,
   USD_BY_SIZE,
   loopSha,
@@ -43,7 +41,9 @@ const stubIo = () => ({
   spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
   standing: () => null,
   pushedPr: () => null,
-  settle: async () => ({ action: "already-merged", reason: "" }),
+  land: async (_p: unknown, decideAt: (l: object) => object) => decideAt({ n: 42, pr: 1, head: "h", action: "already-merged", reason: "" }),
+  inFlight: () => [],
+  live: () => [],
   park: () => {},
   teardown: () => {},
   bell: () => {},
@@ -1202,8 +1202,8 @@ describe("outcomeOf", () => {
   const open = { number: 984, state: "OPEN", head: "agent/42-x" };
   const fine = { why: null, hard: false };
 
-  test("an open pull request is settled, not yet landed", () => {
-    assert.deepEqual(outcomeOf({ pr: open, reason: fine }), { action: "settle", pr: 984 });
+  test("an open pull request is pushed, not yet landed", () => {
+    assert.deepEqual(outcomeOf({ pr: open, reason: fine }), { action: "pushed", pr: 984 });
   });
 
   // A peer, an auto-merge or the owner between the session's exit and this read. Asked with
@@ -1232,7 +1232,7 @@ describe("outcomeOf", () => {
   // ended was read before what it had already pushed.
   test("a soft reason never beats a pushed pull request", () => {
     const o = outcomeOf({ pr: open, reason: { why: "the session ran out of turns", hard: false } });
-    assert.deepEqual(o, { action: "settle", pr: 984 });
+    assert.deepEqual(o, { action: "pushed", pr: 984 });
   });
 
   test("a soft reason on a merged pull request is still a landing", () => {
@@ -1336,9 +1336,9 @@ describe("a session cut off mid-phase", () => {
     for (const p of ["B", "C", "D"]) assert.equal(resumePhase(cut as never, at(p) as never, 42), p);
   });
 
-  // A head that is already pushed is settle's to merge. Handing E back spends a whole session
+  // A head that is already pushed is the supervisor's to land. Handing E back spends a whole session
   // re-running a gate and a push that are done, and never reaches the open pull request.
-  test("a pushed head is left to settle, never handed back", () => {
+  test("a pushed head is left to land, never handed back", () => {
     assert.equal(resumePhase(cut as never, at("E") as never, 42), null);
     assert.equal(resumePhase(cut as never, at("G") as never, 42), null);
   });
@@ -1560,69 +1560,6 @@ describe("pushedPr only ever answers with this ticket's own pull request", () =>
       throw new Error("gh: not authenticated");
     };
     assert.equal(pushedPr("agent/42-x", 42, 1003, 0, throws), null);
-  });
-});
-
-/**
- * The stretch after the session exits, which is the longest part of a ticket and the part the
- * board used to show nothing for: `close` ticked green and a twenty-minute CI wait read as a hang.
- */
-describe("the land phase", () => {
-  const board = () => {
-    const rows: string[] = [];
-    return {
-      rows,
-      start: (letter: string) => rows.push(`start ${letter}`),
-      set: () => {},
-      said: (text: string) => rows.push(`said ${text}`),
-      close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
-    };
-  };
-  const pending = { ticket: 42, pr: 1049, branch: "agent/42-a-thing" };
-
-  test("opens a phase before the wait and says what is being waited on", async () => {
-    const screen = board();
-    await settle(pending, screen as never, { watch: async () => ({ action: "already-merged" }) });
-    assert.equal(screen.rows[0], `start ${LAND}`);
-    assert.match(screen.rows[1], /waiting for ci\.yml on agent\/42-a-thing/);
-  });
-
-  test("a merge closes it green, naming the pull request that landed", async () => {
-    const screen = board();
-    await settle(pending, screen as never, { watch: async () => ({ action: "already-merged" }) });
-    assert.equal(screen.rows.at(-1), "close done #1049 merged");
-  });
-
-  test("anything else closes it red, carrying the reason out to the row", async () => {
-    const screen = board();
-    const out = await settle(pending, screen as never, {
-      watch: async () => ({ action: "owner", reason: "CI did not settle in 40m" }),
-    });
-    assert.equal(screen.rows.at(-1), "close failed CI did not settle in 40m");
-    assert.equal(out.action, "owner", "the caller still decides; this only renders");
-  });
-
-  test("a wait that throws still settles the row, rather than spinning forever", async () => {
-    const screen = board();
-    await assert.rejects(() =>
-      settle(pending, screen as never, {
-        watch: async () => {
-          throw new Error(["gh: rate limited", "second line"].join("\n"));
-        },
-      }),
-    );
-    assert.equal(screen.rows.at(-1), "close failed gh: rate limited");
-  });
-
-  test("what the wait says on the way reaches the board, not the scrollback", async () => {
-    const screen = board();
-    await settle(pending, screen as never, {
-      watch: async (_p: unknown, log: (m: string) => void) => {
-        log("main moved — updating the branch and reading CI again");
-        return { action: "already-merged" };
-      },
-    });
-    assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
   });
 });
 
