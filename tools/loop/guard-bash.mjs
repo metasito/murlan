@@ -7,11 +7,13 @@
  *                                    (allowed on pathspecs inside the current .worktrees/agent-N)
  *   git checkout <path> / restore / reset --hard / clean -f / stash drop   discard uncommitted work
  *   git worktree remove --force, rm -r .worktrees/…   delete through, or leave behind, a node_modules junction
- *   git push … main                  lands code with no CI
  *   a loop session's push anywhere but its own agent/<LOOP_TICKET>- branch
  *   find / …                         a filesystem sweep; resolve packages with require.resolve instead
  *   gh pr merge                      merges an UNSTABLE (incl. queued) pull request on the spot
  *   a loop session's rerun of any run    the supervisor reruns a red once per head
+ *
+ * Not here: a push to main. The repository's `main` ruleset refuses it server-side, and no account
+ * a session pushes as can bypass it (`current_user_can_bypass: never`).
  *
  * Every rule reads the same parsed commands (`commands()`), never the raw text: a rule that matches
  * one spelling is passed by `git -C d add -A`, `X=1 git …`, `do git …` or `bash -c '…'`.
@@ -57,8 +59,6 @@ export function gitAt(base) {
     }
   };
   return {
-    branch: (dir) => answer(["symbolic-ref", "--short", "-q", "HEAD"], dir),
-    pushTarget: (dir) => answer(["rev-parse", "--abbrev-ref", "@{push}"], dir),
     isRef: (arg, dir) => quietly(["rev-parse", "--verify", "-q", `${arg}^{commit}`], dir),
     // A git error reads as "not clean", so it blocks.
     pathsClean: (paths, dir) => quietly(["diff", "--quiet", "HEAD", "--", ...paths], dir),
@@ -225,20 +225,6 @@ function discards(c, repo) {
 
 const PUSH_TAKES_A_VALUE = /^(-o|--push-option|--repo|--receive-pack|--exec)$/;
 
-function pushesMain(c, repo) {
-  if (c.cmd !== "git" || c.args[0] !== "push") return false;
-  const isMain = (ref) => /^(refs\/heads\/)?main$/.test(ref);
-  const refs = operands(c.args.slice(1), PUSH_TAKES_A_VALUE).slice(1);
-  if (!refs.length) {
-    const target = repo.pushTarget(c.dir);
-    return target ? /^[^/]+\/main$/.test(target) : repo.branch(c.dir) === "main";
-  }
-  return refs.some((ref) => {
-    const dest = ref.replace(/^\+/, "").split(":").pop();
-    return /^(HEAD|@)$/.test(dest) ? repo.branch(c.dir) === "main" : isMain(dest);
-  });
-}
-
 /** The ticket the supervisor spawned this session for, or null when its env names none. */
 const loopTicket = () => (/^\d+$/.test(process.env.LOOP_TICKET ?? "") ? process.env.LOOP_TICKET : null);
 
@@ -339,13 +325,6 @@ const RULES = [
       "  npm run worktrees:remove -- .worktrees/<name>\n" +
       "Better still, do not create the junction: a worktree nested inside the checkout already " +
       "resolves up to the parent's node_modules on its own.",
-  },
-  {
-    test: (c, { repo }) => pushesMain(c, repo),
-    message:
-      "Pushing to main is blocked: it lands code no CI run has judged (RULES.md rule 12).\n" +
-      "Push your ticket branch and open a pull request:\n" +
-      "  git push -u origin HEAD:agent/<n>-<slug>",
   },
   {
     test: (c, { loop }) => loop && pushesElsewhere(c, loopTicket()),
