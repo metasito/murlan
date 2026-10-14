@@ -18,7 +18,7 @@ function ghJson(args) {
 
 const QUERY = `query($owner:String!,$name:String!,$after:String){repository(owner:$owner,name:$name){issues(states:OPEN,first:100,after:$after){pageInfo{hasNextPage endCursor}nodes{number title authorAssociation labels(first:100){nodes{name}} milestone{title} issueDependenciesSummary{blockedBy}}}}}`;
 
-/** Every open issue with its open-blocker count, a page of 100 per call. GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
+/** GraphQL, not `gh issue list`: only it carries both the author association and the dependency summary. */
 export function openIssues(run = gh) {
   const [owner, name] = REPO.split("/");
   const nodes = [];
@@ -47,7 +47,6 @@ function labelNames(issue) {
   return issue.labels.map((l) => l.name);
 }
 
-/** The `size:*` label, or null. The supervisor derives the session's turn bound from it. */
 export function sizeOf(issue) {
   return SIZE_ORDER.find((s) => labelNames(issue).includes(s)) ?? null;
 }
@@ -76,7 +75,7 @@ export function routeOf(issue) {
   return null;
 }
 
-/** The bucket each route lands in. `owner` is where anything with no route goes. */
+/** `owner` is where anything with no route goes. */
 const BUCKET = { implement: "frontier", triage: "triage", wayfinder: "wayfinder" };
 
 /**
@@ -164,8 +163,7 @@ function realClassifyIo(run = gh) {
 }
 
 /**
- * A branch alive on origin is not a claim — a merged one satisfies that and froze nine tickets.
- * An open pull request is. Fails open: an unreachable tracker must not empty the queue.
+ * A branch alive on origin is not a claim — a merged one satisfies that. An open pull request is. Fails open: an unreachable tracker must not empty the queue.
  */
 export function claimedElsewhere(number, list) {
   try {
@@ -182,7 +180,6 @@ function openPrsFor(number, run = gh) {
   return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
 }
 
-/** The gate order per candidate: native blockers, then claims. */
 export function takeable(frontier, limit, claimed = (n) => claimedElsewhere(n, openPrsFor)) {
   const out = [];
   for (const issue of frontier) {
@@ -229,7 +226,6 @@ export function pickRoute(buckets, take = takeable) {
   return { skill: "handoff", ticket: null };
 }
 
-/** The route the tracker gives now, and the bucket depths behind it. */
 export function nextPick(run = gh) {
   openPrs = null;
   const issues = openIssues(run);
@@ -289,8 +285,6 @@ function printDetail(issue, comments) {
   }
 }
 
-// Guarded so a test can import `classify` (and the other pure functions
-// above) without shelling out to `gh` as a side effect of the import.
 const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {
