@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
@@ -21,8 +21,6 @@ import {
   runTicket,
   park,
   repark,
-  watchBuild,
-  UNCOMMITTED_SHARE,
   holdFor,
   settle,
   runOnce,
@@ -90,12 +88,17 @@ describe("queueLoopArgs", () => {
     assert.equal(schema.properties.stoodDown.type, "boolean");
   });
 
-  test("a loop session reads the project's settings and the loop's file, never the owner's", () => {
+  // These three are the whole guard on a session's plugins and model: nothing watches its init line.
+  test("a loop session reads the project's settings and the loop's file, never the owner's, on its phase's model", () => {
     const args = queueLoopArgs(1529, "size:M", "C");
     const at = args.indexOf("--setting-sources");
     assert.notEqual(at, -1, "without it the owner's ~/.claude and the checkout's local settings ride in every session");
     assert.equal(args[at + 1], "project");
     assert.match(args[args.indexOf("--settings") + 1], /[\\/]tools[\\/]loop[\\/]loop-settings\.json$/);
+    for (const phase of ["A", "C", "D", "E"]) {
+      const spawned = queueLoopArgs(1529, "size:M", phase);
+      assert.equal(spawned[spawned.indexOf("--model") + 1], MODEL_BY_PHASE[phase], phase);
+    }
   });
 
   test("the plugins a spawn turns off are ones nothing the loop reads asks for", () => {
@@ -590,7 +593,6 @@ describe("runTicket", () => {
     };
     const run = await runTicket(replayed, opts({ at: "D", stallMs: 50, tick: 10 }));
     assert.equal(run.status, "stalled");
-    assert.equal(run.wrongModel, null);
     assert.equal(apiFailure(run), "unreachable");
   });
 
@@ -823,7 +825,6 @@ describe("runTicket", () => {
     };
     return { seen, spawnFn };
   };
-  const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s", model });
 
   test("the session is told the phase it resumes at; a fresh one is told none and derives its own", async () => {
     const resumed = spawned([RESULT]);
@@ -854,24 +855,6 @@ describe("runTicket", () => {
     assert.deepEqual([told.seen.env.LOOP_REASON, plain.seen.env.LOOP_REASON], ["phase E's agent:check was red", undefined]);
   });
 
-  test("an init model of no family the loop knows is named, not parked", async () => {
-    const { said, screen } = sink();
-    const odd = spawned([init("some-future-model"), RESULT]);
-    const run = await runTicket(odd.spawnFn as never, opts({ at: "E", screen }));
-    assert.deepEqual([odd.seen.killed, run.wrongModel], [[], null]);
-    assert.match(said.join("\n"), /some-future-model/);
-  });
-
-  test("an init model other than planned kills the session and says why", async () => {
-    const wrong = spawned([init("claude-opus-5"), RESULT]);
-    const run = await runTicket(wrong.spawnFn as never, opts({ at: "E" }));
-    assert.deepEqual(wrong.seen.killed, ["SIGTERM"]);
-    assert.match(String(run.wrongModel), /claude-opus-5.*sonnet/);
-    const right = spawned([init("claude-sonnet-5"), RESULT]);
-    const ok = await runTicket(right.spawnFn as never, opts({ at: "E" }));
-    assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
-  });
-
   // `--model`, `--settings` and `--setting-sources project` pin both before the session starts.
   test("the init line's model and plugins are never a reason to kill the session", async () => {
     const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: [{ source: "ponytail@ponytail" }] });
@@ -879,18 +862,6 @@ describe("runTicket", () => {
     const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual(session.seen.killed, []);
     assert.equal(run.status, 0);
-  });
-
-  test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
-    const withPlugins = (...sources: string[]) =>
-      JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
-    const stray = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "ponytail@ponytail"), RESULT]);
-    const run = await runTicket(stray.spawnFn as never, opts({ at: "C" }));
-    assert.deepEqual(stray.seen.killed, ["SIGTERM"]);
-    assert.match(String(run.strayPlugin), /ponytail@ponytail/);
-    const clean = spawned([withPlugins("mattpocock-skills@claude-plugins-official", "agents-md@builtin"), RESULT]);
-    const ok = await runTicket(clean.spawnFn as never, opts({ at: "C" }));
-    assert.deepEqual([clean.seen.killed, ok.strayPlugin], [[], null]);
   });
 
   test("a fix round is named on the board with its round", async () => {
@@ -1401,71 +1372,6 @@ describe("a session cut off mid-phase", () => {
       assert.equal(resumePhase({ ...spent, declared } as never, at("C") as never, 42), null);
     }
     assert.equal(resumePhase({ ...spent, declared: null } as never, at("C") as never, 42), "C");
-  });
-});
-
-describe("watchBuild", () => {
-  const state = (over: object = {}) => ({
-    phase: "C",
-    buildTurns: 0,
-    committed: false,
-    warnedUncommitted: false,
-    ...over,
-  });
-  const edits = { calls: [{ name: "Edit", command: "" }] };
-  const commits = { calls: [{ name: "Bash", command: "git add -- a.ts && git commit -m 'x'" }] };
-  const said: string[] = [];
-  const warn = (m: string) => said.push(m);
-
-  test("a message split across stream lines is one build turn", () => {
-    const s = state();
-    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
-    watchBuild(s, { ...edits, id: "m1" }, 200, warn);
-    assert.equal(s.buildTurns, 1);
-  });
-
-  test("a commit in phase C is what it is watching for, and ends the watch", () => {
-    const s = state();
-    watchBuild(s, commits, 200, warn);
-    assert.equal(s.committed, true);
-    assert.equal(s.buildTurns, 0);
-  });
-
-  test("`git -C <dir> commit` counts, because that is how a worktree is committed to", () => {
-    const s = state();
-    watchBuild(s, { calls: [{ name: "Bash", command: "git -C .worktrees/agent-42 commit -m 'y'" }] }, 200, warn);
-    assert.equal(s.committed, true);
-  });
-
-  test("a `git add` is not a commit — the one failed ticket made ten of them and no commits", () => {
-    const s = state();
-    watchBuild(s, { calls: [{ name: "Bash", command: "git add -- lib/x.ts" }] }, 200, warn);
-    assert.equal(s.committed, false);
-    assert.equal(s.buildTurns, 1);
-  });
-
-  test("it says so once, and only once, past its share of the budget", () => {
-    const s = state();
-    const lines: string[] = [];
-    for (let i = 0; i < 200; i++) watchBuild(s, edits, 100, (m) => lines.push(m));
-    assert.equal(lines.length, 1);
-    assert.match(lines[0], /no commit/);
-    assert.match(lines[0], /100-turn budget/);
-  });
-
-  test("the threshold moves with the budget, so an XS ticket is not warned on turn one", () => {
-    const small = state();
-    for (let i = 0; i < Math.round(60 * UNCOMMITTED_SHARE) - 1; i++) watchBuild(small, edits, 60, warn);
-    assert.equal(small.warnedUncommitted, false);
-    watchBuild(small, edits, 60, warn);
-    assert.equal(small.warnedUncommitted, true);
-  });
-
-  test("phase D is not the build phase, and its turns are not counted against it", () => {
-    const s = state({ phase: "D" });
-    for (let i = 0; i < 500; i++) watchBuild(s, edits, 60, warn);
-    assert.equal(s.buildTurns, 0);
-    assert.equal(s.warnedUncommitted, false);
   });
 });
 

@@ -176,7 +176,7 @@ export const errorLine = (error) =>
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
  *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, committed?: boolean|null, head?: string|null, runId?: string|null,
+ *   usage?: object|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
@@ -196,7 +196,6 @@ export function sessionRow({
   asleepMs = null,
   version,
   usage = null,
-  committed = null,
   head = null,
   runId = null,
   loopSha = null,
@@ -225,9 +224,6 @@ export function sessionRow({
     usage,
     cache: result?.cache ?? { created: 0, read: 0 },
     merged: Boolean(merged),
-    // Whether phase C ever ran `git commit`. The one ticket in nineteen that produced nothing made
-    // 74 edits and no commits, and the record it left said only "parked".
-    committed,
     review_rounds: reviewRounds ?? null,
     review_holds_total: totalHolds,
     claude_version: version ?? null,

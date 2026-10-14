@@ -231,12 +231,10 @@ const STEPS = {
     const settling = run === null;
     const ran = run ?? { status: 0, phase: "G", declared: null, result: null };
     const at = afterSession(ran, after);
-    // Not the ticket's fault, so neither a park nor a failure: every next ticket would load it too.
-    if (ran.strayPlugin) return { kind: "stop", why: ran.strayPlugin };
+    // Not the ticket's fault, so neither a park nor a failure: every next ticket would meet it too.
     if (ran.accountError) {
       return { kind: "stop", why: `the account cannot run sessions (${ran.accountError}) — log in, then npm run queue:loop; #${n} resumes from its worktree` };
     }
-    if (ran.wrongModel) return { kind: "park", n, phase: at?.phase ?? route.phase ?? "A", why: ran.wrongModel };
     const declared = handoffOf(ran);
     let handoff = declared ?? resumePhase(ran, at, n);
     let because = handoff && !declared ? reasonFor(ran, at, n).why : null;

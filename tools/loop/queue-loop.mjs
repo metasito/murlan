@@ -28,7 +28,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { COMMITTING, readLine, scopeEnds } from "./loop-stream.mjs";
+import { readLine, scopeEnds } from "./loop-stream.mjs";
 import {
   act,
   bell,
@@ -73,7 +73,7 @@ import {
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
@@ -213,10 +213,6 @@ const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A
 
 const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
 const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
-
-/** `loop-settings.json` can only switch off what it names; a plugin it does not turn on is stray. */
-export const strayPlugins = (loaded, allowed = JSON.parse(fs.readFileSync(LOOP_SETTINGS, "utf8")).enabledPlugins) =>
-  loaded.filter((source) => !source.endsWith("@builtin") && allowed[source] !== true);
 
 /**
  * @param {number} number
@@ -736,48 +732,6 @@ function readUsageSplit(logPath) {
 
 
 /**
- * How far into its turn budget a session may get in phase C with nothing committed.
- *
- * A fraction rather than a number, because the budget itself moves with the ticket's size and a
- * flat threshold either fires on turn one of an XL or never fires at all on an XS.
- */
-export const UNCOMMITTED_SHARE = 0.35;
-
-/**
- * Says so, once, when a build phase is spending turns without committing any of them.
- *
- * The one ticket in nineteen that produced nothing made 74 `Edit` calls, 16 `Write` calls, 10
- * `git add` calls and zero `git commit` calls across 121 turns, then reached phase E with an empty
- * branch. `loop-gate.mjs` catches that, at phase E, after the whole budget is spent; the supervisor
- * parses every line of the stream and can see it while there is still budget to act on.
- *
- * It cannot commit on the session's behalf — rule 11 forbids `git add -A` precisely because the
- * staging decisions are the session's — so it reports, and the reason reaches the ledger.
- *
- * @param {{phase: string|null, buildTurns: number, committed: boolean, warnedUncommitted: boolean,
- *   buildMsg?: string|null}} state
- * @param {{id?: string|null, calls: {name: string, command: string}[]}} fact
- * @param {number} budget the session's `--max-turns`
- * @param {(line: string) => void} warn
- */
-export function watchBuild(state, fact, budget, warn) {
-  if (state.committed || state.phase !== "C") return;
-  if (fact.calls.some((c) => c.name === "Bash" && COMMITTING.test(c.command))) {
-    state.committed = true;
-    return;
-  }
-  if (fact.id != null && fact.id === state.buildMsg) return;
-  state.buildMsg = fact.id;
-  state.buildTurns += 1;
-  if (state.warnedUncommitted || state.buildTurns < Math.round(budget * UNCOMMITTED_SHARE)) return;
-  state.warnedUncommitted = true;
-  warn(
-    `${state.buildTurns} turns into phase C of a ${budget}-turn budget with no commit` +
-      " — an unstaged edit is the only work this loop can lose",
-  );
-}
-
-/**
  * Spawns one session and reports what it did.
  *
  * The phase comes from the session's own `PHASE <letter>` line. Inferring it from outside by
@@ -833,15 +787,9 @@ export function runTicket(
     blocked: false,
     blockedUntil: 0,
     stalled: false,
-    wrongModel: null,
-    strayPlugin: null,
     accountError: null,
     apiErrorCode: null,
     stderr: "",
-    /** Turns spent in phase C, and whether any of them committed. */
-    buildTurns: 0,
-    committed: false,
-    warnedUncommitted: false,
     /** Subagents running right now, in the order they were last heard from. */
     tasks: new Map(),
   };
@@ -879,7 +827,6 @@ export function runTicket(
   }
 
   const budget = turnsFor(size);
-  const planned = plannedModel(at);
   const child = spawnFn("claude", queueLoopArgs(number, size, at), {
     stdio: ["ignore", "pipe", "pipe"],
     // A background update landing at 2am changes the system prompt, and every remaining ticket of
@@ -936,20 +883,6 @@ export function runTicket(
     if (fact.kind === "init") {
       state.version = fact.version;
       screen.set({ session: fact.sessionId });
-      const family = fact.model ? familyOf(fact.model) : null;
-      if (fact.model && !family) screen.warn(`the session started on ${fact.model}, a model of no known family\n`);
-      const stray = strayPlugins(fact.plugins ?? []);
-      if (stray.length && !state.strayPlugin) {
-        state.strayPlugin =
-          `the session loaded ${stray.join(", ")}, which tools/loop/loop-settings.json does not turn on —` +
-          " set each to false there, or true if the loop needs it";
-      } else if (family && family !== planned && !state.wrongModel) {
-        state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${planned}`;
-      }
-      if (state.strayPlugin || state.wrongModel) {
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
-      }
     }
     if (fact.kind === "assistant") {
       const letter = fact.letter ?? (state.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
@@ -966,7 +899,6 @@ export function runTicket(
       // and the rest — the one channel that says *why* — was thrown away.
       screen.said(thought(fact.text));
       for (const call of fact.calls) screen.call(call.name, act(call));
-      watchBuild(state, fact, budget, (m) => screen.notice("uncommitted", m));
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase
     // line freezes on its last fact for the whole of phase D — 78% of a run's clock — and a working
@@ -1074,11 +1006,8 @@ export function runTicket(
           size,
           phase: state.phase,
           phases: state.phases,
-          committed: state.committed,
           stderr: state.stderr,
           version: state.version,
-          wrongModel: state.wrongModel,
-          strayPlugin: state.strayPlugin,
           accountError: state.accountError,
           apiErrorCode: state.apiErrorCode,
           started: new Date(startedAt).toISOString(),
@@ -1855,7 +1784,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     return pass(action, { run, until: replaced.until });
   }
   if (action.kind === "stop") {
-    io.record({ number: n, outcome: "halted", why: run.strayPlugin ?? run.accountError, run, counts: false });
+    io.record({ number: n, outcome: "halted", why: run.accountError, run, counts: false });
     return pass(action);
   }
   if (action.kind === "park") return parkHere(action, worked(action.pr));
@@ -2112,7 +2041,6 @@ function realIo(book, screen) {
           asleepMs: run.asleepMs ?? null,
           version: run.version,
           usage: run.usage ?? null,
-          committed: run.committed ?? null,
           head,
           handoff,
           error,

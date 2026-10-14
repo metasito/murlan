@@ -21,7 +21,7 @@ const fixRoute = (top: object = {}) => pick({ fix: true, head: "h3" }, top);
 
 const said = (over: object = {}) => ({ ticket: 42, branch: "agent/42-x", pr: null, phase: "C", handoff: null, stoodDown: false, why: null, ...over });
 const ok = { subtype: "success", isError: false, apiStatus: null, cost: 2, turns: 30 };
-const run = (over: object = {}) => ({ status: 0, phase: "C", declared: said({ handoff: "D" }), result: ok, stderr: "", blocked: false, blockedUntil: 0, accountError: null, apiErrorCode: null, lastFact: "result", wrongModel: null, strayPlugin: null, ...over });
+const run = (over: object = {}) => ({ status: 0, phase: "C", declared: said({ handoff: "D" }), result: ok, stderr: "", blocked: false, blockedUntil: 0, accountError: null, apiErrorCode: null, lastFact: "result", ...over });
 const derived = { ticket: 42, branch: "agent/42-x", cwd: "/w/agent-42", head: "h1", commits: 3, changed: [], dirty: false, phase: "C" };
 const session = (over: object = {}) => ({ ...base, step: "session", run: run(), after: derived, built: true, pushed: null, issue: null, ...over });
 const silent = (over: object = {}) => run({ declared: null, ...over });
@@ -89,12 +89,8 @@ const ROWS: Row[] = [
   ["a stood-down session is never asked about the issue", session({ run: finished({ stoodDown: true, why: "moot" }), issue: undefined }), { kind: "park", why: "moot" }],
 
   // runOnce, after the session
-  ["a stray plugin stops the run instead of parking the ticket it happened to meet", session({ run: run({ strayPlugin: "plugin superpowers loaded from user settings" }) }),
-    { kind: "stop", why: "plugin superpowers loaded from user settings", halt: undefined, loop: fresh }],
   ["an expired login stops the run, and does not park the ticket it met", session({ run: silent({ accountError: "authentication_failed", status: 1 }) }),
     { kind: "stop", why: /^the account cannot run sessions \(authentication_failed\) — log in.*#42 resumes from its worktree$/, loop: fresh }],
-  ["a session on the wrong model parks with the reason", session({ run: run({ wrongModel: "the session ran on claude-sonnet-5, not opus" }) }),
-    { kind: "park", phase: "C", why: "the session ran on claude-sonnet-5, not opus", loop: { ...fresh, failures: 1 } }],
   ["starts the next process at the phase the session named", session(), { kind: "handoff", n: 42, phase: "D", why: null, publish: true, loop: { ...fresh, pinned: 42 } }],
   ["runOnce: the session's own why rides with its handoff", session({ run: run({ declared: said({ handoff: "D", why: "review abc" }) }) }), { kind: "handoff", said: "review abc" }],
   ["a D handoff without a --build pass re-routes to C, recorded as a C handoff", session({ built: false }),
@@ -274,10 +270,10 @@ const ROWS: Row[] = [
     { kind: "park", halt: null, loop: { failures: BREAKER - 1, holds: 2, waits: 3, overloads: 4, pinned: null } }],
 
   // main, the run's own counters
-  ["three tickets in a row that do not land stop the night", session({ run: run({ wrongModel: "w" }), loop: { ...fresh, failures: BREAKER - 1 } }),
+  ["three tickets in a row that do not land stop the night", session({ run: finished({ stoodDown: true, why: "w" }), loop: { ...fresh, failures: BREAKER - 1 } }),
     { kind: "park", halt: `${BREAKER} tickets in a row did not land`, loop: { ...fresh, failures: BREAKER } }],
-  ["main: a park short of the breaker does not halt", session({ run: run({ wrongModel: "w" }) }), { kind: "park", halt: null }],
-  ["one bad ticket is a ticket; three in a row is the loop or the machine", session({ run: run({ wrongModel: "w" }), loop: { ...fresh, failures: BREAKER - 2 } }),
+  ["main: a park short of the breaker does not halt", session({ run: finished({ stoodDown: true, why: "w" }) }), { kind: "park", halt: null }],
+  ["one bad ticket is a ticket; three in a row is the loop or the machine", session({ run: finished({ stoodDown: true, why: "w" }), loop: { ...fresh, failures: BREAKER - 2 } }),
     { kind: "park", halt: null, loop: { ...fresh, failures: BREAKER - 1 } }],
   ["a landing clears the breaker, so a bad ticket between good ones is not fatal",
     settled({ action: "already-merged", reason: "merged" }, { loop: { failures: 2, holds: 1, waits: 5, overloads: 3, pinned: 42 } }), { kind: "landed", loop: fresh }],
@@ -286,7 +282,7 @@ const ROWS: Row[] = [
     { kind: "closed", loop: fresh }],
   ["main: a handoff resets the pre-flight and API counts, and neither the breaker nor the usage count",
     session({ loop: { failures: 2, holds: 3, waits: 4, overloads: 5, pinned: null } }), { kind: "handoff", loop: { failures: 2, holds: 0, waits: 4, overloads: 0, pinned: 42 } }],
-  ["main: a park resets the pre-flight and API counts, and keeps the usage count", session({ run: run({ wrongModel: "w" }), loop: { failures: 0, holds: 3, waits: 4, overloads: 5, pinned: 42 } }),
+  ["main: a park resets the pre-flight and API counts, and keeps the usage count", session({ run: finished({ stoodDown: true, why: "w" }), loop: { failures: 0, holds: 3, waits: 4, overloads: 5, pinned: 42 } }),
     { kind: "park", loop: { failures: 1, holds: 0, waits: 4, overloads: 0, pinned: null } }],
   [`${WAIT.TRIES} in a row end the run and say why; a served session in between resets the count`,
     session({ run: api(529), loop: { ...fresh, overloads: WAIT.TRIES - 1, pinned: 42 } }),
