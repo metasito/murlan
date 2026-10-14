@@ -7,7 +7,8 @@
 // taking the avatar and the player's name with it. Nothing in the unit suite
 // can see that: it is a property of the laid-out box, so it is measured in a
 // real browser here, next to the tap-target sweep for the same reason.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
 import { openSeededGame, offlineGameSave, resumeSaved, DEAL_SIZE } from "./helpers/offlineSeed";
 import { openOnlineTable } from "./helpers/onlineTable";

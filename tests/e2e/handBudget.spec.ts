@@ -9,7 +9,8 @@
 //
 // Every one of those is a property of a laid-out box against the viewport, so
 // react-test-renderer cannot see any of it.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";
 import { HAND_ZONE } from "./helpers/selectors.ts";

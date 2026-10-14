@@ -2,7 +2,8 @@
 // Each effect ticket under #1252 registers its moment in MOMENTS, and a `mockupParity*.spec.ts` file
 // runs it: one file per heavy moment, so the shard split can place them apart.
 // `node scripts/mockupParityPage.mjs` builds the side-by-side page from the output.
-import { test, expect, type Browser, type CDPSession, type Page, type Request } from "@playwright/test";
+import type { Browser, CDPSession, Page, Request } from "@playwright/test";
+import { test, expect } from "../fixtures";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

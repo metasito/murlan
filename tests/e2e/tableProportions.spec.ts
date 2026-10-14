@@ -7,7 +7,8 @@
 // element that reaches the screen is that size, and where it ends up: seat
 // placement is flexbox in a row whose cross axis is up-and-down, which
 // react-test-renderer never runs (CLAUDE.md, *Known pitfalls*). #340.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { TABLE_SCREEN } from "./helpers/selectors";
 import { atRest } from "./helpers/settle";

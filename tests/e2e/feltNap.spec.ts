@@ -6,7 +6,8 @@
 // measure; `docs/agents/checks.md` has why "looks darker" is not a measurement.
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { test, expect, type Browser, type Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { skiaOnSoftware, UNLIT_AIR, untilSkiaFelt } from "./helpers/tableTrace";
 import { DEPART_SCRIPT, MOCKUP_SEAT, expectDeparted } from "./helpers/lanternDepartures";

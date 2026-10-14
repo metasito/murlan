@@ -8,7 +8,7 @@
 // DOM's text alone. A substring check passes "Online" against "Gioca online" and a
 // text-only check passes strings that iOS, which exposes labels and no text nodes,
 // can never match.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { openApp } from "./helpers/navigation";

@@ -5,7 +5,8 @@
 // at the seats the table laid out while the felt stretches to the window, so this walks every
 // seating at a phone and a tablet: the lamp over the seat on move, and the Skia cloth brighter and
 // its weave louder on the lit side. `feltNap.spec.ts` holds the weave's relief to the mockup's.
-import { test, expect, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { test, expect } from "../fixtures";
 import { openCaptureState } from "./offlineSeed";
 import { settledLight, skiaOnSoftware, tracedLamp, UNLIT_AIR, untilSkiaFelt } from "./tableTrace";
 import {

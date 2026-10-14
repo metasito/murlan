@@ -5,7 +5,8 @@
 // transition (focus mode) and a scrollable box measured against its own
 // content (the row list) — exactly the class of thing only a rendered page
 // answers (docs/agents/checks.md).
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { TOUCH_TARGET_MIN } from "../../lib/tokens";
 

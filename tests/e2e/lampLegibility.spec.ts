@@ -1,7 +1,8 @@
 // tests/e2e/lampLegibility.spec.ts — in the Skia felt's own pixels, the seat on move out-lights the
 // brightest other seat by the floor at every phone, and every seat does so about equally (plan 3
 // Task 8; the bounds are lib/diagnostics/lampLegibility.ts's, the rings where the table laid them).
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { feltPixels, seatAnchor, skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";

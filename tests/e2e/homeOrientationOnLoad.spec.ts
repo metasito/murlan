@@ -5,7 +5,8 @@
 // launch — is not reproducible here: Chromium's window is correct from its
 // very first script tick, which is exactly why `lib/device/orientation.tsx` has a
 // native test for that half and this file has the layout instead.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { en } from "../../locales/en";
 import { it as itCopy } from "../../locales/it";

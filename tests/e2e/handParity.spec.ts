@@ -14,7 +14,7 @@
 // safe inset, not the raw screen), spans about 0.56 of the screen whatever it
 // holds, and runs off the bottom edge — the crop is what buys the table its
 // height and takes the upside-down index at the card's foot out of the picture.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { HAND_ZONE, TABLE } from "./helpers/selectors";

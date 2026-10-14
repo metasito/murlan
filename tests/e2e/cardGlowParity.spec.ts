@@ -1,7 +1,8 @@
 // tests/e2e/cardGlowParity.spec.ts — the felt glows gold under a selected hand card as design gate G1's
 // mockup glows under the same card (#1259 plan 4, task 13). The card is laid on the mockup's stage
 // where the app drew it; each side's glow is what turning it off gives back, the card shadows off.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fitFrame, sideContext } from "./helpers/mockupParity";

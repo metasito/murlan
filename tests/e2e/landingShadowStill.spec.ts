@@ -1,7 +1,7 @@
 // tests/e2e/landingShadowStill.spec.ts — a landed card's shadow holds still through its wobble, so
 // the felt rebuilds no shadow cluster holding it from contact to contact + LAND_WOBBLE_MS (#1414),
 // while the card itself still wobbles. With motion on: reduced motion has no wobble to hold.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { heldTurnTable, newSidePage, playLowest } from "./helpers/mockupParity";
 import { stepThen, stepUntil } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";

@@ -8,7 +8,7 @@
 // render, a "Rendered fewer hooks than expected" warning, or a red-box would
 // all surface exactly this way and nowhere else.
 
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
 
 /**
@@ -38,9 +38,7 @@ export interface ConsoleErrors {
  * extra browser context per seat, say) and needs every one of them watched,
  * not just the fixture's own.
  */
-export function collectConsoleErrors(page: Page): ConsoleErrors {
-  const entries: string[] = [];
-
+export function collectConsoleErrors(page: Page, entries: string[] = []): ConsoleErrors {
   page.on("console", (msg) => {
     if (msg.type() !== "error" && msg.type() !== "warning") return;
     const text = msg.text();
@@ -57,23 +55,54 @@ export function collectConsoleErrors(page: Page): ConsoleErrors {
   return { entries };
 }
 
-export const test = base.extend<{ consoleErrors: ConsoleErrors }>({
-  consoleErrors: async ({ page }, use) => {
+const watched = new WeakSet<BrowserContext>();
+
+function watchContext(context: BrowserContext, entries: string[]): void {
+  if (watched.has(context)) return;
+  watched.add(context);
+  for (const page of context.pages()) collectConsoleErrors(page, entries);
+  context.on("page", (page) => collectConsoleErrors(page, entries));
+}
+
+export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: ConsoleErrors }>({
+  // Every test, every page it opens: the `context` fixture's, and any from `browser.newContext`
+  // or `browser.newPage` (which goes through `newContext`). No media emulation here — parity,
+  // flight and timing specs measure real motion.
+  browserErrors: [
+    async ({ browser }, use) => {
+      const entries: string[] = [];
+      const newContext = browser.newContext;
+      browser.newContext = async (...args) => {
+        const context = await newContext.apply(browser, args);
+        watchContext(context, entries);
+        return context;
+      };
+      try {
+        await use({ entries });
+      } finally {
+        browser.newContext = newContext;
+      }
+
+      if (entries.length > 0) {
+        throw new Error(
+          `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
+            entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
+        );
+      }
+    },
+    { auto: true },
+  ],
+  context: async ({ context, browserErrors }, use) => {
+    watchContext(context, browserErrors.entries);
+    await use(context);
+  },
+  consoleErrors: async ({ page, browserErrors }, use) => {
     // Cuts every Reanimated spring/timing duration to ~0 via the same
     // `prefers-reduced-motion` media query lib/accessibility.ts's
     // usePrefersReducedMotion already reads — no product code changes, no
     // env plumbing, just less real time spent waiting on animation frames.
     await page.emulateMedia({ reducedMotion: "reduce" });
-
-    const collected = collectConsoleErrors(page);
-    await use(collected);
-
-    if (collected.entries.length > 0) {
-      throw new Error(
-        `Browser reported ${collected.entries.length} error(s)/warning(s) during the test:\n\n` +
-          collected.entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
-      );
-    }
+    await use(browserErrors);
   },
 });
 

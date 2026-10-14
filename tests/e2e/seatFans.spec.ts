@@ -11,7 +11,8 @@
 // measurement returns the rotation the current pass is about to replace, so a
 // fan built that way drifts a little on every relayout. Measuring twice, with
 // a relayout in between, is what catches it.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { FAN_DRAWN_CARDS } from "../../components/seatLayout";
 

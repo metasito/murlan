@@ -2,7 +2,8 @@
 // timers stall under the virtual clock (#1250); the mockup on it. A routed close drops the socket at
 // once; going offline refuses the retries, which must fail with an error: socket.io's Manager
 // ignores a close while opening and waits out its 20 s `timeout` instead.
-import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
+import type { Browser, Page, WebSocketRoute } from "@playwright/test";
+import { test, expect } from "../fixtures";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
