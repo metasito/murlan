@@ -7,8 +7,8 @@ export const STEPS = [
   { name: "typecheck", args: ["run", "typecheck"], where: "local" },
   { name: "typecheck:strict", args: ["run", "typecheck:strict"], where: "local" },
   { name: "lint", args: ["run", "lint"], where: "local" },
-  // Local too: its source scans are the cheapest red a review round was spent on (#1098), 44s here
-  // with no Postgres. `after` runs it once the parallel steps are done, since it wants their memory.
+  // Local too: its source scans are the cheapest red, 44s with no Postgres. `after`: it runs once
+  // the parallel steps are done, since it wants their memory.
   { name: "test", args: ["test"], where: "local", after: true, job: "verify" },
   { name: "native:related", args: ["run", "test:native:related"], where: "local", after: true, job: "native" },
   { name: "loop:test", args: ["run", "loop:test"], where: "ci", job: "harness" },
