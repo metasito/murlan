@@ -700,8 +700,7 @@ describe("the hooks the project's settings and the loop's own register", () => {
   test("the loop-only guards load from the loop's own settings, never every session's", () => {
     for (const tool of ["Write", "Edit", "NotebookEdit"]) assert.ok(matched("PreToolUse", "guard-write.mjs", LOOP).includes(tool), tool);
     for (const tool of ["Agent", "Task"]) assert.ok(matched("PreToolUse", "guard-agent-model.mjs", LOOP).includes(tool), tool);
-    for (const tool of ["Bash", "PowerShell"]) assert.ok(matched("PreToolUse", "guard-verdict.mjs", LOOP).includes(tool), tool);
-    for (const script of ["guard-write.mjs", "guard-agent-model.mjs", "guard-verdict.mjs"]) {
+    for (const script of ["guard-write.mjs", "guard-agent-model.mjs"]) {
       assert.deepEqual(matched("PreToolUse", script, PROJECT), [], `${script} still starts in every owner session`);
     }
   });

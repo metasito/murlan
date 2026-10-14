@@ -492,7 +492,7 @@ asserts the game's React contexts stay a partition, so it stays on the game's si
 
 **Some hooks act only in a loop session.** `.claude/settings.json` registers guard-bash for every
 session, and these rules of it act only with `LOOP_TURNS` set; `tools/loop/loop-settings.json`
-alone registers guard-write, guard-verdict and guard-agent-model (rule 29's model and effort), so
+alone registers guard-write and guard-agent-model (rule 29's model and effort), so
 no other session starts them:
 - `tools/loop/guard-bash.mjs` also refuses `sed -i`/`perl -i` (rule 44), and `gh run watch`, `gh pr checks
   --watch` and a sleep loop over `gh run view|list`, `gh pr checks|view|status` or `gh api`
@@ -508,9 +508,12 @@ no other session starts them:
 - `tools/loop/guard-write.mjs` refuses a Write, Edit or NotebookEdit into the shared checkout;
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
-- `tools/loop/guard-verdict.mjs` refuses a `VERDICT: LAND`, posted by `gh issue comment` or
-  `gh api …/issues/<n>/comments`, until that round's own reviewer has run (rule 29), and whenever
-  the transcript the payload names cannot be read; a payload naming none is allowed with a warning. There is no LAND at the round cap: the ticket goes to the owner.
+
+No hook refuses a `VERDICT: LAND`. Before it arms auto-merge or marks a draft ready, the
+supervisor's `poll` (`tools/loop/queue-loop.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`)
+whether a `loop-review` or `loop-fix` agent completed for the ticket since its last `PHASE C`, read
+from the ticket's stream, and leaves a head no reviewer cleared to the owner (rule 29). There is
+no LAND at the round cap: the ticket goes to the owner.
 
 ## Owner decisions
 

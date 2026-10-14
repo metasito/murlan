@@ -3,7 +3,6 @@
  * this one parser, so a spelling one of them understands the others do too.
  */
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
 
 const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression)$/;
 const PIPED_TO_SHELL = /^[^\n]*\|\s*(?:\S*[\\/])?(bash|sh|zsh|dash|pwsh|powershell|iex|invoke-expression)\b/i;
@@ -238,20 +237,6 @@ function assignmentsIn(text) {
  * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
  */
 export const literalAssignments = (text) => literal(assignmentsIn(text));
-
-/** Each command of the line, with the directory the `cd`s before it left the call in. */
-export function located(command, cwd) {
-  let at = cwd;
-  const out = [];
-  for (const c of commands(command)) {
-    if (!MOVES.test(c.cmd)) out.push({ c, at });
-    else {
-      const to = c.args.find((a) => !a.startsWith("-"));
-      if (to) at = resolve(at, toNative(to));
-    }
-  }
-  return out;
-}
 
 const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
 const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";
