@@ -13,6 +13,11 @@ export function joinRouteFor(code: unknown): string | null {
   return valid && `/join/${valid}`;
 }
 
+export function joinUrl(origin: string, code: unknown): string | null {
+  const route = joinRouteFor(code);
+  return route && origin.replace(/\/+$/, "") + route;
+}
+
 export function systemPath(path: string): string {
   const match = JOIN_LINK.exec(path);
   return (match && joinRouteFor(match[1])) ?? "/";

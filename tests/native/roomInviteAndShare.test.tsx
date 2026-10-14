@@ -7,6 +7,8 @@ import { render, fireEvent, act } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { en as locale } from '@/locales/en';
+import { it as itLocale } from '@/locales/it';
+import { sq as sqLocale } from '@/locales/sq';
 
 type Ack = (err: unknown, reply?: { ok: boolean; code?: string }) => void;
 const mockAcks: Ack[] = [];
@@ -45,6 +47,7 @@ jest.mock('@/context/NotificationContext', () => ({
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual<object>('@tanstack/react-query'),
   useQuery: () => mockFriendsQuery,
 }));
 
@@ -89,6 +92,7 @@ function renderRoom() {
 }
 
 beforeEach(() => {
+  process.env.EXPO_PUBLIC_DOMAIN = 'murlan.example';
   mockAcks.length = 0;
   mockShowNotification.mockClear();
   mockSetString.mockClear();
@@ -160,13 +164,32 @@ describe('share', () => {
     await view.unmount();
   });
 
-  it('copies the code on a web browser with no share sheet', async () => {
+  it('shares the code and an https join link', async () => {
+    const spy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    const view = await renderRoom();
+    await fireEvent.press(view.getByLabelText(locale['room.share']));
+    const { message } = spy.mock.calls[0][0] as { message: string };
+    expect(message).toContain('ABCDEF');
+    expect(message).toContain('https://murlan.example/join/ABCDEF');
+    expect(message).not.toContain('//join');
+    spy.mockRestore();
+    await view.unmount();
+  });
+
+  it('carries the code and the link in every locale', () => {
+    for (const messages of [locale, itLocale, sqLocale]) {
+      expect(messages['room.shareMessage']).toContain('{{code}}');
+      expect(messages['room.shareMessage']).toContain('{{link}}');
+    }
+  });
+
+  it('copies the invite on a web browser with no share sheet', async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'web');
     const spy = jest.spyOn(Share, 'share');
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
     expect(spy).not.toHaveBeenCalled();
-    expect(mockSetString).toHaveBeenCalledWith('ABCDEF');
+    expect(mockSetString).toHaveBeenCalledWith(expect.stringContaining('https://murlan.example/join/ABCDEF'));
     spy.mockRestore();
     os.restore();
     await view.unmount();

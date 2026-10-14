@@ -145,6 +145,9 @@ describe("the shadow paths", () => {
     const step = SHADE_STEP;
     const moved = [shape({ x: 120 + step / felt.sx }), shape({ y: 50 + step / felt.sy }), shape({ w: 64 + step / felt.s }), shape({ h: 90 + step / felt.s }), shape({ seen: 0.5 }), shape({ back: true }), shape({}, { ...felt, sx: 2.5 }), shape({}, felt, 30)];
     assert.equal(new Set([shape(), ...moved]).size, moved.length + 1);
+    const pose = { x: 120, y: 50, w: 64, h: 90, rot: 0 };
+    assert.notEqual(shape({ shadow: pose }), shape({ shadow: { ...pose, rot: 1 } }));
+    assert.equal(shape({ shadow: pose }), shape());
   });
 
   test("a card off the stack reaches the shade only while it may overlap a stacked card, at the felt's scale", () => {
@@ -183,6 +186,21 @@ describe("the shadow paths", () => {
     assert.equal(id({ "pile:c": rect({ x: 901 }) }), id());
     const changed = [id({ "pile:b": rect({ x: 201 }) }), id({}, { ...felt, sx: 2 }), id({}, { ...felt, sy: 2 }), id({}, { ...felt, s: 2 }), id({}, felt, 1), shadowClusterId("cast", rects, felt, 0, ["pile:a", "pile:b"])];
     assert.equal(new Set([id(), ...changed]).size, changed.length + 1);
+  });
+
+  test("a card's `shadow` pose is where its shadow is shaped, clustered and drawn; its glow stays on the card", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const held = rect({ x: 300, rot: 4, glow: 1, shadow: { x: 100, y: 50, w: 64, h: 90, rot: 0 } });
+    const there = rect({ glow: 1 });
+    const first = (draw: (sink: GlowSink) => void) => {
+      let at: number[] = [];
+      draw({ moveTo: (x, y) => void (at = at.length ? at : [x, y]), lineTo: () => {}, conicTo: () => {}, close: () => {}, fill: () => {} });
+      return at;
+    };
+    assert.equal(shadowShape({ "pile:a": held }), shadowShape({ "pile:a": there }));
+    assert.deepEqual(first((s) => buildShadow(s, "face", { "pile:a": held }, felt, 0)), first((s) => buildShadow(s, "face", { "pile:a": there }, felt, 0)));
+    assert.deepEqual(shadowClusters("face", { "pile:a": held, "pile:b": rect({ x: 160 }) }, felt, 0, 3), [["pile:b", "pile:a"]]);
+    assert.notDeepEqual(first((s) => buildGlow(s, { "pile:a": held }, felt, 0)), first((s) => buildGlow(s, { "pile:a": there }, felt, 0)));
   });
 
   function bounds(r: CardRect, felt = { sx: 2, sy: 1.5, s: 1.25 }, midX = 0) {
