@@ -45,6 +45,8 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import type { FriendInfo } from "@/lib/wire";
 import { LoadingBlock, ErrorBlock } from "@/components/StateBlock";
 import { INTENT_ACK_TIMEOUT_MS } from "@/lib/sendIntent";
+import { getApiUrl } from "@/lib/query-client";
+import { joinUrl } from "@/lib/deepLink";
 
 const CODE_ICON = 15;
 const MODE_ICON = 13;
@@ -401,9 +403,14 @@ export default function RoomScreen() {
   const showShareError = (key: "room.shareFailed" | "room.copyFailed") =>
     showNotification({ type: "game_error", title: t("common.error"), message: t(key) });
 
-  async function handleCopyCode() {
+  const inviteMessage = () =>
+    t("room.shareMessage", { code: room!.code, link: joinUrl(getApiUrl(), room!.code) ?? "" });
+
+  const handleCopyCode = () => copyToClipboard(room!.code);
+
+  async function copyToClipboard(text: string) {
     try {
-      await Clipboard.setStringAsync(room!.code);
+      await Clipboard.setStringAsync(text);
     } catch {
       showShareError("room.copyFailed");
       return;
@@ -416,10 +423,10 @@ export default function RoomScreen() {
 
   async function handleShare() {
     if (Platform.OS === "web" && typeof globalThis.navigator?.share !== "function") {
-      return handleCopyCode();
+      return copyToClipboard(inviteMessage());
     }
     try {
-      await Share.share({ message: t("room.shareMessage", { code: room!.code }) });
+      await Share.share({ message: inviteMessage() });
     } catch (e) {
       if ((e as Error)?.name !== "AbortError") showShareError("room.shareFailed");
     }

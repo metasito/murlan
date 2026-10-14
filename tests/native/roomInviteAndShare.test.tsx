@@ -45,6 +45,7 @@ jest.mock('@/context/NotificationContext', () => ({
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual<object>('@tanstack/react-query'),
   useQuery: () => mockFriendsQuery,
 }));
 
@@ -89,6 +90,7 @@ function renderRoom() {
 }
 
 beforeEach(() => {
+  process.env.EXPO_PUBLIC_DOMAIN = 'murlan.example';
   mockAcks.length = 0;
   mockShowNotification.mockClear();
   mockSetString.mockClear();
@@ -160,13 +162,25 @@ describe('share', () => {
     await view.unmount();
   });
 
-  it('copies the code on a web browser with no share sheet', async () => {
+  it('shares the code and an https join link', async () => {
+    const spy = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
+    const view = await renderRoom();
+    await fireEvent.press(view.getByLabelText(locale['room.share']));
+    const { message } = spy.mock.calls[0][0] as { message: string };
+    expect(message).toContain('ABCDEF');
+    expect(message).toContain('https://murlan.example/join/ABCDEF');
+    expect(message).not.toContain('//join');
+    spy.mockRestore();
+    await view.unmount();
+  });
+
+  it('copies the invite on a web browser with no share sheet', async () => {
     const os = jest.replaceProperty(Platform, 'OS', 'web');
     const spy = jest.spyOn(Share, 'share');
     const view = await renderRoom();
     await fireEvent.press(view.getByLabelText(locale['room.share']));
     expect(spy).not.toHaveBeenCalled();
-    expect(mockSetString).toHaveBeenCalledWith('ABCDEF');
+    expect(mockSetString).toHaveBeenCalledWith(expect.stringContaining('https://murlan.example/join/ABCDEF'));
     spy.mockRestore();
     os.restore();
     await view.unmount();
