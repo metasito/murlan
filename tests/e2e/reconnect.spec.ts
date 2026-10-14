@@ -6,10 +6,9 @@
 // player actually experiences: that the table says so instead of silently
 // freezing, and that it clears itself once the socket is back.
 //
-// This spec runs its own context rather than the shared `page` fixture: going
-// offline necessarily produces failed requests, and the fixture fails a test on
-// any console error. The errors are still collected — just not the ones raised
-// while the network is deliberately down.
+// Going offline necessarily fails the socket's reconnects. The fixture watches
+// this spec's own context too, and matches that one message exactly
+// (`isExpectedNoise`); the collector below skips the whole offline window.
 
 import type { Page } from "@playwright/test";
 import { test, expect, isExpectedNoise } from "./fixtures";

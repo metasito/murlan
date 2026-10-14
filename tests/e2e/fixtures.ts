@@ -21,8 +21,12 @@ import { test as base, expect } from "@playwright/test";
  * URL has to come from the console message's own location instead.
  */
 export function isExpectedNoise(text: string, url: string): boolean {
-  return (text.includes("401") && url.endsWith("/api/auth/me")) || READBACK_NOISE.test(text);
+  return (text.includes("401") && url.endsWith("/api/auth/me")) || READBACK_NOISE.test(text) || OFFLINE_SOCKET.test(text);
 }
+
+// Only a context a spec set offline can raise it: reconnect.spec.ts drops the network on purpose.
+const OFFLINE_SOCKET =
+  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket\.io\/\?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/;
 
 // SwiftShader's own: a bare WebGL canvas, with no app, logs it too (#1257).
 const READBACK_NOISE =

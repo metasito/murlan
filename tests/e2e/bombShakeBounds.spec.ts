@@ -219,7 +219,7 @@ async function cornerLuminance(page: Page): Promise<number> {
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) throw new Error("no 2d context");
       ctx.drawImage(img, 0, 0);
       // The screenshot is in device pixels and the patch in CSS ones.
