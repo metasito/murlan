@@ -145,6 +145,9 @@ describe("the shadow paths", () => {
     const step = SHADE_STEP;
     const moved = [shape({ x: 120 + step / felt.sx }), shape({ y: 50 + step / felt.sy }), shape({ w: 64 + step / felt.s }), shape({ h: 90 + step / felt.s }), shape({ seen: 0.5 }), shape({ back: true }), shape({}, { ...felt, sx: 2.5 }), shape({}, felt, 30)];
     assert.equal(new Set([shape(), ...moved]).size, moved.length + 1);
+    const pose = { x: 120, y: 50, w: 64, h: 90, rot: 0 };
+    assert.notEqual(shape({ shadow: pose }), shape({ shadow: { ...pose, rot: 1 } }));
+    assert.equal(shape({ shadow: pose }), shape());
   });
 
   test("a card off the stack reaches the shade only while it may overlap a stacked card, at the felt's scale", () => {

@@ -6,7 +6,8 @@ import { StyleSheet } from "react-native";
 import { BlurStyle, Canvas, ClipOp, Picture, Skia, type SkPath, type SkPicture } from "@shopify/react-native-skia";
 import { useAnimatedReaction, useSharedValue } from "react-native-reanimated";
 import { CardShadow, Colors, withAlpha } from "@/lib/theme";
-import { addOutline, cardShades, shadeCards, shadeShape, shadowFall, shadowPaint, type ShadowPath } from "./cardShadows";
+import type { CardRect } from "./cardRects";
+import { addOutline, cardShades, shadeCards, shadeShape, shadowFall, shadowPaint, shadowRect, type ShadowPath } from "./cardShadows";
 import { useCardShadowsOn, type HandShadeProps } from "./feltReady";
 import { DISPOSE_PATHS, disposeAfterReactions } from "./skiaDispose";
 
@@ -61,13 +62,14 @@ export function HandShadeCanvas({ lamp, cards, ready }: HandShadeProps) {
       const shape = shadeShape(all, read, felt, midX);
       if (shape === last.value) return;
       last.value = shape;
-      const outline = (keys: readonly string[]) => {
+      const outline = (cards: readonly CardRect[]) => {
         builder.reset();
-        for (const key of keys) addOutline(builder, all[key], felt, midX);
+        for (const r of cards) addOutline(builder, r, felt, midX);
         return builder.build();
       };
+      const at = (keys: readonly string[]) => keys.map((key) => all[key]);
       const old = shades.value;
-      shades.value = cardShades(read).map((s) => ({ caster: outline([s.caster]), below: outline(s.below), above: outline(s.above), back: all[s.caster].back }));
+      shades.value = cardShades(read).map((s) => ({ caster: outline([shadowRect(all[s.caster])]), below: outline(at(s.below)), above: outline(at(s.above)), back: all[s.caster].back }));
       version.value += 1;
       if (DISPOSE_PATHS) for (const s of old) for (const path of [s.caster, s.below, s.above]) path.dispose();
     },

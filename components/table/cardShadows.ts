@@ -95,7 +95,7 @@ export function addOutline(sink: PathSink, r: CardRect, felt: Pick<Felt, "sx" | 
   sink.close();
 }
 
-function shadowRect(r: CardRect): CardRect {
+export function shadowRect(r: CardRect): CardRect {
   "worklet";
   return r.shadow ? { ...r, ...r.shadow } : r;
 }
@@ -177,9 +177,10 @@ export function shadeShape(rects: CardRects, { stack, over }: ShadeCards, felt: 
   "worklet";
   const q = (v: number) => Math.round(v / SHADE_STEP);
   let shape = `${felt.sx},${felt.sy},${felt.s},${midX}|${stack.join(",")}|`;
+  const outline = (r: CardRect) => `${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)}`;
   for (const key of [...stack, ...over]) {
     const r = rects[key];
-    shape += `${key}:${q(r.x * felt.sx)},${q(r.y * felt.sy)},${q(r.w * r.seen * felt.s)},${q(r.h * felt.s)},${q(r.rot)},${r.back};`;
+    shape += `${key}:${outline(r)},${outline(shadowRect(r))},${r.back};`;
   }
   return shape;
 }

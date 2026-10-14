@@ -66,4 +66,18 @@ describe('the hand shade on a resize', () => {
     }
     await view.unmount();
   });
+
+  it("casts from a card's shadow pose and is covered by the card where it is drawn", async () => {
+    const held = (x: number) => rect({ x, shadow: { x: 230, y: 300, w: 64, h: 90, rot: 0 } });
+    const rects = makeMutable<CardRects>({ 'hand:a': rect(), 'hand:b': held(234) });
+    const at = { x: 0, y: 0 };
+    const cards = { rects, handOrder: makeMutable<readonly string[]>(['hand:a', 'hand:b']), pileOrder: makeMutable<readonly string[]>([]), felt: { sx: 1, sy: 1, s: 1, kickAt: at, shakeAt: at }, motion: makeMutable(TABLE_AT_REST), pile: at, hand: { x: 0, y: 0 }, seats: {} } as unknown as CardTable;
+    const view = await render(<HandShadeCanvas lamp={makeMutable(restingLamp(TABLE_CENTRE))} cards={cards} ready />);
+    await frames(48);
+    expect(mockOutlined.slice(-3).map((o) => o.key)).toEqual(['230', '200', '234']);
+    rects.value = { 'hand:a': rect(), 'hand:b': rect({ x: 230 }) };
+    await frames(48);
+    expect(mockOutlined.slice(-3).map((o) => o.key)).toEqual(['230', '200', '230']);
+    await view.unmount();
+  });
 });
