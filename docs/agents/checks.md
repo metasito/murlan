@@ -29,7 +29,7 @@ instead of sitting unguarded in prose.
 | Tokens, contrast, roles | `node --test tests/ui-rules/{contrast,tokenRoles,cosmetics}.test.ts` | AA floors | nothing | ~1s |
 | Must **boot and stay drivable on iOS** | `.github/workflows/ios.yml`, dispatched, and twice a week on `main` (below) | a crash, a screen that never renders, a control the flows tap going missing — on a real simulator | a device dispatch | under 15 min warm, held by its gate; on a native change, `ios-app-cache.yml`'s ~21 min build first |
 | Must **boot and stay drivable on Android** | `.github/workflows/maestro.yml`, same trigger policy | same, on a virtual device | a device dispatch | not yet green in the release-APK shape; #1206 landed the build-time and emulator fixes |
-| The ticket loop (`tools/loop/`) | `node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | nothing | ~40s |
+| The ticket loop (`tools/loop/`) | `node --import ./tools/loop/tests/helpers/clearLoopEnv.mjs --test tools/loop/tests/<file>.test.ts` | the supervisor, the gate, the picker, the workspace tools | a signed-in `gh`, for `deleteBranchOnMerge.test.ts` only | ~40s |
 
 `node --test` over `tests/**/*.test.ts` is one command for both rows above it — `tests/integration/`
 folds in and self-skips without `DATABASE_URL` (below). Rules 1 and 2 in `docs/agents/RULES.md`
@@ -99,7 +99,7 @@ is red on any rerun or any job that did not pass, so neither goes green with no 
 (`tests/tooling/deviceWorkflowsGate.test.ts`). A red scheduled run files or comments on
 that workflow's open `device-run` issue. `gh run list --workflow=ios.yml --branch
 agent/<n>-<slug>` (or `maestro.yml`) is a ticket's current status — without `--branch` the list
-mixes in main's scheduled runs. Wait on runs with `node tools/loop/await-run.mjs <run-id>
+mixes in main's scheduled runs. Wait on runs with `node scripts/await-run.mjs <run-id>
 [<run-id>…]`, which exits 0 when all passed, 1 when one did not, 2 when `gh` cannot find a run id,
 and 3 when some are still going: then run the same command again. With `--pr <n>` a passed run is
 also 1 when its over-budget list (`tools/ci/native-budget.mjs`, `tools/ci/e2e-budget.mjs`) names a
@@ -509,11 +509,12 @@ no other session starts them:
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
 
-No hook refuses a `VERDICT: LAND`. Before it arms auto-merge or marks a draft ready, the
-supervisor's `poll` (`tools/loop/queue-loop.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`)
-whether a `loop-review` or `loop-fix` agent completed for the ticket inside the process that
-posted the LAND, after that process's last commit, read from the ticket's stream, and leaves a head no reviewer cleared to the owner (rule 29). There is
-no LAND at the round cap: the ticket goes to the owner.
+No hook refuses a `VERDICT: LAND`. Before it arms auto-merge, the supervisor's `poll`
+(`tools/loop/queue-loop.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`) whether a
+`loop-review` or `loop-fix` agent completed for the ticket inside the process that posted the
+LAND, after that process's last commit, read from the ticket's stream, and leaves a head no
+reviewer cleared to the owner (rule 29). There is no LAND at the round cap: the ticket goes to the
+owner.
 
 ## Owner decisions
 

@@ -4,9 +4,7 @@
  *
  * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--until <time>] [--by-sha]
  */
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { DIR, ARTEFACTS, atOf, closesWindow, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
+import { atOf, closesWindow, isProcess, killedStarts, lastWrite, readLedger, RETAIN_MS, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -62,10 +60,35 @@ export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
  */
 export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => String(model).includes(f)) ?? null;
 
+/**
+ * USD per million tokens by family, from https://platform.claude.com/docs/en/about-claude/pricing
+ * (read 2026-10-14): Opus 5, Sonnet 5, Haiku 4.5, cache writes at the 5-minute rate. A family's
+ * dearest current tier, so an estimate over-counts a session before it under-counts one.
+ */
+export const RATES = {
+  opus: { input: 5, cacheCreated: 6.25, cacheRead: 0.5, output: 25 },
+  sonnet: { input: 2, cacheCreated: 2.5, cacheRead: 0.2, output: 10 },
+  haiku: { input: 1, cacheCreated: 1.25, cacheRead: 0.1, output: 5 },
+};
+
+/**
+ * What a session cost when it never emitted a `result`, from its messages' own usage. A model no
+ * family names is priced as Opus.
+ * @param {Iterable<{model: string|null, input: number, output: number, cacheRead: number, cacheCreated: number}>} messages
+ */
+export function estimateCost(messages) {
+  let usd = 0;
+  for (const m of messages) {
+    const r = RATES[/** @type {keyof typeof RATES} */ (familyOf(m.model) ?? "opus")];
+    usd += (m.input * r.input + m.output * r.output + m.cacheRead * r.cacheRead + m.cacheCreated * r.cacheCreated) / 1e6;
+  }
+  return usd;
+}
+
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] ?? 0;
 
-/** The main session's own model: the one most of its turns ran on. */
-const modelOf = (row) => Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+/** The main session's own model; a v8 row names the one most of its turns ran on. */
+const modelOf = (row) => row.model ?? Object.entries(row.usage?.mainModels ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
 const sum = (a) => a.reduce((x, y) => x + y, 0);
 
@@ -88,23 +111,6 @@ function windowsOf(rows) {
 }
 
 /**
- * A ticket's HOLD verdicts. Schema 8 carries `review_holds_total` across claims and fix rounds; a
- * ticket with no row carrying it is approximated as its `review_rounds` less its landings, a count
- * a re-claim resets.
- */
-function holdsOf(rows) {
-  let total = null;
-  let rounds = 0;
-  let landed = 0;
-  for (const r of rows) {
-    if (typeof r.review_holds_total === "number") total = Math.max(total ?? 0, r.review_holds_total);
-    rounds = Math.max(rounds, r.review_rounds ?? 0);
-    if (r.outcome === "landed") landed += 1;
-  }
-  return total ?? Math.max(0, rounds - landed);
-}
-
-/**
  * The gauge over ledger rows of every schema, start rows included. A ticket is an issue number,
  * however many claims it took; fix spend is counted per claim window; a model is judged only on a
  * process.
@@ -118,7 +124,6 @@ export function summary(input, caps = TURNS_BY_SIZE) {
     spend: sum(mine.map((r) => r.cost ?? 0)),
     minutes: sum(mine.map((r) => r.ms ?? 0)) / 6e4,
     rounds: Math.max(0, ...mine.map((r) => r.review_rounds ?? 0)),
-    holds: holdsOf(mine),
   }));
   const spent = tickets.filter((t) => t.spend > 0);
   const windows = windowsOf(rows).map(tallyOf);
@@ -141,7 +146,7 @@ export function summary(input, caps = TURNS_BY_SIZE) {
     reviewRoundsMedian: median(spent.map((t) => t.rounds).filter(Boolean)),
     fixSpend,
     fixShare: spend ? (fixSpend / spend) * 100 : 0,
-    holdsPerTicket: tickets.length ? sum(tickets.map((t) => t.holds)) / tickets.length : 0,
+    holdsPerTicket: tickets.length ? sum(windows.map((t) => t.holds)) / tickets.length : 0,
     processesMedian: median(windows.map((t) => t.processes).filter(Boolean)),
     mismatched: processes.filter((r) => {
       const want = MODEL_BY_PHASE[atOf(r)];
@@ -181,29 +186,22 @@ export function report(rows, caps = TURNS_BY_SIZE) {
 }
 
 /**
- * Each `<n>` is one ticket and each `<n>+` that ticket and every later one; none is all of them.
+ * The rows a reading asks for: every row of each ticket with a row started in [since, until), so no
+ * mean counts half a ticket; of the tickets each `<n>` names and each `<n>+` with every later one;
+ * no pick is every ticket.
  *
  * A number is not a date: the loop takes the oldest ticket first, so `1095+` mixes in runs from
  * before whatever change is being measured. `--since` is what a before-and-after is asked with.
+ *
+ * @param {{n: number, started?: string}[]} rows
+ * @param {{picks?: string[], since?: string|null, until?: string|null}} [ask]
  */
-/** @param {string[]} files @param {string | string[]} [args] */
-export function wanted(files, args = []) {
-  const picks = [args].flat().filter(Boolean);
-  return files.filter((f) => {
-    if (!ARTEFACTS.stream.name.test(f)) return false;
-    const n = Number.parseInt(f, 10);
-    return !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : `${p}.jsonl` === f));
-  });
-}
-
-/** The latest stream-line timestamp in [from, until), or null: when a killed session last spoke. */
-export function lastStamp(text, from, until) {
-  let last = null;
-  for (const line of text.split("\n")) {
-    const t = Date.parse(/"timestamp":"([^"]+)"/.exec(line)?.[1] ?? "");
-    if (t >= from && t < until && (last === null || t > last)) last = t;
-  }
-  return last;
+export function select(rows, { picks = [], since = null, until = null } = {}) {
+  const from = since ? Date.parse(since) : -Infinity;
+  const to = until ? Date.parse(until) : Infinity;
+  const picked = (n) => !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : n === Number(p)));
+  const reached = new Set(rows.filter((r) => Date.parse(r.started ?? "") >= from && Date.parse(r.started ?? "") < to).map((r) => r.n));
+  return rows.filter((r) => picked(r.n) && ((!since && !until) || reached.has(r.n)));
 }
 
 /** Sessions whose supervisor died with them, from the `started` rows no session row answers. */
@@ -237,21 +235,6 @@ export function shaTable(rows, killed = []) {
   ].join("\n");
 }
 
-/**
- * `--since <time>` / `--until <time>`: the tickets with a ledger row started in [since, until),
- * and those rows.
- * @param {{n: number, started?: string}[]} rows @param {string} since @param {string|null} [until]
- */
-export function sinceWindow(rows, since, until = null) {
-  const from = since ? Date.parse(since) : -Infinity;
-  const to = until ? Date.parse(until) : Infinity;
-  const inside = rows.filter((r) => {
-    const t = Date.parse(r.started ?? "");
-    return t >= from && t < to;
-  });
-  return { tickets: [...new Set(inside.map((r) => String(r.n)))], rows: inside };
-}
-
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const grouped = process.argv.includes("--by-sha");
   const argv = process.argv.slice(2).filter((a) => a !== "--by-sha");
@@ -265,22 +248,14 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     }
     return t.toISOString();
   };
-  const since = stamp("--since");
   const until = stamp("--until");
-  const args = argv.filter((a, i) => !["--since", "--until"].includes(a) && !["--since", "--until"].includes(argv[i - 1]));
-  const withStarts = readLedger(undefined, { starts: true });
-  const ledger = withStarts.filter((r) => r.outcome !== "started");
-  const window = since || until ? sinceWindow(ledger, since ?? "", until) : null;
-  const picks = window ? window.tickets : args;
-  // The tickets whose stream log is still on disk. Retention keeps fourteen days of them, and that
-  // is the population every earlier reading of this gauge was taken over.
-  const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
-  const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
-  const rows = (window ? sinceWindow(withStarts, since ?? "", until).rows : withStarts).filter((r) => asked.has(r.n));
-  // The stream log only times a killed session: the ledger has no row for it to read.
-  const lastSeen = (row, until) => lastStamp(existsSync(join(DIR, `${row.n}.jsonl`)) ? readFileSync(join(DIR, `${row.n}.jsonl`), "utf8") : "", Date.parse(row.started), until);
-  const killed = killedStarts(withStarts, lastSeen).filter((k) =>
-    window ? k.started >= (since ?? "") && (!until || k.started < until) : asked.has(k.n));
+  const picks = argv.filter((a, i) => !["--since", "--until"].includes(a) && !["--since", "--until"].includes(argv[i - 1]));
+  // Asked nothing, the stream logs' retention: the population every earlier reading was taken over.
+  const since = stamp("--since") ?? (picks.length || until ? null : new Date(Date.now() - RETAIN_MS).toISOString());
+  const all = readLedger(undefined, { starts: true });
+  const rows = select(all, { picks, since, until });
+  const asked = new Set(rows.map((r) => r.n));
+  const killed = killedStarts(all, lastWrite).filter((k) => asked.has(k.n));
   console.log(report(rows));
   const died = killedLine(killed);
   if (died) console.log(died);

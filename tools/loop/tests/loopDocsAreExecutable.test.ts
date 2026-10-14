@@ -240,8 +240,8 @@ describe("a CI fix round is a documented path, not an improvisation", () => {
     assert.match(d, /REVIEW <sha>\s+## Blocking[\s\S]*## Nits[\s\S]*## Pre-existing/);
   });
 
-  test("no session marks the draft ready: that is the supervisor's, behind the LAND check", () => {
-    assert.doesNotMatch(read(QUEUE), /gh pr ready/);
+  test("pull requests open ready: nothing marks one ready, and the doc speaks of no draft", () => {
+    assert.doesNotMatch(read(QUEUE), /gh pr ready|draft/i);
   });
 
   test("the doc states neither Bash timeout figure", () => {

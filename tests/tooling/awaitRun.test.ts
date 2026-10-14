@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { awaitRuns, BUDGET_MS, EVERY_MS, runArgs } from "../await-run.mjs";
-import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS } from "../queue-loop.mjs";
-import { TARGET_RUN_SECONDS } from "../../ci/e2e-shard.mjs";
+import { awaitRuns, BUDGET_MS, EVERY_MS, runArgs } from "../../scripts/await-run.mjs";
+import { BASH_DEFAULT_TIMEOUT_MS, CHECK_BASH_TIMEOUT_MS } from "../../tools/loop/queue-loop.mjs";
+import { TARGET_RUN_SECONDS } from "../../tools/ci/e2e-shard.mjs";
 
 const quiet = () => {};
 function clock() {

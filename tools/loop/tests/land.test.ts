@@ -5,8 +5,6 @@ import {
   landing,
   armArgs,
   disarmArgs,
-  deleteBranchArgs,
-  branchSurvives,
   type CiVerdict,
   type Landing,
   type PrState,
@@ -19,7 +17,6 @@ const ACTIONS: readonly Landing["action"][] = [
   "recheck",
   "hand-back",
   "owner",
-  "ready",
 ];
 
 const pr = (over: Partial<PrState> = {}): PrState => ({
@@ -268,24 +265,6 @@ const cases: Case[] = [
     reason: /DRAFT/,
   },
   {
-    name: "a green draft is marked ready, never merged",
-    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
-    ci: GREEN,
-    action: "ready",
-  },
-  {
-    name: "a red draft is still a fix round",
-    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
-    ci: RED,
-    action: "hand-back",
-  },
-  {
-    name: "a draft whose run is going waits for it",
-    pr: pr({ mergeStateStatus: "DRAFT", isDraft: true }),
-    ci: { waiting: true, reason: "still in_progress" },
-    action: "recheck",
-  },
-  {
     name: "an empty merge state asks again",
     pr: pr({ mergeStateStatus: "" }),
     ci: GREEN,
@@ -306,7 +285,7 @@ describe("landing", () => {
   // The point of making the function total: no input reaches an unhandled path, and no input is
   // answered with silence. Asserted over the cross-product rather than over a list of cases,
   // because the values that strand a ticket are the ones nobody thought to write down.
-  test("every combination answers with one of the seven actions and never throws", () => {
+  test("every combination answers with one of the six actions and never throws", () => {
     const states = ["OPEN", "MERGED", "CLOSED", "LOCKED", ""];
     const statuses = ["CLEAN", "HAS_HOOKS", "UNSTABLE", "BEHIND", "BLOCKED", "DIRTY", "UNKNOWN", "DRAFT", ""];
     const mergeables = ["MERGEABLE", "CONFLICTING", "UNKNOWN", ""];
@@ -317,25 +296,19 @@ describe("landing", () => {
       for (const mergeStateStatus of statuses) {
         for (const mergeable of mergeables) {
           for (const ci of verdicts) {
-            for (const isDraft of [false, true]) {
-              for (const armed of [false, true]) {
-                const d = landing({ state, mergeStateStatus, mergeable, isDraft, armed }, ci);
-                assert.ok(
-                  ACTIONS.includes(d.action),
-                  `${state}/${mergeStateStatus}/${mergeable}/${isDraft}/${armed} answered ${d.action}`,
-                );
-                assert.ok(!(isDraft && d.action === "arm"), "a draft is never armed");
-                assert.ok(!(ci.pass !== true && d.action === "arm"), "only a green gate is armed");
-                assert.equal(typeof d.reason, "string");
-                assert.ok(d.reason.length > 0);
-                seen += 1;
-              }
+            for (const armed of [false, true]) {
+              const d = landing({ state, mergeStateStatus, mergeable, armed }, ci);
+              assert.ok(ACTIONS.includes(d.action), `${state}/${mergeStateStatus}/${mergeable}/${armed} answered ${d.action}`);
+              assert.ok(!(ci.pass !== true && d.action === "arm"), "only a green gate is armed");
+              assert.equal(typeof d.reason, "string");
+              assert.ok(d.reason.length > 0);
+              seen += 1;
             }
           }
         }
       }
     }
-    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length * 4);
+    assert.equal(seen, states.length * statuses.length * mergeables.length * verdicts.length * 2);
   });
 
   test("no open pull request is ever abandoned without a person or a fresh session", () => {
@@ -361,16 +334,5 @@ describe("armArgs and disarmArgs", () => {
 
   test("disarm", () => {
     assert.deepEqual(disarmArgs("metasito/murlan", 7), ["pr", "merge", "7", "--repo", "metasito/murlan", "--disable-auto"]);
-  });
-});
-
-describe("deleting a merged branch", () => {
-  test("deletes the ref on origin, slashes and all", () => {
-    assert.deepEqual(deleteBranchArgs("o/r", "agent/958-persist"), ["api", "-X", "DELETE", "repos/o/r/git/refs/heads/agent/958-persist"]);
-  });
-
-  test("no ls-remote output means the branch is gone; a ref line means it survived", () => {
-    for (const out of ["", "\n", "  \n"]) assert.equal(branchSurvives(out), false);
-    assert.equal(branchSurvives("9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist\n"), true);
   });
 });

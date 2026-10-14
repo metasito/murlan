@@ -41,7 +41,7 @@ import {
   SPIN,
   WIDTH,
 } from "../loop-render.mjs";
-import { ticker } from "../queue-loop.mjs";
+import { ticker } from "../loop-screen.mjs";
 
 /** What a terminal reports. `getColorDepth` is the only signal the renderer reads for colour. */
 const term = (over: object = {}) =>

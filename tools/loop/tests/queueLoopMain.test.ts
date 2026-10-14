@@ -8,7 +8,6 @@ import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import {
-  parkAsked,
   poll,
   runOnce,
   main,
@@ -27,6 +26,8 @@ import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
+import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
 
@@ -84,6 +85,7 @@ const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
   publish: () => {},
   announce: () => {},
   issueState: () => ({ state: "OPEN", stateReason: null }),
+  facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
   ledgerRows: () => ledger,
   repark: () => ({ failed: [], why: null }),
   ...over,
@@ -159,7 +161,7 @@ describe("runOnce", () => {
     );
   });
 
-  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and its red round recorded at its head", async () => {
+  test("a red whose CI-RED could not be posted is held: no park, the worktree kept, and no round spent until it is posted", async () => {
     const parked: number[] = [];
     const rows: any[] = [];
     const torn: unknown[] = [];
@@ -176,8 +178,8 @@ describe("runOnce", () => {
     assert.match(String(r.why), /could not be posted/);
     assert.deepEqual(parked, []);
     assert.deepEqual(torn, []);
-    // The round's row, so its settle time is billed and the fix round after it is not "while the loop was down".
-    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["retry", "abc"]]);
+    // A row, so its settle time is billed; a hold, so the settle that posts it counts the round once.
+    assert.deepEqual(rows.map((x) => [x.outcome, x.head]), [["pushed", null], ["hold", "abc"]]);
   });
 
   test("a landing a rerun won writes the flake on its row", async () => {
@@ -207,7 +209,7 @@ describe("runOnce", () => {
     );
     assert.deepEqual(handed, { ...flake, head: "h1" });
     const armed = rows.find((x) => x.outcome === "armed");
-    assert.deepEqual([armed?.flake, armed?.head, armed?.counts], [flake, "h2", false]);
+    assert.deepEqual([armed?.flake, armed?.head], [flake, "h2"]);
   });
 
   test("a rerun's green whose merge then failed still writes the flake, on the park row", async () => {
@@ -432,6 +434,24 @@ describe("runOnce", () => {
     assert.deepEqual(parked, []);
   });
 
+  // The standing worktree is what keeps a held ticket's uncommitted work: a park commits it before
+  // the removal, the sweep never forces, and a landed tree's leftovers go to a patch first.
+  test("a refused session's dirty worktree is left standing as it is, with no copy taken", async () => {
+    const touched: string[] = [];
+    const r = await runOnce(
+      io({
+        spawn: async () => ({ status: 1, blocked: true, blockedUntil: 1789000000000, result: {}, ms: 1, log: "l", declared: null }),
+        pushedPr: () => null,
+        standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 1, changed: ["a.ts"], dirty: true, phase: "C" }),
+        snapshotWip: () => touched.push("snapshot"),
+        teardown: () => touched.push("teardown"),
+        park: () => touched.push("park"),
+      }),
+    );
+    assert.equal(r.outcome, "refused");
+    assert.deepEqual(touched, []);
+  });
+
   // `blocked` was checked before anything else and never cleared, so a session refused at minute 2
   // that recovered and pushed at minute 40 was reported refused — the pull request never looked
   // for, the claim never released, and the loop then slept out the window for nothing.
@@ -616,63 +636,15 @@ describe("runOnce", () => {
 
   test("a session on the wrong model parks with the reason", async () => {
     const parked: string[] = [];
+    const why = "the session started on claude-opus-5, but phase E runs on sonnet";
     const r = await runOnce(
       io({
-        spawn: async () => ({
-          status: 1,
-          blocked: false,
-          result: null,
-          ms: 1,
-          log: "l",
-          phase: null,
-          declared: null,
-          wrongModel: "the session started on claude-opus-5, but phase E runs on sonnet",
-        }),
+        spawn: async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: null, declared: null, wrongModel: why }),
         park: (_n: number, c: { why: string }) => parked.push(c.why),
       }),
     );
     assert.equal(r.outcome, "parked");
-    assert.deepEqual(parked, ["the session started on claude-opus-5, but phase E runs on sonnet"]);
-  });
-
-  test("a stray plugin stops the run instead of parking the ticket it happened to meet", async () => {
-    const parked: string[] = [];
-    const ledger: any[] = [];
-    const r = await runOnce(
-      io(
-        {
-          spawn: async () => ({ status: 1, blocked: false, result: null, ms: 1, log: "l", phase: null, declared: null, strayPlugin: "the session loaded ponytail@ponytail" }),
-          park: (_n: number, c: { why: string }) => parked.push(c.why),
-        },
-        ledger,
-      ),
-    );
-    assert.deepEqual([r.outcome, parked], ["stop", []]);
-    assert.match(String(r.why), /ponytail/);
-  });
-
-  test("a snapshot that throws during an account error is logged, and the run still stops", async () => {
-    const parked: string[] = [];
-    const ledger: any[] = [];
-    const said: string[] = [];
-    const r = await runOnce(
-      io(
-        {
-          spawn: async () => ({
-            status: 1, blocked: false, ms: 1, log: "l", phase: null, declared: null,
-            result: { isError: true, subtype: "success", terminalReason: "api_error", apiStatus: null },
-            accountError: "authentication_failed: expired",
-          }),
-          pushedPr: () => null,
-          snapshotWip: () => { throw new Error("index.lock exists"); },
-          log: (m: string) => said.push(m),
-          park: (_n: number, c: { why: string }) => parked.push(c.why),
-        },
-        ledger,
-      ),
-    );
-    assert.deepEqual([r.outcome, parked, ledger.map((x) => x.outcome)], ["stop", [], ["halted"]]);
-    assert.match(said.join("\n"), /index\.lock exists/);
+    assert.deepEqual(parked, [why]);
   });
 
   test("an expired login stops the run, and does not park the ticket it met", async () => {
@@ -727,7 +699,7 @@ describe("runOnce", () => {
         return { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: red.cwd, dirty: false, phase: "C", fix: true };
       },
       facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
-      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }],
+      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }],
     } as never);
     assert.deepEqual(asked, [{ ci: true }]);
     assert.deepEqual([route.phase, route.fix, route.cwd, route.branch], ["C", true, red.cwd, "agent/42-x"]);
@@ -748,10 +720,7 @@ describe("runOnce", () => {
   });
 
   test("nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
-    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-2026-09-21.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
+    const rows = ledgerFixture("ledger-2026-09-21.jsonl");
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const settle = { phase: "G", ci: { pushed: true } };
     const status = { handoff: { phase: "C" }, pushed: settle, retry: { phase: "C", fix: true } };
@@ -772,19 +741,71 @@ describe("runOnce", () => {
     assert.equal(replayed, 86);
   });
 
+  test("a row names the route's title and size and the review rounds read after the session, with no tracker read of its own", async () => {
+    const rows: any[] = [];
+    await runOnce(io({ standing: () => ({ ...(io() as any).standing(), reviewRounds: 2 }), record: (x: unknown) => rows.push(x) }));
+    assert.deepEqual(rows.map((x) => [x.outcome, x.title, x.size, x.reviewRounds]), [["pushed", "t", "size:S", 2], ["landed", "t", "size:S", 2]]);
+  });
+
+  test("a derive off the ticket, or with no count, is not the ticket's review rounds; the tracker's are", async () => {
+    const facts = (n: number) => ({ title: "t", size: "size:S", reviewRounds: n === 42 ? 1 : 7 });
+    for (const standing of [() => ({ ...(io() as any).standing(), ticket: 99, reviewRounds: 5 }), () => null, () => (io() as any).standing()]) {
+      const rows: any[] = [];
+      await runOnce(io({ standing, facts, record: (x: unknown) => rows.push(x) }));
+      assert.ok(rows.length);
+      assert.deepEqual([...new Set(rows.map((x) => x.reviewRounds))], [1]);
+    }
+  });
+
+  test("a row main writes names its ticket as the tracker does: a repark, and the park after a throw", async () => {
+    const facts = (n: number) => ({ title: `issue ${n}`, size: "size:M", reviewRounds: null });
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    const empty = { skill: "handoff", number: 0, title: "queue empty" };
+    const rows: any[] = [];
+    let picks = 0;
+    await main({
+      io: io({
+        facts,
+        record: (x: unknown) => rows.push(x),
+        ledgerRows: () => (picks ? [] : [{ n: 41, outcome: "parked", park_failed: ["label"] }]),
+        pick: () => (picks++ === 0 ? { skill: "implement", number: 43, title: "issue 43", size: "size:M", queue: null } : empty),
+        standing: () => {
+          throw new Error("git worktree list failed");
+        },
+      }) as never,
+      book: book as never,
+      screen: screen as never,
+      install: () => {},
+      runId: "t",
+    });
+    assert.deepEqual(rows.map((x) => [x.number, x.outcome, x.title, x.size]), [
+      [41, "reparked", "issue 41", "size:M"],
+      [43, "parked", "issue 43", "size:M"],
+    ]);
+  });
+
+  test("nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name", () => {
+    const facts = () => ({ title: "Fix the card fan!", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const read = () => ({ onTicket: true, ticket: 42, branch: "agent/42-fix-the-card-fan", cwd: "w", phase: "D", reviewRounds: 3 });
+    const route: any = nextRoute(null, null, { read, facts, ledger: () => [] } as never);
+    assert.deepEqual([route.title, route.reviewRounds], ["Fix the card fan!", 3]);
+  });
+
   test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
-    const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
-    const stranded = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
+    const facts = () => ({ title: "Fix the card fan!", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
+    const stranded: any = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
+    assert.equal(stranded.branch, "agent/42-fix-the-card-fan", "no claim runs on a resume, so the route names the branch the claim would");
   });
 
   test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
     const picked: number[] = [];
     const picker = () => {
       picked.push(1);
-      return "ROUTE\timplement\t77\tother\tsize:S\nSTATUS\timplement:3\ttriage:0\twayfinder:0\towner:1\tlaunch:0\n";
+      return { skill: "implement", number: 77, title: "other", size: "size:S", queue: { implement: 3, triage: 0, wayfinder: 0, owner: 1, launch: 0 } };
     };
     const route = (labels: string[] | null) =>
       nextRoute(42, null, {
@@ -809,7 +830,7 @@ describe("runOnce", () => {
 
   test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
+    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null }];
     const at = (phase: string, pinned: string | null = null) =>
       nextRoute(42, pinned as never, {
         read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase, fix: false }),
@@ -915,7 +936,7 @@ describe("runOnce", () => {
     ]);
   });
 
-  test("publishForReview pushes, then opens a draft only when no pull request is open", () => {
+  test("publishForReview pushes, then opens it ready only when no pull request is open", () => {
     for (const open of [[], [{ number: 7 }]]) {
       const calls: string[][] = [];
       const timeouts: unknown[] = [];
@@ -931,7 +952,7 @@ describe("runOnce", () => {
         assert.equal(create, undefined);
         continue;
       }
-      assert.ok(create?.includes("--draft"));
+      assert.ok(create && !create.includes("--draft"));
       assert.match(String(create?.[create.indexOf("--body") + 1]), /^Closes #42\n/);
       assert.equal(create?.[create.indexOf("--head") + 1], "agent/42-x");
     }
@@ -1053,44 +1074,60 @@ describe("runOnce", () => {
   // The session's own derive reads a red only from CI-RED, so a held red's fix round must find one.
   describe("a held red is posted before its fix round spawns", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const held = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, pr: 5, state: "unposted", sha: "h1" } };
+    const held = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, pr: 5, state: "settling", sha: "h1" } };
     const posted = { ...held, phase: "C", fix: true, ci: { ...held.ci, state: "red", step: "Test" } };
 
-    const pass = async (posts: boolean) => {
-      const comments: string[] = [];
+    test("a post that still fails holds, and spawns nothing", async () => {
+      const ledger: any[] = [];
       const order: string[] = [];
-      const seen: boolean[] = [];
-      const ledger: any[] = [retryRow("h1")];
-      const read = () => (comments.length ? posted : held);
       const r = await runOnce(
         io(
           {
-            pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
-            postRed: (n: number, pr: number) => (order.push(`post #${n} pr ${pr}`), posts && comments.push("CI-RED h1"), posts),
-            refreshWorktree: () => order.push("refresh"),
-            spawn: async () => {
-              order.push("spawn");
-              seen.push(read().fix);
-              return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
-            },
+            pick: () => nextRoute(null, null, { read: () => held, facts, ledger: () => ledger } as never),
+            pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
+            settle: async () => (order.push("settle"), { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }),
+            spawn: async () => order.push("spawn") as never,
           },
           ledger,
         ),
         42,
       );
-      return { r, order, seen };
-    };
-
-    test("posted, the session that spawns reads its fix round", async () => {
-      const { order, seen } = await pass(true);
-      assert.deepEqual(order.slice(0, 3), ["post #42 pr 5", "refresh", "spawn"]);
-      assert.deepEqual(seen, [true]);
+      assert.equal(r.outcome, "hold");
+      assert.deepEqual(order, ["settle"]);
     });
 
-    test("a post that still fails holds, and spawns nothing", async () => {
-      const { r, order } = await pass(false);
-      assert.equal(r.outcome, "hold");
-      assert.deepEqual(order, ["post #42 pr 5"]);
+    // From the settle that could not post, through every pass, to the fix round: the session spawns
+    // onto exactly one CI-RED for its head and one round spent.
+    test("a red whose CI-RED a settle could not post reaches its fix round with exactly one posted", async () => {
+      const comments: string[] = [];
+      const ledger: any[] = [];
+      const spawned: { fix: boolean; retryCount: number }[] = [];
+      let settles = 0;
+      const read = () => (comments.length ? posted : held);
+      const post = () => {
+        if (!comments.includes("CI-RED h1")) comments.push("CI-RED h1");
+        return true;
+      };
+      const fake = io(
+        {
+          pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
+          pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
+          refreshWorktree: () => {},
+          settle: async () =>
+            settles++ === 0
+              ? { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }
+              : (post(), { action: "hand-back", reason: "CI failed at Test", head: "h1" }),
+          spawn: async (s: { fix: boolean; retryCount: number }) => {
+            spawned.push({ fix: s.fix, retryCount: s.retryCount });
+            return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+          },
+        },
+        ledger,
+      );
+      let loop: any = undefined;
+      for (let i = 0; i < 4 && spawned.length === 0; i++) loop = (await runOnce(fake, loop?.pinned ?? null, null, loop)).loop;
+      assert.deepEqual(spawned, [{ fix: true, retryCount: 1 }]);
+      assert.deepEqual(comments, ["CI-RED h1"]);
     });
   });
 
@@ -1608,6 +1645,8 @@ describe("the run recap", () => {
   // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
   // reading the value it pins moves with it.
   const TICKET_HOLDS = 10;
+  const heldRoute = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G", cwd: "w", branch: "agent/42-x" };
+  const unposted = { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" };
   const heldNight = async (stopAfter: number, preflights = 0) => {
     const parked: number[] = [];
     let passes = 0;
@@ -1622,13 +1661,12 @@ describe("the run recap", () => {
       wait: () => ({ woken: Promise.resolve(), say: null }),
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
     const spy = {
       ...(io() as any),
       stopFile: () => passes++ >= stopAfter,
       housekeeping: () => (checks++ < preflights ? { verdict: "hold", why: "drift", rows: [] } : { verdict: "ok", rows: [] }),
-      pick: () => route,
-      postRed: () => false,
+      pick: () => heldRoute,
+      settle: async () => unposted,
       park: (n: number) => parked.push(n),
     };
     await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -1658,12 +1696,11 @@ describe("the run recap", () => {
       wait: () => ({ woken: Promise.resolve(), say: null }),
     };
     const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
-    const route = { skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "C", fix: true, head: "h1", unposted: 5, cwd: "w", branch: "agent/42-x" };
     const spy = {
       ...(io() as any),
       stopFile: () => passes++ > TICKET_HOLDS + 1,
-      pick: () => route,
-      postRed: () => false,
+      pick: () => heldRoute,
+      settle: async () => unposted,
       park: (n: number, c: { why: string }) => parked.push({ n, why: c.why }),
     };
     const code = await main({ io: spy, book, screen: board as never, install: () => {}, runId: "t" });
@@ -1975,7 +2012,7 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
     declared: handoff ? { ticket: 42, phase: "C", handoff, stoodDown: false } : null,
   });
   const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
-  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null });
+  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null });
   const plan = (sessions: object[]) => {
     let s = 0;
     return {
@@ -2271,7 +2308,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
 
   test("nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const rows = [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase C next — a declared one", head: "a" }];
+    const rows = [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "C", why: "a declared one" }, head: "a" }];
     const route: any = nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
       read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
       facts,
@@ -2282,16 +2319,13 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
 
   describe("nextRoute: a red no CI-RED names", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "unposted", sha: "abc" } };
+    const status = { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true, state: "settling", sha: "abc" } };
     const route = (rows: object[]): any => nextRoute(null, null, { read: () => status, facts, ledger: () => rows } as never);
 
-    test("is a fix round once the supervisor held it at that head", () => {
-      const r = route([{ n: 42, outcome: "retry", head: "abc", cost: 0 }]);
-      assert.deepEqual([r.phase, r.fix], ["C", true]);
-    });
-
-    test("is still G when the supervisor stopped mid-settle and recorded no red", () => {
-      assert.deepEqual([route([]).phase, route([{ n: 42, outcome: "retry", head: "old", cost: 0 }]).phase], ["G", "G"]);
+    test("is G, so poll posts its CI-RED, whether the supervisor held it or stopped mid-settle", () => {
+      const held = [{ n: 42, outcome: "hold", head: "abc", cost: 0 }];
+      const earlier = [{ n: 42, outcome: "retry", head: "old", cost: 0 }];
+      assert.deepEqual([route(held), route([]), route(earlier)].map((r) => [r.phase, r.fix]), [["G", false], ["G", false], ["G", false]]);
     });
   });
 });

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { AGENT_DIR, REPO, WORKTREE_DIR, ticketOf } from "./loop-derive.mjs";
+import { AGENT_DIR, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
 
@@ -146,23 +146,6 @@ const isAtOrUnder = (child, parent) => {
 /** Includes untracked files - the near-miss #292 was filed over. */
 const dirty = (git, worktreePath) => git(["-C", worktreePath, "status", "--porcelain"]).trim().length > 0;
 
-const issueState = (ticket) => JSON.parse(ghCli(["issue", "view", String(ticket), "--json", "state"], { timeout: 30_000 })).state;
-
-/** An open ticket's `refs/loop/wip/<n>` is parked work; only a closed one's is residue. */
-export function dropWipRef(branch, { git = gitAt(process.cwd()), stateOf = issueState } = {}) {
-  const ticket = ticketOf(branch);
-  if (!ticket) return false;
-  const ref = `refs/loop/wip/${ticket}`;
-  try {
-    git(["rev-parse", "--verify", "--quiet", ref]);
-    if (stateOf(ticket) !== "CLOSED") return false;
-    git(["update-ref", "-d", ref]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Removes one named worktree, links detached first, so that tearing a worktree down has a command
  * that cannot follow the install junction out of the tree.
@@ -175,7 +158,7 @@ export function dropWipRef(branch, { git = gitAt(process.cwd()), stateOf = issue
  *
  * @returns {{ removed: boolean, why: string, detached?: string[] }}
  */
-export function removeWorktree(target, { force = false, dryRun = false, git = gitAt(process.cwd()), stateOf = issueState } = {}) {
+export function removeWorktree(target, { force = false, dryRun = false, git = gitAt(process.cwd()) } = {}) {
   const match = parseWorktreeList(git(["worktree", "list", "--porcelain"]))
     .slice(1)
     .find((entry) => samePath(entry.path, target));
@@ -212,7 +195,6 @@ export function removeWorktree(target, { force = false, dryRun = false, git = gi
       unregistered = false;
     }
     if (!unregistered) return { removed: false, why: firstLine(err), detached };
-    dropWipRef(match.branch, { git, stateOf });
     return {
       removed: true,
       detached,
@@ -222,7 +204,6 @@ export function removeWorktree(target, { force = false, dryRun = false, git = gi
         `gone from git and the branch is free; the empty directory goes when that process exits.`,
     };
   }
-  dropWipRef(match.branch, { git, stateOf });
   return { removed: true, detached, why: `removed ${match.path}` };
 }
 
@@ -260,11 +241,11 @@ function judgeWorktree(entry, ticket, { git, gh }) {
   // reflog: nothing here can tell which, so a person decides.
   if (entry.branch === null) return { keep: "detached HEAD — a rebase in progress or commits only it reaches; decide by hand" };
   const issue = JSON.parse(gh(["issue", "view", String(ticket), "--json", "state,labels"], { timeout: 30_000 }));
-  if (issue.state === "CLOSED") return { remove: "its issue is closed", state: issue.state };
+  if (issue.state === "CLOSED") return { remove: "its issue is closed" };
   if (issue.labels.some((l) => l.name === "in-progress")) return null;
   const [pr] = JSON.parse(gh(["pr", "list", "--head", entry.branch, "--state", "all", "--json", "state", "--limit", "1"], { timeout: 30_000 }));
-  if (pr) return { remove: `its issue is no longer in-progress and its pull request is ${pr.state.toLowerCase()}`, state: issue.state };
-  if (merged(git, entry.branch)) return { remove: "its issue is no longer in-progress and its branch is merged", state: issue.state };
+  if (pr) return { remove: `its issue is no longer in-progress and its pull request is ${pr.state.toLowerCase()}` };
+  if (merged(git, entry.branch)) return { remove: "its issue is no longer in-progress and its branch is merged" };
   return { keep: "unmerged, no pull request found" };
 }
 
@@ -301,7 +282,7 @@ export function sweep({ pinned = /** @type {number|null} */ (null), dryRun = fal
         keep(name, verdict.keep);
         continue;
       }
-      const out = dryRun ? { removed: true } : removeWorktree(entry.path, { git, stateOf: () => verdict.state ?? "OPEN" });
+      const out = dryRun ? { removed: true } : removeWorktree(entry.path, { git });
       if (!out.removed) {
         keep(name, out.why);
         continue;

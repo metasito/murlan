@@ -4,7 +4,6 @@ export interface PrState {
   state: string;
   mergeStateStatus: string;
   mergeable: string;
-  isDraft?: boolean;
   /** `autoMergeRequest != null`: GitHub merges this head once `CI gate` passes. */
   armed?: boolean;
 }
@@ -24,8 +23,6 @@ export type Landing =
   | { action: "already-merged"; reason: string }
   | { action: "update-branch"; reason: string }
   | { action: "recheck"; reason: string }
-  /** Green, and still the draft opened when review started. */
-  | { action: "ready"; reason: string }
   /** CI is red and a fresh session can fix it. */
   | { action: "hand-back"; reason: string }
   /** Only a person can move this. */
@@ -82,11 +79,6 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
     return { action: "hand-back", reason: `CI failed at ${ci.failedStep ?? "an unnamed step"}` };
   }
 
-  // Before mergeability: a draft reads DRAFT there, which is no verdict on the branch.
-  if (pr.isDraft) {
-    return { action: "ready", reason: "CI passed on the draft opened for review" };
-  }
-
   // GitHub computes mergeability in a background job it starts when asked, and the documented
   // remedy is to ask again. A merged pull request answers UNKNOWN on both fields too, which is why
   // `state` is read first.
@@ -136,18 +128,4 @@ export function armArgs(repo: string, prNumber: number, sha: string, bodyFile?: 
 
 export function disarmArgs(repo: string, prNumber: number): string[] {
   return ["pr", "merge", String(prNumber), "--repo", repo, "--disable-auto"];
-}
-
-/** Auto-merge deletes nothing unless the repository's `delete_branch_on_merge` is on, which nothing here guarantees. */
-export function deleteBranchArgs(repo: string, branch: string): string[] {
-  return ["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${branch}`];
-}
-
-/**
- * Whether `git ls-remote origin <branch>` still finds the branch. Harmless over a merged branch;
- * over an unmerged one it is #294, where a branch on origin with no open pull request satisfies
- * `issue-tracker.md`'s staleness test and the ticket can never be picked up again.
- */
-export function branchSurvives(lsRemoteStdout: string): boolean {
-  return lsRemoteStdout.trim().length > 0;
 }

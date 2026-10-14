@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { dirname, join, normalize } from "node:path";
-import { classify } from "../../tools/loop/commentShape.ts";
+import { classify } from "../../scripts/lib/commentShape.ts";
 
 // .claude/skills is vendored upstream (the plan's Global Constraints forbid touching it), so a
 // code snippet inside it is not a claim this repo's own docs make. Excluded here, not silently:
