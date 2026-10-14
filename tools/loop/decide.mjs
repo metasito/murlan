@@ -235,6 +235,7 @@ const STEPS = {
     if (ran.accountError) {
       return { kind: "stop", why: `the account cannot run sessions (${ran.accountError}) — log in, then npm run queue:loop; #${n} resumes from its worktree` };
     }
+    if (ran.wrongModel) return { kind: "park", n, phase: at?.phase ?? route.phase ?? "A", why: ran.wrongModel };
     const declared = handoffOf(ran);
     let handoff = declared ?? resumePhase(ran, at, n);
     let because = handoff && !declared ? reasonFor(ran, at, n).why : null;

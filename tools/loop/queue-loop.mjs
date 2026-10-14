@@ -73,7 +73,7 @@ import {
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
@@ -788,6 +788,7 @@ export function runTicket(
     blockedUntil: 0,
     stalled: false,
     accountError: null,
+    wrongModel: null,
     apiErrorCode: null,
     stderr: "",
     /** Subagents running right now, in the order they were last heard from. */
@@ -883,6 +884,13 @@ export function runTicket(
     if (fact.kind === "init") {
       state.version = fact.version;
       screen.set({ session: fact.sessionId });
+      // `--model` passes an alias, which ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps.
+      const family = familyOf(fact.model);
+      if (family && family !== plannedModel(at) && !state.wrongModel) {
+        state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${plannedModel(at)}`;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }
     }
     if (fact.kind === "assistant") {
       const letter = fact.letter ?? (state.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
@@ -1009,6 +1017,7 @@ export function runTicket(
           stderr: state.stderr,
           version: state.version,
           accountError: state.accountError,
+          wrongModel: state.wrongModel,
           apiErrorCode: state.apiErrorCode,
           started: new Date(startedAt).toISOString(),
           ms: Date.now() - startedAt,
