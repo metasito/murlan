@@ -4,9 +4,7 @@
  *
  * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--until <time>] [--by-sha]
  */
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { DIR, ARTEFACTS, atOf, closesWindow, isProcess, killedStarts, readLedger, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
+import { atOf, closesWindow, isProcess, killedStarts, readLedger, RETAIN_MS, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -163,29 +161,23 @@ export function report(rows, caps = TURNS_BY_SIZE) {
 }
 
 /**
- * Each `<n>` is one ticket and each `<n>+` that ticket and every later one; none is all of them.
+ * The rows a reading asks for: started in [since, until), of the tickets each `<n>` names and each
+ * `<n>+` with every later one; no pick is every ticket.
  *
  * A number is not a date: the loop takes the oldest ticket first, so `1095+` mixes in runs from
  * before whatever change is being measured. `--since` is what a before-and-after is asked with.
+ *
+ * @param {{n: number, started?: string}[]} rows
+ * @param {{picks?: string[], since?: string|null, until?: string|null}} [ask]
  */
-/** @param {string[]} files @param {string | string[]} [args] */
-export function wanted(files, args = []) {
-  const picks = [args].flat().filter(Boolean);
-  return files.filter((f) => {
-    if (!ARTEFACTS.stream.name.test(f)) return false;
-    const n = Number.parseInt(f, 10);
-    return !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : `${p}.jsonl` === f));
+export function select(rows, { picks = [], since = null, until = null } = {}) {
+  const from = since ? Date.parse(since) : -Infinity;
+  const to = until ? Date.parse(until) : Infinity;
+  const picked = (n) => !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : n === Number(p)));
+  return rows.filter((r) => {
+    const t = Date.parse(r.started ?? "");
+    return picked(r.n) && ((!since && !until) || (t >= from && t < to));
   });
-}
-
-/** The latest stream-line timestamp in [from, until), or null: when a killed session last spoke. */
-export function lastStamp(text, from, until) {
-  let last = null;
-  for (const line of text.split("\n")) {
-    const t = Date.parse(/"timestamp":"([^"]+)"/.exec(line)?.[1] ?? "");
-    if (t >= from && t < until && (last === null || t > last)) last = t;
-  }
-  return last;
 }
 
 /** Sessions whose supervisor died with them, from the `started` rows no session row answers. */
@@ -219,21 +211,6 @@ export function shaTable(rows, killed = []) {
   ].join("\n");
 }
 
-/**
- * `--since <time>` / `--until <time>`: the tickets with a ledger row started in [since, until),
- * and those rows.
- * @param {{n: number, started?: string}[]} rows @param {string} since @param {string|null} [until]
- */
-export function sinceWindow(rows, since, until = null) {
-  const from = since ? Date.parse(since) : -Infinity;
-  const to = until ? Date.parse(until) : Infinity;
-  const inside = rows.filter((r) => {
-    const t = Date.parse(r.started ?? "");
-    return t >= from && t < to;
-  });
-  return { tickets: [...new Set(inside.map((r) => String(r.n)))], rows: inside };
-}
-
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const grouped = process.argv.includes("--by-sha");
   const argv = process.argv.slice(2).filter((a) => a !== "--by-sha");
@@ -247,22 +224,13 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     }
     return t.toISOString();
   };
-  const since = stamp("--since");
   const until = stamp("--until");
-  const args = argv.filter((a, i) => !["--since", "--until"].includes(a) && !["--since", "--until"].includes(argv[i - 1]));
-  const withStarts = readLedger(undefined, { starts: true });
-  const ledger = withStarts.filter((r) => r.outcome !== "started");
-  const window = since || until ? sinceWindow(ledger, since ?? "", until) : null;
-  const picks = window ? window.tickets : args;
-  // The tickets whose stream log is still on disk. Retention keeps fourteen days of them, and that
-  // is the population every earlier reading of this gauge was taken over.
-  const files = window && !picks.length ? [] : wanted(existsSync(DIR) ? readdirSync(DIR) : [], picks);
-  const asked = new Set(files.map((f) => Number.parseInt(f, 10)));
-  const rows = (window ? sinceWindow(withStarts, since ?? "", until).rows : withStarts).filter((r) => asked.has(r.n));
-  // The stream log only times a killed session: the ledger has no row for it to read.
-  const lastSeen = (row, until) => lastStamp(existsSync(join(DIR, `${row.n}.jsonl`)) ? readFileSync(join(DIR, `${row.n}.jsonl`), "utf8") : "", Date.parse(row.started), until);
-  const killed = killedStarts(withStarts, lastSeen).filter((k) =>
-    window ? k.started >= (since ?? "") && (!until || k.started < until) : asked.has(k.n));
+  const picks = argv.filter((a, i) => !["--since", "--until"].includes(a) && !["--since", "--until"].includes(argv[i - 1]));
+  // Asked nothing, the stream logs' retention: the population every earlier reading was taken over.
+  const since = stamp("--since") ?? (picks.length || until ? null : new Date(Date.now() - RETAIN_MS).toISOString());
+  const all = readLedger(undefined, { starts: true });
+  const rows = select(all, { picks, since, until });
+  const killed = select(killedStarts(all), { picks, since, until });
   console.log(report(rows));
   const died = killedLine(killed);
   if (died) console.log(died);

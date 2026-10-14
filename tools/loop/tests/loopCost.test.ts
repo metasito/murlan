@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { familyOf, killedLine, lastStamp, report, shaTable, sinceWindow, summary, turnHeadroom, wanted } from "../loop-cost.mjs";
+import { familyOf, killedLine, report, select, shaTable, summary, turnHeadroom } from "../loop-cost.mjs";
 import { handoffIn } from "../loop-logs.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
@@ -25,28 +25,22 @@ test("every spelling of a family is that family, and an id of none is none", () 
  * Task 6 asks whether a change moved the median. Averaged over every ticket on disk it cannot: the
  * five runs after a change are outvoted by the twenty before it.
  */
-describe("wanted", () => {
-  const files = ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl", "tickets.jsonl", "run-a.md", "ci-1049.log"];
+describe("select by ticket", () => {
+  const rows = [70, 955, 1049, 1050].map((n) => ({ n, started: "2026-09-21T10:00:00.000Z" }));
+  const ns = (picks: string[]) => select(rows, { picks }).map((r) => r.n);
 
-  test("with no argument, every ticket stream and nothing else", () => {
-    assert.deepEqual(wanted(files), ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl"]);
+  test("with no argument, every ticket", () => {
+    assert.deepEqual(ns([]), [70, 955, 1049, 1050]);
   });
 
-  test("a bare number is that one ticket", () => {
-    assert.deepEqual(wanted(files, "1049"), ["1049.jsonl"]);
-  });
-
-  test("a trailing + is that ticket and every later one", () => {
-    assert.deepEqual(wanted(files, "1049+"), ["1049.jsonl", "1050.jsonl"]);
-  });
-
-  test("the ledger is never a ticket, whatever the argument", () => {
-    assert.deepEqual(wanted(["tickets.jsonl"], "1+"), []);
+  test("a bare number is that one ticket, and a trailing + that ticket and every later one", () => {
+    assert.deepEqual(ns(["1049"]), [1049]);
+    assert.deepEqual(ns(["1049+"]), [1049, 1050]);
   });
 
   test("several arguments are the union of what each names", () => {
-    assert.deepEqual(wanted(files, ["70", "1050"]), ["70.jsonl", "1050.jsonl"]);
-    assert.deepEqual(wanted(files, ["70", "1050+"]), ["70.jsonl", "1050.jsonl"]);
+    assert.deepEqual(ns(["70", "1050"]), [70, 1050]);
+    assert.deepEqual(ns(["70", "1050+"]), [70, 1050]);
   });
 });
 
@@ -77,16 +71,14 @@ describe("the CLI reads the ledger's rows alone", () => {
   });
 });
 
-describe("sinceWindow", () => {
+describe("select by time", () => {
   test("takes rows by when they started, never by ticket number", () => {
     const rows = [
       { n: 1090, started: "2026-09-17T20:57:00.000Z" },
       { n: 70, started: "2026-09-21T10:44:00.000Z" },
       { n: 1090, started: "2026-09-21T14:02:00.000Z" },
     ];
-    const out = sinceWindow(rows, "2026-09-21T10:18:00.000Z");
-    assert.deepEqual(out.tickets, ["70", "1090"]);
-    assert.equal(out.rows.length, 2);
+    assert.deepEqual(select(rows, { since: "2026-09-21T10:18:00.000Z" }).map((r) => r.n), [70, 1090]);
   });
 
   test("an until closes the window before a later change", () => {
@@ -95,8 +87,7 @@ describe("sinceWindow", () => {
       { n: 2, started: "2026-09-22T09:00:00.000Z" },
       { n: 3, started: "2026-09-23T00:00:00.000Z" },
     ];
-    const out = sinceWindow(rows, "2026-09-22T00:00Z", "2026-09-23T00:00Z");
-    assert.deepEqual(out.tickets, ["2"]);
+    assert.deepEqual(select(rows, { since: "2026-09-22T00:00Z", until: "2026-09-23T00:00Z" }).map((r) => r.n), [2]);
   });
 
   test("a time that does not parse exits 2 with usage, not a RangeError", () => {
@@ -334,14 +325,5 @@ describe("by loop sha", () => {
   test("a killed session is named with its phase and time, and the last may still be running", () => {
     assert.equal(killedLine([]), null);
     assert.equal(killedLine(killed), "killed: 1 sessions left no row — #3 D 2m (the last may still be running)");
-  });
-});
-
-describe("lastStamp", () => {
-  test("is the latest stream timestamp inside the window, skipping lines with none", () => {
-    const at = (m: number) => `{"type":"assistant","timestamp":"2026-09-21T08:${String(m).padStart(2, "0")}:00.000Z"}`;
-    const text = [at(1), "{}", at(9), at(40)].join("\n");
-    assert.equal(lastStamp(text, Date.parse("2026-09-21T08:00Z"), Date.parse("2026-09-21T08:30Z")), Date.parse("2026-09-21T08:09Z"));
-    assert.equal(lastStamp("", 0, 1), null);
   });
 });
