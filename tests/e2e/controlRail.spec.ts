@@ -7,7 +7,8 @@
 // own rect, and a cutout that fits under the rail's floor must move nothing.
 //
 // The insets are driven the way the app really reads them (`helpers/safeArea.ts`).
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { setSafeArea } from "./helpers/safeArea";
 

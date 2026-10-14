@@ -1,7 +1,8 @@
 // tests/e2e/tableMoments.spec.ts — #1102's four table moments, sampled live:
 // the lamp comes up with the deal, an opponent's hand ramps in as it lands, a
 // flown card's raised shadow drops once it is down, and a won partita dusts gold.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { buildCombination, targetsFor, type Card } from "../../lib/game/gameEngine";

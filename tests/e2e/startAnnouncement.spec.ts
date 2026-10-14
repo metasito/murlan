@@ -10,7 +10,8 @@
 //
 // tests/native/startAnnouncement.test.tsx pins the third claim — that the
 // announcement cannot outlive the turn it names.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
 import { setSafeArea } from "./helpers/safeArea";
 import { settledLight, tracedLamp } from "./helpers/tableTrace";

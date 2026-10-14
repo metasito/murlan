@@ -2,7 +2,7 @@
 //
 // A play's views fly to the flight's slots and then rest in the pile's layout, so a difference
 // between the two is a jump the moment the flight ends; only a browser runs the flexbox.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 

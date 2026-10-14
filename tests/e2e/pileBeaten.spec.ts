@@ -1,7 +1,8 @@
 // tests/e2e/pileBeaten.spec.ts — the beaten play is the lantern mockup's `.grp.prev`, on the views that flew.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { E2E_SUSPEND_AI_KEY } from "../../lib/storageKeys";

@@ -2,7 +2,8 @@
 // would for the same card under the same light, and no card view keeps one of its own once Skia has
 // drawn (#1259 plan 4, task 12). The same cards are laid on the mockup's stage, its `--shx`/`--shy`
 // set from the app's lamp; each side's shadow is what turning it off gives back.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, FIXTURE, fitFrame, sideContext } from "./helpers/mockupParity";
 import { SHADOW_PATHS } from "../../components/table/cardShadows";
 import { openCaptureState } from "./helpers/offlineSeed";
@@ -149,7 +150,8 @@ test("the felt's shadow round the pile is the mockup's, and no card view carries
   await mock.evaluate(
     ([pile, felt]) => {
       for (const r of pile) {
-        const d = document.createElement("div");
+        // `_gl` detached: the mockup's gloss() writes to every `.card`'s, and must not paint over the probe.
+        const d = Object.assign(document.createElement("div"), { _gl: document.createElement("div") });
         const [w, h] = [r.w, r.h];
         d.className = "card probe";
         Object.assign(d.style, { left: `${r.x * felt.sx - w / 2}px`, top: `${r.y * felt.sy - h / 2}px`, width: `${w}px`, height: `${h}px`, borderRadius: `${w * 0.05}px`, transform: `rotate(${r.rot}deg) scale(${felt.s})` });

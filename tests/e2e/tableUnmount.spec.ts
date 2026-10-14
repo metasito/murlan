@@ -1,6 +1,7 @@
 // tests/e2e/tableUnmount.spec.ts — leaving the table on the Skia felt throws nothing (#1429): from the
 // end-of-partita board through Home, and mid-manche through the table menu.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";
 import { GIOCA_VALID_LABEL } from "./helpers/labels";

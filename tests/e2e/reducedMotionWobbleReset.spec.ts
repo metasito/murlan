@@ -3,7 +3,7 @@
 // Only a real browser re-running Reanimated's driver reaches the live path — `matchMedia` firing
 // while a landed combination wobbles, the play's group re-rendering with the preference, and the style
 // coming to rest a frame or two later. tests/native/'s reanimated mock never re-runs a `useAnimatedStyle`.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openSeededGame } from "./helpers/offlineSeed";
 import { installVirtualClock, takeOver } from "./helpers/virtualClock";
 import { STEP_MS } from "./helpers/traceDiff";

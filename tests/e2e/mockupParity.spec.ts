@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { CANVASKIT_ROUTE, heldTurnTable, newSidePage, parityTests, recorded, traced } from "./helpers/mockupParity";
 import { step, stepUntil } from "./helpers/virtualClock";
 

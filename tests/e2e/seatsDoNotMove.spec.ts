@@ -1,5 +1,6 @@
 // tests/e2e/seatsDoNotMove.spec.ts — no seat ring and not the pile moves as hands shrink or a seat goes out (#1259, #13).
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { CAPTURE_VIEWER_SEAT, SEAT_COUNT_STATES, captureGameState, type CaptureState } from "../../lib/captureStates";

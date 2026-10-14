@@ -7,7 +7,8 @@
 // `react-test-renderer`, which never runs flexbox, so "one hero", "the quiet
 // row is against the bottom edge" and "the account block is never one line"
 // are true or false only in a browser.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp, registerNewAccount, uniqueUsername } from "./helpers/navigation";
 import { offlineGameSave } from "./helpers/offlineSeed";
 import { OFFLINE_SAVE_KEY } from "../../lib/storageKeys";

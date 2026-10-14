@@ -8,8 +8,9 @@
 // render, a "Rendered fewer hooks than expected" warning, or a red-box would
 // all surface exactly this way and nowhere else.
 
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
+import { CANVASKIT_URL } from "../../lib/canvaskit";
 
 /**
  * The anonymous session probe (`GET /api/auth/me`) 401s by design for every
@@ -21,8 +22,33 @@ import { test as base, expect } from "@playwright/test";
  * URL has to come from the console message's own location instead.
  */
 export function isExpectedNoise(text: string, url: string): boolean {
-  return (text.includes("401") && url.endsWith("/api/auth/me")) || READBACK_NOISE.test(text);
+  return (
+    (text.includes("401") && url.endsWith("/api/auth/me")) ||
+    (text === UNAUTHORIZED && url.endsWith("/api/client-errors")) ||
+    (text === "Failed to load resource: net::ERR_FAILED" && url.startsWith(CANVASKIT_URL)) ||
+    CANVASKIT_UNREACHABLE.has(text) ||
+    READBACK_NOISE.test(text) ||
+    text === OFFLINE_RESOURCE ||
+    OFFLINE_SOCKET.test(text)
+  );
 }
+
+// The crash report is account-only by design (server/http/routes.ts); the error it reports is caught on its own.
+const UNAUTHORIZED = "Failed to load resource: the server responded with a status of 401 (Unauthorized)";
+
+// Emscripten's own, only when CanvasKit's wasm cannot be fetched: mockupParity.spec.ts blocks it on purpose.
+const CANVASKIT_UNREACHABLE = new Set([
+  "wasm streaming compile failed: TypeError: Failed to fetch",
+  "falling back to ArrayBuffer instantiation",
+  "failed to asynchronously prepare wasm: both async and sync fetching of the wasm failed",
+  "Aborted(both async and sync fetching of the wasm failed)",
+  "Aborted(both async and sync fetching of the wasm failed). Build with -sASSERTIONS for more info.",
+]);
+
+// Only a context a spec set offline can raise these two: the reconnect specs drop the network on purpose.
+const OFFLINE_RESOURCE = "Failed to load resource: net::ERR_INTERNET_DISCONNECTED";
+const OFFLINE_SOCKET =
+  /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket\.io\/\?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/;
 
 // SwiftShader's own: a bare WebGL canvas, with no app, logs it too (#1257).
 const READBACK_NOISE =
@@ -38,9 +64,7 @@ export interface ConsoleErrors {
  * extra browser context per seat, say) and needs every one of them watched,
  * not just the fixture's own.
  */
-export function collectConsoleErrors(page: Page): ConsoleErrors {
-  const entries: string[] = [];
-
+export function collectConsoleErrors(page: Page, entries: string[] = []): ConsoleErrors {
   page.on("console", (msg) => {
     if (msg.type() !== "error" && msg.type() !== "warning") return;
     const text = msg.text();
@@ -48,6 +72,7 @@ export function collectConsoleErrors(page: Page): ConsoleErrors {
     entries.push(`console.${msg.type()}: ${text}`);
   });
   page.on("pageerror", (err) => {
+    if (isExpectedNoise(err.message, "")) return;
     entries.push(`pageerror: ${err.message}\n${err.stack ?? ""}`);
   });
   page.on("crash", () => {
@@ -57,23 +82,54 @@ export function collectConsoleErrors(page: Page): ConsoleErrors {
   return { entries };
 }
 
-export const test = base.extend<{ consoleErrors: ConsoleErrors }>({
-  consoleErrors: async ({ page }, use) => {
+const watched = new WeakSet<BrowserContext>();
+
+function watchContext(context: BrowserContext, entries: string[]): void {
+  if (watched.has(context)) return;
+  watched.add(context);
+  for (const page of context.pages()) collectConsoleErrors(page, entries);
+  context.on("page", (page) => collectConsoleErrors(page, entries));
+}
+
+export const test = base.extend<{ browserErrors: ConsoleErrors; consoleErrors: ConsoleErrors }>({
+  // Every test, every page it opens: the `context` fixture's, and any from `browser.newContext`
+  // or `browser.newPage` (which goes through `newContext`). No media emulation here — parity,
+  // flight and timing specs measure real motion.
+  browserErrors: [
+    async ({ browser }, use) => {
+      const entries: string[] = [];
+      const newContext = browser.newContext;
+      browser.newContext = async (...args) => {
+        const context = await newContext.apply(browser, args);
+        watchContext(context, entries);
+        return context;
+      };
+      try {
+        await use({ entries });
+      } finally {
+        browser.newContext = newContext;
+      }
+
+      if (entries.length > 0) {
+        throw new Error(
+          `Browser reported ${entries.length} error(s)/warning(s) during the test:\n\n` +
+            entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
+        );
+      }
+    },
+    { auto: true },
+  ],
+  context: async ({ context, browserErrors }, use) => {
+    watchContext(context, browserErrors.entries);
+    await use(context);
+  },
+  consoleErrors: async ({ page, browserErrors }, use) => {
     // Cuts every Reanimated spring/timing duration to ~0 via the same
     // `prefers-reduced-motion` media query lib/accessibility.ts's
     // usePrefersReducedMotion already reads — no product code changes, no
     // env plumbing, just less real time spent waiting on animation frames.
     await page.emulateMedia({ reducedMotion: "reduce" });
-
-    const collected = collectConsoleErrors(page);
-    await use(collected);
-
-    if (collected.entries.length > 0) {
-      throw new Error(
-        `Browser reported ${collected.entries.length} error(s)/warning(s) during the test:\n\n` +
-          collected.entries.map((e, i) => `[${i + 1}] ${e}`).join("\n\n")
-      );
-    }
+    await use(browserErrors);
   },
 });
 

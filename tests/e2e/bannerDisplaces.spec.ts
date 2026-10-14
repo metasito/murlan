@@ -86,31 +86,34 @@ async function raiseBanner(page: Page, target: string): Promise<void> {
 test("a banner displaces the controls under it rather than covering them", async ({
   browser,
   baseURL,
+  request,
 }) => {
   test.setTimeout(4 * 60_000);
 
   const context = await browser.newContext({ locale: "it-IT" });
   const page = await context.newPage();
-  const other = await browser.newContext({ locale: "it-IT" });
-  const otherPage = await other.newPage();
 
   try {
-    // The recipient only has to exist; the banner is raised on this page.
-    const target = uniqueUsername("e2ebandst");
-    await openApp(otherPage, baseURL!);
-    await registerNewAccount(otherPage, target);
+    // A recipient per viewport: a second request to the same one is refused with a 409.
+    const targets = VIEWPORTS.map(() => uniqueUsername("e2ebandst"));
+    for (const username of targets) {
+      const registered = await request.post(`${baseURL}/api/auth/register`, {
+        data: { username, email: `${username}@example.test`, password: "e2e-test-pw" },
+      });
+      expect(registered.status(), `registering ${username}`).toBe(202);
+    }
 
     await page.setViewportSize({ width: VIEWPORTS[0].width, height: VIEWPORTS[0].height });
     await openApp(page, baseURL!);
     await registerNewAccount(page, uniqueUsername("e2ebandsa"));
 
-    for (const viewport of VIEWPORTS) {
+    for (const [i, viewport] of VIEWPORTS.entries()) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.getByRole("button", { name: FRIENDS_BUTTON }).first().click();
       await page.waitForURL(/\/friends/);
       await settled(page, 2_000);
 
-      await raiseBanner(page, target);
+      await raiseBanner(page, targets[i]);
       // Both boxes this compares move, and not together: `MenuLayout` eases the
       // controls out of the way off the banner's measured height, so their
       // movement begins after the slide it is reacting to. The scoped wait
@@ -133,6 +136,5 @@ test("a banner displaces the controls under it rather than covering them", async
     }
   } finally {
     await context.close();
-    await other.close();
   }
 });

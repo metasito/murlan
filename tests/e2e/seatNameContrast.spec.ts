@@ -2,7 +2,8 @@
 // darkest felt behind its glyphs, in every capture state at every phone (#1259 plan 5 task 13, Q9). The felt is
 // read alone: every other element hidden (the seat's ring, arc and glow with it, and the drifting motes), the rail masked by
 // `feltOnly`, under the glyphs grown by a pixel. The attachment carries every candidate ink's ratio.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES } from "./helpers/phones";
 import { skiaOnSoftware, untilSkiaFelt } from "./helpers/tableTrace";

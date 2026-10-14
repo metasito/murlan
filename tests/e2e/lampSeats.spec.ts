@@ -5,7 +5,8 @@
 // `lib/captureStates.ts`, so this run and the iOS capture `app/capture.tsx` takes are of the same
 // states. Chromium is the only renderer this spec reaches; `docs/agents/checks.md` has what that
 // does and does not prove.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openCaptureState } from "./helpers/offlineSeed";
 import { PHONES, type Phone } from "./helpers/phones";
 import { setSafeArea } from "./helpers/safeArea";

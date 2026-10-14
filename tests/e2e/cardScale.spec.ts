@@ -4,7 +4,7 @@
 // of a number a test can hand them directly, but *which* number reaches them
 // on a real device is a property of useWindowDimensions() and the DOM layout
 // built from it — only a browser can measure that end to end.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { DEAL_SIZE, openSeededGame } from "./helpers/offlineSeed";
 
 // Landscape-locked, so the short edge is the viewport height. 375 is a small

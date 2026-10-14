@@ -15,7 +15,8 @@
 // re-encoded to 48 kHz FLAC (assets/music/README.md, "The native encode").
 // Chromium decodes FLAC directly, so both containers get the same waveform
 // arithmetic below, and the FLAC must match the WebM sample for sample.
-import { test, expect, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 

@@ -3,7 +3,7 @@
 // what only a rendered page settles is whether the component uses them — how
 // many boxes exist at each orientation, what shape they came out, and whether
 // the field is really out of the accessibility tree.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 import { CARD_H, CARD_W } from "../../components/cardFaceModel";
 

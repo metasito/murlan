@@ -4,7 +4,7 @@
 // survives is a per-attribute fact about the library and not something the source
 // can state. A helper that emitted nothing at all would satisfy any scan of
 // lib/a11y.tsx; only a browser knows.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
 import { openSeededGame } from "./helpers/offlineSeed";
 
