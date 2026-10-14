@@ -34,7 +34,7 @@ const ci = (over: object = {}) => ({ testIds: ["tests/a.test.ts › adds"], outp
 const land = (over: object = {}) => ({
   ...base,
   step: "landing",
-  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
+  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, stuck: false, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
 });
 const red = (over: object = {}) => land({ action: "hand-back", reason: "CI failed at Typecheck and tests", ...over });
 const green = (over: object = {}) => land({ action: "arm", reason: "mergeStateStatus is CLEAN", ...over });
@@ -178,6 +178,18 @@ const ROWS: Row[] = [
   ["poll: a head past its deadline goes to the owner", land({ overdue: true }), { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m` }],
   ["poll: the deadline's verdict names what it last waited on", land({ overdue: true, last: "CI is red but named no log — asking again" }),
     { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m — last: CI is red but named no log — asking again` }],
+  ["poll: a run that never registers is the owner's once nothing has changed for the stuck bound", land({ ci: ci({ infrastructure: true, appearing: true }), reason: "no check has reported on this head", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: no check has reported on this head" }],
+  ["poll: a red whose log stays unreadable is the owner's at the stuck bound", red({ ci: ci({ logUnread: true }), stuck: true }),
+    { kind: "settled", action: "owner", why: "CI is red and its log could not be read — CI failed at Typecheck and tests" }],
+  ["poll: a cancelled or infrastructure run that stays so is the owner's at the stuck bound", land({ ci: ci({ infrastructure: true }), reason: "the run was cancelled", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: the run was cancelled" }],
+  ["poll: mergeability stuck at UNKNOWN is the owner's at the stuck bound", land({ ci: ci({ pass: true }), reason: "GitHub is still computing mergeability", stuck: true }),
+    { kind: "settled", action: "owner", why: "recheck did not settle — last: GitHub is still computing mergeability" }],
+  ["poll: a draft that stays a draft is the owner's at the stuck bound", green({ action: "ready", stuck: true }),
+    { kind: "settled", action: "owner", why: "h2abcde is still a draft after gh pr ready" }],
+  ["poll: a run still going gets the whole deadline, however long one job takes", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }), stuck: true }),
+    { kind: "settle", act: "wait", why: "3 of 9 jobs done" }],
   ["poll: a green head asks whether review cleared it", green({ cleared: undefined }), { kind: "ask", fact: "cleared" }],
   ["poll: a cleared green head is armed", green(), { kind: "settle", act: "arm" }],
   ["poll: a cleared green draft is marked ready", green({ action: "ready", reason: "CI passed on the draft" }), { kind: "settle", act: "ready" }],

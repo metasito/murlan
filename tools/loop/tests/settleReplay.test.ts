@@ -140,6 +140,7 @@ const io = (gh: (args: string[], file?: string) => string, written: string[][] =
 });
 
 const DEADLINE = 60_000;
+const stuckAfter = (stuckMs: number, rest: ReturnType<typeof io>) => ({ ...rest, stuckMs });
 const merges = (asked: string[][]) => asked.filter((a) => a[0] === "pr" && a[1] === "merge");
 const indexOf = (asked: string[][], match: (a: string[]) => boolean) => asked.findIndex(match);
 const isDisarm = (a: string[]) => a[1] === "merge" && a.includes("--disable-auto");
@@ -215,11 +216,11 @@ describe("settle, replayed against recorded rollups", () => {
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
   });
 
-  test("a draft gh pr ready could not move is the owner's at the deadline, and is never armed", async () => {
+  test("a draft gh pr ready could not move is the owner's at the stuck bound, and is never armed", async () => {
     const { gh, asked } = rollupFake({ views: [GREEN], draft: true, refuse: { ready: true } });
-    const out = await poll(PENDING, () => {}, 5, 200, io(gh));
+    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /did not settle/);
+    assert.match(String(out.reason), /is still a draft after gh pr ready/);
     assert.ok(asked.filter((a) => a[1] === "ready").length > 1);
     assert.equal(merges(asked).length, 0);
   });
@@ -232,17 +233,33 @@ describe("settle, replayed against recorded rollups", () => {
   // A red run whose log cannot be read is a fix round with nothing to fix.
   test("red CI with no readable log goes to the owner, not to a fix round", async () => {
     const { gh } = rollupFake({ views: [RED], log: null });
-    const out = await poll(PENDING, () => {}, 5, 200, io(gh));
+    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /named no log/);
+    assert.match(String(out.reason), /^CI is red and its log could not be read — /);
   });
 
-  test("a head no check ever reports on is the owner's at the deadline, which names what it last waited on", async () => {
+  test("a head no check ever reports on is the owner's at the stuck bound, long before the deadline", async () => {
     const { gh } = rollupFake({ views: [at(ABSENT, { statusCheckRollup: [] })] });
     const started = Date.now();
-    const out = await poll(PENDING, () => {}, 5, 300, io(gh));
+    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
     assert.equal(out.action, "owner");
-    assert.ok(Date.now() - started >= 300, "it waits out the deadline, not a round budget of its own");
+    assert.ok(Date.now() - started < 5_000, "the stuck bound ends it, not the deadline");
+    assert.match(String(out.reason), /^recheck did not settle — last: /);
+  });
+
+  test("mergeability GitHub never computes is the owner's at the stuck bound", async () => {
+    const { gh } = rollupFake({ views: [at(GREEN, { mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })] });
+    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /^recheck did not settle — last: /);
+  });
+
+  test("a gate still running is waited on to the deadline, past the stuck bound, and names what it waited on", async () => {
+    const { gh } = rollupFake({ views: [GATE_RUNNING] });
+    const started = Date.now();
+    const out = await poll(PENDING, () => {}, 5, 300, stuckAfter(20, io(gh)));
+    assert.equal(out.action, "owner");
+    assert.ok(Date.now() - started >= 300, "a running gate is bounded by the deadline alone");
     assert.match(String(out.reason), /^CI did not settle in \d+m — last: /);
   });
 
