@@ -33,6 +33,7 @@ jest.mock('@/context/NotificationContext', () => ({
 }));
 
 jest.mock('@tanstack/react-query', () => ({
+  ...jest.requireActual<object>('@tanstack/react-query'),
   useQuery: () => ({ data: [], isLoading: false }),
 }));
 
