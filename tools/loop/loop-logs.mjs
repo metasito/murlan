@@ -353,6 +353,7 @@ export function ledger(io = {}) {
   };
 }
 
+/** @type {(text: string, starts?: boolean) => any[]} */
 const parsed = (text, starts = false) =>
   text.split("\n").flatMap((line) => {
     try {
