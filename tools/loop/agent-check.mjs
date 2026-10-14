@@ -107,6 +107,8 @@ export async function runStep(step, spawn = spawnAsync, write = (s) => void proc
     timeout: STEP_TIMEOUT_MS,
     maxBuffer: 256 * 1024 * 1024,
   });
+  // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Only one of them says
+  // anything about the code, so they are reported apart.
   const timedOut = run.error?.code === "ETIMEDOUT";
   const title = `${BANNER}${step.name} ===`;
   if (!timedOut && run.status === 0) return { failed: null, text: `${title} ok\n` };

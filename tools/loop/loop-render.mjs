@@ -21,7 +21,7 @@ export const WIDTH = 78;
  * The width below which the layout's fixed parts leave no room for anything that varies. Not a
  * floor on the board's width: a board wider than the window wraps every row it draws and the
  * redraw's cursor arithmetic never recovers. `tight` is how a caller asks whether to draw a live
- * block at all.
+ * block at all; the renderer's own `Math.max(0, …)` guards keep it from a negative span meanwhile.
  */
 export const MIN_WIDTH = 38;
 

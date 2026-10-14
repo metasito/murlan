@@ -163,7 +163,8 @@ function realClassifyIo(run = gh) {
 }
 
 /**
- * A branch alive on origin is not a claim — a merged one satisfies that. An open pull request is. Fails open: an unreachable tracker must not empty the queue.
+ * A branch alive on origin is not a claim — a merged one satisfies that. An open pull request is.
+ * Fails open: an unreachable tracker must not empty the queue.
  */
 export function claimedElsewhere(number, list) {
   try {
@@ -285,6 +286,7 @@ function printDetail(issue, comments) {
   }
 }
 
+// Tests import this module, so `gh` must not run on import.
 const invokedDirectly = isInvokedDirectly(process.argv[1], import.meta.url);
 
 if (invokedDirectly) {

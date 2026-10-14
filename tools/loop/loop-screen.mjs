@@ -227,8 +227,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   /**
    * One chunk from the keyboard, which is not one keystroke: raw flowing mode delivers whatever
    * arrived in one read, so an autorepeat, two quick presses or a paste come through as `"es"` or
-   * `"\u0003x"`, and are read a character at a time — the interrupt included, which raw mode has
-   * already taken off the OS's hands.
+   * `"\u0003x"`. The interrupt is looked for anywhere in the chunk first, since raw mode has already
+   * taken it off the OS's hands; every other key is pressed a character at a time.
    */
   const keys = (chunk) => {
     const text = String(chunk);
@@ -333,7 +333,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   // `api.close()`, not `this.close()`: the object is destructured by its callers and `this` does
   // not survive that.
   const api = {
-    // A getter, because a resize replaces the painter and a snapshot taken at start-up would outlive it.
+    // A caller painting a permanent line uses this, so it matches the live block's terminal with one
+    // detection. A getter, because a resize replaces the painter and a start-up snapshot would outlive it.
     get theme() {
       return t;
     },

@@ -82,7 +82,8 @@ function declaredIn(text) {
 // A subagent and a shell task share one task_id key space but close through different subtypes: a
 // shell task's task_notification carries a flat `status`; a subagent's chain is closed by
 // task_updated, whose only content is a `patch` — the closing `{status, end_time}` (with `error` if
-// it failed), or mid-run just `{is_backgrounded: true}`. So every read falls through to `patch`.
+// it failed), or mid-run just `{is_backgrounded: true}`. So every read falls through to `patch`,
+// a subagent's only sign of life: it never emits an `assistant` fact.
 const TASK_EVENT = {
   task_started: "started",
   task_progress: "progress",

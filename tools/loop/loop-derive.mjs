@@ -134,6 +134,7 @@ export function locateRun(cwd, worktree) {
   const at = worktree || cwd || process.cwd();
   const here = currentBranch(at);
 
+  // Every "nothing is running here" answer, in one place, so no branch can name a different tree.
   const idle = (extra) => ({
     cwd: at,
     branch: here,
