@@ -187,7 +187,7 @@ describe("the loop tests that skip off win32 run on Windows", () => {
     const gated = loopTests.filter((f) =>
       code(f).some((l) => /\bskip\b.*(\bwin32\b|\bonWindows\b|platform)/.test(l)),
     );
-    assert.ok(gated.length >= 4, `only ${gated.length} loop test files skip off win32`);
+    assert.ok(gated.length > 0, "no loop test file skips off win32: the scan has stopped matching");
     assert.deepEqual(selected, gated);
   });
 

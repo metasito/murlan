@@ -27,17 +27,6 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|PowerShell",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node",
-            "args": ["${CLAUDE_PROJECT_DIR}/tools/loop/guard-verdict.mjs"],
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
         "matcher": "Write|Edit|NotebookEdit",
         "hooks": [
           {

@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { parseHeader } from "./brief.mjs";
+import { COMMITTING } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 function git(args, cwd) {
@@ -177,17 +178,25 @@ function verdictOn(comments, at, verdict) {
 }
 
 const REVIEWERS = new Set(["loop-review", "loop-fix"]);
+const LAND = /VERDICT:\s*LAND\b/;
+const SHELLS = new Set(["Bash", "PowerShell"]);
+const mainCall = (f, test) => f?.kind === "assistant" && f.calls.some((c) => !c.parent && test(c));
 
 /**
- * Whether this D round's own reviewer ran to completion for ticket `n`, read from the ticket's
- * stream facts. The round is everything after the last `PHASE C`, so it spans a D handoff and
- * never reaches a reviewer of a build since superseded.
+ * Whether ticket `n`'s reviewer ran to completion inside the process that posted its LAND, after
+ * that process's last commit and before the post, read from the ticket's stream facts. Every
+ * process appends to that stream, so the bounds are its `init` and its commands, never a phase the
+ * model wrote. With no LAND in the stream, the last process is the one judged.
  *
  * @param {ReturnType<import("./loop-stream.mjs").readLine>[]} facts
  * @param {number} n
  */
 export function reviewerRan(facts, n) {
-  const round = facts.slice(facts.findLastIndex((f) => f?.kind === "assistant" && f.letter === "C") + 1);
+  const posted = facts.findLastIndex((f) => mainCall(f, (c) => LAND.test(JSON.stringify(c.input ?? {}))));
+  const before = facts.slice(0, posted < 0 ? facts.length : posted);
+  const started = before.findLastIndex((f) => f?.kind === "init");
+  const built = before.findLastIndex((f) => mainCall(f, (c) => SHELLS.has(c.name) && COMMITTING.test(c.command)));
+  const round = before.slice(Math.max(started, built) + 1);
   const mine = new Set(
     round.filter((f) => f?.kind === "task" && REVIEWERS.has(f.agent) && parseHeader(f.brief)?.n === n).map((f) => f.id),
   );
@@ -208,7 +217,7 @@ function reviewRound() {
   console.error(
     `loop-gate: #${s.ticket} — ${round.why}\n\n` +
       "  Do not review again and do not land. Say on the issue which Blocking finding is still open,\n" +
-      '  then stand down: LOOP-RESULT {"ticket":<n>,"phase":"D","stoodDown":true,"why":"<the finding>"}',
+      '  then stand down: declare {"ticket":<n>,"phase":"D","handoff":null,"stoodDown":true,"why":"<the finding>"}',
   );
   return 1;
 }

@@ -693,9 +693,38 @@ describe("reviewerRan: this D round's own reviewer completed, before anything ar
     assert.equal(reviewerRan([say("PHASE C"), init(), say("PHASE D"), r.started, r.done], N), true);
   });
 
-  test("a reviewer that completed in the D process before a handoff", () => {
+  const calls = (...uses: { name: string; input: object }[]) =>
+    readLine(JSON.stringify({ type: "assistant", message: { id: `m${++tasks}`, content: uses.map((u, i) => ({ type: "tool_use", id: `c${tasks}-${i}`, ...u })) } }));
+  const commit = () => calls({ name: "Bash", input: { command: "git -C .worktrees/agent-42 commit -m fix" } });
+  const land = () =>
+    calls(
+      { name: "Write", input: { file_path: ".loop-logs/verdict-42.md", content: "VERDICT: LAND abc1234" } },
+      { name: "Bash", input: { command: "gh issue comment 42 --body-file .loop-logs/verdict-42.md" } },
+    );
+
+  test("a reviewer from an earlier process does not clear a LAND a later one posted", () => {
     const r = dispatch("loop-review");
-    assert.equal(reviewerRan([say("PHASE C"), init(), say("PHASE D"), r.started, r.done, init(), say("PHASE D")], N), true);
+    assert.equal(reviewerRan([init(), say("PHASE D"), r.started, r.done, init(), say("PHASE D"), land()], N), false);
+  });
+
+  test("a reviewer that completed before the last commit does not clear the LAND after it", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([init(), say("PHASE D"), r.started, r.done, commit(), land()], N), false);
+  });
+
+  test("a reviewer after the last commit, in the process that posts the LAND, clears it", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([init(), say("PHASE C"), commit(), say("PHASE D"), r.started, r.done, land()], N), true);
+  });
+
+  test("the process that posted the LAND is the one judged, though a later one resumed at E", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([init(), say("PHASE D"), r.started, r.done, land(), init(), say("PHASE E")], N), true);
+  });
+
+  test("a reviewer that completed only after the LAND was posted does not clear it", () => {
+    const r = dispatch("loop-review");
+    assert.equal(reviewerRan([init(), say("PHASE D"), r.started, land(), r.done], N), false);
   });
 
   test("a fix round's reviewer counts", () => {

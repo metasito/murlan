@@ -34,7 +34,7 @@ export function afterSession(run, derived) {
 
 /**
  * Where a cut-off session's successor resumes, or null. `declared` is the whole test of being cut
- * off: a session that said anything — a handoff, a stand-down, a finished `LOOP-RESULT` — chose its
+ * off: a session that said anything — a handoff, a stand-down, a finished declaration — chose its
  * ending, and the dollar cap stops subagents while letting such a session run on to declare one.
  * `after.ticket` is checked because `reasonFor`'s hard guards are downstream of this.
  */
@@ -167,8 +167,10 @@ export function reasonFor(run, after, ticket) {
   if (run.status === "stalled")
     return soft(`no output for ${Math.round(STALL_MS / 60_000)}m in phase ${run.phase ?? "?"}`);
   if (run.status !== 0) return soft(`the session exited ${run.status} in phase ${run.phase ?? "?"}`);
-  // Phase F's LOOP-RESULT is not optional: this is where its absence becomes visible, not absorbed.
-  if (!said) return soft("the session exited without a LOOP-RESULT");
+  // Phase F's declaration is not optional, and this is where its absence becomes visible rather than
+  // absorbed. A session that exits clean without declaring has left every fact about itself to be
+  // inferred.
+  if (!said) return soft("the session exited without a declaration");
   return soft(null);
 }
 
@@ -250,6 +252,12 @@ const STEPS = {
     // already pushed has done its half, and settles.
     if (pushed === undefined) return ask("pushed");
     if (!pushed && ran.blocked) return { kind: "hold", wait: "usage", n, why: "the usage window is spent", until: ran.blockedUntil ?? 0 };
+    if (!pushed && ran.result?.subtype === "error_max_structured_output_retries") {
+      const phase = at?.phase ?? "?";
+      return input.tally.undeclared
+        ? { kind: "park", n, phase, why: "a second session on this ticket ended without valid structured output" }
+        : { kind: "hold", wait: "undeclared", n, phase, why: "the session's structured output never validated" };
+    }
 
     const reason = settling && !pushed ? { why: "phase G found no open pull request for the pushed head", hard: false } : reasonFor(ran, at, n);
     const done = !pushed && ran.declared?.phase === "F" && !ran.declared?.stoodDown;
@@ -334,7 +342,7 @@ function capped(action, input) {
   if (asked && action.n != null && (kind === "handoff" || kind === "retry" || kind === "hold")) {
     return { ...park("parked by owner", action.phase ?? own?.phase ?? "?"), byOwner: true };
   }
-  if (kind !== "handoff" && kind !== "retry") return action;
+  if (kind !== "handoff" && kind !== "retry" && action.wait !== "undeclared") return action;
   // A round that left the head where it found it cannot change what CI answers.
   if (kind === "retry" && action.head && action.head === tally.lastRedHead) {
     return park(`the fix round pushed no commit — CI would answer ${action.why} again`, "E");
@@ -390,6 +398,7 @@ function tallied(action, { loop, limits, step, now }) {
         if (h > wait.TRIES) return stop(`${action.why}, ${h} times running`, { ...loop, holds: h });
         return { ...action, hold: wait.FLOOR, loop: { ...loop, holds: h } };
       }
+      if (action.wait === "undeclared") return { ...action, loop: { ...unheld, pinned: action.n } };
       if (action.wait === "usage") {
         const refused = afterRefusal({ waits, blocked: true, blockedUntil: action.until }, now);
         if (refused.action === "give-up") return stop(refused.why, unheld);
