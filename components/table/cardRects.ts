@@ -13,8 +13,9 @@ import { FAN_DRAWN_CARDS, type OpponentSide } from "../seatLayout.ts";
  * `Felt.s` — the same factor on both, so a turned card keeps its shape; window points are `w × s`.
  * `rot` in degrees, clockwise on screen. `lift`, `glow` and `seen` run 0 to 1; `seen` is the share
  * of the card's width inside the window that clips it (a scrolled hand), 1 everywhere else.
+ * `shadow`: where its shadow is drawn while that is not where the card is — a landed card's, at rest under its wobble.
  */
-export interface CardRect { x: number; y: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number; seen: number }
+export interface CardRect { x: number; y: number; w: number; h: number; rot: number; back: boolean; lift: number; glow: number; seen: number; shadow?: Pick<CardRect, "x" | "y" | "w" | "h" | "rot"> }
 
 /** Keyed `<scope>:<card>`: one entry per card drawn this frame. */
 export type CardRects = Record<string, CardRect>;

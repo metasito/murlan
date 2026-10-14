@@ -185,6 +185,21 @@ describe("the shadow paths", () => {
     assert.equal(new Set([id(), ...changed]).size, changed.length + 1);
   });
 
+  test("a card's `shadow` pose is where its shadow is shaped, clustered and drawn; its glow stays on the card", () => {
+    const felt = { sx: 1, sy: 1, s: 1 };
+    const held = rect({ x: 300, rot: 4, glow: 1, shadow: { x: 100, y: 50, w: 64, h: 90, rot: 0 } });
+    const there = rect({ glow: 1 });
+    const first = (draw: (sink: GlowSink) => void) => {
+      let at: number[] = [];
+      draw({ moveTo: (x, y) => void (at = at.length ? at : [x, y]), lineTo: () => {}, conicTo: () => {}, close: () => {}, fill: () => {} });
+      return at;
+    };
+    assert.equal(shadowShape({ "pile:a": held }), shadowShape({ "pile:a": there }));
+    assert.deepEqual(first((s) => buildShadow(s, "face", { "pile:a": held }, felt, 0)), first((s) => buildShadow(s, "face", { "pile:a": there }, felt, 0)));
+    assert.deepEqual(shadowClusters("face", { "pile:a": held, "pile:b": rect({ x: 160 }) }, felt, 0, 3), [["pile:b", "pile:a"]]);
+    assert.notDeepEqual(first((s) => buildGlow(s, { "pile:a": held }, felt, 0)), first((s) => buildGlow(s, { "pile:a": there }, felt, 0)));
+  });
+
   function bounds(r: CardRect, felt = { sx: 2, sy: 1.5, s: 1.25 }, midX = 0) {
     const xs: number[] = [];
     const ys: number[] = [];
