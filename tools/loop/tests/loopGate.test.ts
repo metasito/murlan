@@ -1,13 +1,14 @@
 // tools/loop/tests/loopGate.test.ts
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, appendFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAX_FIX_HOLDS, MAX_REVIEW_ROUNDS, roundVerdict, buildPassed, dodVerdict, landable, reviewerRan } from "../loop-gate.mjs";
 import { readLine } from "../loop-stream.mjs";
+import { offTicketBranch, probeBranch, probeTicket, removeWorktree, sweep } from "./helpers/probeFixtures.mjs";
 
 /**
  * Phase E branches on this command's exit code, so the exit code is what is asserted — never a
@@ -18,7 +19,7 @@ import { readLine } from "../loop-stream.mjs";
  * refusal: the gate fails closed, which is the property worth pinning.
  *
  * `LOOP` and `root` are deliberately two different notions of "where this suite runs":
- * `LOOP` is this file's own directory, so `GATE`/`PRUNE` are always the copy of the code under
+ * `LOOP` is this file's own directory, so `GATE`/`RACE` are always the copy of the code under
  * test — the edited worktree's, when this suite runs the way phase C always runs it, from inside
  * `.worktrees/agent-<n>`. `root` is the shared checkout, via `--git-common-dir` rather than
  * `--show-toplevel` (RULES.md rule 10: the latter returns the worktree's own path from inside
@@ -27,7 +28,7 @@ import { readLine } from "../loop-stream.mjs";
  */
 const LOOP = join(dirname(fileURLToPath(import.meta.url)), "..");
 const GATE = join(LOOP, "loop-gate.mjs");
-const PRUNE = join(LOOP, "workspace.mjs");
+const RACE = join(LOOP, "tests", "helpers", "probeFixtureRace.mjs");
 const root = dirname(
   execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
     encoding: "utf8",
@@ -46,13 +47,6 @@ function worktree(branch: string): string {
 }
 
 const BASE = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-
-function worktreeDirs(): string[] {
-  return execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" })
-    .split(/\r?\n/)
-    .filter((l) => l.startsWith("worktree "))
-    .map((l) => l.slice("worktree ".length));
-}
 
 function commit(wt: string, file: string, body = "\n// probe\n") {
   const target = join(wt, file);
@@ -102,60 +96,56 @@ function gate(
   return { code: r.status ?? -1, out: `${r.stderr}${r.stdout}` };
 }
 
-function sweep() {
-  // A probe worktree left inside `.worktrees/` by a run that died mid-suite is a run as far as the
-  // gate is concerned, so the very first case here would find one and every later case would fail
-  // on "branch already exists". Clear both before deciding anything.
-  for (const w of worktreeDirs()) {
-    if (!/[\\/]\.worktrees[\\/]agent-99\d+$/.test(w)) continue;
-    try {
-      execFileSync(process.execPath, [PRUNE, "remove",w, "--force"], { cwd: root });
-    } catch {
-      /* already detached; the prune below finishes it */
-    }
-    rmSync(w, { recursive: true, force: true });
-  }
-  execFileSync("git", ["worktree", "prune"], { cwd: root });
-  const branches = execFileSync(
-    "git",
-    ["branch", "--list", "agent/99*", "loop-gate-probe/*", "--format=%(refname:short)"],
-    { cwd: root, encoding: "utf8" }
-  )
-    .split(/\r?\n/)
-    .filter(Boolean);
-  for (const b of branches) {
-    try {
-      execFileSync("git", ["branch", "-qD", b], { cwd: root });
-    } catch {
-      /* still checked out somewhere; the worktree removal below will free it */
-    }
-  }
-}
-
-// Swept before as well as after: a run that died mid-suite used to leave its probe branches
-// behind, and every later run then failed on "branch already exists" rather than on the thing
-// under test.
+// Swept before as well as after: a run that died mid-suite leaves its probe branches behind.
 before(() => {
   dir = mkdtempSync(join(tmpdir(), "loop-gate-"));
-  sweep();
+  sweep(root);
 });
 after(() => {
-  // RULES.md rule 39: never `git worktree remove` — a recursive delete follows the node_modules
-  // junction and empties the shared install. These probes have none, but the habit is the hazard.
-  for (const wt of madeDirs) {
-    try {
-      execFileSync(process.execPath, [PRUNE, "remove",wt, "--force"], { cwd: root });
-    } catch {
-      /* already gone */
-    }
-  }
-  sweep();
+  for (const wt of madeDirs) removeWorktree(root, wt);
+  sweep(root);
   rmSync(dir, { recursive: true, force: true });
+});
+
+describe("two runs of this suite on one clone", () => {
+  test("neither collides with the other's fixtures nor sweeps them away", async () => {
+    const race = mkdtempSync(join(tmpdir(), "loop-gate-race-"));
+    madeDirs.push(race);
+    const side = (me: string, peer: string) =>
+      new Promise<{ code: number | null; err: string }>((done) => {
+        const child = spawn(process.execPath, [RACE, root, race, me, peer], { cwd: root });
+        let err = "";
+        child.stderr.on("data", (d) => (err += d));
+        child.on("close", (code) => done({ code, err }));
+      });
+    const [a, b] = await Promise.all([side("a", "b"), side("b", "a")]);
+    assert.deepEqual([a.code, b.code], [0, 0], a.err + b.err);
+  });
+
+  test("the sweep clears a dead run's leftovers and keeps a live run's", () => {
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+    const peer = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"]);
+    const live = peer.pid!;
+    const left = [probeBranch(1, "dead", dead), offTicketBranch("dead", dead)];
+    const kept = [probeBranch(1, "live", live), offTicketBranch("live", live)];
+    const has = (b: string) =>
+      execFileSync("git", ["branch", "--list", b], { cwd: root, encoding: "utf8" }).trim() !== "";
+    for (const b of [...left, ...kept]) execFileSync("git", ["branch", b, "HEAD"], { cwd: root });
+    try {
+      assert.ok([...left, ...kept].every(has));
+      sweep(root);
+      for (const b of left) assert.ok(!has(b), `${b} outlived its dead run`);
+      for (const b of kept) assert.ok(has(b), `${b} was swept from under a live run`);
+    } finally {
+      peer.kill();
+      for (const b of kept) spawnSync("git", ["branch", "-qD", b], { cwd: root });
+    }
+  });
 });
 
 describe("the gate's exit code, which is what phase E reads", () => {
   test("on another branch it declines to judge, and that is never 0", () => {
-    const wt = worktree("loop-gate-probe/off-ticket");
+    const wt = worktree(offTicketBranch("off-ticket"));
     const { code, out } = gate(wt, undefined, BASE, wt);
     assert.equal(code, 2);
     assert.match(out, /not on an agent branch/);
@@ -173,7 +163,7 @@ describe("the gate's exit code, which is what phase E reads", () => {
   });
 
   test("a ticket branch with nothing committed is refused", () => {
-    const { code, out } = gate(worktree("agent/9900001-empty"));
+    const { code, out } = gate(worktree(probeBranch(1, "empty")));
     assert.equal(code, 1);
     assert.match(out, /nothing was built/);
   });
@@ -181,7 +171,7 @@ describe("the gate's exit code, which is what phase E reads", () => {
   // The failure the gate exists to prevent. No review of this commit exists anywhere, and there is
   // no state file that could claim otherwise on a previous ticket's behalf.
   test("committed but unreviewed is refused", () => {
-    const wt = worktree("agent/9900002-unreviewed");
+    const wt = worktree(probeBranch(2, "unreviewed"));
     commit(wt, "docs/probe.md");
     const { code, out } = gate(wt);
     assert.notEqual(code, 0, "unreviewed work was allowed to push");
@@ -200,7 +190,7 @@ describe("no path is refused for being what it is", () => {
     ".github/workflows/probe.yml",
   ].entries()) {
     test(`${p} is judged on its review, not its name`, () => {
-      const wt = worktree(`agent/990100${i}-anypath`);
+      const wt = worktree(probeBranch(50 + i, "anypath"));
       commit(wt, p);
       const { out } = gate(wt);
       assert.match(out, /no review of|cannot reach the tracker/);
@@ -220,7 +210,7 @@ describe("the review decides the exit code", () => {
     `REVIEW ${sha}\n\n## Standards\n\nNothing that affects correctness.\n\n## Spec\n\nEvery box closed.`;
 
   test("a LAND naming this commit allows the push", () => {
-    const wt = worktree("agent/9900010-land");
+    const wt = worktree(probeBranch(10, "land"));
     commit(wt, "docs/probe.md");
     const sha = head(wt).slice(0, 7);
     const { code, out } = gate(wt, [{ body: reviewBody(sha) }, { body: `VERDICT: LAND ${sha}` }]);
@@ -229,7 +219,7 @@ describe("the review decides the exit code", () => {
   });
 
   test("a LAND with no report behind it is refused by the real binary", () => {
-    const wt = worktree("agent/9900016-unbacked");
+    const wt = worktree(probeBranch(16, "unbacked"));
     commit(wt, "docs/probe.md");
     const { code, out } = gate(wt, [{ body: `VERDICT: LAND ${head(wt).slice(0, 7)}` }]);
     assert.equal(code, 1, out);
@@ -237,7 +227,7 @@ describe("the review decides the exit code", () => {
   });
 
   test("a HOLD refuses it", () => {
-    const wt = worktree("agent/9900011-hold");
+    const wt = worktree(probeBranch(11, "hold"));
     commit(wt, "docs/probe.md");
     const { code, out } = gate(wt, [{ body: `VERDICT: HOLD ${head(wt).slice(0, 7)} — it is wrong` }]);
     assert.equal(code, 1);
@@ -247,7 +237,7 @@ describe("the review decides the exit code", () => {
   // Commit again after a review and the head moves, so that review no longer covers the diff.
   // Order used to decide, so a later LAND on the same sha erased a hold nobody had addressed.
   test("a LAND cannot overturn a HOLD on the same commit", () => {
-    const wt = worktree("agent/9900013-sticky");
+    const wt = worktree(probeBranch(13, "sticky"));
     commit(wt, "docs/probe.md");
     const sha = head(wt).slice(0, 7);
     const { code, out } = gate(wt, [
@@ -259,7 +249,7 @@ describe("the review decides the exit code", () => {
   });
 
   test("a quoted or fenced verdict is not a review", () => {
-    const wt = worktree("agent/9900014-quoted");
+    const wt = worktree(probeBranch(14, "quoted"));
     commit(wt, "docs/probe.md");
     const sha = head(wt).slice(0, 7);
     const fence = "```";
@@ -277,7 +267,7 @@ I have not run it.`,
   });
 
   test("a LAND of an earlier commit does not cover a later one", () => {
-    const wt = worktree("agent/9900012-stale");
+    const wt = worktree(probeBranch(12, "stale"));
     commit(wt, "docs/probe.md");
     const reviewed = head(wt);
     commit(wt, "docs/probe2.md");
@@ -355,11 +345,11 @@ describe("the run is found by scanning .worktrees/, not from where the process s
 // The other, narrower seam: pointing straight at one worktree rather than asking the scan to
 // find it. Exercised from `root`, which is off any ticket itself — the override is what answers.
 test("LOOP_WORKTREE names the ticket directly, without a scan", () => {
-  const wt = worktree("agent/9900015-pointed");
+  const wt = worktree(probeBranch(15, "pointed"));
   commit(wt, "docs/probe.md");
   const { code, out } = gate(root, undefined, BASE, wt);
   assert.notEqual(code, 0, out);
-  assert.match(out, /#9900015/);
+  assert.match(out, new RegExp(`#${probeTicket(15)}\\b`));
 });
 
 /**
@@ -402,7 +392,7 @@ describe("the review-round cap", () => {
   });
 
   test("a third fix HOLD is refused through the real CLI; one is not", () => {
-    const wt = worktree("agent/9900022-fixholds");
+    const wt = worktree(probeBranch(22, "fixholds"));
     commit(wt, "docs/probe.md");
     const red = [{ body: "REVIEW abc1234\n\n## Blocking\n" }, { body: "VERDICT: LAND abc1234" }, { body: "CI-RED abc1234" }];
     const fixHold = (sha: string) => [{ body: `REVIEW ${sha} fix\n\n## Blocking\n` }, { body: `VERDICT: HOLD ${sha} — still red` }];
@@ -417,7 +407,7 @@ describe("the review-round cap", () => {
 
   // The exit code is what phase D branches on, so it is asserted through the real CLI too.
   test("the exit code phase D reads", () => {
-    const wt = worktree("agent/9900021-rounds");
+    const wt = worktree(probeBranch(21, "rounds"));
     commit(wt, "docs/probe.md");
     // A round is a comment carrying a real verdict — the same shape `verdictFor` reads, since both
     // go through one regex.
@@ -449,7 +439,7 @@ describe("--build gates review on a cached local pass", () => {
   }
 
   test("no cache at all refuses", () => {
-    const wt = worktree("agent/9900040-build-nocache");
+    const wt = worktree(probeBranch(40, "build-nocache"));
     commit(wt, "docs/probe.md");
     assert.equal(buildPassed(wt), false);
     const { code, out } = gate(wt, [], BASE, wt, ["--build"]);
@@ -458,14 +448,14 @@ describe("--build gates review on a cached local pass", () => {
   });
 
   test("a cache entry for a different head refuses", () => {
-    const wt = worktree("agent/9900041-build-otherhead");
+    const wt = worktree(probeBranch(41, "build-otherhead"));
     commit(wt, "docs/probe.md");
     writeCache(wt, { pass: true, head: "0".repeat(40), clean: true });
     assert.equal(buildPassed(wt), false);
   });
 
   test("a passing cache entry for HEAD, on a clean tree, with a full DOD-CHECK, is accepted", () => {
-    const wt = worktree("agent/9900042-build-pass");
+    const wt = worktree(probeBranch(42, "build-pass"));
     commit(wt, "docs/probe.md");
     writeCache(wt, { pass: true, head: head(wt), clean: true });
     assert.equal(buildPassed(wt), true);
@@ -531,7 +521,7 @@ describe("--build gates review on a cached local pass", () => {
   });
 
   test("a dirty tree refuses even with a passing cache entry for HEAD", () => {
-    const wt = worktree("agent/9900043-build-dirty");
+    const wt = worktree(probeBranch(43, "build-dirty"));
     commit(wt, "docs/probe.md");
     writeCache(wt, { pass: true, head: head(wt), clean: true });
     appendFileSync(join(wt, "docs", "probe.md"), "uncommitted\n");
