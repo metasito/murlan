@@ -403,10 +403,9 @@ export default function RoomScreen() {
   const showShareError = (key: "room.shareFailed" | "room.copyFailed") =>
     showNotification({ type: "game_error", title: t("common.error"), message: t(key) });
 
-  const inviteMessage = () =>
-    t("room.shareMessage", { code: room!.code, link: joinUrl(getApiUrl(), room!.code) ?? "" });
-
-  const handleCopyCode = () => copyToClipboard(room!.code);
+  function inviteMessage() {
+    return t("room.shareMessage", { code: room!.code, link: joinUrl(getApiUrl(), room!.code) ?? "" });
+  }
 
   async function copyToClipboard(text: string) {
     try {
@@ -419,6 +418,10 @@ export default function RoomScreen() {
     setCopied(true);
     clearTimeout(copiedTimer.current);
     copiedTimer.current = setTimeout(() => setCopied(false), COPIED_FOR_MS);
+  }
+
+  function handleCopyCode() {
+    return copyToClipboard(room!.code);
   }
 
   async function handleShare() {
