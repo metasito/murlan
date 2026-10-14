@@ -476,6 +476,11 @@ describe("ticketTally", () => {
     assert.deepEqual(handoffIn({ handoff: { phase: "C", why: "the D handoff had no local pass", said: "x" } }), { phase: "C", why: "the D handoff had no local pass" });
   });
 
+  test("a session held for structured output it never produced counts until the ticket's window closes", () => {
+    assert.equal(ticketTally(1, [row({ outcome: "undeclared" }), row({ outcome: "handoff" })]).undeclared, 1);
+    assert.equal(ticketTally(1, [row({ outcome: "undeclared" }), row({ outcome: "parked" })]).undeclared, 0);
+  });
+
   test("a start row is a spawn, not a session", () => {
     const t = ticketTally(1, [row({ outcome: "handoff", handoff: { phase: "D" } }), row({ outcome: "started", phase: "D" })]);
     assert.deepEqual([t.sessions, t.handoffsThisRound, t.lastHandoff], [1, 1, "D"]);
@@ -592,6 +597,7 @@ describe("ticketTally", () => {
       handoffWhy: null,
       lastRedHead: null,
       retries: 0,
+      undeclared: 0,
       armedFlake: null,
     });
   });

@@ -478,6 +478,7 @@ export function tallyOf(rows) {
     handoffWhy: /** @type {string|null} */ (null),
     lastRedHead: /** @type {string|null} */ (null),
     retries: 0,
+    undeclared: 0,
     armedFlake: /** @type {object|null} */ (null),
   };
   let fixing = false;
@@ -503,7 +504,7 @@ export function tallyOf(rows) {
       t.handoffsThisRound += 1;
       const handed = handoffIn(r);
       if (handed) [t.lastHandoff, t.handoffWhy] = [handed.phase, handed.why];
-    }
+    } else if (r.outcome === "undeclared") t.undeclared += 1;
   }
   return t;
 }

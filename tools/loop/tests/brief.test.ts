@@ -1,7 +1,7 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,8 @@ import { brief, parseHeader, readIssue, KINDS } from "../brief.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../brief.mjs", import.meta.url));
 const WT = "C:/Users/roton/murlan/.worktrees/agent-42";
+/** A kind's role, which its agent file carries rather than the brief. */
+const role = (kind: string) => readFileSync(new URL(`../../../.claude/agents/loop-${kind}.md`, import.meta.url), "utf8").replace(/\s+/g, " ");
 
 describe("brief", () => {
   test("every kind opens with a header parseHeader reads back", () => {
@@ -23,68 +25,71 @@ describe("brief", () => {
     assert.match(brief("review", { n: 7, worktree: WT }), /^BRIEF review #7 \S+ origin\/main$/m);
   });
 
-  test("every brief forbids spawning a subagent", () => {
-    for (const kind of KINDS) assert.match(brief(kind, { n: 1, worktree: WT }), /Do not spawn any subagent/);
+  test("every kind's agent forbids spawning a subagent, and the brief carries no role of its own", () => {
+    for (const kind of KINDS) {
+      assert.match(role(kind), /Do not spawn any subagent/, kind);
+      assert.doesNotMatch(brief(kind, { n: 1, worktree: WT }), /Do not spawn|Report|Review/, kind);
+    }
   });
 
-  test("every brief that names the issue reads its body and only trusted comments", () => {
+  test("every brief reads the issue's body and only trusted comments", () => {
     assert.match(readIssue(5), /^gh issue view 5 --json title,body,comments --jq '\.title, \.body, /);
     assert.ok(readIssue(5).includes(`select(.authorAssociation|IN("OWNER","MEMBER","COLLABORATOR"))`));
     for (const kind of KINDS) {
       const text = brief(kind, { n: 5, worktree: WT });
       assert.doesNotMatch(text, /--comments/, kind);
-      if (["scope", "completeness", "review", "fix"].includes(kind)) assert.ok(text.includes(readIssue(5)), kind);
+      assert.ok(text.includes(`Issue: \`${readIssue(5)}\``), kind);
     }
   });
 
-  test("the completeness brief sweeps every removed or renamed name", () => {
-    const text = brief("completeness", { n: 1103, worktree: WT });
-    assert.match(text, /gh issue view 1103 --json title,body,comments/);
-    assert.match(text, /git -C \S+ diff origin\/main\.\.\.HEAD/);
-    for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(text.includes(kind), kind);
-    assert.match(text, /git -C \S+ grep/);
+  test("every kind but scope is given the change, and each agent reads what its brief gives", () => {
+    for (const kind of KINDS) {
+      const text = brief(kind, { n: 1103, worktree: WT });
+      assert.equal(/^Change: `git -C \S+ diff origin\/main\.\.\.HEAD`$/m.test(text), kind !== "scope", kind);
+      assert.match(role(kind), new RegExp(`BRIEF ${kind} #<n> <worktree> <base>`), kind);
+      for (const line of ["Issue", ...(kind === "scope" ? [] : ["Change"])]) assert.ok(role(kind).includes(`\`${line}:\``), `${kind} ${line}`);
+    }
+  });
+
+  test("the completeness check sweeps every removed or renamed name", () => {
+    for (const kind of ["env var", "npm script", "locale key", "testID", "file path"]) assert.ok(role("completeness").includes(kind), kind);
+    assert.match(role("completeness"), /git -C <worktree> grep -n -F <name>/);
   });
 
   test("a review sorts findings so that only a bug, an unmet box, a regression or a security risk blocks", () => {
     for (const kind of ["review", "fix"]) {
-      const text = brief(kind, { n: 1, worktree: WT });
-      assert.match(text, /## Blocking`, `## Nits` and `## Pre-existing/, kind);
-      assert.match(text, /A rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
+      assert.match(role(kind), /## Blocking`, `## Nits` and `## Pre-existing/, kind);
+      assert.match(role(kind), /A rule breach, a name, a comment, an untested branch or a style preference is a Nit/, kind);
     }
   });
 
   test("a later round reviews only the fix and checks the earlier Blocking findings", () => {
-    const first = brief("review", { n: 1, worktree: WT });
+    assert.match(role("review"), /does it do what the Definition of done asks/);
+    assert.match(role("review"), /Any other `<base>` is a later round\. Review only the fix/);
+    assert.match(role("review"), /each earlier Blocking finding listed after the brief fixed/);
     const later = brief("review", { n: 1, worktree: WT, base: "abc1234" });
-    assert.match(first, /does it do what the Definition of done asks/);
-    assert.match(later, /Review only the fix `git -C \S+ diff abc1234\.\.HEAD`/);
-    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), /The fix is `git -C \S+ diff abc1234\.\.HEAD`/);
+    assert.match(later, /^Change: `git -C \S+ diff abc1234\.\.HEAD`$/m);
+    assert.match(brief("fix", { n: 1, worktree: WT, base: "abc1234" }), /^Change: `git -C \S+ diff abc1234\.\.HEAD`$/m);
     assert.doesNotMatch(later, /log -p --first-parent/);
-    assert.match(later, /each earlier Blocking finding listed after this brief fixed/);
   });
 
-  test("no brief asks for Blocking findings only and then for three headings", () => {
+  test("no agent asks for Blocking findings only and then for three headings", () => {
     for (const kind of KINDS) {
-      for (const base of ["origin/main", "abc1234"]) {
-        const text = brief(kind, { n: 1, worktree: WT, base });
-        if (text.includes("## Pre-existing")) assert.doesNotMatch(text, /Blocking findings only/, `${kind} ${base}`);
-      }
+      if (role(kind).includes("## Pre-existing")) assert.doesNotMatch(role(kind), /Blocking findings only/, kind);
     }
   });
 
-  test("the completeness brief asks for the covering test, and leaves test strength to the builder", () => {
-    const text = brief("completeness", { n: 1, worktree: WT });
-    assert.match(text, /the test that covers it/);
-    assert.doesNotMatch(text, /line is deleted|either way|recheck/);
+  test("the completeness check asks for the covering test, and leaves test strength to the builder", () => {
+    assert.match(role("completeness"), /the test that covers it/);
+    assert.doesNotMatch(role("completeness"), /line is deleted|either way|recheck/);
   });
-  test("the completeness brief sweeps the tests for a changed literal's old value", () => {
-    const text = brief("completeness", { n: 1256, worktree: WT });
-    assert.match(text, /literal value the diff changes/);
-    assert.match(text, /git -C \S+ grep -n -F <old value> -- tests/);
+  test("the completeness check sweeps the tests for a changed literal's old value", () => {
+    assert.match(role("completeness"), /literal value the diff changes/);
+    assert.match(role("completeness"), /git -C <worktree> grep -n -F <old value> -- tests/);
   });
 
-  test("the scope brief no longer asks for feature groups to split", () => {
-    assert.doesNotMatch(brief("scope", { n: 1, worktree: WT }), /feature groups/);
+  test("the scope check no longer asks for feature groups to split", () => {
+    assert.doesNotMatch(role("scope"), /feature groups/);
   });
 
   test("an unknown kind throws, and a non-header first line parses to null", () => {
@@ -161,7 +166,7 @@ describe("the brief CLI refuses a worktree or base the delta cannot be read from
     assert.ok(r.stdout.startsWith(brief("review", { n: 7, worktree: wt }).trimEnd()), r.stdout);
     assert.ok(r.stdout.includes(na), r.stdout);
     assert.doesNotMatch(r.stdout, /chip enters|stale — n\/a/);
-    assert.match(brief("review", { n: 7, worktree: wt }), /n\/a: <reason>/);
+    assert.match(role("review"), /n\/a: <reason>/);
   });
 
   test("a worktree that is not .worktrees/agent-<n> exits 2", () => {
@@ -209,7 +214,7 @@ describe("a later round's delta is net of the main a merge brought in", () => {
   };
 
   const namedBy = (text: string) => {
-    const cmd = /The fix is `(git -C \S+ diff \S+(?: HEAD)?)`/.exec(text)?.[1];
+    const cmd = /^Change: `(git -C \S+ diff \S+(?: HEAD)?)`/m.exec(text)?.[1];
     assert.ok(cmd, text);
     const [, ...args] = cmd.split(" ");
     return execFileSync("git", [...args, "--name-only"], { encoding: "utf8" }).split("\n").filter(Boolean);

@@ -1,65 +1,58 @@
 /**
  * PreToolUse deny for Agent/Task, registered by loop-settings.json alone: a dispatch with no `model` or no `effort`
- * inherits the session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. Also denies a
- * dispatch that claims to be one of `brief.mjs`'s kinds without starting with its exact output.
+ * inherits the session's, which is what rule 29 of docs/agents/RULES.md exists to prevent. A review, scope or
+ * completeness check runs only as its `loop-<kind>` agent, whose file sets both.
  *
  * Exit 0 always. stdout carries the deny, or nothing.
  */
 import { readFileSync } from "node:fs";
-import { brief, KINDS, MODEL_BY_KIND, parseHeader } from "./brief.mjs";
+import { brief, KINDS, parseHeader } from "./brief.mjs";
 
 const NAMED = /\b(completeness check|standards review|spec review|refut\w* (?:review )?findings|fix review)\b|^\W*(scope issue|review #\d+ round \d+)\b/i;
 const KIND = /\b(completeness|standards|spec|refut\w*|scope)\b/i;
 const ROLE = /\b(review\w*|axis|findings?)\b/i;
-const unix = (text) => text.replace(/\r\n/g, "\n");
+const AGENTS = KINDS.map((k) => `\`loop-${k}\``).join(", ");
 
-/** A `loop-<kind>` agent's file sets its model and effort, so the dispatch may not; its prompt is still that kind's brief. */
-function namedDenial(input, prompt) {
+/**
+ * A `loop-<kind>` agent's file sets its model and effort, so the dispatch may not. Its prompt opens with that kind's
+ * brief exactly as brief.mjs prints it: an edited diff range or issue read narrows what the agent is shown.
+ */
+function namedDenial(input) {
   const type = String(input.subagent_type);
   const kind = type.slice("loop-".length);
-  if (!KINDS.includes(kind)) {
-    return `There is no loop agent \`${type}\`. Dispatch one of ${KINDS.map((k) => `\`loop-${k}\``).join(", ")}.`;
-  }
+  if (!KINDS.includes(kind)) return `There is no loop agent \`${type}\`. Dispatch one of ${AGENTS}.`;
   if ("model" in input || "effort" in input) {
     return `\`${type}\` sets its own model and effort in .claude/agents/${type}.md. Dispatch it again without a per-call override.`;
   }
+  const prompt = String(input.prompt ?? "").replace(/\r\n/g, "\n");
   const header = parseHeader(prompt);
   if (header?.kind !== kind) {
-    return `\`${type}\` runs a ${kind} brief: start its prompt with the output of \`node tools/loop/brief.mjs ${kind} <n> <worktree> [base]\`, verbatim.`;
+    return `\`${type}\` runs a ${kind} brief: start its prompt with the output of \`node tools/loop/brief.mjs ${kind} <n> <worktree> [base]\`.`;
   }
-  return verbatim(prompt, header);
+  if (!prompt.startsWith(brief(kind, header).trimEnd())) {
+    return "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> [base]` verbatim as the " +
+      "start of the prompt, and add anything else (an earlier round's Blocking findings) after it.";
+  }
+  return null;
 }
-
-const verbatim = (prompt, header) =>
-  prompt.startsWith(brief(header.kind, header).trimEnd())
-    ? null
-    : "This brief was edited. Pass the output of `node tools/loop/brief.mjs <kind> <n> <worktree> <base>` " +
-      "verbatim as the start of the prompt; add anything else (the earlier round's Blocking findings) after it.";
 
 function denial(payload) {
   const input = payload.tool_input ?? {};
-  if (String(input.subagent_type ?? "").startsWith("loop-")) return namedDenial(input, unix(String(input.prompt ?? "")));
+  if (String(input.subagent_type ?? "").startsWith("loop-")) return namedDenial(input);
+  const header = parseHeader(String(input.prompt ?? "").replace(/\r\n/g, "\n"));
+  const d = String(input.description ?? "");
+  const named = header?.kind ?? NAMED.exec(d)?.slice(1).find(Boolean) ?? (KIND.test(d) && ROLE.test(d) ? KIND.exec(d)[1] : null);
+  if (named) {
+    return `A ${named} dispatch runs as its loop agent: dispatch one of ${AGENTS} with the output of ` +
+      "`node tools/loop/brief.mjs <kind> <n> <worktree> [base]` as its prompt, and no model or effort.";
+  }
   if (!input.model) {
     return "This dispatch names no model. Add `model` (see rule 29 of docs/agents/RULES.md) and dispatch it again.";
   }
   if (!input.effort) {
     return "This dispatch names no effort, so it inherits the session's. Add `effort` (rule 29 of docs/agents/RULES.md) and dispatch it again.";
   }
-  const prompt = unix(String(input.prompt ?? ""));
-  const header = parseHeader(prompt);
-  if (header) {
-    const want = MODEL_BY_KIND[header.kind];
-    if (!String(input.model).includes(want)) {
-      return `A ${header.kind} brief runs on \`${want}\` (rule 29 of docs/agents/RULES.md). Dispatch it again with that model.`;
-    }
-    return verbatim(prompt, header);
-  }
-  const d = String(input.description ?? "");
-  const named = NAMED.exec(d)?.slice(1).find(Boolean) ?? (KIND.test(d) && ROLE.test(d) ? KIND.exec(d)[1] : null);
-  return named
-    ? `A ${named} dispatch must start with its brief: run \`node tools/loop/brief.mjs <kind> <n> <worktree> [base]\` ` +
-        "and pass its output verbatim, then anything you add after it."
-    : null;
+  return null;
 }
 
 try {

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "description": "The JSON of the LOOP-RESULT line you emitted last: the same fields, the same values. handoff is null and stoodDown false where that line has none.",
+  "description": "What this process did with its ticket, as queue.md says to declare it: the same fields, the same values. handoff is null and stoodDown false where that declaration names none.",
   "type": "object",
   "required": ["ticket", "handoff", "stoodDown"],
   "properties": {
