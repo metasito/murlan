@@ -432,6 +432,24 @@ describe("runOnce", () => {
     assert.deepEqual(parked, []);
   });
 
+  // The standing worktree is what keeps a held ticket's uncommitted work: a park commits it before
+  // the removal, the sweep never forces, and a landed tree's leftovers go to a patch first.
+  test("a refused session's dirty worktree is left standing as it is, with no copy taken", async () => {
+    const touched: string[] = [];
+    const r = await runOnce(
+      io({
+        spawn: async () => ({ status: 1, blocked: true, blockedUntil: 1789000000000, result: {}, ms: 1, log: "l", declared: null }),
+        pushedPr: () => null,
+        standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 1, changed: ["a.ts"], dirty: true, phase: "C" }),
+        snapshotWip: () => touched.push("snapshot"),
+        teardown: () => touched.push("teardown"),
+        park: () => touched.push("park"),
+      }),
+    );
+    assert.equal(r.outcome, "refused");
+    assert.deepEqual(touched, []);
+  });
+
   // `blocked` was checked before anything else and never cleared, so a session refused at minute 2
   // that recovered and pushed at minute 40 was reported refused — the pull request never looked
   // for, the claim never released, and the loop then slept out the window for nothing.
