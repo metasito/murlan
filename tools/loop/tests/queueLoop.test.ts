@@ -1398,7 +1398,7 @@ describe("holdFor", () => {
     assert.equal(await holdFor(10, () => false, 5), "waited");
   });
 
-  // A stop consumed on reading silently killed the next run too, and a scheduled restart must see it.
+  // Reading .loop-stop must not delete it: the next run, and a scheduled restart, must see it too.
   test(".loop-stop on disk ends the wait and is still there afterwards", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-stop-"));
     const cwd = process.cwd();
