@@ -568,7 +568,10 @@ const appLayer = async (page: Page): Promise<Omit<LayerSample, "t"> | null> => {
   const drawn = await page.evaluate(() => {
     const c = document.querySelector<HTMLCanvasElement>('[data-testid="particles"]');
     if (!c) return null;
-    const px = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    // A copy: reading the app's own context back every frame makes Chromium warn on the app's page.
+    const copy = new OffscreenCanvas(c.width, c.height).getContext("2d", { willReadFrequently: true })!;
+    copy.drawImage(c, 0, 0);
+    const px = copy.getImageData(0, 0, c.width, c.height).data;
     return { url: c.toDataURL(), drawn: px.some((v, i) => i % 4 === 3 && v > 0) };
   });
   return drawn && { sha1: createHash("sha1").update(drawn.url).digest("hex"), drawn: drawn.drawn };

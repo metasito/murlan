@@ -93,7 +93,8 @@ test("the felt's gold glow under a selected card is G1's", async ({ browser, bas
     ([r, felt]: readonly [CardRect, Felt]) => {
       document.querySelectorAll("#pile .card, #hand .card").forEach((c) => c.remove());
       const [w, h] = [r.w * felt.s, r.h * felt.s];
-      const probe = Object.assign(document.createElement("div"), { className: "card probe", _w: w, _h: h });
+      // `_gl` detached: the mockup's gloss() writes to every `.card`'s, and must not paint over the probe.
+      const probe = Object.assign(document.createElement("div"), { className: "card probe", _w: w, _h: h, _gl: document.createElement("div") });
       Object.assign(probe.style, { position: "fixed", left: `${r.x * felt.sx - w / 2}px`, top: `${r.y * felt.sy - h / 2}px`, width: `${w}px`, height: `${h}px`, transform: `rotate(${r.rot}deg)` });
       document.getElementById("pile")!.appendChild(probe);
       const [b, f] = [probe.getBoundingClientRect(), document.getElementById("stage")!.getBoundingClientRect()];

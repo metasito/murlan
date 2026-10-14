@@ -10,6 +10,7 @@
 
 import type { BrowserContext, Page } from "@playwright/test";
 import { test as base, expect } from "@playwright/test";
+import { CANVASKIT_URL } from "../../lib/canvaskit";
 
 /**
  * The anonymous session probe (`GET /api/auth/me`) 401s by design for every
@@ -21,10 +22,30 @@ import { test as base, expect } from "@playwright/test";
  * URL has to come from the console message's own location instead.
  */
 export function isExpectedNoise(text: string, url: string): boolean {
-  return (text.includes("401") && url.endsWith("/api/auth/me")) || READBACK_NOISE.test(text) || OFFLINE_SOCKET.test(text);
+  return (
+    (text.includes("401") && url.endsWith("/api/auth/me")) ||
+    (text === UNAUTHORIZED && url.endsWith("/api/client-errors")) ||
+    (text === "Failed to load resource: net::ERR_FAILED" && url.startsWith(CANVASKIT_URL)) ||
+    CANVASKIT_UNREACHABLE.has(text) ||
+    READBACK_NOISE.test(text) ||
+    text === "Failed to load resource: net::ERR_INTERNET_DISCONNECTED" ||
+    OFFLINE_SOCKET.test(text)
+  );
 }
 
-// Only a context a spec set offline can raise it: reconnect.spec.ts drops the network on purpose.
+// The crash report is account-only by design (server/http/routes.ts); the error it reports is caught on its own.
+const UNAUTHORIZED = "Failed to load resource: the server responded with a status of 401 (Unauthorized)";
+
+// Emscripten's own, only when CanvasKit's wasm cannot be fetched: mockupParity.spec.ts blocks it on purpose.
+const CANVASKIT_UNREACHABLE = new Set([
+  "wasm streaming compile failed: TypeError: Failed to fetch",
+  "falling back to ArrayBuffer instantiation",
+  "failed to asynchronously prepare wasm: both async and sync fetching of the wasm failed",
+  "Aborted(both async and sync fetching of the wasm failed)",
+  "Aborted(both async and sync fetching of the wasm failed). Build with -sASSERTIONS for more info.",
+]);
+
+// Only a context a spec set offline can raise these: reconnect specs drop the network on purpose.
 const OFFLINE_SOCKET =
   /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket\.io\/\?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/;
 
@@ -50,6 +71,7 @@ export function collectConsoleErrors(page: Page, entries: string[] = []): Consol
     entries.push(`console.${msg.type()}: ${text}`);
   });
   page.on("pageerror", (err) => {
+    if (isExpectedNoise(err.message, "")) return;
     entries.push(`pageerror: ${err.message}\n${err.stack ?? ""}`);
   });
   page.on("crash", () => {

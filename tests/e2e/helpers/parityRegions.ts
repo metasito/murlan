@@ -54,7 +54,7 @@ export async function regionBrightness(
       img.src = src;
       await img.decode();
       const canvas = new OffscreenCanvas(img.width, img.height);
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
       ctx.drawImage(img, 0, 0);
       const out: Record<string, number> = {};
       for (const [name, r] of Object.entries(regions)) {
