@@ -55,6 +55,7 @@ import {
   errorLine,
   errorOf,
   killedStarts,
+  lastWrite,
   leftoverPath,
   ledgerPath,
   ledger as openLedger,
@@ -1985,8 +1986,7 @@ function realIo(book, screen) {
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
     log: (m, label = "loop") => screen.notice(label, m),
     killed: () => {
-      const lastSeen = (row) => (fs.existsSync(streamLog(row.n)) ? fs.statSync(streamLog(row.n)).mtimeMs : null);
-      const last = killedStarts(readLedger(undefined, { starts: true }), lastSeen).at(-1);
+      const last = killedStarts(readLedger(undefined, { starts: true }), lastWrite).at(-1);
       return last?.trailing ? last : null;
     },
     ledgerRows: () => readLedger(),

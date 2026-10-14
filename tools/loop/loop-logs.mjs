@@ -238,6 +238,9 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
+/** `killedStarts`' `lastSeen`: when the ticket's stream log was last written. */
+export const lastWrite = (row) => (fsNode.existsSync(streamLog(row.n)) ? fsNode.statSync(streamLog(row.n)).mtimeMs : null);
+
 /** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
 const ENDS_TICKET = new Set(["landed", "closed", "parked"]);
 

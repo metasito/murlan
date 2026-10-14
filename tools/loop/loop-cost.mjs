@@ -4,7 +4,7 @@
  *
  * Usage: node tools/loop/loop-cost.mjs [<n> | <n>+ ...] [--since <time>] [--until <time>] [--by-sha]
  */
-import { atOf, closesWindow, isProcess, killedStarts, readLedger, RETAIN_MS, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
+import { atOf, closesWindow, isProcess, killedStarts, lastWrite, readLedger, RETAIN_MS, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
@@ -161,8 +161,9 @@ export function report(rows, caps = TURNS_BY_SIZE) {
 }
 
 /**
- * The rows a reading asks for: started in [since, until), of the tickets each `<n>` names and each
- * `<n>+` with every later one; no pick is every ticket.
+ * The rows a reading asks for: every row of each ticket with a row started in [since, until), so no
+ * mean counts half a ticket; of the tickets each `<n>` names and each `<n>+` with every later one;
+ * no pick is every ticket.
  *
  * A number is not a date: the loop takes the oldest ticket first, so `1095+` mixes in runs from
  * before whatever change is being measured. `--since` is what a before-and-after is asked with.
@@ -174,10 +175,8 @@ export function select(rows, { picks = [], since = null, until = null } = {}) {
   const from = since ? Date.parse(since) : -Infinity;
   const to = until ? Date.parse(until) : Infinity;
   const picked = (n) => !picks.length || picks.some((p) => (p.endsWith("+") ? n >= Number.parseInt(p, 10) : n === Number(p)));
-  return rows.filter((r) => {
-    const t = Date.parse(r.started ?? "");
-    return picked(r.n) && ((!since && !until) || (t >= from && t < to));
-  });
+  const reached = new Set(rows.filter((r) => Date.parse(r.started ?? "") >= from && Date.parse(r.started ?? "") < to).map((r) => r.n));
+  return rows.filter((r) => picked(r.n) && ((!since && !until) || reached.has(r.n)));
 }
 
 /** Sessions whose supervisor died with them, from the `started` rows no session row answers. */
@@ -230,7 +229,8 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const since = stamp("--since") ?? (picks.length || until ? null : new Date(Date.now() - RETAIN_MS).toISOString());
   const all = readLedger(undefined, { starts: true });
   const rows = select(all, { picks, since, until });
-  const killed = select(killedStarts(all), { picks, since, until });
+  const asked = new Set(rows.map((r) => r.n));
+  const killed = killedStarts(all, lastWrite).filter((k) => asked.has(k.n));
   console.log(report(rows));
   const died = killedLine(killed);
   if (died) console.log(died);
