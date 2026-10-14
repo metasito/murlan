@@ -143,9 +143,9 @@ export function classify(openIssues, io = realClassifyIo()) {
   return buckets;
 }
 
-function realClassifyIo() {
+function realClassifyIo(run = gh) {
   return {
-    openPr: (n) => claimedElsewhere(n, openPrsFor),
+    openPr: (n) => claimedElsewhere(n, (k) => openPrsFor(k, run)),
     liveWorktrees: () => {
       try {
         const live = new Set();
@@ -176,9 +176,9 @@ export function claimedElsewhere(number, list) {
 }
 
 let openPrs = null;
-/** One listing per process, matched on the head ref: `#42` in a body also matches PR #942. */
-function openPrsFor(number) {
-  openPrs ??= ghJson(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]);
+/** One listing per pick (`nextPick` clears it), matched on the head ref: `#42` in a body also matches PR #942. */
+function openPrsFor(number, run = gh) {
+  openPrs ??= JSON.parse(run(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,state,headRefName"]));
   return openPrs.filter((pr) => Number(BRANCH.exec(pr.headRefName ?? "")?.[1]) === number);
 }
 
@@ -227,6 +227,21 @@ export function pickRoute(buckets, take = takeable) {
     if (head.length > 0) return { skill: "wayfinder", ticket: head[0] };
   }
   return { skill: "handoff", ticket: null };
+}
+
+/** The route the tracker gives now, and the bucket depths behind it. */
+export function nextPick(run = gh) {
+  openPrs = null;
+  const issues = openIssues(run);
+  const buckets = classify(issues, realClassifyIo(run));
+  const { skill, ticket } = pickRoute(buckets, (list, limit) => takeable(list, limit, (n) => claimedElsewhere(n, (k) => openPrsFor(k, run))));
+  return {
+    skill,
+    number: ticket?.number ?? 0,
+    title: ticket?.title ?? waitingOn(buckets.owner),
+    size: ticket ? sizeOf(ticket) : null,
+    queue: { implement: buckets.frontier.length, triage: buckets.triage.length, wayfinder: buckets.wayfinder.length, owner: buckets.owner.length, launch: launchOpen(issues) },
+  };
 }
 
 /** Why a ticket read in full (REST's shape) is not takeable; none means it is. */
@@ -301,21 +316,9 @@ if (invokedDirectly) {
     process.exit(0);
   }
 
-  const issues = openIssues();
-  const buckets = classify(issues);
-  const chosen = pickRoute(buckets);
-  console.log(
-    `ROUTE\t${chosen.skill}\t${chosen.ticket?.number ?? 0}` +
-      `\t${chosen.ticket?.title ?? waitingOn(buckets.owner)}` +
-      `\t${chosen.ticket ? (sizeOf(chosen.ticket) ?? "") : ""}`,
-  );
-  console.log(
-    `STATUS\timplement:${buckets.frontier.length}` +
-    `\ttriage:${buckets.triage.length}` +
-    `\twayfinder:${buckets.wayfinder.length}` +
-    `\towner:${buckets.owner.length}` +
-    `\tlaunch:${launchOpen(issues)}`,
-  );
+  const { skill, number, title, size, queue } = nextPick();
+  console.log(`ROUTE\t${skill}\t${number}\t${title}\t${size ?? ""}`);
+  console.log(`STATUS\t${Object.entries(queue).map(([k, v]) => `${k}:${v}`).join("\t")}`);
 
-  if (chosen.ticket) printDetail(...read(chosen.ticket.number));
+  if (number) printDetail(...read(number));
 }

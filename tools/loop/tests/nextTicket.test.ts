@@ -1,7 +1,7 @@
 // #293
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { classify, pickRoute, claimedElsewhere, launchOpen, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
+import { classify, pickRoute, claimedElsewhere, launchOpen, nextPick, openIssues, routeOf, sizeOf, stranded, takeable, takeableReasons, waitingOn, LAUNCH_MILESTONE } from "../next-ticket.mjs";
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
@@ -376,8 +376,7 @@ describe("the open issues, from one query", () => {
 describe("nextPick", () => {
   // In-process, the supervisor picks many times in one process: a listing cached across picks would
   // never see a pull request opened since the first.
-  test("two picks in one process each read the open pull requests afresh", async () => {
-    const { nextPick } = await import("../next-ticket.mjs");
+  test("two picks in one process each read the open pull requests afresh", () => {
     const node = (number: number, labels: string[]) => ({
       number, title: `issue ${number}`, authorAssociation: "OWNER", labels: { nodes: labels.map((name) => ({ name })) },
       milestone: null, issueDependenciesSummary: { blockedBy: 0 },
@@ -389,10 +388,19 @@ describe("nextPick", () => {
         : JSON.stringify(prs);
     assert.deepEqual(nextPick(run), {
       skill: "implement", number: 990008, title: "issue 990008", size: "size:S",
-      queue: { implement: 1, triage: 0, wayfinder: 0, launch: 0 },
+      queue: { implement: 1, triage: 0, wayfinder: 0, owner: 0, launch: 0 },
     });
     prs = [{ number: 1, state: "OPEN", headRefName: "agent/990007-x" }];
     assert.equal(nextPick(run).number, 990007, "the claimed ticket's pull request opened since the first pick strands it");
+  });
+
+  test("the handoff route carries no ticket and no size", () => {
+    const run = (args: string[]) =>
+      args[0] === "api" ? JSON.stringify({ data: { repository: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } }) : "[]";
+    assert.deepEqual(nextPick(run), {
+      skill: "handoff", number: 0, title: "nothing agent-takeable", size: null,
+      queue: { implement: 0, triage: 0, wayfinder: 0, owner: 0, launch: 0 },
+    });
   });
 });
 

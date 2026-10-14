@@ -13,13 +13,11 @@ import { readLine } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
-  parseRoute,
   pushedPr,
   queueLoopArgs,
   liveRoute,
   syncCheckout,
   reinstall,
-  parseStatus,
   runTicket,
   park,
   repark,
@@ -56,36 +54,6 @@ const stubIo = () => ({
   log: () => {},
   buildPassed: () => true,
   announce: () => {},
-});
-
-describe("parseRoute", () => {
-  test("reads the ROUTE line next-ticket.mjs prints", () => {
-    const stdout = "ROUTE\timplement\t824\tFix the lamp swing\tsize:M\nSTATUS\timplement:3\ttriage:1\n";
-    assert.deepEqual(parseRoute(stdout), {
-      skill: "implement",
-      number: 824,
-      title: "Fix the lamp swing",
-      size: "size:M",
-    });
-  });
-
-  test("handles the handoff route, which carries no ticket", () => {
-    const stdout = "ROUTE\thandoff\t0\tnothing agent-takeable\t\n";
-    assert.deepEqual(parseRoute(stdout), {
-      skill: "handoff",
-      number: 0,
-      title: "nothing agent-takeable",
-      size: null,
-    });
-  });
-
-  test("an unlabelled ticket reads as no size, not as the empty string", () => {
-    assert.equal(parseRoute("ROUTE\timplement\t70\tx\t\n").size, null);
-  });
-
-  test("throws on output with no ROUTE line, rather than silently looping forever", () => {
-    assert.throws(() => parseRoute("some unrelated error\n"), /no ROUTE line/);
-  });
 });
 
 describe("queueLoopArgs", () => {
@@ -449,23 +417,6 @@ describe("syncCheckout", () => {
     const { git } = fake(clean, "merge");
     assert.equal(syncCheckout(git, (m: string) => said.push(m)), false);
     assert.match(said.join("\n"), /cannot fast-forward main/);
-  });
-});
-
-describe("parseStatus", () => {
-  test("reads the bucket depths the picker prints beside the route", () => {
-    const stdout = "ROUTE\timplement\t824\tx\nSTATUS\timplement:7\ttriage:2\twayfinder:1\towner:4\tlaunch:3\n";
-    assert.deepEqual(parseStatus(stdout), { implement: 7, triage: 2, wayfinder: 1, launch: 3 });
-    assert.equal(parseStatus(stdout.replace("launch:3", "launch:0")).launch, 0);
-  });
-
-  test("no STATUS line reads as an empty queue rather than throwing, and says nothing about Launch", () => {
-    assert.deepEqual(parseStatus("ROUTE\thandoff\t0\tnothing\n"), {
-      implement: 0,
-      triage: 0,
-      wayfinder: 0,
-      launch: null,
-    });
   });
 });
 

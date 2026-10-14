@@ -77,7 +77,7 @@ import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gat
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
-import { OWNER_LABELS } from "./next-ticket.mjs";
+import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
 import { afterSession, decide, WAIT } from "./decide.mjs";
 import { createRequire } from "node:module";
 
@@ -88,29 +88,6 @@ const ts = (file) => createRequire(import.meta.url)(file);
 // but nothing guarantees that, and the sibling is beside this file either way.
 const HERE = import.meta.dirname;
 const ROOT = path.resolve(HERE, "..", "..");
-
-/** @returns {{ skill: string, number: number, title: string, size: string|null }} */
-export function parseRoute(stdout) {
-  const line = stdout.split("\n").find((l) => l.startsWith("ROUTE\t"));
-  if (!line) throw new Error("no ROUTE line in next-ticket.mjs output");
-  const [, skill, number, title, size] = line.split("\t");
-  return { skill, number: Number(number), title, size: size?.trim() || null };
-}
-
-/** The bucket depths the picker already prints, for the header's "how much is behind this one". */
-export function parseStatus(stdout) {
-  const line = stdout.split("\n").find((l) => l.startsWith("STATUS\t"));
-  const read = (name) => {
-    const n = /:(\d+)/.exec(line?.split("\t").find((f) => f.startsWith(`${name}:`)) ?? "")?.[1];
-    return n === undefined ? null : Number(n);
-  };
-  return {
-    implement: read("implement") ?? 0,
-    triage: read("triage") ?? 0,
-    wayfinder: read("wayfinder") ?? 0,
-    launch: read("launch"),
-  };
-}
 
 /**
  * @param {string[]|null} [labels] the live ticket's labels, null when the tracker could not say
@@ -158,7 +135,7 @@ export function nextRoute(
     read = derive,
     facts = ticketFacts,
     ledger = readLedger,
-    picker = () => execFileSync("node", [HERE + "/next-ticket.mjs"], { encoding: "utf8" }),
+    picker = nextPick,
   } = {},
 ) {
   const status = read({ ci: true });
@@ -198,8 +175,7 @@ export function nextRoute(
       (labels.some((l) => OWNER_LABELS.has(l)) || !labels.some((l) => l === "in-progress" || l === "ready-for-agent"));
     if (!released) return { skill: "implement", number: pinned, title, size, ciRounds, queue: null, resuming: true, phase: "A" };
   }
-  const stdout = picker();
-  return { ...parseRoute(stdout), queue: parseStatus(stdout), resuming: false };
+  return { ...picker(), resuming: false };
 }
 
 /**

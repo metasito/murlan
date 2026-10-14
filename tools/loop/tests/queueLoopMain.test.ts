@@ -778,7 +778,7 @@ describe("runOnce", () => {
     const picked: number[] = [];
     const picker = () => {
       picked.push(1);
-      return "ROUTE\timplement\t77\tother\tsize:S\nSTATUS\timplement:3\ttriage:0\twayfinder:0\towner:1\tlaunch:0\n";
+      return { skill: "implement", number: 77, title: "other", size: "size:S", queue: { implement: 3, triage: 0, wayfinder: 0, owner: 1, launch: 0 } };
     };
     const route = (labels: string[] | null) =>
       nextRoute(42, null, {
