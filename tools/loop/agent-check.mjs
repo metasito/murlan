@@ -14,10 +14,8 @@ import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import preflightMemory from "../ci/preflightMemory.mjs";
 
 /**
- * The tree `agent:check` is judging, from that tree's own readings.
- *
  * A subject with nothing in it is a refusal rather than a pass: a check looking at no diff has
- * nothing its green could be a statement about, and the loop only ever runs this before a push.
+ * nothing its green could be a statement about.
  */
 export function checkSubject({ toplevel, baseSha, changed }) {
   if (!toplevel) return { refuse: "no tree to judge — this is not inside a git worktree" };
@@ -30,11 +28,7 @@ export function checkSubject({ toplevel, baseSha, changed }) {
   return { root: toplevel, base: baseSha.slice(0, 7) };
 }
 
-/**
- * Those readings, taken from a given tree. Separate from the process's own cwd so two worktrees of
- * one repository can be resolved side by side, which is the only way to test that they are judged
- * apart.
- */
+/** Takes `cwd` rather than the process's own, so two worktrees can be tested as judged apart. */
 export function readSubject(cwd) {
   const read = (...args) => {
     try {
@@ -54,11 +48,7 @@ export function readSubject(cwd) {
   });
 }
 
-/**
- * A wedged suite used to hang this check for ever, and an unattended run has nobody to notice.
- * On Windows the kill reaches the shell rather than the whole tree, so a stray child can outlive
- * it; the verdict is still delivered.
- */
+/** On Windows the kill reaches the shell, not the tree, so a stray child can outlive it. */
 const STEP_TIMEOUT_MS = 20 * 60_000;
 const SHOWN_LINES = 40;
 const HEAD_LINES = 10;
@@ -117,8 +107,8 @@ export async function runStep(step, spawn = spawnAsync, write = (s) => void proc
     timeout: STEP_TIMEOUT_MS,
     maxBuffer: 256 * 1024 * 1024,
   });
-  // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Both are failures, but
-  // only one of them says anything about the code, so they are reported apart.
+  // A timeout leaves `status` null and sets `error.code` to ETIMEDOUT. Only one of them says
+  // anything about the code, so they are reported apart.
   const timedOut = run.error?.code === "ETIMEDOUT";
   const title = `${BANNER}${step.name} ===`;
   if (!timedOut && run.status === 0) return { failed: null, text: `${title} ok\n` };
@@ -162,9 +152,8 @@ export async function judge({ head, clean, force, cache, run }) {
 let subject;
 let deferred = [];
 
-// What this left out is part of its verdict, named as a command so nobody has to invent one, and
-// which tree it read is the first of those: a verdict that does not say cannot be told from a
-// vacuous one.
+// Names the tree it read and every suite it left out: a verdict that does not say cannot be told
+// from a vacuous one.
 const verdict = (outcome) =>
   [
     outcome,
@@ -209,12 +198,10 @@ async function main() {
     console.error(`agent:check: ${subject.refuse}`);
     process.exit(1);
   }
-  // Everything below — HEAD, the cache, the steps — reads the tree being judged rather than
-  // wherever the invoker happened to be standing. Moving once is what keeps them from disagreeing.
+  // HEAD, the cache and the steps must all read the judged tree, not the invoker's cwd.
   process.chdir(subject.root);
 
-  // The cache key is HEAD only, so it cannot see a node_modules-only
-  // drift — a peer session's `npm install` mid-run would otherwise keep replaying a stale PASS.
+  // The cache key is HEAD only, so it cannot see a peer's `npm install` drifting node_modules.
   const sharedRoot = parseWorktreeList(git("worktree", "list", "--porcelain"))[0]?.path ?? null;
   if (!sharedRoot) {
     console.error("agent:check: could not find the primary worktree");

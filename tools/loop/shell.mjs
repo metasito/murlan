@@ -3,7 +3,6 @@
  * this one parser, so a spelling one of them understands the others do too.
  */
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
 
 const SHELL = /^(bash|sh|zsh|dash|pwsh|powershell|cmd|iex|invoke-expression)$/;
 const PIPED_TO_SHELL = /^[^\n]*\|\s*(?:\S*[\\/])?(bash|sh|zsh|dash|pwsh|powershell|iex|invoke-expression)\b/i;
@@ -18,7 +17,6 @@ const commandName = (word) => (word ?? "").replace(/\\/g, "/").split("/").pop().
 
 export const has = (args, re) => args.some((a) => re.test(a));
 
-/** Every spelling of a command that moves the shell's directory. */
 export const MOVES = /^(cd|chdir|pushd|popd|set-location|sl|push-location)$/;
 
 /** The words of `args` that are neither a flag nor the value a flag matching `takesValue` consumes. */
@@ -37,7 +35,6 @@ export const toNative = (p, platform = process.platform) =>
     ? p.replace(/^\/tmp(?=\/|$)/, tmpdir().replace(/\\/g, "/")).replace(/^\/([A-Za-z])(\/|$)/, (_, d) => `${d.toUpperCase()}:/`)
     : p;
 
-/** Index of the `)` closing the `(` at `open`, or the end of the text. */
 function closing(text, open) {
   let depth = 0;
   for (let i = open; i < text.length; i++) {
@@ -222,7 +219,6 @@ export function withoutQuotedBodies(command) {
 const ASSIGN = /^([A-Za-z_]\w*)=([\s\S]*)$/;
 export const literal = (vars) => Object.fromEntries(Object.entries(vars).filter(([, v]) => /^[^\s$`]+$/.test(v ?? "")));
 
-/** Each bare `X=…` statement's value, a later one replacing an earlier. */
 function assignmentsIn(text) {
   const vars = {};
   for (const w of segments(text, MAX_DEPTH)) {
@@ -238,20 +234,6 @@ function assignmentsIn(text) {
  * sets one for the line; a child shell's own and prefix assignments are its scope (`normalize`).
  */
 export const literalAssignments = (text) => literal(assignmentsIn(text));
-
-/** Each command of the line, with the directory the `cd`s before it left the call in. */
-export function located(command, cwd) {
-  let at = cwd;
-  const out = [];
-  for (const c of commands(command)) {
-    if (!MOVES.test(c.cmd)) out.push({ c, at });
-    else {
-      const to = c.args.find((a) => !a.startsWith("-"));
-      if (to) at = resolve(at, toNative(to));
-    }
-  }
-  return out;
-}
 
 const LOOP_KEYWORD = /^(for|foreach|foreach-object|while|until|%)$/i;
 const headOf = (w) => w.find((x) => !/^(do|then|else|!)$/.test(x)) ?? "";

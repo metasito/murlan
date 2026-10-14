@@ -1,16 +1,6 @@
 /**
- * Where the loop's run stands, derived from git and the tracker rather than remembered.
- *
- * There used to be a state file. Every serious defect two audits found was in it and not in the
- * loop: it was tracked, so a run made the tree dirty and the next run deadlocked on preflight; it
- * was never cleared between tickets, so ticket two inherited ticket one's `VERDICT: LAND` and would
- * have pushed unreviewed work; it was read by two parsers that disagreed; its own template hints
- * were read as evidence. All of them were the same bug — a third copy of the truth, disagreeing
- * with the two systems that already held it.
- *
- * Git knows the branch, the commits and the diff. The tracker knows the ticket and the review. So
- * nothing here is stored, and nothing can go stale: every answer is computed from those two, every
- * time it is asked.
+ * Where the loop's run stands, derived from git and the tracker rather than remembered: a stored
+ * copy would be a third copy of the truth, free to disagree with the two that hold it.
  *
  * The branch name is the binding. `agent/<n>-<slug>` says which ticket this work belongs to, and
  * git will not let you be on two at once.
@@ -23,7 +13,6 @@ export const BRANCH = /^agent\/(\d+)-/;
 /** The repository every `gh` call in the loop names, so no two of them can name different ones. */
 export const REPO = "metasito/murlan";
 
-/** The worktree root `/queue` phase A creates ticket worktrees under. */
 export const WORKTREE_DIR = ".worktrees";
 
 /** A ticket worktree's own directory name, under `WORKTREE_DIR` — never its branch. */
@@ -34,7 +23,6 @@ const run = (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cw
 /** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */
 const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
 
-/** The review's own comment, naming the head it read. The same sha binding the verdict carries. */
 const REVIEW_RE = /^REVIEW\s+([0-9a-f]{7,40})\b/m;
 
 /** A fix round's own `REVIEW` marks itself, so `reviewRounds` can size the cap to full rounds. */
@@ -66,7 +54,6 @@ export function ciRedRounds(comments) {
   return shas.size;
 }
 
-/** The comments after the newest claim. */
 function sinceClaim(comments) {
   let since = 0;
   comments.forEach((c, i) => {
@@ -110,8 +97,6 @@ export function ticketOf(branch) {
 }
 
 /**
- * Every worktree git knows about, as `{ dir, branch, detached }`.
- *
  * @param {string} [cwd]
  */
 export function worktrees(cwd) {
@@ -128,9 +113,7 @@ export function worktrees(cwd) {
  *
  * The loop works in `.worktrees/agent-<n>` and RULES.md rule 40 forbids parking a shell there, so
  * reading `HEAD` at the process's own cwd answers for the shared checkout and reports "no run"
- * during every run. An audit caught exactly that: compaction recovery printed nothing and the
- * phase-E gate exited 2, on a live ticket. Git already lists every worktree and its branch, so ask
- * it rather than asking where we happen to be standing.
+ * during every run. Git lists every worktree and its branch, so ask it.
  *
  * A detached worktree (a conflicted rebase, an interrupted checkout) has no branch to read, so its
  * directory name carries the ticket and the caller is told the head is loose rather than told
@@ -151,8 +134,7 @@ export function locateRun(cwd, worktree) {
   const at = worktree || cwd || process.cwd();
   const here = currentBranch(at);
 
-  // Every "nothing is running here" answer, in one place: the tree it names cannot then be right
-  // in three branches and wrong in the fourth.
+  // Every "nothing is running here" answer, in one place, so no branch can name a different tree.
   const idle = (extra) => ({
     cwd: at,
     branch: here,
@@ -179,9 +161,7 @@ export function locateRun(cwd, worktree) {
     const w = onBranch[0];
     return { cwd: w.dir, branch: w.branch, ticket: ticketOf(w.branch), detached: false };
   }
-  // More than one live ticket worktree and nothing here says which one this run is for — a
-  // leftover from a crashed run, sitting next to the one actually in progress. Refuse rather
-  // than guess.
+  // More than one live ticket worktree, and nothing here says which: refuse rather than guess.
   if (onBranch.length > 1) {
     return idle({ ambiguous: onBranch.length, worktrees: onBranch.map((w) => w.branch) });
   }
@@ -203,10 +183,9 @@ export function locateRun(cwd, worktree) {
  * makes it impossible to land a diff nobody reviewed: commit again after the review and the head
  * moves, so the verdict no longer matches and the gate asks for another one.
  *
- * A HOLD on a head is final for that head. Order used to decide, so a later `LAND <same sha>` —
- * from a confused reviewer, or from the reviewer quoting its own instructions — erased a hold
- * nobody had addressed. The only way past a hold is a commit, which moves the head and asks for a
- * fresh review of the new code.
+ * A HOLD on a head is final for that head, whatever the order: a later `LAND <same sha>` — from a
+ * confused reviewer, or one quoting its own instructions — must not erase it. The only way past a
+ * hold is a commit, which moves the head and asks for a fresh review.
  *
  * `VERDICT:` is matched literally and fenced code is stripped first, so quoting the review prompt
  * or pasting a draft in a ``` block is not a review.
@@ -227,9 +206,8 @@ export function verdictFor(comments, head) {
 }
 
 /**
- * The review reports for this head, which is what makes a `LAND` mean anything. #1043 posted one
- * comment — `VERDICT: LAND` — over four rounds and went out red: the reports existed, and reached
- * nothing that could refuse the push.
+ * The review reports for this head, which is what makes a `LAND` mean anything: a report that
+ * exists only in a session reaches nothing that could refuse the push.
  *
  * **Its ceiling, stated:** a `## Blocking` heading carrying no findings satisfies this, as do the
  * `## Standards` and `## Spec` pair a ticket reviewed before the single reviewer still carries. It is a check against
@@ -349,13 +327,10 @@ export function fixHolds(comments) {
 }
 
 /**
- * The issue's comments, as `gh` returns them.
- *
- * `LOOP_GH_SCRIPT` names a node script to run instead, and exists only so the tests can drive the
- * verdict branches through the real binary. It cannot be a `gh` shim on PATH: since the 2024
- * fix for CVE-2024-27980, node will not resolve a `.cmd` from `execFileSync`, so on Windows a
- * stub is unreachable and the only testable review state is "tracker unreadable" — which is how
- * a mutant that lands a HOLD passed every test in the previous suite.
+ * `LOOP_GH_SCRIPT` names a node script to run instead of `gh`, so the tests can drive the verdict
+ * branches through the real binary. It cannot be a `gh` shim on PATH: since the fix for
+ * CVE-2024-27980, node will not resolve a `.cmd` from `execFileSync`, so on Windows a stub is
+ * unreachable and the only testable review state is "tracker unreadable".
  */
 function gh(args, cwd, timeout) {
   const file = process.env.LOOP_GH_SCRIPT;
@@ -453,12 +428,9 @@ function readCi(cwd, branch, head, comments, exec) {
 }
 
 /**
- * Everything the loop needs to know about where it is. No arguments, no memory.
- *
  * `LOOP_BASE` overrides what the diff is measured against, and is a test seam only: the tests run
  * against scratch worktrees that have no `origin/main`. It is deliberately not a command-line
- * flag — an audit passed `--base HEAD~1` and walked a `.github/workflows/` change straight through
- * the gate, because a documented flag is a mistake the loop can make by reading its own usage text.
+ * flag: a documented flag is a mistake the loop can make by reading its own usage text.
  *
  * `LOOP_WORKTREE` is the same kind of seam, and the same kind of hazard if it ever became a real
  * flag: pointed at a worktree other than the one about to be pushed, it clears a review that never
@@ -532,9 +504,7 @@ export function derive({
   const ciRead = ci && land ? readCi(cwd, branch, head, comments, exec) : null;
   const fix = Boolean(ciRead?.pushed && ciRead.pr !== null && ciRead.state === "red");
   // A claimed worktree that is clean and has no commits has not been worked yet, so it owes its
-  // scope pass. Deriving C there made every session declare `PHASE C` and then, on reading
-  // queue.md, `PHASE B` — which transposed every step row the board printed and billed the build
-  // to B in `loop-cost`. Dirty is the discriminator: an edit in the tree means C has begun.
+  // scope pass; an edit in the tree means C has begun.
   const scoping = commits === 0 && !dirty;
   const wipHead =
     commits > 0 && !verdict && /^wip\(#\d+\):/.test(headSubject) && !dodCheckFor(comments, head, () => false);

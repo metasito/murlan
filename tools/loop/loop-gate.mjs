@@ -1,16 +1,9 @@
 /**
  * The loop's gate: refuses to push work that was not built, or not reviewed.
  *
- * It asks git and the tracker directly, so there is nothing to keep in sync and nothing that can
- * be stale. Four things must hold, and each is read rather than believed:
- *
- * - you are on an `agent/<n>-...` branch, which is what says the work belongs to ticket n;
- * - the branch has commits and a non-empty diff, so something was actually built;
- * - the issue carries `VERDICT: LAND <sha>` for **this** head, so the review read this code.
- *
- * That last binding is the whole point. The review names the commit it read, so committing again
- * after a review invalidates it automatically — there is no way to land a diff nobody looked at,
- * and no bookkeeping to forget.
+ * It asks git and the tracker directly, so nothing can be stale. The review names the commit it
+ * read, so committing again after a review invalidates it: there is no way to land a diff nobody
+ * looked at.
  *
  * Run it from anywhere in the repo. It finds the run's worktree itself, because the loop works in
  * `.worktrees/agent-<n>` and rule 40 keeps the shell out of it.
@@ -22,8 +15,9 @@
  *        node tools/loop/loop-gate.mjs --review-round
  *        exit 0 - phase D may run another round; exit 1 - the cap is reached
  *
- *        node tools/loop/loop-gate.mjs --build            exit 0 iff a cached LOCAL PASS for a clean HEAD
- *                                                         and a DOD-CHECK of HEAD with every box ticked
+ *        node tools/loop/loop-gate.mjs --build [draft]    exit 0 iff a cached LOCAL PASS for a clean HEAD
+ *                                                         and a DOD-CHECK of HEAD with every box ticked —
+ *                                                         the draft file's, when one is named, else the tracker's
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -31,6 +25,7 @@ import { join } from "node:path";
 import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
 import { parseHeader } from "./brief.mjs";
+import { COMMITTING } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 function git(args, cwd) {
@@ -95,7 +90,7 @@ export function buildReady(cwd, ticket, comments = ticketComments) {
  * between a bound a test can fail and a sentence.
  *
  * The full review, then at most two reviews of a fix. A third review that still blocks means each fix
- * is making the next defect (#1424), which a reviewer owes the owner, not another round.
+ * is making the next defect, which a reviewer owes the owner, not another round.
  */
 export const MAX_REVIEW_ROUNDS = 3;
 
@@ -119,7 +114,6 @@ export function roundVerdict({ reviewRounds, fixHolds = 0 }) {
   return { ok: true, why: `round ${reviewRounds + 1} of at most ${MAX_REVIEW_ROUNDS}` };
 }
 
-/** How many update-branch merges `landable` walks back through before it gives up. */
 const MERGE_WALK = 8;
 
 /**
@@ -184,17 +178,25 @@ function verdictOn(comments, at, verdict) {
 }
 
 const REVIEWERS = new Set(["loop-review", "loop-fix"]);
+const LAND = /VERDICT:\s*LAND\b/;
+const SHELLS = new Set(["Bash", "PowerShell"]);
+const mainCall = (f, test) => f?.kind === "assistant" && f.calls.some((c) => !c.parent && test(c));
 
 /**
- * Whether this D round's own reviewer ran to completion for ticket `n`, read from the ticket's
- * stream facts. The round is everything after the last `PHASE C`, so it spans a D handoff and
- * never reaches a reviewer of a build since superseded.
+ * Whether ticket `n`'s reviewer ran to completion inside the process that posted its LAND, after
+ * that process's last commit and before the post, read from the ticket's stream facts. Every
+ * process appends to that stream, so the bounds are its `init` and its commands, never a phase the
+ * model wrote. With no LAND in the stream, the last process is the one judged.
  *
  * @param {ReturnType<import("./loop-stream.mjs").readLine>[]} facts
  * @param {number} n
  */
 export function reviewerRan(facts, n) {
-  const round = facts.slice(facts.findLastIndex((f) => f?.kind === "assistant" && f.letter === "C") + 1);
+  const posted = facts.findLastIndex((f) => mainCall(f, (c) => LAND.test(JSON.stringify(c.input ?? {}))));
+  const before = facts.slice(0, posted < 0 ? facts.length : posted);
+  const started = before.findLastIndex((f) => f?.kind === "init");
+  const built = before.findLastIndex((f) => mainCall(f, (c) => SHELLS.has(c.name) && COMMITTING.test(c.command)));
+  const round = before.slice(Math.max(started, built) + 1);
   const mine = new Set(
     round.filter((f) => f?.kind === "task" && REVIEWERS.has(f.agent) && parseHeader(f.brief)?.n === n).map((f) => f.id),
   );
@@ -215,18 +217,28 @@ function reviewRound() {
   console.error(
     `loop-gate: #${s.ticket} — ${round.why}\n\n` +
       "  Do not review again and do not land. Say on the issue which Blocking finding is still open,\n" +
-      '  then stand down: LOOP-RESULT {"ticket":<n>,"phase":"D","stoodDown":true,"why":"<the finding>"}',
+      '  then stand down: declare {"ticket":<n>,"phase":"D","handoff":null,"stoodDown":true,"why":"<the finding>"}',
   );
   return 1;
 }
 
-function buildGate() {
+function buildGate(draft) {
   const at = locateRun(undefined, process.env.LOOP_WORKTREE);
   if (!at.ticket) {
     console.error(`loop-gate: not on a ticket (${at.branch ?? "no branch"}) — nothing to judge`);
     return 2;
   }
-  const v = buildReady(at.cwd, at.ticket);
+  let comments = ticketComments;
+  if (draft) {
+    try {
+      const body = readFileSync(draft, "utf8");
+      comments = () => [{ body }];
+    } catch (err) {
+      console.error(`loop-gate: cannot read the draft ${draft} — ${err.message}`);
+      return 2;
+    }
+  }
+  const v = buildReady(at.cwd, at.ticket, comments);
   (v.ok ? console.log : console.error)(`loop-gate: #${at.ticket} — ${v.why}`);
   return v.ok ? 0 : 1;
 }
@@ -269,6 +281,7 @@ function main() {
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
   const args = process.argv.slice(2);
-  const code = args.includes("--review-round") ? reviewRound() : args.includes("--build") ? buildGate() : main();
+  const draft = args[args.indexOf("--build") + 1];
+  const code = args.includes("--review-round") ? reviewRound() : args.includes("--build") ? buildGate(draft) : main();
   process.exit(code);
 }

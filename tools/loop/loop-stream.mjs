@@ -6,8 +6,8 @@
 import { commands, withoutQuotedBodies } from "./shell.mjs";
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
-// The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
-// same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
+// The fence is optional because the session's echo of queue.md's fenced marker is: it comes back
+// bare or fenced, sometimes both ways in one run.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
 /**
  * The same report as a command of its own in a main-session call: `… && echo "PHASE C" && …`. Read
@@ -20,14 +20,6 @@ export function echoedPhase(command) {
   return echo ? echo.args.join(" ").slice(-1) : null;
 }
 
-/**
- * What the session says it did, once, before it exits — the one channel that is a statement rather
- * than an inference. Everything else the supervisor knows about a finished session it reconstructs
- * from side effects the session is separately told to clean up, and phase F's teardown destroys
- * five of them at once.
- */
-const DECLARED = /^[ \t]*LOOP-RESULT (\{.*\})[ \t]*$/m;
-
 /** What a `git commit` looks like in a `Bash` call, whatever else is on the line. */
 export const COMMITTING = /\bgit(?:\s+(?:-[Cc]\s+(?:"[^"]*"|'[^']*'|\S+)|--[\w-]+(?:=\S+)?))*\s+commit(?![\w-])/;
 
@@ -36,7 +28,7 @@ const SCRATCH =
   /(^|[\\/])\.[^\\/]+\.md$|^\/tmp\/|[\\/]Temp[\\/]|[\\/]\.loop-logs[\\/]|[\\/]\.worktrees[\\/][^\\/]+[\\/][^\\/]+\.(md|txt|log|tsv)$/;
 
 /**
- * Where a phase that does not build ends in the build with no `PHASE C` (#1098): the first edit
+ * Where a phase that does not build ends in the build with no `PHASE C`: the first edit
  * outside a scratch file, or commit — late, never before the build.
  * @param {{name: string, command?: string, file?: string, parent?: string|null}[]} calls
  */
@@ -46,7 +38,7 @@ export const scopeEnds = (calls) =>
 /** A handoff names the phase the next process starts at, so an unknown letter is no handoff. */
 export const HANDOFF = /^[A-F]$/;
 
-/** @param {unknown} d a LOOP-RESULT line's JSON, or a result's `structured_output` */
+/** @param {unknown} d a result's `structured_output` */
 function declaration(d) {
   if (!d || typeof d !== "object" || Array.isArray(d)) return null;
   return {
@@ -60,33 +52,17 @@ function declaration(d) {
   };
 }
 
-/**
- * A result's `structured_output` as the whole declaration, or null when it gives none. Never merged
- * with a LOOP-RESULT line: an earlier line may be superseded, and a field it filled would survive.
- */
+/** A result's `structured_output` as the session's declaration, or null when it gives none. */
 function given(out) {
   const said = declaration(out);
   return said && Object.values(out).some((v) => v != null) ? said : null;
 }
 
-/** @param {string} text */
-function declaredIn(text) {
-  const m = DECLARED.exec(text);
-  if (!m) return null;
-  try {
-    return declaration(JSON.parse(m[1]));
-  } catch {
-    return null;
-  }
-}
-
-// A dispatched subagent and a plain shell task share one task_id key space but close through
-// different subtypes: a shell task's task_started/task_notification pair carries a flat `status`;
-// a subagent's task_started/task_progress chain is closed by task_updated, whose only content is
-// a `patch` — sometimes the closing `{status, end_time}` (an `error` string too, if it failed),
-// sometimes mid-run just `{is_backgrounded: true}`. One mapping covers all four by reading through
-// to `patch` wherever the flat field is absent, which is also the only way a subagent's phase ever
-// shows a sign of life: it is the one caller of readLine() that never emits an `assistant` fact.
+// A subagent and a shell task share one task_id key space but close through different subtypes: a
+// shell task's task_notification carries a flat `status`; a subagent's chain is closed by
+// task_updated, whose only content is a `patch` — the closing `{status, end_time}` (with `error` if
+// it failed), or mid-run just `{is_backgrounded: true}`. So every read falls through to `patch`,
+// a subagent's only sign of life: it never emits an `assistant` fact.
 const TASK_EVENT = {
   task_started: "started",
   task_progress: "progress",
@@ -225,12 +201,11 @@ export function readEvent(e) {
       .map((c) => echoedPhase(c.command))
       .find(Boolean);
     const letter = phase?.[1] ?? echoed ?? null;
-    const declared = declaredIn(text);
-    if (!letter && !declared && !calls.length) return null;
+    if (!letter && !calls.length) return null;
     // The prose around the marker, which the board shows as the session's own account of what it is
-    // doing. Two markers were parsed out of it and the rest was dropped.
+    // doing.
     // One line per content block, each with the whole message's usage: count turns by `id`, not line.
-    return { kind: "assistant", id: e.message?.id ?? null, letter, declared, calls, text };
+    return { kind: "assistant", id: e.message?.id ?? null, letter, calls, text };
   }
   if (e.type === "result") {
     return {

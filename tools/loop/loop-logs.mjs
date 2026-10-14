@@ -2,16 +2,12 @@
  * Everything the loop writes into `.loop-logs/`: what each artefact is called, which of them the
  * pruner may delete, and the ledger of what a run did.
  *
- * Five jobs write into that directory — the stream sink, the park note, the CI tail, the ledger
- * row and the morning report — and the pruner deletes by filename pattern, which made it a sixth
- * copy of the other five's conventions with nothing holding them together. Naming them here means
- * a new artefact is one entry rather than a new convention plus an edit to the pruner someone will
- * forget.
+ * The pruner deletes by filename pattern, so every writer's naming lives here: a new artefact is
+ * one entry, not a new convention the pruner has to be taught.
  *
- * `name` is a second spelling of `path`, deliberately: deriving a regex by feeding a pattern
- * fragment through a path builder is the kind of clever nobody wants to read at 3am.
- * `tools/loop/tests/loopLogs.test.ts` holds the pair together instead — every builder's output must match its
- * own `name` and no other artefact's.
+ * `name` is a second spelling of `path`, deliberately, rather than a regex derived through the path
+ * builder. `tools/loop/tests/loopLogs.test.ts` holds the pair together: every builder's output must
+ * match its own `name` and no other artefact's.
  */
 import fsNode from "node:fs";
 import path from "node:path";
@@ -33,6 +29,7 @@ export const ARTEFACTS = {
   // `_` so every builder takes the same two arguments: the table is only useful if one loop can
   // call all of them.
   ledger: { path: (_, dir = DIR) => path.join(dir, "tickets.jsonl"), name: /^tickets\.jsonl$/, ephemeral: false },
+  supervisor: { path: (_, dir = DIR) => path.join(dir, "supervisor.log"), name: /^supervisor\.log$/, ephemeral: false },
 };
 
 export const streamLog = ARTEFACTS.stream.path;
@@ -42,6 +39,13 @@ export const parkNotePath = ARTEFACTS.parkNote.path;
 export const reportPath = ARTEFACTS.report.path;
 export const leftoverPath = ARTEFACTS.leftover.path;
 export const ledgerPath = ARTEFACTS.ledger.path;
+export const supervisorLogPath = ARTEFACTS.supervisor.path;
+
+/** Throws on a failed write: `journaled` in `queue-loop.mjs` is what keeps that out of the loop. */
+export function appendSupervisor(line, dir = DIR) {
+  fsNode.mkdirSync(dir, { recursive: true });
+  fsNode.appendFileSync(supervisorLogPath(null, dir), line);
+}
 
 /**
  * An entry in `.loop-logs/` the pruner may delete once it is old enough: anything but the record,
@@ -81,11 +85,8 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
  * `schema` is what lets a measurement span a change of meaning: a field that starts holding
  * something else gets a new number, and rows with no `schema` predate the first one.
  *
- * 3 is **one row per session, not one per ticket**. A ticket that ran twice — a red CI round, a
- * resumed run — writes two rows, and its cost is the sum of them. Under 2 the second session
- * overwrote the reading of the first and the money it spent left no trace, which is the shape the
- * stream logs always had and the ledger never did; grouping on `n` is now the reader's job, and
- * `tests/` can check the file against those logs because both count the same thing.
+ * From 3, **one row per session, not one per ticket**: a ticket that ran twice writes two rows, its
+ * cost is their sum, and grouping on `n` is the reader's job.
  *
  * 4 adds `solo_bash_turns`, which is null on every row written before it. 5 adds `head` and
  * `run_id`, both null on rows written before it. 6 drops `solo_bash_turns`, adds `loop_sha`,
@@ -100,7 +101,6 @@ export const SCHEMA = 9;
 
 export const STDERR_CAP = 2000;
 
-/** What a session died of, or null when it did not say. */
 export function errorOf(run) {
   const stderr = String(run?.stderr ?? "").trim().slice(-STDERR_CAP) || null;
   if (!run?.result?.isError && !stderr) return null;
@@ -112,11 +112,8 @@ export const errorLine = (error) =>
   [error.status && `API ${error.status}`, error.reason, error.stderr?.trim().split("\n").at(-1)].filter(Boolean).join(" · ");
 
 /**
- * One session, as one line of the ledger.
- *
- * `park_reason` is the sentence, not the outcome. A park written by a turn cap, one written by a
- * review deadlock and one written by a genuine blocker were four identical characters in the file,
- * so "why do tickets park" could not be asked of the record kept to answer it.
+ * `park_reason` is the sentence, not the outcome, so "why do tickets park" can be asked of the
+ * record.
  *
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
@@ -241,13 +238,11 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
-/** `killedStarts`' `lastSeen`: when the ticket's stream log was last written. */
 export const lastWrite = (row) => (fsNode.existsSync(streamLog(row.n)) ? fsNode.statSync(streamLog(row.n)).mtimeMs : null);
 
 /** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
 const ENDS_TICKET = new Set(["landed", "closed", "parked"]);
 
-/** What a run's rows add up to. */
 export function totalsOf(rows) {
   const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
   const ended = rows.filter((r) => ENDS_TICKET.has(r.outcome));
@@ -432,7 +427,6 @@ export function ticketTally(n, rows) {
 const CLOSERS = new Set(["landed", "closed", "parked", "reparked"]);
 export const closesWindow = (row) => CLOSERS.has(row.outcome);
 
-/** A session's row: any row but a start that ran turns. */
 export const isProcess = (row) => row.outcome !== "started" && row.turns !== 0;
 
 /**
@@ -492,6 +486,7 @@ export function tallyOf(rows) {
     handoffWhy: /** @type {string|null} */ (null),
     lastRedHead: /** @type {string|null} */ (null),
     retries: 0,
+    undeclared: 0,
     armedFlake: /** @type {object|null} */ (null),
   };
   let fixing = false;
@@ -517,7 +512,7 @@ export function tallyOf(rows) {
       t.handoffsThisRound += 1;
       const handed = handoffIn(r);
       if (handed) [t.lastHandoff, t.handoffWhy] = [handed.phase, handed.why];
-    }
+    } else if (r.outcome === "undeclared") t.undeclared += 1;
   }
   return t;
 }

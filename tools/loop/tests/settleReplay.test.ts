@@ -5,9 +5,11 @@
 // recorded off live pull requests, and only the subprocess is fake.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { ciRedBody, onMainLine, poll } from "../queue-loop.mjs";
+import { ciRedBody, journaled, onMainLine, poll, settle } from "../queue-loop.mjs";
+import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
 import { readLine } from "../loop-stream.mjs";
@@ -180,6 +182,30 @@ describe("settle, replayed against recorded rollups", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /the merge failed — GraphQL: Base branch was modified/);
+  });
+
+  describe("which way an arm went is kept in .loop-logs/supervisor.log", () => {
+    const board = { start: () => {}, set: () => {}, said: () => {}, close: () => {}, notice: () => {}, warn: () => {} };
+    const ways = [
+      ["armed", {}, "auto-merge armed at 5bb5dcf"],
+      ["merged directly", { auto: CLEAN_STATUS }, `could not arm auto-merge — ${CLEAN_STATUS}; merging 5bb5dcf directly`],
+    ] as const;
+    for (const [way, refuse, line] of ways) {
+      test(way, async () => {
+        const dir = mkdtempSync(path.join(tmpdir(), "supervisor-log-"));
+        try {
+          const { gh } = rollupFake({ views: [GREEN], refuse });
+          const screen = journaled(board, () => PENDING.ticket, (l: string) => appendSupervisor(l, dir));
+          const out = await settle(PENDING, screen, { watch: (p: never, log: (m: string) => void) => poll(p, log, 0, DEADLINE, io(gh)) });
+          assert.equal(out.action, "already-merged");
+          const kept = readFileSync(supervisorLogPath(null, dir), "utf8").split("\n");
+          const stamped = (l: string) => !Number.isNaN(Date.parse(l.split(" ")[0]));
+          assert.ok(kept.some((l) => stamped(l) && l.endsWith(` #${PENDING.ticket} ${line}`)), kept.join("\n"));
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+      });
+    }
   });
 
   test("a green head landable does not clear is the owner's, says why, and is never armed", async () => {
@@ -546,7 +572,8 @@ describe("arming waits for the reviewer", () => {
   });
 
   test("a LAND with no reviewer completed since the last build is the owner's, never armed", async () => {
-    const { asked, io: withFacts } = real([...reviewer(PENDING.ticket), say("PHASE C"), say("PHASE D")]);
+    const built = readLine(JSON.stringify({ type: "assistant", message: { id: "c", content: [{ type: "tool_use", id: "u", name: "Bash", input: { command: "git commit -m fix" } }] } }));
+    const { asked, io: withFacts } = real([...reviewer(PENDING.ticket), say("PHASE C"), built, say("PHASE D")]);
     const out = await poll(PENDING, () => {}, 0, DEADLINE, withFacts);
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /no loop-review or loop-fix completed for #1028/);

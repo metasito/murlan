@@ -29,6 +29,7 @@ const finished = (over: object = {}) => run({ phase: "F", declared: said({ phase
 const pr = (state: string) => ({ number: 7, state, sha: "h1" });
 const g = (pushed: object | null) => ({ ...base, step: "session", route: { ...route, phase: "G" }, run: null, after: derived, pushed });
 const api = (apiStatus: number | null, over: object = {}) => silent({ status: 1, result: { ...ok, isError: true, apiStatus }, ...over });
+const unstructured = () => silent({ status: 1, result: { ...ok, isError: true, subtype: "error_max_structured_output_retries" } });
 
 const ci = (over: object = {}) => ({ testIds: ["tests/a.test.ts › adds"], output: "✖ adds", logUnread: false, waiting: false, infrastructure: false, appearing: false, runId: 99, attempt: 2, failedStep: "Typecheck and tests", ...over });
 const land = (over: object = {}) => ({
@@ -156,8 +157,16 @@ const ROWS: Row[] = [
   ["a pull request closed without merging is the owner's", session({ run: finished(), pushed: pr("CLOSED") }),
     { kind: "park", why: "pull request #7 is closed", pr: 7 }],
   ["a session that pushed nothing parks the ticket", session({ run: finished() }), { kind: "park", why: "the session pushed no pull request", phase: "F" }],
-  ["a session that exits without a LOOP-RESULT parks with that reason", session({ run: silent() }),
-    { kind: "park", n: 42, why: "the session exited without a LOOP-RESULT", phase: "C" }],
+  ["a session that exits without a declaration parks with that reason", session({ run: silent() }),
+    { kind: "park", n: 42, why: "the session exited without a declaration", phase: "C" }],
+  ["a session whose structured output never validated is spawned once more", session({ run: unstructured() }),
+    { kind: "hold", wait: "undeclared", n: 42, loop: { ...fresh, pinned: 42 } }],
+  ["a second session whose structured output never validated parks", session({ run: unstructured(), tally: { ...empty, undeclared: 1 } }),
+    { kind: "park", n: 42, phase: "C", why: /structured output/, loop: { ...fresh, failures: 1 } }],
+  ["a session whose structured output never validated is not spawned again past the ticket's dollar ceiling",
+    session({ run: unstructured(), tally: { ...empty, spend: USD_BY_SIZE["size:S"] } }),
+    { kind: "park", n: 42, why: /over this ticket's ceiling/, instead: { kind: "hold", wait: "undeclared" } }],
+  ["runOnce: a session whose structured output never validated after it pushed settles", session({ run: unstructured(), pushed: pr("OPEN") }), { kind: "settle", pr: 7 }],
   ["a G route settles without spawning", g(pr("OPEN")), { kind: "settle", pr: 7 }],
   ["runOnce: phase G whose pull request merged meanwhile lands", g(pr("MERGED")), { kind: "landed", pr: 7 }],
   ["a G pass with no open pull request says so", g(null), { kind: "park", phase: "G", why: "phase G found no open pull request for the pushed head" }],
@@ -356,6 +365,8 @@ const ELSEWHERE: Record<string, [file: string, why: string]> = {
   "housekeeping is asked about the pinned ticket, and waited for": ["queueLoopMain.test.ts", "io"],
   "a pinned ticket is what the picker is asked for": ["queueLoopMain.test.ts", "picker"],
   "a park rings once and a landing does not": ["queueLoopMain.test.ts", "io"],
+  "each with its timestamp and, once a ticket is picked, its number": ["queueLoopMain.test.ts", "io"],
+  "a journal that throws costs the line, never the loop": ["queueLoopMain.test.ts", "io"],
   "a G route announces itself before it settles": ["queueLoopMain.test.ts", "io"],
   "loopMoved answers a diff, not an error": ["queueLoopMain.test.ts", "io"],
   "a refused session's dirty worktree is left standing as it is, with no copy taken": ["queueLoopMain.test.ts", "io"],

@@ -129,23 +129,23 @@ describe("every phase of queue.md reports itself", () => {
 // Nine of the ten channels the supervisor reads a finished session through are inferences about a
 // process that has already exited, and phase F's teardown destroys five of them at once.
 describe("the session declares what it did before it exits", () => {
-  test("phase F asks for the LOOP-RESULT line, in the parser's own shape", () => {
-    const text = read(QUEUE);
-    assert.match(text, /^\s*LOOP-RESULT \{.*"ticket".*\}$/m, "queue.md must show the literal shape");
-    assert.match(text, /"stoodDown"/, "a stand-down is the case the supervisor cannot otherwise see");
+  const schema = JSON.parse(read("tools/loop/result-schema.json"));
+  const examples = () => [...read(QUEUE).matchAll(/^\s*(\{"ticket".*\})\s*$/gm)].map((m) => m[1]);
+
+  test("phase F asks for the declaration, in the schema's own shape", () => {
+    assert.ok(examples().length, "queue.md must show the literal shape");
+    assert.match(read(QUEUE), /"stoodDown":true/, "a stand-down is the case the supervisor cannot otherwise see");
   });
 
   // The example in the instructions is also a test fixture: a model copies its shape, so a shape
-  // the parser rejects is an instruction to emit something unreadable.
-  test("every example it prints is one the parser reads", () => {
-    const examples = [...read(QUEUE).matchAll(/^\s*(LOOP-RESULT \{.*\})\s*$/gm)].map((m) => m[1]);
-    assert.ok(examples.length, "no LOOP-RESULT example in queue.md");
-    for (const example of examples) {
-      // `<n>` is the doc's placeholder for a ticket number, which is the one thing the parser needs.
-      const text = example.replace(/<n>/g, "7");
-      const fact = readLine(
-        JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text }] } }),
-      ) as any;
+  // the schema or the reader rejects is an instruction to emit something unreadable.
+  test("every example it prints is one the schema takes and the supervisor reads", () => {
+    for (const example of examples()) {
+      // `<n>` is the doc's placeholder for a ticket number, which is the one thing the reader needs.
+      const out = JSON.parse(example.replace(/<n>/g, "7"));
+      for (const field of schema.required) assert.ok(field in out, `${example} leaves out ${field}, which the schema requires`);
+      for (const field of Object.keys(out)) assert.ok(field in schema.properties, `${example} names ${field}, which the schema has not`);
+      const fact = readLine(JSON.stringify({ type: "result", subtype: "success", structured_output: out })) as any;
       assert.ok(fact?.declared?.ticket, `queue.md's own example does not parse: ${example}`);
     }
   });
@@ -154,36 +154,35 @@ describe("the session declares what it did before it exits", () => {
     const text = read(QUEUE);
     const from = text.indexOf("## F — Close out");
     assert.notEqual(from, -1, "phase F's heading has moved");
-    const f = text.slice(from);
-    assert.notEqual(f.indexOf("LOOP-RESULT"), -1, "phase F no longer asks for the declaration");
+    const f = text.slice(from, text.indexOf("## Halt"));
+    assert.match(f, /^\s*\{"ticket".*\}\s*$/m, "phase F no longer asks for the declaration");
     assert.doesNotMatch(f, /worktrees:remove|Tear down your worktree/);
   });
 
   /**
    * The general form of the defect, and the only one a reader would not catch: two sections of one
-   * document both instructing the session what its final line is. Both were obeyable, the session
-   * obeyed the later one, and `LOOP-RESULT` — the supervisor's only channel that is a statement
+   * document both instructing the session what its final output is. Both were obeyable, the session
+   * obeyed the later one, and the declaration — the supervisor's only channel that is a statement
    * rather than an inference — reached it in two runs of nineteen.
    *
    * A protocol document needs a test that the protocol it describes is self-consistent, the same
    * way `rulesAreSingleSourced.test.ts` pins the rules list.
    */
-  test("every instruction to emit a line is bound to the one line the supervisor reads", () => {
+  test("every instruction to emit a line is bound to the structured output the supervisor reads", () => {
     const text = read(QUEUE);
     // Instructions to *emit*, not prose that happens to use the words: "the last thing you emit",
     // "Between tickets, exactly one line". Prose about a shell command's last line is neither.
     const instructions = [...text.matchAll(/^.*\b(?:you emit|exactly one line)\b.*$/gim)];
     assert.ok(instructions.length > 0, "nothing in queue.md says what the session emits any more");
-    // Within the instruction's own paragraph, because the template follows the sentence rather
-    // than sitting on it.
-    const WINDOW = 400;
+    // Within the instruction's own paragraph, because the binding may sit a line away.
+    const WINDOW = 200;
     const orphans = instructions
-      .filter((m) => !text.slice(m.index, m.index + WINDOW).includes("LOOP-RESULT"))
+      .filter((m) => !text.slice(Math.max(0, m.index - WINDOW), m.index + WINDOW).includes("structured output"))
       .map((m) => m[0].trim());
     assert.deepEqual(
       orphans,
       [],
-      "a second instruction claims the session's output; the supervisor only reads LOOP-RESULT",
+      "a second instruction claims the session's output; the supervisor only reads the structured output",
     );
   });
 
@@ -192,11 +191,11 @@ describe("the session declares what it did before it exits", () => {
     const from = text.indexOf("## Output");
     assert.notEqual(from, -1, "the Output section has moved");
     const out = text.slice(from);
-    assert.match(out, /LOOP-RESULT/, "Output must defer to the declaration");
+    assert.match(out, /structured output/, "Output must defer to the declaration");
     assert.doesNotMatch(
       out,
       /^\s*`?[✅✓]\s*#</m,
-      "the between-tickets summary line is what LOOP-RESULT lost the final line to",
+      "the between-tickets summary line is what the declaration lost the final line to",
     );
   });
 });

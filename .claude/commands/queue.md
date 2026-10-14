@@ -25,10 +25,10 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
   gh issue edit <n> --remove-label ready-for-agent --remove-label in-progress --add-label ready-for-human
   ```
 
-  Then declare, as text:
+  Then declare:
 
   ```
-  LOOP-RESULT {"ticket":<n>,"stoodDown":true,"why":"<one sentence>"}
+  {"ticket":<n>,"handoff":null,"stoodDown":true,"why":"<one sentence>"}
   ```
 - **The turn budget** is `$LOOP_TURNS`. Past two thirds with nothing committed, commit what works
   and narrow the slice.
@@ -52,7 +52,7 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
    - **It names G**: the head is pushed and CI is the supervisor's. Declare and exit, touching
      nothing:
      ```
-     LOOP-RESULT {"ticket":<n>,"phase":"G"}
+     {"ticket":<n>,"phase":"G","handoff":null,"stoodDown":false}
      ```
    - **Silent**: no live worktree. Go on to step 2.
 2. **Pick.**
@@ -83,8 +83,8 @@ No run state is stored: `node tools/loop/loop-status.mjs` derives it from git an
 
 `PHASE B`
 
-1. One `sonnet` subagent at `medium` effort maps the change. Its prompt starts with the output of
-   `node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>`, verbatim.
+1. `loop-scope` maps the change; its prompt is the output of
+   `node tools/loop/brief.mjs scope <n> .worktrees/agent-<n>`.
 2. No file is out of scope. If the report names the schema, socket protocol, deploy runtime
    contract or a workflow, the PR body says what getting it wrong costs.
 
@@ -141,25 +141,25 @@ Phase C is a fix round when `loop-status.mjs` says `fix round`. Skip the plannin
 `git rev-list --count origin/main..HEAD` must be non-zero. Then:
 
 1. **The completeness check, once per ticket**: skipped when a `DOD-CHECK` follows the issue's
-   newest `Claimed by` comment (a HOLD or CI round). One `sonnet` subagent at `medium` effort whose
-   prompt starts with the output of this, verbatim:
+   newest `Claimed by` comment (a HOLD or CI round). `loop-completeness`, its prompt the output of:
    ```sh
    node tools/loop/brief.mjs completeness <n> .worktrees/agent-<n>
    ```
    Build what it reports partial or missing, failing test first; post what you leave as
    `FIX-NOTES <sha>` under `Completeness left:`. Where wrong, check the code, not memory.
 2. Then commit the last slice, and run `npm run agent:check`.
-3. Post the Definition of done ticked against this head, first line `DOD-CHECK <sha>`
-   (`git rev-parse --short HEAD`), then every box:
+3. Write the Definition of done ticked against this head to `.loop-logs/dod-<n>.md`, first line
+   `DOD-CHECK <sha>` (`git rev-parse --short HEAD`), then every box:
    `- [x] <box> — <path>:<line> · <test path>:<line> · red: <its failure line before the fix>`.
    The agent:check box cites nothing; a box with no code site says `n/a: <reason>`.
    A box you cannot close stays `- [ ]` with why: keep building or park it (**Never stall**).
-4. `node tools/loop/loop-gate.mjs --build` must exit 0. It prints what is missing.
+4. `node tools/loop/loop-gate.mjs --build .loop-logs/dod-<n>.md` must exit 0, and prints what is
+   missing. Only then post it: `gh issue comment <n> --body-file .loop-logs/dod-<n>.md`.
 
 Only then declare handoff D and exit. The supervisor re-gates it.
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","why":"<what-is-left>"}
+{"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","stoodDown":false,"why":"<what-is-left>"}
 ```
 
 ## D — Review
@@ -169,10 +169,10 @@ LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"C","handoff":"D","w
 One reviewer reads the change; only a Blocking finding sends it back. `<base>` is `origin/main` in
 round 1, then the sha the previous round reviewed.
 
-1. **Dispatch one `opus` reviewer at `medium` effort**, labelled `Review #<n> round <k>`, its prompt
-   starting with this output verbatim. A `CI-RED` newer than the last `VERDICT: LAND <landSha>` makes
-   it a fix round: the `fix` kind, labelled `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's
-   Blocking findings.
+1. **Dispatch `loop-review`**, labelled `Review #<n> round <k>`, its prompt this output. A `CI-RED`
+   newer than the last `VERDICT: LAND <landSha>` makes it a fix round: `loop-fix`, labelled
+   `Fix review #<n>`, based on `<landSha>`. A later round appends the previous round's Blocking
+   findings.
    ```sh
    node tools/loop/brief.mjs review <n> .worktrees/agent-<n> <base>
    node tools/loop/brief.mjs fix <n> .worktrees/agent-<n> <landSha>     # a fix round
@@ -201,7 +201,7 @@ A failure only a local run showed, which neither the review nor CI named, is rul
 and named in `FIX-NOTES`. Then hand off:
 
 ```
-LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","why":"<what-is-left>"}
+{"ticket":<n>,"branch":"agent/<n>-slug","phase":"D","handoff":"D","stoodDown":false,"why":"<what-is-left>"}
 ```
 
 After a `LAND`, continue to E and F in this process.
@@ -218,7 +218,7 @@ Phase D's LAND continues here; a process starts at E only to resume.
    headline and any `NOT run` suites in the PR body. **If it is red, hand off to C**. Never push a
    red check or re-run it hoping for a different answer.
    ```
-   LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what-is-red>"}
+   {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","stoodDown":false,"why":"<what-is-red>"}
    ```
 3. Push and write the PR body: `git push -u origin HEAD:agent/<n>-<slug>`, then
    `gh pr edit <pr> --body-file <file>`. The supervisor opened the pull request when review
@@ -239,15 +239,14 @@ CI and the merge are `tools/loop/queue-loop.mjs`'s; a red CI run comes back as a
 3. **Leave your worktree standing**; the supervisor removes it once the ticket ends.
    `git -C .worktrees/agent-<n> status --short` should print nothing; commit and push what it
    names, or explain it on the issue.
-4. **Say what you did, on one line, as the last thing you emit.**
+4. **Declare what you did.**
    ```
-   LOOP-RESULT {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","stoodDown":false}
+   {"ticket":891,"branch":"agent/891-slug","pr":1003,"phase":"F","handoff":null,"stoodDown":false}
    ```
-   Valid JSON after the marker, in the same message as any command. Omit `pr` only if you pushed
-   none. Verification-only work posts its DOD-CHECK, runs `gh issue close <n> --reason completed`
-   and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
+   Omit `pr` only if you pushed none. Verification-only work posts its DOD-CHECK, runs
+   `gh issue close <n> --reason completed` and omits `pr`: it is recorded closed. Commits with no pull request park. `stoodDown` means
    you gave the ticket up, with `"why"` in one sentence. Phase F never sets `handoff`. Exiting
-   without it records an error: emit it even on bad news.
+   without it records an error: declare even on bad news.
 5. **Exit.** Never loop back to phase A.
 
 ## Halt
@@ -258,4 +257,5 @@ the exact failure, and the one decision needed. `.loop-stop` is the supervisor's
 
 ## Output
 
-Phase F step 4's `LOOP-RESULT` line is the last thing you emit, and the only summary you write.
+Every declaration here is your structured output: the last thing you emit, and the only summary
+you write.

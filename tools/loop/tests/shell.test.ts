@@ -1,8 +1,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
-import path from "node:path";
-import { located, MOVES, operands, toNative } from "../shell.mjs";
+import { MOVES, operands, toNative } from "../shell.mjs";
 
 describe("an MSYS path is the Windows path it names", () => {
   test("a drive is mapped on win32 only", () => {
@@ -31,13 +30,5 @@ describe("operands", () => {
 describe("a cd moves where the rest of the line runs", () => {
   test("every spelling of a move is one list", () => {
     for (const cmd of ["cd", "chdir", "pushd", "popd", "set-location", "sl", "push-location"]) assert.match(cmd, MOVES);
-  });
-
-  test("a command after a cd is located in the cd's directory, and the cd itself is no command", () => {
-    const at = located("cd wt && cat a.ts; popd; git status", "/r").map(({ c, at }) => [c.cmd, at]);
-    assert.deepEqual(at, [
-      ["cat", path.resolve("/r", "wt")],
-      ["git", path.resolve("/r", "wt")],
-    ]);
   });
 });

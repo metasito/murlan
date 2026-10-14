@@ -29,7 +29,7 @@ describe("loop-settings.json carries what a session no longer inherits from the 
   });
 
   // The CLI clamps bashOutputMaxChars to 4000-128000 and defaults it to 30000 (2.1.296).
-  test("a Bash call's inline output is capped below the CLI's default, above guard-read's old 150-line bound", () => {
+  test("a Bash call's inline output is capped below the CLI's default", () => {
     assert.ok(settings.bashOutputMaxChars >= 8000 && settings.bashOutputMaxChars < 30000, String(settings.bashOutputMaxChars));
   });
 

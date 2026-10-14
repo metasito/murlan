@@ -71,13 +71,13 @@ describe("queueLoopArgs", () => {
     assert.equal(args[args.indexOf("-p") + 1], "/queue 956");
   });
 
-  test("a session declares through a schema with exactly the LOOP-RESULT line's fields", () => {
+  test("a session declares through a schema with exactly the fields the supervisor reads", () => {
     const args = queueLoopArgs(1);
     const at = args.indexOf("--json-schema");
     assert.notEqual(at, -1);
     const schema = JSON.parse(args[at + 1]);
-    const line = readLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":1}' }] } }));
-    assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys((line as any).declared).sort());
+    const ended = readLine(JSON.stringify({ type: "result", subtype: "success", structured_output: { ticket: 1 } }));
+    assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys((ended as any).declared).sort());
     assert.ok(!args[at + 1].includes("\n"), "one argument, one line");
   });
 
@@ -713,41 +713,17 @@ describe("runTicket", () => {
   });
 
   test("the session's closing declaration reaches the caller", async () => {
-    const declare = JSON.stringify({
-      type: "assistant",
-      message: {
-        content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"branch":"agent/953-x","pr":1204,"phase":"F"}' }],
-      },
-    });
-    const run = await runTicket(fakeSpawn([phase("F"), declare, RESULT]), opts());
+    const declare = result({ structured_output: { ticket: 953, branch: "agent/953-x", pr: 1204, phase: "F", handoff: null, stoodDown: false } });
+    const run = await runTicket(fakeSpawn([phase("F"), declare]), opts());
     assert.equal(run.declared?.pr, 1204);
     assert.equal(run.declared?.branch, "agent/953-x");
   });
 
-  test("a structured declaration on the result reaches the caller, and outranks the line before it", async () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"D"}' }] },
-    });
+  test("a structured declaration's handoff and why reach the caller", async () => {
     const structured = result({ structured_output: { ticket: 953, phase: "C", handoff: "C", why: "two tests left" } });
-    const run = await runTicket(fakeSpawn([phase("C"), line, structured]), opts());
+    const run = await runTicket(fakeSpawn([phase("C"), structured]), opts());
     assert.equal(run.declared?.handoff, "C");
     assert.equal(run.declared?.why, "two tests left");
-    const alone = await runTicket(fakeSpawn([phase("C"), structured]), opts());
-    assert.equal(alone.declared?.handoff, "C");
-  });
-
-  test("a stale earlier line does not survive a structured declaration", async () => {
-    const line = JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: 'LOOP-RESULT {"ticket":953,"phase":"C","handoff":"D","stoodDown":true,"why":"lost the claim"}' }] },
-    });
-    const finished = result({ structured_output: { ticket: 953, phase: "F", handoff: null, stoodDown: false } });
-    const run = await runTicket(fakeSpawn([phase("C"), line, finished]), opts());
-    assert.deepEqual(
-      [run.declared?.phase, run.declared?.handoff, run.declared?.stoodDown, run.declared?.why],
-      ["F", null, false, null],
-    );
   });
 
   // Sticky, it pre-empted everything else: a session refused at minute 2 that recovered and
@@ -1258,7 +1234,7 @@ describe("outcomeOf", () => {
   test("a soft reason on a merged pull request is still a landing", () => {
     const o = outcomeOf({
       pr: { ...open, state: "MERGED" },
-      reason: { why: "the session exited without a LOOP-RESULT", hard: false },
+      reason: { why: "the session exited without a declaration", hard: false },
     });
     assert.equal(o.action, "landed");
   });
@@ -1328,9 +1304,9 @@ describe("reasonFor", () => {
 
   // Seventeen of nineteen sessions never emitted one, and the supervisor absorbed that silently by
   // inferring every fact about them from side effects phase F had just been told to delete.
-  test("a clean exit with no LOOP-RESULT is an error, not a silent fallback", () => {
+  test("a clean exit with no declaration is an error, not a silent fallback", () => {
     const r = reasonFor(run({ declared: null }), after, 42);
-    assert.match(String(r.why), /without a LOOP-RESULT/);
+    assert.match(String(r.why), /without a declaration/);
     assert.equal(r.hard, false);
   });
 
@@ -1595,6 +1571,7 @@ describe("the land phase", () => {
       start: (letter: string) => rows.push(`start ${letter}`),
       set: () => {},
       said: (text: string) => rows.push(`said ${text}`),
+      keep: (text: string) => rows.push(`kept ${text}`),
       close: (state: string, detail: string) => rows.push(`close ${state} ${detail}`),
     };
   };
@@ -1643,6 +1620,7 @@ describe("the land phase", () => {
       },
     });
     assert.ok(screen.rows.some((r) => r.startsWith("said main moved")));
+    assert.ok(screen.rows.some((r) => r.startsWith("kept main moved")));
   });
 });
 

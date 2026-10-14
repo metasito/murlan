@@ -1,5 +1,3 @@
-// tools/loop/land.ts
-
 export interface PrState {
   state: string;
   mergeStateStatus: string;
