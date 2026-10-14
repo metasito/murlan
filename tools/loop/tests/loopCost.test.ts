@@ -2,7 +2,7 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,11 +47,16 @@ describe("select by ticket", () => {
 describe("the CLI reads the ledger's rows alone", () => {
   const cli = fileURLToPath(new URL("../loop-cost.mjs", import.meta.url));
   const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-  const gauge = (rows: object[], args: string[] = []) => {
+  const gauge = (rows: object[], args: string[] = [], written: Record<number, string> = {}) => {
     const dir = mkdtempSync(path.join(tmpdir(), "loop-cost-"));
     try {
       mkdirSync(path.join(dir, ".loop-logs"));
       writeFileSync(path.join(dir, ".loop-logs", "tickets.jsonl"), rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+      for (const [n, at] of Object.entries(written)) {
+        const log = path.join(dir, ".loop-logs", `${n}.jsonl`);
+        writeFileSync(log, "");
+        utimesSync(log, new Date(at), new Date(at));
+      }
       return spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: "utf8" }).stdout;
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -64,21 +69,28 @@ describe("the CLI reads the ledger's rows alone", () => {
     assert.match(out, /^loop-cost: 1 tickets, \$2\.00 spent$/m);
   });
 
-  test("a killed session is timed to the next start", () => {
-    const start = (at: string, run_id: string) => ({ schema: 9, n: 3, outcome: "started", phase: "D", started: at, run_id });
-    const out = gauge([start(ago(60), "r1"), start(ago(50), "r2"), proc(3, ago(50), { run_id: "r2" })]);
-    assert.match(out, /^killed: 1 sessions left no row — #3 D 10m$/m);
+  test("a killed session is timed to its stream log's last write; the next start only bounds it", () => {
+    const start = (n: number, at: string, run_id: string) => ({ schema: 9, n, outcome: "started", phase: "D", started: at, run_id });
+    const rows = [start(3, ago(60), "r1"), start(4, ago(50), "r2"), proc(4, ago(50), { run_id: "r2" })];
+    assert.match(gauge(rows, [], { 3: ago(57) }), /^killed: 1 sessions left no row — #3 D 3m$/m);
+    assert.match(gauge(rows), /^killed: 1 sessions left no row — #3 D 10m$/m, "with no log on disk, the next start");
+  });
+
+  test("a ticket the window's edge cuts is counted whole", () => {
+    const out = gauge([proc(2, ago(20 * 24 * 60)), proc(2, ago(60), { outcome: "landed" }), proc(5, ago(20 * 24 * 60), { outcome: "landed" })]);
+    assert.match(out, /^loop-cost: 1 tickets, \$4\.00 spent$/m);
   });
 });
 
 describe("select by time", () => {
-  test("takes rows by when they started, never by ticket number", () => {
+  test("takes tickets by when their rows started, never by ticket number", () => {
     const rows = [
       { n: 1090, started: "2026-09-17T20:57:00.000Z" },
       { n: 70, started: "2026-09-21T10:44:00.000Z" },
+      { n: 1500, started: "2026-09-20T09:00:00.000Z" },
       { n: 1090, started: "2026-09-21T14:02:00.000Z" },
     ];
-    assert.deepEqual(select(rows, { since: "2026-09-21T10:18:00.000Z" }).map((r) => r.n), [70, 1090]);
+    assert.deepEqual(select(rows, { since: "2026-09-21T10:18:00.000Z" }).map((r) => r.n), [1090, 70, 1090], "every row of a ticket the window reaches");
   });
 
   test("an until closes the window before a later change", () => {
@@ -200,6 +212,12 @@ describe("summary", () => {
     const rows = golden.rows;
     const s = summary(rows);
     const firstTimed = (r: { phases?: object }) => Object.keys(r.phases ?? {})[0];
+
+    // Main's 48 holds took review_rounds − landings for every ticket with no v8 row; its rows' own handoffs out of D are 25.
+    test("HOLD rounds are the rows' own handoffs out of review", () => {
+      assert.equal(s.holdsPerTicket * s.tickets, 25);
+      assert.equal(golden.main.holdsMean * s.tickets, 48);
+    });
 
     test("processes per ticket, models and turn headroom are main's", () => {
       assert.equal(s.processesMedian, golden.main.processesMedian);
