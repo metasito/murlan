@@ -872,6 +872,15 @@ describe("runTicket", () => {
     assert.deepEqual([right.seen.killed, ok.wrongModel], [[], null]);
   });
 
+  // `--model`, `--settings` and `--setting-sources project` pin both before the session starts.
+  test("the init line's model and plugins are never a reason to kill the session", async () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: [{ source: "ponytail@ponytail" }] });
+    const session = spawned([init, RESULT]);
+    const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
+    assert.deepEqual(session.seen.killed, []);
+    assert.equal(run.status, 0);
+  });
+
   test("a plugin loop-settings.json does not turn on kills the session and names it", async () => {
     const withPlugins = (...sources: string[]) =>
       JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-opus-5", plugins: sources.map((source) => ({ source })) });
