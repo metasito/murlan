@@ -152,6 +152,8 @@ export function nextRoute(
     const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
+      title: known?.title ?? live.title,
+      reviewRounds: status.reviewRounds ?? null,
       phase,
       fix: fix && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
@@ -669,8 +671,8 @@ export function refreshWorktree(cwd, branch, run = sh) {
 const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 /**
- * One ticket's worth of the issue, for the header, the turn bound and the record. Covers the
- * resume path, which has no picker.
+ * One ticket's worth of the issue, for the header and the turn bound. Covers the resume path, which
+ * has no picker.
  *
  * The review rounds come from the same read, counted by `loop-derive`'s own parser. A second,
  * weaker copy lived here — no fence stripping, no sha — so a verdict quoted inside a code block
@@ -1566,6 +1568,7 @@ const standing = () => {
         branch: s.branch,
         dirty: s.dirty,
         phase: s.phase,
+        reviewRounds: s.reviewRounds ?? null,
       }
     : null;
 };
@@ -1694,10 +1697,12 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const n = route.number;
   const ticket = { ...route, n };
   const size = route.size ?? null;
+  const about = { title: route.title, size, reviewRounds: route.reviewRounds ?? null };
+  const record = (row) => io.record({ ...about, ...row });
   const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(io, n) } : { asked: false, own: null });
   const parkHere = (action, ctx) => {
     if (action.byOwner) fs.rmSync(PARK_FILE, { force: true });
-    const parked = parkAndRecord(io, n, { ...ctx, phase: action.phase, why: action.why });
+    const parked = parkAndRecord({ ...io, record }, n, { ...ctx, phase: action.phase, why: action.why });
     return { ...parked, loop, halt: action.halt ?? null, ...(action.byOwner && { byOwner: true }) };
   };
   // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
@@ -1710,7 +1715,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (picked.kind !== "go") return pass(picked);
 
   if (picked.redWhileDown) {
-    io.record({
+    record({
       number: n,
       outcome: "retry",
       why: "CI went red while the loop was down",
@@ -1744,6 +1749,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const derived = io.standing();
+  about.reviewRounds = derived?.reviewRounds ?? about.reviewRounds;
   const after = afterSession(run, derived);
   // Read once the session has exited: a park is never a kill.
   const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
@@ -1774,35 +1780,35 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
       // CI runs while the review does; `poll` merges only a head a LAND covers.
       if (replaced.publish) io.publish(n, after.branch, after.cwd);
       const why = `phase ${replaced.phase} next${replaced.why ? ` — ${replaced.why}` : ""}`;
-      io.record({ number: n, outcome: "handoff", why, run, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
+      record({ number: n, outcome: "handoff", why, run, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
     } else {
       // A refusal spends real money before it stops, and this row is the one place it is recorded.
-      io.record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run });
+      record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run });
     }
     if (action.kind === "park") return parkOver(action, facts.own, run.log);
     if (action.kind === "handoff") return pass(action, { phase: action.phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null });
     return pass(action, { run, until: replaced.until });
   }
   if (action.kind === "stop") {
-    io.record({ number: n, outcome: "halted", why: run.accountError, run });
+    record({ number: n, outcome: "halted", why: run.accountError, run });
     return pass(action);
   }
   if (action.kind === "park") return parkHere(action, worked(action.pr));
   if (action.kind === "closed") {
     io.teardown(after?.cwd ?? null, n);
-    io.record({ number: n, outcome: "closed", why: action.why, run, files: files() });
+    record({ number: n, outcome: "closed", why: action.why, run, files: files() });
     return pass(action);
   }
   if (action.kind === "landed") {
     io.teardown(after?.cwd ?? null, n);
-    io.record({ number: n, outcome: "landed", why: action.why, run, pr: action.pr, merged: true, files: files() });
+    record({ number: n, outcome: "landed", why: action.why, run, pr: action.pr, merged: true, files: files() });
     return pass(action);
   }
 
   // The session's own row, before a wait the supervisor may not survive: every row below is the
   // land alone, so a restarted G pass adds its clock and never the session's cost a second time.
   if (!settling) {
-    io.record({ number: n, outcome: "pushed", why: "CI next", run, pr: action.pr, files: files(), head: action.head });
+    record({ number: n, outcome: "pushed", why: "CI next", run, pr: action.pr, files: files(), head: action.head });
     billed = { result: null, ms: 0, log: run.log, phases: {} };
   }
   const landFrom = Date.now();
@@ -1813,7 +1819,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
     flake: tally.armedFlake ?? null,
     noteArmed: (flake) =>
-      io.record({
+      record({
         number: n,
         outcome: "armed",
         why: "auto-merge armed on a rerun's green",
@@ -1831,7 +1837,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const verdict = decideAt("settled", { route: ticket, settled: { ...settled, head }, tally: io.tally(n), ...owned });
   const red = verdict.instead ?? verdict;
   if (red.kind === "retry" || red.kind === "hold") {
-    io.record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
+    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
     if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
     if (verdict.kind === "retry") {
@@ -1840,7 +1846,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     return pass(verdict);
   }
   if (verdict.kind === "landed") {
-    io.record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), head, flake: settled.flake ?? null });
+    record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), head, flake: settled.flake ?? null });
     io.teardown(after?.cwd ?? null, n);
     return pass(verdict);
   }
@@ -1988,8 +1994,7 @@ function realIo(book, screen) {
     ledgerRows: () => readLedger(),
     repark: (number, steps) => repark(number, steps),
     record: (row) => {
-      const facts = ticketFacts(row.number);
-      const { bill } = book.record({ ...row, title: facts.title, size: facts.size, reviewRounds: facts.reviewRounds, totalHolds: facts.totalHolds }, RUN_ID);
+      const { bill } = book.record(row, RUN_ID);
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
       if (["handoff", "retry", "pushed", "reparked", "armed"].includes(row.outcome)) return;
