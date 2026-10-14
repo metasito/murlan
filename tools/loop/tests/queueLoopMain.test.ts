@@ -746,6 +746,44 @@ describe("runOnce", () => {
     assert.deepEqual(rows.map((x) => [x.outcome, x.title, x.size, x.reviewRounds]), [["pushed", "t", "size:S", 2], ["landed", "t", "size:S", 2]]);
   });
 
+  test("a derive off the ticket, or with no count, is not the ticket's review rounds; the tracker's are", async () => {
+    const facts = (n: number) => ({ title: "t", size: "size:S", reviewRounds: n === 42 ? 1 : 7 });
+    for (const standing of [() => ({ ...(io() as any).standing(), ticket: 99, reviewRounds: 5 }), () => null, () => (io() as any).standing()]) {
+      const rows: any[] = [];
+      await runOnce(io({ standing, facts, record: (x: unknown) => rows.push(x) }));
+      assert.ok(rows.length);
+      assert.deepEqual([...new Set(rows.map((x) => x.reviewRounds))], [1]);
+    }
+  });
+
+  test("a row main writes names its ticket as the tracker does: a repark, and the park after a throw", async () => {
+    const facts = (n: number) => ({ title: `issue ${n}`, size: "size:M", reviewRounds: null });
+    const book = { totals: { tickets: 0, landed: 0, parked: 0, cost: 0, ms: 0 }, tickets: [], record: () => {}, close: () => {} };
+    const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
+    const empty = { skill: "handoff", number: 0, title: "queue empty" };
+    const rows: any[] = [];
+    let picks = 0;
+    await main({
+      io: io({
+        facts,
+        record: (x: unknown) => rows.push(x),
+        ledgerRows: () => (picks ? [] : [{ n: 41, outcome: "parked", park_failed: ["label"] }]),
+        pick: () => (picks++ === 0 ? { skill: "implement", number: 43, title: "issue 43", size: "size:M", queue: null } : empty),
+        standing: () => {
+          throw new Error("git worktree list failed");
+        },
+      }) as never,
+      book: book as never,
+      screen: screen as never,
+      install: () => {},
+      runId: "t",
+    });
+    assert.deepEqual(rows.map((x) => [x.number, x.outcome, x.title, x.size]), [
+      [41, "reparked", "issue 41", "size:M"],
+      [43, "parked", "issue 43", "size:M"],
+    ]);
+  });
+
   test("nextRoute: a resumed ticket carries its issue's title and review rounds, not its branch name", () => {
     const facts = () => ({ title: "Fix the card fan!", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const read = () => ({ onTicket: true, ticket: 42, branch: "agent/42-fix-the-card-fan", cwd: "w", phase: "D", reviewRounds: 3 });
