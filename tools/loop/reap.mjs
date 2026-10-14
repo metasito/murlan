@@ -47,8 +47,6 @@ function normalizePath(value, platform = process.platform) {
 }
 
 /**
- * Whether a process belongs to this repo's tooling, read off its command line.
- *
  * Matching by process name instead would be indefensible: `chrome.exe` is as likely to be the
  * owner's own browser, and `python.exe` and `msedgewebview2.exe` on this machine belong to an
  * unrelated agent and to Windows. A command line naming a root below is the only thing that
@@ -107,7 +105,6 @@ const POWERSHELL = "pwsh";
  */
 const RAW_CONTROL_BYTE = /[\x00-\x1f]/g;
 
-/** One row per process, from the Windows table's JSON. Exported so the line above is testable. */
 export function parseWindowsProcessJson(json) {
   if (!json.trim()) return [];
   const rows = JSON.parse(json.replace(RAW_CONTROL_BYTE, ""));
@@ -176,10 +173,8 @@ function ancestry(table, pid) {
  * The guard that holds when the process table does not. `ancestry` walks parent links upward
  * and stops at the first pid the snapshot is missing; above a terminal that pid is the
  * launcher, which has always already exited, and any of the links below it may exit during
- * the walk. Everything above the gap then silently stops being protected — which is how a
- * reaper came to take the terminal, the shell, the agent and itself in one call. Reading the
- * tree that is about to be terminated cannot be fooled the same way: the reaper is inside it
- * or it is not.
+ * the walk. Everything above the gap then silently stops being protected. Reading the tree that
+ * is about to be terminated cannot be fooled the same way: the reaper is inside it or it is not.
  */
 export function wouldTakeSelf(table, pid, selfPid) {
   // A table that cannot see the reaper cannot see its tree either: no answer is a refusal.
@@ -240,7 +235,6 @@ function killPid(pid, dryRun, say = console.log, readTable = processTable) {
   return null;
 }
 
-/** LISTENING pids in `netstat -ano` output — every one, or only those bound to `port`. */
 export function netstatListeners(text, port) {
   return [
     ...new Set(
@@ -298,7 +292,6 @@ export function stalePortHolders(pids, table) {
   });
 }
 
-/** `stalePortHolders` against this machine's own process table. */
 export function staleAmong(pids) {
   return stalePortHolders(pids, processTable().rows);
 }
@@ -330,10 +323,8 @@ export async function reap({ dryRun = false, stale: takeStale = false, say = con
   const hoursOf = (p) => ((now - p.startedAt) / 3_600_000).toFixed(1);
   const labelOf = (p) => `${p.name || "process"} pid ${p.pid}`;
 
-  // A sweep is not a suite. It has nothing waiting on the port, so a holder still attached to a
-  // live launcher is somebody's run and stays — taking it does not merely cost that run, it
-  // makes the suite fail in a way that reads as a defect. The command line is printed because
-  // "held by pid 33196" tells whoever lost a run nothing about whose it was.
+  // The command line is printed because "held by pid 33196" tells whoever lost a run nothing
+  // about whose it was.
   const holders = portListeners(E2E_PORT).filter((pid) => pid !== process.pid);
   const byPid = new Map(table.map((p) => [p.pid, p]));
   const staleHolders = stalePortHolders(holders, table);

@@ -1,4 +1,3 @@
-// tools/loop/queue-loop.mjs
 /**
  * The loop that never stops. `.claude/commands/queue.md` runs one ticket per process and exits;
  * this is what starts the next one, in a clean process, so no ticket's context reaches the next.
@@ -91,8 +90,8 @@ const ROOT = path.resolve(HERE, "..", "..");
  * @returns {{skill: string, number: number, title: string, phase?: string, resuming: boolean}|null}
  */
 export function liveRoute(status, labels = null) {
-  // locateRun refuses to guess between two live ticket worktrees, and that refusal is the whole
-  // point of it — returning null here turned it into "no run is live" and the picker took a third.
+  // locateRun refuses to guess between two live ticket worktrees: returning null here would read
+  // as "no run is live", and the picker would take a third.
   if (status.ambiguous)
     return {
       skill: "ambiguous",
@@ -260,7 +259,6 @@ export function queueLoopArgs(number, size = null, phase = null) {
 // The session and the loop read these from the shared checkout, not from the ticket's worktree.
 const PROTOCOL = ["CLAUDE.md", ".claude", "tools/loop", "scripts/lib"];
 
-/** Worktree directories someone else may be working in right now. */
 function peerWorktrees(dir = WORKTREE_DIR) {
   return listWorktreeDirNames(dir).filter((name) => name.startsWith("agent-"));
 }
@@ -282,6 +280,9 @@ const defaultStamp = {
   drifted: () => checkLockDrift(".").length > 0,
 };
 
+/** Captured, not inherited: npm's own report would draw over the board. A failure still carries it. */
+export const reinstall = (run = sh) => run("npm", ["ci", "--no-audit", "--no-fund"]);
+
 /**
  * Leaves the shared checkout on an up-to-date `main`, or refuses and says why.
  *
@@ -294,9 +295,6 @@ const defaultStamp = {
  *   write: (lock: string) => void, peers: () => string[], drifted: () => boolean}} [stamp]
  * @param {number|null} [pinned] the ticket whose own worktree, if any, is not another session
  */
-/** Captured, not inherited: npm's own report would draw over the board. A failure still carries it. */
-export const reinstall = (run = sh) => run("npm", ["ci", "--no-audit", "--no-fund"]);
-
 export function syncCheckout(
   git,
   log,
@@ -408,8 +406,7 @@ export const MAX_HANDOFFS = 8;
 export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
 
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
-// from execFileSync — measured here: `execFileSync("npx", ["--version"])` throws ENOENT while `gh`
-// and `git` are fine. Both are reached only with argument lists this file writes itself, never with
+// from execFileSync. Both are reached only with argument lists this file writes itself, never with
 // anything a ticket or the tracker supplies.
 const SHIMMED = new Set(["npm", "npx"]);
 
@@ -438,8 +435,7 @@ export const BREAKER = 3;
 
 /**
  * How often a long hold says it is still there. The hold is the one stretch of the run that
- * prints nothing, and a silent terminal reads exactly like a dead one — which is the complaint
- * the live phase line exists to answer.
+ * prints nothing, and a silent terminal reads exactly like a dead one.
  */
 export const HEARTBEAT_MS = 15 * 60_000;
 
@@ -485,8 +481,8 @@ export async function holdFor(
  * issue, the worktree gone.
  *
  * Each step reports rather than throwing. This is the failure path — reached from the stop-file
- * drain as well as from a bad session — so a throw here turned an orderly stop into an unhandled
- * rejection and lost whatever the run still held.
+ * drain as well as from a bad session — so a throw here would turn an orderly stop into an
+ * unhandled rejection.
  *
  * @param {number} number
  * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
@@ -672,12 +668,8 @@ const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 /**
  * One ticket's worth of the issue, for the header and the turn bound. Covers the resume path, which
- * has no picker.
- *
- * The review rounds come from the same read, counted by `loop-derive`'s own parser. A second,
- * weaker copy lived here — no fence stripping, no sha — so a verdict quoted inside a code block
- * counted as a round the gate does not recognise, and the two answers drifted with nothing able to
- * notice.
+ * has no picker. The review rounds are counted by `loop-derive`'s own parser, so this and the gate
+ * cannot disagree.
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
@@ -721,15 +713,8 @@ export function closesTask({ event, status }) {
 }
 
 /**
- * Spawns one session and reports what it did.
- *
- * The phase comes from the session's own `PHASE <letter>` line. Inferring it from outside by
- * regexing its shell commands missed 74 of 131 markers, because `queue.md` itself prescribes
- * `git add -- <paths>` before committing and the anchored pattern never fired — and it cost a
- * `derive()` every twenty seconds, eight subprocesses a call, to draw a line nothing branches on.
- *
- * `spawnFn` is a parameter so a test can drive fixture lines through the whole path without a
- * `claude` binary.
+ * Spawns one session and reports what it did. The phase comes from the session's own
+ * `PHASE <letter>` line, never inferred from its shell commands, which miss most markers.
  *
  * @param {Function} spawnFn
  * @param {{number: number, queue: object, size?: string|null, at?: string|null,
@@ -813,9 +798,8 @@ export function runTicket(
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
     screen.start(at, round());
   } else {
-    // The board's only state was "a phase is open", so the spawn, the session's start-up, and the
-    // whole run if a marker is missed had nowhere to go and printed as a blank screen under the
-    // header. An unnamed row carries the same clock and tool detail, and says no phase is named yet.
+    // An unnamed row carries the clock and tool detail through the spawn, the start-up and a missed
+    // marker, where the board would otherwise be blank under the header.
     screen.start(UNNAMED);
   }
 
@@ -826,9 +810,7 @@ export function runTicket(
     // the night then rebuilds its cached prefix at full price, with nothing to see. Whether to
     // update is a decision for a person between runs.
     //
-    // `LOOP_TURNS` is the bound that actually stops a session, and it was invisible to the session
-    // subject to it: the word "turn" appeared in none of queue.md, RULES.md, checks.md or CLAUDE.md,
-    // so phase C's commit rule arrived with no stated reason to hurry.
+    // `LOOP_TURNS` is the bound that actually stops a session, passed so the session can see it.
     env: {
       ...process.env,
       DISABLE_AUTOUPDATER: "1",
@@ -894,18 +876,12 @@ export function runTicket(
         state.phase = letter;
         screen.start(letter, round());
       }
-      // The only sign of life during phase D, which is the longest one and the one that read as a
-      // hang: its work happens entirely inside a review subagent.
-      // Both halves, in the order a person reads them: what the session said about what it is
-      // doing, then the calls it made saying it. Only two markers were ever taken out of the text
-      // and the rest — the one channel that says *why* — was thrown away.
+      // What the session said about what it is doing, then the calls it made.
       screen.said(thought(fact.text));
       for (const call of fact.calls) screen.call(call.name, act(call));
     }
     // A foreground subagent emits nothing else into the parent stream, so without these the phase
-    // line freezes on its last fact for the whole of phase D — 78% of a run's clock — and a working
-    // session is indistinguishable from a hung one. The watchdog was never the problem: every raw
-    // line already refreshes `lastFactAt`. The board was.
+    // line freezes on its last fact for the whole of phase D and a working session looks hung.
     if (fact.kind === "task") {
       if (closesTask(fact)) state.tasks.delete(fact.id);
       else {
@@ -917,14 +893,13 @@ export function runTicket(
       const detail = tasksDetail([...state.tasks.values()]);
       if (detail) screen.said(detail);
     }
-    // A session emits one result per turn, and a background task's wake-up is a turn. The real one
-    // carries `origin: null`; every other carries origin.kind "task-notification". Last-wins
-    // across all of them reported a 144-turn session as one turn.
     if (fact.kind === "api_error") {
       screen.said(thought(fact.text));
       if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
       state.apiErrorCode = fact.code;
     }
+    // A session emits one result per turn, and a background task's wake-up is a turn. The real one
+    // carries `origin: null`; every other carries origin.kind "task-notification".
     if (fact.kind === "result" && !fact.origin) {
       state.result = fact;
       if (fact.declared) state.declared = fact.declared;
@@ -968,7 +943,7 @@ export function runTicket(
       state.stalled = true;
       clearInterval(watchdog);
       // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
-      // `close` from ever firing: 92 min on #1389, 260 on #1268. So the tree, then a deadline.
+      // `close` from ever firing. So the tree, then a deadline.
       if (process.platform === "win32" && child.pid) {
         try {
           execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
@@ -1029,11 +1004,8 @@ export function runTicket(
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
 /**
- * One report file per run, named for when the run started — not per calendar day.
- *
- * A day is not a boundary the loop has: two processes on one day appended to the same file, so a
- * closing total landed in the middle of it with five more rows underneath, and a run that crossed
- * midnight opened its second file with the first one's total under the wrong heading.
+ * One report file per run, named for when the run started — not per calendar day: two runs on one
+ * day would share a file, and a run crossing midnight would split across two.
  */
 const RUN_ID = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 
@@ -1332,7 +1304,6 @@ const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT
 
 const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
-/** The ticket's stream, every process of it, as facts. */
 function streamFacts(ticket) {
   const file = streamLog(ticket);
   return fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(readLine).filter(Boolean) : [];
@@ -1552,7 +1523,6 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   }
 }
 
-/** Where the ticket stood when its session exited, as far as git and the tracker can still say. */
 const standing = () => {
   const s = derive();
   return s.onTicket
@@ -1958,11 +1928,9 @@ function realIo(book, screen) {
     queue: () => before,
     park,
     /**
-     * **The claim comes off here, and nowhere else on the success paths.** Releasing it beside each
-     * teardown call meant an exit path could take one without the other, and one did: a settle that
-     * ended in a verdict nothing recognised wrote its row, removed the worktree and returned, with
-     * `in-progress` still on the issue — which `next-ticket.mjs` skips for good. Tied to the
-     * teardown, no path can tear down and keep the claim.
+     * **The claim comes off here, and nowhere else on the success paths.** Tied to the teardown, no
+     * exit path can tear down and keep the claim — and `in-progress` left on is a ticket
+     * `next-ticket.mjs` skips for good.
      */
     teardown: (cwd, number) => {
       if (number) {
@@ -2092,10 +2060,8 @@ export async function main({
    * The ticket phase A has claimed, so a throw anywhere in the iteration can still release it.
    *
    * `runOnce`'s own exits all route through `park`, but a throw routes through none of them, and
-   * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good — the
-   * defect this branch closed on every other path. `io.pick` is the claim, so wrapping it is
-   * where the answer is knowable; `git status` on a contended shared index is the reachable way
-   * to get there.
+   * an `in-progress` label nothing removes is a ticket `next-ticket.mjs` skips for good. `io.pick`
+   * is the claim, so wrapping it is where the answer is knowable.
    */
   let claimed = null;
   const watched = {
@@ -2109,7 +2075,7 @@ export async function main({
     settle: (pending) => timed("ci", () => io.settle(pending)),
   };
 
-  /** Every exit writes the total. The clean stop used to print it to the screen and nowhere else. */
+  /** Every exit writes the total to the report file, not only the screen. */
   const finish = (code, why) => {
     clearInterval(sleepWatch);
     const total = runTotal(book.totals);
@@ -2167,8 +2133,8 @@ export async function main({
       pass = await runOnce(watched, loop.pinned, loop.pinned ? io.tally(loop.pinned).lastHandoff : null, loop);
     } catch (err) {
       screen.warn(`queue-loop: the iteration threw — ${String(err?.stack ?? err)}`);
-      // No row: there is no run to write one from, and inventing one is how the ledger came to be
-      // trusted while wrong. The claim is the part that strands the ticket, and it comes off here.
+      // No row: there is no run to write one from, and an invented row is a ledger trusted while
+      // wrong. The claim is the part that strands the ticket, and it comes off here.
       const own = claimed === null ? null : worktreeOf(io, claimed);
       const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, limits: LIMITS, now: Date.now() });
       if (threw.kind === "park") {

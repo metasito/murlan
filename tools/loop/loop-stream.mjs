@@ -6,8 +6,8 @@
 import { commands, withoutQuotedBodies } from "./shell.mjs";
 
 /** One line of its own, anywhere in the message. Prose mentioning a phase is not a phase report. */
-// The fence is optional because the session's echo of it is: from queue.md's one fenced marker the
-// same model returned it bare in four runs of eight, fenced in three, and both ways inside one.
+// The fence is optional because the session's echo of queue.md's fenced marker is: it comes back
+// bare or fenced, sometimes both ways in one run.
 export const PHASE = /^[ \t]*`?PHASE ([A-F])`?[ \t]*$/m;
 /**
  * The same report as a command of its own in a main-session call: `… && echo "PHASE C" && …`. Read
@@ -28,7 +28,7 @@ const SCRATCH =
   /(^|[\\/])\.[^\\/]+\.md$|^\/tmp\/|[\\/]Temp[\\/]|[\\/]\.loop-logs[\\/]|[\\/]\.worktrees[\\/][^\\/]+[\\/][^\\/]+\.(md|txt|log|tsv)$/;
 
 /**
- * Where a phase that does not build ends in the build with no `PHASE C` (#1098): the first edit
+ * Where a phase that does not build ends in the build with no `PHASE C`: the first edit
  * outside a scratch file, or commit — late, never before the build.
  * @param {{name: string, command?: string, file?: string, parent?: string|null}[]} calls
  */
@@ -58,13 +58,11 @@ function given(out) {
   return said && Object.values(out).some((v) => v != null) ? said : null;
 }
 
-// A dispatched subagent and a plain shell task share one task_id key space but close through
-// different subtypes: a shell task's task_started/task_notification pair carries a flat `status`;
-// a subagent's task_started/task_progress chain is closed by task_updated, whose only content is
-// a `patch` — sometimes the closing `{status, end_time}` (an `error` string too, if it failed),
-// sometimes mid-run just `{is_backgrounded: true}`. One mapping covers all four by reading through
-// to `patch` wherever the flat field is absent, which is also the only way a subagent's phase ever
-// shows a sign of life: it is the one caller of readLine() that never emits an `assistant` fact.
+// A subagent and a shell task share one task_id key space but close through different subtypes: a
+// shell task's task_notification carries a flat `status`; a subagent's chain is closed by
+// task_updated, whose only content is a `patch` — the closing `{status, end_time}` (with `error` if
+// it failed), or mid-run just `{is_backgrounded: true}`. So every read falls through to `patch`,
+// a subagent's only sign of life: it never emits an `assistant` fact.
 const TASK_EVENT = {
   task_started: "started",
   task_progress: "progress",

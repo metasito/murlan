@@ -1,4 +1,3 @@
-// tools/loop/ciVerdict.ts
 import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
 import { UNREAD_STEP } from "../ci/budget-gate.mjs";
 import type { PrState } from "./land.ts";
@@ -95,8 +94,8 @@ export interface Verdict {
  * The verdict, from data only — never from a command's exit status.
  *
  * `gh pr checks --watch` sets its status from the run, but piped into anything that status belongs
- * to the pipe's last command, so a failed run reads as a pass. That is how a red branch reached
- * main. Here the answer comes from the run's own `conclusion` field and nothing else.
+ * to the pipe's last command, so a failed run reads as a pass. Here the answer comes from the run's
+ * own `conclusion` field and nothing else.
  *
  * A job that finished with no steps ran nothing, so it says nothing about the diff: billing, a
  * quota or a runner failure looks identical to a red suite from outside. That is reported as
@@ -122,10 +121,8 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
   jobs = jobs.filter((j) => j.name !== CI_GATE && j !== unread);
   // A job that actually failed outranks one that ran nothing, and the order matters: a run that
   // fails fast cancels its siblings, and a cancelled job that never reached its first step is
-  // stepless. Asked the other way round, this reported `infrastructure` and named the cancelled
-  // job — hiding a real red `Secret scan` for two rounds, which is exactly the fix round the
-  // infrastructure verdict exists to prevent being wasted. A cancelled run is the same case:
-  // rereading it never changes its jobs, so a red among them must reach the fix round.
+  // stepless. A cancelled run is the same case: rereading it never changes its jobs, so a red among
+  // them must reach the fix round.
   const realFailure = jobs.find((j) => j.conclusion === "failure" && j.steps > 0) ?? jobs.find((j) => j.timedOut);
 
   // ci.yml's concurrency group cancels an in-progress pull-request run on every new push, so this
@@ -190,15 +187,12 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
 /**
  * `gh run view --log-failed` for a browser-test job runs to several megabytes, and
  * `execFileSync`'s default 1MB buffer turns that into an ENOBUFS throw rather than a short read.
- * Caught, it reached the fix agent as "(could not read the failed log)", so every fix round on a
- * job with a large log reproduced from nothing a failure CI had already described.
  */
 const GH_MAX_BUFFER = 64 * 1024 * 1024;
 
 /**
  * How much of it reaches the fix agent. A Playwright failure ends with a run summary, and the
- * `Error:` line that names the defect sits above it — 135 lines up, in the run that prompted this.
- * Sixty was the old budget and reached none of it.
+ * `Error:` line that names the defect can sit over a hundred lines above it.
  */
 const FAILED_LOG_LINES = 400;
 
@@ -214,7 +208,7 @@ export function stripLogPrefix(line: string): string {
 const PLAYWRIGHT_FAILURE = /^\s*(?:\d+\)\s*)?\[[\w.-]+\]\s*›\s*(\S+):\d+:\d+\s*›\s*(.+?)\s*$/gm;
 const JEST_FAILURE = /^FAIL\s+(?:[^\s/\\]+\s+)?(\S*[/\\]\S*)/gm;
 // `npm test`'s spec reporter, not TAP: each recap entry is this file:line:col line immediately
-// followed by the `✖ <name> (<n>ms)` line naming it (.loop-logs/ci-1079.log:318-319).
+// followed by the `✖ <name> (<n>ms)` line naming it.
 const NODE_TEST_FAILURE = /^test at (\S+):\d+:\d+\r?\n✖ (.+?) \([\d.]+ms\)\s*$/gm;
 
 export function failingTestIds(fullLog: string): string[] {

@@ -5,7 +5,6 @@ const sha7 = (head) => String(head ?? "an unread head").slice(0, 7);
 /** @param {{declared: {handoff?: string|null, stoodDown?: boolean}|null}} run */
 export const handoffOf = (run) => (run.declared?.stoodDown ? null : (run.declared?.handoff ?? null));
 
-/** Cut off by the turn cap or the dollar cap. */
 export const exhausted = (run) =>
   run.result?.subtype === "error_max_turns" || /Budget limit reached/.test(run.stderr ?? "");
 
@@ -13,11 +12,6 @@ export const exhausted = (run) =>
 export const RESUMABLE = new Set(["B", "C", "D"]);
 
 /**
- * What the supervisor knows about the session that just exited.
- *
- * The session's own declaration first, `derive()` second, which is all there is when the
- * declaration is missing.
- *
  * @param {{declared: object|null, phase: string|null}} run
  * @param {object|null} derived
  */
@@ -180,7 +174,6 @@ export function reasonFor(run, after, ticket) {
   return soft(null);
 }
 
-/** A red round, counted from the rounds already spent: the last one parks rather than retries. */
 function redRound({ n, why, head }, { tally, limits }) {
   const rounds = Math.max(tally.retries, tally.ciRounds ?? 0) + 1;
   if (rounds >= limits.CI_ROUNDS) {
@@ -315,7 +308,6 @@ const STEPS = {
     return verdict(action, reason);
   },
 
-  // What `poll`'s verdict costs the ticket.
   settled(input) {
     const { route, settled } = input;
     const { n } = route;

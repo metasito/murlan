@@ -2,8 +2,6 @@
  * What the loop prints: state in, strings out. Nothing here writes, moves a cursor, or reads a key —
  * `ticker` in loop-screen.mjs is the only thing in the loop that knows those exist.
  *
- * Three rules the whole file rests on.
- *
  * **Measure before painting.** An escape is bytes with no width. Anything padded after it is painted
  * is padded wrong, and a line one column too wide wraps, which puts the next carriage return on the
  * wrong row and takes the redraw with it. Every row here is assembled as segments of plain text with
@@ -20,13 +18,10 @@
 
 export const WIDTH = 78;
 /**
- * The width below which the layout's fixed parts no longer leave room for anything that varies.
- *
- * It is not a floor on the board's width — every row is budgeted to land at exactly `width`, so a
- * board wider than the window wraps every row it draws and the redraw's cursor arithmetic never
- * recovers. `tight` is how a caller asks whether the window is too narrow to draw a live block in
- * at all; the renderer's own `Math.max(0, …)` guards keep it from computing a negative span in the
- * meantime.
+ * The width below which the layout's fixed parts leave no room for anything that varies. Not a
+ * floor on the board's width: a board wider than the window wraps every row it draws and the
+ * redraw's cursor arithmetic never recovers. `tight` is how a caller asks whether to draw a live
+ * block at all; the renderer's own `Math.max(0, …)` guards keep it from a negative span meanwhile.
  */
 export const MIN_WIDTH = 38;
 
@@ -80,7 +75,6 @@ const ROLES = {
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 
-/** A painter bound to one capability set. Pure: same inputs, same string, every time. */
 export function theme(caps = capabilities()) {
   const paint = (role, text, bold = false) => {
     if (!caps.colour || !text) return text;
@@ -113,7 +107,6 @@ export function cols(text) {
   return n;
 }
 
-/** The longest prefix of `text` that fits in `room` cells. */
 export function cut(text, room) {
   let n = 0;
   let out = "";
@@ -126,7 +119,6 @@ export function cut(text, room) {
   return out;
 }
 
-/** `text`, or as much of it as fits with an ellipsis owning the last cell. */
 export function clamp(text, room) {
   return cols(text) > room ? `${cut(text, Math.max(0, room - 1))}…` : String(text);
 }
@@ -194,11 +186,9 @@ export function clockAt(resetsAt, now = Date.now()) {
 const base = (p) => String(p ?? "").split(/[\\/]/).pop();
 
 /**
- * One tool call as the shortest phrase that says what it is doing.
- *
- * Bash and Agent both carry a `description` the model wrote for a person to read, and the board
- * showed the raw command instead. Reading a path down to its basename is the same trade: the
- * worktree prefix is the same forty characters on every row and says nothing.
+ * One tool call as the shortest phrase that says what it is doing: the `description` the model
+ * wrote for a person to read, or a path read down to its basename, since the worktree prefix is the
+ * same on every row.
  *
  * @param {{name: string, input?: Record<string, unknown>, parent?: string|null}} call
  */
@@ -225,11 +215,8 @@ export function act({ name, input = {} }) {
 }
 
 /**
- * The session's own last sentence, stripped of the markdown it writes for a human.
- *
- * This is the one channel that says *why* rather than *what*, and the supervisor parsed two markers
- * out of it and threw the rest away. "Spec axis — round 2" is a better line to have on screen than
- * the twelfth `Bash` of the phase.
+ * The session's own last sentence, stripped of the markdown it writes for a human: the one channel
+ * that says *why* rather than *what*.
  */
 export function thought(text) {
   const last = String(text ?? "")
@@ -273,13 +260,7 @@ const MARK = {
 
 const LABEL_W = 10;
 
-/**
- * One thing that happened, as one row: a mark, what it was, what came of it, how long it took.
- *
- * Every settled line the loop prints is this shape, so the marks make one column down the side
- * rather than each arriving in its own format. Brightness is spent on what is happening now, and
- * none of these is.
- */
+/** Every settled line the loop prints is this shape, so the marks make one column down the side. */
 export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
   const [glyph, colour] = MARK[state] ?? MARK.done;
   const right = ms == null || ms < 1000 ? null : { t: elapsed(ms), c: "faint" };
@@ -296,12 +277,7 @@ export function stepRow({ label, detail = "", ms = null, state = "done" }, t) {
   );
 }
 
-/**
- * The supervisor's own word, in the same column as everything else it prints.
- *
- * These used to go out as raw `queue-loop: …` lines on stderr, which read as a crash report landing
- * on a board that had just drawn a tidy row. First line is the row; the rest is its note.
- */
+/** The supervisor's own word, in the same column as everything else: first line the row, the rest its note. */
 export function notice(label, text, t) {
   const [first, ...rest] = String(text ?? "").split("\n");
   // Wrapped, not cut: a warning's last words are usually what to do about it.
@@ -329,7 +305,6 @@ const labelFor = (letter, round, resumed = false) => {
 };
 
 /**
- * A finished phase: a step whose name the protocol spells as a letter. A person reads "build".
  * @param {{letter: string, detail?: string, ms: number, state?: string,
  *   round?: {n: number, of: number, fix?: boolean}|null}} phase
  */
@@ -505,10 +480,8 @@ export function activity({ said, recent = [], ms, frame = 0 }, t, take = RECENT)
  * The ticket, boxed. Two lines of chrome buys a hard edge, which is what makes a night of scrollback
  * skimmable by ticket instead of by hunting for the next header.
  *
- * The number is the link, so the URL does not need a line of its own — it was the same forty
- * characters every ticket and the only varying part was already in the header. A resumed ticket
- * never went through the picker, so it has no queue depths; printing zeroes would read as an
- * empty queue. How far the run has got is `recap`'s, outside the box.
+ * The number is the link, so the URL needs no line of its own. A resumed ticket never went through
+ * the picker, so it has no queue depths; printing zeroes would read as an empty queue.
  *
  * @param {{number: number, title: string, size?: string|null, url?: string,
  *   queue: {implement: number, triage: number, wayfinder: number}|null}} ticket
@@ -708,9 +681,7 @@ export function closing({ outcome, number, files, turns, ms, cost, why, log }, t
     : (why ?? "");
   const state = outcome.replace("_", " ");
   const id = `#${number}`;
-  // Measured from the pieces themselves. A budget written as a constant was right for a four-digit
-  // number and the outcome words of the day, and wrong — by one wrapped row — for the first five
-  // digit issue.
+  // Measured from the pieces, never a constant: a longer issue number or outcome word would wrap.
   const fixed = 3 + cols(glyph) + 2 + cols(id) + 1 + cols(state) + 2;
   const head = row(
     [

@@ -98,7 +98,6 @@ const byTicket = (rows) => {
   return [...by.values()];
 };
 
-/** Each ticket's claim windows, its closing row in each and an open last one included. */
 function windowsOf(rows) {
   return byTicket(rows).flatMap((forTicket) => {
     const out = [[]];
