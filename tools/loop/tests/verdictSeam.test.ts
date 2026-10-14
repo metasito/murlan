@@ -32,7 +32,7 @@ const PR_STATES: PrState[] = [
   { state: "OPEN", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
   { state: "MERGED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
   { state: "CLOSED", mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" },
-  { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "DRAFT", isDraft: true },
+  { state: "OPEN", mergeable: "MERGEABLE", mergeStateStatus: "DRAFT" },
 ];
 
 type Case = { run: RunRow | undefined; jobs: string; pr: PrState };

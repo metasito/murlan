@@ -300,12 +300,11 @@ const STEPS = {
     if (action === "recheck" && ci.waiting) return step("wait", ci.reason ?? reason);
     if (action === "hand-back") return stuck ? verdict("owner", `CI is red and its log could not be read — ${reason}`) : step("wait", "CI is red but named no log — asking again");
     if (action === "recheck") return stuck && !armed ? verdict("owner", `recheck did not settle — last: ${reason}`) : step("wait", `${reason} — asking again`);
-    if (action === "ready" && stuck) return verdict("owner", `${sha7(head)} is still a draft after gh pr ready`);
-    if (action === "arm" || action === "ready") {
+    if (action === "arm") {
       if (armed) return step("wait", "auto-merge is armed — waiting for GitHub to merge");
       if (landing.cleared === undefined) return ask("cleared");
       if (!landing.cleared.ok) return verdict("owner", `${landing.cleared.why} — ${sha7(head)} was pushed for review, not cleared`);
-      return step(action, reason);
+      return step("arm", reason);
     }
     return verdict(action, reason);
   },

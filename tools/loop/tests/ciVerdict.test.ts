@@ -466,7 +466,7 @@ describe("readLandingState, from rollups recorded off live pull requests", () =>
     const { state, asked } = read(fixture("green"));
     assert.equal(asked.length, 1);
     assert.deepEqual(asked[0].slice(0, 5), ["pr", "view", "7", "--repo", "metasito/murlan"]);
-    assert.equal(asked[0][asked[0].indexOf("--json") + 1], "headRefOid,state,mergeable,mergeStateStatus,isDraft,autoMergeRequest,statusCheckRollup");
+    assert.equal(asked[0][asked[0].indexOf("--json") + 1], "headRefOid,state,mergeable,mergeStateStatus,autoMergeRequest,statusCheckRollup");
     assert.equal(state.pr.headRefOid, fixture("green").view.headRefOid);
     assert.equal(state.pr.mergeStateStatus, "CLEAN");
     assert.equal(state.pr.armed, false);

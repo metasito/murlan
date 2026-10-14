@@ -33,7 +33,7 @@ const CLEAN_STATUS = "GraphQL: Pull request Pull request is in clean status (ena
 
 /**
  * One fake `gh` over a script of recorded rollups, one per `pr view`. The pull request's own state
- * — its head, draft, arming and merge — is kept here and moved by the calls that move it on GitHub,
+ * — its head, arming and merge — is kept here and moved by the calls that move it on GitHub,
  * so a scenario reads back what the supervisor did to it.
  */
 function rollupFake({
@@ -41,7 +41,6 @@ function rollupFake({
   log = NAMED,
   attempt = 1,
   armed = false,
-  draft = false,
   autoMerges = true,
   refuse = {},
   issueComments = [],
@@ -53,13 +52,12 @@ function rollupFake({
   log?: string | null;
   attempt?: number;
   armed?: boolean;
-  draft?: boolean;
   autoMerges?: boolean;
-  refuse?: { auto?: string; merge?: string; disarm?: string; ready?: boolean; rerun?: string };
+  refuse?: { auto?: string; merge?: string; disarm?: string; rerun?: string };
   issueComments?: { body: string }[];
 }) {
   const asked: string[][] = [];
-  const pr = { head: SHA, armed, draft, merged: false, attempt };
+  const pr = { head: SHA, armed, merged: false, attempt };
   let read = 0;
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
@@ -70,9 +68,7 @@ function rollupFake({
       return JSON.stringify({
         ...f.view,
         headRefOid: pr.head,
-        isDraft: pr.draft,
         autoMergeRequest: pr.armed ? { mergeMethod: "MERGE" } : null,
-        ...(pr.draft ? { mergeStateStatus: "DRAFT" } : {}),
         ...(pr.merged ? { state: "MERGED" } : {}),
       });
     }
@@ -82,7 +78,6 @@ function rollupFake({
         pr.armed = false;
         return "";
       }
-      if (pr.draft) throw new Error("GraphQL: Pull request is in draft state");
       if (args.includes("--auto")) {
         if (refuse.auto) throw new Error(refuse.auto);
         pr.armed = true;
@@ -91,10 +86,6 @@ function rollupFake({
       }
       if (refuse.merge) throw new Error(refuse.merge);
       pr.merged = true;
-      return "";
-    }
-    if (cmd === "pr" && sub === "ready") {
-      if (!refuse.ready) pr.draft = false;
       return "";
     }
     if (cmd === "pr" && sub === "update-branch") {
@@ -196,33 +187,7 @@ describe("settle, replayed against recorded rollups", () => {
     const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, [], () => ({ ok: false, why: "no review of 5bb5dcf on the issue" })));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /^no review of 5bb5dcf on the issue — .*not cleared/);
-    assert.ok(!asked.some((a) => a[1] === "merge" || a[1] === "ready"));
-  });
-
-  test("a green draft is marked ready, and armed only on a later read of the head the gate passed", async () => {
-    const { gh, asked } = rollupFake({ views: [GREEN], draft: true });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-    assert.equal(out.action, "already-merged");
-    const order = asked.filter((a) => a[1] === "ready" || a[1] === "merge" || a[1] === "view");
-    assert.deepEqual(order.slice(0, 4).map((a) => a[1]), ["view", "ready", "view", "merge"]);
-    assert.deepEqual(order[3], armArgs(REPO, PENDING.pr, SHA));
-  });
-
-  test("a draft found behind main once it is ready is updated before anything is armed", async () => {
-    const { gh, asked } = rollupFake({ views: [GREEN, at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN], draft: true });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-    assert.equal(out.action, "already-merged");
-    assert.ok(indexOf(asked, (a) => a[1] === "update-branch") < indexOf(asked, (a) => a[1] === "merge"), JSON.stringify(asked));
-    assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
-  });
-
-  test("a draft gh pr ready could not move is the owner's at the stuck bound, and is never armed", async () => {
-    const { gh, asked } = rollupFake({ views: [GREEN], draft: true, refuse: { ready: true } });
-    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
-    assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /is still a draft after gh pr ready/);
-    assert.ok(asked.filter((a) => a[1] === "ready").length > 1);
-    assert.equal(merges(asked).length, 0);
+    assert.ok(!asked.some((a) => a[1] === "merge"));
   });
 
   test("a pull request someone else merged is not a fix round", async () => {

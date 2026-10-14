@@ -221,10 +221,9 @@ Phase D's LAND continues here; a process starts at E only to resume.
    LOOP-RESULT {"ticket":<n>,"branch":"agent/<n>-slug","phase":"E","handoff":"C","why":"<what-is-red>"}
    ```
 3. Push and write the PR body: `git push -u origin HEAD:agent/<n>-<slug>`, then
-   `gh pr edit <pr> --body-file <file>`. The supervisor opened the pull request as a draft when
-   review started; only if none is open,
-   `gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. Never
-   mark it ready: the supervisor does, once CI is green on a head a `VERDICT: LAND` covers. The
+   `gh pr edit <pr> --body-file <file>`. The supervisor opened the pull request when review
+   started; only if none is open,
+   `gh pr create --base main --head agent/<n>-<slug> --title "<title>" --body-file <file>`. The
    body says what changed, how you know, which Definition-of-done boxes are closed, and
    `Closes #<n>` (rule 13), through `--body-file`, never `--body` (`docs/agents/checks.md`).
 
