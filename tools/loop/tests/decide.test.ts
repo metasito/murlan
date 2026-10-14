@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, SETTLE_ROUNDS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
 const NOW = Date.parse("2026-10-12T20:00:00Z");
 
 const route = { n: 42, skill: "implement", title: "the ticket", phase: "C", size: "size:S", fix: false, head: null };
@@ -31,11 +31,10 @@ const g = (pushed: object | null) => ({ ...base, step: "session", route: { ...ro
 const api = (apiStatus: number | null, over: object = {}) => silent({ status: 1, result: { ...ok, isError: true, apiStatus }, ...over });
 
 const ci = (over: object = {}) => ({ testIds: ["tests/a.test.ts › adds"], output: "✖ adds", logUnread: false, waiting: false, infrastructure: false, appearing: false, runId: 99, attempt: 2, failedStep: "Typecheck and tests", ...over });
-const rounds = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
 const land = (over: object = {}) => ({
   ...base,
   step: "landing",
-  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, rounds, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
+  landing: { action: "recheck", reason: "the run has not finished", head: "h2abcdef9", armed: false, overdue: false, deadline: SETTLE.DEADLINE_MS, updates: 0, last: null, cleared: { ok: true, why: null }, ci: ci(), error: null, reran: null, ...over },
 });
 const red = (over: object = {}) => land({ action: "hand-back", reason: "CI failed at Typecheck and tests", ...over });
 const green = (over: object = {}) => land({ action: "arm", reason: "mergeStateStatus is CLEAN", ...over });
@@ -167,29 +166,21 @@ const ROWS: Row[] = [
   ["poll: a head this process already reran is handed back", red({ ci: ci({ attempt: 1 }), reran: "h2abcdef9" }), { kind: "settled", action: "hand-back", why: "CI failed at Typecheck and tests" }],
   ["poll: a red on its second attempt is handed back", red(), { kind: "settled", action: "hand-back" }],
   ["poll: a red with no run to rerun is handed back", red({ ci: ci({ attempt: 1, runId: null }) }), { kind: "settled", action: "hand-back" }],
-  ["poll: a red whose log is unread is asked again, from the retry budget", red({ ci: ci({ logUnread: true }) }),
-    { kind: "settle", act: "wait", spend: "retry", why: "CI is red but named no log — asking once more" }],
-  ["poll: a red whose log never comes goes to the owner once the retry budget is spent", red({ ci: ci({ output: "" }), rounds: { ...rounds, retry: SETTLE_ROUNDS.retry } }),
-    { kind: "settled", action: "owner", why: "CI is red and its log could not be read — CI failed at Typecheck and tests" }],
+  ["poll: a red whose log is unread is asked again", red({ ci: ci({ logUnread: true }) }),
+    { kind: "settle", act: "wait", why: "CI is red but named no log — asking again" }],
   ["poll: main moved, so the branch is updated", land({ action: "update-branch", reason: "main moved" }),
-    { kind: "settle", act: "update-branch", spend: "update", why: "main moved — updating the branch and reading CI again" }],
-  [`poll: update-branch past ${SETTLE_ROUNDS.update} rounds goes to the owner`, land({ action: "update-branch", reason: "main moved", rounds: { ...rounds, update: SETTLE_ROUNDS.update } }),
-    { kind: "settled", action: "owner", why: `update-branch did not settle in ${SETTLE_ROUNDS.update} rounds — last: main moved` }],
-  ["poll: a run still going is waited on, spending no budget", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }) }), { kind: "settle", act: "wait", spend: null, why: "3 of 9 jobs done" }],
-  ["poll: a recheck spends the recheck budget", land(), { kind: "settle", act: "wait", spend: "recheck", why: "the run has not finished — asking once more" }],
-  [`poll: recheck ${SETTLE_ROUNDS.recheck + 1} goes to the owner`, land({ rounds: { ...rounds, recheck: SETTLE_ROUNDS.recheck } }),
-    { kind: "settled", action: "owner", why: `recheck did not settle in ${SETTLE_ROUNDS.recheck} rounds — last: the run has not finished` }],
-  ["poll: a run not yet appearing spends the appear budget", land({ ci: ci({ infrastructure: true, appearing: true }), rounds: { ...rounds, recheck: SETTLE_ROUNDS.recheck } }),
-    { kind: "settle", act: "wait", spend: "appear" }],
-  [`poll: appear ${SETTLE_ROUNDS.appear + 1} goes to the owner`, land({ ci: ci({ infrastructure: true, appearing: true }), rounds: { ...rounds, appear: SETTLE_ROUNDS.appear } }),
-    { kind: "settled", action: "owner", why: `recheck did not settle in ${SETTLE_ROUNDS.appear} rounds — last: the run has not finished` }],
-  ["poll: a runner that said nothing spends the retry budget", land({ ci: ci({ infrastructure: true }) }), { kind: "settle", act: "wait", spend: "retry" }],
+    { kind: "settle", act: "update-branch", why: "main moved — updating the branch and reading CI again" }],
+  [`poll: update-branch past ${UPDATES} rounds goes to the owner`, land({ action: "update-branch", reason: "main moved", updates: UPDATES }),
+    { kind: "settled", action: "owner", why: `update-branch did not settle in ${UPDATES} rounds — last: main moved` }],
+  ["poll: a run still going is waited on", land({ ci: ci({ waiting: true, reason: "3 of 9 jobs done" }) }), { kind: "settle", act: "wait", why: "3 of 9 jobs done" }],
+  ["poll: a recheck is asked again", land(), { kind: "settle", act: "wait", why: "the run has not finished — asking again" }],
+  ["poll: a run not yet appearing, or a runner that said nothing, is asked again", land({ ci: ci({ infrastructure: true, appearing: true }) }), { kind: "settle", act: "wait" }],
   ["poll: a head past its deadline goes to the owner", land({ overdue: true }), { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m` }],
+  ["poll: the deadline's verdict names what it last waited on", land({ overdue: true, last: "CI is red but named no log — asking again" }),
+    { kind: "settled", action: "owner", why: `CI did not settle in ${SETTLE.DEADLINE_MS / 60_000}m — last: CI is red but named no log — asking again` }],
   ["poll: a green head asks whether review cleared it", green({ cleared: undefined }), { kind: "ask", fact: "cleared" }],
-  ["poll: a cleared green head is armed", green(), { kind: "settle", act: "arm", spend: null }],
-  ["poll: a cleared green draft is marked ready, from the ready budget", green({ action: "ready", reason: "CI passed on the draft" }), { kind: "settle", act: "ready", spend: "ready" }],
-  ["poll: a draft still a draft after its ready rounds goes to the owner", green({ action: "ready", rounds: { ...rounds, ready: SETTLE_ROUNDS.ready } }),
-    { kind: "settled", action: "owner", why: "h2abcde is still a draft after gh pr ready" }],
+  ["poll: a cleared green head is armed", green(), { kind: "settle", act: "arm" }],
+  ["poll: a cleared green draft is marked ready", green({ action: "ready", reason: "CI passed on the draft" }), { kind: "settle", act: "ready" }],
   ["poll: a green head no review clears goes to the owner", green({ cleared: { ok: false, why: "no VERDICT: LAND names h2abcde" } }),
     { kind: "settled", action: "owner", why: "no VERDICT: LAND names h2abcde — h2abcde was pushed for review, not cleared" }],
   ["poll: a head already armed is waited on, and clearance is not asked again", green({ armed: true, cleared: undefined }),
@@ -197,7 +188,7 @@ const ROWS: Row[] = [
   ["poll: what only a person can move goes to the owner", land({ action: "owner", reason: "the branch conflicts with main" }), { kind: "settled", action: "owner", why: "the branch conflicts with main" }],
   ["poll: a merged pull request is the verdict", land({ action: "already-merged", reason: "the pull request is already merged" }), { kind: "settled", action: "already-merged" }],
   ["poll: CI unreadable since the machine woke is asked again", land({ error: { why: "ENOTFOUND api.github.com", offline: true, woke: true } }),
-    { kind: "settle", act: "wait", spend: null, why: "could not read CI since the machine woke — ENOTFOUND api.github.com; asking again" }],
+    { kind: "settle", act: "wait", why: "could not read CI since the machine woke — ENOTFOUND api.github.com; asking again" }],
   ["poll: CI unreadable for any other reason goes to the owner", land({ error: { why: "HTTP 403", offline: false, woke: false } }), { kind: "settled", action: "owner", why: "could not read CI — HTTP 403" }],
 
   // runOnce, what poll's verdict costs the ticket

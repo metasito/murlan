@@ -1117,13 +1117,8 @@ export function pushedPr(branch, ticket, declared = null, since = 0, run = sh) {
   }
 }
 
-/**
- * Separate budgets, not one. A branch updated twice because main moved twice is a healthy branch on a
- * busy night; a verdict asked for twice because the runner had nothing to say is a sick one; a
- * mergeability job still running is neither; and a run that has not registered yet is a push seconds
- * old. Sharing a counter parks whichever goes second. A run that *is* running spends none of these.
- */
-export const SETTLE_ROUNDS = { update: 3, retry: 3, recheck: 8, appear: 12, ready: 2 };
+/** Each update-branch is a new head, which restarts the deadline: without a cap, a busy main never lets it run out. */
+export const UPDATES = 3;
 
 /** GitHub re-points the pull request head asynchronously; asked at once, CI answers for the old one. */
 const SETTLE_PAUSE_MS = 15_000;
@@ -1372,7 +1367,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   } = io;
   const { armArgs, disarmArgs, landing } = ts("./land.ts");
   const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
-  const spent = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
+  let updates = 0;
+  let last = null;
   let until = Date.now() + deadline;
   let woke = false;
   let head = null;
@@ -1470,7 +1466,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
     }
     // Landing reads move no run counter.
     const read = { step: "landing", limits: LIMITS, loop: {} };
-    const facts = { ...next, head, armed, overdue, deadline, rounds: spent, ci: verdict, error, reran, cleared: undefined };
+    const facts = { ...next, head, armed, overdue, deadline, updates, last, ci: verdict, error, reran, cleared: undefined };
     let step = decide({ ...read, landing: facts });
     if (step.kind === "ask") step = decide({ ...read, landing: { ...facts, cleared: cleared(head) } });
 
@@ -1480,7 +1476,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       if (step.action === "already-merged") return merged(step.why);
       return next;
     }
-    if (step.spend) spent[step.spend] += 1;
+    last = step.why;
     if (step.act === "rerun") {
       reran = head;
       firstRed = { runId: verdict.runId, tests: verdict.testIds ?? [], step: verdict.failedStep ?? null };
@@ -1496,6 +1492,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       const held = disarm(next.reason);
       if (held) return held;
       log(step.why);
+      updates += 1;
       try {
         gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
@@ -1609,7 +1606,7 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, fl
   return { outcome: "parked", ticket: number, why: ctx.why };
 }
 
-const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, ROUNDS: SETTLE_ROUNDS };
+const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
 
 /** Read in order, and only as far as the first that ends the pass. */
 async function preflight(io, pinned) {

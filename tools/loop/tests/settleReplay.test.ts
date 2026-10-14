@@ -7,7 +7,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { ciRedBody, onMainLine, poll, SETTLE_ROUNDS } from "../queue-loop.mjs";
+import { ciRedBody, onMainLine, poll } from "../queue-loop.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
 import { readLine } from "../loop-stream.mjs";
@@ -215,12 +215,12 @@ describe("settle, replayed against recorded rollups", () => {
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
   });
 
-  test("a draft gh pr ready could not move is the owner's, and is never armed", async () => {
+  test("a draft gh pr ready could not move is the owner's at the deadline, and is never armed", async () => {
     const { gh, asked } = rollupFake({ views: [GREEN], draft: true, refuse: { ready: true } });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await poll(PENDING, () => {}, 5, 200, io(gh));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /still a draft/);
-    assert.equal(asked.filter((a) => a[1] === "ready").length, SETTLE_ROUNDS.ready);
+    assert.match(String(out.reason), /did not settle/);
+    assert.ok(asked.filter((a) => a[1] === "ready").length > 1);
     assert.equal(merges(asked).length, 0);
   });
 
@@ -231,20 +231,10 @@ describe("settle, replayed against recorded rollups", () => {
 
   // A red run whose log cannot be read is a fix round with nothing to fix.
   test("red CI with no readable log goes to the owner, not to a fix round", async () => {
-    const said: string[] = [];
     const { gh } = rollupFake({ views: [RED], log: null });
-    const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
+    const out = await poll(PENDING, () => {}, 5, 200, io(gh));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /log could not be read/);
-    assert.equal(said.filter((s) => /named no log/.test(s)).length, SETTLE_ROUNDS.retry);
-  });
-
-  test("a head no check has reported on is bounded by its own budget, not by the deadline", async () => {
-    const said: string[] = [];
-    const { gh } = rollupFake({ views: [at(ABSENT, { statusCheckRollup: [] })] });
-    const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
-    assert.equal(out.action, "owner");
-    assert.equal(said.length, SETTLE_ROUNDS.appear, "it asks its budget and stops, never the deadline");
+    assert.match(String(out.reason), /named no log/);
   });
 
   test("a head no check ever reports on is the owner's at the deadline, which names what it last waited on", async () => {
