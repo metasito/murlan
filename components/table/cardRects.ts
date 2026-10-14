@@ -65,6 +65,14 @@ export function designRect(d: DrawnCard, felt: Felt, m: TableMotion): CardRect {
   };
 }
 
+export function sameRect(a: CardRect | undefined, b: CardRect | null): boolean {
+  "worklet";
+  if (!a || !b) return !a && !b;
+  const [s, t] = [a.shadow, b.shadow];
+  const sameShadow = !s || !t ? !s && !t : s.x === t.x && s.y === t.y && s.w === t.w && s.h === t.h && s.rot === t.rot;
+  return sameShadow && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h && a.rot === b.rot && a.back === b.back && a.lift === b.lift && a.glow === b.glow && a.seen === b.seen;
+}
+
 /** The row's pan as drawn: a pan past the overhang moves nothing. */
 export function panShown(pan: number, limit: number): number {
   "worklet";
