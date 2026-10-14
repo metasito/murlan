@@ -673,14 +673,6 @@ export function publishForReview(number, branch, cwd, title, run = sh) {
 
 const prUrl = (n) => `https://github.com/${REPO}/pull/${n}`;
 
-/** The ticket's branch, read from its worktree: a resumed ticket has no claim to take it from. */
-function branchOf(number, run = sh) {
-  try {
-    return run("git", ["-C", path.join(ROOT, WORKTREE_DIR, `agent-${number}`), "branch", "--show-current"]).trim() || null;
-  } catch {
-    return null;
-  }
-}
 
 /** A red round's `update-branch` moved the remote head, and the fix is built on top of it. */
 export function refreshWorktree(cwd, branch, run = sh) {
@@ -813,6 +805,7 @@ export function runTicket(
   spawnFn,
   {
     number,
+    branch = null,
     queue,
     size = null,
     at = null,
@@ -881,7 +874,7 @@ export function runTicket(
 
   if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
   const spentMs = ticketTally(number, readLedger(ledgerPath(undefined, dir))).ms;
-  screen.context({ number, url: about.url, log: logPath, branch: branchOf(number), spentMs });
+  screen.context({ number, url: about.url, log: logPath, branch, spentMs });
   if (at) {
     // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
     // the marker is read as "no change" and the board stays dark for the whole of that phase.
@@ -1968,6 +1961,7 @@ function realIo(book, screen) {
       return route;
     },
     spawn: (route) => {
+      let branch = route.branch ?? null;
       if (!route.resuming) {
         if (screen.needsHeader(route.number)) {
           const url = `https://github.com/${REPO}/issues/${route.number}`;
@@ -1978,8 +1972,8 @@ function realIo(book, screen) {
         // reads — so the session is never spawned and `runOnce` parks it from the declaration.
         try {
           const claimed = sh("node", [HERE + "/claim.mjs", String(route.number), route.title]);
-          const branch = claimed.split("\t")[2] ?? "";
-          screen.say(stepRow({ label: "claim", detail: `won · ${branch}`, ms: null }, screen.theme));
+          branch = claimed.split("\t")[2]?.trim() || null;
+          screen.say(stepRow({ label: "claim", detail: `won · ${branch ?? ""}`, ms: null }, screen.theme));
         } catch (err) {
           const why = String(err.stdout ?? "").split("\t").at(-1)?.trim() || "the claim did not stand";
           screen.say(stepRow({ label: "claim", detail: why, ms: null, state: "failed" }, screen.theme));
@@ -1998,6 +1992,7 @@ function realIo(book, screen) {
       book.start(route.number, at ?? "A", RUN_ID);
       return runTicket(spawn, {
         number: route.number,
+        branch,
         queue: route.queue,
         size: route.size,
         at,

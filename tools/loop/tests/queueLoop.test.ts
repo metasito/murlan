@@ -585,6 +585,16 @@ describe("runTicket", () => {
     assert.ok(seen?.env.LOOP_TURNS, "loop-status's startup hook is silent only where LOOP_TURNS is set");
   });
 
+  test("the keys act on the branch the claim or the resumed route named", async () => {
+    const { screen } = sink();
+    const seen: unknown[] = [];
+    const context = screen.context;
+    screen.context = (next: any) => (seen.push(next.branch), context(next));
+    await runTicket(fakeSpawn([RESULT]), opts({ screen, branch: "agent/953-x" }));
+    await runTicket(fakeSpawn([RESULT]), opts({ screen }));
+    assert.deepEqual(seen.filter((b) => b !== undefined), ["agent/953-x", null]);
+  });
+
   test("a session compacts at its size's context ceiling, and is told its ticket", async () => {
     let env: Record<string, string> | undefined;
     const capturing = (_cmd: string, _args: string[], o: any) => {
