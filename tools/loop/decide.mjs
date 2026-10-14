@@ -266,9 +266,10 @@ const STEPS = {
     if (pushed === undefined) return ask("pushed");
     if (!pushed && ran.blocked) return { kind: "hold", wait: "usage", n, why: "the usage window is spent", until: ran.blockedUntil ?? 0 };
     if (!pushed && ran.result?.subtype === "error_max_structured_output_retries") {
+      const phase = at?.phase ?? "?";
       return input.tally.undeclared
-        ? { kind: "park", n, phase: at?.phase ?? "?", why: "a second session on this ticket ended without valid structured output" }
-        : { kind: "hold", wait: "undeclared", n, why: "the session's structured output never validated" };
+        ? { kind: "park", n, phase, why: "a second session on this ticket ended without valid structured output" }
+        : { kind: "hold", wait: "undeclared", n, phase, why: "the session's structured output never validated" };
     }
 
     const reason = settling && !pushed ? { why: "phase G found no open pull request for the pushed head", hard: false } : reasonFor(ran, at, n);
@@ -359,7 +360,7 @@ function capped(action, input) {
   if (asked && action.n != null && (kind === "handoff" || kind === "retry" || kind === "hold")) {
     return { ...park("parked by owner", action.phase ?? own?.phase ?? "?"), byOwner: true };
   }
-  if (kind !== "handoff" && kind !== "retry") return action;
+  if (kind !== "handoff" && kind !== "retry" && action.wait !== "undeclared") return action;
   // A round that left the head where it found it cannot change what CI answers.
   if (kind === "retry" && action.head && action.head === tally.lastRedHead) {
     return park(`the fix round pushed no commit — CI would answer ${action.why} again`, "E");
