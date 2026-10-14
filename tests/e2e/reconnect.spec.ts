@@ -7,7 +7,7 @@
 // freezing, and that it clears itself once the socket is back.
 //
 // Going offline necessarily fails the socket's reconnects. The fixture watches
-// this spec's own context too, and matches that one message exactly
+// this spec's own context too, and matches what going offline raises exactly
 // (`isExpectedNoise`); the collector below skips the whole offline window.
 
 import type { Page } from "@playwright/test";

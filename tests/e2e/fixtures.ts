@@ -28,7 +28,7 @@ export function isExpectedNoise(text: string, url: string): boolean {
     (text === "Failed to load resource: net::ERR_FAILED" && url.startsWith(CANVASKIT_URL)) ||
     CANVASKIT_UNREACHABLE.has(text) ||
     READBACK_NOISE.test(text) ||
-    text === "Failed to load resource: net::ERR_INTERNET_DISCONNECTED" ||
+    text === OFFLINE_RESOURCE ||
     OFFLINE_SOCKET.test(text)
   );
 }
@@ -45,7 +45,8 @@ const CANVASKIT_UNREACHABLE = new Set([
   "Aborted(both async and sync fetching of the wasm failed). Build with -sASSERTIONS for more info.",
 ]);
 
-// Only a context a spec set offline can raise these: reconnect specs drop the network on purpose.
+// Only a context a spec set offline can raise these two: the reconnect specs drop the network on purpose.
+const OFFLINE_RESOURCE = "Failed to load resource: net::ERR_INTERNET_DISCONNECTED";
 const OFFLINE_SOCKET =
   /^WebSocket connection to 'ws:\/\/127\.0\.0\.1:\d+\/socket\.io\/\?EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_INTERNET_DISCONNECTED$/;
 

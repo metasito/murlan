@@ -392,9 +392,9 @@ const rows: string[] = [];
 test.describe("the online table, at the audit's viewports", () => {
   for (const vp of VIEWPORTS) {
     // Not the fixture `page`: every seat here is its own browser context (see
-    // `openOnlineTable`), so the console-error gate and the reduced-motion
-    // emulation the `consoleErrors` fixture would set up on the unused
-    // fixture page are wired onto each seat directly instead.
+    // `openOnlineTable`), so the reduced-motion emulation the `consoleErrors`
+    // fixture would set up on the unused fixture page is wired onto each seat
+    // directly instead.
     test(`${vp.name} — ${vp.width}x${vp.height}`, async ({ browser, baseURL }) => {
       // Past the sum of the ceilings each half sets for itself, so a runner
       // slow enough to reach one fails with that ceiling's own sentence rather
