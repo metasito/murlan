@@ -1757,6 +1757,26 @@ const HELD_AS = { preflight: "hold", usage: "refused", api: "overloaded" };
 /** The passes that leave the ticket standing, which the owner's park takes over. */
 const PARKABLE = new Set(["handoff", "retry", "refused", "overloaded", "hold"]);
 
+/** What `main` says over each held pass, and the row it waits on. */
+const HOLDS = {
+  hold: ({ ticket, why }, loop) =>
+    ticket != null
+      ? { label: "waiting", line: `#${ticket} held: ${why} — asking again shortly (${loop.ticketHolds} of ${TICKET_HOLDS})`, what: `#${ticket}'s CI-RED`, then: `#${ticket} settles again` }
+      : { label: "waiting", line: `${why} — asking again shortly (${loop.holds} of ${WAIT.TRIES})`, what: "a pre-flight hold", then: "the pre-flight asks again, then the next pick" },
+  refused: ({ ticket }, loop, back) => ({
+    label: "usage",
+    line: `#${ticket} paused: the usage window is spent — back at ${back} (wait ${loop.waits} of ${WAIT.TRIES})`,
+    what: `usage resets ${back}`,
+    then: `#${ticket} resumes from its worktree`,
+  }),
+  overloaded: ({ ticket, why }, loop, back) => ({
+    label: "api",
+    line: `#${ticket} paused: ${why} — trying again at ${back} (${loop.overloads} of ${WAIT.TRIES})`,
+    what: "the API is failing",
+    then: `#${ticket} resumes from its worktree`,
+  }),
+};
+
 /**
  * One ticket, start to finish. Serialised deliberately: overlapping the next ticket with the last
  * one's CI wait buys ~22% wall clock and costs pending state nothing recovers when the process
@@ -2368,42 +2388,13 @@ export async function main({
       screen.notice("park", `#${pass.ticket} ${pass.outcome} before the park could act`);
     }
 
-    // Not a failure: a pre-flight the machine has to settle, or a red whose CI-RED the tracker
-    // would not take. Held and asked again, bounded by the same ceiling a usage refusal has.
-    if (pass.outcome === "hold") {
-      const mine = pass.ticket != null;
-      const whose = mine ? `#${pass.ticket} held: ` : "";
-      const [count, bound] = mine ? [loop.ticketHolds, TICKET_HOLDS] : [loop.holds, WAIT.TRIES];
-      screen.notice("waiting", `${whose}${pass.why} — asking again shortly (${count} of ${bound})`);
-      const [what, then] =
-        pass.ticket != null
-          ? [`#${pass.ticket}'s CI-RED`, `#${pass.ticket}'s fix round, read from CI${queued()}`]
-          : ["a pre-flight hold", `the pre-flight asks again, then the next pick${queued()}`];
-      if ((await hold(pass.hold, what, then)) === "stopped") return finish(0, ".loop-stop during the wait");
-      continue;
-    }
-
-    // A refusal is not a failure and not a ticket: the account is out of usage, which the branch,
-    // the pull request and the label all survive. It waits, then goes again — an exit here costs
-    // every remaining ticket of an unattended night.
-    if (pass.outcome === "refused") {
-      screen.notice(
-        "usage",
-        `#${pass.ticket} paused: the usage window is spent — back at ${clockAt(Date.now() + pass.hold)} (wait ${loop.waits} of ${WAIT.TRIES})`,
-      );
-      const resets = `usage resets ${clockAt(Date.now() + pass.hold)}`;
-      if ((await hold(pass.hold, resets, `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
-        return finish(0, ".loop-stop during the wait");
-      }
-      continue;
-    }
-
-    if (pass.outcome === "overloaded") {
-      const back = clockAt(Date.now() + pass.hold);
-      screen.notice("api", `#${pass.ticket} paused: ${pass.why} — trying again at ${back} (${loop.overloads} of ${WAIT.TRIES})`);
-      if ((await hold(pass.hold, "the API is failing", `#${pass.ticket} resumes from its worktree${queued()}`)) === "stopped") {
-        return finish(0, ".loop-stop during the wait");
-      }
+    // None is a failure. A pre-flight the machine has to settle, a red whose CI-RED the tracker
+    // would not take, a spent usage window, a failing API: each waits, then goes again — an exit
+    // here costs every remaining ticket of an unattended night.
+    const held = HOLDS[pass.outcome]?.(pass, loop, clockAt(Date.now() + (pass.hold ?? 0)));
+    if (held) {
+      screen.notice(held.label, held.line);
+      if ((await hold(pass.hold, held.what, `${held.then}${queued()}`)) === "stopped") return finish(0, ".loop-stop during the wait");
       continue;
     }
 
