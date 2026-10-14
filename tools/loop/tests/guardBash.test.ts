@@ -47,8 +47,6 @@ function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
 
 const REFS = new Set(["main", "HEAD", "origin/main", "HEAD~1"]);
 const repo = {
-  branch: () => "agent/1-x",
-  pushTarget: () => "origin/agent/1-x",
   isRef: (arg: string) => REFS.has(arg),
   pathsClean: (paths: string[]) => !paths.some((p) => p.includes("dirty")),
   unmerged: (paths: string[]) => paths.length > 0 && paths.every((p) => p.includes("conflicted")),
@@ -125,10 +123,6 @@ const BLOCKED: [string, RegExp][] = [
   ["Remove-Item -Recurse -Force .worktrees\\agent-7", FORCE_DELETE],
   ["ri -r C:\\repo\\.worktrees\\agent-7", FORCE_DELETE],
   ["cmd /c rmdir /s /q .worktrees\\agent-7", FORCE_DELETE],
-  ["git push origin HEAD:main", /pull request/],
-  ["git push origin main", /pull request/],
-  ["git push -f origin +agent/1-x:refs/heads/main", /pull request/],
-  ["git push origin --delete main", /pull request/],
   ["gh pr merge 994 --merge --delete-branch", MERGE],
   ["gh -R metasito/murlan pr merge 994 --merge", MERGE],
   ["gh --repo o/r pr merge 5", MERGE],
@@ -167,14 +161,6 @@ describe("the bash guard blocks what has a correct alternative, however it is sp
       });
     }
   }
-
-  test("a push with no refspec, or HEAD, is blocked from main", () => {
-    const onMain = { ...repo, branch: () => "main", pushTarget: () => null };
-    for (const cmd of ["git push", "git push origin", "git push origin HEAD", "git -C d push -f origin @"]) {
-      assert.match(String(check(cmd, onMain)), /pull request/, cmd);
-    }
-    assert.match(String(check("git push", { ...repo, pushTarget: () => "origin/main" })), /pull request/);
-  });
 
   test("a sourced checkout is blocked when git cannot answer", () => {
     assert.ok(check("git checkout HEAD -- a.ts", { ...repo, isRef: () => true, pathsClean: () => false }));
@@ -372,6 +358,8 @@ describe("a loop session pushes only its own ticket's branch", () => {
     "git push --delete origin HEAD:agent/1529-x",
     "git push --delete origin",
     "cd .worktrees/agent-1529 && git push origin HEAD:agent/1438-x",
+    "git push origin HEAD:main",
+    "git push origin --delete main",
     "gh api -X PATCH repos/metasito/murlan/git/refs/heads/agent/1438-x -f sha=abc",
     "gh api repos/o/r/git/refs -f ref=refs/heads/agent/1438-x -f sha=abc",
   ]) test(`refuses: ${no}`, () => assert.match(String(inLoop(no)), OWN_ONLY));
@@ -388,12 +376,6 @@ describe("a loop session pushes only its own ticket's branch", () => {
     for (const cmd of ["git push origin HEAD:agent/1438-x", "git push", "git push origin --delete side/x"]) {
       assert.equal(withEnv({ LOOP_TICKET: "1529" }, () => check(cmd, repo, false)), null, cmd);
     }
-  });
-
-  test("push to main is still the main rule's refusal", () => {
-    const said = String(inLoop("git push origin HEAD:main"));
-    assert.match(said, /Pushing to main is blocked/);
-    assert.match(said, /git push -u origin HEAD:agent\/<n>-<slug>/, "it prescribes the one form the own-ticket rule allows");
   });
 });
 

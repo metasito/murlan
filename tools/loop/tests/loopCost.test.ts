@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { familyOf, killedLine, report, select, shaTable, summary, turnHeadroom } from "../loop-cost.mjs";
+import { estimateCost, familyOf, killedLine, report, select, shaTable, summary, turnHeadroom } from "../loop-cost.mjs";
 import { handoffIn } from "../loop-logs.mjs";
 import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
@@ -19,6 +19,20 @@ const golden = {
 test("every spelling of a family is that family, and an id of none is none", () => {
   assert.deepEqual(["sonnet", "claude-sonnet-5", "claude-opus-5[1m]", "opus", "claude-haiku-4-5-20251001"].map(familyOf), ["sonnet", "sonnet", "opus", "opus", "haiku"]);
   assert.equal(familyOf("claude-mystery-9"), null);
+});
+
+describe("estimateCost", () => {
+  const m = (model: string | null) => ({ model, input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheCreated: 1_000_000 });
+
+  test("prices each token kind at its family's rate", () => {
+    assert.equal(estimateCost([m("claude-opus-5-5")]), 5 + 25 + 0.5 + 6.25);
+    assert.equal(estimateCost([m("sonnet")]), 2 + 10 + 0.2 + 2.5);
+    assert.equal(estimateCost([m("claude-haiku-4-5")]), 1 + 5 + 0.1 + 1.25);
+  });
+
+  test("a model no family names is priced as the dearest, not as free", () => {
+    assert.equal(estimateCost([m(null)]), estimateCost([m("opus")]));
+  });
 });
 
 /**
