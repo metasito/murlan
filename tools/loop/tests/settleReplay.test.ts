@@ -45,10 +45,8 @@ function rollupFake({
   autoMerges = true,
   refuse = {},
   issueComments = [],
-  deleted = false,
   open = [],
 }: {
-  deleted?: boolean;
   /** The titles of the open issues `issue list` answers with; `issue create` adds to it. */
   open?: string[];
   views: Fixture[];
@@ -63,7 +61,6 @@ function rollupFake({
   const asked: string[][] = [];
   const pr = { head: SHA, armed, draft, merged: false, attempt };
   let read = 0;
-  let branchGone = deleted;
   const gh = (args: string[], file = "gh") => {
     assert.equal(file, "gh", `a ${file} call reached the gh fake: ${args.join(" ")}`);
     asked.push(args);
@@ -124,11 +121,6 @@ function rollupFake({
     if (cmd === "issue" && sub === "create") {
       open.push(args[args.indexOf("--title") + 1]);
       return `https://github.com/${REPO}/issues/${1999 + open.length}\n`;
-    }
-    if (cmd === "api" && args.includes("DELETE")) {
-      if (branchGone) throw new Error("gh: Reference does not exist (HTTP 422)");
-      branchGone = true;
-      return "";
     }
     throw new Error(`the gh fake has no answer for: gh ${args.join(" ")}`);
   };
@@ -230,46 +222,6 @@ describe("settle, replayed against recorded rollups", () => {
     assert.match(String(out.reason), /still a draft/);
     assert.equal(asked.filter((a) => a[1] === "ready").length, SETTLE_ROUNDS.ready);
     assert.equal(merges(asked).length, 0);
-  });
-
-  describe("a merged branch is deleted, and its deletion confirmed", () => {
-    const merged = (deleted: boolean, lsRemote = "") => {
-      const fake = rollupFake({ views: [at(GREEN, { state: "MERGED" })], deleted });
-      const said: string[] = [];
-      const gits: string[][] = [];
-      const gitOpts: ({ timeout?: number } | undefined)[] = [];
-      const run = (file: string, args: string[], opts?: { timeout?: number }) =>
-        file === "git" ? (gits.push(args), gitOpts.push(opts), lsRemote) : fake.gh(args, file);
-      return { ...fake, said, gits, gitOpts, io: { ...io(fake.gh), run }, log: (m: string) => said.push(m) };
-    };
-
-    test("the look on origin is bounded, as every other call the supervisor makes is", async () => {
-      const { gitOpts, io: withGit, log } = merged(false);
-      await poll(PENDING, log, 0, DEADLINE, withGit);
-      assert.ok((gitOpts[0]?.timeout ?? 0) > 0, JSON.stringify(gitOpts));
-    });
-    const deletes = (asked: string[][]) => asked.filter((a) => a[0] === "api" && a.includes("DELETE"));
-
-    test("the branch is deleted on origin, then looked for there", async () => {
-      const { asked, gits, said, io: withGit, log } = merged(false);
-      assert.equal((await poll(PENDING, log, 0, DEADLINE, withGit)).action, "already-merged");
-      assert.deepEqual(deletes(asked), [["api", "-X", "DELETE", `repos/${REPO}/git/refs/heads/${PENDING.branch}`]]);
-      assert.deepEqual(gits, [["ls-remote", "origin", PENDING.branch]]);
-      assert.ok(!said.some((m) => /still on origin/.test(m)), JSON.stringify(said));
-    });
-
-    test("a branch GitHub already deleted is no failure", async () => {
-      const { asked, said, io: withGit, log } = merged(true);
-      assert.equal((await poll(PENDING, log, 0, DEADLINE, withGit)).action, "already-merged");
-      assert.equal(deletes(asked).length, 1);
-      assert.ok(!said.some((m) => /still on origin/.test(m)), JSON.stringify(said));
-    });
-
-    test("a branch still on origin after the delete is said out loud", async () => {
-      const { said, io: withGit, log } = merged(false, `${SHA}\trefs/heads/${PENDING.branch}\n`);
-      assert.equal((await poll(PENDING, log, 0, DEADLINE, withGit)).action, "already-merged");
-      assert.ok(said.some((m) => m.includes(`${PENDING.branch} is still on origin`)), JSON.stringify(said));
-    });
   });
 
   test("a pull request someone else merged is not a fix round", async () => {

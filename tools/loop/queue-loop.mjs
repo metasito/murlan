@@ -1532,7 +1532,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
       return { ok: false, why: `no loop-review or loop-fix completed for #${pending.ticket} since its last build` };
     },
   } = io;
-  const { armArgs, branchSurvives, deleteBranchArgs, disarmArgs, landing } = ts("./land.ts");
+  const { armArgs, disarmArgs, landing } = ts("./land.ts");
   const gh = (args) => run("gh", args, { timeout: CI_RED_TIMEOUT_MS });
   const spent = { update: 0, retry: 0, recheck: 0, appear: 0, ready: 0 };
   let until = Date.now() + deadline;
@@ -1554,21 +1554,8 @@ export async function poll(pending, log, pause, deadline, io = {}) {
   let verdict = {};
   const owner = (reason) => ({ action: "owner", reason, runId: verdict.runId ?? null, head, ...(flake && { flake }) });
   let flake = null;
+  // The merged branch is GitHub's to delete: `deleteBranchOnMerge.test.ts` pins the repository setting.
   const merged = (reason) => {
-    if (pending.branch) {
-      try {
-        gh(deleteBranchArgs(REPO, pending.branch));
-      } catch {
-        // Already gone is the common refusal, and `ls-remote` below is the judge either way.
-      }
-      try {
-        if (branchSurvives(run("git", ["ls-remote", "origin", pending.branch], { timeout: REFRESH_TIMEOUT_MS }))) {
-          log(`⚠️ #${pending.ticket} ${pending.branch} is still on origin after its merge`);
-        }
-      } catch {
-        // An unreadable `ls-remote` is not evidence of a survivor.
-      }
-    }
     const ledgered = pending.flake;
     if (!flake && ledgered && ledgered.head === head) flake = { runId: ledgered.runId, tests: ledgered.tests ?? [], step: ledgered.step ?? null };
     if (flake) fileFlakes({ ...flake, ticket: pending.ticket, pr: pending.pr }, gh, log, write);

@@ -5,8 +5,6 @@ import {
   landing,
   armArgs,
   disarmArgs,
-  deleteBranchArgs,
-  branchSurvives,
   type CiVerdict,
   type Landing,
   type PrState,
@@ -361,16 +359,5 @@ describe("armArgs and disarmArgs", () => {
 
   test("disarm", () => {
     assert.deepEqual(disarmArgs("metasito/murlan", 7), ["pr", "merge", "7", "--repo", "metasito/murlan", "--disable-auto"]);
-  });
-});
-
-describe("deleting a merged branch", () => {
-  test("deletes the ref on origin, slashes and all", () => {
-    assert.deepEqual(deleteBranchArgs("o/r", "agent/958-persist"), ["api", "-X", "DELETE", "repos/o/r/git/refs/heads/agent/958-persist"]);
-  });
-
-  test("no ls-remote output means the branch is gone; a ref line means it survived", () => {
-    for (const out of ["", "\n", "  \n"]) assert.equal(branchSurvives(out), false);
-    assert.equal(branchSurvives("9f1c2d3e4b5a67890abcdef1234567890abcdef1\trefs/heads/agent/958-persist\n"), true);
   });
 });
