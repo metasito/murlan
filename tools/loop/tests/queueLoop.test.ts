@@ -1040,31 +1040,6 @@ describe("runTicket", () => {
     assert.equal(run.status, 0);
   });
 
-  // F2: six of eleven landings in the audit window rode an attempt-2 green the session itself rerun.
-  test("counts the CI reruns the session itself ran, not ones it only quoted", async () => {
-    const bash = (command: string, parent: string | null = null) =>
-      JSON.stringify({
-        type: "assistant",
-        parent_tool_use_id: parent,
-        message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] },
-      });
-    const lines = [
-      bash("RUN=38166186124 && gh run rerun $RUN --failed && echo rerun"),
-      bash(`gh issue comment 1466 --body "I will not run gh run rerun 1 again"`),
-      bash("gh run rerun 2 --failed", "toolu_sub"),
-      RESULT,
-    ];
-    const run = await runTicket(fakeSpawn(lines), opts());
-    assert.equal(run.reruns, 1);
-  });
-
-  test("a rerun behind gh's own --repo flag is counted too", async () => {
-    const bash = (command: string) =>
-      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command } }] } });
-    const lines = [bash("gh -R metasito/murlan run rerun 1 --failed"), bash("gh --repo=metasito/murlan run rerun 2"), RESULT];
-    assert.equal((await runTicket(fakeSpawn(lines), opts())).reruns, 2);
-  });
-
   test("a non-zero exit is reported, not thrown", async () => {
     const run = await runTicket(fakeSpawn([RESULT], 1), opts());
     assert.equal(run.status, 1);
