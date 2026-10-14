@@ -643,7 +643,7 @@ function removeLandedTree(cwd, number, { run, write, say }) {
 }
 
 /**
- * Pushes the head review is about to read, and opens a draft for it when no pull request is open,
+ * Pushes the head review is about to read, and opens its pull request when none is open,
  * so CI runs while the review does. Not a gate: phase D's land step pushes again if this failed.
  */
 export function publishForReview(number, branch, cwd, title, run = sh) {
@@ -653,9 +653,9 @@ export function publishForReview(number, branch, cwd, title, run = sh) {
     run("gh", ["pr", "list", "--repo", REPO, "--head", branch, "--state", "open", "--json", "number"], opts),
   );
   if (open.length > 0) return prUrl(open[0].number);
-  const body = `Closes #${number}\n\nOpened as a draft when review started. Phase D writes this description on LAND.`;
+  const body = `Closes #${number}\n\nOpened when review started. Phase D writes this description on LAND.`;
   return String(
-    run("gh", ["pr", "create", "--repo", REPO, "--draft", "--base", "main", "--head", branch, "--title", title, "--body", body], opts),
+    run("gh", ["pr", "create", "--repo", REPO, "--base", "main", "--head", branch, "--title", title, "--body", body], opts),
   ).trim();
 }
 
@@ -1461,7 +1461,7 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         }
         next = landing(pr, verdict);
         woke = false;
-        const now = JSON.stringify([head, verdict.runId, verdict.attempt, verdict.reason, pr.mergeStateStatus, pr.mergeable, pr.isDraft]);
+        const now = JSON.stringify([head, verdict.runId, verdict.attempt, verdict.reason, pr.mergeStateStatus, pr.mergeable]);
         if (now !== seen) [seen, stuckSince] = [now, Date.now()];
       } catch (err) {
         seen = null;
@@ -1503,12 +1503,6 @@ export async function poll(pending, log, pause, deadline, io = {}) {
         gh(["pr", "update-branch", String(pending.pr)]);
       } catch (err) {
         return leave(owner(`could not update the branch — ${firstLine(err)}`));
-      }
-    } else if (step.act === "ready") {
-      try {
-        gh(["pr", "ready", String(pending.pr), "--repo", REPO]);
-      } catch (err) {
-        return leave(owner(`could not mark the draft ready — ${firstLine(err)}`));
       }
     } else if (step.act === "arm") {
       const at = String(head ?? "an unread head").slice(0, 7);

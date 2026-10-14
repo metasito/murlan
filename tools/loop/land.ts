@@ -4,7 +4,6 @@ export interface PrState {
   state: string;
   mergeStateStatus: string;
   mergeable: string;
-  isDraft?: boolean;
   /** `autoMergeRequest != null`: GitHub merges this head once `CI gate` passes. */
   armed?: boolean;
 }
@@ -24,8 +23,6 @@ export type Landing =
   | { action: "already-merged"; reason: string }
   | { action: "update-branch"; reason: string }
   | { action: "recheck"; reason: string }
-  /** Green, and still the draft opened when review started. */
-  | { action: "ready"; reason: string }
   /** CI is red and a fresh session can fix it. */
   | { action: "hand-back"; reason: string }
   /** Only a person can move this. */
@@ -80,11 +77,6 @@ export function landing(pr: PrState, ci: CiVerdict): Landing {
 
   if (ci.pass !== true) {
     return { action: "hand-back", reason: `CI failed at ${ci.failedStep ?? "an unnamed step"}` };
-  }
-
-  // Before mergeability: a draft reads DRAFT there, which is no verdict on the branch.
-  if (pr.isDraft) {
-    return { action: "ready", reason: "CI passed on the draft opened for review" };
   }
 
   // GitHub computes mergeability in a background job it starts when asked, and the documented
