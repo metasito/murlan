@@ -11,6 +11,7 @@ import {
   poll,
   runOnce,
   main,
+  settle,
   nextRoute,
   park,
   refreshWorktree,
@@ -1493,6 +1494,52 @@ describe("main", () => {
     const code = await main({ io: fake, book: book(), screen: screen(), install: () => {}, runId: "t" });
     assert.equal(code, 0, "alternating park and close never reaches three in a row");
     assert.equal(n, 8);
+  });
+
+  describe("the supervisor's own lines reach io.journal, not only the screen", () => {
+    const night = async (journal: (line: string) => void) => {
+      let settled = false;
+      const said: string[] = [];
+      const code = await main({
+        io: {
+          ...(io() as any),
+          stopFile: () => settled,
+          killed: () => ({ n: 1094, phase: "D", started: "2026-09-21T08:05:45Z", ms: 12 * 60_000, trailing: true }),
+          settle: (pending: any, board: any) => {
+            settled = true;
+            return settle(pending, board, {
+              watch: async (_p: unknown, log: (m: string) => void) => {
+                log("auto-merge armed at abc1234");
+                return { action: "already-merged" };
+              },
+            });
+          },
+          journal,
+        },
+        book: book(),
+        screen: { ...screen(), start: () => {}, set: () => {}, said: (m: string) => said.push(m), close: () => {} },
+        install: () => {},
+        runId: "t",
+      });
+      return { code, said };
+    };
+
+    test("each with its timestamp and, once a ticket is picked, its number", async () => {
+      const kept: string[] = [];
+      await night((line) => kept.push(line));
+      const lines = kept.join("").split("\n");
+      const at = (l: string) => !Number.isNaN(Date.parse(l.split(" ")[0]));
+      assert.ok(lines.some((l) => at(l) && / killed: #1094's phase D session .* killed after 12 min/.test(l)), lines.join("\n"));
+      assert.ok(lines.some((l) => at(l) && l.endsWith(" #42 auto-merge armed at abc1234")), lines.join("\n"));
+    });
+
+    test("a journal that throws costs the line, never the loop", async () => {
+      const { code, said } = await night(() => {
+        throw new Error("EBUSY: resource busy or locked");
+      });
+      assert.equal(code, 0);
+      assert.ok(said.includes("auto-merge armed at abc1234"));
+    });
   });
 });
 
