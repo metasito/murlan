@@ -348,11 +348,6 @@ export function fixHolds(comments) {
   return countedVerdicts(comments).filter((v) => v.fix && v.decision === "HOLD").length;
 }
 
-/** Every HOLD on the thread, across claims and fix rounds: the ledger's measure, never the cap's. */
-export function totalHolds(comments) {
-  return comments.filter((c) => VERDICT_RE.exec(fenceStripped(c.body))?.[1] === "HOLD").length;
-}
-
 /**
  * The issue's comments, as `gh` returns them.
  *

@@ -88,23 +88,6 @@ function windowsOf(rows) {
 }
 
 /**
- * A ticket's HOLD verdicts. Schema 8 carries `review_holds_total` across claims and fix rounds; a
- * ticket with no row carrying it is approximated as its `review_rounds` less its landings, a count
- * a re-claim resets.
- */
-function holdsOf(rows) {
-  let total = null;
-  let rounds = 0;
-  let landed = 0;
-  for (const r of rows) {
-    if (typeof r.review_holds_total === "number") total = Math.max(total ?? 0, r.review_holds_total);
-    rounds = Math.max(rounds, r.review_rounds ?? 0);
-    if (r.outcome === "landed") landed += 1;
-  }
-  return total ?? Math.max(0, rounds - landed);
-}
-
-/**
  * The gauge over ledger rows of every schema, start rows included. A ticket is an issue number,
  * however many claims it took; fix spend is counted per claim window; a model is judged only on a
  * process.
@@ -118,7 +101,6 @@ export function summary(input, caps = TURNS_BY_SIZE) {
     spend: sum(mine.map((r) => r.cost ?? 0)),
     minutes: sum(mine.map((r) => r.ms ?? 0)) / 6e4,
     rounds: Math.max(0, ...mine.map((r) => r.review_rounds ?? 0)),
-    holds: holdsOf(mine),
   }));
   const spent = tickets.filter((t) => t.spend > 0);
   const windows = windowsOf(rows).map(tallyOf);
@@ -141,7 +123,7 @@ export function summary(input, caps = TURNS_BY_SIZE) {
     reviewRoundsMedian: median(spent.map((t) => t.rounds).filter(Boolean)),
     fixSpend,
     fixShare: spend ? (fixSpend / spend) * 100 : 0,
-    holdsPerTicket: tickets.length ? sum(tickets.map((t) => t.holds)) / tickets.length : 0,
+    holdsPerTicket: tickets.length ? sum(windows.map((t) => t.holds)) / tickets.length : 0,
     processesMedian: median(windows.map((t) => t.processes).filter(Boolean)),
     mismatched: processes.filter((r) => {
       const want = MODEL_BY_PHASE[atOf(r)];

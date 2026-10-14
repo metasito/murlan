@@ -24,7 +24,6 @@ import {
   parityRed,
   REPO,
   reviewRounds,
-  totalHolds,
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
@@ -697,13 +696,12 @@ export function ticketFacts(number, exec = execFileSync) {
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
-      totalHolds: totalHolds(trustedComments(issue.comments ?? [])),
       ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, totalHolds: null, ciRounds: 0 };
+    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
   }
 }
 

@@ -94,7 +94,7 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
  * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
  * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads. 9 adds
  * `model`, the one the session's init line named, and drops `usage`, a token split read back off
- * the stream log.
+ * the stream log, and `review_holds_total`, which `holdRound` counts from the rows.
  */
 export const SCHEMA = 9;
 
@@ -120,7 +120,7 @@ export const errorLine = (error) =>
  *
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
- *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
+ *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
  *   model?: string|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
@@ -135,7 +135,6 @@ export function sessionRow({
   result,
   merged,
   reviewRounds,
-  totalHolds = null,
   startedAt,
   ms,
   asleepMs = null,
@@ -170,7 +169,6 @@ export function sessionRow({
     cache: result?.cache ?? { created: 0, read: 0 },
     merged: Boolean(merged),
     review_rounds: reviewRounds ?? null,
-    review_holds_total: totalHolds,
     claude_version: version ?? null,
     started: startedAt,
     head,
@@ -296,12 +294,12 @@ export function ledger(io = {}) {
     },
     /**
      * @param {{number: number, outcome: string, why?: string|null, run: object, title?: string|null,
-     *   size?: string|null, reviewRounds?: number|null, totalHolds?: number|null, pr?: number|null,
+     *   size?: string|null, reviewRounds?: number|null, pr?: number|null,
      *   merged?: boolean, head?: string|null, handoff?: object|null, parkFailed?: string[]|null,
      *   flake?: object|null}} session
      * @param {string} runId
      */
-    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, totalHolds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null, flake = null }, runId) {
+    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null, flake = null }, runId) {
       const prior = exists(ledgerPath()) ? parsed(read(ledgerPath())) : [];
       const error = errorOf(run);
       const entry = sessionRow({
@@ -314,7 +312,6 @@ export function ledger(io = {}) {
         result: run.result,
         merged,
         reviewRounds,
-        totalHolds,
         // A park recorded hours after its session ended did not start at `now - ms`.
         startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
         ms: run.ms,
@@ -389,15 +386,8 @@ export function typicalMs(rows) {
   return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
 }
 
-/** Only for rows before schema 6, which carried a handoff as prose. */
-const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
-
-/** @param {{handoff?: {phase: string, why: string|null, said?: string|null}|null, park_reason?: string|null}} row */
-export function handoffIn(row) {
-  if (row.handoff) return { phase: row.handoff.phase, why: row.handoff.why ?? row.handoff.said ?? null };
-  const m = HANDOFF_RE.exec(row.park_reason ?? "");
-  return m ? { phase: m[1], why: m[2] ?? null } : null;
-}
+/** @param {{handoff?: {phase: string, why: string|null, said?: string|null}|null}} row */
+export const handoffIn = ({ handoff }) => (handoff ? { phase: handoff.phase, why: handoff.why ?? handoff.said ?? null } : null);
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
@@ -472,7 +462,7 @@ export function withSpawnPhase(rows) {
  * A handoff on to E was a LAND that left E to the next process.
  */
 export const holdRound = (row) =>
-  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(handoffIn(row)?.phase ?? "");
+  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(row.handoff?.phase ?? "");
 
 /**
  * One window's rows folded together: `ticketTally`'s open window, and each of the gauge's. A row
@@ -488,6 +478,7 @@ export function tallyOf(rows) {
     turns: 0,
     processes: 0,
     fixSpend: 0,
+    holds: 0,
     handoffsThisRound: 0,
     lastHandoff: /** @type {string|null} */ (null),
     handoffWhy: /** @type {string|null} */ (null),
@@ -504,7 +495,9 @@ export function tallyOf(rows) {
     t.ms += r.ms ?? 0;
     t.turns += r.turns ?? 0;
     if (isProcess(r)) t.processes += 1;
-    if (fixing || holdRound(r)) t.fixSpend += cost;
+    const held = holdRound(r);
+    if (held) t.holds += 1;
+    if (fixing || held) t.fixSpend += cost;
     if (r.outcome === "retry") {
       t.retries += 1;
       t.handoffsThisRound = 0;

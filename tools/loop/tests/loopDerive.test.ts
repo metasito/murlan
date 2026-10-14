@@ -13,7 +13,6 @@ import {
   reviewFor,
   handoffFor,
   reviewRounds,
-  totalHolds,
   fixHolds,
   ciRedRounds,
   ciRedPosted,
@@ -264,7 +263,7 @@ describe("counting review rounds", () => {
     assert.equal(reviewRounds([...past, refused, claim]), 0);
   });
 
-  test("the hold total counts every HOLD, across claims and fix rounds, and no LAND", () => {
+  test("a CI fix round's verdicts are no review round", () => {
     const fixRound = [
       { body: "VERDICT: LAND cde3456" },
       { body: "CI-RED cde3456" },
@@ -273,10 +272,7 @@ describe("counting review rounds", () => {
       { body: "REVIEW eee6789 fix\n\n## Blocking\n" },
       { body: "VERDICT: LAND eee6789" },
     ];
-    assert.equal(totalHolds(fixRound), 1);
     assert.equal(reviewRounds(fixRound), 1);
-    assert.equal(totalHolds([...holds, stoodDown(), claim, ...fixRound]), 3);
-    assert.equal(totalHolds([]), 0);
   });
 
   test("a verdict quoted inside a fence does not count", () => {

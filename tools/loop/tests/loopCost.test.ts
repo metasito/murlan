@@ -7,11 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { familyOf, killedLine, lastStamp, report, shaTable, sinceWindow, summary, turnHeadroom, wanted } from "../loop-cost.mjs";
 import { handoffIn } from "../loop-logs.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
-const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
 const golden = {
-  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
-  main: JSON.parse(fixture("ledger-golden.main.json")),
+  rows: ledgerFixture("ledger-golden.jsonl"),
+  main: JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-golden.main.json"), "utf8")),
 };
 
 /** The logs carry four spellings of two models; an exact-match table charged sonnet at opus. */
@@ -86,12 +86,12 @@ const proc = ({ at = "C", model = "claude-opus-5-5", ...over }: { at?: string; m
 const out = (over: object) => ({ schema: 8, n: 1, cost: 0, turns: 0, phases: {}, ...over });
 
 describe("summary", () => {
-  test("a review that hands to C or D is fix spend, and HOLD rounds are the row's own count", () => {
+  test("a review that hands to C or D is fix spend and a HOLD round", () => {
     const rows = [
       proc({ n: 1, at: "C", cost: 5 }),
       proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
       proc({ n: 1, at: "C", cost: 3 }),
-      proc({ n: 1, at: "D", cost: 1, review_holds_total: 1 }),
+      proc({ n: 1, at: "D", cost: 1 }),
       out({ n: 1, outcome: "landed" }),
     ];
     const s = summary(rows);
@@ -177,13 +177,12 @@ describe("summary", () => {
     assert.deepEqual([s.fixSpend, Object.keys(s.byAt)], [3, ["A"]]);
   });
 
-  describe("on a ledger of schema 3 to 8, against what main's gauge recorded of it", () => {
+  describe("on a ledger of schema 3 to 8, its prose handoffs lifted, against what main's gauge recorded of it", () => {
     const rows = golden.rows;
     const s = summary(rows);
     const firstTimed = (r: { phases?: object }) => Object.keys(r.phases ?? {})[0];
 
-    test("HOLD rounds per ticket, processes per ticket, models and turn headroom are main's", () => {
-      assert.ok(Math.abs(s.holdsPerTicket - golden.main.holdsMean) < 1e-9);
+    test("processes per ticket, models and turn headroom are main's", () => {
       assert.equal(s.processesMedian, golden.main.processesMedian);
       assert.deepEqual(s.mismatched.map((r) => `${r.n}@${r.started}`), golden.main.mismatches);
       assert.equal(s.unjudged, golden.main.unjudged);
@@ -210,7 +209,7 @@ describe("report", () => {
     proc({ n: 1, at: "C", cost: 5 }),
     proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
     proc({ n: 1, at: "C", cost: 3 }),
-    proc({ n: 1, at: "D", cost: 1, outcome: "pushed", review_rounds: 2, review_holds_total: 1 }),
+    proc({ n: 1, at: "D", cost: 1, outcome: "pushed", review_rounds: 2 }),
     out({ n: 1, outcome: "landed", ms: 600_000 }),
     proc({ n: 2, at: "A", cost: 4 }),
     out({ n: 2, outcome: "parked" }),

@@ -26,6 +26,7 @@ import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";
 import { PLAIN } from "../loop-render.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 import { parkAsked } from "../loop-screen.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..", "..", "..");
@@ -697,7 +698,7 @@ describe("runOnce", () => {
         return { onTicket: true, ticket: 42, branch: "agent/42-x", cwd: red.cwd, dirty: false, phase: "C", fix: true };
       },
       facts: () => ({ title: "t", url: "", size: "size:S", labels: ["in-progress"], reviewRounds: 1, ciRounds: 1 }),
-      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }],
+      ledger: () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }],
     } as never);
     assert.deepEqual(asked, [{ ci: true }]);
     assert.deepEqual([route.phase, route.fix, route.cwd, route.branch], ["C", true, red.cwd, "agent/42-x"]);
@@ -718,10 +719,7 @@ describe("runOnce", () => {
   });
 
   test("nextRoute replays 2026-09-21/22: every session starts where the ledger before it pointed", () => {
-    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-2026-09-21.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
+    const rows = ledgerFixture("ledger-2026-09-21.jsonl");
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
     const settle = { phase: "G", ci: { pushed: true } };
     const status = { handoff: { phase: "C" }, pushed: settle, retry: { phase: "C", fix: true } };
@@ -757,14 +755,14 @@ describe("runOnce", () => {
 
   test("nextRoute: a pinned ticket with no worktree rebuilds at A", () => {
     const facts = () => ({ title: "Fix the card fan!", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
     const stranded: any = nextRoute(42, null, { read: () => ({ onTicket: false, phase: "A" }), facts, ledger } as never);
     assert.deepEqual([stranded.phase, stranded.resuming], ["A", true]);
     assert.equal(stranded.branch, "agent/42-fix-the-card-fan", "no claim runs on a resume, so the route names the branch the claim would");
   });
 
   test("nextRoute: a pinned ticket the tracker no longer shows as ours goes back to the picker", () => {
-    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase E next", head: null }];
+    const ledger = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "E" }, head: null }];
     const picked: number[] = [];
     const picker = () => {
       picked.push(1);
@@ -793,7 +791,7 @@ describe("runOnce", () => {
 
   test("nextRoute: a LAND on the head outranks a handoff to review, and nothing else does", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null }];
+    const toReview = () => [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null }];
     const at = (phase: string, pinned: string | null = null) =>
       nextRoute(42, pinned as never, {
         read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase, fix: false }),
@@ -1975,7 +1973,7 @@ describe("a ticket's tally comes from the ledger, not from memory", () => {
     declared: handoff ? { ticket: 42, phase: "C", handoff, stoodDown: false } : null,
   });
   const retryRow = (head: string) => ({ n: 42, outcome: "retry", cost: 1, park_reason: null, head });
-  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, park_reason: "phase D next", head: null });
+  const handoffRow = () => ({ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "D" }, head: null });
   const plan = (sessions: object[]) => {
     let s = 0;
     return {
@@ -2271,7 +2269,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
 
   test("nextRoute: a pushed head settles ahead of a handoff the ledger holds from before the push", () => {
     const facts = () => ({ title: "t", url: "", size: null, labels: ["in-progress"], reviewRounds: 1, ciRounds: 0 });
-    const rows = [{ n: 42, outcome: "handoff", cost: 0, park_reason: "phase C next — a declared one", head: "a" }];
+    const rows = [{ n: 42, outcome: "handoff", cost: 0, handoff: { phase: "C", why: "a declared one" }, head: "a" }];
     const route: any = nextRoute(42, ticketTally(42, rows as never).lastHandoff as never, {
       read: () => ({ onTicket: true, ticket: 42, branch: "agent/42-x", cwd: "w", phase: "G", fix: false, ci: { pushed: true } }),
       facts,

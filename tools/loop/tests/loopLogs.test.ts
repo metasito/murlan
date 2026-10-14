@@ -25,11 +25,11 @@ import {
   windowCost,
   withSpawnPhase,
 } from "../loop-logs.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
-const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
 const golden = {
-  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
-  main: JSON.parse(fixture("ledger-golden.main.json")),
+  rows: ledgerFixture("ledger-golden.jsonl"),
+  main: JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-golden.main.json"), "utf8")),
 };
 
 const RESULT = {
@@ -239,13 +239,10 @@ describe("sessionRow", () => {
 
   test("a count nobody could take is null, never zero", () => {
     assert.equal(sessionRow(session({ reviewRounds: null })).review_rounds, null);
-    assert.equal(sessionRow(session({ totalHolds: null })).review_holds_total, null);
   });
 
-  test("carries every HOLD on the issue beside the count the cap reads", () => {
-    const r = sessionRow(session({ reviewRounds: 1, totalHolds: 5 }));
-    assert.equal(r.review_holds_total, 5);
-    assert.equal("review_rounds_total" in r, false);
+  test("carries no HOLD count of the tracker's: the rows' own handoffs are the count", () => {
+    assert.equal("review_holds_total" in r, false);
   });
 
   test("collapses modelUsage to cost per model", () => {
@@ -462,11 +459,6 @@ describe("pendingReparks", () => {
 describe("ticketTally", () => {
   const row = (over: object) => ({ n: 1, cost: 0, ...over });
 
-  test("reads a structured handoff first, and the prose only on a row that has none", () => {
-    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next", handoff: { phase: "C", why: "red", said: null } })]);
-    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "red"]);
-  });
-
   test("a handoff is the row's own field: a park reason's prose is none", () => {
     const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next — x" })]);
     assert.deepEqual([t.handoffsThisRound, t.lastHandoff, t.handoffWhy], [1, null, null]);
@@ -478,18 +470,15 @@ describe("ticketTally", () => {
   });
 
   test("a start row is a spawn, not a session", () => {
-    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase D next" }), row({ outcome: "started", phase: "D" })]);
+    const t = ticketTally(1, [row({ outcome: "handoff", handoff: { phase: "D" } }), row({ outcome: "started", phase: "D" })]);
     assert.deepEqual([t.sessions, t.handoffsThisRound, t.lastHandoff], [1, 1, "D"]);
   });
 
   describe("on the recorded 2026-09-21/22 ledger", () => {
-    const rows = readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-2026-09-21.jsonl"), "utf8")
-      .trim()
-      .split("\n")
-      .map((l) => JSON.parse(l));
+    const rows = ledgerFixture("ledger-2026-09-21.jsonl");
     const each = (of: object[]) => rows.map((r, i) => ticketTally(r.n, of.slice(0, i + 1)));
 
-    test("every prefix tallies as it did before schema 6", () => {
+    test("every prefix, its prose handoffs lifted into the field, tallies as it did before schema 6", () => {
       const s = { sessions: 0, handoffs: 0, retries: 0, spend: 0, last: "" };
       for (const t of each(rows)) {
         s.sessions += t.sessions;
@@ -509,29 +498,11 @@ describe("ticketTally", () => {
         },
       );
     });
-
-    test("the same rows written as schema 6 tally the same as their prose", () => {
-      const v6 = rows.map((r) => {
-        const m = /^phase ([A-F]) next(?: — (.+))?$/.exec(r.park_reason ?? "");
-        return r.outcome === "handoff" && m ? { ...r, park_reason: null, handoff: { phase: m[1], why: m[2] ?? null, said: null } } : r;
-      });
-      assert.deepEqual(each(v6), each(rows));
-    });
-
-    test("rows of every schema before 6 still tally", () => {
-      assert.deepEqual([...new Set(rows.map((r) => r.schema))], [5]);
-      const older = [{ n: 1, outcome: "handoff", park_reason: "phase C next" }, { schema: 2, n: 1, outcome: "retry" }, { schema: 4, n: 1, outcome: "handoff", park_reason: "phase D next — x", solo_bash_turns: 3 }];
-      assert.deepEqual([ticketTally(1, older).lastHandoff, ticketTally(1, older).handoffWhy], ["D", "x"]);
-    });
   });
 
   test("handoffs since the last terminal row, restarting the streak on a retry", () => {
-    const t = ticketTally(1, [
-      row({ outcome: "handoff", park_reason: "phase D next" }),
-      row({ outcome: "handoff", park_reason: "phase D next" }),
-      row({ outcome: "retry", head: "a" }),
-      row({ outcome: "handoff", park_reason: "phase D next" }),
-    ]);
+    const toD = row({ outcome: "handoff", handoff: { phase: "D" } });
+    const t = ticketTally(1, [toD, toD, row({ outcome: "retry", head: "a" }), toD]);
     assert.equal(t.sessions, 4);
     assert.equal(t.handoffsThisRound, 1);
     assert.equal(t.lastHandoff, "D");
@@ -551,14 +522,14 @@ describe("ticketTally", () => {
 
   test("the last handoff's reason is what follows its phase, and a retry clears it", () => {
     const why = (rows: object[]) => ticketTally(1, rows).handoffWhy;
-    const rerouted = row({ outcome: "handoff", park_reason: "phase C next — no local pass" });
+    const rerouted = row({ outcome: "handoff", handoff: { phase: "C", why: "no local pass" } });
     assert.equal(why([rerouted]), "no local pass");
-    assert.equal(why([rerouted, row({ outcome: "handoff", park_reason: "phase D next" })]), null);
+    assert.equal(why([rerouted, row({ outcome: "handoff", handoff: { phase: "D" } })]), null);
     assert.equal(why([rerouted, row({ outcome: "retry" })]), null);
   });
 
   test("a retry clears the phase the last handoff named", () => {
-    const t = ticketTally(1, [row({ outcome: "handoff", park_reason: "phase E next" }), row({ outcome: "retry" })]);
+    const t = ticketTally(1, [row({ outcome: "handoff", handoff: { phase: "E" } }), row({ outcome: "retry" })]);
     assert.equal(t.lastHandoff, null);
   });
 
@@ -566,7 +537,7 @@ describe("ticketTally", () => {
     const t = ticketTally(1, [
       row({ outcome: "retry", head: "x" }),
       row({ outcome: "landed" }),
-      row({ outcome: "handoff", park_reason: "phase E next" }),
+      row({ outcome: "handoff", handoff: { phase: "E" } }),
     ]);
     assert.equal(t.sessions, 1);
     assert.equal(t.lastHandoff, "E");
@@ -608,6 +579,7 @@ describe("ticketTally", () => {
       turns: 0,
       processes: 0,
       fixSpend: 0,
+      holds: 0,
       handoffsThisRound: 0,
       lastHandoff: null,
       handoffWhy: null,
@@ -652,7 +624,7 @@ describe("tallyOf", () => {
       proc({ phases: { D: 60 }, cost: 4, outcome: "handoff", handoff: { phase: "D" } }),
       proc({ phases: { D: 60 }, cost: 1, outcome: "handoff", handoff: { phase: "E" } }),
     ]);
-    assert.deepEqual([t.fixSpend, t.spend], [6, 15]);
+    assert.deepEqual([t.fixSpend, t.spend, t.holds], [6, 15, 2]);
   });
 
   test("a CI fix round is fix spend, by following a retry", () => {
@@ -681,16 +653,25 @@ describe("tallyOf", () => {
     assert.deepEqual([t.processes, t.spend, t.ms], [1, 3, 150]);
   });
 
-  test("before schema 6 a handoff is read from its prose", () => {
-    const v5 = { schema: 5, n: 1, outcome: "handoff", cost: 2, turns: 30, phases: { D: 600 }, park_reason: "phase C next — HOLD on abc" };
-    const t = tallyOf([v5]);
-    assert.deepEqual([t.lastHandoff, t.handoffWhy], ["C", "HOLD on abc"]);
-    assert.equal(holdRound(v5), true);
-    assert.equal(holdRound({ ...v5, park_reason: "phase E next" }), false);
+  test("a review's prose handoff is no HOLD round; its field is", () => {
+    const review = { schema: 9, n: 1, outcome: "handoff", cost: 2, turns: 30, phases: { D: 600 }, park_reason: "phase C next — HOLD on abc" };
+    assert.equal(holdRound(review), false);
+    assert.equal(holdRound({ ...review, handoff: { phase: "C" } }), true);
+  });
+
+  // Schema 8 wrote the tracker's own count beside the rows; schema 9 counts the rows instead.
+  test("on the recorded v8 rows, the HOLD rounds counted from rows are the tracker's count", () => {
+    const v8 = golden.rows.filter((r) => r.schema === 8);
+    const tickets = [...new Set(v8.filter((r) => typeof r.review_holds_total === "number").map((r) => r.n))];
+    assert.ok(tickets.length >= 5);
+    for (const n of tickets) {
+      const mine = v8.filter((r) => r.n === n);
+      assert.equal(tallyOf(withSpawnPhase(mine)).holds, Math.max(...mine.map((r) => r.review_holds_total ?? 0)), `#${n}`);
+    }
   });
 });
 
-test("ticketTally matches what main's ticketTally recorded on every prefix of a ledger of schema 3 to 8", () => {
+test("ticketTally matches what main's ticketTally recorded on every prefix of a ledger of schema 3 to 8, prose handoffs lifted", () => {
   const rows = golden.rows.filter((r) => r.outcome !== "started");
   assert.equal(rows.length, golden.main.tallies.length);
   rows.forEach((r, i) => {
