@@ -124,7 +124,8 @@ describe("two runs of this suite on one clone", () => {
 
   test("the sweep clears a dead run's leftovers and keeps a live run's", () => {
     const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
-    const live = process.ppid;
+    const peer = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60_000)"]);
+    const live = peer.pid!;
     const left = [probeBranch(1, "dead", dead), offTicketBranch("dead", dead)];
     const kept = [probeBranch(1, "live", live), offTicketBranch("live", live)];
     const has = (b: string) =>
@@ -136,6 +137,7 @@ describe("two runs of this suite on one clone", () => {
       for (const b of left) assert.ok(!has(b), `${b} outlived its dead run`);
       for (const b of kept) assert.ok(has(b), `${b} was swept from under a live run`);
     } finally {
+      peer.kill();
       for (const b of kept) spawnSync("git", ["branch", "-qD", b], { cwd: root });
     }
   });
