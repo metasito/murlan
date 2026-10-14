@@ -95,7 +95,7 @@ describe("queueLoopArgs", () => {
     assert.notEqual(at, -1, "without it the owner's ~/.claude and the checkout's local settings ride in every session");
     assert.equal(args[at + 1], "project");
     assert.match(args[args.indexOf("--settings") + 1], /[\\/]tools[\\/]loop[\\/]loop-settings\.json$/);
-    for (const phase of ["A", "C", "D", "E"]) {
+    for (const phase of ["A", "C", "D", "E"] as const) {
       const spawned = queueLoopArgs(1529, "size:M", phase);
       assert.equal(spawned[spawned.indexOf("--model") + 1], MODEL_BY_PHASE[phase], phase);
     }
