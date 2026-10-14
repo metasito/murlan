@@ -1092,6 +1092,41 @@ describe("runOnce", () => {
       assert.equal(r.outcome, "hold");
       assert.deepEqual(order, ["post #42 pr 5"]);
     });
+
+    // From the settle that could not post, through every pass, to the fix round: whichever path
+    // posts it, the session spawns onto exactly one CI-RED for its head and one round spent.
+    test("a red whose CI-RED a settle could not post reaches its fix round with exactly one posted", async () => {
+      const comments: string[] = [];
+      const ledger: any[] = [];
+      const spawned: { fix: boolean; retryCount: number }[] = [];
+      let settles = 0;
+      const read = () => (comments.length ? posted : held);
+      const post = () => {
+        if (!comments.includes("CI-RED h1")) comments.push("CI-RED h1");
+        return true;
+      };
+      const fake = io(
+        {
+          pick: () => nextRoute(null, null, { read, facts, ledger: () => ledger } as never),
+          pushedPr: () => ({ number: 5, state: "OPEN", head: "agent/42-x", sha: "h1" }),
+          postRed: post,
+          refreshWorktree: () => {},
+          settle: async () =>
+            settles++ === 0
+              ? { action: "hold", reason: "CI-RED for h1 could not be posted", head: "h1" }
+              : (post(), { action: "hand-back", reason: "CI failed at Test", head: "h1" }),
+          spawn: async (s: { fix: boolean; retryCount: number }) => {
+            spawned.push({ fix: s.fix, retryCount: s.retryCount });
+            return { status: 0, blocked: false, result: {}, ms: 1, log: "l", phase: "F", declared: null };
+          },
+        },
+        ledger,
+      );
+      let loop: any = undefined;
+      for (let i = 0; i < 4 && spawned.length === 0; i++) loop = (await runOnce(fake, loop?.pinned ?? null, null, loop)).loop;
+      assert.deepEqual(spawned, [{ fix: true, retryCount: 1 }]);
+      assert.deepEqual(comments, ["CI-RED h1"]);
+    });
   });
 
   test("a red round nobody recorded is written down before the fix round; a recorded one is not", async () => {
