@@ -2,16 +2,17 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { familyOf, killedLine, lastStamp, report, shaTable, sinceWindow, summary, turnHeadroom, wanted } from "../loop-cost.mjs";
+import { familyOf, killedLine, report, select, shaTable, summary, turnHeadroom } from "../loop-cost.mjs";
 import { handoffIn } from "../loop-logs.mjs";
+import { ledgerFixture } from "./helpers/ledgerFixture.ts";
 
-const fixture = (name: string) => readFileSync(path.join(import.meta.dirname, "fixtures", name), "utf8");
 const golden = {
-  rows: fixture("ledger-golden.jsonl").trim().split("\n").map((l) => JSON.parse(l)),
-  main: JSON.parse(fixture("ledger-golden.main.json")),
+  rows: ledgerFixture("ledger-golden.jsonl"),
+  main: JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "ledger-golden.main.json"), "utf8")),
 };
 
 /** The logs carry four spellings of two models; an exact-match table charged sonnet at opus. */
@@ -24,41 +25,72 @@ test("every spelling of a family is that family, and an id of none is none", () 
  * Task 6 asks whether a change moved the median. Averaged over every ticket on disk it cannot: the
  * five runs after a change are outvoted by the twenty before it.
  */
-describe("wanted", () => {
-  const files = ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl", "tickets.jsonl", "run-a.md", "ci-1049.log"];
+describe("select by ticket", () => {
+  const rows = [70, 955, 1049, 1050].map((n) => ({ n, started: "2026-09-21T10:00:00.000Z" }));
+  const ns = (picks: string[]) => select(rows, { picks }).map((r) => r.n);
 
-  test("with no argument, every ticket stream and nothing else", () => {
-    assert.deepEqual(wanted(files), ["70.jsonl", "955.jsonl", "1049.jsonl", "1050.jsonl"]);
+  test("with no argument, every ticket", () => {
+    assert.deepEqual(ns([]), [70, 955, 1049, 1050]);
   });
 
-  test("a bare number is that one ticket", () => {
-    assert.deepEqual(wanted(files, "1049"), ["1049.jsonl"]);
-  });
-
-  test("a trailing + is that ticket and every later one", () => {
-    assert.deepEqual(wanted(files, "1049+"), ["1049.jsonl", "1050.jsonl"]);
-  });
-
-  test("the ledger is never a ticket, whatever the argument", () => {
-    assert.deepEqual(wanted(["tickets.jsonl"], "1+"), []);
+  test("a bare number is that one ticket, and a trailing + that ticket and every later one", () => {
+    assert.deepEqual(ns(["1049"]), [1049]);
+    assert.deepEqual(ns(["1049+"]), [1049, 1050]);
   });
 
   test("several arguments are the union of what each names", () => {
-    assert.deepEqual(wanted(files, ["70", "1050"]), ["70.jsonl", "1050.jsonl"]);
-    assert.deepEqual(wanted(files, ["70", "1050+"]), ["70.jsonl", "1050.jsonl"]);
+    assert.deepEqual(ns(["70", "1050"]), [70, 1050]);
+    assert.deepEqual(ns(["70", "1050+"]), [70, 1050]);
   });
 });
 
-describe("sinceWindow", () => {
-  test("takes rows by when they started, never by ticket number", () => {
+describe("the CLI reads the ledger's rows alone", () => {
+  const cli = fileURLToPath(new URL("../loop-cost.mjs", import.meta.url));
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const gauge = (rows: object[], args: string[] = [], written: Record<number, string> = {}) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "loop-cost-"));
+    try {
+      mkdirSync(path.join(dir, ".loop-logs"));
+      writeFileSync(path.join(dir, ".loop-logs", "tickets.jsonl"), rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+      for (const [n, at] of Object.entries(written)) {
+        const log = path.join(dir, ".loop-logs", `${n}.jsonl`);
+        writeFileSync(log, "");
+        utimesSync(log, new Date(at), new Date(at));
+      }
+      return spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: "utf8" }).stdout;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  const proc = (n: number, started: string, over: object = {}) => ({ schema: 9, n, outcome: "pushed", cost: n, turns: 9, phases: { C: 60 }, started, run_id: "r", ...over });
+
+  test("no stream log on disk is needed, and the last fourteen days are the default", () => {
+    const out = gauge([proc(2, ago(60)), proc(5, ago(20 * 24 * 60))]);
+    assert.match(out, /^loop-cost: 1 tickets, \$2\.00 spent$/m);
+  });
+
+  test("a killed session is timed to its stream log's last write; the next start only bounds it", () => {
+    const start = (n: number, at: string, run_id: string) => ({ schema: 9, n, outcome: "started", phase: "D", started: at, run_id });
+    const rows = [start(3, ago(60), "r1"), start(4, ago(50), "r2"), proc(4, ago(50), { run_id: "r2" })];
+    assert.match(gauge(rows, [], { 3: ago(57) }), /^killed: 1 sessions left no row — #3 D 3m$/m);
+    assert.match(gauge(rows), /^killed: 1 sessions left no row — #3 D 10m$/m, "with no log on disk, the next start");
+  });
+
+  test("a ticket the window's edge cuts is counted whole", () => {
+    const out = gauge([proc(2, ago(20 * 24 * 60)), proc(2, ago(60), { outcome: "landed" }), proc(5, ago(20 * 24 * 60), { outcome: "landed" })]);
+    assert.match(out, /^loop-cost: 1 tickets, \$4\.00 spent$/m);
+  });
+});
+
+describe("select by time", () => {
+  test("takes tickets by when their rows started, never by ticket number", () => {
     const rows = [
       { n: 1090, started: "2026-09-17T20:57:00.000Z" },
       { n: 70, started: "2026-09-21T10:44:00.000Z" },
+      { n: 1500, started: "2026-09-20T09:00:00.000Z" },
       { n: 1090, started: "2026-09-21T14:02:00.000Z" },
     ];
-    const out = sinceWindow(rows, "2026-09-21T10:18:00.000Z");
-    assert.deepEqual(out.tickets, ["70", "1090"]);
-    assert.equal(out.rows.length, 2);
+    assert.deepEqual(select(rows, { since: "2026-09-21T10:18:00.000Z" }).map((r) => r.n), [1090, 70, 1090], "every row of a ticket the window reaches");
   });
 
   test("an until closes the window before a later change", () => {
@@ -67,8 +99,7 @@ describe("sinceWindow", () => {
       { n: 2, started: "2026-09-22T09:00:00.000Z" },
       { n: 3, started: "2026-09-23T00:00:00.000Z" },
     ];
-    const out = sinceWindow(rows, "2026-09-22T00:00Z", "2026-09-23T00:00Z");
-    assert.deepEqual(out.tickets, ["2"]);
+    assert.deepEqual(select(rows, { since: "2026-09-22T00:00Z", until: "2026-09-23T00:00Z" }).map((r) => r.n), [2]);
   });
 
   test("a time that does not parse exits 2 with usage, not a RangeError", () => {
@@ -86,18 +117,24 @@ const proc = ({ at = "C", model = "claude-opus-5-5", ...over }: { at?: string; m
 const out = (over: object) => ({ schema: 8, n: 1, cost: 0, turns: 0, phases: {}, ...over });
 
 describe("summary", () => {
-  test("a review that hands to C or D is fix spend, and HOLD rounds are the row's own count", () => {
+  test("a review that hands to C or D is fix spend and a HOLD round", () => {
     const rows = [
       proc({ n: 1, at: "C", cost: 5 }),
       proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
       proc({ n: 1, at: "C", cost: 3 }),
-      proc({ n: 1, at: "D", cost: 1, review_holds_total: 1 }),
+      proc({ n: 1, at: "D", cost: 1 }),
       out({ n: 1, outcome: "landed" }),
     ];
     const s = summary(rows);
     assert.equal(s.holdsPerTicket, 1);
     assert.equal(s.fixSpend, 2);
     assert.equal(s.perTicket.median, 11);
+  });
+
+  test("HOLD rounds are the reviews that handed back, counted from the rows and never the tracker's figure", () => {
+    const held = proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } });
+    assert.equal(summary([held, out({ n: 1, outcome: "landed", review_rounds: 3 })]).holdsPerTicket, 1);
+    assert.equal(summary([held, out({ n: 1, outcome: "landed", review_holds_total: 5 })]).holdsPerTicket, 1);
   });
 
   test("a v8 row counts in spend and processes and is unjudged for the model", () => {
@@ -118,6 +155,12 @@ describe("summary", () => {
     const v8 = (mainModels: object) => ({ schema: 8, n: 4, outcome: "pushed", cost: 1, turns: 9, phases: { E: 60 }, usage: { mainModels, models: { "claude-opus-5": 99 } } });
     assert.equal(summary([v8({ "claude-sonnet-5": 9 })]).mismatched.length, 0);
     assert.deepEqual(summary([v8({ "claude-opus-5": 9 })]).mismatched.map((r: { n: number }) => r.n), [4]);
+  });
+
+  test("a v9 row is judged by the model its init line named", () => {
+    const v9 = (model: string) => ({ schema: 9, n: 4, outcome: "pushed", cost: 1, turns: 9, phases: { E: 60 }, model, models: { "claude-opus-5": 99 } });
+    assert.equal(summary([v9("claude-sonnet-5")]).mismatched.length, 0);
+    assert.deepEqual(summary([v9("claude-opus-5")]).mismatched.map((r: { n: number }) => r.n), [4]);
   });
 
   test("model mismatch reads the main session's model against its spawn phase", () => {
@@ -165,13 +208,18 @@ describe("summary", () => {
     assert.deepEqual([s.fixSpend, Object.keys(s.byAt)], [3, ["A"]]);
   });
 
-  describe("on a ledger of schema 3 to 8, against what main's gauge recorded of it", () => {
+  describe("on a ledger of schema 3 to 8, its prose handoffs lifted, against what main's gauge recorded of it", () => {
     const rows = golden.rows;
     const s = summary(rows);
     const firstTimed = (r: { phases?: object }) => Object.keys(r.phases ?? {})[0];
 
-    test("HOLD rounds per ticket, processes per ticket, models and turn headroom are main's", () => {
-      assert.ok(Math.abs(s.holdsPerTicket - golden.main.holdsMean) < 1e-9);
+    // Main's 48 holds took review_rounds − landings for every ticket with no v8 row; its rows' own handoffs out of D are 25.
+    test("HOLD rounds are the rows' own handoffs out of review", () => {
+      assert.equal(s.holdsPerTicket * s.tickets, 25);
+      assert.equal(golden.main.holdsMean * s.tickets, 48);
+    });
+
+    test("processes per ticket, models and turn headroom are main's", () => {
       assert.equal(s.processesMedian, golden.main.processesMedian);
       assert.deepEqual(s.mismatched.map((r) => `${r.n}@${r.started}`), golden.main.mismatches);
       assert.equal(s.unjudged, golden.main.unjudged);
@@ -198,7 +246,7 @@ describe("report", () => {
     proc({ n: 1, at: "C", cost: 5 }),
     proc({ n: 1, at: "D", cost: 2, handoff: { phase: "C" } }),
     proc({ n: 1, at: "C", cost: 3 }),
-    proc({ n: 1, at: "D", cost: 1, outcome: "pushed", review_rounds: 2, review_holds_total: 1 }),
+    proc({ n: 1, at: "D", cost: 1, outcome: "pushed", review_rounds: 2 }),
     out({ n: 1, outcome: "landed", ms: 600_000 }),
     proc({ n: 2, at: "A", cost: 4 }),
     out({ n: 2, outcome: "parked" }),
@@ -295,14 +343,5 @@ describe("by loop sha", () => {
   test("a killed session is named with its phase and time, and the last may still be running", () => {
     assert.equal(killedLine([]), null);
     assert.equal(killedLine(killed), "killed: 1 sessions left no row — #3 D 2m (the last may still be running)");
-  });
-});
-
-describe("lastStamp", () => {
-  test("is the latest stream timestamp inside the window, skipping lines with none", () => {
-    const at = (m: number) => `{"type":"assistant","timestamp":"2026-09-21T08:${String(m).padStart(2, "0")}:00.000Z"}`;
-    const text = [at(1), "{}", at(9), at(40)].join("\n");
-    assert.equal(lastStamp(text, Date.parse("2026-09-21T08:00Z"), Date.parse("2026-09-21T08:30Z")), Date.parse("2026-09-21T08:09Z"));
-    assert.equal(lastStamp("", 0, 1), null);
   });
 });

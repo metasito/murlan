@@ -24,7 +24,6 @@ import {
   parityRed,
   REPO,
   reviewRounds,
-  totalHolds,
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
@@ -56,19 +55,17 @@ import {
   errorLine,
   errorOf,
   killedStarts,
+  lastWrite,
   leftoverPath,
   ledgerPath,
   ledger as openLedger,
   parkNotePath,
-  parkReasonOf,
   pendingReparks,
   prune as pruneLogs,
   readLedger,
   streamLog,
   ticketTally,
   typicalMs,
-  usageSplit,
-  windowCost,
 } from "./loop-logs.mjs";
 import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
@@ -155,6 +152,8 @@ export function nextRoute(
     const phase = settles ? "G" : handed === "D" && derived === "E" ? "E" : (handed ?? derived);
     return {
       ...live,
+      title: known?.title ?? live.title,
+      reviewRounds: status.reviewRounds ?? null,
       phase,
       fix: fix && phase !== "G",
       head: status.ci?.sha ?? status.head ?? null,
@@ -672,8 +671,8 @@ export function refreshWorktree(cwd, branch, run = sh) {
 const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 /**
- * One ticket's worth of the issue, for the header, the turn bound and the record. Covers the
- * resume path, which has no picker.
+ * One ticket's worth of the issue, for the header and the turn bound. Covers the resume path, which
+ * has no picker.
  *
  * The review rounds come from the same read, counted by `loop-derive`'s own parser. A second,
  * weaker copy lived here — no fence stripping, no sha — so a verdict quoted inside a code block
@@ -698,13 +697,12 @@ export function ticketFacts(number, exec = execFileSync) {
       size: issue.labels.map((l) => l.name).find((n) => n.startsWith("size:")) ?? null,
       labels: issue.labels.map((l) => l.name),
       reviewRounds: reviewRounds(trustedComments(issue.comments ?? [])),
-      totalHolds: totalHolds(trustedComments(issue.comments ?? [])),
       ciRounds: ciRedRounds(trustedComments(issue.comments ?? [])),
       state: issue.state,
       stateReason: issue.stateReason ?? null,
     };
   } catch {
-    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, totalHolds: null, ciRounds: 0 };
+    return { title: `ticket #${number}`, url: "", size: null, labels: null, reviewRounds: null, ciRounds: 0 };
   }
 }
 
@@ -721,16 +719,6 @@ export function closesTask({ event, status }) {
   if (event === "notification") return true;
   return event === "updated" && status !== null && status !== "in_progress";
 }
-
-/** A log too large or too broken to read is not worth ending a finished ticket over. */
-function readUsageSplit(logPath) {
-  try {
-    return usageSplit(fs.readFileSync(logPath, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
 
 /**
  * Spawns one session and reports what it did.
@@ -782,6 +770,7 @@ export function runTicket(
     result: null,
     declared: null,
     version: null,
+    model: null,
     lastFactAt: Date.now(),
     asleepMs: 0,
     lastFact: null,
@@ -884,6 +873,7 @@ export function runTicket(
     state.lastFact = fact.kind;
     if (fact.kind === "init") {
       state.version = fact.version;
+      state.model = fact.model;
       screen.set({ session: fact.sessionId });
       // `--model` passes an alias, which ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps.
       const family = familyOf(fact.model);
@@ -1017,6 +1007,7 @@ export function runTicket(
           phases: state.phases,
           stderr: state.stderr,
           version: state.version,
+          model: state.model,
           accountError: state.accountError,
           wrongModel: state.wrongModel,
           apiErrorCode: state.apiErrorCode,
@@ -1025,9 +1016,6 @@ export function runTicket(
           asleepMs: state.asleepMs,
           lastFact: state.lastFact,
           log: logPath,
-          // Read now rather than accumulated as the lines arrived: the sink has just closed, so the
-          // file is complete and nothing is writing to it.
-          usage: readUsageSplit(logPath),
         }),
       );
     }
@@ -1573,6 +1561,7 @@ const standing = () => {
         branch: s.branch,
         dirty: s.dirty,
         phase: s.phase,
+        reviewRounds: s.reviewRounds ?? null,
       }
     : null;
 };
@@ -1611,7 +1600,6 @@ export function parkAndRecord(io, number, { run = null, pr = null, files = 0, fl
     run: run ?? { result: null, ms: 0, log: ctx.log, phases: {} },
     pr,
     files,
-    counts: true,
     parkFailed: failed.length ? failed : null,
     flake,
   });
@@ -1702,10 +1690,12 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const n = route.number;
   const ticket = { ...route, n };
   const size = route.size ?? null;
+  const about = { title: route.title, size, reviewRounds: route.reviewRounds ?? null };
+  const record = (row) => io.record({ ...about, ...row });
   const owner = () => (parkAsked(n) ? { asked: true, own: worktreeOf(io, n) } : { asked: false, own: null });
   const parkHere = (action, ctx) => {
     if (action.byOwner) fs.rmSync(PARK_FILE, { force: true });
-    const parked = parkAndRecord(io, n, { ...ctx, phase: action.phase, why: action.why });
+    const parked = parkAndRecord({ ...io, record }, n, { ...ctx, phase: action.phase, why: action.why });
     return { ...parked, loop, halt: action.halt ?? null, ...(action.byOwner && { byOwner: true }) };
   };
   // A cap's or the owner's park comes after the row of what it replaced, and carries the worktree
@@ -1718,12 +1708,11 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (picked.kind !== "go") return pass(picked);
 
   if (picked.redWhileDown) {
-    io.record({
+    record({
       number: n,
       outcome: "retry",
       why: "CI went red while the loop was down",
       run: { result: null, ms: 0, log: streamLog(n), phases: {} },
-      counts: false,
       head: route.head,
     });
     tally = io.tally(n);
@@ -1753,6 +1742,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   if (dirtied) io.log(`#${route.number}'s session left the shared checkout dirty:\n${dirtied}`, "session");
 
   const derived = io.standing();
+  about.reviewRounds = derived?.ticket === n && derived.reviewRounds != null ? derived.reviewRounds : io.facts(n).reviewRounds;
   const after = afterSession(run, derived);
   // Read once the session has exited: a park is never a kill.
   const facts = { route: ticket, run: settling ? null : run, after: derived, tally, ...owner() };
@@ -1783,35 +1773,35 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
       // CI runs while the review does; `poll` merges only a head a LAND covers.
       if (replaced.publish) io.publish(n, after.branch, after.cwd);
       const why = `phase ${replaced.phase} next${replaced.why ? ` — ${replaced.why}` : ""}`;
-      io.record({ number: n, outcome: "handoff", why, run, counts: false, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
+      record({ number: n, outcome: "handoff", why, run, handoff: { phase: replaced.phase, why: replaced.why, said: replaced.said } });
     } else {
       // A refusal spends real money before it stops, and this row is the one place it is recorded.
-      io.record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run, counts: false });
+      record({ number: n, outcome: HELD_AS[replaced.wait], why: replaced.why, run });
     }
     if (action.kind === "park") return parkOver(action, facts.own, run.log);
     if (action.kind === "handoff") return pass(action, { phase: action.phase, run, size, cwd: after?.cwd ?? null, branch: after?.branch ?? null });
     return pass(action, { run, until: replaced.until });
   }
   if (action.kind === "stop") {
-    io.record({ number: n, outcome: "halted", why: run.accountError, run, counts: false });
+    record({ number: n, outcome: "halted", why: run.accountError, run });
     return pass(action);
   }
   if (action.kind === "park") return parkHere(action, worked(action.pr));
   if (action.kind === "closed") {
     io.teardown(after?.cwd ?? null, n);
-    io.record({ number: n, outcome: "closed", why: action.why, run, files: files() });
+    record({ number: n, outcome: "closed", why: action.why, run, files: files() });
     return pass(action);
   }
   if (action.kind === "landed") {
     io.teardown(after?.cwd ?? null, n);
-    io.record({ number: n, outcome: "landed", why: action.why, run, pr: action.pr, merged: true, files: files() });
+    record({ number: n, outcome: "landed", why: action.why, run, pr: action.pr, merged: true, files: files() });
     return pass(action);
   }
 
   // The session's own row, before a wait the supervisor may not survive: every row below is the
   // land alone, so a restarted G pass adds its clock and never the session's cost a second time.
   if (!settling) {
-    io.record({ number: n, outcome: "pushed", why: "CI next", run, pr: action.pr, files: files(), counts: false, head: action.head });
+    record({ number: n, outcome: "pushed", why: "CI next", run, pr: action.pr, files: files(), head: action.head });
     billed = { result: null, ms: 0, log: run.log, phases: {} };
   }
   const landFrom = Date.now();
@@ -1822,13 +1812,12 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     // A process that armed on a rerun's green and then stopped leaves its flake here, not in memory.
     flake: tally.armedFlake ?? null,
     noteArmed: (flake) =>
-      io.record({
+      record({
         number: n,
         outcome: "armed",
         why: "auto-merge armed on a rerun's green",
         run: { result: null, ms: 0, log: streamLog(n), phases: {} },
         pr: action.pr,
-        counts: false,
         head: flake.head,
         flake: { runId: flake.runId, tests: flake.tests, step: flake.step },
       }),
@@ -1841,7 +1830,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
   const verdict = decideAt("settled", { route: ticket, settled: { ...settled, head }, tally: io.tally(n), ...owned });
   const red = verdict.instead ?? verdict;
   if (red.kind === "retry" || red.kind === "hold") {
-    io.record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), counts: false, head, flake: settled.flake ?? null });
+    record({ number: n, outcome: red.kind === "hold" ? HELD_AS[red.wait] : "retry", why: settled.reason, run: billed, pr: action.pr, merged: false, files: files(), head, flake: settled.flake ?? null });
     if (verdict.kind === "park") return parkOver(verdict, owned.own, red.kind === "hold" ? streamLog(n) : run.log);
     // The worktree and the run come with it: the next round works in that worktree.
     if (verdict.kind === "retry") {
@@ -1850,7 +1839,7 @@ export async function runOnce(io, pinned = null, at = null, loop = { failures: 0
     return pass(verdict);
   }
   if (verdict.kind === "landed") {
-    io.record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), counts: true, head, flake: settled.flake ?? null });
+    record({ number: n, outcome: "landed", why: settled.reason, run: billed, pr: action.pr, merged: true, files: files(), head, flake: settled.flake ?? null });
     io.teardown(after?.cwd ?? null, n);
     return pass(verdict);
   }
@@ -1878,6 +1867,7 @@ function realIo(book, screen) {
         say: (row) => screen.say([stepRow(row, screen.theme), ...(row.note?.trim() ? [note(row.note, screen.theme)] : [])].join("\n")),
       }),
     parity: () => parityRed(),
+    facts: ticketFacts,
     issueState: (n) => {
       const f = ticketFacts(n);
       return { state: f.state ?? null, stateReason: f.stateReason ?? null };
@@ -1990,78 +1980,19 @@ function realIo(book, screen) {
     bell,
     sharedCheckoutDirty: () => git("status", "--porcelain").trim(),
     log: (m, label = "loop") => screen.notice(label, m),
-    /**
-     * One session, one row, one writer. `counts` says whether this session closed a *ticket* — a
-     * CI fix round and a usage refusal are sessions that spent money without one — and it changes
-     * only which counter moves, never whether the money is recorded.
-     */
     killed: () => {
-      const lastSeen = (row) => (fs.existsSync(streamLog(row.n)) ? fs.statSync(streamLog(row.n)).mtimeMs : null);
-      const last = killedStarts(readLedger(undefined, { starts: true }), lastSeen).at(-1);
+      const last = killedStarts(readLedger(undefined, { starts: true }), lastWrite).at(-1);
       return last?.trailing ? last : null;
     },
     ledgerRows: () => readLedger(),
     repark: (number, steps) => repark(number, steps),
-    record: ({ number, outcome, why, run, pr = null, merged = false, files = 0, counts = true, head = null, handoff = null, parkFailed = null, flake = null }) => {
-      const error = errorOf(run);
-      const facts = ticketFacts(number);
-      const rows = readLedger();
-      const cost = windowCost({ n: number, outcome, own: run.result?.cost ?? 0 }, rows);
-      // The merged row is the ticket's whole bill; the land session alone has no turns and no spend.
-      const whole = outcome === "landed" || outcome === "closed" ? ticketTally(number, rows) : null;
-      const bill = whole
-        ? { ms: whole.ms + run.ms, turns: whole.turns + (run.result?.turns ?? 0), cost: whole.spend + (run.result?.cost ?? 0) }
-        : { ms: run.ms, turns: run.result?.turns ?? 0, cost };
+    record: (row) => {
+      const { bill } = book.record(row, RUN_ID);
       // Each of these is said by the row after it: the next phase opening, or the merge step's own
       // result. The log is offered only where something needs reading.
-      if (!["handoff", "retry", "pushed", "reparked", "armed"].includes(outcome)) {
-        screen.say(
-          closing(
-            {
-              outcome: outcome === "landed" ? "merged" : outcome,
-              number,
-              files,
-              ...bill,
-              why: why ?? undefined,
-              log: outcome === "landed" ? undefined : run.log,
-            },
-            screen.theme,
-          ),
-        );
-      }
-      book.record(
-        {
-          number,
-          size: facts.size,
-          outcome,
-          // The sentence, not the outcome: a park written by a turn cap, one written by a review
-          // deadlock and one written by a genuine blocker were the same four characters in the file.
-          parkReason: parkReasonOf(outcome, why, error),
-          pr,
-          phases: run.phases ?? {},
-          result: run.result,
-          // Named for what the loop knows: whether it merged, not a CI verdict it never read.
-          merged,
-          reviewRounds: facts.reviewRounds,
-          totalHolds: facts.totalHolds,
-          // A session's own start: a park recorded hours after its session ended is not `now - ms`.
-          startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
-          ms: run.ms,
-          asleepMs: run.asleepMs ?? null,
-          version: run.version,
-          usage: run.usage ?? null,
-          head,
-          handoff,
-          error,
-          parkFailed,
-          flake,
-        },
-        {
-          runId: RUN_ID,
-          counts,
-          report: { number, title: facts.title, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined },
-        },
-      );
+      if (["handoff", "retry", "pushed", "reparked", "armed"].includes(row.outcome)) return;
+      const landed = row.outcome === "landed";
+      screen.say(closing({ outcome: landed ? "merged" : row.outcome, number: row.number, files: row.files ?? 0, ...bill, why: row.why ?? undefined, log: landed ? undefined : row.run.log }, screen.theme));
     },
   };
 }
@@ -2203,6 +2134,10 @@ export async function main({
     const q = io.queue?.();
     return q ? ` · queue ${q.implement} to implement, ${q.triage} to triage` : "";
   };
+  const record = (row) => {
+    const { title, size } = io.facts(row.number);
+    io.record({ title, size, ...row });
+  };
 
   for (;;) {
     // Per iteration, not once per process: a run lasting past midnight would never prune.
@@ -2218,7 +2153,7 @@ export async function main({
         continue;
       }
       const why = [moot ?? "the park reached the tracker", ...(failed.length ? [`still owed: ${failed.join(", ")}`] : [])].join(" — ");
-      io.record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, counts: false, parkFailed: failed.length ? failed : null });
+      record({ number: n, outcome: "reparked", why, run: { result: null, ms: 0, log: streamLog(n), phases: {} }, parkFailed: failed.length ? failed : null });
       io.log(`#${n}: ${why}`, "park");
     }
 
@@ -2234,7 +2169,7 @@ export async function main({
       const threw = decide({ step: "threw", route: claimed === null ? null : { n: claimed }, error: String(err?.message ?? err), own, loop, limits: LIMITS, now: Date.now() });
       if (threw.kind === "park") {
         try {
-          parkAndRecord(io, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
+          parkAndRecord({ ...io, record }, claimed, { ...own, phase: threw.phase, why: threw.why, log: streamLog(claimed) });
         } catch (unparked) {
           screen.notice("claim", `#${claimed} is still claimed — ${String(unparked?.message ?? unparked)}`);
         }

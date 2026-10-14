@@ -48,6 +48,7 @@ const stubIo = () => ({
   teardown: () => {},
   bell: () => {},
   record: () => {},
+  facts: () => ({ title: "t", size: null, reviewRounds: null }),
   tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
   log: () => {},
   buildPassed: () => true,
@@ -826,6 +827,13 @@ describe("runTicket", () => {
     const run = await runTicket(session.spawnFn as never, opts({ at: "E" }));
     assert.deepEqual(session.seen.killed, []);
     assert.equal(run.status, 0);
+  });
+
+  test("the run carries the model its init line named, which the ledger judges it by", async () => {
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: "s", model: "claude-sonnet-5" });
+    const run = await runTicket(fakeSpawn([init, RESULT]), opts({ at: "E" }));
+    assert.equal(run.model, "claude-sonnet-5");
+    assert.equal((await runTicket(fakeSpawn([RESULT]), opts({ at: "E" }))).model, null);
   });
 
   // `--model` passes an alias, and ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps it.
@@ -1687,7 +1695,6 @@ describe("ticketFacts", () => {
     const facts = ticketFacts(7, timedOut as never);
     assert.equal(seen[0].timeout, 30_000);
     assert.equal(facts.reviewRounds, null);
-    assert.equal(facts.totalHolds, null);
     assert.equal(facts.title, "ticket #7");
   });
 
@@ -1700,6 +1707,6 @@ describe("ticketFacts", () => {
     assert.equal(outside.title, "t");
     assert.deepEqual([outside.reviewRounds, outside.ciRounds], [0, 0]);
     const own = ticketFacts(7, read("MEMBER") as never);
-    assert.deepEqual([own.reviewRounds, own.totalHolds, own.ciRounds], [1, 1, 1]);
+    assert.deepEqual([own.reviewRounds, own.ciRounds], [1, 1]);
   });
 });

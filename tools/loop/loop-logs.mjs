@@ -78,58 +78,6 @@ export function prune(now = Date.now(), fs = fsNode, dir = DIR) {
 }
 
 /**
- * How a session's tokens split between the session itself and the subagents it spawned.
- *
- * Read back off the finished stream log rather than accumulated as it arrives: the log is complete
- * and on disk by the time anyone asks, so this costs one pass over a file nobody is writing any
- * more, and the hot path stays a line in and a fact out.
- *
- * Two things the raw events do that have to be undone, both measured: per-event `usage` is
- * **duplicated** across the events of one request, so it is deduped on `request_id`; and the
- * subagent's own events are the ones carrying a non-null `parent_tool_use_id`, which is the only
- * thing that tells the two apart.
- *
- * Tokens, not dollars. A price table in here would be a second copy of Anthropic's, silently wrong
- * from the first time it moved.
- *
- * @param {string} text the stream log's contents
- */
-export function usageSplit(text) {
-  const empty = () => ({ input: 0, output: 0, cacheRead: 0, cacheCreate: 0 });
-  const split = { main: empty(), subagents: empty(), models: {}, mainModels: {} };
-  const seen = new Set();
-
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    let e;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (e.type !== "assistant") continue;
-    const id = e.request_id;
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-
-    const u = e.message?.usage;
-    if (!u) continue;
-    const into = e.parent_tool_use_id ? split.subagents : split.main;
-    into.input += u.input_tokens ?? 0;
-    into.output += u.output_tokens ?? 0;
-    into.cacheRead += u.cache_read_input_tokens ?? 0;
-    into.cacheCreate += u.cache_creation_input_tokens ?? 0;
-
-    const model = e.message?.model;
-    if (model) {
-      split.models[model] = (split.models[model] ?? 0) + 1;
-      if (!e.parent_tool_use_id) split.mainModels[model] = (split.mainModels[model] ?? 0) + 1;
-    }
-  }
-  return split;
-}
-
-/**
  * `schema` is what lets a measurement span a change of meaning: a field that starts holding
  * something else gets a new number, and rows with no `schema` predate the first one.
  *
@@ -144,9 +92,11 @@ export function usageSplit(text) {
  * `handoff` and `error`, and brings the `started` row, which is a spawn and not a session. 7 adds
  * `park_failed` and the `reparked` row, which closes it, `asleep_ms`, the part of `ms` the
  * machine spent in standby, and `reruns`. 8 adds `review_holds_total`, every HOLD on the
- * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads.
+ * issue across claims and fix rounds, beside `review_rounds`, the count the cap reads. 9 adds
+ * `model`, the one the session's init line named, and drops `usage`, a token split read back off
+ * the stream log, and `review_holds_total`, which `holdRound` counts from the rows.
  */
-export const SCHEMA = 8;
+export const SCHEMA = 9;
 
 export const STDERR_CAP = 2000;
 
@@ -168,15 +118,10 @@ export const errorLine = (error) =>
  * review deadlock and one written by a genuine blocker were four identical characters in the file,
  * so "why do tickets park" could not be asked of the record kept to answer it.
  *
- * `usage` splits deduped token counts between this session and the subagents it spawned, rather
- * than carrying a dollar figure for them. A price table in here would be a second copy of
- * Anthropic's, silently wrong from the first time it moved; tokens are a measurement, and the
- * reader multiplies.
- *
  * @param {{number: number, size: string|null, outcome: string, parkReason?: string|null,
  *   pr: number|null, phases: Record<string, number>, result: object|null, merged: boolean,
- *   reviewRounds: number|null, totalHolds?: number|null, startedAt: string, ms: number, version: string|null,
- *   usage?: object|null, head?: string|null, runId?: string|null,
+ *   reviewRounds: number|null, startedAt: string, ms: number, version: string|null,
+ *   model?: string|null, head?: string|null, runId?: string|null,
  *   loopSha?: string|null, handoff?: {phase: string, why: string|null, said: string|null}|null,
  *   error?: object|null, flake?: {runId: number, tests: string[]}|null}} session
  */
@@ -190,12 +135,11 @@ export function sessionRow({
   result,
   merged,
   reviewRounds,
-  totalHolds = null,
   startedAt,
   ms,
   asleepMs = null,
   version,
-  usage = null,
+  model = null,
   head = null,
   runId = null,
   loopSha = null,
@@ -219,13 +163,12 @@ export function sessionRow({
     turns: result?.turns ?? 0,
     ms,
     asleep_ms: asleepMs,
+    model,
     models,
     subagents: result?.subagents ?? null,
-    usage,
     cache: result?.cache ?? { created: 0, read: 0 },
     merged: Boolean(merged),
     review_rounds: reviewRounds ?? null,
-    review_holds_total: totalHolds,
     claude_version: version ?? null,
     started: startedAt,
     head,
@@ -295,22 +238,32 @@ export function killedStarts(rows, lastSeen = () => null) {
   return killed;
 }
 
-/** What a run's rows add up to: a ticket is a row that closed one, landed or parked. */
+/** `killedStarts`' `lastSeen`: when the ticket's stream log was last written. */
+export const lastWrite = (row) => (fsNode.existsSync(streamLog(row.n)) ? fsNode.statSync(streamLog(row.n)).mtimeMs : null);
+
+/** A ticket is a row that ended one; a fix round, a handoff or a refusal is a session, not a ticket. */
+const ENDS_TICKET = new Set(["landed", "closed", "parked"]);
+
+/** What a run's rows add up to. */
 export function totalsOf(rows) {
   const sum = (key) => rows.reduce((n, r) => n + (r[key] ?? 0), 0);
-  const landed = rows.filter((r) => r.outcome === "landed" || r.outcome === "closed").length;
-  const parked = rows.filter((r) => r.outcome === "parked").length;
-  return { tickets: landed + parked, landed, parked, cost: sum("cost"), ms: sum("ms") };
+  const ended = rows.filter((r) => ENDS_TICKET.has(r.outcome));
+  const parked = ended.filter((r) => r.outcome === "parked").length;
+  return { tickets: ended.length, landed: ended.length - parked, parked, cost: sum("cost"), ms: sum("ms") };
+}
+
+/** What a row's report line shows: a landing the ticket's whole bill, a settle the push it closes. */
+function billOf(entry, prior) {
+  if (entry.outcome !== "landed" && entry.outcome !== "closed") {
+    return { ms: entry.ms, turns: entry.turns, cost: windowCost({ n: entry.n, outcome: entry.outcome, own: entry.cost }, prior) };
+  }
+  const whole = ticketTally(entry.n, prior);
+  return { ms: whole.ms + entry.ms, turns: whole.turns + entry.turns, cost: whole.spend + entry.cost };
 }
 
 /**
- * The run's record, and its running totals, with one owner.
- *
- * Totals used to be added up in three places — the row writer, the refusal branch and the
- * retry-park branch — and a `counted` flag existed to patch the double count the third one caused.
- * Here every session that ends calls `record` exactly once, the totals are whatever the rows say,
- * and a session that spent money without finishing a ticket (a usage refusal) is a row like any
- * other rather than an adjustment nothing can audit.
+ * The run's record, and its running totals, with one owner: every session that ends calls `record`
+ * exactly once, and the totals are whatever the rows say.
  *
  * @param {{append?: Function, mkdir?: Function, exists?: Function, write?: Function, read?: Function,
  *   loopSha?: string|null}} [io]
@@ -336,30 +289,59 @@ export function ledger(io = {}) {
     },
     rows,
     tickets,
-    /**
-     * @param {object} session what `sessionRow` needs
-     * @param {{runId: string, report: object, counts?: boolean}} into what `reportRow` renders,
-     *   and whether this session closes a ticket — a retry round is a session, not a ticket.
-     */
     loopSha,
     /** @param {number} number @param {string|null} phase @param {string} runId */
     start(number, phase, runId) {
       mkdir();
       append(ledgerPath(), `${JSON.stringify(startRow({ number, phase, runId, loopSha }))}\n`);
     },
-    record(session, { runId, report, counts = true }) {
-      const entry = sessionRow({ ...session, runId, loopSha });
+    /**
+     * @param {{number: number, outcome: string, why?: string|null, run: object, title?: string|null,
+     *   size?: string|null, reviewRounds?: number|null, pr?: number|null,
+     *   merged?: boolean, head?: string|null, handoff?: object|null, parkFailed?: string[]|null,
+     *   flake?: object|null}} session
+     * @param {string} runId
+     */
+    record({ number, outcome, why = null, run, title = null, size = null, reviewRounds = null, pr = null, merged = false, head = null, handoff = null, parkFailed = null, flake = null }, runId) {
+      const prior = exists(ledgerPath()) ? parsed(read(ledgerPath())) : [];
+      const error = errorOf(run);
+      const entry = sessionRow({
+        number,
+        size,
+        outcome,
+        parkReason: parkReasonOf(outcome, why, error),
+        pr,
+        phases: run.phases ?? {},
+        result: run.result,
+        merged,
+        reviewRounds,
+        // A park recorded hours after its session ended did not start at `now - ms`.
+        startedAt: run.started ?? new Date(Date.now() - run.ms).toISOString(),
+        ms: run.ms,
+        asleepMs: run.asleepMs ?? null,
+        version: run.version,
+        model: run.model ?? null,
+        head,
+        runId,
+        loopSha,
+        handoff,
+        error,
+        parkFailed,
+        flake,
+      });
       mkdir();
       append(ledgerPath(), `${JSON.stringify(entry)}\n`);
 
+      const bill = billOf(entry, prior);
+      const report = { number, title: title ?? `ticket #${number}`, outcome, pr, ms: bill.ms, cost: bill.cost, why: why ?? undefined };
       const file = reportPath(runId);
       const sha = loopSha ? ` · loop ${loopSha.slice(0, 7)}` : "";
       if (!exists(file)) write(file, `# queue-loop ${runId.replace(/-(\d\d)-(\d\d)$/, " $1:$2")}${sha}\n\n`);
       append(file, `${reportRow(report, PLAIN())}\n`);
 
-      if (counts) tickets.push(report);
+      if (ENDS_TICKET.has(outcome)) tickets.push(report);
       rows.push(entry);
-      return entry;
+      return { entry, bill };
     },
     /** The closing total under the night's rows, and the recap above them, under the title. */
     close(runId, line, recap = "") {
@@ -374,20 +356,20 @@ export function ledger(io = {}) {
   };
 }
 
-/** Session rows only, unless `starts` asks for the spawns between them too. @param {string} [file] */
-export function readLedger(file = ledgerPath(), { starts = false } = {}) {
-  if (!fsNode.existsSync(file)) return [];
-  const rows = [];
-  for (const line of fsNode.readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim()) continue;
+/** @type {(text: string, starts?: boolean) => any[]} */
+const parsed = (text, starts = false) =>
+  text.split("\n").flatMap((line) => {
     try {
       const row = JSON.parse(line);
-      if (starts || row.outcome !== "started") rows.push(row);
+      return starts || row.outcome !== "started" ? [row] : [];
     } catch {
-      continue;
+      return [];
     }
-  }
-  return rows;
+  });
+
+/** Session rows only, unless `starts` asks for the spawns between them too. @param {string} [file] */
+export function readLedger(file = ledgerPath(), { starts = false } = {}) {
+  return fsNode.existsSync(file) ? parsed(fsNode.readFileSync(file, "utf8"), starts) : [];
 }
 
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
@@ -408,15 +390,8 @@ export function typicalMs(rows) {
   return Object.fromEntries(Object.entries(by).map(([k, a]) => [k, median(a)]));
 }
 
-/** Only for rows before schema 6, which carried a handoff as prose. */
-const HANDOFF_RE = /phase\s+([A-Za-z])\s+next(?: — (.+))?/;
-
-/** @param {{handoff?: {phase: string, why: string|null, said?: string|null}|null, park_reason?: string|null}} row */
-export function handoffIn(row) {
-  if (row.handoff) return { phase: row.handoff.phase, why: row.handoff.why ?? row.handoff.said ?? null };
-  const m = HANDOFF_RE.exec(row.park_reason ?? "");
-  return m ? { phase: m[1], why: m[2] ?? null } : null;
-}
+/** @param {{handoff?: {phase: string, why: string|null, said?: string|null}|null}} row */
+export const handoffIn = ({ handoff }) => (handoff ? { phase: handoff.phase, why: handoff.why ?? handoff.said ?? null } : null);
 
 /** @param {string} outcome @param {string|null|undefined} why @param {object|null} [error] */
 export const parkReasonOf = (outcome, why, error = null) =>
@@ -491,7 +466,7 @@ export function withSpawnPhase(rows) {
  * A handoff on to E was a LAND that left E to the next process.
  */
 export const holdRound = (row) =>
-  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(handoffIn(row)?.phase ?? "");
+  isProcess(row) && row.outcome === "handoff" && (Object.keys(row.phases ?? {})[0] ?? row.at) === "D" && ["C", "D"].includes(row.handoff?.phase ?? "");
 
 /**
  * One window's rows folded together: `ticketTally`'s open window, and each of the gauge's. A row
@@ -507,6 +482,7 @@ export function tallyOf(rows) {
     turns: 0,
     processes: 0,
     fixSpend: 0,
+    holds: 0,
     handoffsThisRound: 0,
     lastHandoff: /** @type {string|null} */ (null),
     handoffWhy: /** @type {string|null} */ (null),
@@ -523,7 +499,9 @@ export function tallyOf(rows) {
     t.ms += r.ms ?? 0;
     t.turns += r.turns ?? 0;
     if (isProcess(r)) t.processes += 1;
-    if (fixing || holdRound(r)) t.fixSpend += cost;
+    const held = holdRound(r);
+    if (held) t.holds += 1;
+    if (fixing || held) t.fixSpend += cost;
     if (r.outcome === "retry") {
       t.retries += 1;
       t.handoffsThisRound = 0;
