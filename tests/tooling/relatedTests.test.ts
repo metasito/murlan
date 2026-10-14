@@ -55,7 +55,7 @@ describe("what native:related runs and what it leaves to CI", () => {
   test("every native test runs, and is budgeted, under the project jest.config.js gives it", () => {
     const selected = onLocalProjects(["--listTests"]);
     assert.equal(selected[0], "--listTests");
-    for (const [file, project] of [[T("scorePill"), "ios"], ["tests/native/x/botMoveCost.compiled.test.tsx", "compiled"]]) {
+    for (const [file, project] of [[T("scorePill"), "ios"], ["tests/native/botMoveCost.compiled.test.tsx", "compiled"]]) {
       assert.equal(localProjectOf(join(process.cwd(), file)), project);
       assert.ok(selected.slice(selected.indexOf("--selectProjects") + 1).includes(project), `${file}: ${project} not selected`);
     }
