@@ -1,5 +1,6 @@
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { roomStore } from "../store/roomStore.ts";
+import { logger } from "../http/logger.ts";
 import { rollMatchForward } from "./gameOver.ts";
 import { emitMatchState } from "../socket/emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
@@ -41,7 +42,11 @@ export async function dealManche(
   game.lastGameOverPayload = undefined;
   rollMatchForward(game);
 
-  await roomStore.updateRoomStatus(game.roomId, "in_progress");
+  await roomStore
+    .updateRoomStatus(game.roomId, "in_progress")
+    .catch((err: unknown) =>
+      logger.warn({ err, roomId: game.roomId }, "Failed to set rooms.status = in_progress at the deal")
+    );
 
   broadcastGameState(io, game);
   io.to(game.roomId).emit("game:started");
