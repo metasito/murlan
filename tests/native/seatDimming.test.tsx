@@ -11,7 +11,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { TopOppSlot, SideOppSlot } from '@/components/table/seats';
+import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
 
 const player: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
@@ -23,11 +23,11 @@ const opacityOf = (testId: string) => {
 };
 
 const seats = [
-  { name: 'TopOppSlot', testId: 'top-seat', seat: (props: object) => <TopOppSlot player={player} cardCount={5} isActive={false} {...props} /> },
+  { name: 'the top seat', testId: 'top-seat', seat: (props: object) => <OpponentSeat place="top" player={player} cardCount={5} isActive={false} {...props} /> },
   {
-    name: 'SideOppSlot',
+    name: 'a side seat',
     testId: 'side-seat-left',
-    seat: (props: object) => <SideOppSlot player={player} side="left" cardCount={5} isActive={false} {...props} />,
+    seat: (props: object) => <OpponentSeat place="left" player={player} cardCount={5} isActive={false} {...props} />,
   },
 ];
 

@@ -44,8 +44,9 @@ import {
   arrangeOpponents,
   seatDirection,
   viewerOwnsSeat,
+  type OpponentSide,
 } from "@/components/seatLayout";
-import { handCountOf, vacatedOf } from "@/shared/protocol";
+import { handCountOf } from "@/shared/protocol";
 import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import {
@@ -134,7 +135,8 @@ import { PileLayer, getComboLabel, usePileFlight } from "@/components/table/pile
 import { topPlay } from "@/components/table/trick";
 import { warmCardArt } from "@/components/CardView";
 import { BombBurst, BombFlash, FeltScrim, Sweep } from "@/components/table/moments";
-import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seats";
+import { OpponentSeat, usePassedSeats } from "@/components/table/seats";
+import { seatView, type SeatTable } from "@/components/table/seatView";
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
@@ -1128,10 +1130,31 @@ export function GameTable({
         : exchange.viewerIsLoser
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
-  const seatMark = (seat: number) => ({ marked: exchangeSeats.lit.includes(seat), seat, flash: ringFlash });
-  const onMove = (seat: number) => !shownExchange && shown === null && seat === shownTurnIndex;
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
-  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (exchangeSeats.shift.get(seat) ?? 0);
+  const seatTable: SeatTable = {
+    onMoveSeat: !shownExchange && shown === null ? shownTurnIndex : null,
+    passed,
+    disconnectedSeats,
+    exchangeLit: exchangeSeats.lit,
+    exchangeShift: exchangeSeats.shift,
+  };
+  const opponentSeat = (place: OpponentSide) => {
+    const opponent = opponents[place];
+    return (
+      opponent && (
+        <OpponentSeat
+          place={place}
+          player={opponent.player}
+          {...seatView(opponent.seat, opponent.player, seatTable)}
+          dealArrivals={deal.arrivalsFor(opponent.seat)}
+          scale={scale}
+          countdown={seatCountdown}
+          focusMode={focusMode}
+          flash={ringFlash}
+        />
+      )
+    );
+  };
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
   useEffect(() => timeline.flush());
@@ -1399,23 +1422,7 @@ export function GameTable({
           <A11yVeil veil={behindVeil}>
           <Animated.View style={[sharedTableStyles.tableContent, shakeStyle]}>
             <View testID="table-top-section" style={[sharedTableStyles.topSection, { height: topBandHeight(scale) }]}>
-              {opponents.top ? (
-                <TopOppSlot
-                  player={opponents.top.player}
-                  isActive={onMove(opponents.top.seat)}
-                  cardCount={seatCount(opponents.top.seat, opponents.top.player)}
-                  dealArrivals={deal.arrivalsFor(opponents.top.seat)}
-                  passed={passed.includes(opponents.top.seat)}
-                  vacated={vacatedOf(opponents.top.player)}
-                  reconnecting={disconnectedSeats[opponents.top.seat]}
-                  scale={scale}
-                  countdown={seatCountdown}
-                  focusMode={focusMode}
-                  {...seatMark(opponents.top.seat)}
-                />
-              ) : (
-                <View />
-              )}
+              {opponentSeat("top") ?? <View />}
             </View>
 
             {/* The band left over between the top band and the hand. The seats
@@ -1424,22 +1431,7 @@ export function GameTable({
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
             <View style={[sharedTableStyles.midSection, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
-                {opponents.left && (
-                  <SideOppSlot
-                    player={opponents.left.player}
-                    isActive={onMove(opponents.left.seat)}
-                    side="left"
-                    cardCount={seatCount(opponents.left.seat, opponents.left.player)}
-                    dealArrivals={deal.arrivalsFor(opponents.left.seat)}
-                    passed={passed.includes(opponents.left.seat)}
-                    vacated={vacatedOf(opponents.left.player)}
-                    reconnecting={disconnectedSeats[opponents.left.seat]}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                    {...seatMark(opponents.left.seat)}
-                  />
-                )}
+                {opponentSeat("left")}
               </View>
 
               <View style={sharedTableStyles.centerSection}>
@@ -1505,22 +1497,7 @@ export function GameTable({
               </View>
 
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionRight, { height: sideSlotHeight(scale) }]}>
-                {opponents.right && (
-                  <SideOppSlot
-                    player={opponents.right.player}
-                    isActive={onMove(opponents.right.seat)}
-                    side="right"
-                    cardCount={seatCount(opponents.right.seat, opponents.right.player)}
-                    dealArrivals={deal.arrivalsFor(opponents.right.seat)}
-                    passed={passed.includes(opponents.right.seat)}
-                    vacated={vacatedOf(opponents.right.player)}
-                    reconnecting={disconnectedSeats[opponents.right.seat]}
-                    scale={scale}
-                    countdown={seatCountdown}
-                    focusMode={focusMode}
-                    {...seatMark(opponents.right.seat)}
-                  />
-                )}
+                {opponentSeat("right")}
               </View>
             </View>
 

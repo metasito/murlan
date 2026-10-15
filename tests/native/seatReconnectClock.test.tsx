@@ -2,7 +2,7 @@
 // disconnect countdown for the whole grace, driven only by the server's own
 // `seconds` (never a second client-side clock), and the vacated flag's chip.
 // Mounted directly, the same way tests/native/seatDimming.test.tsx does —
-// TopOppSlot is where both chips actually render, and skipping the full
+// OpponentSeat is where both chips actually render, and skipping the full
 // <GameTable> keeps this a tree question, not a layout one.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
@@ -14,7 +14,7 @@ jest.mock('@/lib/accessibility', () => ({
   getMotionPreference: () => 'off',
 }));
 
-import { TopOppSlot } from '@/components/table/seats';
+import { OpponentSeat } from '@/components/table/seats';
 import type { Player } from '@/lib/game/gameEngine';
 
 const player: Player = { id: 'player_1', name: 'Besi', hand: [], type: 'human' };
@@ -26,7 +26,8 @@ const chipText = () => screen.getByTestId('seat-reconnect-chip').props.children;
 describe("a seat's disconnect countdown (#850 clause 1)", () => {
   it('starts from the server-supplied seconds, not from zero or a guess', async () => {
     const r = await render(
-      <TopOppSlot
+      <OpponentSeat
+        place="top"
         player={player}
         isActive={false}
         cardCount={5}
@@ -40,7 +41,8 @@ describe("a seat's disconnect countdown (#850 clause 1)", () => {
   it('ticks down locally in whole seconds without any server push', async () => {
     jest.useFakeTimers();
     const r = await render(
-      <TopOppSlot
+      <OpponentSeat
+        place="top"
         player={player}
         isActive={false}
         cardCount={5}
@@ -61,7 +63,8 @@ describe("a seat's disconnect countdown (#850 clause 1)", () => {
   it('a fresh resetKey restarts from the new seconds, proving there is no clock of its own', async () => {
     jest.useFakeTimers();
     const r = await render(
-      <TopOppSlot
+      <OpponentSeat
+        place="top"
         player={player}
         isActive={false}
         cardCount={5}
@@ -78,7 +81,8 @@ describe("a seat's disconnect countdown (#850 clause 1)", () => {
     // value rather than keep counting down whatever it had locally.
     await act(async () => {
       r.rerender(
-        <TopOppSlot
+        <OpponentSeat
+          place="top"
           player={player}
           isActive={false}
           cardCount={5}
@@ -93,7 +97,7 @@ describe("a seat's disconnect countdown (#850 clause 1)", () => {
   });
 
   it('renders nothing for a seat with no grace running', async () => {
-    const r = await render(<TopOppSlot player={player} isActive={false} cardCount={5} />);
+    const r = await render(<OpponentSeat place="top" player={player} isActive={false} cardCount={5} />);
     expect(screen.queryByTestId('seat-reconnect-chip')).toBeNull();
     await r.unmount();
   });
@@ -102,7 +106,7 @@ describe("a seat's disconnect countdown (#850 clause 1)", () => {
 describe('a vacated seat (#850 clause 2)', () => {
   it('renders the vacated chip through t(), never server-written text', async () => {
     const r = await render(
-      <TopOppSlot player={player} isActive={false} cardCount={5} vacated={true} />
+      <OpponentSeat place="top" player={player} isActive={false} cardCount={5} vacated={true} />
     );
     expect(screen.getByTestId('seat-vacated-chip')).toBeTruthy();
     await r.unmount();
@@ -110,7 +114,8 @@ describe('a vacated seat (#850 clause 2)', () => {
 
   it('a reconnecting seat outranks its own vacated chip — they never show at once', async () => {
     const r = await render(
-      <TopOppSlot
+      <OpponentSeat
+        place="top"
         player={player}
         isActive={false}
         cardCount={5}
