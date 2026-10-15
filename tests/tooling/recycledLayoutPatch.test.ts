@@ -36,6 +36,17 @@ test("no installed component view resets its layout to anything but EmptyLayoutM
   assert.deepEqual(files.filter((f) => staleResets(read(f)).length > 0), []);
 });
 
+test("iOS builds React Native core from source, so the patch reaches the binary", async () => {
+  const plugins: unknown[] = JSON.parse(read("app.json")).expo.plugins;
+  assert.ok(plugins.includes("./plugins/withReactNativeFromSource.js"), "app.json no longer applies withReactNativeFromSource");
+  const { createRequire } = await import("node:module");
+  const plugin = createRequire(import.meta.url)(path.join(repoRoot, "plugins/withReactNativeFromSource.js"));
+  const config = plugin({ name: "x", slug: "x" });
+  const props: Record<string, string> = {};
+  await config.mods.ios.podfileProperties({ ...config, modRequest: { platform: "ios", nextMod: async (c: { modResults: unknown }) => c }, modResults: props });
+  assert.equal(props["ios.buildReactNativeFromSource"], "true");
+});
+
 test("every spelling of a stale reset is caught, and the empty sentinel is not", () => {
   for (const line of ["  _layoutMetrics = {};", "  _layoutMetrics = { };", "  _layoutMetrics = LayoutMetrics{};", "  layoutMetrics = LayoutMetrics();"]) {
     assert.deepEqual(staleResets(line), [line]);

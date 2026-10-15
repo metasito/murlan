@@ -1,0 +1,13 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/View/RCTViewComponentView.mm
+@@ -722,6 +722,8 @@
+   _isJSResponder = NO;
+   _removeClippedSubviews = NO;
+   _reactSubviews = [NSMutableArray new];
+-  _layoutMetrics = {};
++  // `{}` is a real layout, (0,0,0,0) and display flex: a recycled view laid out at exactly that kept its
++  // previous life's center, bounds and hidden. Only EmptyLayoutMetrics forces the next mount to apply them.
++  _layoutMetrics = EmptyLayoutMetrics;
+ }
+
