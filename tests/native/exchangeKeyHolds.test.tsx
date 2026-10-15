@@ -19,13 +19,9 @@ jest.mock('@/components/table/ExchangeLegs', () => {
     },
   };
 });
-jest.mock('@/lib/device/feedback', () => {
-  const actual = jest.requireActual('@/lib/device/feedback') as typeof import('@/lib/device/feedback');
-  return { ...actual, event: jest.fn(actual.event) };
-});
 
 import { GameTable } from '@/components/GameTable';
-import { event } from '@/lib/device/feedback';
+import { bootFeedback, settle, startsOf } from './helpers/feedback';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player, Rank, Suit } from '@/lib/game/gameEngine';
 
@@ -82,17 +78,17 @@ const table = (open: boolean) => (
   </SafeAreaProvider>
 );
 
-const cues = () => jest.mocked(event).mock.calls.filter(([moments]) => moments.some((m) => m.kind === 'exchange')).map(([, at]) => at);
+const cues = () => startsOf('exchange');
 const frames = async (ms: number) => {
-  for (let at = 0; at < ms; at += 16) await act(async () => jest.advanceTimersByTime(16));
+  for (let at = 0; at < ms; at += 16) await settle(16);
 };
 
 describe('an announcement taking over from the open phase', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.useFakeTimers();
     mockMounts.n = 0;
     onReady.mockClear();
-    jest.mocked(event).mockClear();
+    await bootFeedback();
   });
   afterEach(() => {
     jest.useRealTimers();
