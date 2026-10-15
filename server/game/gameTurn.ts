@@ -5,6 +5,7 @@ import { logger } from "../http/logger.ts";
 import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
+import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -336,33 +337,8 @@ export async function vacateSeat(
   if (seat === null) return;
   const username = seatName(game, seat);
 
-  game.releasedSeats.add(userId);
-  delete game.playerMap[seat];
+  vacate(game, seat, { midHand: !game.gameState.roundOver });
   clearAfkTimer(roomId, userId);
-
-  const seatPlayer = game.gameState.players[seat];
-  if (seatPlayer) seatPlayer.type = "bot";
-
-  // The seat is reclaimable by this account for the life of the match
-  // (docs/GAME-RULES.md § Decisions) — every vacate is recorded here, whether it happened
-  // mid-round or between them, so the rejoin path can find it, the sanitizer
-  // can label the seat, and `resolveRoundEnd` can find the person's frozen
-  // total once `playerMap` has forgotten them.
-  game.vacatedSeats.set(seat, { userId, username });
-  // A vote to end the match answers "is the table still the one everyone
-  // joined" — a roster change makes that question new again.
-  game.endMatchVotes.clear();
-
-  // Walking out on a round still holding cards is an abandonment, and is recorded as
-  // one at game over. A seat between rounds has no round to abandon, and a seat
-  // that already emptied its hand has finished the one it was playing.
-  if (!game.gameState.roundOver && seatPlayer?.finishPosition === undefined) {
-    game.abandonedSeats.set(seat, userId);
-    // The takeover plays this round at minimum strength only — `dealRound`
-    // clears this at the next deal, by which point the seat is honestly a
-    // bot's (docs/GAME-RULES.md § Decisions).
-    game.weakSeats.add(seat);
-  }
 
   const remaining = Object.keys(game.playerMap).length;
 

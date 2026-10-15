@@ -222,13 +222,13 @@ export function seatAssignmentsFromRoster(roster: SeatEntry[]): {
   playerMap: Record<number, string>;
   botSeatsAtStart: Set<number>;
 } {
-  const playerMap: Record<number, string> = {};
+  const humanSeats: Record<number, string> = {};
   const botSeatsAtStart = new Set<number>();
   roster.forEach((r, idx) => {
     if (r.isBot) botSeatsAtStart.add(idx);
-    else playerMap[idx] = r.userId;
+    else humanSeats[idx] = r.userId;
   });
-  return { playerMap, botSeatsAtStart };
+  return { playerMap: humanSeats, botSeatsAtStart };
 }
 
 /**
