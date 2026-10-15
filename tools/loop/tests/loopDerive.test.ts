@@ -22,7 +22,8 @@ import {
   CI_BUDGET_MS,
 } from "../loop-derive.mjs";
 import { report } from "../loop-status.mjs";
-import { ciRedBody, park } from "../queue-loop.mjs";
+import { park } from "../queue-loop.mjs";
+import { ciRedBody } from "../settle.mjs";
 import { reasonFor } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
 
@@ -723,7 +724,7 @@ describe("derive({ ci: true }) resumes from the open pull request and the superv
       return { s: (derive as any)({ cwd: dir, base: "main", ci: true, exec }), asked };
     };
 
-    // `poll` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
+    // `runSettle` reads the run, reruns it once and posts the CI-RED; until then the head is G's.
     test("a head no CI-RED names is still G, whatever its CI says, and no run is read", () => {
       const { s, asked } = derived(land());
       assert.deepEqual([s.ci.state, s.fix, s.phase], ["settling", false, "G"]);

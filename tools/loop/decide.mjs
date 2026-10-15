@@ -270,10 +270,10 @@ const STEPS = {
     return { kind: "park", n, phase: at?.phase ?? "?", why: decided.why, pr: decided.pr };
   },
 
-  // One read of a pushed pull request inside `poll`: a step to take and read again, or the verdict
+  // One read of a pushed pull request inside `settle.mjs`'s `stepSettle`: a step to take and read again, or the verdict
   // `settled` turns into the ticket's outcome. The actions are `land.ts`'s `landing()`.
   // One deadline bounds every wait; only update-branch, which moves the head and so the deadline, has a cap.
-  // `stuck` is the second bound: nothing poll reads has changed for SETTLE.STUCK_MS. A run still going
+  // `stuck` is the second bound: nothing a settle reads has changed for SETTLE.STUCK_MS. A run still going
   // and an armed head are exempt, since one long job or GitHub's merge queue changes nothing for minutes.
   landing({ landing, limits }) {
     const { action, reason, head, armed, overdue, updates, last, ci, reran, stuck } = landing;
@@ -383,7 +383,7 @@ function tallied(action, { loop, limits, step, now }) {
       return { ...action, halt: breaker(failures + 1), loop: { ...loop, failures: failures + 1 } };
     case "hold": {
       // A ticket's holds are that ticket's alone, and past their bound it is parked for the owner, as
-      // `poll` parks an unreadable red; a pre-flight's spend the run's ceiling instead.
+      // `runSettle` parks an unreadable red; a pre-flight's spend the run's ceiling instead.
       if (action.wait === "preflight" && action.n != null) {
         const t = loop.heldTicket === action.n ? loop.ticketHolds + 1 : 1;
         if (t > limits.TICKET_HOLDS) {
@@ -422,8 +422,8 @@ function tallied(action, { loop, limits, step, now }) {
 /**
  * The supervisor's every routing outcome, from facts already read. `step` names the point in the
  * pass: `pre` (before the pick), `pick`, `refresh` (a fix route's fast-forward), `session` (a
- * process exited, or `run` is null for a G route), `landing` (one read inside `poll`, with the
- * rounds spent so far), `settled` (what `poll` returned), `threw`. `tally` is the ticket's
+ * process exited, or `run` is null for a G route), `landing` (one read inside `stepSettle`, with the
+ * rounds spent so far), `settled` (what `runSettle` returned), `threw`. `tally` is the ticket's
  * `ticketTally` without what is being decided; `loop` is the run's counters, returned updated.
  * `{kind: "ask", fact}` names a fact to read before deciding again.
  *

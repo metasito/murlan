@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { runSettle } from "../settle.mjs";
 import {
-  poll,
   runOnce,
   main,
   settle,
@@ -1687,7 +1687,7 @@ describe("the run recap", () => {
     assert.doesNotMatch(said, /pre-flight/);
   });
 
-  // poll parks a red whose log stays unreadable after its bound; a held red whose post keeps failing
+  // runSettle parks a red whose log stays unreadable after its bound; a held red whose post keeps failing
   // is the same ticket's problem, and stopping the whole night on it is not.
   // The literal, not the module's constant: ten passes outlast a short GitHub outage, and a test
   // reading the value it pins moves with it.
@@ -2327,7 +2327,7 @@ describe("a stop no rule names parks; a red was rerun before it came back", () =
       progress: { done: 1, total: 1, running: null, failed: "Typecheck and tests" },
     };
     const run = (_file: string, args: string[]) => (calls.push(args), args[0] === "issue" && args[1] === "view" ? JSON.stringify({ comments: [] }) : "");
-    const settle = (p: any) => poll(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
+    const settle = (p: any) => runSettle(p, () => {}, 0, 60_000, { run, stateOf: () => red, write: () => {}, mkdir: () => {}, mainFailures: () => null });
     const r = await runOnce(
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null, resuming: true, phase: "G" }),
