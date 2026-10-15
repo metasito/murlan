@@ -15,6 +15,7 @@ import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
 import { AGENT_DIR, WORKTREE_DIR } from "./loop-derive.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
+import { ghTracker } from "./tracker.mjs";
 
 /**
  * In git's order: the first is always the primary worktree, never a linked one.
@@ -232,9 +233,9 @@ function judgeWorktree(entry, ticket, { git, gh }) {
   // A peer mid-rebase reads detached, and a commit reachable only from this HEAD goes with the
   // reflog: nothing here can tell which, so a person decides.
   if (entry.branch === null) return { keep: "detached HEAD — a rebase in progress or commits only it reaches; decide by hand" };
-  const issue = JSON.parse(gh(["issue", "view", String(ticket), "--json", "state,labels"], { timeout: 30_000 }));
+  const issue = ghTracker(gh).issue(ticket, { timeout: 30_000 });
   if (issue.state === "CLOSED") return { remove: "its issue is closed" };
-  if (issue.labels.some((l) => l.name === "in-progress")) return null;
+  if (issue.labels.includes("in-progress")) return null;
   const [pr] = JSON.parse(gh(["pr", "list", "--head", entry.branch, "--state", "all", "--json", "state", "--limit", "1"], { timeout: 30_000 }));
   if (pr) return { remove: `its issue is no longer in-progress and its pull request is ${pr.state.toLowerCase()}` };
   if (merged(git, entry.branch)) return { remove: "its issue is no longer in-progress and its branch is merged" };

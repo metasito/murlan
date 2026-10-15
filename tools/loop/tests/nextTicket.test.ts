@@ -5,6 +5,7 @@ import { classify, pickRoute, claimedElsewhere, launchOpen, nextPick, openIssues
 import { importUnderShellGuard } from "../../../tests/helpers/importShellGuard.ts";
 import { TRUSTED_AUTHORS } from "../loop-derive.mjs";
 import { park } from "../queue-loop.mjs";
+import { fakeTracker } from "../tracker.mjs";
 
 function issue(number: number, labelNames: string[], author_association = "OWNER") {
   return { number, title: `issue ${number}`, labels: labelNames.map((name) => ({ name })), author_association };
@@ -229,7 +230,7 @@ describe("a ticket stranded between CI rounds", () => {
   });
 
   test("a park the owner sends back is stranded, ahead of an older plain ticket", () => {
-    const labels = new Set(["in-progress", "ready-for-agent", "size:S"]);
+    const tracker = fakeTracker({ 1438: { labels: ["in-progress", "ready-for-agent", "size:S"] } });
     let note = "";
     park(1438, {
       phase: "D",
@@ -238,17 +239,11 @@ describe("a ticket stranded between CI rounds", () => {
       cwd: null,
       branch: "agent/1438-x",
       dirty: false,
-      run: (cmd: string, args: string[]) => {
-        if (cmd === "gh" && args[1] === "edit") {
-          args.forEach((a, i) => {
-            if (a === "--remove-label") labels.delete(args[i + 1]);
-            if (a === "--add-label") labels.add(args[i + 1]);
-          });
-        }
-        return "";
-      },
+      run: () => "",
+      tracker,
       write: (_path: string, body: string) => void (note = body),
     });
+    const labels = new Set(tracker.held(1438).labels);
     assert.deepEqual([...labels].sort(), ["ready-for-human", "size:S"], "park's own labels");
     const swap = /swap `([^`]+)` for `([^`]+)`/.exec(note);
     assert.ok(swap, "the park note tells the owner which label to swap");
