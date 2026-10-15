@@ -309,6 +309,23 @@ describe("between hands, online elsewhere is not back at this table", () => {
   });
 });
 
+describe("a restore whose presence sweep fails", () => {
+  test("arms no grace, since the cluster never said who is away", async (t) => {
+    const { io } = stubIo();
+    setSocketServer({
+      fetchSockets: async () => {
+        throw new Error("timeout reached: only 0 responses received out of 1");
+      },
+    } as unknown as SocketServer);
+    t.after(() => setSocketServer(null as unknown as SocketServer));
+    const row = finishedRow();
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.deepEqual(usersInLobbyGrace(ROOM), [], "a grace whose expiry releases a player seated elsewhere");
+  });
+});
+
 describe("a seatLost that arrives after its player is back", () => {
   for (const gameOver of [false, true]) {
     test(`arms nothing ${gameOver ? "between hands" : "mid-hand"}`, async (t) => {
