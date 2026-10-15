@@ -66,7 +66,12 @@ function stubIo() {
     emit: (event: string, payload: unknown) => emitted.push({ event, payload }),
     timeout: () => ({ emit: (event: string, payload: unknown) => emitted.push({ event, payload }) }),
   };
-  const io = { to: () => target, on: () => {} } as unknown as SocketServer;
+  const io = {
+    to: () => target,
+    on: () => {},
+    serverSideEmit: (_event: string, _userId: string, reply: () => void) => reply(),
+    sockets: { adapter: { rooms: new Map() }, sockets: new Map() },
+  } as unknown as SocketServer;
   return { io, emitted };
 }
 
@@ -176,7 +181,63 @@ describe("dealing the next manche", () => {
     await Promise.all([first, second]);
 
     assert.equal(emitted.filter((e) => e.event === "game:started").length, 1);
-    assert.equal(game.gameState.exchangePhase?.active, true, "the second deal threw the exchange away");
+    assert.ok(game.gameState.exchangePhase, "the second deal threw the exchange away");
+    assert.equal(game.gameState.exchangePhase.winnerIdx, 0);
+    assert.equal(game.gameState.exchangePhase.loserIdx, 1);
+  });
+});
+
+describe("a new match at a standing bot-filled table", () => {
+  test("opens with the exchange on the last match's rankings, a bot's place among them", async (t) => {
+    const { io, emitted } = stubIo();
+    const host = "ana";
+    const lobby = {
+      id: ROOM,
+      code: "AAAAAA",
+      hostUserId: host,
+      status: "finished",
+      gameMode: "free_for_all",
+      maxPlayers: 4,
+      visibility: "private",
+    };
+    t.mock.method(roomStore, "getRoomById", async () => lobby);
+    t.mock.method(roomStore, "updateRoomStatus", async () => {});
+    t.mock.method(roomStore, "closeForStart", async () => ({
+      ok: true,
+      roster: [{ seatIndex: 0, userId: host, user: { username: "Ana" } }],
+      room: { ...lobby, status: "in_progress" },
+    }));
+    const seats = [
+      player("player_0", "Ana"),
+      { ...player("player_1", "Bot 1", "ai"), personality: "besnik" },
+      { ...player("player_2", "Bot 2", "ai"), personality: "besnik" },
+      { ...player("player_3", "Bot 3", "ai"), personality: "besnik" },
+    ] as Player[];
+    activeGames.set(
+      ROOM,
+      baseGame({
+        maxPlayers: 4,
+        gameState: finishedHand(seats, ["player_2", "player_1", "player_3", "player_0"]),
+        playerMap: { 0: host },
+        botSeatsAtStart: new Set([1, 2, 3]),
+        matchOver: true,
+      })
+    );
+
+    const outcome = await applyOrForward(io, {
+      kind: "startMatch",
+      roomId: ROOM,
+      userId: host,
+      fillWithBots: true,
+    });
+
+    assert.deepEqual(outcome, { ok: true });
+    assert.ok(emitted.some((e) => e.event === "game:started"));
+    const dealt = activeGames.get(ROOM)!.gameState;
+    assert.ok(dealt.exchangePhase, "the new match opened on the 3♠ instead");
+    assert.equal(dealt.exchangePhase.winnerIdx, 2);
+    assert.equal(dealt.exchangePhase.loserIdx, 0);
+    assert.equal(dealt.startCard, undefined);
   });
 });
 
