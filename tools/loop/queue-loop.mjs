@@ -67,11 +67,23 @@ import {
   ticketTally,
   typicalMs,
 } from "./loop-logs.mjs";
-import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { branchOf } from "./claim.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, estimateCost, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
+import {
+  CONTEXT_BY_SIZE,
+  CONTEXT_DEFAULT,
+  EFFORT_BY_PHASE,
+  estimateCost,
+  familyOf,
+  MODEL_BY_PHASE,
+  TICKET_BUDGET_USD,
+  TURNS_BY_SIZE,
+  TURNS_DEFAULT,
+  turnHeadroom,
+  USD_BY_SIZE,
+  USD_DEFAULT,
+} from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
@@ -177,31 +189,6 @@ export function nextRoute(
   return { ...picker(), resuming: false };
 }
 
-/**
- * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
- * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
- * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
- * backstop against one pathological turn, well above what a healthy ticket reaches.
- */
-const TICKET_BUDGET_USD = "40";
-
-/**
- * What one ticket may cost across every process it is spawned as.
- *
- * `TICKET_BUDGET_USD` bounds a single session and is unchanged; with phase handoffs a ticket is up
- * to `MAX_HANDOFFS` of them, so the per-ticket figure has to be kept here, where the supervisor is
- * the only thing that survives them all. Set above the fleet median for the size, so it catches
- * a runaway and never a healthy run.
- */
-export const USD_BY_SIZE = {
-  "size:XS": 20,
-  "size:S": 30,
-  "size:M": 45,
-  "size:L": 70,
-  "size:XL": 90,
-};
-export const USD_DEFAULT = 40;
-
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 
@@ -210,6 +197,20 @@ export const contextFor = (size) => CONTEXT_BY_SIZE[size ?? ""] ?? CONTEXT_DEFAU
 
 /** @param {string|null} [phase] */
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
+
+/**
+ * `queue.md`'s `allowed-tools` frontmatter governs permission, not what is loaded, so a session
+ * declaring ten tools still carries every tool the build has — about 876 tokens each, measured.
+ * Passing the same list as `--tools` makes the declaration mean what it looks like it means.
+ */
+export function allowedTools(text) {
+  const m = /^allowed-tools:\s*(.+)$/m.exec(text);
+  if (!m) return [];
+  return m[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
 const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
@@ -243,7 +244,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     "--setting-sources",
     "project",
     "--tools",
-    readAllowedTools().join(","),
+    allowedTools(fs.readFileSync(".claude/commands/queue.md", "utf8")).join(","),
     "--json-schema",
     RESULT_SCHEMA,
     "--max-turns",
