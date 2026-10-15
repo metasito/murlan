@@ -121,8 +121,8 @@ describe("the lamp's flare, wired off the same tier the shake reads (#765)", () 
   it.each<[string, GameState, boolean, string]>([
     ["a bomb", inPlay(BOMB_PLAY), false, "bomb"],
     ["a straight or flush", inPlay(ROYAL_PLAY), false, "straightFlush"],
-    ["the manche rung", HAND_CLOSED, false, "mancheWon"],
-    ["the partita rung, when the match closed with the hand", HAND_CLOSED, true, "partitaWon"],
+    ["the round rung", HAND_CLOSED, false, "roundWon"],
+    ["the match rung, when the match closed with the hand", HAND_CLOSED, true, "matchWon"],
   ])("%s lands once, as its own tier", async (_, state, matchOver, tier) => {
     expect(await landingOf(state, matchOver)).toEqual({ seq: 1, tier });
   });

@@ -1,7 +1,7 @@
-// tests/native/partitaTurnChip.test.tsx — the turn chip names the partita's end, not the manche's (#1525).
+// tests/native/matchTurnChip.test.tsx — the turn chip names the match's end, not the round's (#1525).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { render, screen } from '@testing-library/react-native';
-import { CASES, table } from './helpers/closePartita';
+import { CASES, table } from './helpers/closeMatch';
 import { bootFeedback, settle } from './helpers/feedback';
 
 const HIDDEN = { includeHiddenElements: true };
@@ -18,8 +18,8 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('the turn chip at a manche end', () => {
-  it('reads the partita label once the partita is over', async () => {
+describe('the turn chip at a round end', () => {
+  it('reads the match label once the match is over', async () => {
     const view = await render(table(CASES[0], false));
     await settle(2000);
     await view.rerender(table(CASES[0], true));
@@ -32,7 +32,7 @@ describe('the turn chip at a manche end', () => {
     await view.unmount();
   });
 
-  it('keeps the manche label when the partita goes on', async () => {
+  it('keeps the round label when the match goes on', async () => {
     const view = await render(table(CASES[0], false));
     await settle(2000);
     await view.rerender(table(CASES[0], true, false));

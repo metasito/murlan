@@ -1,7 +1,7 @@
 // #839 needed two things from tests/helpers/offlineMatch.ts that did not
 // exist before: a match reproducible end to end (deal *and* the AI's
 // aggression/unpredictability knobs) from one seed, via `aiRng`, and each
-// manche's top-card counts, via `SimulatedManche.topCardCounts`. Pinned here
+// round's top-card counts, via `SimulatedRound.topCardCounts`. Pinned here
 // rather than only exercised by the measurement script
 // (scripts/measureHeadsUpBalance.ts) so a regression in either shows up as a
 // red test, not as a quietly wrong report next time someone reruns it.
@@ -27,7 +27,7 @@ test("aiRng makes a whole match — deal and AI knobs both — reproducible from
     });
   const a = run();
   const b = run();
-  assert.deepEqual(a.manches.map((m) => m.rankings), b.manches.map((m) => m.rankings));
+  assert.deepEqual(a.rounds.map((m) => m.rankings), b.rounds.map((m) => m.rankings));
   assert.deepEqual(a.winners, b.winners);
 });
 
@@ -58,7 +58,7 @@ test("a seat's personality reaches aiChoosePlay through the offline harness", ()
   );
 });
 
-test("topCardCounts sums to all six top cards every manche at 4 seats (nothing excluded from the deal)", () => {
+test("topCardCounts sums to all six top cards every round at 4 seats (nothing excluded from the deal)", () => {
   const players: OfflinePlayerSetup[] = Array.from({ length: 4 }, (_, i) => ({
     name: `Bot${i}`,
     type: "ai" as const,
@@ -70,10 +70,10 @@ test("topCardCounts sums to all six top cards every manche at 4 seats (nothing e
     length: "match",
     aiRng: seededAi,
   });
-  assert.ok(r.manches.length > 0);
-  for (const [i, m] of r.manches.entries()) {
+  assert.ok(r.rounds.length > 0);
+  for (const [i, m] of r.rounds.entries()) {
     const total = m.topCardCounts.reduce((a, b) => a + b, 0);
-    assert.equal(total, 6, `manche ${i}: top-card counts summed to ${total}, not 6`);
+    assert.equal(total, 6, `round ${i}: top-card counts summed to ${total}, not 6`);
   }
 });
 
@@ -89,13 +89,13 @@ test("topCardCounts stays within [0, 6] per seat at 2 seats, where 26 of 54 card
     length: "match",
     aiRng: seededAi,
   });
-  assert.ok(r.manches.length > 0);
-  for (const [i, m] of r.manches.entries()) {
+  assert.ok(r.rounds.length > 0);
+  for (const [i, m] of r.rounds.entries()) {
     assert.equal(m.topCardCounts.length, 2);
     for (const count of m.topCardCounts) {
-      assert.ok(count >= 0 && count <= 6, `manche ${i}: seat count ${count} out of [0, 6]`);
+      assert.ok(count >= 0 && count <= 6, `round ${i}: seat count ${count} out of [0, 6]`);
     }
     const total = m.topCardCounts.reduce((a, b) => a + b, 0);
-    assert.ok(total <= 6, `manche ${i}: top-card counts summed to ${total} > 6`);
+    assert.ok(total <= 6, `round ${i}: top-card counts summed to ${total} > 6`);
   }
 });

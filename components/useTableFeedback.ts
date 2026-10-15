@@ -24,7 +24,7 @@ import {
   shakeAmplitudeFor,
 } from "@/components/flightPhysics";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
-import { handOutcomeFor, partitaOutcomeFor } from "@/lib/game/matchState";
+import { handOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
@@ -76,12 +76,12 @@ interface TableFeedbackState {
   /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
   players: readonly { id: string; team?: string }[];
   isTeamMode: boolean;
-  /** What the manche just played awarded, by engine player id — `handOutcomeFor`'s draw check. */
+  /** What the round just played awarded, by engine player id — `handOutcomeFor`'s draw check. */
   handScores: Record<string, number>;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
-  /** The partita is decided; its sting replaces the manche's. */
+  /** The match is decided; its sting replaces the round's. */
   matchOver?: boolean;
   /** Engine player ids, as `MatchVerdict.winners`. */
   matchWinners?: readonly string[];
@@ -329,11 +329,11 @@ export function useTableFeedback({
       return;
     }
     if (prevGameOverRef.current) return;
-    // The manche/partita shake itself is NOT fired here: it reacts to the
+    // The round/match shake itself is NOT fired here: it reacts to the
     // winning card's own landing signal, on its contact frame.
     // `rankings` holds engine player ids (`player_0`), never display names.
-    // `lib/game/matchState.ts` decides who a manche celebrates, from the caller's
-    // own `handScores`: a teams-mode 3-3 manche (GAME-RULES.md §11) celebrates no seat.
+    // `lib/game/matchState.ts` decides who a round celebrates, from the caller's
+    // own `handScores`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
     const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
     // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
     // the scores that decide it (`game:over`, unawaited server-side and
@@ -343,12 +343,12 @@ export function useTableFeedback({
     // same effect again instead.
     // The sting is placed in the engine ahead of time, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
-    // also when an online partita's winners have arrived.
+    // also when an online match's winners have arrived.
     if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
     prevGameOverRef.current = true;
-    const partita = matchOver ? partitaOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
+    const match = matchOver ? matchOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
     moment(
-      partita !== "pending" ? { kind: "partitaOver", outcome: partita } : { kind: "mancheOver", outcome },
+      match !== "pending" ? { kind: "matchOver", outcome: match } : { kind: "roundOver", outcome },
       "landing",
       Hold.sting
     );

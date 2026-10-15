@@ -43,7 +43,7 @@ test("offline vs AI — a match plays multiple hands on the table and exercises 
     });
     await expect(page).toHaveURL(GAME_URL);
   }
-  expect(visited.filter((url) => !GAME_URL.test(url)), "a manche never leaves the table").toEqual([]);
+  expect(visited.filter((url) => !GAME_URL.test(url)), "a round never leaves the table").toEqual([]);
 
   await page.getByRole("button", { name: "Impostazioni" }).click();
   await page.getByRole("button", { name: "Esci dalla partita" }).click();

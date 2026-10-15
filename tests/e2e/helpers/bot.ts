@@ -50,7 +50,7 @@ export function cardsInHands(desc: string): number | null {
   return counts.length === 0 ? null : counts.reduce((sum, m) => sum + Number(m[1]), 0);
 }
 
-/** An `isFinished` for a manche that ends on the table: its only sign is the next deal growing the hands. */
+/** An `isFinished` for a round that ends on the table: its only sign is the next deal growing the hands. */
 export function untilNextDeal(): (page: Page) => Promise<boolean> {
   let held: number | null = null;
   return async (page) => {
@@ -259,7 +259,7 @@ async function playOrPass(
   // the table's own description has not caught up for a tick. The
   // play-or-pass invariant below is about a hand that still has cards in it —
   // asserting it here turns a finished game into a failure. Handing back null
-  // lets the caller's isFinished check see the end-of-partita board.
+  // lets the caller's isFinished check see the end-of-match board.
   if (labels.length === 0) return null;
 
   function cardByLabel(label: string): Locator {
@@ -496,7 +496,7 @@ export interface DriveOptions {
    * Wall-clock ceiling for the whole drive, independent of the two watchdogs
    * above: both can stay green forever on a game that keeps changing state and
    * keeps moving cards out of hands while never once reaching `isFinished`
-   * (#770). Comfortably above a normal manche (measured: 37s, offline 2-player)
+   * (#770). Comfortably above a normal round (measured: 37s, offline 2-player)
    * and comfortably below every caller's own `test.setTimeout`, so this names
    * the failure before Playwright's bare timeout buries it under an unrelated
    * assertion.
@@ -553,7 +553,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       );
     }
 
-    // Every manche opens with one, so this cannot be done once before the loop.
+    // Every round opens with one, so this cannot be done once before the loop.
     await dismissStartAnnouncement(page);
 
     const desc = await tableDescription(page);

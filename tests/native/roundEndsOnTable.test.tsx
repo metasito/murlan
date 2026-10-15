@@ -1,18 +1,18 @@
-// tests/native/mancheEndsOnTable.test.tsx — offline, a manche ends on the table and the next one
+// tests/native/roundEndsOnTable.test.tsx — offline, a round ends on the table and the next one
 // is dealt from the landing that ended it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
 import { router } from 'expo-router';
 import type { GameState } from '@/lib/game/gameEngine';
-import { MancheEnding } from '@/lib/tokens';
+import { RoundEnding } from '@/lib/tokens';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
 const mockStartNextHand = jest.fn();
-const mockTable: { props: { onMancheLanded?: (landsAt: number) => void } } = { props: {} };
+const mockTable: { props: { onRoundLanded?: (landsAt: number) => void } } = { props: {} };
 const mockMatch = { over: false };
 
 const OVER: GameState = {
@@ -56,7 +56,7 @@ jest.mock('@/components/GameTable', () => {
   const react = require('react') as typeof import('react');
   const rn = require('react-native') as typeof import('react-native');
   return {
-    GameTable: (props: { onMancheLanded?: (landsAt: number) => void }) => {
+    GameTable: (props: { onRoundLanded?: (landsAt: number) => void }) => {
       mockTable.props = props;
       return react.createElement(rn.View, { testID: 'table' });
     },
@@ -67,7 +67,7 @@ import GameScreen from '@/app/game';
 
 const LONG_AFTER = 10_000;
 
-describe('the end of a manche, offline', () => {
+describe('the end of a round, offline', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -78,7 +78,7 @@ describe('the end of a manche, offline', () => {
     jest.useRealTimers();
   });
 
-  it('deals the next manche once, at the ending landing plus the deal onset, and never changes route', async () => {
+  it('deals the next round once, at the ending landing plus the deal onset, and never changes route', async () => {
     const view = await render(<GameScreen />);
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
@@ -86,9 +86,9 @@ describe('the end of a manche, offline', () => {
     expect(router.replace).not.toHaveBeenCalled();
     expect(mockStartNextHand).not.toHaveBeenCalled();
 
-    await act(async () => mockTable.props.onMancheLanded?.(performance.now()));
+    await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await act(async () => {
-      jest.advanceTimersByTime(MancheEnding.deal - 1);
+      jest.advanceTimersByTime(RoundEnding.deal - 1);
     });
     expect(mockStartNextHand).not.toHaveBeenCalled();
     await act(async () => {
@@ -109,9 +109,9 @@ describe('the end of a manche, offline', () => {
     await act(async () => {
       jest.advanceTimersByTime(1_000);
     });
-    await act(async () => mockTable.props.onMancheLanded?.(landedAt));
+    await act(async () => mockTable.props.onRoundLanded?.(landedAt));
     await act(async () => {
-      jest.advanceTimersByTime(MancheEnding.deal - 1_000);
+      jest.advanceTimersByTime(RoundEnding.deal - 1_000);
     });
     expect(mockStartNextHand).toHaveBeenCalledTimes(1);
     await view.unmount();
@@ -119,16 +119,16 @@ describe('the end of a manche, offline', () => {
 
   it('leaving before the deal cancels it', async () => {
     const view = await render(<GameScreen />);
-    await act(async () => mockTable.props.onMancheLanded?.(performance.now()));
+    await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await view.unmount();
     jest.advanceTimersByTime(LONG_AFTER);
     expect(mockStartNextHand).not.toHaveBeenCalled();
   });
 
-  it('a partita ends on the table too, and the table is not asked to deal', async () => {
+  it('a match ends on the table too, and the table is not asked to deal', async () => {
     mockMatch.over = true;
     const view = await render(<GameScreen />);
-    expect(mockTable.props.onMancheLanded).toBeUndefined();
+    expect(mockTable.props.onRoundLanded).toBeUndefined();
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });

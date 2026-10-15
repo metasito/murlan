@@ -1,6 +1,6 @@
 // server/socket/socketGameplay.ts — everything a player does at a live table: playing
 // and passing, the exchange a round winner owes, rejoining a hand in progress,
-// reactions, and voting for another manche.
+// reactions, and voting for another round.
 //
 // Every handler here resolves the room and hands the intent to
 // `applyOrForward`, which runs it on the instance that owns the table. None of

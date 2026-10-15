@@ -9,21 +9,21 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 
 /**
- * What a fresh manche resets, and how it reaches the table. Both the first deal
+ * What a fresh round resets, and how it reaches the table. Both the first deal
  * of a match (`room:start`) and every deal after it (`game:rematch_vote`) end
  * here, so a reset added for one cannot go missing from the other.
  *
  * `game` must already be in `activeGames`: armTurn and the persistence writers
  * look it up by room id.
  */
-export async function dealManche(
+export async function dealRound(
   io: SocketServer,
   game: OnlineGameState,
   nextState: GameState
 ) {
   game.gameState = nextState;
   // A new hand: last hand's flags would record the same bombs, jokers and
-  // departures again in every remaining manche.
+  // departures again in every remaining round.
   game.handFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();

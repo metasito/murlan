@@ -163,7 +163,7 @@ export interface ReplayMoment {
 
 /**
  * The moves a reader is likely to want to jump to: every bomb, every royal
- * straight, and the last move of the manche. Derived from `moves` — a replay
+ * straight, and the last move of the round. Derived from `moves` — a replay
  * stores nothing extra for this.
  *
  * Ordered by index, so "the next one after here" is a scan forward.
@@ -190,7 +190,7 @@ export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment
 }
 
 /**
- * How many bombs one player threw in this manche. Attributed by the same
+ * How many bombs one player threw in this round. Attributed by the same
  * `combo.type === "bomb"` test the server's own flag uses
  * (server/game/gameTurn.ts `recordPlayFlags`), so the count agrees with the
  * lifetime figure on `user_stats`.

@@ -60,7 +60,7 @@ describe("the soak harness drives a real game", {
         `than the allowance there`
     );
     assert.equal(
-      result.manches,
+      result.rounds,
       0,
       "the window now reaches a game-over — this file's header says it does not"
     );

@@ -2,7 +2,7 @@ import type { SocketServer } from "./socketTypes.ts";
 import { voterCount, type OnlineGameState } from "../game/gameRoom.ts";
 import { scoresByEngineId } from "../game/gameOver.ts";
 
-/** The framing of the manche now running: what it is worth and where it stands. */
+/** The framing of the round now running: what it is worth and where it stands. */
 export function emitMatchState(io: SocketServer, room: string, game: OnlineGameState) {
   io.to(room).emit("game:match_state", {
     target: game.matchTarget,
@@ -13,7 +13,7 @@ export function emitMatchState(io: SocketServer, room: string, game: OnlineGameS
 }
 
 /**
- * Who has said yes to another manche, out of how many can answer.
+ * Who has said yes to another round, out of how many can answer.
  *
  * `total` is the seated-seat count, which is what every gate on this vote
  * compares against: a bot, and a seat whose player left, hold no vote.

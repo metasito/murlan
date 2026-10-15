@@ -123,8 +123,8 @@ test("a match still running is resumable; a finished one is not", () => {
   assert.equal(isResumable(null), false);
 });
 
-// The result screen between manches: the hand is over, the match is not, and
-// the next manche is still to deal. That is exactly when a player is most
+// The result screen between rounds: the hand is over, the match is not, and
+// the next round is still to deal. That is exactly when a player is most
 // likely to put the phone down.
 test("a finished hand inside a running match is still resumable", () => {
   const blob = JSON.parse(encodeOfflineSave(save(false)));

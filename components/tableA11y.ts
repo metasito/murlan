@@ -58,9 +58,9 @@ export interface TableA11yInput {
   /** Every opponent — never the viewer. */
   opponents: TableA11yOpponent[];
   exchange?: TableA11yExchange;
-  /** The manche is over and its ending still holds the table: nobody is on move. */
+  /** The round is over and its ending still holds the table: nobody is on move. */
   handOver?: boolean;
-  /** Read only with `handOver`: that manche was the partita's last. */
+  /** Read only with `handOver`: that round was the match's last. */
   matchOver?: boolean;
   dealing?: boolean;
 }

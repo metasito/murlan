@@ -123,7 +123,7 @@ export type DriveResult =
  *
  * `stopOnExchange: false` plays straight through an exchange instead: the
  * driver simply idles while it is up, and the server's own AFK/bot forced
- * move resolves it, so the manche runs to `game:over`.
+ * move resolves it, so the round runs to `game:over`.
  */
 export function driveHandToExchangeOrOver(
   clients: Client[],
@@ -206,7 +206,7 @@ export function driveHandToExchangeOrOver(
 
 /**
  * The next deal a client is sent — a `game:state` that is not the finished
- * state of the manche just played. `driveHandToExchangeOrOver` settles on the
+ * state of the round just played. `driveHandToExchangeOrOver` settles on the
  * *first* client's `game:over`, so the other clients' closing broadcasts can
  * still be in flight when a caller starts waiting for the next hand.
  */
@@ -230,7 +230,7 @@ export function waitForDeal(socket: Socket, ms = 8_000): Promise<SanitizedState>
 export function gameOverOf(result: DriveResult): GameOverPayload {
   assert.ok(
     result.stoppedOn === "gameOver",
-    `the manche had to run to game:over, stopped on ${result.stoppedOn}`
+    `the round had to run to game:over, stopped on ${result.stoppedOn}`
   );
   return result.payload as GameOverPayload;
 }

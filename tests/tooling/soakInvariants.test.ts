@@ -18,10 +18,10 @@ import {
   type SeatView,
 } from "../soak/invariants.ts";
 
-test("a soak that finished no manche fails rather than reporting no disagreement", () => {
-  assert.deepEqual(progressViolations({ moves: 560, manches: 5 }), []);
-  assert.deepEqual(progressViolations({ moves: 40, manches: 0 }).map((v) => v.kind), ["no-progress"]);
-  assert.deepEqual(progressViolations({ moves: 0, manches: 0 }).map((v) => v.kind), ["no-progress"]);
+test("a soak that finished no round fails rather than reporting no disagreement", () => {
+  assert.deepEqual(progressViolations({ moves: 560, rounds: 5 }), []);
+  assert.deepEqual(progressViolations({ moves: 40, rounds: 0 }).map((v) => v.kind), ["no-progress"]);
+  assert.deepEqual(progressViolations({ moves: 0, rounds: 0 }).map((v) => v.kind), ["no-progress"]);
   const main = blankComments(readFileSync(new URL("../soak/soak.ts", import.meta.url), "utf8"));
   assert.match(main, /const result = await runSoak\(opts\);\s*result\.violations\.push\(\.\.\.progressViolations\(result\)\);/);
 });

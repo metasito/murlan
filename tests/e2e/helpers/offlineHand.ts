@@ -45,7 +45,7 @@ export function offlineHandTests(configs: HandConfig[]) {
 
         await expect(page).toHaveURL(/\/game/);
         // The board's core claim: someone won.
-        await expect(page.getByTestId("partita-winner-name")).toBeVisible();
+        await expect(page.getByTestId("match-winner-name")).toBeVisible();
 
         await page.locator('[data-testid="btn-home"]').click();
         await page.waitForURL((url) => url.pathname === "/" || url.pathname === "");

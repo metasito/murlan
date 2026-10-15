@@ -1,4 +1,4 @@
-// The rail's settings sheet — focus mode, the mid-manche subset of sound,
+// The rail's settings sheet — focus mode, the mid-round subset of sound,
 // music and vibration, the left-handed swap, and the exit flow. Anchored
 // beside the rail rather than as a React Native Modal: the rail's own menu
 // knob has to stay tappable to close it, and a full-screen modal would take

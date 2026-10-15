@@ -1,12 +1,12 @@
 ##
-# Nuova partita flow: plays a real offline "Manche secca" (single-hand) match to
-# its end and confirms "Nuova partita" actually starts a new match — see
-# #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one manche and
+# New match flow: plays a real offline "Manche secca" (single-hand) match to
+# its end and confirms "New match" actually starts a new match — see
+# #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one round and
 # done" (lib/game/gameEngine.ts), so a single hand is a genuine match ending, not
 # a shortcut around one: it is the cheapest length that reaches the state
 # this flow is about, and it is exactly the format offline-game.yaml already
 # uses, so this adds almost nothing to that flow's own cost — #823 is open
-# on wall-clock already too slow to gate a PR, and a 7-hand "Partita" would
+# on wall-clock already too slow to gate a PR, and a 7-hand "Match" would
 # have cost several extra minutes for no more evidence.
 #
 # Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
@@ -85,7 +85,7 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Pass whenever legal, until the hand empties and the board ends the partita on the table ---
+# --- Pass whenever legal, until the hand empties and the board ends the match on the table ---
 - repeat:
     times: 30
     while:
@@ -100,10 +100,10 @@ appId: "${MAESTRO_APP_ID}"
 # --- The board on the felt: a single-hand match is over as soon as the hand is ---
 - extendedWaitUntil:
     visible:
-      id: "btn-nuova-partita"
+      id: "btn-new-match"
     timeout: 30000
 - tapOn:
-    id: "btn-nuova-partita"
+    id: "btn-new-match"
     waitToSettleTimeoutMs: 500
 
 # --- Confirm a new match actually started: a fresh, playable table ---

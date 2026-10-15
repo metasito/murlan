@@ -4,7 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import type { GameState } from '@/lib/game/gameEngine';
 import { bootFeedback, effects } from './helpers/feedback';
-import { playBotManche } from './helpers/botManche';
+import { playBotRound } from './helpers/botRound';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
@@ -34,8 +34,8 @@ describe('one table state change sounds one thing', () => {
     expect(pileUps([10, 10.2], 0.05)).toEqual([]);
   });
 
-  it('a whole bot manche never starts two effects within 50 ms', async () => {
-    const r = await playBotManche(table);
+  it('a whole bot round never starts two effects within 50 ms', async () => {
+    const r = await playBotRound(table);
     const starts = effects().map((n) => n.startedAt!);
     expect(starts.length).toBeGreaterThanOrEqual(6);
     expect(pileUps(starts, 0.05)).toEqual([]);

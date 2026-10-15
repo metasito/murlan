@@ -147,7 +147,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   const AFK_MS = Number(process.env.MURLAN_AFK_TIMEOUT_MS);
   /**
-   * `clientOnTurn` below always names the manche's opener — the very first
+   * `clientOnTurn` below always names the round's opener — the very first
    * actor after `room:start` — whose own first turn now carries the opening
    * announcement's reading time on top of `AFK_MS` (#830). Every wait tied to
    * that seat's own timeout has to budget for both.
@@ -556,7 +556,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     const room = await setUpRoom([alice, bob], 2);
     const table = [alice, bob];
     try {
-      // A manche has to be banked first, or every score is zero and an empty
+      // A round has to be banked first, or every score is zero and an empty
       // scoreboard would pass for the real one.
       gameOverOf(
         await driveHandToExchangeOrOver(
@@ -568,7 +568,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const dealt = waitForDeal(alice.socket);
       alice.socket.emit("game:rematch_vote");
       bob.socket.emit("game:rematch_vote");
-      const manche = await dealt;
+      const round = await dealt;
 
       const snapshot = matchSnapshot(room.roomId);
       assert.ok(snapshot, "the table must still be live");
@@ -579,7 +579,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         "a two-seat target equal to the client's default would prove nothing"
       );
       const banked = Object.values(snapshot.cumulativeScores).reduce((a, b) => a + b, 0);
-      assert.ok(banked > 0, "the first manche must have banked a point for somebody");
+      assert.ok(banked > 0, "the first round must have banked a point for somebody");
 
       const dropped = waitFor(alice.socket, "game:player_disconnected", 5_000);
       bob.socket.disconnect();
@@ -599,7 +599,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(sent.length, snapshot.matchLength);
       assert.deepEqual(
         Object.keys(sent.scores).sort(),
-        manche.players.map((p) => p.id).sort(),
+        round.players.map((p) => p.id).sort(),
         "every seat must appear on the scoreboard the rejoining client is sent"
       );
       assert.equal(
@@ -613,16 +613,16 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   /**
-   * The window between two manches — the hand is over, the next has not been
+   * The window between two rounds — the hand is over, the next has not been
    * dealt — is the one where a drop used to cost the seat outright, with none
    * of the grace every other drop gets. The seat left `playerMap`, and from
    * then on every `game:rejoin` was answered `UNAUTHORIZED`: the account was
    * out of the match it was still playing, with no way back in.
    *
-   * Found by the soak (#736), where a player dropped as a manche ended and
+   * Found by the soak (#736), where a player dropped as a round ended and
    * took no part in any of the ones that followed.
    */
-  test("a blip between manches does not cost the player their seat", async () => {
+  test("a blip between rounds does not cost the player their seat", async () => {
     const { seatedUsers } = await import("../helpers/liveGame.ts");
     const alice = await connectAs(server, "between_alice");
     const bob = await connectAs(server, "between_bob");
@@ -653,7 +653,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.equal(
         seatedUsers(room.roomId)?.[1],
         bob.user.id,
-        "a drop between manches must hold the seat under the same grace as any other"
+        "a drop between rounds must hold the seat under the same grace as any other"
       );
 
       const back = await reconnectAs(server, bob);
@@ -751,7 +751,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * the next hand deals. `announceRejoin`'s branch that re-sends `game:over`
    * is gated on `gameState.gameOver` — while hand 2 is live that is false, so
    * `lastGameOverPayload` (still holding hand 1's payload, dealt away by
-   * `dealManche`) must never reach a rejoining client. A rejoin mid-hand-2
+   * `dealRound`) must never reach a rejoining client. A rejoin mid-hand-2
    * gets `game:state` and `game:match_state` — the running framing — and
    * nothing else. `game:state` is what proves the handler actually ran
    * before the negative assertion is trusted.

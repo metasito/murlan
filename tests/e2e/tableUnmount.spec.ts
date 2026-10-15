@@ -1,5 +1,5 @@
 // tests/e2e/tableUnmount.spec.ts — leaving the table on the Skia felt throws nothing (#1429): from the
-// end-of-partita board through Home, and mid-manche through the table menu.
+// end-of-match board through Home, and mid-round through the table menu.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
@@ -24,7 +24,7 @@ async function untilHome(page: Page): Promise<void> {
   await page.waitForTimeout(1_500);
 }
 
-test("Home on the end-of-partita board leaves the Skia felt without an error", async ({ page, baseURL }) => {
+test("Home on the end-of-match board leaves the Skia felt without an error", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
   const save = offlineGameSave(2, 1, 0);
@@ -40,7 +40,7 @@ test("Home on the end-of-partita board leaves the Skia felt without an error", a
   expect(errors).toEqual([]);
 });
 
-test("leaving mid-manche through the menu leaves the Skia felt without an error", async ({ page, baseURL }) => {
+test("leaving mid-round through the menu leaves the Skia felt without an error", async ({ page, baseURL }) => {
   test.setTimeout(3 * 60_000);
   const errors = pageErrors(page);
   await skiaOnSoftware(page);

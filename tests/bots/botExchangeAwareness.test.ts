@@ -43,7 +43,7 @@ describe("knownOpponentExchangeCard", () => {
     assert.equal(knownOpponentExchangeCard(phase, 2), undefined);
   });
 
-  test("no exchange this manche means no known card", () => {
+  test("no exchange this round means no known card", () => {
     assert.equal(knownOpponentExchangeCard(undefined, 1), undefined);
   });
 });

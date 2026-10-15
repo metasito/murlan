@@ -87,7 +87,7 @@ const spoken = (c: Card) => `${c.rank} di ${SPOKEN_SUIT[c.suit!]}`;
 /**
  * Four of a rank, which `isBomb` (lib/game/gameEngine.ts) is exactly four of, and
  * three spare cards so the play cannot empty the hand — an emptied one closes
- * the manche, and `landingTier` would then rank the landing `mancheWon`, whose
+ * the round, and `landingTier` would then rank the landing `roundWon`, whose
  * trauma is lower than the bomb's and whose kick does not fire at all.
  */
 const BOMB = (["hearts", "diamonds", "clubs", "spades"] as const).map((s) => card("7", s));

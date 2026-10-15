@@ -15,12 +15,12 @@ export interface PillRow {
   /** Shared by rows level on points. */
   place: number;
   mine: boolean;
-  /** The total before the manche just played. */
+  /** The total before the round just played. */
   before: number;
   beforePlace: number;
-  /** The row's index in the standings before the manche, a tie kept in today's order. */
+  /** The row's index in the standings before the round, a tie kept in today's order. */
   beforePos: number;
-  /** When its gain counts in: its place in the manche's finishing order. */
+  /** When its gain counts in: its place in the round's finishing order. */
   order: number;
 }
 

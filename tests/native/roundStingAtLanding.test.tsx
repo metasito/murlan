@@ -1,4 +1,4 @@
-// tests/native/mancheStingAtLanding.test.tsx — a manche's sting sounds 300 ms after the landing that ends it (#1420).
+// tests/native/roundStingAtLanding.test.tsx — a round's sting sounds 300 ms after the landing that ends it (#1420).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
@@ -26,10 +26,10 @@ const LAST: Combination = { type: 'pair', cards: [card('k1', 'K', 'clubs'), card
 
 type Outcome = 'won' | 'lost' | 'neutral' | 'draw';
 const CASES: { outcome: Outcome; sting: string; teams: boolean; rankings: string[] }[] = [
-  { outcome: 'won', sting: 'mancheWon', teams: false, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
-  { outcome: 'lost', sting: 'mancheLost', teams: false, rankings: ['player_1', 'player_2', 'player_3', 'player_0'] },
-  { outcome: 'neutral', sting: 'mancheNeutral', teams: false, rankings: ['player_1', 'player_0', 'player_2', 'player_3'] },
-  { outcome: 'draw', sting: 'mancheNeutral', teams: true, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
+  { outcome: 'won', sting: 'roundWon', teams: false, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
+  { outcome: 'lost', sting: 'roundLost', teams: false, rankings: ['player_1', 'player_2', 'player_3', 'player_0'] },
+  { outcome: 'neutral', sting: 'roundNeutral', teams: false, rankings: ['player_1', 'player_0', 'player_2', 'player_3'] },
+  { outcome: 'draw', sting: 'roundNeutral', teams: true, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
 ];
 
 const seat = (i: number, teams: boolean): Player => ({
@@ -70,14 +70,14 @@ async function stingAfterLanding(c: (typeof CASES)[number]) {
   await settle(3000);
   const atOf = (kind: string) => sent.mock.calls.filter(([ms]) => ms.some((m) => m.kind === kind)).map(([, at]) => at!);
   const [landed] = atOf('landing');
-  const stings = atOf('mancheOver');
+  const stings = atOf('roundOver');
   const heard = sounds();
   sent.mockRestore();
   await r.unmount();
   return { heard, landed, stings };
 }
 
-describe('the manche sting', () => {
+describe('the round sting', () => {
   beforeEach(async () => {
     mockReduceMotion = false;
     jest.useFakeTimers();

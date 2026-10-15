@@ -1,9 +1,9 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { coneRainFrame, idleRain, startRain } from "../../components/table/coneRain.ts";
-import { bombFx, createParticles, landingDust, mancheMotes, PARTICLE_BUDGET, spawn, step, type ParticleSpawn } from "../../components/table/particles.ts";
+import { bombFx, createParticles, landingDust, roundMotes, PARTICLE_BUDGET, spawn, step, type ParticleSpawn } from "../../components/table/particles.ts";
 import { MOTES } from "../../components/table/air.ts";
-import { BombFx, ConeRain, MancheMoment } from "../../lib/tokens.ts";
+import { BombFx, ConeRain, RoundMoment } from "../../lib/tokens.ts";
 
 function mulberry32(seed: number): () => number {
   let a = seed;
@@ -31,7 +31,7 @@ function rainOver(sec: number, lampAt: (t: number) => { lx: number; ly: number }
   return { out, run };
 }
 
-describe("a won partita's rain through the lamp's cone (#1423)", () => {
+describe("a won match's rain through the lamp's cone (#1423)", () => {
   test("an idle run rains nothing", () => {
     assert.deepEqual(coneRainFrame(idleRain(), { lx: 457, ly: 252 }, DT, mulberry32(1)), []);
   });
@@ -60,7 +60,7 @@ describe("a won partita's rain through the lamp's cone (#1423)", () => {
       assert.equal(p.drag, 0.99);
       assert.ok(within(p.life, 1.3, 2), `life ${p.life}`);
       assert.ok(within(p.size, 0.8, 1.8), `size ${p.size}`);
-      assert.equal(p.col, MancheMoment.golds[i % 3]);
+      assert.equal(p.col, RoundMoment.golds[i % 3]);
       assert.equal(p.glow, 5);
     });
     const xs = new Set(out.map(({ lamp }) => lamp.lx));
@@ -79,7 +79,7 @@ describe("a won partita's rain through the lamp's cone (#1423)", () => {
   });
 });
 
-describe("a bomb that ends a won partita shares one particle budget (#1423)", () => {
+describe("a bomb that ends a won match shares one particle budget (#1423)", () => {
   test("the cap drops late rain; the dust, the seat's burst and the bomb all land whole", () => {
     const seat = { x: 457, y: 372 };
     const pile = { x: 457, y: 201 };
@@ -95,8 +95,8 @@ describe("a bomb that ends a won partita shares one particle budget (#1423)", ()
     let bombed = false;
 
     put("dust", landingDust({ catchUp: false, cards: 4, ...pile }, false, 1, 1, rng));
-    const burst = mancheMotes("won", seat, false, 1, 1, rng);
-    assert.equal(burst.length, MancheMoment.motes.won);
+    const burst = roundMotes("won", seat, false, 1, 1, rng);
+    assert.equal(burst.length, RoundMoment.motes.won);
     put("burst", burst);
     startRain(run);
     for (let t = 0; t < 2.5; t += DT) {
