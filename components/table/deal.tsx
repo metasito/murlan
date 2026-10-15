@@ -37,7 +37,6 @@ interface Deal {
   offsetMs: number;
   counts: number[];
   legs: DealLeg[];
-  /** Minted with the deal and kept once it lands, for whatever still reads where it ended. */
   clock: SharedValue<number>;
   landed: boolean;
 }
@@ -84,7 +83,7 @@ export function useDeal({
   }
   const deal = last && !last.landed ? last : null;
   if (deal && reduceMotion) setLast({ ...deal, landed: true });
-  const clock = last?.clock ?? idleClock;
+  const clock = deal?.clock ?? idleClock;
   const arrivals = useMemo(
     () =>
       deal && !reduceMotion
@@ -95,7 +94,9 @@ export function useDeal({
         : null,
     [deal, reduceMotion, viewerSeat]
   );
-  const onLanded = useCallback(() => setLast((d) => d && { ...d, landed: true }), []);
+  const dealKey = deal?.key;
+  // Bound to its deal: a landing still queued from the last deal's frames must not land the next one.
+  const onLanded = useCallback(() => setLast((d) => (d && d.key === dealKey ? { ...d, landed: true } : d)), [dealKey]);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
