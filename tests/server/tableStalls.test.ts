@@ -94,24 +94,20 @@ afterEach(() => {
   activeGames.delete(ROOM);
 });
 
+const unpackedMatch = () => ({
+  playerMap: { 0: "ana", 1: "besi" },
+  scores: { ana: 3, besi: 0 },
+  gameMode: "free_for_all" as const,
+  matchLength: "match" as const,
+  matchTarget: 21,
+  maxPlayers: 2,
+  handsPlayed: 1,
+  endedByVote: false,
+});
+const noSeats = { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] };
+
 const finishedRow = () =>
-  packPersistedState(
-    finishedHand(twoHumans(), ["player_0", "player_1"]),
-    {},
-    0,
-    "AAAAAA",
-    {
-      playerMap: { 0: "ana", 1: "besi" },
-      scores: { ana: 3, besi: 0 },
-      gameMode: "free_for_all",
-      matchLength: "match",
-      matchTarget: 21,
-      maxPlayers: 2,
-      handsPlayed: 1,
-      endedByVote: false,
-    },
-    { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] }
-  );
+  packPersistedState(finishedHand(twoHumans(), ["player_0", "player_1"]), {}, 0, "AAAAAA", unpackedMatch(), noSeats);
 
 describe("a table restored after a restart", () => {
   test("a rejoin at the results screen is told the tally, which the restart emptied", async (t) => {
@@ -306,6 +302,31 @@ describe("between hands, online elsewhere is not back at this table", () => {
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
     assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
+  });
+});
+
+describe("a restore with one player present and one away", () => {
+  test("between hands only the away seat gets the lobby grace", async (t) => {
+    const { io } = stubIo();
+    useCluster(t, [{ userId: "ana", rooms: [ROOM] }]);
+    const row = finishedRow();
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
+  });
+
+  test("mid-hand only the away seat gets the disconnect grace", async (t) => {
+    const { io } = stubIo();
+    useCluster(t, [{ userId: "ana", rooms: [] }]);
+    const state = finishedHand(twoHumans(), []);
+    state.gameOver = false;
+    const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, null, io), "restored");
+    assert.ok(disconnectTimers.has("besi"));
+    assert.ok(!disconnectTimers.has("ana"), "ana is online and was given 60 s to come back anyway");
   });
 });
 
