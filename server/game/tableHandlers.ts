@@ -219,6 +219,9 @@ export async function rehydrateGame(
 
   // The graces their disconnects armed died with the process that held them.
   const presence = await tablePresence(roomId);
+  // A between-hands grace's expiry sees only this process's sockets, so a
+  // grace armed on a guess releases players seated through another instance.
+  if (!presence) return "restored";
   const back = restoredState.gameOver ? presence.atTable : presence.online;
   for (const [seat, userId] of Object.entries(playerMap)) {
     if (userId === forUserId || back.has(userId)) continue;

@@ -66,10 +66,13 @@ export async function isUserAtTable(userId: string, roomId: string): Promise<boo
   }
 }
 
-/** Every account with a socket anywhere in the cluster, and those of them at `roomId`. */
+/**
+ * Every account with a socket anywhere in the cluster, and those of them at
+ * `roomId`; `null` when the cluster did not answer, which is not "nobody".
+ */
 export async function tablePresence(
   roomId: string
-): Promise<{ online: Set<string>; atTable: Set<string> }> {
+): Promise<{ online: Set<string>; atTable: Set<string> } | null> {
   const online = new Set<string>();
   const atTable = new Set<string>();
   if (!_io) return { online, atTable };
@@ -81,7 +84,8 @@ export async function tablePresence(
       if (s.rooms.has(roomId)) atTable.add(userId);
     }
   } catch (err) {
-    logger.warn({ err, roomId }, "Cluster presence sweep failed; reporting nobody at the table");
+    logger.warn({ err, roomId }, "Cluster presence sweep failed");
+    return null;
   }
   return { online, atTable };
 }
