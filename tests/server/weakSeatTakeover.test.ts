@@ -344,8 +344,8 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
     const state: GameState = {
       players: [
         player("p0", "Alice", [
-          { rank: "9", suit: "spades" } as never,
-          { rank: "3", suit: "hearts" } as never,
+          { rank: "9", suit: "spades", id: "9_spades" } as never,
+          { rank: "3", suit: "hearts", id: "3_hearts" } as never,
         ]),
         player("p1", "Bob", [{ rank: "4", suit: "spades" } as never]),
       ],
