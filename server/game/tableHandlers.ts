@@ -59,7 +59,7 @@ import {
   persistGameState,
   sendGameStateTo,
 } from "./gamePersistence.ts";
-import { endMatchByAgreement, handleRoundOver } from "./roundOver.ts";
+import { endMatchByAgreement } from "./roundOver.ts";
 import { armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
