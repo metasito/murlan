@@ -601,24 +601,17 @@ function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
 // ─── Game state processing ────────────────────────────────────────────────────
 
 /**
- * Fills the remaining placements when a hand ends with players still holding
- * cards. Every seat must end up in `rankings`: the scoreboard awards from it
- * and the stats writer records from it, so a missing seat is a player who
- * silently played no game.
- *
- * No source specifies the order among unfinished seats, so fewest cards left
- * wins, seat order breaking ties. Mutates `state` — callers hold a clone.
+ * Places the one seat still holding cards when the hand ends
+ * (docs/GAME-RULES.md §9) as last. Every seat must end up in `rankings`: the
+ * scoreboard awards from it and the stats writer records from it, so a missing
+ * seat is a player who silently played no game. Mutates `state` — callers hold
+ * a clone.
  */
-function assignRemainingPlacements(state: GameState): void {
-  const remaining = state.players
-    .map((p, seat) => ({ p, seat }))
-    .filter(({ p }) => p.hand.length > 0 && p.finishPosition === undefined)
-    .sort((a, b) => a.p.hand.length - b.p.hand.length || a.seat - b.seat);
-
-  for (const { p } of remaining) {
-    p.finishPosition = state.rankings.length + 1;
-    state.rankings.push(p.id);
-  }
+function placeLastSeat(state: GameState): void {
+  const last = state.players.find((p) => p.hand.length > 0 && p.finishPosition === undefined);
+  if (!last) return;
+  last.finishPosition = state.rankings.length + 1;
+  state.rankings.push(last.id);
 }
 
 /**
@@ -707,32 +700,8 @@ export function processPlay(state: GameState, combination: Combination): GameSta
 
     const activePlayers = newState.players.filter((p) => p.hand.length > 0);
 
-    if (newState.gameMode === "teams") {
-      const winnerTeam = player.team;
-      const teammateDone = newState.players.some(
-        (p) =>
-          p.team === winnerTeam &&
-          p.finishPosition !== undefined &&
-          p.id !== player.id
-      );
-      if (
-        teammateDone ||
-        newState.players.filter(
-          (p) => p.hand.length > 0 && p.team !== winnerTeam
-        ).length === 0
-      ) {
-        // The hand is decided, but the losing pair is still owed its placement
-        // points (GAME-RULES.md §11/§12: both partners' finishing positions count).
-        // Every seat must reach `rankings` — the stats writer skips anyone
-        // absent from it.
-        assignRemainingPlacements(newState);
-        newState.gameOver = true;
-        return newState;
-      }
-    }
-
     if (activePlayers.length <= 1) {
-      assignRemainingPlacements(newState);
+      placeLastSeat(newState);
       newState.gameOver = true;
       return newState;
     }
