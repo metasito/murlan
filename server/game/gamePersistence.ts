@@ -30,7 +30,8 @@ import {
   visibleExchangePhase,
   markExchangeSettled,
 } from "./onlineGameLogic.ts";
-import { packPersistedState, type PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
+import type { PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
+import { toEnvelope } from "./tableState.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 
@@ -160,21 +161,7 @@ function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unk
 export function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
   // Stamped so a restart can tell a current-shape row from a stale one (see
   // GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
-  const gameState = packPersistedState(game.gameState, game.roundFlags, game.dealFirstSeat, game.joinCode, {
-    playerMap: game.playerMap,
-    scores: game.cumulativeScores,
-    gameMode: game.gameMode,
-    matchLength: game.matchLength,
-    matchTarget: game.matchTarget,
-    maxPlayers: game.maxPlayers,
-    roundsPlayed: game.roundsPlayed,
-    endedByVote: !!game.endedByVote,
-  }, {
-    vacatedSeats: [...game.vacatedSeats],
-    releasedSeats: [...game.releasedSeats],
-    weakSeats: [...game.weakSeats],
-    abandonedSeats: [...game.abandonedSeats],
-  });
+  const gameState = toEnvelope(game);
   return inRoomOrder(roomId, () =>
     persistence
       .writeActiveGame(roomId, gameState)

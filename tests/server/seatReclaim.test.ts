@@ -14,6 +14,7 @@ import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import { scoresByEngineId } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
+import { onlineTable } from "../helpers/onlineTable.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "seat-reclaim-room";
@@ -23,30 +24,7 @@ function player(id: string, name: string, type: Player["type"] = "human"): Playe
 }
 
 function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
-  return {
-    roomId: ROOM,
-    joinCode: "AAAAAA",
-    playerMap: {},
-    rematchVotes: new Set(),
-    cumulativeScores: {},
-    gameMode: "free_for_all",
-    maxPlayers: 4,
-    matchTarget: 21,
-    matchLength: "match",
-    roundsPlayed: 1,
-    matchOver: false,
-    roundFlags: {},
-    abandonedSeats: new Map(),
-    botSeatsAtStart: new Set(),
-    releasedSeats: new Set(),
-    vacatedSeats: new Map(),
-    weakSeats: new Set(),
-    endMatchVotes: new Set(),
-    dealFirstSeat: 0,
-    spectators: new Set(),
-    moveLog: null,
-    ...overrides,
-  } as OnlineGameState;
+  return onlineTable({ roomId: ROOM, roundsPlayed: 1, ...overrides });
 }
 
 function midRound(): GameState {
