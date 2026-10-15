@@ -5,10 +5,10 @@
 //  1. the match must resolve on the pair's combined placement points, not
 //     per seat — a pair holding 20 + 1 has won, and both partners must be
 //     reported as winners even though only one of them crossed the line;
-//  2. the hand must not end until every seat has a placement — ending it the
-//     instant both partners of one team are out would leave the losing pair
-//     with no placement at all: no points, and (because the stats writer
-//     skips anyone absent from `rankings`) no game recorded.
+//  2. the hand is played out (docs/GAME-RULES.md §9, § Decisions "Teams win
+//     condition"): a pair going out does not end it, and every seat is placed
+//     by the order it emptied its hand — the stats writer skips anyone absent
+//     from `rankings`, and the exchange reads who came last.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -42,9 +42,9 @@ function teamsState(handSizes: number[], overrides = {}) {
 }
 
 describe("teams: every seat gets a placement", () => {
-  test("the losing pair takes the remaining positions when a team goes out", () => {
-    // Seat 0 (team A) already finished first; seat 2 (its partner) is about to
-    // finish, which ends the hand with seats 1 and 3 still holding cards.
+  // Seat 0 (team A) already finished first; seat 2 (its partner) is about to
+  // finish, leaving seats 1 and 3 holding 3 and 5 cards.
+  const pairGoesOut = () => {
     const state = teamsState([0, 3, 1, 5], {
       currentTurnIndex: 2,
       rankings: ["player_0"],
@@ -52,43 +52,36 @@ describe("teams: every seat gets a placement", () => {
       lastPlayedCombination: null,
     });
     state.players[0].finishPosition = 1;
+    return processPlay(state, buildCombination(state.players[2].hand)!);
+  };
 
-    const combo = buildCombination(state.players[2].hand);
-    assert.ok(combo, "the single remaining card must form a valid play");
-    const next = processPlay(state, combo!);
+  test("the losing pair plays on after both partners of the other pair are out", () => {
+    const next = pairGoesOut();
 
-    assert.equal(next.gameOver, true);
-    // Nobody is left without a placement — this is what stats/history read.
-    assert.equal(next.rankings.length, 4);
-    assert.deepEqual(next.rankings, [
-      "player_0",
-      "player_2",
-      "player_1", // 3 cards left — closer to finishing than seat 3
-      "player_3", // 5 cards left
-    ]);
-    assert.deepEqual(
-      next.players.map((p: { finishPosition?: number }) => p.finishPosition),
-      [1, 3, 2, 4]
-    );
+    assert.equal(next.gameOver, false);
+    assert.deepEqual(next.rankings, ["player_0", "player_2"]);
+    assert.equal(next.players[1].finishPosition, undefined);
+    assert.equal(next.players[3].finishPosition, undefined);
+    assert.ok([1, 3].includes(next.currentTurnIndex), "a seat still holding cards is on move");
   });
 
-  test("the losing pair is awarded its placement points", () => {
-    const state = teamsState([0, 3, 1, 5], {
-      currentTurnIndex: 2,
-      rankings: ["player_0"],
-      firstPlayMade: true,
-    });
-    state.players[0].finishPosition = 1;
-    const next = processPlay(state, buildCombination(state.players[2].hand)!);
+  test("the losing pair is placed by the order it empties, not by cards left", () => {
+    const next = pairGoesOut();
+    next.players[3].hand = next.players[3].hand.slice(0, 1);
+    next.currentTurnIndex = 3;
+    next.lastPlayedCombination = null;
+    const done = processPlay(next, buildCombination(next.players[3].hand)!);
 
-    const points = scoreHand(next.rankings, 4);
-    // 1st = 3, 2nd = 2, 3rd = 1, last = 0 — the losing pair scores 1, not
-    // nothing at all.
+    assert.equal(done.gameOver, true);
+    assert.deepEqual(done.rankings, ["player_0", "player_2", "player_3", "player_1"]);
+    assert.equal(done.players[1].finishPosition, 4, "the seat still holding cards is last");
+
+    const points = scoreHand(done.rankings, 4);
     assert.deepEqual(points, {
       player_0: 3,
       player_2: 2,
-      player_1: 1,
-      player_3: 0,
+      player_3: 1,
+      player_1: 0,
     });
     const teamA = points.player_0 + points.player_2;
     const teamB = points.player_1 + points.player_3;
