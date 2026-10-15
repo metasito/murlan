@@ -1,5 +1,6 @@
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { View, StyleSheet } from "react-native";
+import { useCardProbe } from "@/lib/diagnostics/cardProbe";
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -133,7 +134,10 @@ const SHADE_Z = Layer.table + 1;
  * One play's cards, from the throw to the sweep: they fly on the play's own
  * clock, rest on the felt, are beaten, buried and swept on these same views.
  */
-function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, asideX, flinchBy, signal, bombClock, report, cardScale, roomW }: {
+type ProbeViews = Record<string, RefObject<View | null>>;
+
+function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, asideX, flinchBy, signal, bombClock, report, cardScale, roomW, probeViews }: {
+  probeViews: ProbeViews;
   play: TrickPlay;
   /** Its top card is lit. */
   lit: boolean;
@@ -240,20 +244,24 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
   const testID = sweep ? (sweepTop ? "sweep-cards" : undefined) : beaten ? "pile-prev-layer" : role === "buried" ? "pile-buried-layer" : undefined;
   const zIndex = pileGroupZ(flying, sweep !== null, role);
   const out = !flying && (role === "buried" || (hidden && !sweep));
+  const groupRef = useRef<View>(null);
+  const wobbleRef = useRef<View>(null);
+  const probe = { views: { group: groupRef, wobble: wobbleRef, ...probeViews }, playedBy: play.playedBy, role, swept: sweep !== null, hidden };
   return (
     <Animated.View
+      ref={groupRef}
       testID={testID}
       pointerEvents="none"
       style={[pileStyles.group, { zIndex }, out && pileStyles.buried, pose]}
       {...a11yHidden(flying || sweep !== null)}
     >
-      <Animated.View testID={flying ? "flying-cards" : undefined} pointerEvents="none" style={[StyleSheet.absoluteFill, wobble]}>
+      <Animated.View ref={wobbleRef} testID={flying ? "flying-cards" : undefined} pointerEvents="none" style={[StyleSheet.absoluteFill, wobble]}>
         {cards.map((card, i) => {
           const box = { position: "absolute" as const, left: slots[i].x - w / 2, top: slots[i].y - h / 2, width: w, height: h };
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} probe={probe} />
             </Fragment>
           );
         })}
@@ -262,7 +270,8 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
   );
 }
 
-function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale, group, out, lit }: {
+function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned, cardScale, group, out, lit, probe }: {
+  probe: { views: ProbeViews; playedBy: number; role: PlayRole; swept: boolean; hidden: boolean };
   card: Card;
   lit: boolean;
   i: number;
@@ -327,11 +336,27 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
   });
   // 0 at rest, 1 at the top of the lift — the table's own scale multiplies it
   // at render, so resizing the table cannot read as a fresh catch.
+  const cardRef = useRef<View>(null);
+  useCardProbe("pile", { card: cardRef, ...probe.views }, () => {
+    const now = elapsed.get();
+    const p = flightPose(still ? AT_REST : now, i, spec.n, from, to, spec.catchUp);
+    const g = groupPose(group, turned.get());
+    const w = wobbleAt(now, spec.end, still);
+    const lifted = catchLift(catching?.get() ?? 0, cardScale);
+    const drawn = pile ? pileCard(pile, g, w, { slotX, slotY, x: p.x, y: p.y, rot: p.rot, scale: p.scale, liftY: lifted, w: box.width, h: box.height, lift: 0, glow: 0 }) : null;
+    return {
+      key: group.key, card: card.id, i, n: spec.n, playedBy: probe.playedBy, role: probe.role, swept: probe.swept, hidden: probe.hidden, flying, out,
+      elapsed: now, end: spec.end, still, from, to, box, pose: p,
+      applied: { tx: p.x - to.x, ty: p.y - to.y, rot: p.rot, scale: p.scale, liftY: lifted },
+      group: g, wobble: w, drawn, rect: table?.rects.get()[`pile:${card.id}`] ?? null,
+      pilePoint: pile ?? null, felt: felt ?? null, motion: motion?.get() ?? null,
+    };
+  }, `card-pile:${card.id}`);
   const lift = useAnimatedStyle(() => ({ transform: [{ translateY: catchLift(catching?.value ?? 0, cardScale) }] }));
   const glow = useAnimatedStyle(() => ({ opacity: catching?.value ?? 0 }));
   const shade = useAnimatedStyle(() => ({ opacity: SHADE_EASING(turned.value) }));
   return (
-    <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
+    <Animated.View ref={cardRef} testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
         {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + MancheMoment.litRingPt }]} />}
@@ -501,10 +526,13 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   const top = topPlay(trick.plays);
   const stack = top ? fieldSlots(top.combo.cards, cardScale, roomW) : null;
   const label = getComboLabel(comboLabel, t);
+  const areaRef = useRef<View>(null);
+  const stackRef = useRef<View>(null);
+  const probeViews = useMemo(() => ({ stack: stackRef, area: areaRef }), []);
 
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
-    <Animated.View style={[pileStyles.pileArea, hidden && pileStyles.aside, fadeStyle]} testID="pile-area">
+    <Animated.View ref={areaRef} style={[pileStyles.pileArea, hidden && pileStyles.aside, fadeStyle]} testID="pile-area">
       {roundWinner && !hidden ? (
         <Animated.View
           exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit).reduceMotion(ReduceMotion.Never)}
@@ -514,7 +542,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
         </Animated.View>
       ) : null}
 
-      <View style={[pileStyles.pileStack, { width: stack?.boxW ?? 0, height: stack?.h ?? 0 }]}>
+      <View ref={stackRef} style={[pileStyles.pileStack, { width: stack?.boxW ?? 0, height: stack?.h ?? 0 }]}>
         {groups.map(({ play, role, sweep: motion, sweepTop }) => (
           <PlayGroup
             key={play.key}
@@ -533,6 +561,7 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
             report={report}
             cardScale={cardScale}
             roomW={roomW}
+            probeViews={probeViews}
           />
         ))}
       </View>

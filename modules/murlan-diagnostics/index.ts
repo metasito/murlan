@@ -11,6 +11,7 @@ export interface MurlanDiagnostics {
   startMotion?(): boolean;
   stopMotion?(): void;
   drain?(): Record<string, string | number>[];
+  viewFrames?(prefix: string): Promise<Record<string, unknown>[]>;
 }
 
 export default requireOptionalNativeModule<MurlanDiagnostics>("MurlanDiagnostics");

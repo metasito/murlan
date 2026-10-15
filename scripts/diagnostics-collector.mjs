@@ -8,7 +8,9 @@ import { isInvokedDirectly } from "./lib/entry.mjs";
 export function createCollector(file) {
   mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
   return http.createServer((req, res) => {
-    if (req.method === "GET") return res.end("ok");
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("access-control-allow-headers", "content-type");
+    if (req.method === "GET" || req.method === "OPTIONS") return res.end("ok");
     if (req.method !== "POST" || req.url !== "/log") {
       res.statusCode = 404;
       return res.end();
