@@ -596,10 +596,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         announce(buildExchangeAnnounce(state.players, state.exchangePhase!));
       }
 
+      // A finished table re-sent (a reclaimed seat, say) comes without the
+      // tally, which the server still holds.
+      const sameResults = state.gameOver && prevGameStateRef.current?.gameOver === true;
       prevGameStateRef.current = state;
       gameStateRef.current = state;
       setGameState(state);
-      setRematchVoteState(null);
+      if (!sameResults) setRematchVoteState(null);
       if (!state.gameOver) setHandScoresCurrent(false);
 
       // The game genuinely ending is the only reason to forget the room while
