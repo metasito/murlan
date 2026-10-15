@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { closing, header, LAND, note, PLAIN, recap, stepRow } from "../loop-render.mjs";
+import { act, clockAt, closing, header, LAND, note, PLAIN, recap, stepRow, tasksDetail, thought } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
@@ -18,6 +18,7 @@ import {
   reinstall,
   runTicket,
   screenEvents,
+  sessionView,
   park,
   repark,
   holdFor,
@@ -922,6 +923,60 @@ describe("screenEvents", () => {
     events.log("is still standing", "worktree");
     events.published(1204);
     assert.deepEqual(told, [["notice", "loop", "main moved"], ["notice", "worktree", "is still standing"], ["set", { pr: 1204 }]]);
+  });
+
+  test("the bell rings the terminal's bell, and only on a terminal", (t) => {
+    const { events } = recording();
+    const wrote: string[] = [];
+    t.mock.method(process.stderr, "write", (s: string) => (wrote.push(s), true));
+    const tty = Object.getOwnPropertyDescriptor(process.stderr, "isTTY");
+    try {
+      Object.defineProperty(process.stderr, "isTTY", { value: false, configurable: true });
+      events.bell();
+      Object.defineProperty(process.stderr, "isTTY", { value: true, configurable: true });
+      events.bell();
+    } finally {
+      if (tty) Object.defineProperty(process.stderr, "isTTY", tty);
+      else delete (process.stderr as any).isTTY;
+    }
+    assert.deepEqual(wrote, ["\x07"]);
+  });
+});
+
+describe("sessionView", () => {
+  const view = () => {
+    const theme = PLAIN();
+    const told: unknown[][] = [];
+    const screen = {
+      theme,
+      say: (s: string) => told.push(["say", s]),
+      said: (s: string | null) => told.push(["said", s]),
+      call: (name: string, detail: string) => told.push(["call", name, detail]),
+      start: (letter: string, round: unknown) => told.push(["start", letter, round]),
+      set: (f: object) => told.push(["set", f]),
+    };
+    return { theme, told, draw: sessionView(screen as never, { number: 962, round: (p: string) => (p === "D" ? { n: 2, of: 3 } : null) }) };
+  };
+
+  test("each effect is its line: the session, a phase with its round, what was said, each call", () => {
+    const { told, draw } = view();
+    const call = { name: "Read", input: { file_path: "a.ts" } };
+    draw({}, [{ kind: "session", id: "s1" }, { kind: "start", letter: "D" }, { kind: "said", text: "PHASE D\nreviewing" }, { kind: "call", call }]);
+    assert.deepEqual(told, [["set", { session: "s1" }], ["start", "D", { n: 2, of: 3 }], ["said", thought("PHASE D\nreviewing")], ["call", "Read", act(call)]]);
+  });
+
+  test("the running subagents are said as one detail; none running says nothing", () => {
+    const { told, draw } = view();
+    const tasks = [{ id: "a", what: "Review #962" }];
+    draw({}, [{ kind: "tasks", tasks }, { kind: "tasks", tasks: [] }]);
+    assert.deepEqual(told, [["said", tasksDetail(tasks)]]);
+  });
+
+  test("a refusal is its rate-limited closing line, naming the window and when it resets", () => {
+    const { theme, told, draw } = view();
+    draw({}, [{ kind: "refused", window: "five_hour", resetsAt: 1789134000 }]);
+    const why = `the five_hour limit is spent — resets ${clockAt(1789134000)}`;
+    assert.deepEqual(told, [["say", closing({ outcome: "rate_limited", number: 962, why, ms: 0, cost: 0 }, theme)]]);
   });
 });
 
