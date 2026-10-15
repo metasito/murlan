@@ -6,6 +6,7 @@
  */
 import { atOf, closesWindow, isProcess, killedStarts, lastWrite, readLedger, RETAIN_MS, tallyOf, withSpawnPhase } from "./loop-logs.mjs";
 import { shortOfTurns } from "./loop-render.mjs";
+import { familyOf } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const ORDER = ["pre", "A", "B", "C", "D", "E", "F", "G"];
@@ -79,11 +80,7 @@ export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
   return Object.entries(busiest).map(([size, most]) => ({ size, most, cap: caps[size], short: 2 * most > (caps[size] ?? Infinity) }));
 }
 
-/**
- * The model family an id names. Keyed on the family word rather than on a full id, because the logs
- * carry four spellings of two models — `claude-opus-5`, `opus`, `claude-opus-5[1m]`, `sonnet`.
- */
-export const familyOf = (model) => ["opus", "sonnet", "haiku"].find((f) => String(model).includes(f)) ?? null;
+export { familyOf };
 
 /**
  * USD per million tokens by family, from https://platform.claude.com/docs/en/about-claude/pricing

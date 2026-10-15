@@ -12,10 +12,9 @@
  *
  * Usage: npm run queue:loop (tools/loop/run-loop.mjs, which restarts this on exit 75)
  */
-import { execFileSync, spawn } from "node:child_process";
-import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import fs, { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createInterface } from "node:readline";
 import { gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
 import {
   ciRedRounds,
@@ -25,7 +24,7 @@ import {
   trustedComments,
   WORKTREE_DIR,
 } from "./loop-derive.mjs";
-import { readLine, scopeEnds, usageOf } from "./loop-stream.mjs";
+import { runSession } from "./loop-session.mjs";
 import {
   act,
   bell,
@@ -73,7 +72,6 @@ import {
   CONTEXT_DEFAULT,
   EFFORT_BY_PHASE,
   estimateCost,
-  familyOf,
   MODEL_BY_PHASE,
   TICKET_BUDGET_USD,
   TURNS_BY_SIZE,
@@ -393,9 +391,6 @@ export const CI_ROUNDS = 3;
  */
 export const MAX_HANDOFFS = 8;
 
-/** The CLI's assistant-error codes no unattended wait cures: someone has to act on the account. */
-export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "verification_required", "billing_error"]);
-
 // `npm` and `npx` are `.cmd` shims, and since the fix for CVE-2024-27980 node will not resolve one
 // from execFileSync. Both are reached only with argument lists this file writes itself, never with
 // anything a ticket or the tracker supplies.
@@ -680,30 +675,141 @@ export function ticketFacts(number, run = sh) {
 }
 
 /**
- * Whether a task event says that task is over.
+ * The environment a session is spawned into.
  *
- * A `task_updated` carries a status only when it is closing one; mid-run it says something else
- * entirely — a task flipping to the background — and reading that as "finished" empties the board
- * while the agent is still working.
+ * A background update landing at 2am changes the system prompt, and every remaining ticket of the
+ * night then rebuilds its cached prefix at full price, with nothing to see. Whether to update is a
+ * decision for a person between runs.
  *
- * @param {{event: string, status: string|null}} fact
+ * `LOOP_TURNS` is the bound that actually stops a session, passed so the session can see it.
  */
-export function closesTask({ event, status }) {
-  if (event === "notification") return true;
-  return event === "updated" && status !== null && status !== "in_progress";
+export function sessionEnv(number, size = null, at = null, reason = null, base = process.env) {
+  return {
+    ...base,
+    DISABLE_AUTOUPDATER: "1",
+    LOOP_TURNS: String(turnsFor(size)),
+    LOOP_TICKET: String(number),
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
+    // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
+    LOOP_PHASE: at && at !== "A" ? at : undefined,
+    LOOP_REASON: reason ?? undefined,
+    // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
+    // each time it asks one whether it is done. Foreground makes the Agent call an await.
+    CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
+    // Also drops the commit trailer, which queue.md states instead.
+    CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
+    // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
+    // and each of its writes moves the cached prefix.
+    CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
+    CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
+    CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
+    CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
+    CLAUDE_CODE_DISABLE_CRON: "1",
+    CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+    CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
+    // Every brief says "Do not spawn any subagent"; this is what holds it.
+    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
+    CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: "6000",
+    BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
+    BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
+  };
 }
 
 /**
- * Spawns one session and reports what it did. The phase comes from the session's own
+ * The board's round for a phase. `reviewRounds` counts the verdicts already on the issue, so the
+ * round about to run is the next one. Null when the tracker could not be read — a number nobody
+ * could take is not a count of none.
+ */
+export const roundOf = (about, { fix = false, retryCount = 0 } = {}) => (phase) => {
+  if (phase === "D" && about.reviewRounds != null) return { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS };
+  // `retryCount` red CI runs so far is that many fixes, out of the runs after the first.
+  if (phase === "C" && fix) return { n: Math.max(1, retryCount), of: CI_ROUNDS - 1, fix: true };
+  return null;
+};
+
+/** The ticket's header, its keys' context and its first row, before the session says anything. */
+export function openTicket(screen, { number, branch = null, queue, at = null, about, log, round, dir = DIR }) {
+  if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
+  const spentMs = ticketTally(number, readLedger(ledgerPath(undefined, dir))).ms;
+  screen.context({ number, url: about.url, log, branch, spentMs });
+  if (at) {
+    // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
+    // the marker is read as "no change" and the board stays dark for the whole of that phase.
+    screen.start(at, round(at));
+  } else {
+    // An unnamed row carries the clock and tool detail through the spawn, the start-up and a missed
+    // marker, where the board would otherwise be blank under the header.
+    screen.start(UNNAMED);
+  }
+}
+
+/** `runSession`'s `onState` for the board: each effect `reduceSession` returned, drawn. */
+export function sessionView(screen, { number, round }) {
+  return (_state, effects) => {
+    for (const e of effects) {
+      if (e.kind === "session") screen.set({ session: e.id });
+      if (e.kind === "start") screen.start(e.letter, round(e.letter));
+      if (e.kind === "said") screen.said(thought(e.text));
+      if (e.kind === "call") screen.call(e.call.name, act(e.call));
+      if (e.kind === "tasks") {
+        const detail = tasksDetail(e.tasks);
+        if (detail) screen.said(detail);
+      }
+      if (e.kind === "refused") {
+        screen.say(
+          closing(
+            {
+              outcome: "rate_limited",
+              number,
+              why: `the ${e.window ?? "usage"} limit is spent — resets ${clockAt(e.resetsAt)}`,
+              ms: 0,
+              cost: 0,
+            },
+            screen.theme,
+          ),
+        );
+      }
+    }
+  };
+}
+
+/** What `runTicket` reports: a finished session's state, flattened with its exit. */
+export function ticketRun({ status, state, stderr, started, ms, asleepMs }, { size = null, log }) {
+  return {
+    status,
+    blocked: state.blocked,
+    blockedUntil: state.blockedUntil,
+    result: state.result,
+    estimatedCost: state.result || !state.usage.size ? null : estimateCost(state.usage.values()),
+    declared: state.declared,
+    size,
+    phase: state.phase,
+    phases: state.phases,
+    stderr,
+    version: state.version,
+    model: state.model,
+    accountError: state.accountError,
+    wrongModel: state.wrongModel,
+    apiErrorCode: state.apiErrorCode,
+    started,
+    ms,
+    asleepMs,
+    lastFact: state.lastFact,
+    log,
+  };
+}
+
+/**
+ * Runs one session on the board and reports what it did. The phase comes from the session's own
  * `PHASE <letter>` line, never inferred from its shell commands, which miss most markers.
  *
- * @param {Function} spawnFn
+ * @param {typeof runSession} session
  * @param {{number: number, queue: object, size?: string|null, at?: string|null,
  *   screen?: ReturnType<typeof ticker>, facts?: Function, stallMs?: number, tick?: number,
  *   dir?: string}} opts
  */
-export function runTicket(
-  spawnFn,
+export async function runTicket(
+  session,
   {
     number,
     branch = null,
@@ -724,262 +830,27 @@ export function runTicket(
     dir = DIR,
   },
 ) {
-  const logPath = streamLog(number, dir);
-  mkdirSync(dir, { recursive: true });
-  const sink = createWriteStream(logPath, { flags: "a" });
-  const startedAt = Date.now();
-
-  const state = {
-    phase: at,
-    phaseAt: Date.now(),
-    phases: {},
-    result: null,
-    /** Each message's billed tokens by id, for a session that dies before it reports a cost. */
-    usage: new Map(),
-    declared: null,
-    version: null,
-    model: null,
-    lastFactAt: Date.now(),
-    asleepMs: 0,
-    lastFact: null,
-    blocked: false,
-    blockedUntil: 0,
-    stalled: false,
-    accountError: null,
-    wrongModel: null,
-    apiErrorCode: null,
-    stderr: "",
-    /** Subagents running right now, in the order they were last heard from. */
-    tasks: new Map(),
-  };
-
-  /** Seconds in the phase just left, so the record carries where a night's time actually goes. */
-  const closePhase = () => {
-    if (!state.phase) return;
-    const secs = Math.round((Date.now() - state.phaseAt) / 1000);
-    state.phases[state.phase] = (state.phases[state.phase] ?? 0) + secs;
-    state.phaseAt = Date.now();
-  };
-
+  const log = streamLog(number, dir);
   const about = facts(number);
-  // `reviewRounds` counts the verdicts already on the issue, so the round about to run is the next
-  // one. Null when the tracker could not be read — a number nobody could take is not a count of none.
-  const round = () => {
-    if (state.phase === "D" && about.reviewRounds != null) return { n: about.reviewRounds + 1, of: MAX_REVIEW_ROUNDS };
-    // `retryCount` red CI runs so far is that many fixes, out of the runs after the first.
-    if (state.phase === "C" && fix) return { n: Math.max(1, retryCount), of: CI_ROUNDS - 1, fix: true };
-    return null;
-  };
-
-  if (screen.needsHeader(number)) screen.say(header({ number, ...about, queue }, screen.theme));
-  const spentMs = ticketTally(number, readLedger(ledgerPath(undefined, dir))).ms;
-  screen.context({ number, url: about.url, log: logPath, branch, spentMs });
-  if (at) {
-    // Opened here, not left for the session's own marker: `state.phase` is already this letter, so
-    // the marker is read as "no change" and the board stays dark for the whole of that phase.
-    screen.start(at, round());
-  } else {
-    // An unnamed row carries the clock and tool detail through the spawn, the start-up and a missed
-    // marker, where the board would otherwise be blank under the header.
-    screen.start(UNNAMED);
-  }
-
-  const budget = turnsFor(size);
-  const child = spawnFn("claude", queueLoopArgs(number, size, at), {
-    stdio: ["ignore", "pipe", "pipe"],
-    // A background update landing at 2am changes the system prompt, and every remaining ticket of
-    // the night then rebuilds its cached prefix at full price, with nothing to see. Whether to
-    // update is a decision for a person between runs.
-    //
-    // `LOOP_TURNS` is the bound that actually stops a session, passed so the session can see it.
-    env: {
-      ...process.env,
-      DISABLE_AUTOUPDATER: "1",
-      LOOP_TURNS: String(budget),
-      LOOP_TICKET: String(number),
-      CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(contextFor(size)),
-      // A is where derive() starts anyway; handing it would pin a rebuilt worktree to A.
-      LOOP_PHASE: at && at !== "A" ? at : undefined,
-      LOOP_REASON: reason ?? undefined,
-      // `-p` leaves fork mode off, so subagents default to background and the session spends a turn
-      // each time it asks one whether it is done. Foreground makes the Agent call an await.
-      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
-      // Also drops the commit trailer, which queue.md states instead.
-      CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS: "1",
-      // The owner's memory is written for his sessions: it contradicts rules the loop runs under,
-      // and each of its writes moves the cached prefix.
-      CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
-      CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS: "1",
-      CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: "1",
-      CLAUDE_CODE_DISABLE_WORKFLOWS: "1",
-      CLAUDE_CODE_DISABLE_CRON: "1",
-      CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
-      CLAUDE_CODE_DISABLE_FILE_CHECKPOINTING: "1",
-      // Every brief says "Do not spawn any subagent"; this is what holds it.
-      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "1",
-      CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS: "6000",
-      BASH_MAX_TIMEOUT_MS: String(CHECK_BASH_TIMEOUT_MS),
-      BASH_DEFAULT_TIMEOUT_MS: String(BASH_DEFAULT_TIMEOUT_MS),
-    },
+  const round = roundOf(about, { fix, retryCount });
+  openTicket(screen, { number, branch, queue, at, about, log, round, dir });
+  const done = await session(queueLoopArgs(number, size, at), {
+    env: sessionEnv(number, size, at, reason),
+    log,
+    at,
+    planned: plannedModel(at),
+    stallMs,
+    tick,
+    killGraceMs,
+    onState: sessionView(screen, { number, round }),
+    // Through the screen, because this is the highest-volume writer there is while the live phase
+    // line is turning.
+    onStderr: (chunk) => screen.warn(chunk),
   });
-
-  // Mirrored, not swallowed: a crash must still print itself. Through the screen, because this is
-  // the highest-volume writer there is while the live phase line is turning.
-  child.stderr?.on("data", (chunk) => {
-    state.stderr += chunk;
-    screen.warn(String(chunk));
-  });
-
-  createInterface({ input: child.stdout }).on("line", (line) => {
-    sink.write(`${line}\n`);
-    state.lastFactAt = Date.now();
-    const billed = usageOf(line);
-    if (billed) state.usage.set(billed.id, billed);
-    const fact = readLine(line);
-    if (!fact) return;
-    state.lastFact = fact.kind;
-    if (fact.kind === "init") {
-      state.version = fact.version;
-      state.model = fact.model;
-      screen.set({ session: fact.sessionId });
-      // `--model` passes an alias, which ANTHROPIC_DEFAULT_*_MODEL in the inherited or project env remaps.
-      const family = familyOf(fact.model);
-      if (family && family !== plannedModel(at) && !state.wrongModel) {
-        state.wrongModel = `the session started on ${fact.model}, but phase ${at ?? "A"} runs on ${plannedModel(at)}`;
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
-      }
-    }
-    if (fact.kind === "assistant") {
-      const letter = fact.letter ?? (state.phase === "B" && scopeEnds(fact.calls) ? "C" : null);
-      if (letter && letter !== state.phase) {
-        closePhase();
-        state.phase = letter;
-        screen.start(letter, round());
-      }
-      // What the session said about what it is doing, then the calls it made.
-      screen.said(thought(fact.text));
-      for (const call of fact.calls) screen.call(call.name, act(call));
-    }
-    // A foreground subagent emits nothing else into the parent stream, so without these the phase
-    // line freezes on its last fact for the whole of phase D and a working session looks hung.
-    if (fact.kind === "task") {
-      if (closesTask(fact)) state.tasks.delete(fact.id);
-      else {
-        // Deleted before set, so the insertion order stays "least recently heard from first" and
-        // the detail names the agent that just moved.
-        state.tasks.delete(fact.id);
-        state.tasks.set(fact.id, fact);
-      }
-      const detail = tasksDetail([...state.tasks.values()]);
-      if (detail) screen.said(detail);
-    }
-    if (fact.kind === "api_error") {
-      screen.said(thought(fact.text));
-      if (ACCOUNT_ERRORS.has(fact.code)) state.accountError ??= `${fact.code}: ${fact.text}`;
-      state.apiErrorCode = fact.code;
-    }
-    // A session emits one result per turn, and a background task's wake-up is a turn. The real one
-    // carries `origin: null`; every other carries origin.kind "task-notification".
-    if (fact.kind === "result" && !fact.origin) {
-      state.result = fact;
-      if (fact.declared) state.declared = fact.declared;
-    }
-    if (fact.kind === "rate_limit") {
-      // Cleared on the next reading that is not a refusal: a session refused early that recovers
-      // and pushes has done its work, and a sticky flag pre-empts every other reading of it.
-      if (!fact.blocked && state.blocked) {
-        state.blocked = false;
-        state.blockedUntil = 0;
-      }
-      if (fact.blocked && !state.blocked) {
-        state.blocked = true;
-        state.blockedUntil = fact.resetsAtMs ?? 0;
-        screen.say(
-          closing({
-            outcome: "rate_limited",
-            number,
-            why: `the ${fact.window ?? "usage"} limit is spent — resets ${clockAt(fact.resetsAt)}`,
-            ms: 0,
-            cost: 0,
-          },
-          screen.theme,
-        ),
-        );
-      }
-    }
-  });
-
-  return new Promise((resolve) => {
-    // SIGTERM, not SIGINT: the docs give SIGTERM as the one that terminates the process tree of a
-    // still-running Bash command and then runs SessionEnd, which is what a wedged session needs.
-    // SIGINT only ends the turn, and a session with nothing to end ignores it.
-    const clock = sleepClock(tick);
-    const watchdog = setInterval(() => {
-      const slept = clock.lap();
-      const now = Date.now();
-      state.asleepMs += slept;
-      state.lastFactAt = Math.min(now, state.lastFactAt + slept);
-      if (now - state.lastFactAt <= stallMs) return;
-      state.stalled = true;
-      clearInterval(watchdog);
-      // Windows' SIGTERM takes `claude.exe` alone, and a grandchild left holding its stdout keeps
-      // `close` from ever firing. So the tree, then a deadline.
-      if (process.platform === "win32" && child.pid) {
-        try {
-          execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-        } catch {
-          /* already gone */
-        }
-      } else child.kill("SIGTERM");
-      setTimeout(() => {
-        child.kill("SIGKILL");
-        child.stdout.destroy();
-        child.stderr.destroy();
-        finish(null);
-      }, killGraceMs).unref();
-    }, tick);
-    watchdog.unref();
-
-    let finished = false;
-    child.on("close", (status) => finish(status));
-    function finish(status) {
-      if (finished) return;
-      finished = true;
-      clearInterval(watchdog);
-      closePhase();
-      // The phase the session was in when it exited: closed here because the session emits no
-      // marker for a phase it did not finish, and a mark of its own because a ✓ on a session that
-      // stalled is the display saying the opposite of what happened.
-      screen.close(state.stalled || status !== 0 ? "failed" : "done");
-      // Resolved on the sink's own finish, not on the child's close: `end()` only asks, and a
-      // caller reading the log it was just handed would otherwise find it short.
-      sink.end(() =>
-        resolve({
-          status: state.stalled ? "stalled" : (status ?? 1),
-          blocked: state.blocked,
-          blockedUntil: state.blockedUntil,
-          result: state.result,
-          estimatedCost: state.result || !state.usage.size ? null : estimateCost(state.usage.values()),
-          declared: state.declared,
-          size,
-          phase: state.phase,
-          phases: state.phases,
-          stderr: state.stderr,
-          version: state.version,
-          model: state.model,
-          accountError: state.accountError,
-          wrongModel: state.wrongModel,
-          apiErrorCode: state.apiErrorCode,
-          started: new Date(startedAt).toISOString(),
-          ms: Date.now() - startedAt,
-          asleepMs: state.asleepMs,
-          lastFact: state.lastFact,
-          log: logPath,
-        }),
-      );
-    }
-  });
+  // The phase the session was in when it exited, with a mark of its own because a ✓ on a session
+  // that stalled is the display saying the opposite of what happened.
+  screen.close(done.status === 0 ? "done" : "failed");
+  return ticketRun(done, { size, log });
 }
 
 const git = (...args) => gitAt()(args);
@@ -1501,7 +1372,7 @@ function realIo(book, screen) {
       }
       const at = route.resuming ? (route.phase ?? "C") : null;
       book.start(route.number, at ?? "A", RUN_ID);
-      return runTicket(spawn, {
+      return runTicket(runSession, {
         number: route.number,
         branch,
         queue: route.queue,
