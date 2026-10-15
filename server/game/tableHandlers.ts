@@ -831,6 +831,9 @@ function seatLostAction(
   const { roomId, userId } = action;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
+  // Every socket drops at a shutdown, and the next process restores this table
+  // from active_games and arms the graces itself.
+  if (isShuttingDown()) return OK;
 
   if (!game.gameState.gameOver) {
     // Distinct from losing: the hand was still running when they went.
