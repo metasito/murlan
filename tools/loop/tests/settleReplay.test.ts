@@ -1,15 +1,15 @@
 // tools/loop/tests/settleReplay.test.ts
 //
-// The supervisor's dealings with GitHub, end to end. `readLandingState`, `landing` and `poll` are
-// each unit-tested against hand-built inputs; here the real `readLandingState` runs against rollups
-// recorded off live pull requests, and only the subprocess is fake.
+// The supervisor's dealings with GitHub, end to end. `readLandingState` and `landing` are each
+// unit-tested against hand-built inputs; here the real `readLandingState` reads rollups recorded off
+// live pull requests. `stepSettle` is fed those reads directly; `runSettle` gets them through a fake gh.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { journaled, settle } from "../queue-loop.mjs";
-import { ciRedBody, onMainLine, runSettle as poll } from "../settle.mjs";
+import { ciRedBody, endSettle, onMainLine, overdueAt, rested, runSettle, SETTLE, startSettle, stepSettle } from "../settle.mjs";
 import { appendSupervisor, supervisorLogPath } from "../loop-logs.mjs";
 import { readLandingState } from "../ciVerdict.ts";
 import { armArgs, disarmArgs } from "../land.ts";
@@ -123,7 +123,7 @@ function rollupFake({
 
 const REVIEWED = (_sha: string) => ({ ok: true, why: "reviewed" });
 
-/** `poll`'s io, with the real `readLandingState` wired to the fake subprocess. */
+/** `runSettle`'s io, with the real `readLandingState` wired to the fake subprocess. */
 const io = (gh: (args: string[], file?: string) => string, written: string[][] = [], cleared: (sha: string) => { ok: boolean; why: string } = REVIEWED) => ({
   run: (file: string, args: string[]) => (file === "git" ? "" : gh(args, file)),
   stateOf: (pr: number) => readLandingState(REPO, pr, (args) => gh(args), Date.now() + 60_000),
@@ -134,7 +134,6 @@ const io = (gh: (args: string[], file?: string) => string, written: string[][] =
 });
 
 const DEADLINE = 60_000;
-const stuckAfter = (stuckMs: number, rest: ReturnType<typeof io>) => ({ ...rest, stuckMs });
 const merges = (asked: string[][]) => asked.filter((a) => a[0] === "pr" && a[1] === "merge");
 const indexOf = (asked: string[][], match: (a: string[]) => boolean) => asked.findIndex(match);
 const isDisarm = (a: string[]) => a[1] === "merge" && a.includes("--disable-auto");
@@ -145,33 +144,287 @@ const fileOf = (written: string[][], args: string[]) => {
   return at === -1 ? "" : (written.findLast(([p]) => p === args[at + 1])?.[1] ?? "");
 };
 
-describe("settle, replayed against recorded rollups", () => {
-  test("a gate still running is waited on, then handed back once it is red — with its log", async () => {
-    const said: string[] = [];
-    const written: string[][] = [];
-    const { gh } = rollupFake({ views: [ABSENT, GATE_RUNNING, RED] });
-    const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, written));
+/**
+ * One recorded rollup as `readLandingState` reads it, with the pull request's own head, arm and
+ * merge laid over it: the landing state `stepSettle` is fed.
+ */
+const recorded = (f: Fixture, { head = SHA, armed = false, merged = false, attempt = 1, log = NAMED as string | null } = {}) => {
+  const fake = rollupFake({ views: [f], log, attempt, armed });
+  Object.assign(fake.pr, { head, merged });
+  return readLandingState(REPO, PENDING.pr, (args) => fake.gh(args), Date.now() + 60_000);
+};
+
+type Effect = { do: string; line?: string; head?: string; flake?: any; red?: any; then?: string };
+/** A failed read: `execFileSync`'s shape, the first line naming the command and `stderr` saying what went wrong. */
+const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh pr view 1053\n${stderr}`), { stderr });
+
+/**
+ * Steps `stepSettle` over `reads`, the last one repeated, with every effect taken to succeed. Time
+ * moves `tick` between reads, plus whatever `slept[i]` says a standby added to the pause after read `i`.
+ */
+function replay(
+  reads: (ReturnType<typeof recorded> | Error)[],
+  { cleared = REVIEWED, deadline = DEADLINE, stuckMs = SETTLE.STUCK_MS, tick = 15_000, slept = [] as number[], ledgered = null as unknown } = {},
+) {
+  let state = startSettle({ at: 0, deadline, stuckMs, pr: PENDING.pr, ledgered });
+  const effects: Effect[] = [];
+  const judged: string[] = [];
+  for (let i = 0, at = 0; i < 1000; at += tick + (slept[i] ?? 0), i++) {
+    const r = reads[Math.min(i, reads.length - 1)];
+    const read: Record<string, unknown> = { at };
+    if (!overdueAt(state, at)) read[r instanceof Error ? "error" : "landing"] = r;
+    let step = stepSettle(state, read);
+    if (step.ask) {
+      judged.push(step.head);
+      step = stepSettle(state, { ...read, cleared: cleared(step.head) });
+    }
+    effects.push(...step.effects);
+    state = step.state;
+    if (step.outcome) return { out: step.outcome, effects, judged, at, did: effects.filter((e) => e.do !== "log").map((e) => e.do), said: effects.flatMap((e) => (e.do === "log" ? [String(e.line)] : [])) };
+    state = rested(state, slept[i] ?? 0);
+  }
+  throw new Error("stepSettle never settled");
+}
+
+describe("stepSettle, fed recorded landing states", () => {
+  const MIN = 60_000;
+  const ID = "tools/loop/tests/x.test.ts › breaks";
+  const BEHIND = at(GREEN, { mergeStateStatus: "BEHIND" });
+
+  test("a gate still running is waited on, then handed back once it is red", () => {
+    const { out, did, said } = replay([recorded(ABSENT), recorded(GATE_RUNNING), recorded(RED), recorded(RED, { attempt: 2 })]);
     assert.equal(out.action, "hand-back");
     assert.ok(said.some((m) => /^PR #1053 · CI \d+ of \d+ jobs/.test(m)), `no CI progress line in ${JSON.stringify(said)}`);
     assert.ok(said.some((m) => /CI gate has not reported/.test(m)) && said.some((m) => /CI gate is in_progress/.test(m)));
-    assert.equal((out as { head?: string }).head, SHA, "the retry row records the head CI judged");
+    assert.equal(out.head, SHA, "the retry row records the head CI judged");
     assert.match(String(out.reason), /Typecheck and tests/);
+    assert.deepEqual(did, ["rerun", "post-red"]);
+  });
+
+  test("a cleared green head is armed pinned to that head, and GitHub's merge lands it", () => {
+    const { out, effects, judged } = replay([recorded(GREEN), recorded(GREEN, { armed: true, merged: true })]);
+    assert.equal(out.action, "already-merged");
+    assert.deepEqual(effects.filter((e) => e.do === "arm").map((e) => e.head), [SHA]);
+    assert.deepEqual(judged, [SHA], "the head the gate passed is the head cleared");
+  });
+
+  test("a green head landable does not clear is the owner's, says why, and is never armed", () => {
+    const { out, did } = replay([recorded(GREEN)], { cleared: () => ({ ok: false, why: "no review of 5bb5dcf on the issue" }) });
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /^no review of 5bb5dcf on the issue — .*not cleared/);
+    assert.deepEqual(did, []);
+  });
+
+  test("a pull request someone else merged is not a fix round", () => {
+    const { out, did } = replay([recorded(at(RED, { state: "MERGED" }))]);
+    assert.equal(out.action, "already-merged");
+    assert.deepEqual(did, []);
+  });
+
+  // A red run whose log cannot be read is a fix round with nothing to fix.
+  test("red CI with no readable log goes to the owner, not to a fix round", () => {
+    const { out, did } = replay([recorded(RED, { log: null })], { stuckMs: 100, tick: 5 });
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /^CI is red and its log could not be read — /);
+    assert.ok(!did.includes("post-red"));
+  });
+
+  test("a head no check ever reports on is the owner's at the stuck bound, long before the deadline", () => {
+    const { out, at: settled } = replay([recorded(at(ABSENT, { statusCheckRollup: [] }))], { stuckMs: 100, tick: 5 });
+    assert.equal(out.action, "owner");
+    assert.ok(settled < DEADLINE, "the stuck bound ends it, not the deadline");
+    assert.match(String(out.reason), /^recheck did not settle — last: /);
+  });
+
+  test("mergeability GitHub never computes is the owner's at the stuck bound", () => {
+    const { out } = replay([recorded(at(GREEN, { mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" }))], { stuckMs: 100, tick: 5 });
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /^recheck did not settle — last: /);
+  });
+
+  test("a gate still running is waited on to the deadline, past the stuck bound, and names what it waited on", () => {
+    const { out, at: settled } = replay([recorded(GATE_RUNNING)], { deadline: 300, stuckMs: 20, tick: 5 });
+    assert.equal(out.action, "owner");
+    assert.ok(settled >= 300, "a running gate is bounded by the deadline alone");
+    assert.match(String(out.reason), /^CI did not settle in \d+m — last: /);
+  });
+
+  test("update-branch re-arms on the new head, never the old one", () => {
+    const { out, effects, did, judged } = replay([recorded(BEHIND), recorded(GREEN, { head: NEW }), recorded(GREEN, { head: NEW, armed: true, merged: true })]);
+    assert.equal(out.action, "already-merged");
+    assert.deepEqual(did, ["update-branch", "arm"]);
+    assert.deepEqual(effects.filter((e) => e.do === "arm").map((e) => e.head), [NEW]);
+    assert.deepEqual(judged, [NEW]);
+  });
+
+  test("an armed branch is disarmed before main is merged into it", () => {
+    const { did } = replay([recorded(BEHIND, { armed: true }), recorded(GREEN, { head: NEW, merged: true })]);
+    assert.deepEqual(did.slice(0, 2), ["disarm", "update-branch"]);
+  });
+
+  test("the deadline is reachable during a round", () => {
+    const { out } = replay([recorded(ABSENT)], { deadline: -1 });
+    assert.equal(out.action, "owner");
+    assert.match(String(out.reason), /did not settle in/);
+  });
+
+  test("an owner's park and a missed deadline disarm too", () => {
+    for (const [reads, deadline] of [[[recorded(at(GREEN, { state: "CLOSED" }), { armed: true })], DEADLINE], [[recorded(GATE_RUNNING, { armed: true })], 5]] as const) {
+      const { out, did } = replay([...reads], { deadline, tick: 1 });
+      assert.equal(out.action, "owner");
+      assert.equal(did.at(-1), "disarm", JSON.stringify(did));
+    }
+  });
+
+  test("a head this process armed waits without arming again, and is disarmed when the deadline passes first", () => {
+    const { out, did, said } = replay([recorded(GREEN), recorded(GREEN, { armed: true })], { deadline: 5, tick: 1 });
+    assert.equal(out.action, "owner");
+    assert.deepEqual(did, ["arm", "disarm"]);
+    assert.ok(said.some((m) => /waiting for GitHub to merge/.test(m)));
+  });
+
+  // `--match-head-commit` is checked when GitHub arms, and is not documented to be checked again at merge.
+  describe("a head that moves under an arm", () => {
+    const moved = [recorded(GREEN), recorded(GREEN, { head: NEW, armed: true })];
+
+    test("is disarmed before anything else, and the new head is not armed unless it is cleared", () => {
+      const cleared = (sha: string) => (sha === SHA ? REVIEWED(sha) : { ok: false, why: `no review of ${sha.slice(0, 7)}` });
+      const { out, did, judged, said } = replay(moved, { cleared });
+      assert.equal(out.action, "owner");
+      assert.deepEqual(judged, [SHA, NEW]);
+      assert.deepEqual(did, ["arm", "disarm"]);
+      assert.ok(!said.some((m) => /waiting for GitHub to merge/.test(m)), JSON.stringify(said));
+    });
+
+    test("a moved head that is cleared is armed again, pinned to itself", () => {
+      const { effects } = replay([...moved, recorded(GREEN, { head: NEW, armed: true, merged: true })]);
+      assert.deepEqual(
+        effects.filter((e) => e.do !== "log").map((e) => [e.do, e.head ?? null]),
+        [["arm", SHA], ["disarm", null], ["arm", NEW]],
+      );
+    });
+  });
+
+  describe("a red is rerun once per head", () => {
+    test("rerun once, then handed back when the rerun is red too", () => {
+      const { out, did } = replay([recorded(RED, { log: UNNAMED }), recorded(GATE_RUNNING), recorded(RED, { log: UNNAMED, attempt: 2 })]);
+      assert.deepEqual(did, ["rerun", "post-red"]);
+      assert.equal(out.action, "hand-back");
+      assert.equal(out.flake, undefined, "a red handed back after its rerun is no flake");
+    });
+
+    test("a rerun that goes green is armed, lands, and names the flake: ledgered before the arm, filed once merged", () => {
+      const { out, effects, did } = replay([recorded(RED), recorded(GATE_RUNNING), recorded(GREEN, { attempt: 2 }), recorded(GREEN, { attempt: 2, armed: true, merged: true })]);
+      assert.equal(out.action, "already-merged");
+      assert.deepEqual(did, ["rerun", "note-flake", "arm", "file-flakes"]);
+      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
+      const noted = effects.find((e) => e.do === "note-flake")!;
+      assert.deepEqual([noted.flake.runId, noted.flake.tests, noted.flake.head], [RED_RUN, [ID], SHA]);
+      assert.deepEqual(effects.find((e) => e.do === "arm")!.flake.runId, RED_RUN, "the merge message names the run");
+    });
+
+    test("a red already on its second attempt is not rerun again, whoever reran it", () => {
+      const { out, did } = replay([recorded(RED, { log: UNNAMED, attempt: 2 })]);
+      assert.equal(out.action, "hand-back");
+      assert.deepEqual(did, ["post-red"]);
+    });
+
+    test("a red naming its failing test is rerun once too, before any CI-RED starts a fix round", () => {
+      const { out, did } = replay([recorded(RED), recorded(RED, { attempt: 2 })]);
+      assert.equal(out.action, "hand-back");
+      assert.deepEqual(did, ["rerun", "post-red"]);
+    });
+  });
+
+  describe("the flake outlives the process that armed it", () => {
+    const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
+
+    test("a restart that finds it merged still files the issue and names the flake", () => {
+      const { out, effects } = replay([recorded(GREEN, { merged: true })], { ledgered: flake });
+      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
+      assert.deepEqual(effects.filter((e) => e.do === "file-flakes").map((e) => e.red.runId), [RED_RUN]);
+    });
+
+    test("one ledgered for another head is not this merge's", () => {
+      const { out, did } = replay([recorded(GREEN, { merged: true })], { ledgered: { ...flake, head: NEW } });
+      assert.equal(out.flake, undefined);
+      assert.deepEqual(did, []);
+    });
+  });
+
+  describe("across a standby", () => {
+    const OFFLINE = "error connecting to api.github.com";
+
+    test("a pause the machine slept through does not spend the deadline", () => {
+      const { out } = replay([recorded(GATE_RUNNING), recorded(GREEN), recorded(GREEN, { armed: true, merged: true })], { deadline: MIN, tick: 30, slept: [120 * MIN] });
+      assert.equal(out.action, "already-merged", String(out.reason));
+    });
+
+    test("after a wake, a read the network refused is asked again, and a green one lands", () => {
+      const reads = [recorded(GATE_RUNNING), ghFailed(OFFLINE), recorded(GREEN), recorded(GREEN, { armed: true, merged: true })];
+      const { out } = replay(reads, { deadline: 60 * MIN, tick: 30, slept: [10 * MIN] });
+      assert.equal(out.action, "already-merged", String(out.reason));
+    });
+
+    test("after a wake, a read refused for any reason but the network still goes to the owner", () => {
+      const reads = [recorded(GATE_RUNNING), ghFailed("HTTP 401: Bad credentials (https://api.github.com/graphql)"), recorded(GREEN)];
+      const { out } = replay(reads, { deadline: 60 * MIN, tick: 30, slept: [10 * MIN] });
+      assert.equal(out.action, "owner");
+      assert.match(String(out.reason), /^could not read CI/);
+    });
+
+    test("a read the network refused with no standby before it is the owner's", () => {
+      const { out } = replay([recorded(GATE_RUNNING), ghFailed(OFFLINE)], { tick: 30 });
+      assert.equal(out.action, "owner");
+      assert.match(String(out.reason), /^could not read CI — /);
+    });
+  });
+});
+
+describe("endSettle: what an effect that failed ends the settle as", () => {
+  const begun = (over: Record<string, unknown> = {}) => ({ ...startSettle({ at: 0, deadline: DEADLINE, pr: PENDING.pr }), head: SHA, ci: { runId: RED_RUN }, ...over });
+
+  test("an owner's end disarms what may be armed, once", () => {
+    const { effects, outcome, state } = endSettle(begun({ armed: "maybe" }), { action: "owner", reason: "the merge failed — x" });
+    assert.deepEqual(effects, [{ do: "disarm", then: "the merge failed — x" }]);
+    assert.deepEqual(outcome, { action: "owner", reason: "the merge failed — x", runId: RED_RUN, head: SHA });
+    assert.deepEqual(endSettle(state, { action: "owner", reason: "could not disarm" }).effects, [], "a disarm that failed is not asked again");
+  });
+
+  test("a hand-back disarms before it posts the CI-RED", () => {
+    const next = { action: "hand-back", reason: "CI failed at Test" };
+    const { effects, outcome } = endSettle(begun({ armed: true }), { action: "hand-back", next });
+    assert.deepEqual(effects.map((e: Effect) => e.do), ["disarm", "post-red"]);
+    assert.deepEqual(outcome, { ...next, head: SHA, runId: RED_RUN });
+  });
+
+  test("a CI-RED that could not be posted is a hold on that head", () => {
+    const { effects, outcome } = endSettle(begun(), { action: "hold", reason: "CI-RED for 5bb5dcf could not be posted" });
+    assert.deepEqual(effects, []);
+    assert.deepEqual(outcome, { action: "hold", reason: "CI-RED for 5bb5dcf could not be posted", head: SHA, runId: RED_RUN });
+  });
+});
+
+describe("runSettle, through a fake gh over recorded rollups", () => {
+  test("a hand-back writes the CI log a fix round reads, then posts its CI-RED", async () => {
+    const written: string[][] = [];
+    const { gh } = rollupFake({ views: [ABSENT, GATE_RUNNING, RED] });
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    assert.equal(out.action, "hand-back");
     assert.equal(written.length, 2, "the log, plus the CI-RED note posted alongside it");
     assert.match(written[0][0], /ci-1028\.log$/);
   });
 
-  test("a cleared green head is armed pinned to that head, and GitHub's merge lands it", async () => {
+  test("a cleared green head is armed pinned to that head", async () => {
     const { gh, asked } = rollupFake({ views: [GREEN] });
-    const judged: string[] = [];
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, [], (sha) => (judged.push(sha), REVIEWED(sha))));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, SHA)]);
-    assert.deepEqual(judged, [SHA], "the head the gate passed is the head cleared");
   });
 
   test("the clean-status refusal falls back to a merge still pinned to the head", async () => {
     const { gh, asked } = rollupFake({ views: [GREEN], refuse: { auto: CLEAN_STATUS } });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
     const [armed, direct] = merges(asked);
     assert.deepEqual(armed, armArgs(REPO, PENDING.pr, SHA));
@@ -180,7 +433,7 @@ describe("settle, replayed against recorded rollups", () => {
 
   test("a merge refused both ways is the owner's", async () => {
     const { gh } = rollupFake({ views: [GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /the merge failed — GraphQL: Base branch was modified/);
   });
@@ -197,7 +450,7 @@ describe("settle, replayed against recorded rollups", () => {
         try {
           const { gh } = rollupFake({ views: [GREEN], refuse });
           const screen = journaled(board, () => PENDING.ticket, (l: string) => appendSupervisor(l, dir));
-          const out = await settle(PENDING, screen, { watch: (p: never, log: (m: string) => void) => poll(p, log, 0, DEADLINE, io(gh)) });
+          const out = await settle(PENDING, screen, { watch: (p: never, log: (m: string) => void) => runSettle(p, log, 0, DEADLINE, io(gh)) });
           assert.equal(out.action, "already-merged");
           const kept = readFileSync(supervisorLogPath(null, dir), "utf8").split("\n");
           const stamped = (l: string) => !Number.isNaN(Date.parse(l.split(" ")[0]));
@@ -209,136 +462,42 @@ describe("settle, replayed against recorded rollups", () => {
     }
   });
 
-  test("a green head landable does not clear is the owner's, says why, and is never armed", async () => {
-    const { gh, asked } = rollupFake({ views: [GREEN] });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, [], () => ({ ok: false, why: "no review of 5bb5dcf on the issue" })));
-    assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /^no review of 5bb5dcf on the issue — .*not cleared/);
-    assert.ok(!asked.some((a) => a[1] === "merge"));
-  });
-
-  test("a pull request someone else merged is not a fix round", async () => {
-    const { gh } = rollupFake({ views: [at(RED, { state: "MERGED" })] });
-    assert.equal((await poll(PENDING, () => {}, 0, DEADLINE, io(gh))).action, "already-merged");
-  });
-
-  // A red run whose log cannot be read is a fix round with nothing to fix.
-  test("red CI with no readable log goes to the owner, not to a fix round", async () => {
-    const { gh } = rollupFake({ views: [RED], log: null });
-    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
-    assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /^CI is red and its log could not be read — /);
-  });
-
-  test("a head no check ever reports on is the owner's at the stuck bound, long before the deadline", async () => {
-    const { gh } = rollupFake({ views: [at(ABSENT, { statusCheckRollup: [] })] });
-    const started = Date.now();
-    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
-    assert.equal(out.action, "owner");
-    assert.ok(Date.now() - started < 5_000, "the stuck bound ends it, not the deadline");
-    assert.match(String(out.reason), /^recheck did not settle — last: /);
-  });
-
-  test("mergeability GitHub never computes is the owner's at the stuck bound", async () => {
-    const { gh } = rollupFake({ views: [at(GREEN, { mergeable: "UNKNOWN", mergeStateStatus: "UNKNOWN" })] });
-    const out = await poll(PENDING, () => {}, 5, DEADLINE, stuckAfter(100, io(gh)));
-    assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /^recheck did not settle — last: /);
-  });
-
-  test("a gate still running is waited on to the deadline, past the stuck bound, and names what it waited on", async () => {
-    const { gh } = rollupFake({ views: [GATE_RUNNING] });
-    const started = Date.now();
-    const out = await poll(PENDING, () => {}, 5, 300, stuckAfter(20, io(gh)));
-    assert.equal(out.action, "owner");
-    assert.ok(Date.now() - started >= 300, "a running gate is bounded by the deadline alone");
-    assert.match(String(out.reason), /^CI did not settle in \d+m — last: /);
-  });
-
-  test("update-branch re-arms on the new head, never the old one", async () => {
+  test("update-branch merges main into the branch through gh, then arms the new head", async () => {
     const { gh, asked } = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN] });
-    const judged: string[] = [];
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, [], (sha) => (judged.push(sha), REVIEWED(sha))));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
     assert.ok(asked.some((a) => a[0] === "pr" && a[1] === "update-branch"), "the fake must see it");
     assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, NEW)]);
-    assert.deepEqual(judged, [NEW]);
   });
 
-  test("an armed branch is disarmed before main is merged into it", async () => {
-    const { gh, asked } = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" }), GREEN], armed: true });
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-    const disarm = indexOf(asked, isDisarm);
-    const update = indexOf(asked, (a) => a[1] === "update-branch");
-    assert.ok(disarm !== -1 && disarm < update, JSON.stringify(asked));
-  });
-
-  test("the deadline is reachable during a round", async () => {
-    const { gh } = rollupFake({ views: [ABSENT] });
-    const out = await poll(PENDING, () => {}, 0, -1, io(gh));
+  test("an update-branch GitHub refuses is the owner's", async () => {
+    const fake = rollupFake({ views: [at(GREEN, { mergeStateStatus: "BEHIND" })] });
+    const gh = (args: string[], file = "gh") => {
+      if (args[1] === "update-branch") throw new Error("GraphQL: merge conflict");
+      return fake.gh(args, file);
+    };
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /did not settle in/);
+    assert.match(String(out.reason), /^could not update the branch — GraphQL: merge conflict/);
   });
 });
 
 describe("an armed pull request is disarmed on every way out but a merge", () => {
   test("a red is disarmed before its CI-RED is posted, which is what starts a fix round", async () => {
     const { gh, asked } = rollupFake({ views: [RED], armed: true });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "hand-back");
     const disarm = indexOf(asked, isDisarm);
     assert.ok(disarm !== -1 && disarm < indexOf(asked, isComment), JSON.stringify(asked));
     assert.deepEqual(asked[disarm], disarmArgs(REPO, PENDING.pr));
   });
 
-  test("an owner's park and a missed deadline disarm too", async () => {
-    for (const [views, deadline] of [[[at(GREEN, { state: "CLOSED" })], DEADLINE], [[GATE_RUNNING], 5]] as const) {
-      const { gh, asked, pr } = rollupFake({ views: [...views], armed: true });
-      const out = await poll(PENDING, () => {}, 0, deadline, io(gh));
-      assert.equal(out.action, "owner");
-      assert.ok(asked.some(isDisarm), JSON.stringify(asked));
-      assert.equal(pr.armed, false);
-    }
-  });
-
-  test("a head this process armed waits without arming again, and is disarmed when the deadline passes first", async () => {
+  test("a missed deadline disarms through gh, leaving nothing armed", async () => {
     const { gh, asked, pr } = rollupFake({ views: [GREEN], autoMerges: false });
-    const out = await poll(PENDING, () => {}, 0, 5, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, 5, io(gh));
     assert.equal(out.action, "owner");
-    assert.equal(merges(asked).filter((a) => a.includes("--auto")).length, 1);
+    assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr)]);
     assert.equal(pr.armed, false);
-  });
-
-  // `--match-head-commit` is checked when GitHub arms, and is not documented to be checked again at merge.
-  describe("a head that moves under an arm", () => {
-    const moving = () => {
-      const fake = rollupFake({ views: [GREEN], autoMerges: false });
-      const gh = (args: string[], file = "gh") => {
-        const out = fake.gh(args, file);
-        if (args.includes("--auto")) fake.pr.head = NEW;
-        return out;
-      };
-      return { ...fake, gh };
-    };
-
-    test("is disarmed before anything else, and the new head is not armed unless it is cleared", async () => {
-      const { gh, asked, pr } = moving();
-      const said: string[] = [];
-      const judged: string[] = [];
-      const cleared = (sha: string) => (judged.push(sha), sha === SHA ? REVIEWED(sha) : { ok: false, why: `no review of ${sha.slice(0, 7)}` });
-      const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh, [], cleared));
-      assert.equal(out.action, "owner");
-      assert.deepEqual(judged, [SHA, NEW]);
-      assert.deepEqual(merges(asked), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr)]);
-      assert.ok(!said.some((m) => /waiting for GitHub to merge/.test(m)), JSON.stringify(said));
-      assert.equal(pr.armed, false);
-    });
-
-    test("a moved head that is cleared is armed again, pinned to itself", async () => {
-      const { gh, asked } = moving();
-      await poll(PENDING, () => {}, 0, 200, io(gh));
-      assert.deepEqual(merges(asked).slice(0, 3), [armArgs(REPO, PENDING.pr, SHA), disarmArgs(REPO, PENDING.pr), armArgs(REPO, PENDING.pr, NEW)]);
-    });
   });
 
   describe("an arm whose answer never came back may still have armed", () => {
@@ -362,7 +521,7 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
 
     test("a refused direct merge after it still ends in a disarm", async () => {
       const { gh, asked, pr } = silently(true);
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(out.action, "owner");
       assert.match(String(out.reason), /the merge failed/);
       assert.ok(indexOf(asked, isDisarm) > indexOf(asked, (a) => a[1] === "merge" && !a.includes("--auto")), JSON.stringify(asked));
@@ -371,7 +530,7 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
 
     test("a disarm refused because nothing was armed is no failure", async () => {
       const { gh, asked } = silently(false, "GraphQL: Auto merge is not enabled for this pull request");
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.ok(asked.some(isDisarm), JSON.stringify(asked));
       assert.match(String(out.reason), /^the merge failed/);
     });
@@ -383,14 +542,14 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
       if (args.includes("--disable-auto")) fake.pr.merged = true;
       return fake.gh(args, file);
     };
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "already-merged");
     assert.ok(!fake.asked.some(isComment), "a merged pull request has no fix round");
   });
 
   test("a disarm GitHub refuses is the owner's, and says the pull request may still merge", async () => {
     const { gh, asked } = rollupFake({ views: [RED], armed: true, refuse: { disarm: "HTTP 502" } });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /could not disarm auto-merge — HTTP 502/);
     assert.ok(!asked.some(isComment), "no fix round may start on a pull request still armed");
@@ -400,18 +559,11 @@ describe("an armed pull request is disarmed on every way out but a merge", () =>
 describe("a red is rerun once per head", () => {
   const reruns = (asked: string[][]) => asked.filter((a) => a[0] === "run" && a[1] === "rerun");
 
-  test("rerun once, then handed back when the rerun is red too", async () => {
+  test("rerun once through gh, then handed back when the rerun is red too", async () => {
     const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED], log: UNNAMED });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.deepEqual(reruns(asked), [["run", "rerun", String(RED_RUN), "--failed", "--repo", REPO]]);
     assert.equal(out.action, "hand-back");
-  });
-
-  test("a rerun that goes green is armed and lands", async () => {
-    const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: UNNAMED });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-    assert.equal(reruns(asked).length, 1);
-    assert.equal(out.action, "already-merged");
   });
 
   describe("a red a rerun turned green is a flake, said everywhere it lands", () => {
@@ -421,7 +573,7 @@ describe("a red is rerun once per head", () => {
     test("the settle names the run and its tests, the merge says so, and one issue is filed per test", async () => {
       const written: string[][] = [];
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
       assert.equal(out.action, "already-merged");
       assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
       const arm = merges(asked).find((a) => a.includes("--auto"))!;
@@ -436,7 +588,7 @@ describe("a red is rerun once per head", () => {
     // The issue says the pull request merged on that green; the ledger row is the record either way.
     test("a merge that fails files nothing, and the settle still names the flake", async () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(out.action, "owner");
       assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
       assert.equal(creates(asked).length, 0);
@@ -444,7 +596,7 @@ describe("a red is rerun once per head", () => {
 
     test("a test already filed open is not filed again", async () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
-      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(creates(asked).length, 0);
     });
 
@@ -452,25 +604,17 @@ describe("a red is rerun once per head", () => {
       test("it is handed to the ledger before the arm, naming the head", async () => {
         const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
         const noted: { flake: any; asked: number }[] = [];
-        await poll({ ...PENDING, noteArmed: (flake: unknown) => noted.push({ flake, asked: fake.asked.length }) } as never, () => {}, 0, DEADLINE, io(fake.gh));
+        await runSettle({ ...PENDING, noteArmed: (flake: unknown) => noted.push({ flake, asked: fake.asked.length }) } as never, () => {}, 0, DEADLINE, io(fake.gh));
         assert.equal(noted.length, 1);
         assert.deepEqual([noted[0].flake.runId, noted[0].flake.tests, noted[0].flake.head], [RED_RUN, [ID], SHA]);
         assert.ok(!fake.asked.slice(0, noted[0].asked).some((a) => a.includes("--auto")), "noted before the arm");
       });
 
-      test("a restart that finds it merged still files the issue and names the flake", async () => {
+      test("a restart that finds it merged files the issue from the ledger", async () => {
         const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
         const flake = { runId: RED_RUN, tests: [ID], step: "Test", head: SHA };
-        const out = await poll({ ...PENDING, flake } as never, () => {}, 0, DEADLINE, io(gh));
-        assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
+        await runSettle({ ...PENDING, flake } as never, () => {}, 0, DEADLINE, io(gh));
         assert.equal(creates(asked).length, 1);
-      });
-
-      test("one ledgered for another head is not this merge's", async () => {
-        const { gh, asked } = rollupFake({ views: [at(GREEN, { state: "MERGED" })] });
-        const out = await poll({ ...PENDING, flake: { runId: RED_RUN, tests: [ID], step: "Test", head: NEW } } as never, () => {}, 0, DEADLINE, io(gh));
-        assert.equal(out.flake, undefined);
-        assert.equal(creates(asked).length, 0);
       });
     });
 
@@ -478,7 +622,7 @@ describe("a red is rerun once per head", () => {
     test("a test filed and since promoted is not filed again, whatever its labels", async () => {
       const fake = rollupFake({ views: [RED, GATE_RUNNING, GREEN], open: [`CI flake: ${ID}`] });
       const gh = (args: string[], file = "gh") => (args[1] === "list" && args.includes("--label") ? (fake.asked.push(args), "[]") : fake.gh(args, file));
-      await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+      await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(creates(fake.asked).length, 0);
     });
 
@@ -490,7 +634,7 @@ describe("a red is rerun once per head", () => {
 
       test("files one issue for the run, and one gh listing before it", async () => {
         const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many });
-        await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
         assert.deepEqual(creates(asked).map((c) => c[c.indexOf("--title") + 1]), [TITLE]);
         assert.equal(asked.filter((a) => a[0] === "issue" && a[1] === "list").length, 1);
       });
@@ -499,7 +643,7 @@ describe("a red is rerun once per head", () => {
         const lots = Array.from({ length: 25 }, (_, i) => [`${P}test at tools/loop/tests/t${i}.test.ts:9:5`, `${P}✖ breaks (2.1ms)`]).flat().join("\n");
         const written: string[][] = [];
         const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: lots });
-        await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
         const arm = merges(asked).find((a) => a.includes("--auto"))!;
         const [create] = creates(asked);
         for (const args of [arm, create]) {
@@ -512,36 +656,17 @@ describe("a red is rerun once per head", () => {
 
       test("and dedupes that issue by its title the same way", async () => {
         const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], log: many, open: [TITLE] });
-        await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+        await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
         assert.equal(creates(asked).length, 0);
       });
     });
 
-    test("a red handed back after its rerun is no flake", async () => {
-      const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
-      const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
-      assert.equal(out.flake, undefined);
-      assert.equal(creates(asked).length, 0);
-    });
-  });
-
-  test("a red already on its second attempt is not rerun again, whoever reran it", async () => {
-    const { gh, asked } = rollupFake({ views: [RED], log: UNNAMED, attempt: 2 });
-    assert.equal((await poll(PENDING, () => {}, 0, DEADLINE, io(gh))).action, "hand-back");
-    assert.equal(reruns(asked).length, 0);
-  });
-
-  test("a red naming its failing test is rerun once too, before any CI-RED starts a fix round", async () => {
-    const { gh, asked } = rollupFake({ views: [RED] });
-    assert.equal((await poll(PENDING, () => {}, 0, DEADLINE, io(gh))).action, "hand-back");
-    assert.equal(reruns(asked).length, 1);
-    assert.ok(indexOf(asked, (a) => a[1] === "rerun") < indexOf(asked, isComment), JSON.stringify(asked));
   });
 
   test("a rerun GitHub refuses hands the red back as it is", async () => {
     const said: string[] = [];
     const { gh, asked } = rollupFake({ views: [RED], log: UNNAMED, refuse: { rerun: "HTTP 403: Resource not accessible" } });
-    const out = await poll(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, (m: string) => said.push(m), 0, DEADLINE, io(gh));
     assert.equal(out.action, "hand-back");
     assert.ok(asked.some(isComment), "the fix round still gets its CI-RED");
     assert.ok(said.some((m) => /could not rerun/.test(m)));
@@ -568,14 +693,14 @@ describe("arming waits for the reviewer", () => {
 
   test("a LAND whose D round ran its reviewer is armed", async () => {
     const { asked, io: withFacts } = real([say("PHASE C"), say("PHASE D"), ...reviewer(PENDING.ticket)]);
-    assert.equal((await poll(PENDING, () => {}, 0, DEADLINE, withFacts)).action, "already-merged");
+    assert.equal((await runSettle(PENDING, () => {}, 0, DEADLINE, withFacts)).action, "already-merged");
     assert.equal(merges(asked).length, 1);
   });
 
   test("a LAND with no reviewer completed since the last build is the owner's, never armed", async () => {
     const built = readLine(JSON.stringify({ type: "assistant", message: { id: "c", content: [{ type: "tool_use", id: "u", name: "Bash", input: { command: "git commit -m fix" } }] } }));
     const { asked, io: withFacts } = real([...reviewer(PENDING.ticket), say("PHASE C"), built, say("PHASE D")]);
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, withFacts);
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, withFacts);
     assert.equal(out.action, "owner");
     assert.match(String(out.reason), /no loop-review or loop-fix completed for #1028/);
     assert.equal(merges(asked).length, 0);
@@ -583,55 +708,30 @@ describe("arming waits for the reviewer", () => {
 });
 
 // Only `Date` is mocked: the pause between rounds stays a real timer, as it does across a standby.
-describe("settle across a standby", () => {
+describe("runSettle's own sleep across a standby", () => {
   const MIN = 60_000;
-  /** `execFileSync`'s shape: the first line names the command, `stderr` says what went wrong. */
-  const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh pr view 1053\n${stderr}`), { stderr });
-  const OFFLINE = "error connecting to api.github.com";
-  /** The real read, with the clock jumping `by` during the pause after the first one. */
-  const sleeper = (t: any, gh: (args: string[]) => string, by: number, fails: number[] = [], stderr = OFFLINE) => {
-    let reads = 0;
-    return (pr: number) => {
-      reads += 1;
-      if (reads === 1) setTimeout(() => t.mock.timers.setTime(Date.now() + by), 10);
-      if (fails.includes(reads)) throw ghFailed(stderr);
-      return readLandingState(REPO, pr, (args) => gh(args), Date.now() + MIN);
-    };
-  };
-  const green = () => rollupFake({ views: [GATE_RUNNING, GREEN] });
 
   test("a pause the machine slept through does not spend the deadline", async (t) => {
     t.mock.timers.enable({ apis: ["Date"] });
-    const { gh } = green();
-    const out = await poll(PENDING, () => {}, 30, MIN, { ...io(gh), stateOf: sleeper(t, gh, 120 * MIN) });
+    const { gh } = rollupFake({ views: [GATE_RUNNING, GREEN] });
+    let reads = 0;
+    const stateOf = (pr: number) => {
+      if (++reads === 1) setTimeout(() => t.mock.timers.setTime(Date.now() + 120 * MIN), 10);
+      return readLandingState(REPO, pr, (args) => gh(args), Date.now() + MIN);
+    };
+    const out = await runSettle(PENDING, () => {}, 30, MIN, { ...io(gh), stateOf });
     assert.equal(out.action, "already-merged", String(out.reason));
-  });
-
-  test("after a wake, a read the network refused is asked again, and a green one lands", async (t) => {
-    t.mock.timers.enable({ apis: ["Date"] });
-    const { gh } = green();
-    const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), stateOf: sleeper(t, gh, 10 * MIN, [2]) });
-    assert.equal(out.action, "already-merged", String(out.reason));
-  });
-
-  test("after a wake, a read refused for any reason but the network still goes to the owner", async (t) => {
-    t.mock.timers.enable({ apis: ["Date"] });
-    const { gh } = green();
-    const refused = sleeper(t, gh, 10 * MIN, [2], "HTTP 401: Bad credentials (https://api.github.com/graphql)");
-    const out = await poll(PENDING, () => {}, 30, 60 * MIN, { ...io(gh), stateOf: refused });
-    assert.equal(out.action, "owner");
-    assert.match(String(out.reason), /^could not read CI/);
   });
 });
 
-describe("poll posts CI-RED once per red head", () => {
+describe("runSettle posts CI-RED once per red head", () => {
   const LINE = "Typecheck and tests\tTest\t2026-10-12T19:07:30Z   1) [chromium] › tests/e2e/x.spec.ts:9:5 › some test";
   const redFake = (issueComments: { body: string }[] = []) => rollupFake({ views: [RED], log: LINE, issueComments });
 
   test("hand-back posts one CI-RED comment per red head", async () => {
     const written: string[][] = [];
     const { gh, asked } = redFake();
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const posted = asked.filter(isComment);
     assert.equal(posted.length, 1);
     const file = posted[0][posted[0].indexOf("--body-file") + 1];
@@ -642,13 +742,13 @@ describe("poll posts CI-RED once per red head", () => {
   test("a CI-RED from before the newest claim is no CI-RED for this one: poll posts it again", async () => {
     const thread = [{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }, { body: "Claimed by `agent/1028-the-turn-chip`." }];
     const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 1);
   });
 
   test("the same head red twice posts once", async () => {
     const { gh, asked } = redFake([{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }]);
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 0);
   });
 
@@ -669,7 +769,7 @@ describe("poll posts CI-RED once per red head", () => {
 
   test("an unreadable tracker is asked again, never posted to blind, and then held rather than handed back", async () => {
     const { gh, asked } = failing(isRead);
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 0);
     assert.ok(asked.filter(isRead).length > 1, "the tracker is read more than once");
     assert.equal(out.action, "hold");
@@ -678,14 +778,14 @@ describe("poll posts CI-RED once per red head", () => {
 
   test("a post that keeps failing is tried again, then held", async () => {
     const { gh, asked } = failing(isComment);
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.ok(asked.filter(isComment).length > 1, "the post is tried more than once");
     assert.equal(out.action, "hold");
   });
 
   test("a post that fails once and then lands hands the red back", async () => {
     const { gh, asked } = failing(isComment, 1);
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, io(gh));
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
     assert.equal(asked.filter(isComment).length, 2);
     assert.equal(out.action, "hand-back");
   });
@@ -696,7 +796,7 @@ describe("poll posts CI-RED once per red head", () => {
     const filler = Array.from({ length: 450 }, (_, i) => `Typecheck and tests\tTest\t2026-10-12T19:07:30Z filler ${i}`);
     const written: string[][] = [];
     const { gh, asked } = rollupFake({ views: [RED], log: [old, ...filler].join("\n") });
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const post = asked.find(isComment)!;
     const body = String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]);
     assert.match(body, /^- tests\/e2e\/old\.spec\.ts$/m);
@@ -710,7 +810,7 @@ describe("poll posts CI-RED once per red head", () => {
       calls.push({ args, opts });
       return gh(args, file);
     };
-    await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
+    await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh), run, mainFailures: undefined });
     assert.deepEqual(calls.map((c) => c.args.slice(0, 2).join(" ")), ["run rerun", "run list", "issue view", "issue comment"]);
     for (const c of calls) assert.equal(c.opts?.timeout, 30_000);
   });
@@ -737,7 +837,7 @@ describe("a red head's failures that main has too", () => {
     const written: string[][] = [];
     const { gh, asked } = red();
     const main = { runId: 1, url: "https://example.test/runs/1", ids: [ID] };
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
     assert.deepEqual(out, HAND_BACK);
     assert.match(String(bodyOf(asked, written)), /^on main: 1 of \d+ also fail on main \(https:\/\/example\.test\/runs\/1\): /m);
   });
@@ -746,7 +846,7 @@ describe("a red head's failures that main has too", () => {
     const written: string[][] = [];
     const { gh, asked } = red();
     const main = { runId: 1, url: "https://example.test/runs/1/attempts/1", ids: [ID], flaky: true };
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => main });
     assert.deepEqual(out, HAND_BACK);
     const body = String(bodyOf(asked, written));
     assert.match(body, /^on main: none$/m);
@@ -756,7 +856,7 @@ describe("a red head's failures that main has too", () => {
   test("a main with nothing to give says none", async () => {
     const written: string[][] = [];
     const { gh, asked } = red();
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => null });
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: () => null });
     assert.deepEqual(out, HAND_BACK);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
     assert.doesNotMatch(String(bodyOf(asked, written)), /flaky on main/);
@@ -767,7 +867,7 @@ describe("a red head's failures that main has too", () => {
     const { gh, asked } = red("error TS2322: Type 'string' is not assignable to type 'number'.");
     let reads = 0;
     const main = () => (reads++, { runId: 1, ids: [ID] });
-    const out = await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
+    const out = await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), mainFailures: main });
     assert.deepEqual(out, HAND_BACK, "a type error is a red a fix round can aim at");
     assert.equal(reads, 0);
     assert.match(String(bodyOf(asked, written)), /^on main: none$/m);
@@ -802,7 +902,7 @@ describe("ciRedBody", () => {
   test("a hand-back's CI-RED carries the attempt it was read from", async () => {
     const written: string[][] = [];
     const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, RED] });
-    await poll(PENDING, () => {}, 0, DEADLINE, io(gh, written));
+    await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
     const post = asked.find(isComment)!;
     assert.match(String(written.find(([p]) => p === post[post.indexOf("--body-file") + 1])?.[1]), /^rerun: survived one$/m);
   });
@@ -847,7 +947,7 @@ describe("ciRedBody", () => {
       },
       progress: { done: 0, total: 0, running: null, failed: null },
     });
-    await poll(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), stateOf });
+    await runSettle(PENDING, () => {}, 0, DEADLINE, { ...io(gh, written), stateOf });
     assert.match(written[1]?.[1] ?? "", /^why: Typecheck and tests ran past its timeout-minutes$/m);
   });
 
