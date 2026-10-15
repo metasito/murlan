@@ -6,7 +6,7 @@ import { ChoiceChips } from '@/components/ChoiceChips';
 
 const CHOICES = [
   { value: 'match', label: 'MATCH', detail: 'first to 100' },
-  { value: 'single', label: 'SINGLE', detail: 'one manche' },
+  { value: 'single', label: 'SINGLE', detail: 'one round' },
 ];
 
 describe('ChoiceChips', () => {

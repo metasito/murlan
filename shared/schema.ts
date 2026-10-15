@@ -300,7 +300,7 @@ export const userAchievements = pgTable("user_achievements", {
   unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
 }, (t) => [primaryKey({ columns: [t.userId, t.achievementId] })]);
 
-// One finished manche, replayable by anyone who sat at it. Its own table rather
+// One finished round, replayable by anyone who sat at it. Its own table rather
 // than a column on match_history: a write to a missing table fails alone, and a
 // replay belongs to the table rather than to any one player's history row.
 export const matchReplays = pgTable("match_replays", {

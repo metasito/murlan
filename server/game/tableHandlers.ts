@@ -50,7 +50,7 @@ import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
 import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
-import { isUserOnline, onlineUserIds } from "../socket/socketRegistry.ts";
+import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -101,7 +101,8 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
-import { dealManche } from "./dealManche.ts";
+import { dealRound } from "./dealRound.ts";
+import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
   UNKNOWN_ACTION,
@@ -143,7 +144,8 @@ function roomError(io: SocketServer, userId: string, payload: ServerPayload): vo
  */
 export async function rehydrateGame(
   roomId: string,
-  forUserId: string | null
+  forUserId: string | null,
+  io: SocketServer
 ): Promise<RehydrateOutcome> {
   const row = await db.query.activeGames.findFirst({
     where: eq(activeGamesTable.roomId, roomId),
@@ -177,7 +179,7 @@ export async function rehydrateGame(
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
   const botSeatsAtStart = botSeatsFromPersonality(restoredPlayers);
-  activeGames.set(roomId, {
+  const game: OnlineGameState = {
     roomId,
     joinCode: restored.joinCode,
     gameState: restoredState,
@@ -211,8 +213,20 @@ export async function rehydrateGame(
     // replay. The next hand starts a fresh one.
     moveLog: null,
     dealFirstSeat: restored.dealFirstSeat,
-  });
+  };
+  activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
+
+  // The graces their disconnects armed died with the process that held them.
+  const presence = await tablePresence(roomId);
+  // A between-hands grace's expiry sees only this process's sockets, so a
+  // grace armed on a guess releases players seated through another instance.
+  if (!presence) return "restored";
+  const back = restoredState.gameOver ? presence.atTable : presence.online;
+  for (const [seat, userId] of Object.entries(playerMap)) {
+    if (userId === forUserId || back.has(userId)) continue;
+    await armSeatGrace(io, game, roomId, userId, Number(seat));
+  }
   return "restored";
 }
 
@@ -382,7 +396,7 @@ function rematchRefused(game: OnlineGameState): boolean {
 }
 
 /**
- * Deals the manche the table has voted for, or says why it cannot and leaves
+ * Deals the round the table has voted for, or says why it cannot and leaves
  * every vote where it was.
  *
  * `notifyUserId` is the vote that closed the gate. It is `null` when a seat
@@ -390,7 +404,7 @@ function rematchRefused(game: OnlineGameState): boolean {
  * pressed anything, and the toast would land on whoever happened to be first
  * in `playerMap`.
  */
-async function dealVotedManche(
+async function dealVotedRound(
   io: SocketServer,
   game: OnlineGameState,
   roomId: string,
@@ -398,28 +412,31 @@ async function dealVotedManche(
 ): Promise<EventOutcome> {
   const refuse = (code: string, message: string): EventOutcome => {
     if (notifyUserId) gameError(io, notifyUserId, { message, code });
-    else logger.warn({ roomId, code }, "The next manche could not be dealt");
+    else logger.warn({ roomId, code }, "The next round could not be dealt");
     emitVoteState(io, roomId, game);
     return { ok: false, code };
   };
 
   // The database is read for the room's settings and nothing else: the next
-  // manche's seats are copied from the running game. `room_players` holds
+  // round's seats are copied from the running game. `room_players` holds
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
   const room = await roomStore.getRoomById(roomId);
+  // Every gate-closer reaches the read above, so the first one back deals and
+  // the rest find the votes it cleared.
+  if (!game.gameState.gameOver || !rematchAnswered(game)) return OK;
   if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
   if (seats.length < 2) return refuse("MIN_PLAYERS_REQUIRED", "At least 2 players are required");
 
-  // Cleared only once the next manche is certain to be dealt. A vote discarded
+  // Cleared only once the next round is certain to be dealt. A vote discarded
   // on the way out of a bail-out can never be retried: the overlay would sit
   // below its own threshold with nothing left to press.
   game.rematchVotes.clear();
 
   const prevRankings = game.gameState.rankings;
-  // Engine ids ride across the manche, so prevRankings resolves to the same
+  // Engine ids ride across the round, so prevRankings resolves to the same
   // seats it named — initializeRematch never has to fall back to a guessed
   // winner, and the exchange runs between the right two players.
   const playerSetup = seats.map((p) => ({
@@ -430,10 +447,10 @@ async function dealVotedManche(
     team: room.gameMode === "teams" ? p.team : undefined,
   }));
 
-  // `game.matchOver` still holds the just-ended manche's own verdict here —
-  // `dealManche` below is what flips it back via `rollMatchForward`.
+  // `game.matchOver` still holds the just-ended round's own verdict here —
+  // `dealRound` below is what flips it back via `rollMatchForward`.
   const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
-  // Only a manche every seat finished names a real winner and loser; a match
+  // Only a round every seat finished names a real winner and loser; a match
   // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
   // as the loser (docs/GAME-RULES.md § Decisions).
   const newGameState =
@@ -450,7 +467,7 @@ async function dealVotedManche(
   game.gameMode = room.gameMode;
   game.maxPlayers = room.maxPlayers;
 
-  await dealManche(io, game, newGameState);
+  await dealRound(io, game, newGameState);
   return OK;
 }
 
@@ -472,7 +489,7 @@ async function rematchVoteAction(
   game.rematchVotes.add(userId);
   emitVoteState(io, roomId, game);
   if (!rematchAnswered(game)) return OK;
-  return dealVotedManche(io, game, roomId, userId);
+  return dealVotedRound(io, game, roomId, userId);
 }
 
 /**
@@ -518,7 +535,7 @@ async function dealIfSeatLeftGateClosed(
   if (!game || !game.gameState.gameOver || !rematchAnswered(game)) return OK;
   if (rematchRefused(game)) return OK;
   if (Object.keys(game.playerMap).length === 0) return OK;
-  return dealVotedManche(io, game, roomId, null);
+  return dealVotedRound(io, game, roomId, null);
 }
 
 /**
@@ -601,7 +618,7 @@ async function rejoinAction(
  * The previous match's winner and loser, as engine ids of the roster about to
  * be dealt. A session lasts until the table breaks up (docs/GAME-RULES.md § Decisions), so
  * a new match at a standing table opens with the exchange rather than the 3♠.
- * Empty when there is nothing to carry: no previous match, a manche nobody
+ * Empty when there is nothing to carry: no previous match, a round nobody
  * played out, a match ended by the vote, or either seat no longer at the table
  * — every one of which deals the 3♠ opening instead.
  */
@@ -617,7 +634,10 @@ function carriedRankings(
   const newSeatOf = (engineId: string | undefined): number => {
     const seat = engineId === undefined ? undefined : seatOfEngineId.get(engineId);
     if (seat === undefined) return -1;
-    const userId = previous.playerMap[seat] ?? previous.vacatedSeats.get(seat)?.userId;
+    const userId =
+      previous.playerMap[seat] ??
+      previous.vacatedSeats.get(seat)?.userId ??
+      (previous.botSeatsAtStart.has(seat) ? botSeatKey(seat) : undefined);
     return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
   };
 
@@ -637,7 +657,7 @@ async function startMatchAction(
   if (!room || room.hostUserId !== userId) return { ok: false, code: "NOT_THE_HOST" };
 
   // A live in-memory game is the authority on whether this room may deal:
-  // `rooms.status` reads "finished" between the manches of a running match as
+  // `rooms.status` reads "finished" between the rounds of a running match as
   // well as after the last one, and it is written a moment *after* game:over
   // reaches the clients, so it is stale exactly when a between-hands start
   // arrives.
@@ -645,7 +665,7 @@ async function startMatchAction(
 
   if (previous) {
     if (!previous.matchOver) {
-      // The next manche of a running match is game:rematch_vote's job. Dealing
+      // The next round of a running match is game:rematch_vote's job. Dealing
       // it here would deal without an exchange phase, and would let the
       // payload's matchLength rewrite the format of a match that is already
       // being scored.
@@ -678,7 +698,7 @@ async function startMatchAction(
   const absent = new Set(usersInLobbyGrace(roomId));
   // The finished match's tally, discarded before any seat leaves: releasing one
   // lowers the rematch gate, and a stale full count would deal that match one
-  // more manche underneath the new one being dealt here.
+  // more round underneath the new one being dealt here.
   previous?.rematchVotes.clear();
   if (absent.size > 0) {
     const seated = await roomStore.getRoomPlayers(room.id);
@@ -796,7 +816,7 @@ async function startMatchAction(
     await roomStatePayload(closed.room, players)
   );
 
-  await dealManche(io, newGame, gameState);
+  await dealRound(io, newGame, gameState);
   logger.info(
     { roomId, playerCount: players.length, botCount: roster.length - players.length },
     "Game started"
@@ -811,14 +831,44 @@ async function startMatchAction(
  * dropped: on the instance that held no copy of the table, the same code read
  * a hand in progress as a waiting lobby and released the seat outright.
  */
-function seatLostAction(
+async function seatLostAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "seatLost" }>
-): Promise<EventOutcome> | EventOutcome {
+): Promise<EventOutcome> {
   const { roomId, userId } = action;
+  // Every socket drops at a shutdown, and the next process restores this table
+  // from active_games and arms the graces itself.
+  if (isShuttingDown()) return OK;
+  // Forwarded from another instance, this can land after the player's rejoin
+  // has already cleared the graces it would arm. Between hands the seat holds
+  // the rematch gate, so only a socket back in this room counts.
+  const back = game.gameState.gameOver
+    ? await isUserAtTable(userId, roomId)
+    : await isUserOnline(userId);
+  if (back) return OK;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
+
+  if (!game.gameState.gameOver) {
+    // Distinct from losing: the hand was still running when they went.
+    trackEvent("game.abandoned", userId, {
+      playerCount: game.gameState.players.length,
+      gameMode: game.gameState.gameMode,
+    });
+  }
+  const releasing = armSeatGrace(io, game, roomId, userId, seat);
+  return releasing ? releasing.then(() => OK) : OK;
+}
+
+/** Holds an absent player's seat for its grace, and hands it on when that runs out. */
+function armSeatGrace(
+  io: SocketServer,
+  game: OnlineGameState,
+  roomId: string,
+  userId: string,
+  seat: number
+): Promise<void> | void {
   const username = seatName(game, seat);
 
   if (game.gameState.gameOver) {
@@ -826,15 +876,8 @@ function seatLostAction(
     // towards the rematch gate, so the table cannot wait a full minute on it.
     // Its expiry also asks the right question — back in *this* room, not
     // merely back online.
-    const releasing = armLobbyGrace(io, roomId, userId);
-    return releasing ? releasing.then(() => OK) : OK;
+    return armLobbyGrace(io, roomId, userId);
   }
-
-  // Distinct from losing: the hand was still running when they went.
-  trackEvent("game.abandoned", userId, {
-    playerCount: game.gameState.players.length,
-    gameMode: game.gameState.gameMode,
-  });
 
   const graceSeconds = Math.round(disconnectGraceMs() / 1000);
   io.to(roomId).emit("game:player_disconnected", {
@@ -881,7 +924,6 @@ function seatLostAction(
   }, disconnectGraceMs());
   disconnectTimers.set(userId, dcTimer);
   disconnectDeadlines.set(userId, Date.now() + disconnectGraceMs());
-  return OK;
 }
 
 async function applyTableAction(
@@ -937,7 +979,7 @@ async function applyTableAction(
       armTurnIfIdle(io, action.roomId);
       return OK;
     case "vacate":
-      // `rooms.status` reads "finished" between manches too, so only the live
+      // `rooms.status` reads "finished" between rounds too, so only the live
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.

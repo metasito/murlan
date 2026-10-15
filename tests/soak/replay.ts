@@ -104,7 +104,7 @@ export async function replaySoakLog(
   // the wrong kind of table and report the log's own `exchange` entry as its
   // divergence, which is a confident lie about where the defect is.
   if (log.slice(1).some((entry) => entry.kind === "deal")) {
-    throw new Error("a log spanning more than one manche cannot be replayed yet — see #597");
+    throw new Error("a log spanning more than one round cannot be replayed yet — see #597");
   }
 
   const server: TestServer = existing ?? (await startTestServer());

@@ -23,14 +23,14 @@ export interface PlayerSetupConfig {
   team?: "A" | "B";
 }
 
-/** One played-out manche, keyed by engine player id (`player_0`). */
+/** One played-out round, keyed by engine player id (`player_0`). */
 export interface HandResult {
   rankings: string[];
   pointsAwarded: Record<string, number>;
 }
 
 /**
- * The offline match the manches belong to, folded forward by the same
+ * The offline match the rounds belong to, folded forward by the same
  * `lib/game/gameEngine` function as the server's, so the two modes cannot drift apart.
  */
 export interface MatchState extends MatchVerdict {
@@ -65,7 +65,7 @@ export function celebratesViewer(
 }
 
 /**
- * Whether a just-played manche paid every team the same total (GAME-RULES.md §11):
+ * Whether a just-played round paid every team the same total (GAME-RULES.md §11):
  * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3.
  */
 export function isDrawnHand(
@@ -88,9 +88,9 @@ export function isDrawnHand(
 export type HandOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
 
 /**
- * What the manche that just ended did to `viewerId` — the decision the
+ * What the round that just ended did to `viewerId` — the decision the
  * table's own win/lose sting reads (`components/useTableFeedback.ts`).
- * `handScores` is a parameter rather than recomputed here, so the manche is
+ * `handScores` is a parameter rather than recomputed here, so the round is
  * scored from the one value its caller already holds (the server's
  * `game:over` payload online, the played hand's own `pointsAwarded` offline)
  * instead of a second call to `scoreHand` that happens to agree today.
@@ -122,10 +122,10 @@ export function handOutcomeFor(
 }
 
 /**
- * What a finished partita did to `viewerId`: `"pending"` until its winners are known, `"neutral"` for a spectator,
- * `"draw"` for a co-winner of a partita tied at the last target (GAME-RULES.md §12, tie escalation).
+ * What a finished match did to `viewerId`: `"pending"` until its winners are known, `"neutral"` for a spectator,
+ * `"draw"` for a co-winner of a match tied at the last target (GAME-RULES.md §12, tie escalation).
  */
-export function partitaOutcomeFor(
+export function matchOutcomeFor(
   players: readonly { id: string; team?: string }[],
   matchWinners: readonly string[],
   viewerId: string | undefined,
@@ -138,7 +138,7 @@ export function partitaOutcomeFor(
   return celebrated.includes(false) ? "draw" : "won";
 }
 
-/** One seat's line on the end-of-manche scoreboard, in every identity it is indexed by. */
+/** One seat's line on the end-of-round scoreboard, in every identity it is indexed by. */
 export interface ScoreLine {
   seatIndex: number;
   /** The engine player id the rankings and the match winners are stated in. */

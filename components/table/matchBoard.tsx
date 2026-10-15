@@ -7,24 +7,24 @@ import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
 import { tableFontSize } from "@/components/cardFaceModel";
 
-// The end-of-partita board's own content, inside the score pill's board state: the mockup's
+// The end-of-match board's own content, inside the score pill's board state: the mockup's
 // `.bx` winner box and `.bt` actions (#1267).
 
-export interface PartitaWinner {
+export interface MatchWinner {
   /** The winner, or every tied name on a draw. */
   name: string;
   mine: boolean;
   draw: boolean;
   line: string;
-  /** Online only: what the partita did to the viewer's rating, or that the hand went unrecorded. */
-  rating?: PartitaRating;
+  /** Online only: what the match did to the viewer's rating, or that the hand went unrecorded. */
+  rating?: MatchRating;
 }
 
-export type PartitaRating = { delta: number; rating?: number; provisionalLeft?: number } | { notRecorded: true };
+export type MatchRating = { delta: number; rating?: number; provisionalLeft?: number } | { notRecorded: true };
 
-export interface PartitaBoardActions {
+export interface MatchBoardActions {
   onHome: () => void;
-  /** Nuova partita; null where the table stops. Online it is the rematch vote, with its tally. */
+  /** New match; null where the table stops. Online it is the rematch vote, with its tally. */
   again: { onPress: () => void; testID: string; tally?: { votes: number; total: number; voted: boolean } } | null;
 }
 
@@ -49,30 +49,30 @@ const PX = {
 
 export const BOARD_ACTIONS_AT = { x: 162, y: 206 };
 
-export function partitaWinnerSpoken(winner: PartitaWinner, t: ReturnType<typeof useTranslation>["t"]): string {
+export function matchWinnerSpoken(winner: MatchWinner, t: ReturnType<typeof useTranslation>["t"]): string {
   return [winnerLabel(winner, t), winner.name, winner.line, ...ratingSpoken(winner.rating, t)].filter(Boolean).join(". ");
 }
 
 const signed = (delta: number) => (delta < 0 ? `−${-delta}` : `+${delta}`);
 
-function ratingSpoken(rating: PartitaRating | undefined, t: ReturnType<typeof useTranslation>["t"]): string[] {
+function ratingSpoken(rating: MatchRating | undefined, t: ReturnType<typeof useTranslation>["t"]): string[] {
   if (!rating) return [];
-  if ("notRecorded" in rating) return [t("partitaBoard.notRecordedSpoken")];
+  if ("notRecorded" in rating) return [t("matchBoard.notRecordedSpoken")];
   return [
-    t("partitaBoard.ratingLabel"),
+    t("matchBoard.ratingLabel"),
     rating.rating === undefined
       ? signed(rating.delta)
-      : t("partitaBoard.ratingSpoken", { delta: signed(rating.delta), rating: rating.rating }),
-    rating.provisionalLeft ? t("partitaBoard.provisional", { n: rating.provisionalLeft }) : "",
+      : t("matchBoard.ratingSpoken", { delta: signed(rating.delta), rating: rating.rating }),
+    rating.provisionalLeft ? t("matchBoard.provisional", { n: rating.provisionalLeft }) : "",
   ];
 }
 
-function PartitaRatingSlot({ rating, unit: u }: { rating: PartitaRating; unit: number }) {
+function MatchRatingSlot({ rating, unit: u }: { rating: MatchRating; unit: number }) {
   const { t } = useTranslation();
   const small = { fontSize: tableFontSize(FontSize.xxs, u), letterSpacing: PX.labelTracking * u };
   return (
     <View
-      testID="partita-rating-slot"
+      testID="match-rating-slot"
       style={[
         styles.rating,
         { width: PX.rating * u, gap: PX.ratingGap * u, marginTop: (PX.ratingAround - PX.between) * u, paddingTop: PX.ratingAround * u },
@@ -80,20 +80,20 @@ function PartitaRatingSlot({ rating, unit: u }: { rating: PartitaRating; unit: n
     >
       {"notRecorded" in rating ? (
         <>
-          <TableText style={[styles.label, small]}>{t("partitaBoard.notRecorded")}</TableText>
-          <TableText style={[styles.label, small]}>{t("partitaBoard.tooManyBots")}</TableText>
+          <TableText style={[styles.label, small]}>{t("matchBoard.notRecorded")}</TableText>
+          <TableText style={[styles.label, small]}>{t("matchBoard.tooManyBots")}</TableText>
         </>
       ) : (
         <>
-          <TableText style={[styles.label, small]}>{t("partitaBoard.ratingLabel")}</TableText>
-          <TableText testID="partita-rating" style={[styles.ratingLine, { fontSize: tableFontSize(FontSize.md, u) }]}>
-            <TableText testID="partita-rating-delta" style={rating.delta < 0 ? styles.ratingLoss : styles.ratingGain}>
+          <TableText style={[styles.label, small]}>{t("matchBoard.ratingLabel")}</TableText>
+          <TableText testID="match-rating" style={[styles.ratingLine, { fontSize: tableFontSize(FontSize.md, u) }]}>
+            <TableText testID="match-rating-delta" style={rating.delta < 0 ? styles.ratingLoss : styles.ratingGain}>
               {signed(rating.delta)}
             </TableText>
             {rating.rating === undefined ? null : ` → ${rating.rating}`}
           </TableText>
           {rating.provisionalLeft ? (
-            <TableText style={[styles.label, small]}>{t("partitaBoard.provisional", { n: rating.provisionalLeft })}</TableText>
+            <TableText style={[styles.label, small]}>{t("matchBoard.provisional", { n: rating.provisionalLeft })}</TableText>
           ) : null}
         </>
       )}
@@ -101,17 +101,17 @@ function PartitaRatingSlot({ rating, unit: u }: { rating: PartitaRating; unit: n
   );
 }
 
-function winnerLabel(winner: PartitaWinner, t: ReturnType<typeof useTranslation>["t"]): string {
+function winnerLabel(winner: MatchWinner, t: ReturnType<typeof useTranslation>["t"]): string {
   if (!winner.name) return t("result.matchOverTitle");
   if (winner.draw) return t("result.matchDrawTitle");
-  return winner.mine ? t("partitaBoard.youWon") : t("partitaBoard.wins");
+  return winner.mine ? t("matchBoard.youWon") : t("matchBoard.wins");
 }
 
-export function PartitaWinnerBox({ winner, unit: u, height }: { winner: PartitaWinner; unit: number; height: number }) {
+export function MatchWinnerBox({ winner, unit: u, height }: { winner: MatchWinner; unit: number; height: number }) {
   const { t } = useTranslation();
   const label = tableFontSize(FontSize.xxs, u);
   return (
-    <View {...a11yHidden()} testID="partita-winner" style={[styles.box, { width: PX.box * u, height, gap: PX.between * u }]}>
+    <View {...a11yHidden()} testID="match-winner" style={[styles.box, { width: PX.box * u, height, gap: PX.between * u }]}>
       <View
         style={[
           styles.ring,
@@ -131,7 +131,7 @@ export function PartitaWinnerBox({ winner, unit: u, height }: { winner: PartitaW
       </TableText>
       {winner.name ? (
         <TableText
-          testID="partita-winner-name"
+          testID="match-winner-name"
           numberOfLines={1}
           style={[
             styles.name,
@@ -143,12 +143,12 @@ export function PartitaWinnerBox({ winner, unit: u, height }: { winner: PartitaW
         </TableText>
       ) : null}
       <TableText style={[styles.label, { fontSize: label, letterSpacing: PX.labelTracking * u }]}>{winner.line}</TableText>
-      {winner.rating ? <PartitaRatingSlot rating={winner.rating} unit={u} /> : null}
+      {winner.rating ? <MatchRatingSlot rating={winner.rating} unit={u} /> : null}
     </View>
   );
 }
 
-export function PartitaBoardButtons({ actions, unit: u, live }: { actions: PartitaBoardActions; unit: number; live: boolean }) {
+export function MatchBoardButtons({ actions, unit: u, live }: { actions: MatchBoardActions; unit: number; live: boolean }) {
   const { t } = useTranslation();
   const tally = actions.again?.tally;
   const waiting = tally?.voted

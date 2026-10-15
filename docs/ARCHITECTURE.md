@@ -30,7 +30,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
                                                         │                  that owns the room
                                                         ▼
                                                 server/game/tableHandlers.ts (applyTableAction)
-                                                  + gameTurn.ts / gameOver.ts / dealManche.ts
+                                                  + gameTurn.ts / gameOver.ts / dealRound.ts
                                                         │
                                                         ▼
                                                 lib/game/gameEngine.ts (same engine, server side)
@@ -52,7 +52,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
   `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
   `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
-  `gameOver.ts` (`handleGameOver`) and `dealManche.ts` (the shared fresh-manche reset used by
+  `gameOver.ts` (`handleGameOver`) and `dealRound.ts` (the shared fresh-round reset used by
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
   owns the room.
 - **`components/GameTable.tsx`** + the table's pure model (`seatLayout.ts`,
@@ -82,7 +82,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 **Offline:** `GameContext` holds a `GameState` produced by `lib/game/gameEngine.ts` in memory.
 User actions call context methods that call the engine directly and set new state. The
 whole match — engine state, scoreboard, and the seat setup the next
-manche is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
+round is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
 so a kill mid-hand is resumable from the home screen. A save from another version is
 discarded rather than migrated, the same call `active_games` makes.
 
@@ -94,7 +94,7 @@ mutates state, persists it (`active_games` table), and emits a copy to every sea
 player's own hand and opponents' hands stripped before emit.
 
 **`playedRanks` on the broadcast state.** A 15-slot tally, indexed by `getRankStrength`, of
-how many cards of each rank have been played this manche. `processPlay` writes it and every
+how many cards of each rank have been played this round. `processPlay` writes it and every
 fresh deal resets it, so the one funnel both the online and offline paths already share keeps
 it correct in both without a second implementation. It is public information — every seat
 watched those cards land — so `sanitizeStateForPlayer` passes it through untouched, and it
@@ -157,7 +157,7 @@ across instances the same way it carries the forwarded action.
 **Bot-filled matches:** `room:start` with `fillWithBots` needs only one seated human. The
 room screen already offers bot-fill and the match-length picker together, so a solo player
 against bots plays a complete match to the target, the same as a full human table — not a
-single manche.
+single round.
 
 **Disconnect → grace period → bot takeover (not forfeit):**
 - On `disconnect`, if the user has no other live socket, the server emits
@@ -210,7 +210,7 @@ later turns.
 - **`session`** (via `connect-pg-simple`): `server/store/schemaDdl.ts` creates it at boot with
   the same DDL the library ships (server/CLAUDE.md's session-table rule covers its config and
   lifecycle). Never dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
-- **`match_replays`**: one row per finished manche — `seats`, `moves` and `rankings` as
+- **`match_replays`**: one row per finished round — `seats`, `moves` and `rankings` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
   can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was
   played and the counts that followed, never what anyone held. The live log is memory
@@ -228,7 +228,7 @@ later turns.
   The season is `YYYY-MM` **derived from the clock**, never written by a scheduled job:
   a reset that has to run on a host that sleeps is a reset that eventually does not.
   A new season is a new row seeded from half the previous one's distance to 1000, so
-  last season stays readable. Written per manche beside the stats write, on the same
+  last season stays readable. Written per round beside the stats write, on the same
   `isContestedTable` gate, free-for-all only. Not awaited and not required to exist.
 - **`rooms` / `room_players` / `friends` / `users`**: relational state for lobby, matchmaking
   and the friends system, unrelated to in-hand game state.
@@ -304,11 +304,11 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   `celebratesViewer()` takes an ordered candidate list and passes over any id naming no seat.
 - **`lib/game/standings.ts`**, **`lib/game/placement.ts`**, **`lib/exchangeCeremony.ts`** — scoring
   order, placement colours and labels, and the ceremony's own clock.
-- **The endings, on the table.** A manche ends in the score pill's payoff
-  (`lib/game/mancheEnding.ts`): offline it deals the next one, online the pill holds open with the
-  next-hand vote at its foot until the deal arrives. A partita ends with the pill growing into the
-  result board over the dimmed table (`lib/game/partitaEnding.ts`, `components/table/partitaBoard.tsx`),
-  with Home and Nuova partita; online, Nuova partita is the rematch vote. There is no result route.
+- **The endings, on the table.** A round ends in the score pill's payoff
+  (`lib/game/roundEnding.ts`): offline it deals the next one, online the pill holds open with the
+  next-hand vote at its foot until the deal arrives. A match ends with the pill growing into the
+  result board over the dimmed table (`lib/game/matchEnding.ts`, `components/table/matchBoard.tsx`),
+  with Home and New match; online, New match is the rematch vote. There is no result route.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the
   vote total is derived once rather than at each call site.
 

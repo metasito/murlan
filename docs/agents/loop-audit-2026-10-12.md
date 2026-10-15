@@ -280,8 +280,8 @@ Severity is after verification. The IDs in brackets are the auditors' own, for t
 - **What #1516 changed.** Timing budgets now warn below 3× (`tools/ci/native-budget.mjs`,
   `tools/ci/e2e-budget.mjs`). Nothing in `tools/loop/` reads a `::warning`; `ciVerdict.ts:29`
   reads annotations only to detect a cancel.
-- **The `mancheOutcomeOnTheFelt` chain.**
-  1. #1469 landed `mancheOutcomeOnTheFelt` at 32.9 s against a 15 s budget. The warning was on its
+- **The `roundOutcomeOnTheFelt` chain.**
+  1. #1469 landed `roundOutcomeOnTheFelt` at 32.9 s against a 15 s budget. The warning was on its
      own green run, 38161718656.
   2. #1470 grew it to 37–39 s.
   3. A 2× slow runner took it to 45.7 s, past 3×, which reddened unrelated #1478.
@@ -416,7 +416,7 @@ Severity is after verification. The IDs in brackets are the auditors' own, for t
     `check-steps.mjs:1` for "agent:check green".
   - Fix: accept the agent:check box on `buildPassed`, and allow `n/a: <reason>`.
 - **Product calls in HOLD rounds [5.7].** #1423's r2 HOLD came from a product call made in a HOLD
-  round: the r1 fix decided a draw plays `partitaLost`. Product calls go to the owner.
+  round: the r1 fix decided a draw plays `matchLost`. Product calls go to the owner.
 - **Guard denials [5.8].** Guard denials cost 1–4 turns per ticket:
   - the 150-line cap
   - `sed -i` under rule 44
@@ -437,7 +437,7 @@ Each row was re-checked against the job logs.
 | `tests/e2e/reducedMotionWobbleReset.spec.ts`:28 (line 53, "flying-cards node must still be on screen after the toggle"), the same assertion every time | 6, plus 1 at 13:05Z | ~6 of 25 executions (24%); 5 of 12 PR branches | #1438, #1423, #1473 (×2), #1478, #1497 | 3 reruns, 3 re-pushes; waived 5× |
 | `tests/e2e/tableUnmount.spec.ts`:42 (`hover` timeout on Gioca), shard 17 | 2 | ~8% | #1476, #1497 | rerun, waived |
 | ECR Public `toomanyrequests: Data limit exceeded` (postgres pull) | 3 | – | #1466, #1481 (×2, cancelled) | rerun |
-| Native budget past 3× on `mancheOutcomeOnTheFelt`, untouched file (45.7 s against 15 s) | 1 | warns on every run | #1478 r2 | rerun; argued as runner slowdown |
+| Native budget past 3× on `roundOutcomeOnTheFelt`, untouched file (45.7 s against 15 s) | 1 | warns on every run | #1478 r2 | rerun; argued as runner slowdown |
 | `reconnect.spec.ts`:40 | 1 | – | #1473 | "not reproduced" |
 | `hooksLint.test.ts`, 31.1 s against 30 s | 1 | – | #1473 | waived |
 | `npm test` 180 s watchdog in `seatLayoutTakesNoCount` | 1 | – | #1469 | next head green |

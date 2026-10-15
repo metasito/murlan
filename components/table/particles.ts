@@ -3,7 +3,7 @@
 // 874 × 402 points. It draws nothing, and game information never passes through it.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { BombFx, Dust, MancheMoment } from "../../lib/tokens.ts";
+import { BombFx, Dust, RoundMoment } from "../../lib/tokens.ts";
 import type { HandOutcome } from "../../lib/game/matchState.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
 import type { FlyDirection } from "../seatLayout.ts";
@@ -172,11 +172,11 @@ export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | 
   return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
 }
 
-/** The mockup's `burstMotes` at the manche winner's seat `at`: the full burst for a win, a smaller one for any other decided finish. */
-export function mancheMotes(outcome: HandOutcome, at: { x: number; y: number }, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
+/** The mockup's `burstMotes` at the round winner's seat `at`: the full burst for a win, a smaller one for any other decided finish. */
+export function roundMotes(outcome: HandOutcome, at: { x: number; y: number }, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
   "worklet";
   if (reduced || outcome === "draw" || outcome === "pending") return [];
-  const M = MancheMoment;
+  const M = RoundMoment;
   const R = (a: number, b: number) => a + rng() * (b - a);
   const big = outcome === "won" ? 1 : M.lostScale;
   const x0 = at.x / sx;

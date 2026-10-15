@@ -53,6 +53,44 @@ export async function isUserOnline(userId: string): Promise<boolean> {
 }
 
 /**
+ * Whether one of this account's sockets, anywhere in the cluster, has joined
+ * `roomId` — back at the table, not merely online. Never throws, as above.
+ */
+export async function isUserAtTable(userId: string, roomId: string): Promise<boolean> {
+  if (!_io) return false;
+  try {
+    return (await _io.in(userRoom(userId)).fetchSockets()).some((s) => s.rooms.has(roomId));
+  } catch (err) {
+    logger.warn({ err, userId, roomId }, "Cluster presence check failed; treating as away");
+    return false;
+  }
+}
+
+/**
+ * Every account with a socket anywhere in the cluster, and those of them at
+ * `roomId`; `null` when the cluster did not answer, which is not "nobody".
+ */
+export async function tablePresence(
+  roomId: string
+): Promise<{ online: Set<string>; atTable: Set<string> } | null> {
+  const online = new Set<string>();
+  const atTable = new Set<string>();
+  if (!_io) return { online, atTable };
+  try {
+    for (const s of await _io.fetchSockets()) {
+      const userId: unknown = s.data?.userId;
+      if (typeof userId !== "string") continue;
+      online.add(userId);
+      if (s.rooms.has(roomId)) atTable.add(userId);
+    }
+  } catch (err) {
+    logger.warn({ err, roomId }, "Cluster presence sweep failed");
+    return null;
+  }
+  return { online, atTable };
+}
+
+/**
  * Every account with a socket anywhere in the cluster, in one round trip.
  *
  * Filtering a friends list with `isUserOnline` would ask the cluster once per

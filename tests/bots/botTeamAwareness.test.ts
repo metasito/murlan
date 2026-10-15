@@ -157,7 +157,7 @@ test("the same bot still bombs an opponent about to go out", () => {
   assert.equal(choice?.type, "bomb", "the emergency branch must stay armed");
 });
 
-// Emptying the hand ends the manche in the team's favour, so the pass rule
+// Emptying the hand ends the round in the team's favour, so the pass rule
 // must sit below the finishing branch, not above it.
 test("a bot that can go out still goes out on its partner's play", () => {
   const state = table(
@@ -179,7 +179,7 @@ test("a bot that can go out still goes out on its partner's play", () => {
   assert.equal(choice?.cards.length, 1, "the last card goes down");
 });
 
-// `opponentsOf` derives the partner from seat parity, while the manche-end
+// `opponentsOf` derives the partner from seat parity, while the round-end
 // scoring reads `Player.team`. They agree today only because every seating
 // path assigns the team from the same rule; nothing else keeps them together,
 // and a bot protecting one seat while the score credits another would be

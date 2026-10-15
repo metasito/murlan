@@ -101,7 +101,7 @@ export interface GameState {
   startReason?: StartReason;
   exchangePhase?: ExchangePhase;
   /**
-   * How many cards of each rank have been played this manche, indexed by
+   * How many cards of each rank have been played this round, indexed by
    * `getRankStrength`. Public information — every seat watched them land — so
    * `sanitizeStateForPlayer` passes it through untouched.
    *
@@ -268,14 +268,14 @@ export const HEADS_UP_HAND = 14;
  * Deals cards one at a time, round-robin from `firstSeat`. 4 players =
  * 14/14/13/13, 3 players = 18 each — the whole deck, so the 3♠ and both
  * Jokers are always in play. The two extra cards at 4 players land on
- * `firstSeat` and the seat after it, so rotating it between manches is what
+ * `firstSeat` and the seat after it, so rotating it between rounds is what
  * stops the same seats holding the bigger hand for the whole match
  * (docs/GAME-RULES.md §3, the dealer's rotation).
  *
  * 2 players is the one seat count that does NOT deal the whole deck: dealing
  * everything leaves each player able to deduce the other's exact hand by
  * elimination, so 14 cards go to each (28 of 54) and the remaining 26 are
- * left face down and unused for the manche. It is the four-player hand size,
+ * left face down and unused for the round. It is the four-player hand size,
  * which is what makes a duel play like the game rather than like a
  * bomb-heavy variant of it (docs/GAME-RULES.md §3, decided in `docs/GAME-RULES.md` § Decisions).
  */
@@ -964,16 +964,16 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
 }
 
 /**
- * Whether the manche's opening play is still to come — the moment
+ * Whether the round's opening play is still to come — the moment
  * `startReason` describes, and the only one it may be announced in.
  *
  * The turn index matching the opener does not answer this: `startReason` labels
- * the whole manche and is never cleared, and the opener takes the lead again
+ * the whole round and is never cleared, and the opener takes the lead again
  * every round they win. `firstPlayMade` does not either — only the very first
- * deal of a partita starts it false; a manche dealt after a lost round carries
+ * deal of a match starts it false; a round dealt after a lost round carries
  * it already true. What every deal empties and every play writes is the rank
  * tally, so an empty one is the state's own word for "nobody has played this
- * manche yet". A hand persisted before the tally existed has none, and reads as
+ * round yet". A hand persisted before the tally existed has none, and reads as
  * past its opening: a missing announcement costs less than one over a live hand.
  *
  * True during the round-winner's exchange choice only by accident of index —
@@ -995,10 +995,10 @@ export function openingIsPending(state: {
 }
 
 /**
- * Whether the manche on the table is still as dealt: nobody has played into it.
- * An exchange manche counts, though it carries `firstPlayMade` from the last one.
+ * Whether the round on the table is still as dealt: nobody has played into it.
+ * An exchange round counts, though it carries `firstPlayMade` from the last one.
  */
-export function mancheUnplayed(state: {
+export function roundUnplayed(state: {
   gameOver: boolean;
   firstPlayMade: boolean;
   playedRanks?: number[];
@@ -1025,7 +1025,7 @@ export function teamForSeat(
   return seat % 2 === 0 ? "A" : "B";
 }
 
-/** The seat the next manche deals from — one further round the table. */
+/** The seat the next round deals from — one further round the table. */
 export function nextDealFirstSeat(firstSeat: number, playerCount: number): number {
   if (playerCount < 1) return 0;
   return (firstSeat + 1) % playerCount;
@@ -1035,7 +1035,7 @@ export function nextDealFirstSeat(firstSeat: number, playerCount: number): numbe
  * The seat the *next deal* starts from — `docs/GAME-RULES.md` § Decisions's "Rotating
  * the deal" decision: a finished match resets to seat 0, an unfinished one
  * rotates one seat further. `matchOver` is the state *before* this deal —
- * the just-ended manche's own verdict, true when it was also the match's
+ * the just-ended round's own verdict, true when it was also the match's
  * last one.
  */
 export function dealFirstSeatFor(
@@ -1128,10 +1128,10 @@ export const TURN_TIMEOUT_MS = 30_000;
 /**
  * The escalation ladder for a table of `playerCount` seats.
  *
- * `scoreHand` pays N−1 down to 0, so a manche is worth 6 points at four seats,
- * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 partita a
- * 27-manche affair nobody finished. Scaling by (N−1)/3 keeps every count in
- * the 8-12 manche band a match should land in, and leaves the four-player
+ * `scoreHand` pays N−1 down to 0, so a round is worth 6 points at four seats,
+ * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 match a
+ * 27-round affair nobody finished. Scaling by (N−1)/3 keeps every count in
+ * the 8-12 round band a match should land in, and leaves the four-player
  * values docs/GAME-RULES.md §12 documents untouched.
  */
 export function targetsFor(playerCount: number): number[] {
@@ -1251,7 +1251,7 @@ export function resolveTeamMatch(
 ): MatchResolution | null {
   const totals = aggregateTeamScores(cumulative, teamOfKey);
   // The ladder is the seated table's, not the two teams' — a pair races to the
-  // four-seat target on the six points a four-seat manche pays out.
+  // four-seat target on the six points a four-seat round pays out.
   const resolution = resolveMatch(totals, target, playerCount);
   if (!resolution) return null;
 
@@ -1283,7 +1283,7 @@ export function resolveMatchFor(args: {
 }
 
 export interface FoldHandInput {
-  /** The manche's finishing order, best first, in engine player ids. */
+  /** The round's finishing order, best first, in engine player ids. */
   rankings: string[];
   playerCount: number;
   length: MatchLength;
@@ -1302,7 +1302,7 @@ export interface FoldHandInput {
    */
   accumulates?: (key: string) => boolean;
   /**
-   * Whether a key may cross the target or be named a winner — of a manche in
+   * Whether a key may cross the target or be named a winner — of a round in
    * `single` length, or of the match in `match` length. Defaults to
    * `accumulates`. The server splits the two: a vacated seat's points join
    * the running total (docs/GAME-RULES.md § Decisions, the disconnect policy) so the
@@ -1321,10 +1321,10 @@ export interface FoldHandInput {
 }
 
 export interface FoldHandResult {
-  /** What the manche paid, by scoring key. Non-accumulating keys included. */
+  /** What the round paid, by scoring key. Non-accumulating keys included. */
   handByKey: Record<string, number>;
   cumulative: Record<string, number>;
-  /** What to play to next — escalated if this manche tied at the old target. */
+  /** What to play to next — escalated if this round tied at the old target. */
   target: number;
   over: boolean;
   winners: string[];
@@ -1332,11 +1332,11 @@ export interface FoldHandResult {
 }
 
 /**
- * Folds a finished manche into its match: awards the placement points, then
+ * Folds a finished round into its match: awards the placement points, then
  * either escalates the target, ends the match, or leaves it running.
  *
- * A single-manche game ends here by definition, with no target involved — its
- * winner is whoever took the manche, or in teams the pair with more points, a
+ * A single-round match ends here by definition, with no target involved — its
+ * winner is whoever took the round, or in teams the team with more points, a
  * 3-3 being a draw (docs/GAME-RULES.md §11, § Decisions).
  *
  * Keyed by an opaque string so offline and the server share one progression:
@@ -1380,7 +1380,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   if (length === "single") {
     const championId = rankings[0];
     if (gameMode === "teams" && championId !== undefined && teamOf[championId] !== undefined) {
-      // A manche is taken by a pair (docs/GAME-RULES.md §11), so a vacated seat's
+      // A round is taken by a team (docs/GAME-RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
       const teamPoints = aggregateTeamScores(scoreHand(rankings, playerCount), teamOf);
       const best = Math.max(...Object.values(teamPoints));
@@ -1456,7 +1456,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
  *
  * - `match` — the canonical Murlan match (docs/GAME-RULES.md §12): first to
  *   `targetsFor(playerCount)[0]`, escalating on a tie at the target.
- * - `single` — one manche and done.
+ * - `single` — one round and done.
  */
 export type MatchLength = "match" | "single";
 

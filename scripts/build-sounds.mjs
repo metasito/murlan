@@ -65,7 +65,7 @@ const RECIPES = {
   trick_start: [{ file: "cardFan1.ogg", gain: 0.9 }],
   reject: [{ file: "error_004.wav", gain: 0.8 }],
   trick_win: [{ file: "confirmation_001.wav", gain: 0.8 }],
-  manche_neutral: [
+  round_neutral: [
     { file: "glass_002.wav", gain: 0.5, rate: 1.0, at: 0.0 },
     { file: "glass_002.wav", gain: 0.45, rate: 1.122, at: 0.14 },
   ],
@@ -80,8 +80,8 @@ const RECIPES = {
 
 // The sample peak each output is normalised to; 0.89 unless named. trick_start
 // at 0.89 true-peaks above -1 dBTP once encoded, and trick_win at 0.89 is louder
-// than the manche win it must sit under (tests/tooling/soundAssets.test.ts).
-const PEAK = { trick_start: 0.79, trick_win: 0.3, manche_neutral: 0.25 };
+// than the round win it must sit under (tests/tooling/soundAssets.test.ts).
+const PEAK = { trick_start: 0.79, trick_win: 0.3, round_neutral: 0.25 };
 
 // Trim silence, never sound. The cut point is the last moment the signal is
 // still above an absolute floor — 55 dB below the file's own peak, which is

@@ -1,10 +1,10 @@
 // Plays an offline match to completion with no browser and no UI, so
 // tests/engine/matchTerminates.test.ts can assert the thing #770 found missing: that
 // a match started offline always reaches `match.over`, not just that each
-// manche it deals resolves.
+// round it deals resolves.
 //
 // A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
-// (tests/engine/matchState.test.ts pins both callers). The manche->match
+// (tests/engine/matchState.test.ts pins both callers). The round->match
 // wiring (`applyHandToMatch`, `dealFrom`) is mirrored rather than imported:
 // that file pulls in `react` and AsyncStorage, which `node --test` cannot
 // load, so a change to either copy has to be carried to the other by hand.
@@ -132,10 +132,10 @@ export interface SimulateMatchOptions {
   players: OfflinePlayerSetup[];
   gameMode: GameMode;
   length: MatchLength;
-  /** Manches played with no match-over before this is a stall, not a long match. */
-  maxManches?: number;
-  /** Moves (plays + passes + exchange choices) in one manche before that manche is a stall. */
-  maxMovesPerManche?: number;
+  /** Rounds played with no match-over before this is a stall, not a long match. */
+  maxRounds?: number;
+  /** Moves (plays + passes + exchange choices) in one round before that round is a stall. */
+  maxMovesPerRound?: number;
   /**
    * Per-seat AI choice for a seat that is not `"ai"` (a bot seat always plays
    * through `offlineBotMove`), indexed like `players`. Defaults to the real
@@ -172,16 +172,16 @@ export interface SimulateMatchOptions {
   aiRng?: (seed: number) => () => number;
 }
 
-export interface SimulatedManche {
+export interface SimulatedRound {
   rankings: string[];
   cumulativeAfter: Record<string, number>;
   target: number;
-  /** Plays + passes + exchange choices this manche took to reach `gameOver`. */
+  /** Plays + passes + exchange choices this round took to reach `gameOver`. */
   moves: number;
   /**
    * How many of the six top cards (the four 2s and two Jokers) each seat held
-   * the moment this manche's hand was set — after `initializeRematch`'s
-   * automatic loser-to-winner card (docs/GAME-RULES.md §10) for every manche past
+   * the moment this round's hand was set — after `initializeRematch`'s
+   * automatic loser-to-winner card (docs/GAME-RULES.md §10) for every round past
    * the first, before any card is played. The giveback leg never touches this:
    * it is restricted to ranks 3-10 (`EXCHANGE_VALID_RANKS`), so it cannot move
    * a 2 or a Joker either way.
@@ -191,7 +191,7 @@ export interface SimulatedManche {
 
 export interface SimulateMatchResult {
   seed: number;
-  manches: SimulatedManche[];
+  rounds: SimulatedRound[];
   target: number;
   winners: string[];
   isDraw: boolean;
@@ -201,32 +201,32 @@ export interface SimulateMatchResult {
 
 export class MatchStallError extends Error {
   seed: number;
-  manches: SimulatedManche[];
+  rounds: SimulatedRound[];
 
-  constructor(message: string, seed: number, manches: SimulatedManche[]) {
+  constructor(message: string, seed: number, rounds: SimulatedRound[]) {
     super(message);
     this.name = "MatchStallError";
     this.seed = seed;
-    this.manches = manches;
+    this.rounds = rounds;
   }
 }
 
 /**
- * A manche ended with a seat that was dealt cards never once given a turn —
+ * A round ended with a seat that was dealt cards never once given a turn —
  * the shape of a turn-advance no-op (one seat plays its whole hand alone
  * while `activePlayers.length <= 1` still reads as a normal finish). A
  * winner existing is not enough evidence a match played fairly.
  */
 export class SilentSeatError extends Error {
   seed: number;
-  mancheIndex: number;
+  roundIndex: number;
   seat: number;
 
-  constructor(message: string, seed: number, mancheIndex: number, seat: number) {
+  constructor(message: string, seed: number, roundIndex: number, seat: number) {
     super(message);
     this.name = "SilentSeatError";
     this.seed = seed;
-    this.mancheIndex = mancheIndex;
+    this.roundIndex = roundIndex;
     this.seat = seat;
   }
 }
@@ -240,7 +240,7 @@ export class SilentSeatError extends Error {
  */
 export class RotationOrderError extends Error {
   seed: number;
-  mancheIndex: number;
+  roundIndex: number;
   moveIndex: number;
   expectedSeat: number;
   actualSeat: number;
@@ -248,7 +248,7 @@ export class RotationOrderError extends Error {
   constructor(
     message: string,
     seed: number,
-    mancheIndex: number,
+    roundIndex: number,
     moveIndex: number,
     expectedSeat: number,
     actualSeat: number
@@ -256,7 +256,7 @@ export class RotationOrderError extends Error {
     super(message);
     this.name = "RotationOrderError";
     this.seed = seed;
-    this.mancheIndex = mancheIndex;
+    this.roundIndex = roundIndex;
     this.moveIndex = moveIndex;
     this.expectedSeat = expectedSeat;
     this.actualSeat = actualSeat;
@@ -279,20 +279,20 @@ function expectedNextActive(fromSeat: number, hands: { length: number }[]): numb
 /**
  * A seat played a combination and did not lose exactly that many cards from
  * its hand — the shape of a play the engine accepted (the turn moved on) but
- * silently discarded. Checked the instant it happens, not after a manche
+ * silently discarded. Checked the instant it happens, not after a round
  * fails to end: a seat can be given turns forever while never once actually
  * shedding a card, which reaches `activePlayers.length <= 1` on nobody.
  */
 export class HandNotShrunkError extends Error {
   seed: number;
-  mancheIndex: number;
+  roundIndex: number;
   seat: number;
 
-  constructor(message: string, seed: number, mancheIndex: number, seat: number) {
+  constructor(message: string, seed: number, roundIndex: number, seat: number) {
     super(message);
     this.name = "HandNotShrunkError";
     this.seed = seed;
-    this.mancheIndex = mancheIndex;
+    this.roundIndex = roundIndex;
     this.seat = seat;
   }
 }
@@ -339,40 +339,40 @@ export function weakestBeatingPlay(state: GameState, seat: number): Combination 
 
 export interface AiTurnKeyCollision {
   seed: number;
-  mancheIndex: number;
+  roundIndex: number;
   key: string;
   before: { fingerprint: string; state: GameState };
   after: { fingerprint: string; state: GameState };
 }
 
 /**
- * Plays one full offline match — every manche it takes to reach
+ * Plays one full offline match — every round it takes to reach
  * `match.over` — against the real engine and the real bot AI on both seats,
  * with no browser and no timers. Throws `MatchStallError` the moment either
- * bound is crossed, carrying the manches already played so the caller can
+ * bound is crossed, carrying the rounds already played so the caller can
  * turn the seed into a fixture.
  */
 export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchResult {
-  const maxManches = opts.maxManches ?? 500;
-  const maxMovesPerManche = opts.maxMovesPerManche ?? 2000;
+  const maxRounds = opts.maxRounds ?? 500;
+  const maxMovesPerRound = opts.maxMovesPerRound ?? 2000;
 
   return withSeededDeals(opts.seed, () => {
     let match = freshMatch(opts.length, opts.players.length);
     let dealFirstSeat = 0;
     let prevRankings: string[] = [];
-    const manches: SimulatedManche[] = [];
+    const rounds: SimulatedRound[] = [];
     let aiTurnKeyChecks = 0;
     const aiRng = opts.aiRng?.(opts.seed);
     const topCardCount = (hand: { rank: string }[]) =>
       hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
 
     while (!match.over) {
-      if (manches.length >= maxManches) {
+      if (rounds.length >= maxRounds) {
         throw new MatchStallError(
-          `match did not reach target ${match.target} after ${manches.length} manches ` +
+          `match did not reach target ${match.target} after ${rounds.length} rounds ` +
             `(scores: ${JSON.stringify(match.scores)})`,
           opts.seed,
-          manches
+          rounds
         );
       }
 
@@ -381,7 +381,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       // value, so the first rematch opens one seat past `initializeGame`'s own
       // implicit seat 0 rather than from it again.
       let state: GameState;
-      if (manches.length === 0) {
+      if (rounds.length === 0) {
         state = initializeGame(opts.players, opts.gameMode, dealFirstSeat);
       } else {
         dealFirstSeat = nextDealFirstSeat(dealFirstSeat, opts.players.length);
@@ -396,7 +396,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       const topCardCounts = state.players.map((p) => topCardCount(p.hand));
 
       // Every seat dealt cards must be given at least one turn before this
-      // manche's `gameOver` — a turn-advance that silently keeps re-picking
+      // round's `gameOver` — a turn-advance that silently keeps re-picking
       // the same seat still reaches `activePlayers.length <= 1` and looks
       // like a normal finish (a winner, a plausible rankings array) with the
       // other seat never once having acted.
@@ -406,7 +406,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         .map((s) => s.i);
       const actedSeats = new Set<number>();
 
-      // `app/game.tsx`'s `aiTurnKey`, reset per manche because that screen
+      // `app/game.tsx`'s `aiTurnKey`, reset per round because that screen
       // remounts on every navigation to /game (a fresh component instance
       // has no previous effect value to compare against) — see
       // `computeAiTurnKey`'s own comment for what this is chasing.
@@ -416,12 +416,12 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
 
       let moves = 0;
       while (!state.gameOver) {
-        if (moves >= maxMovesPerManche) {
+        if (moves >= maxMovesPerRound) {
           throw new MatchStallError(
-            `manche ${manches.length} did not reach gameOver after ${moves} moves ` +
+            `round ${rounds.length} did not reach gameOver after ${moves} moves ` +
               `(seats holding cards: ${state.players.map((p) => p.hand.length).join(",")})`,
             opts.seed,
-            manches
+            rounds
           );
         }
         moves++;
@@ -433,7 +433,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           if (key === lastAiTurnKey && fingerprint !== lastAiTurnFingerprint && lastAiTurnState) {
             opts.collectAiTurnKeyCollisions?.push({
               seed: opts.seed,
-              mancheIndex: manches.length,
+              roundIndex: rounds.length,
               key,
               before: { fingerprint: lastAiTurnFingerprint!, state: lastAiTurnState },
               after: { fingerprint, state },
@@ -474,10 +474,10 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         }
         if (!next) {
           throw new MatchStallError(
-            `manche ${manches.length} stuck: seat ${seat} could not act at move ${moves} ` +
+            `round ${rounds.length} stuck: seat ${seat} could not act at move ${moves} ` +
               `(exchange active: ${isExchangeTurn})`,
             opts.seed,
-            manches
+            rounds
           );
         }
 
@@ -492,10 +492,10 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
             const shed = (playedCombo as Combination).cards.length;
             if (after !== before - shed) {
               throw new HandNotShrunkError(
-                `manche ${manches.length} move ${moves}: seat ${seat} played ` +
+                `round ${rounds.length} move ${moves}: seat ${seat} played ` +
                   `${shed} card(s) but its hand went from ${before} to ${after}`,
                 opts.seed,
-                manches.length,
+                rounds.length,
                 seat
               );
             }
@@ -511,11 +511,11 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
                 : expectedNextActive(seat, hands);
             if (expected !== next.currentTurnIndex) {
               throw new RotationOrderError(
-                `manche ${manches.length} move ${moves}: expected seat ${expected} next, ` +
+                `round ${rounds.length} move ${moves}: expected seat ${expected} next, ` +
                   `got seat ${next.currentTurnIndex} (acting seat was ${seat}, ` +
                   `${playedCombo === null ? "passed" : "played"})`,
                 opts.seed,
-                manches.length,
+                rounds.length,
                 moves,
                 expected,
                 next.currentTurnIndex
@@ -530,10 +530,10 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       for (const seat of dealtSeats) {
         if (!actedSeats.has(seat)) {
           throw new SilentSeatError(
-            `manche ${manches.length} ended with seat ${seat} never given a turn ` +
+            `round ${rounds.length} ended with seat ${seat} never given a turn ` +
               `(acted: [${[...actedSeats].join(",")}], rankings: ${JSON.stringify(state.rankings)})`,
             opts.seed,
-            manches.length,
+            rounds.length,
             seat
           );
         }
@@ -541,7 +541,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
 
       prevRankings = state.rankings;
       match = applyHandToMatch(match, state);
-      manches.push({
+      rounds.push({
         rankings: state.rankings,
         cumulativeAfter: match.scores,
         target: match.target,
@@ -552,7 +552,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
 
     return {
       seed: opts.seed,
-      manches,
+      rounds,
       target: match.target,
       winners: match.winners,
       isDraw: match.isDraw,

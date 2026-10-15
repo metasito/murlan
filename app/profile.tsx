@@ -742,7 +742,7 @@ export default function ProfileScreen() {
             </Animated.View>
           )}
 
-          {/* ── Partite recenti ── */}
+          {/* ── Matches recenti ── */}
           <Animated.View entering={entering}>
             <MenuCard title={t("history.cardTitle")}>
               {historyQuery.isLoading && <LoadingBlock label={t("history.loadingA11yLabel")} />}

@@ -1,6 +1,6 @@
 // #839 — measures whether a heads-up (2-seat) Murlan match is actually as
 // one-sided as it reads, and which of three named mechanisms produces it:
-// the exchange compounding every manche between the same two seats
+// the exchange compounding every round between the same two seats
 // (docs/GAME-RULES.md §10), half the deck going undealt at two players
 // (lib/game/gameEngine.ts's dealCards), or the default bot personality being the
 // passive one (lib/game/botPersonalities.ts).
@@ -178,8 +178,8 @@ function seatOfWinner(engineId: string): number {
 // ─── Measurements 2 & 3: exchange compounding and the winner streak ───────
 
 interface CompoundingAndStreak {
-  manche0TopCards: number[][];
-  deltaByMancheIndex: Map<number, number[]>;
+  round0TopCards: number[][];
+  deltaByRoundIndex: Map<number, number[]>;
   streakRepeats: number;
   streakTransitions: number;
 }
@@ -189,35 +189,35 @@ interface CompoundingAndStreak {
  * so any measured skew is the format's own mechanics, not a personality gap.
  */
 function measureCompoundingAndStreak(results: SimulateMatchResult[], playerCount: number): CompoundingAndStreak {
-  const manche0TopCards: number[][] = [];
-  const deltaByMancheIndex = new Map<number, number[]>();
+  const round0TopCards: number[][] = [];
+  const deltaByRoundIndex = new Map<number, number[]>();
   let streakRepeats = 0;
   let streakTransitions = 0;
 
   for (const r of results) {
-    for (let i = 0; i < r.manches.length; i++) {
-      const m = r.manches[i];
+    for (let i = 0; i < r.rounds.length; i++) {
+      const m = r.rounds[i];
       if (i === 0) {
-        manche0TopCards.push(m.topCardCounts);
+        round0TopCards.push(m.topCardCounts);
       } else if (playerCount === 2) {
-        const prevWinnerSeat = seatOfWinner(r.manches[i - 1].rankings[0]);
+        const prevWinnerSeat = seatOfWinner(r.rounds[i - 1].rankings[0]);
         const otherSeat = prevWinnerSeat === 0 ? 1 : 0;
         const delta = m.topCardCounts[prevWinnerSeat] - m.topCardCounts[otherSeat];
-        const bucket = deltaByMancheIndex.get(i) ?? [];
+        const bucket = deltaByRoundIndex.get(i) ?? [];
         bucket.push(delta);
-        deltaByMancheIndex.set(i, bucket);
+        deltaByRoundIndex.set(i, bucket);
       }
 
       if (i > 0) {
         streakTransitions++;
-        if (seatOfWinner(m.rankings[0]) === seatOfWinner(r.manches[i - 1].rankings[0])) {
+        if (seatOfWinner(m.rankings[0]) === seatOfWinner(r.rounds[i - 1].rankings[0])) {
           streakRepeats++;
         }
       }
     }
   }
 
-  return { manche0TopCards, deltaByMancheIndex, streakRepeats, streakTransitions };
+  return { round0TopCards, deltaByRoundIndex, streakRepeats, streakTransitions };
 }
 
 // ─── Measurement 4: win rate per personality, bot vs bot at two seats ─────
@@ -252,9 +252,9 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 
 // ─── Measurement 5: exchange blunder avoidance (#907) ─────────────────────
 //
-// The manche-winner streak above is a coarse proxy — the fix bears on
-// individual lead decisions, not the manche's outcome. This measures the
-// mechanism directly: deals a manche and drives it with today's engine
+// The round-winner streak above is a coarse proxy — the fix bears on
+// individual lead decisions, not the round's outcome. This measures the
+// mechanism directly: deals a round and drives it with today's engine
 // (exchange included), and at every new-round lead the loser makes while its
 // tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
 // `aiChoosePlay` applies internally, applied here too so a fact the fix
@@ -479,38 +479,38 @@ function main(): void {
   }
 
   // ── Measurements 2 & 3 ─────────────────────────────────────────────────
-  console.log("## 2 & 3. Exchange compounding and the manche-winner streak\n");
+  console.log("## 2 & 3. Exchange compounding and the round-winner streak\n");
   console.log(`Symmetric tables (every seat on ${DEFAULT_BOT_PERSONALITY}), so any skew found is the`);
   console.log("format's own mechanics, not a personality gap (that is measurement 4).\n");
 
   const results2p = runMatches(tableOf(2), opts.matchN2p, opts.seed * 104729);
   const cs2p = measureCompoundingAndStreak(results2p, 2);
 
-  const manche0Pooled = cs2p.manche0TopCards.flat();
+  const round0Pooled = cs2p.round0TopCards.flat();
   console.log(`2-seat matches (n=${results2p.length}):`);
   console.log(
-    `  manche 0 (no exchange yet) top-card count per hand: mean ${mean(manche0Pooled).toFixed(3)} ` +
-      `(stdev ${stdev(manche0Pooled).toFixed(3)}) — cross-check against measurement 1's 2-seat figure above.`
+    `  round 0 (no exchange yet) top-card count per hand: mean ${mean(round0Pooled).toFixed(3)} ` +
+      `(stdev ${stdev(round0Pooled).toFixed(3)}) — cross-check against measurement 1's 2-seat figure above.`
   );
-  console.log("  reigning winner's top-card edge over the other seat, by manche index (post-exchange):");
-  const indices = [...cs2p.deltaByMancheIndex.keys()].sort((a, b) => a - b);
+  console.log("  reigning winner's top-card edge over the other seat, by round index (post-exchange):");
+  const indices = [...cs2p.deltaByRoundIndex.keys()].sort((a, b) => a - b);
   for (const i of indices.slice(0, 12)) {
-    const deltas = cs2p.deltaByMancheIndex.get(i)!;
-    console.log(`    manche ${i}: mean delta ${mean(deltas).toFixed(3)} (n=${deltas.length})`);
+    const deltas = cs2p.deltaByRoundIndex.get(i)!;
+    console.log(`    round ${i}: mean delta ${mean(deltas).toFixed(3)} (n=${deltas.length})`);
   }
   if (indices.length > 12) {
-    const tail = indices.slice(12).flatMap((i) => cs2p.deltaByMancheIndex.get(i)!);
-    console.log(`    manche 12+: mean delta ${mean(tail).toFixed(3)} (n=${tail.length}, pooled)`);
+    const tail = indices.slice(12).flatMap((i) => cs2p.deltaByRoundIndex.get(i)!);
+    console.log(`    round 12+: mean delta ${mean(tail).toFixed(3)} (n=${tail.length}, pooled)`);
   }
   console.log(
-    `  P(manche winner also wins the next manche): ${fmtWilson(cs2p.streakRepeats, cs2p.streakTransitions)}\n`
+    `  P(round winner also wins the next round): ${fmtWilson(cs2p.streakRepeats, cs2p.streakTransitions)}\n`
   );
 
   const results4p = runMatches(tableOf(4), opts.matchN4p, opts.seed * 15485863);
   const cs4p = measureCompoundingAndStreak(results4p, 4);
   console.log(`4-seat matches (n=${results4p.length}):`);
   console.log(
-    `  P(manche winner also wins the next manche): ${fmtWilson(cs4p.streakRepeats, cs4p.streakTransitions)}`
+    `  P(round winner also wins the next round): ${fmtWilson(cs4p.streakRepeats, cs4p.streakTransitions)}`
   );
   console.log("  (memoryless baseline: 50% at 2 seats, 25% at 4 seats)\n");
 

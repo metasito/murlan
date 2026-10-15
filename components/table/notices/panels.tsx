@@ -64,7 +64,7 @@ export function WhoStartsCard({ gated, scale, ...who }: WhoStarts & { gated: boo
 }
 
 /**
- * Who opens the manche, and why: one panel from the deal until the first play. While `gated` it
+ * Who opens the round, and why: one panel from the deal until the first play. While `gated` it
  * holds the table over a dimmed felt, releasing on its own reading budget or on one tap anywhere.
  */
 export function WhoStartsPanel({

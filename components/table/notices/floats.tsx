@@ -84,7 +84,7 @@ export function FloatSlot({
 
 const styles = StyleSheet.create({
   slot: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
-  /** A refusal can answer the end-of-partita board's own vote, so it floats over the board. */
+  /** A refusal can answer the end-of-match board's own vote, so it floats over the board. */
   overBoard: { zIndex: Layer.hint },
   beside: { position: "absolute", alignItems: "flex-end", zIndex: Layer.hint },
   mirrored: { alignItems: "flex-start" },

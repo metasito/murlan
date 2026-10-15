@@ -48,7 +48,7 @@ export interface CaptureState {
   side: "bottom" | "top" | "left" | "right";
   /** A combination already on the felt, so the pile draws under the lamp; `"bomb"` lands four of a kind. */
   pile: boolean | "bomb";
-  /** What each opponent holds; "out" has finished the manche. Absent, every seat holds the whole deal. */
+  /** What each opponent holds; "out" has finished the round. Absent, every seat holds the whole deal. */
   counts?: Readonly<Record<"right" | "top" | "left", number | "out">>;
   /** The viewer's own connection, as the online table reads it. Absent, it is up. */
   link?: OwnLink;

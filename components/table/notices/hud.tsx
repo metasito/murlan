@@ -141,7 +141,7 @@ export function TurnChip({
   const threshold = urgentThresholdSeconds(seconds);
   const ember = lit && active && timeLeft > 0 && timeLeft <= CLOCK_RUNNING_OUT_SECONDS;
   // A live region speaks every time its text changes, so seconds in its label
-  // are an interruption a second for the length of the manche. Two moments in a
+  // are an interruption a second for the length of the round. Two moments in a
   // turn are worth one; between them an empty label and an unchanged one are
   // the same silence. The group's name below is where the seconds stay
   // readable in between, and a name is spoken on landing rather than on change.

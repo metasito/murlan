@@ -20,7 +20,7 @@ import {
 
 /**
  * Shortened well below the 60s disconnect grace and 30s AFK production
- * defaults so a manche played out against bots finishes in about a second; the
+ * defaults so a round played out against bots finishes in about a second; the
  * bot's own pace comes from the harness. `server/socket/socket.ts` reads these once at
  * module scope, so they must be
  * set before that module is first imported — this file always runs as its own
@@ -29,14 +29,14 @@ import {
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "300";
 /**
- * A seat dropped between manches is held under this, not under the disconnect
+ * A seat dropped between rounds is held under this, not under the disconnect
  * grace. Shortened so the test below can watch it expire; nothing else in this
  * file reaches it, because no other table here loses a human.
  */
 process.env.MURLAN_LOBBY_GRACE_MS = "800";
 
 /**
- * `game:rematch_vote` deals the next manche from the running game's own
+ * `game:rematch_vote` deals the next round from the running game's own
  * roster, never from `room_players`: that table holds humans only, so a roster
  * rebuilt from it drops every bot seat and renumbers the survivors — which
  * moves seats under `playerMap`, the one thing deciding whose cards a viewer
@@ -52,7 +52,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   /**
-   * Stops a table that is still mid-manche, so its bot and AFK timers don't
+   * Stops a table that is still mid-round, so its bot and AFK timers don't
    * keep playing into the suite's teardown and write against a closed pool.
    * One leave is enough: it drops the table below two seated players, which
    * disposes it.
@@ -68,7 +68,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.fail("the table was still live after its host left");
   }
 
-  test("a lone human plus bots deals a second manche with the same seats", async () => {
+  test("a lone human plus bots deals a second round with the same seats", async () => {
     const { seatedUsers, matchSnapshot } = await import("../helpers/liveGame.ts");
     const [ivan] = await makeClients(server, ["rematch_solo_ivan"]);
     const room = await setUpRoom([ivan], 4);
@@ -87,11 +87,11 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const next = await dealt;
     await started;
 
-    assert.equal(next.players.length, 4, "the next manche must keep every seat");
+    assert.equal(next.players.length, 4, "the next round must keep every seat");
     assert.equal(
       matchSnapshot(room.roomId)?.dealFirstSeat,
       1,
-      "the second manche deals one seat further round, so the extra cards move"
+      "the second round deals one seat further round, so the extra cards move"
     );
     assert.equal(next.players.filter((p) => p.type === "ai").length, 3);
     assertHandSecrecy(next, "solo rematch deal");
@@ -101,7 +101,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.deepEqual(
       seatedUsers(room.roomId),
       seatedBefore,
-      "seat numbering must not change across a manche"
+      "seat numbering must not change across a round"
     );
 
     const phase = next.exchangePhase;
@@ -109,10 +109,10 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(
       next.players[phase.winnerIdx].id,
       over.rankings[0],
-      "the exchange must be seeded from the previous manche's winner"
+      "the exchange must be seeded from the previous round's winner"
     );
 
-    // And the second manche is playable end to end: the bot seats really act.
+    // And the second round is playable end to end: the bot seats really act.
     gameOverOf(
       await driveHandToExchangeOrOver([ivan], () => {}, { stopOnExchange: false })
     );
@@ -154,7 +154,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.deepEqual(
       seatedUsers(room.roomId),
       seatedBefore,
-      "seat numbering must not change across a manche"
+      "seat numbering must not change across a round"
     );
     await closeTable(room.roomId, jack);
   });
@@ -166,7 +166,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * instead of voting has already cast every vote it will ever cast, and sits
    * on a full tally that nothing reads.
    */
-  test("a seat given up between manches deals the hand its vote was holding", async () => {
+  test("a seat given up between rounds deals the hand its vote was holding", async () => {
     const [nora, omar] = await makeClients(server, [
       "rematch_gone_nora",
       "rematch_gone_omar",
@@ -191,7 +191,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   /**
-   * `handleGameOver` sets `rooms.status = "finished"` after every manche, not
+   * `handleGameOver` sets `rooms.status = "finished"` after every round, not
    * only at the end of a match, so the room row alone cannot tell a running
    * match from an ended one. Accepting room:start on that status is a second
    * deal path: it deals with `initializeGame` (no exchange phase, so the
@@ -199,7 +199,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * straight from the payload while the running match's scores and target
    * carry on.
    */
-  test("room:start cannot deal the next manche of a running match", async () => {
+  test("room:start cannot deal the next round of a running match", async () => {
     const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [mira] = await makeClients(server, ["newmatch_running_mira"]);
     const room = await setUpRoom([mira], 4);
@@ -210,7 +210,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       })
     );
     const before = matchSnapshot(room.roomId);
-    assert.equal(before?.matchOver, false, "one manche of a 21-point match settles nothing");
+    assert.equal(before?.matchOver, false, "one round of a 21-point match settles nothing");
 
     const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
     // The payload a losing host would send: convert the match into a one-hand
@@ -227,7 +227,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const dealt = waitForDeal(mira.socket);
     mira.socket.emit("game:rematch_vote");
     const next = await dealt;
-    assert.ok(next.exchangePhase, "the next manche of a running match carries an exchange phase");
+    assert.ok(next.exchangePhase, "the next round of a running match carries an exchange phase");
     assert.equal(next.players[next.exchangePhase.winnerIdx].id, over.rankings[0]);
     await closeTable(room.roomId, mira);
   });
@@ -239,7 +239,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     ]);
     const room = await setUpRoom([nadia, omar], 2);
 
-    // `matchLength: "single"` ends the match with the first manche, so what
+    // `matchLength: "single"` ends the match with the first round, so what
     // follows is a genuinely new match rather than the next hand of this one.
     gameOverOf(
       await driveHandToExchangeOrOver([nadia, omar], () => {
@@ -290,7 +290,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     await closeTable(room.roomId, pia);
   });
 
-  test("after a finished partita nobody was asked about, every seat's vote starts a new one", async () => {
+  test("after a finished match nobody was asked about, every seat's vote starts a new one", async () => {
     const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [liam, mona] = await makeClients(server, ["rematch_unasked_liam", "rematch_unasked_mona"]);
     const room = await setUpRoom([liam, mona], 2);
@@ -310,9 +310,9 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     liam.socket.emit("game:rematch_vote");
     mona.socket.emit("game:rematch_vote");
     await dealt;
-    assert.equal(await refused, null, "a vote after the partita is never refused");
+    assert.equal(await refused, null, "a vote after the match is never refused");
     assert.equal(matchSnapshot(room.roomId)?.matchOver, false);
-    assert.deepEqual(matchSnapshot(room.roomId)?.cumulativeScores, {}, "the deal opens a new partita");
+    assert.deepEqual(matchSnapshot(room.roomId)?.cumulativeScores, {}, "the deal opens a new match");
     await closeTable(room.roomId, liam);
   });
   test("an AFK exchange is announced as an exchange, not as a pass", async () => {
@@ -328,8 +328,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       })
     );
 
-    /** Votes another manche in and returns the deal both seats were sent. */
-    const dealNextManche = async () => {
+    /** Votes another round in and returns the deal both seats were sent. */
+    const dealNextRound = async () => {
       const dealt = waitForDeal(pia.socket);
       pia.socket.emit("game:rematch_vote");
       quinn.socket.emit("game:rematch_vote");
@@ -337,18 +337,18 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     };
 
     // A loser holding both jokers skips the exchange entirely (docs/GAME-RULES.md
-    // §10), and in a two-handed deal that is one manche in sixteen — play those
+    // §10), and in a two-handed deal that is one round in sixteen — play those
     // out and deal again rather than asserting on whichever one turns up.
-    let next = await dealNextManche();
+    let next = await dealNextRound();
     for (let attempt = 0; attempt < 6 && !next.exchangePhase?.active; attempt++) {
       gameOverOf(
         await driveHandToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
       );
-      next = await dealNextManche();
+      next = await dealNextRound();
     }
-    assert.ok(next.exchangePhase?.active, "the next manche opens on an exchange");
+    assert.ok(next.exchangePhase?.active, "the next round opens on an exchange");
 
-    // Registered only now: an AFK auto-pass from any manche played above would
+    // Registered only now: an AFK auto-pass from any round played above would
     // otherwise be the first code seen and would pass this test for the wrong
     // reason.
     const afk: string[] = [];
@@ -369,8 +369,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   /**
-   * #803: a blind critique found this branch — `dealVotedManche` deciding the
-   * next deal's seat when the manche it is dealing follows a *finished*
+   * #803: a blind critique found this branch — `dealVotedRound` deciding the
+   * next deal's seat when the round it is dealing follows a *finished*
    * match — reachable only through a live vote and untested anywhere at the
    * behavioral level. A source scan over the call site can be satisfied by a
    * hand-rolled rotation that never looks at `matchOver`; this drives the
@@ -398,7 +398,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,
       false,
-      "one manche of a full-length match settles nothing"
+      "one round of a full-length match settles nothing"
     );
 
     // Rotate case: the vote lands mid-match, so the deal moves one seat further.
@@ -408,7 +408,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(
       matchSnapshot(room.roomId)?.dealFirstSeat,
       1,
-      "a manche within a running match rotates the deal"
+      "a round within a running match rotates the deal"
     );
     assert.deepEqual(
       seatsDealtTheExtraCards(rotated),
@@ -418,7 +418,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
 
     // Exactly one seat set to cross the target, the rest set far below it —
     // more than one seat crossing at once escalates to a new target instead
-    // of ending the match — and whatever this manche's own score adds cannot
+    // of ending the match — and whatever this round's own score adds cannot
     // change which side of it any of them land on, so the reset the next
     // vote produces below is provably a reset, not a coincidental 0 landing
     // on a deal that only ever rotates.
@@ -432,7 +432,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,
       true,
-      "the lowered target must be crossed by the manche just played"
+      "the lowered target must be crossed by the round just played"
     );
 
     dealt = waitForDeal(a.socket);

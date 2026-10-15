@@ -26,10 +26,10 @@ export interface Violation {
 
 const NO_VIOLATIONS: Violation[] = [];
 
-/** A run that never finished a manche compared nothing at the moments that matter most. */
-export function progressViolations({ moves, manches }: { moves: number; manches: number }): Violation[] {
-  if (moves > 0 && manches > 0) return NO_VIOLATIONS;
-  return [{ kind: "no-progress", detail: `${moves} rounds of moves and ${manches} manches: the soak agreed about nothing` }];
+/** A run that never finished a round compared nothing at the moments that matter most. */
+export function progressViolations({ moves, rounds }: { moves: number; rounds: number }): Violation[] {
+  if (moves > 0 && rounds > 0) return NO_VIOLATIONS;
+  return [{ kind: "no-progress", detail: `${moves} rounds of moves and ${rounds} rounds: the soak agreed about nothing` }];
 }
 
 /**
@@ -137,7 +137,7 @@ export function checkTurnIsSeated(views: SeatView[]): Violation[] {
 }
 
 /**
- * The cards in play never grow. A manche only ever moves cards out of hands —
+ * The cards in play never grow. A round only ever moves cards out of hands —
  * the one exception, the exchange, moves one card between two of them and so
  * leaves the total alone.
  */

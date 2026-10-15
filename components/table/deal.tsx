@@ -42,7 +42,7 @@ interface Deal {
 }
 
 /**
- * A fresh deal is a manche nobody has opened yet. The first one waits out the
+ * A fresh deal is a round nobody has opened yet. The first one waits out the
  * table's own entry beat (`entryMs`); a later one, dealt onto a table already
  * standing, starts at once.
  */

@@ -198,7 +198,7 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
   // until they did *every* stats write would fail — a far worse outcome than
   // this figure being approximate. It is bounded by the retained history, so a
   // player with more than MAX_HISTORY_ROWS_PER_USER matches inside their streak
-  // would see it undercounted; a match is a full partita, so that is a great
+  // would see it undercounted; a match is a full match, so that is a great
   // many games in a row of days.
   return {
     ...(row ?? emptyStats(userId)),

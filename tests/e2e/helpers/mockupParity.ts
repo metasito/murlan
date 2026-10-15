@@ -253,9 +253,9 @@ const DEAL_PHASE_MS = (STEP_MS - (Motion.duration.reveal % STEP_MS)) % STEP_MS;
 const DEAL_CHECKPOINTS = [48, 160, 656];
 
 const BOMB_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
-const PARTITA_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
+const MATCH_CHECKPOINTS = [1040, 1200, 1440, 1920, 2640];
 /** Not 1920: mid-way through the motes' 0.9–1.8 s lives, each side's count is its own random draw (seed 1255: 81 against 72; 4242: 75 against 72). */
-const MANCHE_CHECKPOINTS = [1040, 1200, 1440, 2400, 2880];
+const ROUND_CHECKPOINTS = [1040, 1200, 1440, 2400, 2880];
 
 /** The table's restored lamp already rests on the seat on move, mid-sway; the chapter's would glide there from yours. */
 const lampFromApp = (seat: string) => ({ lamp }: TraceFrame) => `const reset = resetLamp;
@@ -440,10 +440,10 @@ const MOMENTS: Moment[] = [
   {
     key: "pwin",
     windowMs: 3200,
-    checkpoints: PARTITA_CHECKPOINTS,
-    stripAt: glance(3200, PARTITA_CHECKPOINTS),
+    checkpoints: MATCH_CHECKPOINTS,
+    stripAt: glance(3200, MATCH_CHECKPOINTS),
     mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("pwin", "partitaWon")}
+      ${STING_AS("pwin", "matchWon")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("luan"),
     appTrigger: pwinTable,
@@ -455,7 +455,7 @@ const MOMENTS: Moment[] = [
     // No pool: it is placed off your hand, empty here. The pile under the flare's first 400 ms, as in bomb (#1438); the right band as
     // the table's score panel opens over it (#1267).
     regionAt: { pile: [1440, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
-    onsets: ["sound:partitaWon"],
+    onsets: ["sound:matchWon"],
     // The chapter's `at(500)` runs on the frame at 512.
     actions: [{ atMs: 512, app: botMove }],
     variants: ["skia"],
@@ -463,10 +463,10 @@ const MOMENTS: Moment[] = [
   {
     key: "plose",
     windowMs: 3200,
-    checkpoints: PARTITA_CHECKPOINTS,
-    stripAt: glance(3200, PARTITA_CHECKPOINTS),
+    checkpoints: MATCH_CHECKPOINTS,
+    stripAt: glance(3200, MATCH_CHECKPOINTS),
     mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("plose", "partitaLost")}
+      ${STING_AS("plose", "matchLost")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("you"),
     appTrigger: ploseTable,
@@ -477,7 +477,7 @@ const MOMENTS: Moment[] = [
     regionsAt: [1040, 1200, 1440, 1920, 2400, 2880],
     // No pool: it is placed off your hand, empty once the Ks is down. The right band as the table's score panel opens over it (#1267).
     regionAt: { rightBand: [1040, 1200, 1920, 2400, 2880] },
-    onsets: ["sound:partitaLost"],
+    onsets: ["sound:matchLost"],
     // The chapter's `at(200)` and `at(500)` run on the frames at 208 and 512.
     actions: [
       { atMs: 208, app: (page) => page.locator('[data-hand-state] [data-testid="card-box"]').first().click({ force: true, position: { x: 8, y: 30 } }) },
@@ -488,10 +488,10 @@ const MOMENTS: Moment[] = [
   {
     key: "mwin",
     windowMs: 3200,
-    checkpoints: MANCHE_CHECKPOINTS,
-    stripAt: glance(3200, MANCHE_CHECKPOINTS),
+    checkpoints: ROUND_CHECKPOINTS,
+    stripAt: glance(3200, ROUND_CHECKPOINTS),
     mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("mwin", "mancheWon")}
+      ${STING_AS("mwin", "roundWon")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("besnik"),
     appTrigger: mwinTable,
@@ -505,16 +505,16 @@ const MOMENTS: Moment[] = [
     // The fallback's light is baked once at besnik, so by 2880 the mockup's sway has carried its own off the right band (58.2 against 52.1).
     fallbackRegionsAt: [1040, 1200, 1440, 1920, 2400],
     regionAt: { pile: [1040, 1200, 1920, 2400, 2880], rightBand: [1040, 1200, 1920, 2400, 2880] },
-    onsets: ["sound:mancheWon"],
+    onsets: ["sound:roundWon"],
     actions: [{ atMs: 512, app: botMove }],
   },
   {
     key: "mlose",
     windowMs: 3200,
-    checkpoints: MANCHE_CHECKPOINTS,
-    stripAt: glance(3200, MANCHE_CHECKPOINTS),
+    checkpoints: ROUND_CHECKPOINTS,
+    stripAt: glance(3200, ROUND_CHECKPOINTS),
     mockupScript: `${NO_CAST_ON_CARDS}
-      ${STING_AS("mlose", "mancheLost")}
+      ${STING_AS("mlose", "roundLost")}
       ${LANDS_AT_CONTACT}`,
     fromApp: lampFromApp("gent"),
     appTrigger: mloseTable,
@@ -533,7 +533,7 @@ const MOMENTS: Moment[] = [
       rightBand: [1040, 1200, 1920, 2400, 2880],
     },
     fallbackRegionAt: { pool: [] },
-    onsets: ["sound:mancheLost"],
+    onsets: ["sound:roundLost"],
     actions: [{ atMs: 512, app: botMove }],
   },
   {

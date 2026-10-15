@@ -141,7 +141,7 @@ export async function previewRatedDeltas(
 }
 
 /**
- * Applies one manche's result to the ladder. Drops bots itself by the same
+ * Applies one round's result to the ladder. Drops bots itself by the same
  * `bot:<seat>` convention scoring uses, so no caller has to reverse-map a score
  * key back to a seat. Free-for-all only — a teams placement belongs to the pair.
  *

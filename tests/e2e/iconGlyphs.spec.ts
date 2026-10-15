@@ -119,7 +119,7 @@ test("the replay screen renders the correct transport icon in both its paused an
   // "Manche secca" (single hand) so the first hand ending is the match
   // ending — gameOver.ts writes a replay after any hand with a human seat,
   // and this is the cheapest way to reach one. Not load-bearing for
-  // correctness (a multi-hand "Partita" would also eventually reach
+  // correctness (a multi-hand "Match" would also eventually reach
   // the board's home button and still produce a replay) — only for speed — so a
   // generous budget below covers either outcome rather than trusting this
   // click took effect.

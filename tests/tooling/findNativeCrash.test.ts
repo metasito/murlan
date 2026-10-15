@@ -98,7 +98,7 @@ describe("the command a device run calls", () => {
 
   test("Android: an ANR of our app in the streamed logcat fails the step, printing the ANR line", () => {
     const flood = `10-01 04:54:21.001  6755  6755 W Reanimated: synchronouslyUpdateUIProps failed for tag 412`;
-    const dir = dirWith({ "maestro/run/maestro.log": "Tap on id: btn-prossima-manche COMPLETED", "logcat.txt": [flood, anr(APP)].join("\n") });
+    const dir = dirWith({ "maestro/run/maestro.log": "Tap on id: btn-next-round COMPLETED", "logcat.txt": [flood, anr(APP)].join("\n") });
     const result = run("android", APP, path.join(dir, "maestro"), path.join(dir, "logcat.txt"));
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stdout, /^::error::The app died during this run: com\.murlan\.cardgame was not responding.*E ActivityManager: ANR in com\.murlan\.cardgame.*logcat\.txt/m);

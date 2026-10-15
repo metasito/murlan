@@ -1,4 +1,4 @@
-// tests/native/onlineLeaveConfirm.test.tsx — the in-table Quit between manches
+// tests/native/onlineLeaveConfirm.test.tsx — the in-table Quit between rounds
 // is one tap away from abandoning a scored match, so it asks; the results
 // overlay's Leave, over a decided match, does not. Rendered rather than
 // scanned: the dialog is wired by a prop, and a scan cannot tell a wired one
@@ -104,7 +104,7 @@ jest.mock('@/components/GameTable', () => {
   return {
     GameTable: (props: {
       onQuit: () => void;
-      partitaActions?: { onHome: () => void };
+      matchActions?: { onHome: () => void };
       gameState: { gameOver: boolean };
       matchOver: boolean;
       overlays?: (v: object) => React.ReactNode;
@@ -113,8 +113,8 @@ jest.mock('@/components/GameTable', () => {
         rn.View,
         null,
         react.createElement(rn.Pressable, { testID: 'table-quit', onPress: props.onQuit }),
-        props.partitaActions && props.gameState.gameOver && props.matchOver
-          ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.partitaActions.onHome })
+        props.matchActions && props.gameState.gameOver && props.matchOver
+          ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.matchActions.onHome })
           : null,
         props.overlays ? props.overlays({}) : null
       ),
@@ -141,7 +141,7 @@ async function overlayShown() {
   return view;
 }
 
-/** Comfortably past the partita ending's settled board. */
+/** Comfortably past the match ending's settled board. */
 const GAME_OVER_DELAY_CEILING = 10_000;
 
 describe('leaving between hands, online', () => {

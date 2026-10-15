@@ -19,7 +19,7 @@ export const EVENT_NAMES = [
   "room.joined",
   /** They actually played, rather than sitting down and leaving. */
   "game.firstMoveMade",
-  /** They left mid-manche — distinct from losing one. */
+  /** They left mid-round — distinct from losing one. */
   "game.abandoned",
   /** Any socket closed, server side — see server/socket/socketPresence.ts. */
   "socket.closed",
@@ -51,13 +51,13 @@ export type SocketCloseReason = (typeof SOCKET_CLOSE_REASONS)[number];
 
 /**
  * What may travel with an event. Small and non-identifying on purpose: player
- * count, game mode, manche number, close reason. No usernames, no game state
+ * count, game mode, round number, close reason. No usernames, no game state
  * — this table exists to count steps, not to describe people.
  */
 export interface EventContext {
   playerCount?: number;
   gameMode?: string;
-  manche?: number;
+  round?: number;
   reason?: SocketCloseReason;
   /**
    * Why sendMail returned false: no `RESEND_API_KEY`/`MAIL_FROM_ADDRESS` at

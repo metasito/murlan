@@ -151,7 +151,7 @@ describe("rows the restore path refuses", () => {
     });
     const outcome = async (schemaVersion: number) => {
       stored = { ...pack(), schemaVersion };
-      const result = await rehydrateGame(`version-${schemaVersion}`, null);
+      const result = await rehydrateGame(`version-${schemaVersion}`, null, {} as never);
       await new Promise((r) => setTimeout(r, 20));
       return result;
     };

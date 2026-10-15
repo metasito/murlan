@@ -19,7 +19,7 @@ import { Reading } from "../../lib/tokens.ts";
 const AFK_SECONDS = 9;
 process.env.MURLAN_AFK_TIMEOUT_MS = String(AFK_SECONDS * 1000);
 /**
- * `room:start` deals the match's first manche, whose opener carries the
+ * `room:start` deals the match's first round, whose opener carries the
  * opening announcement's reading time on top of the base window (#830) — the
  * seat this whole file arms and watches.
  */

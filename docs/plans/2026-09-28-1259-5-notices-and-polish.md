@@ -30,7 +30,7 @@ them. Where it cites a symbol, find it by name; line numbers are deliberately ab
 - **D4, #14 each difference:** "the mockup's side for nine; the PASSA button keeps today's
   garnet". The nine: #1 waiting seats dimmed, #2 the plate behind the player name, #4 the
   last-card badge, #5 the beaten combination, #6 PASSO, #7 the lit turn pill, #8 the countdown
-  ring when a bot leads, #9 content off the felt's light centre, #10 the partita ending in a
+  ring when a bot leads, #9 content off the felt's light centre, #10 the match ending in a
   modal. #3 (PASSA) stays garnet, so no task.
 - **D8, device checks:** "the owner runs the bench when asked".
 - **For everything:** "Everything should be aligned to the design system, no bullshit."
@@ -66,9 +66,9 @@ and perfect performance. Only what a player sees goes to the owner, by eye, at a
 - **Q5, the power combination: lead, under the owner's rule.** The mockup's single combination
   mark for every combination; today's power red and sheen go. The bomb's emphasis is #1263's.
 - **Q6, who starts as one notice: open, settled by eye at G1.**
-- **Q7, the rematch question during the last manche: owner, "Drop it".** Only the end board asks
+- **Q7, the rematch question during the last round: owner, "Drop it".** Only the end board asks
   (#1267). Code check: today it cannot simply be removed. Offline, the result screen offers
-  "Nuova partita" only when `tableWantsRematch` (the closing manche's answers) is a majority.
+  "New match" only when `tableWantsRematch` (the closing round's answers) is a majority.
   Online, `rematchRefused` in `server/game/tableHandlers.ts` refuses a rematch vote unless those
   intents said yes. That refusal is a recorded rule (`docs/GAME-RULES.md` § Decisions, "A rematch
   intent after the verdict"). Removing the question therefore changes a game rule and the server,
@@ -525,7 +525,7 @@ stall each fail the gate). Run `tests/tooling/diagnosticsGate.test.ts`,
 - **Old task 12 (content off the light's centre, D4 #9):** plan 3, task 6 (aim at the laid-out
   seats) owns the fix. Handed to it: under 62/21/62 insets the felt's
   light centroid sits within 2 pt of the pile centre.
-- **Old task 13 (the partita board, D4 #10):** #1267 (open) owns it; its own parity registers
+- **Old task 13 (the match board, D4 #10):** #1267 (open) owns it; its own parity registers
   "the board box and the dim" against `BOARD`. Nothing here.
 - **D4 #8 (the countdown ring on a bot-led round):** plan 3, task 4.
 - **Old G4 (an owner gate on the seat-name measurement):** void; Q9 is decided, task 13 applies it.
@@ -547,14 +547,14 @@ stall each fail the gate). Run `tests/tooling/diagnosticsGate.test.ts`,
 - **Task 10 vs #1265:** no conflict; the panel reuses the score pill's plate tokens rather than
   copying them.
 - **The rematch question vs #1267: leave to the ticket.** The owner dropped the question (Q7), but
-  today's partita ending offers a rematch only through it: the result screen shows "Nuova partita"
+  today's match ending offers a rematch only through it: the result screen shows "New match"
   only on a majority of its answers, and `rematchRefused` in `server/game/tableHandlers.ts` refuses
   the online vote otherwise, a rule recorded in `docs/GAME-RULES.md` § Decisions. Removing
   the prompt component alone would leave no rematch at all, so #1267 removes it
   together with the rule change and the board that asks instead. The lead adds this to #1267.
 - **Old task 13 vs #1267 (the board):** leave to the ticket (dropped above).
-- **Task 7 vs #1266 (the manche ends on the table):** no conflict. "Waiting for the others" is
-  shown while the viewer is out and the manche goes on, before #1266's ending starts. If #1266
+- **Task 7 vs #1266 (the round ends on the table):** no conflict. "Waiting for the others" is
+  shown while the viewer is out and the round goes on, before #1266's ending starts. If #1266
   shows its own line there, it uses the family.
 - **Tasks 1–14 vs #1260, #1261, #1262, #1263:** no conflict; cards, motes, the deal and the bomb
   paint no notice. Task 5 drops the power combination's own emphasis (Q5); the bomb's emphasis

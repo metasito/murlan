@@ -85,7 +85,7 @@ for (const phone of PHONES) {
     const s = cardScale(Math.min(phone.width, phone.height));
     const b = await boxes(page);
     if (!b.gioca || !b.passa || !b.topBar) throw new Error("the table never rendered");
-    if (!b.scorePill) throw new Error("a partita's table drew no score pill");
+    if (!b.scorePill) throw new Error("a match's table drew no score pill");
     expect(b.scorePill.x, "the score pill stands right of centre").toBeGreaterThan(phone.width / 2);
     expect(b.scorePill.x + b.scorePill.w, "the score pill stays on screen").toBeLessThanOrEqual(phone.width);
     if (!b.turnChip || !b.pile) throw new Error("the table drew no turn chip or no pile");

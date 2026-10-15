@@ -1,4 +1,4 @@
-// tests/native/onlineMancheEndsOnTable.test.tsx — online, a manche ends on the table: no results
+// tests/native/onlineRoundEndsOnTable.test.tsx — online, a round ends on the table: no results
 // overlay, the score pill holds open with the next-hand vote at its foot, and the next deal closes it.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as particles from '@/components/table/particles';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
-import { mancheEndingOnsets } from '@/lib/game/mancheEnding';
+import { roundEndingOnsets } from '@/lib/game/roundEnding';
 import { t } from '@/lib/i18n';
 
 const mockVoteRematch = jest.fn();
@@ -80,7 +80,7 @@ jest.mock('@/context/onlineGameHooks', () => ({
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType }).default;
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const HIDDEN = { includeHiddenElements: true };
-const { close, settled } = mancheEndingOnsets(4);
+const { close, settled } = roundEndingOnsets(4);
 const screenNow = () => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <OnlineGameScreen />
@@ -88,7 +88,7 @@ const screenNow = () => (
 );
 const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 const pillOpen = () => getAnimatedStyle(screen.getByTestId('score-pill-panel', HIDDEN)).display === 'flex';
-const voteShown = () => getAnimatedStyle(screen.getByTestId('manche-vote', HIDDEN)).display === 'flex';
+const voteShown = () => getAnimatedStyle(screen.getByTestId('round-vote', HIDDEN)).display === 'flex';
 const voteButton = () => screen.queryByRole('button', { name: t('gameOverOverlay.nextHandA11yLabel'), ...HIDDEN });
 const overlayLeave = () => screen.queryByTestId('btn-home', HIDDEN);
 
@@ -105,14 +105,14 @@ afterEach(() => {
   setMotionPreference('system');
 });
 
-describe('a manche ending online', () => {
+describe('a round ending online', () => {
   it('holds the pill open with the vote at its foot, no overlay, until the next deal', async () => {
     const view = await render(screenNow());
     await advance(close + settled);
     expect(overlayLeave()).toBeNull();
     expect(pillOpen()).toBe(true);
     expect(voteShown()).toBe(true);
-    expect(within(screen.getByTestId('manche-vote', HIDDEN)).getAllByText('0/4', HIDDEN).length).toBe(1);
+    expect(within(screen.getByTestId('round-vote', HIDDEN)).getAllByText('0/4', HIDDEN).length).toBe(1);
 
     await fireEvent.press(voteButton()!);
     expect(mockVoteRematch).toHaveBeenCalledTimes(1);
@@ -127,7 +127,7 @@ describe('a manche ending online', () => {
     await act(async () => view.rerender(screenNow()));
     await advance(settled);
     expect(pillOpen()).toBe(false);
-    expect(screen.queryByTestId('manche-vote', HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('round-vote', HIDDEN)).toBeNull();
     await view.unmount();
   });
 
@@ -144,7 +144,7 @@ describe('a manche ending online', () => {
     await view.unmount();
   });
 
-  it("waits for this manche's scores before the pill opens", async () => {
+  it("waits for this round's scores before the pill opens", async () => {
     mockScoresCurrent = false;
     const view = await render(screenNow());
     await advance(close + settled);
@@ -158,7 +158,7 @@ describe('a manche ending online', () => {
     await view.unmount();
   });
 
-  it("decides a teams manche's outcome on its own scores, never the last manche's", async () => {
+  it("decides a teams round's outcome on its own scores, never the last round's", async () => {
     const teamOf = (i: number) => (i === 0 || i === 3 ? 'A' : 'B');
     mockGameState = {
       ...ENDED,
@@ -168,7 +168,7 @@ describe('a manche ending online', () => {
     };
     mockHandScores = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
     mockScoresCurrent = false;
-    const motes = jest.spyOn(particles, 'mancheMotes');
+    const motes = jest.spyOn(particles, 'roundMotes');
     const view = await render(screenNow());
     await advance(close + settled);
     expect(motes).not.toHaveBeenCalled();

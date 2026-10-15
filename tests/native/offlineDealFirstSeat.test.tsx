@@ -22,7 +22,7 @@ const FOUR_PLAYERS = [
   { name: "Gent", type: "ai" as const, personality: "gent" as const },
 ];
 
-/** One manche into a still-running match, already dealt from seat 1. */
+/** One round into a still-running match, already dealt from seat 1. */
 const handJustEndedSave = () =>
   JSON.stringify({
     version: OFFLINE_SAVE_VERSION,

@@ -26,10 +26,10 @@ export interface OfflineSave {
   version: number;
   gameState: GameState;
   match: MatchState;
-  /** Needed to deal the next manche — `initializeRematch` takes the setup, not the state. */
+  /** Needed to deal the next round — `initializeRematch` takes the setup, not the state. */
   players: PlayerSetupConfig[];
   gameMode: GameMode;
-  /** Where the next manche deals from, so the rotation survives a restart. */
+  /** Where the next round deals from, so the rotation survives a restart. */
   dealFirstSeat: number;
 }
 
@@ -86,7 +86,7 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
  * Whether a decoded save is worth offering to resume.
  *
  * The match being unfinished is the whole rule. A finished *hand* is still
- * resumable — that is the table's ending between manches, with the next one
+ * resumable — that is the table's ending between rounds, with the next one
  * still to deal — but a finished match is not: the player saw its final
  * scoreboard and is done, and offering to resume it would lead to a game with
  * nothing left to play.

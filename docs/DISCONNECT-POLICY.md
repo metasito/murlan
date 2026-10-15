@@ -29,10 +29,10 @@ discussion routinely credits it with more than it decided:
 > drop is punished identically to a rage-quit: there is no reliable signal separating them,
 > and guessing would be a new class of unfairness rather than a fix.
 
-> **Naming the winner of a single manche** — **An abandoned seat can never be announced as
+> **Naming the winner of a single round** — **An abandoned seat can never be announced as
 > the winner.** When a `single`-length game ends and the leading seat has been vacated, the
 > announced winner is the best-placed seat still held by a human. If no human seat finished,
-> the manche is announced with no winner.
+> the round is announced with no winner.
 >
 > *Rationale:* The seat keeps the departed player's name when the engine takes it over, so
 > the game was crediting the person who walked out, by name, in front of the people who
@@ -47,7 +47,7 @@ One further row is adjacent and load-bearing:
 
 **So the Decisions table decides exactly three things about a player who leaves:** the hand they left is a
 last-place finish that costs rating and streak; their seat can never be announced as the
-winner of a single manche; and their vacated seat abstains from the rematch gate.
+winner of a single round; and their vacated seat abstains from the rematch gate.
 
 **The Decisions table decides none of these**, though they are often attributed to it:
 
@@ -97,7 +97,7 @@ almost certainly not what anyone chose:
 1. **The departed player's earlier points vanish from the screen.** They are still in
    `game.cumulativeScores` under the userId key — `vacateSeat` never deletes them — but the
    scoreboard row for that seat is built from `scoreKeyForSeat(playerMap, seat)`, which now
-   returns `bot:<seat>`, whose total is `0`. So a player who won three manches and then
+   returns `bot:<seat>`, whose total is `0`. So a player who won three rounds and then
    dropped shows **0** to everyone still at the table. This is the visible half of what #815
    reported, and #815's fix did not address it.
 2. **The score keys support reclaiming a seat.** `reclaimSeat` merges the `bot:<seat>`
@@ -257,7 +257,7 @@ this order.
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Pause the hand** for the grace | Fairest to the dropped player | **The hostage exploit.** Anyone losing a manche pulls their network and freezes three other people for a minute. Every source rejects pausing for this reason. |
+| **Pause the hand** for the grace | Fairest to the dropped player | **The hostage exploit.** Anyone losing a round pulls their network and freezes three other people for a minute. Every source rejects pausing for this reason. |
 | **Continue, auto-pass** (today, 30 s a turn inside a 60 s grace) | Table never stalls; the absent seat plays badly, which is correct | Very small: the absent seat can still be *forced* to open a round with its lowest card, which leaks information. Same leak an AFK human already has. |
 | Continue, **AI plays immediately** | Strongest play continuity | **The upgrade exploit.** If the AI plays better than you, dropping is a move. Catan Universe's failure mode. |
 | Longer grace (3-5 min) | Kinder to mobile networks | The other three wait; and the longer the window, the more the frozen seat's forced minimum moves distort the hand anyway. |
@@ -316,7 +316,7 @@ entire class of "my opponent left and then started playing better" complaint.
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Discard them** (today) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every manche the bot wins is a manche whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the hands played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
+| **Discard them** (today) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every round the bot wins is a round whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the hands played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
 | **Credit the absent player** | Standings sum | **Rewards quitting while ahead**, and lets a decent AI farm rating and match wins for someone who is asleep. Squarely against P2. Poker's withdrawn disconnect protection is this option's history. |
 | **Credit a visibly non-human seat** | Standings sum, leaver gains nothing, the row explains itself | None found. It is also *already* what the code does for a bot that was dealt in from the start, since #815. |
 | **Void the match** | Nobody is cheated | **The escape hatch.** Losing a match becomes a reason to disconnect. Dota 2 refuses exactly this, for exactly this reason. |
@@ -330,7 +330,7 @@ pin (`tests/engine/scoring.test.ts`, test "a vacated seat cannot cross the targe
 winner") is what stops a bot from winning a match, and it stays.
 
 The single narrow exception worth keeping from the void option is LoL's: **a match abandoned
-before any point has been scored — the first manche, nothing on the board — is voided for
+before any point has been scored — the first round, nothing on the board — is voided for
 everyone and rated for nobody.** Nothing has been earned, so nothing is taken away, and there
 is no escape hatch because there is nothing to escape from yet.
 

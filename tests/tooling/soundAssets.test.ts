@@ -146,11 +146,11 @@ const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "combo.mp3": { seconds: 0.628, lufs: -26.8 },
   "deal.mp3": { seconds: 2.958, lufs: -30.3 },
   "exchange.mp3": { seconds: 0.675, lufs: -29.6 },
-  "manche_lost.mp3": { seconds: 0.863, lufs: -23.8 },
-  "manche_neutral.mp3": { seconds: 0.34, lufs: -30.3 },
-  "manche_won.mp3": { seconds: 1.229, lufs: -21.5 },
-  "partita_lost.mp3": { seconds: 1.255, lufs: -21.5 },
-  "partita_won.mp3": { seconds: 2.415, lufs: -18.6 },
+  "round_lost.mp3": { seconds: 0.863, lufs: -23.8 },
+  "round_neutral.mp3": { seconds: 0.34, lufs: -30.3 },
+  "round_won.mp3": { seconds: 1.229, lufs: -21.5 },
+  "match_lost.mp3": { seconds: 1.255, lufs: -21.5 },
+  "match_won.mp3": { seconds: 2.415, lufs: -18.6 },
   "pass.mp3": { seconds: 0.232, lufs: -27.7 },
   "reconnected.mp3": { seconds: 0.706, lufs: -24.9 },
   "play.mp3": { seconds: 0.235, lufs: -26.9 },
@@ -230,17 +230,17 @@ describe("sound assets", () => {
     }
   });
 
-  test("a trick won sits under the manche won", async () => {
+  test("a trick won sits under the round won", async () => {
     const trick = await readMp3("trick_win.mp3");
-    const manche = await readMp3("manche_won.mp3");
+    const round = await readMp3("round_won.mp3");
     assert.ok(
-      trick.lufs < manche.lufs,
-      `trick_win at ${trick.lufs.toFixed(1)} LUFS is not under manche_won at ${manche.lufs.toFixed(1)}`
+      trick.lufs < round.lufs,
+      `trick_win at ${trick.lufs.toFixed(1)} LUFS is not under round_won at ${round.lufs.toFixed(1)}`
     );
   });
 
-  test("a drawn manche's sting sits well under both verdicts (D6)", async () => {
-    const [neutral, won, lost] = await Promise.all(["manche_neutral.mp3", "manche_won.mp3", "manche_lost.mp3"].map(readMp3));
-    assert.ok(neutral.lufs < won.lufs - 3 && neutral.lufs < lost.lufs - 3, `manche_neutral at ${neutral.lufs.toFixed(1)} LUFS is not under both verdicts`);
+  test("a drawn round's sting sits well under both verdicts (D6)", async () => {
+    const [neutral, won, lost] = await Promise.all(["round_neutral.mp3", "round_won.mp3", "round_lost.mp3"].map(readMp3));
+    assert.ok(neutral.lufs < won.lufs - 3 && neutral.lufs < lost.lufs - 3, `round_neutral at ${neutral.lufs.toFixed(1)} LUFS is not under both verdicts`);
   });
 });

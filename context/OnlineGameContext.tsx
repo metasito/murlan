@@ -50,7 +50,7 @@ export interface RematchVoteState {
 
 /** The running match, as the server reports it. */
 export interface OnlineMatchState extends MatchVerdict {
-  /** Manches decided on this match so far. */
+  /** Rounds decided on this match so far. */
   handsPlayed: number;
   /** Once the match is over, whether a rematch may follow: false when it closed unscored, by vote or voided. */
   continues: boolean;
@@ -97,9 +97,9 @@ interface OnlineGameContextValue {
   /** How many times the server has passed the viewer's turn for them. */
   autoPassed: number;
   cumulativeScores: Record<string, number>;
-  /** What the manche just played awarded, by engine player id. */
+  /** What the round just played awarded, by engine player id. */
   handScores: Record<string, number>;
-  /** Whether `game:over` has scored the manche `gameState` shows: its `game:state` arrives first. */
+  /** Whether `game:over` has scored the round `gameState` shows: its `game:state` arrives first. */
   handScoresCurrent: boolean;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
@@ -596,10 +596,13 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         announce(buildExchangeAnnounce(state.players, state.exchangePhase!));
       }
 
+      // A finished table re-sent (a reclaimed seat, say) comes without the
+      // tally, which the server still holds.
+      const sameResults = state.gameOver && prevGameStateRef.current?.gameOver === true;
       prevGameStateRef.current = state;
       gameStateRef.current = state;
       setGameState(state);
-      setRematchVoteState(null);
+      if (!sameResults) setRematchVoteState(null);
       if (!state.gameOver) setHandScoresCurrent(false);
 
       // The game genuinely ending is the only reason to forget the room while
@@ -658,7 +661,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     }) => {
       setMatchState({ ...INITIAL_MATCH, target, length, handsPlayed: handsPlayed ?? 0 });
       setCumulativeScores(scores);
-      // No manche has been played on this match yet, so nothing has been
+      // No round has been played on this match yet, so nothing has been
       // awarded — carrying the last match's deltas over would print them
       // beside a fresh scoreboard.
       setHandScores({});
@@ -725,7 +728,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
     // A vacated seat handed to a bot — the table survives, so this is a
     // notice and nothing more. It must stay separate from game:player_left,
-    // which drives the blocking "Partita interrotta" teardown and would eject
+    // which drives the blocking "Match interrupted" teardown and would eject
     // every remaining human from a game the server is still keeping alive.
     const onSeatBotTakeover = (
       payload: ServerPayload & { userId: string; username: string; seatIndex: number }

@@ -1,6 +1,6 @@
 // tests/native/turnTimerAnnouncement.test.tsx — a live region speaks every time
 // its text changes, and this one's text was a number that changed once a second:
-// thirty interruptions a turn, every turn of a manche, over the banner, the seat
+// thirty interruptions a turn, every turn of a round, over the banner, the seat
 // state and the player's own hand. So the count is what is pinned here. Nothing
 // renders differently either way, which is why no other test can see it.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';

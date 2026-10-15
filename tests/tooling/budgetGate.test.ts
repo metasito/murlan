@@ -5,7 +5,7 @@ import path from "node:path";
 import { budgetReport, overBudget, run } from "../../tools/ci/budget-gate.mjs";
 
 const env = { GITHUB_REPOSITORY: "o/r", PR: "7", GITHUB_RUN_ID: "41" };
-const native = "tests/native/mancheOutcomeOnTheFelt.test.tsx";
+const native = "tests/native/roundOutcomeOnTheFelt.test.tsx";
 const lists = { "over-budget-native-1": [{ file: native, seconds: 32.9, budget: 15 }] };
 type PrFile = { filename: string; status: string; patch?: string };
 
@@ -39,7 +39,7 @@ const gate = async (gh: (args: string[]) => string, vars: Record<string, string 
 test("a touched test file over its budget reddens the run, naming it", async () => {
   const { code, said } = await gate(fakeGh([{ filename: native, status: "modified" }]));
   assert.equal(code, 1);
-  assert.match(said, /mancheOutcomeOnTheFelt\.test\.tsx: 32\.9s against a budget of 15s/);
+  assert.match(said, /roundOutcomeOnTheFelt\.test\.tsx: 32\.9s against a budget of 15s/);
 });
 
 test("no touched file over budget, and no timings change, is a pass", async () => {
@@ -97,7 +97,7 @@ describe("overBudget: which run lists, against which changed files", () => {
   test("names a touched file over its budget, and only that one", () => {
     const found = read(listsGh(both, [{ filename: native, status: "modified" }, { filename: "lib/x.ts", status: "modified" }]));
     assert.deepEqual(found.files, [native]);
-    assert.match(budgetReport(found), /mancheOutcomeOnTheFelt\.test\.tsx.*32\.9s.*15s/);
+    assert.match(budgetReport(found), /roundOutcomeOnTheFelt\.test\.tsx.*32\.9s.*15s/);
     assert.doesNotMatch(budgetReport(found), /tableProportions/);
   });
 

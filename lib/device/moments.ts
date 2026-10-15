@@ -7,8 +7,8 @@ type Plain ="trickWon" | "trickStart" | "select" | "deselect" | "reject" | "give
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
-  | { kind: "mancheOver"; outcome: Outcome }
-  | { kind: "partitaOver"; outcome: Outcome }
+  | { kind: "roundOver"; outcome: Outcome }
+  | { kind: "matchOver"; outcome: Outcome }
   | { [K in Plain]: { kind: K } }[Plain];
 export type MomentKind = Moment["kind"];
 export type LandingKind = "play" | "combo" | "bomb";
@@ -42,7 +42,7 @@ export interface Played {
 }
 
 export const PILE_UP_WINDOW_MS = 120;
-const PARTITA_LEAD_MS = 300;
+const MATCH_LEAD_MS = 300;
 
 export const LANDING_PULSES: Record<LandingKind, readonly PulseStep[]> = {
   play: [{ strength: "light", offsetMs: 0 }],
@@ -60,34 +60,34 @@ export function landingKind(m: { cards: number; bomb: boolean }): LandingKind {
   return m.bomb ? "bomb" : isCombo(m.cards) ? "combo" : "play";
 }
 
-/** A landing that closes the partita pulses nothing of its own: `partitaOver`'s lead tap is on its contact. */
-export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean; closesPartita?: boolean }): readonly PulseStep[] {
-  return !m.closesPartita && (m.bomb || m.mine) ? LANDING_PULSES[landingKind(m)] : [];
+/** A landing that closes the match pulses nothing of its own: `matchOver`'s lead tap is on its contact. */
+export function landingPulsesFor(m: { cards: number; bomb: boolean; mine: boolean; closesMatch?: boolean }): readonly PulseStep[] {
+  return !m.closesMatch && (m.bomb || m.mine) ? LANDING_PULSES[landingKind(m)] : [];
 }
 
 const tap = (t: TapHaptic): Haptic[] => [{ tap: t, atMs: 0 }];
 const sfx = (sound: SoundId, haptics: Haptic[] = []): Cue => ({ sound, bus: "sfx", haptics });
 
 export const MOMENTS = {
-  partitaOver: {
+  matchOver: {
     priority: 100,
     cue: (m) => ({
-      sound: m.outcome === "won" ? "partitaWon" : m.outcome === "lost" ? "partitaLost" : "mancheNeutral",
+      sound: m.outcome === "won" ? "matchWon" : m.outcome === "lost" ? "matchLost" : "roundNeutral",
       bus: "sting",
       haptics: [
-        { tap: "medium", atMs: -PARTITA_LEAD_MS },
+        { tap: "medium", atMs: -MATCH_LEAD_MS },
         ...(m.outcome === "won" ? tap("success") : m.outcome === "lost" ? tap("warn") : []),
       ],
     }),
   },
-  mancheOver: {
+  roundOver: {
     priority: 95,
     cue: (m) =>
       m.outcome === "won"
-        ? { sound: "mancheWon", bus: "sting", haptics: tap("success") }
+        ? { sound: "roundWon", bus: "sting", haptics: tap("success") }
         : m.outcome === "lost"
-          ? { sound: "mancheLost", bus: "sting", haptics: tap("warn") }
-          : { sound: "mancheNeutral", bus: "sting", haptics: [] },
+          ? { sound: "roundLost", bus: "sting", haptics: tap("warn") }
+          : { sound: "roundNeutral", bus: "sting", haptics: [] },
   },
   trickWon: { priority: 80, cue: () => sfx("trick_win") },
   landing: {

@@ -120,7 +120,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       for (const c of clients) c.socket.close();
     }
   });
-  test("a one-manche teams game is won by the pair, not by the seat that went out", async () => {
+  test("a one-round teams game is won by the pair, not by the seat that went out", async () => {
     const clients: { socket: Socket; user: { id: string }; cookie: string }[] = [];
     for (const name of ["single_a1", "single_b1", "single_a2", "single_b2"]) {
       clients.push(await connectAs(server, name));
@@ -149,7 +149,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
         matchOver: boolean;
         matchWinnerIds: string[];
       };
-      assert.equal(payload.matchOver, true, "one manche settles a single-manche match");
+      assert.equal(payload.matchOver, true, "one round settles a single-round match");
 
       const teamPoints: Record<string, number> = {};
       payload.rankings.forEach((id, place) => {
@@ -164,7 +164,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       assert.deepEqual(
         [...payload.matchWinnerIds].sort(),
         expected,
-        "the pair with more points takes the manche; a 3-3 names both pairs"
+        "the team with more points takes the round; a 3-3 names both teams"
       );
     } finally {
       for (const c of clients) c.socket.close();

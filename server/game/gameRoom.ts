@@ -18,7 +18,7 @@ export interface OnlineGameState {
   roomId: string;
   /** The room's six-character join code, as `rooms.code` holds it. */
   joinCode: string;
-  /** Ready gate for the next manche of the running match, by userId. */
+  /** Ready gate for the next round of the running match, by userId. */
   rematchVotes: Set<string>;
   /** userId (or `bot:<seat>`) -> cumulative match points. */
   cumulativeScores: Record<string, number>;
@@ -26,7 +26,7 @@ export interface OnlineGameState {
   maxPlayers: number;
   matchTarget: number;
   matchLength: MatchLength;
-  /** Manches decided on this match so far. Zero on the one being dealt. */
+  /** Rounds decided on this match so far. Zero on the one being dealt. */
   handsPlayed: number;
   matchOver: boolean;
   /**
@@ -47,7 +47,7 @@ export interface OnlineGameState {
    * forgotten them by then and a seat missing from it scores as `bot:<seat>`,
    * which every stats and ladder write drops — so this is the only thing still
    * tying the seat to a person. Cleared wherever a new hand deals: the forfeit
-   * is recorded once, not in every remaining manche.
+   * is recorded once, not in every remaining round.
    *
    * Persisted in the game_state envelope's `seats` block: which instance owns
    * the table moves at any moment (ADR-0003), and the one taking it over reads
@@ -74,7 +74,7 @@ export interface OnlineGameState {
    * ran out from an account that never sat here — and answers both the same.
    *
    * Cleared only by a reclaim, and never by a new hand: the whole point is to
-   * still recognise them manches later. Persisted in the `seats` block, like
+   * still recognise them rounds later. Persisted in the `seats` block, like
    * `abandonedSeats` — losing it falls back to UNAUTHORIZED on a rejoin.
    */
   releasedSeats: Set<string>;
@@ -94,7 +94,7 @@ export interface OnlineGameState {
   /**
    * Seats currently held to the minimum legal move because their human left
    * mid-hand — the takeover plays weakly only for the hand it happened on
-   * (docs/GAME-RULES.md § Decisions). Cleared at every `dealManche`, so a seat vacated
+   * (docs/GAME-RULES.md § Decisions). Cleared at every `dealRound`, so a seat vacated
    * between hands is never weak: there is no hand in progress to protect, and
    * it plays properly from its first turn as a bot.
    *
@@ -118,8 +118,8 @@ export interface OnlineGameState {
    */
   turnDeadlineMs?: number;
   /**
-   * The seat the next manche deals from. The two extra cards of a 54-card deal
-   * land on it and its neighbour, so it advances every manche — seat 0 is always
+   * The seat the next round deals from. The two extra cards of a 54-card deal
+   * land on it and its neighbour, so it advances every round — seat 0 is always
    * the host, and a fixed origin would favour the host's half all match.
    */
   dealFirstSeat: number;
@@ -141,7 +141,7 @@ export interface OnlineGameState {
    * The `game:over` this hand's `handleGameOver` broadcast to the room, kept
    * so a client that was away for it can be sent the same payload on rejoin
    * instead of being left with an empty score map. Cleared wherever
-   * `dealManche` starts the next hand; undefined for a table rehydrated after
+   * `dealRound` starts the next hand; undefined for a table rehydrated after
    * a restart, like the other memory-only fields above.
    */
   lastGameOverPayload?: GameOverPayload;

@@ -30,7 +30,7 @@ Record the result next to each line: ✅, or what happened.
 
 ## A full match, uninterrupted
 - [ ] Host creates a room, the other three join by code.
-- [ ] Play a whole match to the target. Between manches, watch the card exchange happen.
+- [ ] Play a whole match to the target. Between rounds, watch the card exchange happen.
 - [ ] Check the scoreboard names are right — not `player_0`.
 - [ ] At the end, everyone votes rematch. It starts a new match.
 - [ ] Open the finished match from your profile's history and press play on the replay.
@@ -41,7 +41,7 @@ Record the result next to each line: ✅, or what happened.
 - [ ] The other three: does the table keep playing with a bot in that seat?
 - [ ] Is there a visible marker on that seat for the rest of the match — not just a banner
       that disappears?
-- [ ] With the bot still holding that seat, reach the card exchange between manches. Does
+- [ ] With the bot still holding that seat, reach the card exchange between rounds. Does
       it hand back a card on its own, without the hand stalling?
 - [ ] Does the match finish, and is the seat that left recorded as last place?
 
@@ -83,8 +83,8 @@ Record the result next to each line: ✅, or what happened.
       (`select`), playing one (`play`) and several (`combo`), passing (`pass`), a
       bomb (`bomb`), the deal (`deal`), your turn arriving (`turn`), the clock
       running out (`clock_running_out`), a trick starting (`trick_start`) and won
-      (`trick_win`), the exchange (`exchange`), and the manche won (`manche_won`)
-      or lost (`manche_lost`)?
+      (`trick_win`), the exchange (`exchange`), and the round won (`round_won`)
+      or lost (`round_lost`)?
 
 ## What broke
 

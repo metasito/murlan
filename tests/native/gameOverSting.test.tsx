@@ -115,7 +115,7 @@ const drawnTeamsTable = (viewerSeat: number) => (
 
 // Team A (player_0 + player_3) holds 1st and 3rd — 3+1 = 4 — against team B
 // (player_1 + player_2) holding 2nd and 4th — 2+0 = 2. Not a draw: team A
-// wins the manche, even though player_3 personally placed third.
+// wins the round, even though player_3 personally placed third.
 const WON_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_3', 'player_2'];
 const WON_TEAMS_SCORES = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
 const wonTeamsTable = (viewerSeat: number) => (
@@ -165,7 +165,7 @@ describe('the end-of-hand sting', () => {
     const t0 = performance.now();
     const r = await render(table(ID_RANKINGS, 0));
     await advance();
-    expect(startsOf('mancheWon')).toEqual([expect.closeTo(ctxAt(t0 + STING_MS), 2)]);
+    expect(startsOf('roundWon')).toEqual([expect.closeTo(ctxAt(t0 + STING_MS), 2)]);
     await r.unmount();
   });
 
@@ -173,33 +173,33 @@ describe('the end-of-hand sting', () => {
     const r = await render(table(ID_RANKINGS, 0));
     await advance();
     await r.unmount();
-    expect(startsOf('mancheWon')).toHaveLength(1);
+    expect(startsOf('roundWon')).toHaveLength(1);
   });
 
-  it('a finished partita sounds its own sting, with the haptic leading by 300 ms', async () => {
+  it('a finished match sounds its own sting, with the haptic leading by 300 ms', async () => {
     const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
     await advance(300);
-    expect(sounds()).toContain('partitaWon');
-    expect(sounds()).not.toContain('mancheWon');
+    expect(sounds()).toContain('matchWon');
+    expect(sounds()).not.toContain('roundWon');
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
     await r.unmount();
   });
 
-  it('under reduced motion a finished partita still leads with its haptic, the sting 300 ms after', async () => {
+  it('under reduced motion a finished match still leads with its haptic, the sting 300 ms after', async () => {
     mockReduceMotion = true;
     const t0 = performance.now();
     const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
     await advance(300);
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
-    expect(startsOf('partitaWon')).toEqual([expect.closeTo(ctxAt(t0 + 300), 2)]);
+    expect(startsOf('matchWon')).toEqual([expect.closeTo(ctxAt(t0 + 300), 2)]);
     await r.unmount();
   });
 
   it('plays the win sting for the seat that placed first', async () => {
     const r = await render(table(ID_RANKINGS, 0));
     await settle();
-    expect(sounds()).toContain('mancheWon');
-    expect(sounds()).not.toContain('mancheLost');
+    expect(sounds()).toContain('roundWon');
+    expect(sounds()).not.toContain('roundLost');
     expect(haptics()).toContain('notificationSuccess');
     await r.unmount();
   });
@@ -207,8 +207,8 @@ describe('the end-of-hand sting', () => {
   it('plays the lose sting for the seat that placed last', async () => {
     const r = await render(table(ID_RANKINGS, 1));
     await settle();
-    expect(sounds()).toContain('mancheLost');
-    expect(sounds()).not.toContain('mancheWon');
+    expect(sounds()).toContain('roundLost');
+    expect(sounds()).not.toContain('roundWon');
     await r.unmount();
   });
 
@@ -222,35 +222,35 @@ describe('the end-of-hand sting', () => {
   it('stays silent when rankings hold display names, which is not a placement', async () => {
     const r = await render(table(['Ana', 'Besi'], 0));
     await settle();
-    expect(sounds()).not.toContain('mancheWon');
-    expect(sounds()).not.toContain('mancheLost');
+    expect(sounds()).not.toContain('roundWon');
+    expect(sounds()).not.toContain('roundLost');
     await r.unmount();
   });
 
-  it('sounds the neutral sting for a 3-3 drawn teams manche, with no haptic, even for the seat that placed first', async () => {
+  it('sounds the neutral sting for a 3-3 drawn teams round, with no haptic, even for the seat that placed first', async () => {
     const r = await render(drawnTeamsTable(0));
     await settle();
-    expect(sounds().filter((s) => s !== 'deal')).toEqual(['mancheNeutral']);
+    expect(sounds().filter((s) => s !== 'deal')).toEqual(['roundNeutral']);
     expect(haptics()).toEqual([]);
     await r.unmount();
   });
 
-  it('sounds the neutral sting for a 3-3 drawn teams manche, with no haptic, for the seat that placed last too', async () => {
+  it('sounds the neutral sting for a 3-3 drawn teams round, with no haptic, for the seat that placed last too', async () => {
     const r = await render(drawnTeamsTable(3));
     await settle();
-    expect(sounds().filter((s) => s !== 'deal')).toEqual(['mancheNeutral']);
+    expect(sounds().filter((s) => s !== 'deal')).toEqual(['roundNeutral']);
     expect(haptics()).toEqual([]);
     await r.unmount();
   });
 
   // player_3 (seat 3) placed third individually, but its team took the
-  // manche — the win sting now credits the whole team, not only whichever
+  // round — the win sting now credits the whole team, not only whichever
   // partner happened to go out first.
   it('credits the win sting to a third-placed partner on the winning team', async () => {
     const r = await render(wonTeamsTable(3));
     await settle();
-    expect(sounds()).toContain('mancheWon');
-    expect(sounds()).not.toContain('mancheLost');
+    expect(sounds()).toContain('roundWon');
+    expect(sounds()).not.toContain('roundLost');
     expect(haptics()).toContain('notificationSuccess');
     await r.unmount();
   });
@@ -261,8 +261,8 @@ describe('the end-of-hand sting', () => {
   it('credits the lose sting to a second-placed partner on the losing team', async () => {
     const r = await render(wonTeamsTable(1));
     await settle();
-    expect(sounds()).toContain('mancheLost');
-    expect(sounds()).not.toContain('mancheWon');
+    expect(sounds()).toContain('roundLost');
+    expect(sounds()).not.toContain('roundWon');
     await r.unmount();
   });
 
@@ -335,14 +335,14 @@ describe('the end-of-hand sting', () => {
     // but the scores that decide won/lost/drawn haven't arrived yet.
     await act(async () => r.rerender(stateArrived({})));
     await settle();
-    expect(sounds()).not.toContain('mancheWon');
-    expect(sounds()).not.toContain('mancheLost');
+    expect(sounds()).not.toContain('roundWon');
+    expect(sounds()).not.toContain('roundLost');
 
     // `game:over`: the real scores land, same gameOver, same rankings.
     await act(async () => r.rerender(stateArrived(WON_TEAMS_SCORES)));
     await settle();
-    expect(sounds()).toContain('mancheWon');
-    expect(sounds()).not.toContain('mancheLost');
+    expect(sounds()).toContain('roundWon');
+    expect(sounds()).not.toContain('roundLost');
 
     await r.unmount();
   });

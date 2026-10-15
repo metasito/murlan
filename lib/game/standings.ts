@@ -1,4 +1,4 @@
-// The order an end-of-manche scoreboard is listed in.
+// The order an end-of-round scoreboard is listed in.
 //
 // Free of runtime `@/` imports, so `node --test` can load it — docs/agents/checks.md,
 // "Node's TypeScript loader".
@@ -10,19 +10,19 @@
 export interface StandingRow {
   /** Running match points — what the standings are ranked by. */
   total: number;
-  /** What the manche just played earned this row. */
+  /** What the round just played earned this row. */
   points: number;
-  /** Placement in the manche just played, best first. */
+  /** Placement in the round just played, best first. */
   finishedAt: number;
 }
 
 /**
- * Standings, best first: match points descending, a tie broken by the manche
+ * Standings, best first: match points descending, a tie broken by the round
  * just played.
  *
  * Presentation order, not a rule — who actually wins the match is decided by
  * `resolveMatchFor` in lib/game/gameEngine.ts (docs/GAME-RULES.md §12). This is the one
- * place the *listing* order is decided, so the two end-of-manche screens
+ * place the *listing* order is decided, so the two end-of-round screens
  * cannot rank the same table differently.
  */
 export function standings<T extends StandingRow>(rows: readonly T[]): T[] {

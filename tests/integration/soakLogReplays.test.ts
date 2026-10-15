@@ -20,7 +20,7 @@ const CAPTURED: SoakLogEntry[] = [
   {
     at: 0,
     kind: "deal",
-    manche: 0,
+    round: 0,
     hands: [
       ["3_hearts", "4_clubs", "5_clubs", "7_diamonds", "7_hearts", "8_clubs", "10_clubs", "10_hearts", "J_diamonds", "J_spades", "K_hearts", "K_spades", "A_spades", "joker_bw"],
       ["3_spades", "4_diamonds", "4_spades", "6_clubs", "6_hearts", "7_clubs", "7_spades", "8_diamonds", "8_spades", "10_spades", "J_clubs", "Q_diamonds", "2_diamonds", "joker_colored"],
