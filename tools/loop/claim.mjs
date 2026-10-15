@@ -11,6 +11,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WORKTREE_DIR } from "./loop-derive.mjs";
+import { ghTracker } from "./tracker.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 const SLUG_MAX = 48;
@@ -35,8 +36,8 @@ export function claimSteps(number, title, noteFile = "", base = "origin/main") {
   const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
   return [
-    { name: "label", file: "gh", args: ["issue", "edit", String(number), "--add-label", "in-progress"] },
-    { name: "comment", file: "gh", args: ["issue", "comment", String(number), "--body-file", noteFile] },
+    { name: "label", tracker: (t) => t.claim(number) },
+    { name: "comment", tracker: (t) => t.comment(number, noteFile) },
     { name: "fetch", file: "git", args: ["fetch", "origin", "--prune", "--quiet"] },
     {
       name: "worktree",
@@ -83,7 +84,12 @@ export function baseOf(branch, run) {
   throw new Error(`${branch} has diverged from origin/${branch}: resetting either side would lose commits`);
 }
 
-export function claim(number, title, run = (file, args) => (file === "gh" ? gh(args) : git()(args))) {
+export function claim(
+  number,
+  title,
+  run = (file, args) => (file === "gh" ? gh(args) : git()(args)),
+  tracker = ghTracker((args) => run("gh", args)),
+) {
   const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
   const noteFile = join(mkdtempSync(join(tmpdir(), "claim-")), "claim.md");
@@ -93,7 +99,8 @@ export function claim(number, title, run = (file, args) => (file === "gh" ? gh(a
     const args =
       step.name === "worktree" ? claimSteps(number, title, noteFile, baseOf(branch, run)).at(-1).args : step.args;
     try {
-      run(step.file, args);
+      if (step.tracker) step.tracker(tracker);
+      else run(step.file, args);
     } catch (err) {
       // Only the path being taken means a peer holds this ticket. A stale local branch is a
       // different failure, and reporting it as a peer leaves `in-progress` on for ever.

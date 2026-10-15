@@ -1,7 +1,9 @@
 // tools/loop/tests/claim.test.ts
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { slugOf, claimSteps, claim, failedClaim, baseOf } from "../claim.mjs";
+import { fakeTracker } from "../tracker.mjs";
 
 test("a slug is lowercase, hyphenated and short enough to be a branch", () => {
   assert.equal(slugOf("Fix the A11y veil's re-announce"), "fix-the-a11y-veil-s-re-announce");
@@ -14,13 +16,18 @@ test("the worktree is taken last, because taking it is what wins the ticket", ()
 });
 
 test("the fetch prunes, so a merged branch's tracking ref does not outlive it", () => {
-  assert.ok(claimSteps(42, "Some ticket").find((s) => s.name === "fetch")?.args.includes("--prune"));
+  assert.ok(claimSteps(42, "Some ticket").find((s) => s.name === "fetch")?.args?.includes("--prune"));
 });
 
-test("the claim comment goes through a file, never an inline body", () => {
-  const comment = claimSteps(42, "Some ticket").find((s) => s.name === "comment");
-  assert.ok(comment?.args.includes("--body-file"));
-  assert.ok(!comment?.args.includes("--body"));
+test("a claim labels the issue and comments the branch in the shape a peer's claim is matched on", () => {
+  const tracker = fakeTracker({ 42: { labels: ["ready-for-agent"] } });
+  claim(42, "Some ticket", (_file: string, args: string[]) => {
+    if (args[0] === "rev-parse") throw new Error("not a ref");
+    return "";
+  }, tracker);
+  const { labels, comments } = tracker.held(42);
+  assert.deepEqual(labels, ["in-progress", "ready-for-agent"]);
+  assert.deepEqual(comments.map((f: string) => readFileSync(f, "utf8")), ["Claimed by `agent/42-some-ticket`.\n"]);
 });
 
 test("a branch already on origin is reset to, never cut fresh from main", () => {
@@ -91,16 +98,15 @@ test("a branch git refuses to cut is an error, never a peer holding the worktree
 // A worktree already standing is the only evidence that separates a live peer from a dead run, and
 // #1043 was parked because a comment-reading check could not tell them apart.
 test("a worktree already standing loses the ticket, and keeps the holder's label", () => {
-  const asked: string[][] = [];
-  const out = claim(42, "Some ticket", (file: string, args: string[]) => {
-    asked.push([file, ...args]);
+  const tracker = fakeTracker({ 42: { labels: ["in-progress"] } });
+  const out = claim(42, "Some ticket", (_file: string, args: string[]) => {
     if (args[0] === "worktree") throw gitFailure(args, "fatal: '.worktrees/agent-42' already exists");
     if (args[0] === "rev-parse") throw new Error("not a ref");
     return "";
-  });
+  }, tracker);
   assert.equal(out.won, false);
   assert.match(String(out.why), /already standing/);
-  assert.equal(asked.some((a) => a.includes("--remove-label")), false);
+  assert.deepEqual(tracker.held(42).labels, ["in-progress"]);
 });
 
 test("a stale claim comment from a dead run does not lose the ticket", () => {

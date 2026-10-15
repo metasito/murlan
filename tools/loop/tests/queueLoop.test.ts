@@ -32,6 +32,7 @@ import {
   contextFor,
 } from "../queue-loop.mjs";
 import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
+import { fakeTracker } from "../tracker.mjs";
 
 /** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
 const stubIo = () => ({
@@ -1022,46 +1023,35 @@ describe("runTicket", () => {
 });
 
 describe("repark", () => {
-  /** A `gh` that answers `issue view` with this issue and records every other call. */
-  const tracker = (state: string, labels: string[]) => {
-    const edits: string[] = [];
-    return {
-      edits,
-      run: (_file: string, args: string[]) => {
-        if (args[1] === "view") return JSON.stringify({ state, labels: labels.map((name) => ({ name })) });
-        edits.push(args.slice(0, 2).join(" "));
-        return "";
-      },
-    };
-  };
   const noted = () => true;
 
   test("applies the owed label while the issue is open and still claimed", () => {
-    const gh = tracker("OPEN", ["in-progress", "ready-for-agent"]);
-    assert.deepEqual(repark(42, ["label"], gh.run, noted).failed, []);
-    assert.deepEqual(gh.edits, ["issue edit"]);
+    const tracker = fakeTracker({ 42: { labels: ["in-progress", "ready-for-agent"] } });
+    assert.deepEqual(repark(42, ["label"], tracker, noted).failed, []);
+    assert.deepEqual(tracker.held(42).labels, ["ready-for-human"]);
   });
 
   test("undoes nothing the owner did since: a requeued or closed issue closes the debt untouched", () => {
     for (const [state, labels] of [["OPEN", ["ready-for-agent"]], ["CLOSED", ["in-progress"]]] as const) {
-      const gh = tracker(state, [...labels]);
-      const r = repark(42, ["label", "comment"], gh.run, noted);
-      assert.deepEqual(gh.edits, [], `${state} ${labels}`);
+      const tracker = fakeTracker({ 42: { state, labels: [...labels] } });
+      const r = repark(42, ["label", "comment"], tracker, noted);
+      assert.deepEqual(tracker.held(42), { state, labels: [...labels], comments: [] }, `${state} ${labels}`);
       assert.deepEqual(r.failed, []);
       assert.match(String(r.why), /owner already acted/);
     }
   });
 
   test("a park note the pruner removed closes the comment's debt instead of failing every pass", () => {
-    const gh = tracker("OPEN", ["ready-for-human"]);
-    const r = repark(42, ["comment"], gh.run, () => false);
-    assert.deepEqual([gh.edits, r.failed], [[], []]);
+    const tracker = fakeTracker({ 42: { labels: ["ready-for-human"] } });
+    const r = repark(42, ["comment"], tracker, () => false);
+    assert.deepEqual([tracker.held(42).comments, r.failed], [[], []]);
     assert.match(String(r.why), /park note .* pruned/);
   });
 
   test("a tracker it cannot read leaves every step owed", () => {
-    const r = repark(42, ["label"], () => { throw new Error("error connecting to api.github.com"); }, noted);
-    assert.deepEqual(r.failed, ["label"]);
+    const tracker = fakeTracker({ 42: { labels: ["in-progress"] } }, { fail: ["issue"] });
+    assert.deepEqual(repark(42, ["label"], tracker, noted).failed, ["label"]);
+    assert.deepEqual(tracker.held(42).labels, ["in-progress"]);
   });
 });
 
@@ -1116,33 +1106,16 @@ describe("park", () => {
   });
 
   test("takes ready-for-agent off as well as in-progress", () => {
-    const { calls, run } = recorder();
-    park(42, opts({ run, cwd: null }));
-    const edit = calls.find((c) => c.args[0] === "issue" && c.args[1] === "edit");
-    assert.ok(edit, "park edits the issue's labels");
-    // Asserted as the whole argument list, not with `some(includes)`: the defect was a label that
-    // was never removed, and a positive-only assertion cannot see an absent argument.
-    assert.deepEqual([edit!.file, ...edit!.args], [
-      "gh",
-      "issue",
-      "edit",
-      "42",
-      "--remove-label",
-      "in-progress",
-      "--remove-label",
-      "ready-for-agent",
-      "--add-label",
-      "ready-for-human",
-    ]);
+    const tracker = fakeTracker({ 42: { labels: ["in-progress", "ready-for-agent", "size:S"] } });
+    park(42, opts({ run: recorder().run, tracker, cwd: null }));
+    assert.deepEqual(tracker.held(42).labels, ["ready-for-human", "size:S"]);
   });
 
-  test("the reason goes on the issue through a file, never an inline body", () => {
-    const { calls, run } = recorder();
-    park(953, opts({ run }));
-    const comment = calls.find((c) => c.args.includes("comment"));
-    assert.ok(comment, "park must comment on the issue");
-    assert.ok(comment!.args.includes("--body-file"), "an inline --body is word-split and mojibaked");
-    assert.ok(!comment!.args.includes("--body"), "an inline body loses the backticks a peer reads");
+  test("the reason goes on the issue as the park note it wrote", () => {
+    const tracker = fakeTracker();
+    let wrote = "";
+    park(953, opts({ run: recorder().run, tracker, write: (p: string) => void (wrote = p) }));
+    assert.deepEqual(tracker.held(953).comments, [wrote]);
   });
 
   test("removes the worktree only through the named script, never git worktree remove", () => {
@@ -1181,9 +1154,9 @@ describe("park", () => {
   });
 
   test("still takes the label off when the comment fails", () => {
-    const { calls, run } = recorder("comment");
-    const out = park(42, opts({ run, cwd: null }));
-    assert.ok(calls.some((c) => c.args[1] === "edit"), "the label edit happened");
+    const tracker = fakeTracker({ 42: { labels: ["in-progress"] } }, { fail: ["comment"] });
+    const out = park(42, opts({ run: recorder().run, tracker, cwd: null }));
+    assert.deepEqual(tracker.held(42), { state: "OPEN", labels: ["ready-for-human"], comments: [] });
     assert.deepEqual(out.failed, ["comment"]);
   });
 

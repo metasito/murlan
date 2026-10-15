@@ -70,6 +70,7 @@ import {
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { branchOf } from "./claim.mjs";
+import { ghTracker } from "./tracker.mjs";
 import {
   CONTEXT_BY_SIZE,
   CONTEXT_DEFAULT,
@@ -483,12 +484,23 @@ export async function holdFor(
  *
  * @param {number} number
  * @param {{phase: string, why: string, log: string, cwd: string|null, branch: string|null,
- *   dirty: boolean, error?: object|null, run?: Function, write?: Function}} ctx
+ *   dirty: boolean, error?: object|null, run?: Function, tracker?: object, write?: Function}} ctx
  * @returns {{ok: boolean, failed: string[]}}
  */
 export function park(
   number,
-  { phase, why, log, cwd, branch, dirty, error = null, run = sh, write = writeFileSync },
+  {
+    phase,
+    why,
+    log,
+    cwd,
+    branch,
+    dirty,
+    error = null,
+    run = sh,
+    tracker = ghTracker((args, opts) => run("gh", args, opts)),
+    write = writeFileSync,
+  },
 ) {
   const failed = [];
   const step = (name, fn) => {
@@ -514,7 +526,7 @@ export function park(
     });
   }
 
-  step("label", () => PARK_STEPS.label(number, run));
+  step("label", () => PARK_STEPS.label(number, tracker));
 
   const body = [
     `Parked by the queue loop in **phase ${phase}**.`,
@@ -532,7 +544,7 @@ export function park(
   ].join("\n");
   step("comment", () => {
     write(parkNotePath(number), body, "utf8");
-    PARK_STEPS.comment(number, run);
+    PARK_STEPS.comment(number, tracker);
   });
 
   if (cwd) step("worktree", () => removeWorktree(cwd, run));
@@ -542,21 +554,8 @@ export function park(
 
 /** The tracker's half of a park, each a step a later pass can apply again on its own. */
 const PARK_STEPS = {
-  label: (number, run) =>
-    run("gh", [
-      "issue",
-      "edit",
-      String(number),
-      "--remove-label",
-      "in-progress",
-      // Left on, a park is absorbing: classify() sends any issue carrying an owner label to the
-      // owner bucket whatever else it carries, so the ticket never returns to the frontier.
-      "--remove-label",
-      "ready-for-agent",
-      "--add-label",
-      "ready-for-human",
-    ]),
-  comment: (number, run) => run("gh", ["issue", "comment", String(number), "--body-file", parkNotePath(number)]),
+  label: (number, tracker) => tracker.park(number),
+  comment: (number, tracker) => tracker.comment(number, parkNotePath(number)),
 };
 
 /**
@@ -566,10 +565,10 @@ const PARK_STEPS = {
  * @param {number} number @param {string[]} steps
  * @returns {{failed: string[], why: string|null}}
  */
-export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)) {
+export function repark(number, steps, tracker = ghTracker(), exists = (f) => fs.existsSync(f)) {
   let issue;
   try {
-    issue = JSON.parse(run("gh", ["issue", "view", String(number), "--json", "state,labels"], { timeout: CI_RED_TIMEOUT_MS }));
+    issue = tracker.issue(number, { timeout: CI_RED_TIMEOUT_MS });
   } catch (err) {
     console.error(`  ⚠️ park #${number}: the issue could not be read — ${String(err.message).split("\n")[0]}`);
     return { failed: steps, why: null };
@@ -577,14 +576,14 @@ export function repark(number, steps, run = sh, exists = (f) => fs.existsSync(f)
   // The label step owed leaves `in-progress` on; once it landed, `ready-for-human` is the park's own.
   // Anything else is the owner's doing, which a retry must not undo.
   const mark = steps.includes("label") ? "in-progress" : "ready-for-human";
-  if (issue.state !== "OPEN" || !issue.labels.some((l) => l.name === mark)) {
+  if (issue.state !== "OPEN" || !issue.labels.includes(mark)) {
     return { failed: [], why: "the owner already acted on the issue" };
   }
   const pruned = steps.includes("comment") && !exists(parkNotePath(number));
   const failed = steps.filter((s) => {
     if (s === "comment" && pruned) return false;
     try {
-      PARK_STEPS[s](number, run);
+      PARK_STEPS[s](number, tracker);
       return false;
     } catch (err) {
       console.error(`  ⚠️ park #${number}: ${s} failed again — ${String(err.message).split("\n")[0]}`);
@@ -1965,7 +1964,7 @@ function realIo(book, screen) {
     teardown: (cwd, number) => {
       if (number) {
         try {
-          sh("gh", ["issue", "edit", String(number), "--remove-label", "in-progress"]);
+          ghTracker().release(number);
         } catch (err) {
           // Said out loud, because silence here is permanent: the picker skips `in-progress`, so a
           // swallowed failure leaves a finished ticket nothing will ever take again.
