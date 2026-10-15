@@ -41,11 +41,11 @@ function table(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
 }
 
 describe("seat ledger", () => {
-  test("a mid-hand vacate hands the seat to a weak bot and records the forfeit", () => {
+  test("a mid-hand vacate hands the seat to a weak bot and records the abandonment", () => {
     const game = table();
     game.endMatchVotes.add("u-alice");
 
-    assert.deepEqual(vacate(game, 1, { midHand: true }), { forfeit: true });
+    assert.deepEqual(vacate(game, 1, { midHand: true }), { abandoned:true });
 
     assert.equal(game.playerMap[1], undefined);
     assert.equal(game.gameState.players[1].type, "bot");
@@ -56,16 +56,16 @@ describe("seat ledger", () => {
     assert.equal(game.endMatchVotes.size, 0);
   });
 
-  test("a seat vacated between hands, or after it went out, forfeits nothing", () => {
+  test("a seat vacated between hands, or after it went out, is no abandonment", () => {
     const between = table();
-    assert.deepEqual(vacate(between, 1, { midHand: false }), { forfeit: false });
+    assert.deepEqual(vacate(between, 1, { midHand: false }), { abandoned:false });
     assert.equal(between.abandonedSeats.size, 0);
     assert.equal(between.weakSeats.size, 0);
     assert.ok(between.vacatedSeats.has(1));
 
     const finished = table();
     finished.gameState.players[1].finishPosition = 1;
-    assert.deepEqual(vacate(finished, 1, { midHand: true }), { forfeit: false });
+    assert.deepEqual(vacate(finished, 1, { midHand: true }), { abandoned:false });
     assert.equal(finished.abandonedSeats.size, 0);
     assert.equal(finished.weakSeats.size, 0);
   });
@@ -102,7 +102,7 @@ describe("seat ledger", () => {
     assert.ok(game.vacatedSeats.has(1));
   });
 
-  test("clearForDeal ends the round's forfeits, weak bots and votes, but not the match's vacancies", () => {
+  test("clearForDeal ends the round's abandonments, weak bots and votes, but not the match's vacancies", () => {
     const game = table();
     vacate(game, 1, { midHand: true });
     castEndMatchVote(game, "u-alice", true);

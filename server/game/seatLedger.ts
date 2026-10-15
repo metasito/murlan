@@ -10,15 +10,15 @@ import { scoreKeyForSeat } from "./onlineGameLogic.ts";
 
 /**
  * Hands a seat whose player is gone for good to a bot. `midHand` is whether a
- * round is in play; walking out on one while still holding cards is a forfeit.
+ * round is in play; walking out on one while still holding cards is an abandonment.
  */
 export function vacate(
   game: OnlineGameState,
   seat: number,
   { midHand }: { midHand: boolean }
-): { forfeit: boolean } {
+): { abandoned: boolean } {
   const userId = game.playerMap[seat];
-  if (userId === undefined) return { forfeit: false };
+  if (userId === undefined) return { abandoned: false };
   const seatPlayer = game.gameState.players[seat];
 
   // Out of `playerMap` and bot-controlled together, or the table deadlocks as
@@ -33,13 +33,13 @@ export function vacate(
   // A roster change makes "is the table still the one everyone joined" new again.
   game.endMatchVotes.clear();
 
-  const forfeit = midHand && seatPlayer?.finishPosition === undefined;
-  if (forfeit) {
+  const abandoned = midHand && seatPlayer?.finishPosition === undefined;
+  if (abandoned) {
     game.abandonedSeats.set(seat, userId);
     // Minimum-strength play is scoped to this round; `clearForDeal` ends it.
     game.weakSeats.add(seat);
   }
-  return { forfeit };
+  return { abandoned };
 }
 
 /**
@@ -69,7 +69,7 @@ export function reclaim(game: OnlineGameState, userId: string): number | null {
 }
 
 /**
- * What a fresh deal ends: the last round's forfeits, its weak bots and any
+ * What a fresh deal ends: the last round's abandonments, its weak bots and any
  * end-match tally. Vacancies outlive the deal — a seat stays reclaimable until
  * the match ends.
  */
