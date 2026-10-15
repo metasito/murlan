@@ -373,7 +373,7 @@ async function serve(home, diagnostics) {
     server = spawn(process.execPath, [path.join(ROOT, "scripts", "e2e-server.mjs"), "--play"], {
       cwd: ROOT,
       stdio: ["ignore", out, out],
-      env: { ...process.env, E2E_SKIP_BUILD: "1" },
+      env: { ...process.env, E2E_SKIP_BUILD: undefined },
     });
     const exited = new Promise((resolve) => server.on("exit", (code, signal) => resolve(code ?? signal)));
     process.on("exit", () => killTree(server));

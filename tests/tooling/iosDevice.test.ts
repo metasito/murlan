@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { artifactFor, benchUrl, errorLine, lanAddress, metroEnv, needsInstall, parseDevices, pickRun, readHidden } from "../../scripts/ios-device.mjs";
 
@@ -89,4 +91,10 @@ test("--bench fetches the Release bench build, never the dev client", () => {
   assert.deepEqual(artifactFor(true), { workflow: "ios-bench.yml", name: "murlan-ios-bench", ipa: "murlan-bench.ipa" });
   assert.deepEqual(artifactFor(false), { workflow: "ios-device.yml", name: "murlan-ios-dev", ipa: "murlan-dev.ipa" });
   assert.equal(benchUrl("192.168.1.5"), "murlan://bench?host=192.168.1.5&scenario=all");
+});
+
+test("the game server is never started on a reused dist", () => {
+  const src = readFileSync(path.join(import.meta.dirname, "..", "..", "scripts", "ios-device.mjs"), "utf8");
+  assert.match(src, /"e2e-server\.mjs"\), "--play"\]/, "the scan no longer sees the server spawn");
+  assert.match(src, /E2E_SKIP_BUILD: undefined/);
 });
