@@ -93,9 +93,9 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
    * test fails for a reason that has nothing to do with what it asserts.
    */
   async function graceArmed(roomId: string, userId: string) {
-    const { lobbyGraceTimers, lobbyGraceKey } = await import("../../server/game/gameTimers.ts");
+    const { pending, seatKey } = await import("../../server/game/gameTimers.ts");
     for (let i = 0; i < 200; i++) {
-      if (lobbyGraceTimers.has(lobbyGraceKey(roomId, userId))) return;
+      if (pending("lobbyGrace", seatKey(roomId, userId))) return;
       await new Promise((r) => setTimeout(r, 25));
     }
     throw new Error("the server never armed a lobby grace for the closed socket");

@@ -66,8 +66,7 @@ import {
   clearRoomTimers,
   clearDisconnectGrace,
   clearLobbyGrace,
-  disconnectTimers,
-  disconnectDeadlines,
+  arm,
   usersInLobbyGrace,
 } from "./gameTimers.ts";
 import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
@@ -711,14 +710,9 @@ function armSeatGrace(
   // full minute on this player's turn.
   armTurnIfIdle(io, roomId);
 
-  const prevTimer = disconnectTimers.get(userId);
-  if (prevTimer) clearTimeout(prevTimer);
-
-  const dcTimer = setTimeout(() => {
+  arm("disconnect", userId, disconnectGraceMs(), () => {
     void (async () => {
       try {
-        disconnectTimers.delete(userId);
-        disconnectDeadlines.delete(userId);
         // Asked of the cluster, not of this process: the instance that owns a
         // table need not be the one holding the player's socket, and reading
         // the local map alone hands a connected player's seat to a bot.
@@ -741,9 +735,7 @@ function armSeatGrace(
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
       }
     })();
-  }, disconnectGraceMs());
-  disconnectTimers.set(userId, dcTimer);
-  disconnectDeadlines.set(userId, Date.now() + disconnectGraceMs());
+  });
 }
 
 async function applyTableAction(

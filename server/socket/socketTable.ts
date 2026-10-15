@@ -20,14 +20,13 @@ import type { OnlineGameState } from "../game/gameRoom.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
 import {
   lobbyGraceMs,
-  lobbyGraceTimers,
-  lobbyGraceKey,
-  clearLobbyGrace,
+  arm,
+  deadline as timerDeadline,
+  pending,
+  now as clockNow,
+  seatKey,
   clearAllTimersForUser,
-  disconnectDeadlines,
-  disconnectTimers,
   autoStartDelayMs,
-  autoStartTimers,
   clearAutoStart,
 } from "../game/gameTimers.ts";
 import { sendGameStateTo } from "../game/gamePersistence.ts";
@@ -210,11 +209,11 @@ export async function announceRejoin(
   }
   emitEndMatchVoteState(io, userRoom(userId), game);
   for (const other of Object.values(game.playerMap)) {
-    const deadline = disconnectDeadlines.get(other);
-    if (other === userId || deadline === undefined || !disconnectTimers.has(other)) continue;
+    const deadline = timerDeadline("disconnect", other);
+    if (other === userId || deadline === undefined) continue;
     const otherSeat = seatOfUser(game.playerMap, other);
     const otherName = seatName(game, otherSeat);
-    const seconds = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
+    const seconds = Math.max(1, Math.ceil((deadline - clockNow()) / 1000));
     io.to(userRoom(userId)).emit("game:player_disconnected", {
       userId: other,
       username: otherName,
@@ -249,11 +248,9 @@ export function armLobbyGrace(
   if (isShuttingDown()) {
     return handleSeatRelease(io, roomId, userId, { source: "disconnect" });
   }
-  clearLobbyGrace(roomId, userId);
-  const timer = setTimeout(() => {
+  arm("lobbyGrace", seatKey(roomId, userId), lobbyGraceMs(), () => {
     void (async () => {
       try {
-        lobbyGraceTimers.delete(lobbyGraceKey(roomId, userId));
         // Back in *this* room, not merely back online: a player who reconnects
         // straight into a different lobby is no longer holding this seat, and
         // asking only whether they have a socket would leave it held.
@@ -265,12 +262,7 @@ export function armLobbyGrace(
         logger.error({ err, userId, roomId }, "Lobby grace handler failed");
       }
     })();
-  }, lobbyGraceMs());
-  // A seat waiting to be given back must not be what keeps the process alive:
-  // shutdown disconnects every socket, which arms one of these per lobby, and
-  // the row outlives the process either way.
-  (timer as unknown as { unref?: () => void }).unref?.();
-  lobbyGraceTimers.set(lobbyGraceKey(roomId, userId), timer);
+  });
 }
 
 /**
@@ -380,10 +372,9 @@ function scheduleAutoStart(
   io: SocketServer,
   room: { id: string; hostUserId: string | null; autoStart: boolean }
 ): void {
-  if (!room.autoStart || autoStartTimers.has(room.id)) return;
+  if (!room.autoStart || pending("autoStart", room.id)) return;
 
-  const timer = setTimeout(() => {
-    autoStartTimers.delete(room.id);
+  arm("autoStart", room.id, autoStartDelayMs(), () => {
     void (async () => {
       try {
         const current = await roomStore.getRoomById(room.id);
@@ -400,8 +391,7 @@ function scheduleAutoStart(
         logger.warn({ err, roomId: room.id }, "Matchmade table failed to deal itself");
       }
     })();
-  }, autoStartDelayMs());
-  autoStartTimers.set(room.id, timer);
+  });
 }
 
 /**
