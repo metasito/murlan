@@ -618,12 +618,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pods-
       - run: pod install --project-directory=ios
-      # A prebuilt core carries none of patches/react-native+*.patch (#1485); an RCT_USE_PREBUILT_RNCORE=1 in the
-      # environment overrides the Podfile property and would relink it without a word.
-      - name: React Native core is built from source
-        run: |
-          grep -qF "React-Core (" ios/Podfile.lock || { echo "::error::Podfile.lock lists no React-Core."; exit 1; }
-          if grep -qF "React-Core-prebuilt" ios/Podfile.lock; then echo "::error::React Native core is linked prebuilt, so its patch is not in the binary."; exit 1; fi
       - name: Both libraries resolved at their pins
         run: |
           grep -qF "RNAudioAPI (0.13.6)" ios/Podfile.lock

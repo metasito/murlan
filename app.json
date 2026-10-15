@@ -58,8 +58,7 @@
         }
       ],
       "./modules/murlan-diagnostics/app.plugin.js",
-      "./plugins/withSwiftUIFilters.js",
-      "./plugins/withReactNativeFromSource.js"
+      "./plugins/withSwiftUIFilters.js"
     ],
     "experiments": {
       "typedRoutes": true,

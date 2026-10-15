@@ -1,15 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
-const locked: string = JSON.parse(read("package-lock.json")).packages["node_modules/react-native"].version;
-const PATCH = `patches/react-native+${locked}.patch`;
+const OVERRIDE = "modules/murlan-diagnostics/ios/MurlanRecycledLayout.mm";
 const MOUNTING = "node_modules/react-native/React/Fabric/Mounting/ComponentViews";
+const COVERED = `${MOUNTING}/View/RCTViewComponentView.mm`;
 
 /** A layout reset other than EmptyLayoutMetrics: a recycled view next laid out at exactly it is never moved (#1485). */
 const STALE_RESET = /\b_?layoutMetrics\s*=\s*(?:\{\s*\}|LayoutMetrics\s*\{\s*\}|LayoutMetrics\(\s*\))\s*;/;
@@ -18,33 +18,23 @@ function staleResets(source: string): string[] {
   return source.split("\n").filter((line) => STALE_RESET.test(line));
 }
 
-test("the React Native patch is named for the locked version and resets a recycled view to EmptyLayoutMetrics", () => {
-  assert.ok(existsSync(path.join(repoRoot, PATCH)), `${PATCH} is missing; re-derive it for React Native ${locked}`);
-  const patch = read(PATCH);
-  assert.match(patch, /^-\s+_layoutMetrics = \{\};$/m);
-  assert.match(patch, /^\+\s+_layoutMetrics = EmptyLayoutMetrics;$/m);
+test("the override resets a recycled view to EmptyLayoutMetrics after React Native's own prepareForRecycle", () => {
+  const source = read(OVERRIDE);
+  assert.match(source, /@implementation RCTViewComponentView \(\w+\)/);
+  assert.match(source, /class_getInstanceMethod\(self, @selector\(prepareForRecycle\)\)/);
+  assert.match(source, /original\(view, @selector\(prepareForRecycle\)\);\s*\[view \w+\];/);
+  assert.match(source, /_layoutMetrics = EmptyLayoutMetrics;/);
+  assert.match(read("modules/murlan-diagnostics/ios/MurlanDiagnostics.podspec"), /source_files = '\*\.\{[^}]*\bmm\b[^}]*\}'/);
 });
 
-test("no installed component view resets its layout to anything but EmptyLayoutMetrics", () => {
+test("no installed component view the override does not cover resets its layout stale", () => {
   const walk = (dir: string): string[] =>
     readdirSync(path.join(repoRoot, dir), { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? walk(`${dir}/${e.name}`) : /\.mm?$/.test(e.name) ? [`${dir}/${e.name}`] : []
     );
   const files = walk(MOUNTING);
-  assert.ok(files.some((f) => f.endsWith("/View/RCTViewComponentView.mm")), "the scan no longer reaches RCTViewComponentView.mm");
-  assert.ok(read(`${MOUNTING}/View/RCTViewComponentView.mm`).includes("_layoutMetrics = EmptyLayoutMetrics;"), "the patch is not applied: run npm install");
-  assert.deepEqual(files.filter((f) => staleResets(read(f)).length > 0), []);
-});
-
-test("iOS builds React Native core from source, so the patch reaches the binary", async () => {
-  const plugins: unknown[] = JSON.parse(read("app.json")).expo.plugins;
-  assert.ok(plugins.includes("./plugins/withReactNativeFromSource.js"), "app.json no longer applies withReactNativeFromSource");
-  const { createRequire } = await import("node:module");
-  const plugin = createRequire(import.meta.url)(path.join(repoRoot, "plugins/withReactNativeFromSource.js"));
-  const config = plugin({ name: "x", slug: "x" });
-  const props: Record<string, string> = {};
-  await config.mods.ios.podfileProperties({ ...config, modRequest: { platform: "ios", nextMod: async (c: { modResults: unknown }) => c }, modResults: props });
-  assert.equal(props["ios.buildReactNativeFromSource"], "true");
+  assert.ok(files.includes(COVERED), "the scan no longer reaches RCTViewComponentView.mm");
+  assert.deepEqual(files.filter((f) => f !== COVERED && staleResets(read(f)).length > 0), []);
 });
 
 test("every spelling of a stale reset is caught, and the empty sentinel is not", () => {
