@@ -46,7 +46,7 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
     matchLength: "match",
     roundsPlayed: 1,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),
