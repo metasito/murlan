@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { LAND } from "../loop-render.mjs";
+import { closing, header, LAND, note, PLAIN, recap, stepRow } from "../loop-render.mjs";
 import { closePhase, readLine, reduceSession, sessionStart } from "../loop-stream.mjs";
 import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
@@ -17,6 +17,7 @@ import {
   syncCheckout,
   reinstall,
   runTicket,
+  screenEvents,
   park,
   repark,
   holdFor,
@@ -32,26 +33,31 @@ import {
 import { afterRefusal, apiFailure, exhausted, outcomeOf, reasonFor, resumePhase, WAIT, waitFor } from "../decide.mjs";
 import { fakeTracker } from "../tracker.mjs";
 
-/** Enough IO for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
-const stubIo = () => ({
-  stopFile: () => false,
-  syncCheckout: () => true,
-  housekeeping: () => ({ verdict: "ok", rows: [] }),
-  pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
-  spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }),
-  standing: () => null,
-  pushedPr: () => null,
-  settle: async () => ({ action: "already-merged", reason: "" }),
-  park: () => {},
-  teardown: () => {},
-  bell: () => {},
-  record: () => {},
-  facts: () => ({ title: "t", size: null, reviewRounds: null }),
-  tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
-  log: () => {},
-  buildPassed: () => true,
-  announce: () => {},
+/** Enough ports for `runOnce` to reach a decision without git, the tracker or a `claude` binary. */
+const stubPorts = () => ({
+  tracker: {
+    pick: () => ({ skill: "implement", number: 42, title: "t", size: "size:S", queue: null }),
+    pushedPr: () => null,
+    settle: async () => ({ action: "already-merged", reason: "" }),
+    park: () => {},
+    release: () => {},
+    facts: () => ({ title: "t", size: null, reviewRounds: null }),
+  },
+  workspace: {
+    stopFile: () => false,
+    syncCheckout: () => true,
+    housekeeping: () => ({ verdict: "ok", rows: [] }),
+    standing: () => null,
+    buildPassed: () => true,
+    remove: () => {},
+  },
+  session: { spawn: async () => ({ status: 0, blocked: false, result: { cost: 1 }, ms: 1, log: "l", declared: null }) },
+  ledger: {
+    record: () => {},
+    tally: () => ({ sessions: 0, spend: 0, handoffsThisRound: 0, lastHandoff: null, lastRedHead: null, retries: 0, ciRounds: 0 }),
+  },
 });
+const quiet = { bell: () => {}, log: () => {}, announce: () => {} };
 
 describe("queueLoopArgs", () => {
   test("runs /queue unattended, with no MCP tools an empty run could stall waiting on", () => {
@@ -845,6 +851,80 @@ describe("runTicket", () => {
   });
 });
 
+describe("screenEvents", () => {
+  /** A screen that keeps what it was told, in the order it was told it. */
+  const recording = () => {
+    const theme = PLAIN();
+    const told: unknown[][] = [];
+    const headed = new Set<number>();
+    const screen = {
+      theme,
+      say: (s: string) => told.push(["say", s]),
+      notice: (label: string, text: string) => told.push(["notice", label, text]),
+      context: (c: object) => told.push(["context", c]),
+      set: (f: object) => told.push(["set", f]),
+      needsHeader: (n: number) => !headed.has(n) && Boolean(headed.add(n)),
+    };
+    return { theme, told, events: screenEvents(screen as never) };
+  };
+  const ticket = { number: 953, title: "Rate limiter factory", size: "size:S", url: "u", queue: { implement: 3, triage: 1, wayfinder: 0 } };
+
+  test("a ticket's header, once per ticket", () => {
+    const { theme, told, events } = recording();
+    events.header(ticket);
+    events.header(ticket);
+    assert.deepEqual(told, [["say", header(ticket, theme)]]);
+  });
+
+  test("a G route's announcement is its header, then its spend on the keys' context", () => {
+    const { theme, told, events } = recording();
+    events.announce(ticket, 90_000);
+    events.announce(ticket, 95_000);
+    assert.deepEqual(told, [["say", header(ticket, theme)], ["context", { spentMs: 90_000 }], ["context", { spentMs: 95_000 }]]);
+  });
+
+  test("the queue recap, between one pick and the next", () => {
+    const { theme, told, events } = recording();
+    const totals = { landed: 1, parked: 0, cost: 12 };
+    const after = { implement: 2, triage: 1, wayfinder: 0 };
+    events.recap(totals, ticket.queue, after);
+    assert.deepEqual(told, [["say", recap(totals, ticket.queue, after, theme)]]);
+  });
+
+  test("a step row, with its note beneath it when it has one", () => {
+    const { theme, told, events } = recording();
+    events.step({ label: "claim", detail: "won · agent/953-x", ms: null });
+    events.step({ label: "drift", detail: "reinstalled", ms: 2000, note: "npm ci\n  added 3" });
+    events.step({ label: "parity", detail: "", note: "  " });
+    assert.deepEqual(told, [
+      ["say", stepRow({ label: "claim", detail: "won · agent/953-x", ms: null }, theme)],
+      ["say", `${stepRow({ label: "drift", detail: "reinstalled", ms: 2000 }, theme)}\n${note("npm ci\n  added 3", theme)}`],
+      ["say", stepRow({ label: "parity", detail: "" }, theme)],
+    ]);
+  });
+
+  test("a recorded row's closing line, a landing as merged; the rows the next line says draw none", () => {
+    const { theme, told, events } = recording();
+    const bill = { ms: 60_000, cost: 3.5, turns: 40 };
+    const run = { log: ".loop-logs/953.jsonl" };
+    events.recorded({ number: 953, outcome: "landed", files: 4, why: "merged", run }, bill);
+    events.recorded({ number: 953, outcome: "parked", why: "the cap", run }, bill);
+    for (const outcome of ["handoff", "retry", "pushed", "reparked", "armed"]) events.recorded({ number: 953, outcome, run }, bill);
+    assert.deepEqual(told, [
+      ["say", closing({ outcome: "merged", number: 953, files: 4, ...bill, why: "merged", log: undefined }, theme)],
+      ["say", closing({ outcome: "parked", number: 953, files: 0, ...bill, why: "the cap", log: run.log }, theme)],
+    ]);
+  });
+
+  test("a log line is a notice under its label, the loop's by default; a publish sets the pull request", () => {
+    const { told, events } = recording();
+    events.log("main moved");
+    events.log("is still standing", "worktree");
+    events.published(1204);
+    assert.deepEqual(told, [["notice", "loop", "main moved"], ["notice", "worktree", "is still standing"], ["set", { pr: 1204 }]]);
+  });
+});
+
 describe("repark", () => {
   const noted = () => true;
 
@@ -1422,27 +1502,33 @@ describe("the land phase", () => {
 describe("a phase handoff", () => {
   test("a handoff re-spawns the same ticket instead of parking it", async () => {
     const spawned: number[] = [];
-    const io = {
-      ...stubIo(),
-      pick: (pinned: number | null) => ({
-        skill: "implement",
-        number: pinned ?? 41,
-        title: "t",
-        size: "size:S",
-        queue: null,
-      }),
-      spawn: (route: { number: number }) => {
-        spawned.push(route.number);
-        return Promise.resolve({
-          status: 0,
-          ms: 1,
-          log: "x",
-          result: { cost: 1 },
-          declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
-        });
+    const stub = stubPorts();
+    const ports = {
+      ...stub,
+      tracker: {
+        ...stub.tracker,
+        pick: (pinned: number | null) => ({
+          skill: "implement",
+          number: pinned ?? 41,
+          title: "t",
+          size: "size:S",
+          queue: null,
+        }),
+      },
+      session: {
+        spawn: (route: { number: number }) => {
+          spawned.push(route.number);
+          return Promise.resolve({
+            status: 0,
+            ms: 1,
+            log: "x",
+            result: { cost: 1 },
+            declared: { ticket: 41, phase: "C", handoff: "D", stoodDown: false },
+          });
+        },
       },
     };
-    const pass = await runOnce(io as never, null);
+    const pass = await runOnce(ports as never, quiet as never, null);
     assert.equal(pass.outcome, "handoff");
     assert.equal(pass.phase, "D");
     assert.deepEqual(spawned, [41]);
