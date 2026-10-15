@@ -8,8 +8,6 @@
 import { basename, dirname } from "node:path";
 import { gh as ghCli, git as gitAt, REPO, statusOf } from "./cli.mjs";
 
-export { REPO };
-
 export const BRANCH = /^agent\/(\d+)-/;
 
 export const WORKTREE_DIR = ".worktrees";

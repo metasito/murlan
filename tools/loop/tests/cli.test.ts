@@ -99,9 +99,20 @@ describe("no git or gh outside cli.mjs", () => {
   const OTHER_BINARIES: Record<string, (text: string) => boolean> = {
     "queue-loop.mjs": (text) =>
       /\bconst sh = \(file, args, opts = \{\}\) => \{\s*if \(file === "git"\) return gitAt\(opts\.cwd\)\(args, opts\);\s*if \(file === "gh"\) return ghCli\(args, opts\);/.test(text),
-    "reap.mjs": namesNoGitOrGh,
+    "reap.mjs": (text) => namesNoGitOrGh(text) && [...text.matchAll(/\bsh\(\s*([^,)]*)/g)].every((m) => m[1] === "cmd" || /^(?:"[\w-]+"|[A-Z_]+)$/.test(m[1])),
     "loop-screen.mjs": namesNoGitOrGh,
   };
+
+  test("an exemption fails on the git or gh it exists to rule out", () => {
+    const queueLoop = readFileSync(path.join(LOOP, "queue-loop.mjs"), "utf8");
+    assert.ok(OTHER_BINARIES["queue-loop.mjs"](queueLoop));
+    assert.ok(!OTHER_BINARIES["queue-loop.mjs"](queueLoop.replace('if (file === "gh") return ghCli(args, opts);', "")));
+    const reap = readFileSync(path.join(LOOP, "reap.mjs"), "utf8");
+    assert.ok(OTHER_BINARIES["reap.mjs"](reap));
+    assert.ok(!OTHER_BINARIES["reap.mjs"](`${reap}\nconst G = "git";`));
+    assert.ok(!OTHER_BINARIES["reap.mjs"](`${reap}\nsh(binary, ["status"]);`));
+    assert.ok(!OTHER_BINARIES["loop-screen.mjs"](`spawn(cmd, args);\nconst [cmd, args] = ["gh", ["browse"]];`));
+  });
   const files = readdirSync(LOOP).filter((f) => /\.(mjs|ts)$/.test(f) && f !== "cli.mjs");
 
   test("the scan reads the loop's files", () => {

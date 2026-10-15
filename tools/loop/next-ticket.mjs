@@ -1,7 +1,7 @@
-import { gh } from "./cli.mjs";
+import { gh, REPO } from "./cli.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { readIssue } from "./brief.mjs";
-import { BRANCH, REPO, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
+import { BRANCH, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
 
 const SIZE_ORDER = ["size:XS", "size:S", "size:M", "size:L", "size:XL"];
 export const OWNER_LABELS = new Set(["ready-for-human", "needs-info", "rejected", "deferred"]);
