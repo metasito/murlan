@@ -61,7 +61,8 @@ import {
   turnKey,
   type ExchangeStages,
 } from "@/components/flightPhysics";
-import { FloatSlot, type Float } from "@/components/table/notices/floats";
+import { FloatSlot } from "@/components/table/notices/floats";
+import { nextFloat, raised, type Float } from "@/components/table/floatModel";
 import type { ServerError } from "@/context/OnlineGameContext";
 import { EndMatchVote, RoundVote, type EndMatchVoteNote, type RoundVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
@@ -196,12 +197,6 @@ const RAIL_Z = { zIndex: Layer.rail } as const;
 const HELD_CLOCK_Z = { zIndex: Layer.clock } as const;
 
 const passView = (s: GameState) => ({ ...s, outOfCards: s.players.map((p) => handCountOf(p) === 0) });
-const raised = (standing: Float | null, kind: Float["kind"], text: string, live = true): Float => ({
-  id: (standing?.id ?? 0) + 1,
-  kind,
-  text,
-  live,
-});
 
 const NO_DISMISS = () => {};
 const trickStart = () => event([{ kind: "trickStart" }]);
@@ -582,36 +577,28 @@ export function GameTable({
     gameState.lastPlayedCombination,
     players
   );
-  const [passSeen, setPassSeen] = useState(gameState);
-  const [errorSeen, setErrorSeen] = useState<ServerError | null>(null);
-  const [autoSeen, setAutoSeen] = useState(autoPassed);
+  const floatInputs = { gameState, error, autoPassed, tableWithdrawn };
+  const [floatSeen, setFloatSeen] = useState<typeof floatInputs>({ ...floatInputs, error: null });
   const [float, setFloat] = useState<Float | null>(null);
-  let floatNow = float;
-  if (passSeen !== gameState) {
-    setPassSeen(gameState);
-    if (!spectating && seatsJustPassed(passView(passSeen), passView(gameState)).includes(viewerSeat)) {
-      floatNow = raised(floatNow, "pass", t("gameShared.passedLabel"), !tableWithdrawn);
-    } else if (floatNow?.live) {
-      floatNow = { ...floatNow, live: false };
-    }
+  const moved = floatSeen.gameState !== gameState;
+  const erred = floatSeen.error?.seq !== error?.seq;
+  if (moved || erred || floatSeen.autoPassed !== autoPassed || floatSeen.tableWithdrawn !== tableWithdrawn) {
+    setFloatSeen(floatInputs);
+    const floatNow = nextFloat(
+      float,
+      {
+        viewerPassed: moved
+          ? !spectating && seatsJustPassed(passView(floatSeen.gameState), passView(gameState)).includes(viewerSeat)
+          : undefined,
+        error: erred ? error : undefined,
+        autoPassed: floatSeen.autoPassed !== autoPassed,
+        withdrawn: tableWithdrawn,
+        withdrew: tableWithdrawn && !floatSeen.tableWithdrawn,
+      },
+      { passed: t("gameShared.passedLabel"), autoPass: t("game.autoPassTitle") }
+    );
+    if (floatNow !== float) setFloat(floatNow);
   }
-  if (errorSeen?.seq !== error?.seq) {
-    setErrorSeen(error);
-    if (error) floatNow = raised(floatNow, "toast", error.text, !tableWithdrawn);
-    else if (floatNow?.kind === "toast" && floatNow.live) floatNow = { ...floatNow, live: false };
-  }
-  if (autoSeen !== autoPassed) {
-    setAutoSeen(autoPassed);
-    // The state lands no later than the notice (offline one batch, online the server's order). Only a pass is
-    // re-titled, in its own life: a timed-out lead is a card the server played, and raises nothing.
-    if (floatNow?.kind === "pass" && floatNow.live) floatNow = { ...floatNow, kind: "autoPass", text: t("game.autoPassTitle") };
-  }
-  const [withdrawnSeen, setWithdrawnSeen] = useState(tableWithdrawn);
-  if (withdrawnSeen !== tableWithdrawn) {
-    setWithdrawnSeen(tableWithdrawn);
-    if (tableWithdrawn && floatNow?.live) floatNow = { ...floatNow, live: false };
-  }
-  if (floatNow !== float) setFloat(floatNow);
 
   // ── The exchange, on the table ──────────────────────────────────────────────
   //
