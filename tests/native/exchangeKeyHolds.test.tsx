@@ -111,7 +111,7 @@ describe('an announcement taking over from the open phase', () => {
     expect(mockMounts.n).toBe(1);
     // One per leg: the receive's, then the give's once the choice lands.
     expect(cues()).toEqual([received, expect.any(Number)]);
-    expect(cues()[1]).toBeGreaterThan(received);
+    expect(cues()[1]).toBeGreaterThan(received!);
     expect(onReady).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
