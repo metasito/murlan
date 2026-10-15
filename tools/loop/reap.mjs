@@ -6,7 +6,6 @@
  */
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { checkoutRoot } from "./cli.mjs";
 
