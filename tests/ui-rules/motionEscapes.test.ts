@@ -19,7 +19,7 @@ const MOTION_ESCAPE_DECL =
 
 // #829 judged every `_MS` constant in components/ against the scale and left
 // the pile below one of two ways: renamed onto Motion/Reading, or kept with a
-// comment stating why it is a one-off (ROUND_WINNER_MS is
+// comment stating why it is a one-off (TRICK_WINNER_MS is
 // the pattern to match). This is the count that judgement
 // left standing — not zero, CLAUDE.md allows a component-local one-off — so
 // that the next one added is a decision this test makes someone write down,

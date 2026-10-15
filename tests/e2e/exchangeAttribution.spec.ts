@@ -6,7 +6,7 @@ import { installVirtualClock, step, stepUntil, takeOver } from "./helpers/virtua
 import { HAND_CARDS } from "./helpers/selectors";
 import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 import { LEG } from "../../lib/game/exchangeTimeline";
-import { Hold, MancheEnding, Motion } from "../../lib/tokens";
+import { Hold, RoundEnding, Motion } from "../../lib/tokens";
 
 const X = Motion.exchange;
 const FRAME = 16;
@@ -43,7 +43,7 @@ function save(winnerIdx: number, loserIdx: number, hands: string[][], over: obje
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
@@ -247,11 +247,11 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
   });
   await table(page);
   const frames: Frame[] = [];
-  await run(page, MancheEnding.deal + X.beat + LEG.end + X.read + 2 * SLACK, frames);
+  await run(page, RoundEnding.deal + X.beat + LEG.end + X.read + 2 * SLACK, frames);
 
   const i0 = frames.findIndex((f) => f.fliers["exchange-joker-0"]);
   expect(i0, "the Jokers never flew").toBeGreaterThan(0);
-  expect(frames.slice(0, i0).some((f) => f.dealt > 0), "the manche was never dealt before the Jokers").toBe(true);
+  expect(frames.slice(0, i0).some((f) => f.dealt > 0), "the round was never dealt before the Jokers").toBe(true);
   expect(frames.slice(i0).every((f) => f.dealt === 0), "the deal still flew under the Jokers").toBe(true);
   expect(frames[i0].lit, "the loser's seat is lit while its Jokers are out").toContain("Gent");
   // A flier is drawn a frame after its clock moves, so its leg began within the frame before i0's;

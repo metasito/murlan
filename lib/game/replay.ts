@@ -7,7 +7,7 @@
 //
 // Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
-import { passesToCloseRound } from "./gameEngine.ts";
+import { passesToCloseTrick } from "./gameEngine.ts";
 import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
@@ -124,7 +124,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     passes += 1;
     const active = move.handCounts.filter((n) => n > 0).length;
     const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
-    if (pile && passes >= passesToCloseRound(active, lastPlayerStillActive)) {
+    if (pile && passes >= passesToCloseTrick(active, lastPlayerStillActive)) {
       pile = null;
       pileSeat = -1;
       passes = 0;
@@ -148,7 +148,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     lastPlayedBy: pileSeat,
     passCount: 0,
     gameMode: replay.gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: finished,
     rankings: finished ? replay.rankings : [],
     firstPlayMade: at >= 0,
@@ -163,7 +163,7 @@ export interface ReplayMoment {
 
 /**
  * The moves a reader is likely to want to jump to: every bomb, every royal
- * straight, and the last move of the manche. Derived from `moves` — a replay
+ * straight, and the last move of the round. Derived from `moves` — a replay
  * stores nothing extra for this.
  *
  * Ordered by index, so "the next one after here" is a scan forward.
@@ -190,7 +190,7 @@ export function nextMoment(moments: ReplayMoment[], index: number): ReplayMoment
 }
 
 /**
- * How many bombs one player threw in this manche. Attributed by the same
+ * How many bombs one player threw in this round. Attributed by the same
  * `combo.type === "bomb"` test the server's own flag uses
  * (server/game/gameTurn.ts `recordPlayFlags`), so the count agrees with the
  * lifetime figure on `user_stats`.

@@ -131,7 +131,7 @@ test("every bomb is a moment, and so is the last move", () => {
   ]);
 });
 
-test("a bomb that ends the manche is one moment, not two", () => {
+test("a bomb that ends the round is one moment, not two", () => {
   const replay = withMoves([
     { seat: 0, combo: single("3", "spades"), handCounts: [2, 3] },
     { seat: 1, combo: bomb("7"), handCounts: [2, 0] },
@@ -182,6 +182,6 @@ test("a player who did not sit at this table threw nothing", () => {
   assert.equal(bombsPlayedBy(replay, ""), 0);
 });
 
-test("a manche with no bombs counts none", () => {
+test("a round with no bombs counts none", () => {
   assert.equal(bombsPlayedBy(REPLAY, "u1"), 0);
 });

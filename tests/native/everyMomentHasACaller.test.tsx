@@ -13,7 +13,7 @@ import type { OwnLink } from '@/lib/ownLink';
 import { choiceOpensAt } from '@/lib/game/exchangeTimeline';
 import type { Card, GameState, Player } from '@/lib/game/gameEngine';
 import { bootFeedback, ctxTime, effects, settle, soundOf, sounds } from './helpers/feedback';
-import { botManche, playBotManche } from './helpers/botManche';
+import { botRound, playBotRound } from './helpers/botRound';
 
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const noop = () => {};
@@ -30,7 +30,7 @@ const human = (turn: number, exchange = false): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -59,17 +59,17 @@ async function heard(mount: React.ReactElement, action: (r: Awaited<ReturnType<t
   return out;
 }
 
-async function botMancheSounds(): Promise<string[]> {
+async function botRoundSounds(): Promise<string[]> {
   const fromBots = Object.values(PROBES).filter((p) => p.run === botSounds);
   const started = () => effects().filter((n) => n.startedAt! <= ctxTime(performance.now())).map(soundOf);
-  const r = await playBotManche(table, () => fromBots.every((p) => started().some((s) => s !== undefined && p.sounds.includes(s))));
+  const r = await playBotRound(table, () => fromBots.every((p) => started().some((s) => s !== undefined && p.sounds.includes(s))));
   const out = heardIds();
   await r.unmount();
   return out;
 }
 
-async function mancheEnd(x: (last: GameState) => Extra): Promise<string[]> {
-  const states = botManche();
+async function roundEnd(x: (last: GameState) => Extra): Promise<string[]> {
+  const states = botRound();
   const last = states[states.length - 1];
   const scores = Object.fromEntries(last.rankings.map((id, i) => [id, i]));
   return heard(table(states[states.length - 2]), async (r) => {
@@ -77,14 +77,14 @@ async function mancheEnd(x: (last: GameState) => Extra): Promise<string[]> {
   });
 }
 
-let manche: string[] | undefined;
-const botSounds = async () => (manche ??= await botMancheSounds());
+let round: string[] | undefined;
+const botSounds = async () => (round ??= await botRoundSounds());
 
 const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]> }> = {
   landing: { sounds: ['play', 'combo', 'bomb'], run: botSounds },
   pass: { sounds: ['pass'], run: botSounds },
-  roundWon: { sounds: ['round_win'], run: botSounds },
-  roundStart: { sounds: ['round_start'], run: botSounds },
+  trickWon: { sounds: ['trick_win'], run: botSounds },
+  trickStart: { sounds: ['trick_start'], run: botSounds },
   deal: { sounds: ['deal'], run: botSounds },
   turn: { sounds: ['turn'], run: () => heard(table(human(1)), async (r) => { await act(async () => r.rerender(table(human(0)))); }) },
   select: { sounds: ['select'], run: () => heard(table(human(0)), () => pick(seven())) },
@@ -92,8 +92,8 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   reject: { sounds: ['reject'], run: () => heard(table(human(0)), () => press(screen.getByTestId('btn-gioca'))) },
   give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await pick(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
-  mancheOver: { sounds: ['mancheWon', 'mancheLost', 'mancheNeutral'], run: () => mancheEnd(() => ({})) },
-  partitaOver: { sounds: ['partitaWon', 'partitaLost'], run: () => mancheEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },
+  roundOver: { sounds: ['roundWon', 'roundLost', 'roundNeutral'], run: () => roundEnd(() => ({})) },
+  matchOver: { sounds: ['matchWon', 'matchLost'], run: () => roundEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },
   reconnected: {
     sounds: ['reconnected'],
     run: () => heard(table(human(1), { ownLink: 'reconnecting' }), async (r) => { await act(async () => r.rerender(table(human(1), { ownLink: 'back' }))); }),

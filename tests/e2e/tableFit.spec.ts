@@ -284,7 +284,7 @@ const OFFLINE_CLOCK_MS = 30_000;
 /**
  * Plays on until an opponent's combination is on the table and it is the
  * viewer's turn — the only state in which the offline countdown runs
- * (`turnTimerActive`, includeNewRound false). Leading is compulsory, so a lead
+ * (`turnTimerActive`, includeNewTrick false). Leading is compulsory, so a lead
  * has to be played rather than waited out; GIOCA is the only judge of which
  * card is legal, exactly as in tests/e2e/helpers/bot.ts.
  */

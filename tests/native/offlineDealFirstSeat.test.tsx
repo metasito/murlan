@@ -22,7 +22,7 @@ const FOUR_PLAYERS = [
   { name: "Gent", type: "ai" as const, personality: "gent" as const },
 ];
 
-/** One manche into a still-running match, already dealt from seat 1. */
+/** One round into a still-running match, already dealt from seat 1. */
 const handJustEndedSave = () =>
   JSON.stringify({
     version: OFFLINE_SAVE_VERSION,
@@ -39,7 +39,7 @@ const handJustEndedSave = () =>
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: true,
       rankings: ["player_2", "player_0", "player_3", "player_1"],
       firstPlayMade: true,

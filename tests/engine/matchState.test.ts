@@ -1,10 +1,10 @@
-// tests/engine/matchState.test.ts — the seat a finished manche or partita celebrates.
+// tests/engine/matchState.test.ts — the seat a finished round or match celebrates.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebratesViewer, isDrawnHand, handOutcomeFor, partitaOutcomeFor } from "../../lib/game/matchState.ts";
+import { celebratesViewer, isDrawnHand, handOutcomeFor, matchOutcomeFor } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
@@ -48,7 +48,7 @@ describe("celebratesViewer", () => {
 });
 
 // GAME-RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
-// third (2+1), so a manche can end with both teams tied.
+// third (2+1), so a round can end with both teams tied.
 describe("isDrawnHand", () => {
   const TEAMS_TABLE = [
     { id: "player_0", team: "A" },
@@ -104,7 +104,7 @@ describe("handOutcomeFor", () => {
   const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
   const drawnScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 
-  test("is a draw for every seat on a drawn teams manche", () => {
+  test("is a draw for every seat on a drawn teams round", () => {
     for (const { id } of TEAMS_TABLE) {
       assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "draw");
     }
@@ -132,7 +132,7 @@ describe("handOutcomeFor", () => {
     assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, undefined, true), "neutral");
   });
 
-  test("is neutral before any manche has a finish order", () => {
+  test("is neutral before any round has a finish order", () => {
     assert.equal(handOutcomeFor(TEAMS_TABLE, [], {}, "player_0", true), "neutral");
   });
 
@@ -153,7 +153,7 @@ describe("handOutcomeFor", () => {
   // yet" apart from "draw" so it knows to wait for the
   // render the scores arrive on instead of latching a decision made with
   // none.
-  test("is pending in team mode when the manche has a finish order but no scores yet", () => {
+  test("is pending in team mode when the round has a finish order but no scores yet", () => {
     assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", true), "pending");
   });
 
@@ -164,7 +164,7 @@ describe("handOutcomeFor", () => {
   });
 });
 
-describe("partitaOutcomeFor", () => {
+describe("matchOutcomeFor", () => {
   const FREE_TABLE = [{ id: "player_0" }, { id: "player_1" }, { id: "player_2" }];
   const TEAMS_TABLE = [
     { id: "player_0", team: "A" },
@@ -173,24 +173,24 @@ describe("partitaOutcomeFor", () => {
     { id: "player_3", team: "A" },
   ];
 
-  test("a drawn partita is the same draw for every co-winner, whichever is listed first", () => {
+  test("a drawn match is the same draw for every co-winner, whichever is listed first", () => {
     for (const winners of [["player_0", "player_2"], ["player_2", "player_0"]]) {
-      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_0", false), "draw");
-      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_2", false), "draw");
-      assert.equal(partitaOutcomeFor(FREE_TABLE, winners, "player_1", false), "lost");
+      assert.equal(matchOutcomeFor(FREE_TABLE, winners, "player_0", false), "draw");
+      assert.equal(matchOutcomeFor(FREE_TABLE, winners, "player_2", false), "draw");
+      assert.equal(matchOutcomeFor(FREE_TABLE, winners, "player_1", false), "lost");
     }
   });
 
-  test("a teams partita listing both partners is won by each of them", () => {
+  test("a teams match listing both partners is won by each of them", () => {
     const winners = ["player_3", "player_0"];
-    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_0", true), "won");
-    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_3", true), "won");
-    assert.equal(partitaOutcomeFor(TEAMS_TABLE, winners, "player_1", true), "lost");
+    assert.equal(matchOutcomeFor(TEAMS_TABLE, winners, "player_0", true), "won");
+    assert.equal(matchOutcomeFor(TEAMS_TABLE, winners, "player_3", true), "won");
+    assert.equal(matchOutcomeFor(TEAMS_TABLE, winners, "player_1", true), "lost");
   });
 
   test("is pending until its winners are known, and neutral for a spectator", () => {
-    assert.equal(partitaOutcomeFor(FREE_TABLE, [], "player_0", false), "pending");
-    assert.equal(partitaOutcomeFor(FREE_TABLE, ["player_0"], undefined, false), "neutral");
+    assert.equal(matchOutcomeFor(FREE_TABLE, [], "player_0", false), "pending");
+    assert.equal(matchOutcomeFor(FREE_TABLE, ["player_0"], undefined, false), "neutral");
   });
 });
 
@@ -239,7 +239,7 @@ describe("offlineBotMove", () => {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,

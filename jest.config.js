@@ -21,7 +21,7 @@ const IOS_ONLY = {
   'everyMomentHasACaller.test.tsx':
     'Asks which moment each table change raises; nothing from GameTable to lib/device/feedback branches on ios against android.',
   'oneSoundPerMoment.test.tsx':
-    'Times the effects a bot manche starts in the mocked audio graph; nothing from GameTable to lib/device/feedback branches on ios against android.',
+    'Times the effects a bot round starts in the mocked audio graph; nothing from GameTable to lib/device/feedback branches on ios against android.',
   'pileMountsOnceFull.test.tsx': PILE_ON_ONE_PLATFORM,
   'pileMountsOnceReduced.test.tsx': PILE_ON_ONE_PLATFORM,
 };

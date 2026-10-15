@@ -22,7 +22,7 @@ import { TABLE } from "../e2e/helpers/selectors.ts";
 function fakePage(): Page {
   let poll = 0;
   const locator = (selector: string) => {
-    // No manche-opening announcement in this scenario, so the drive loop's
+    // No round-opening announcement in this scenario, so the drive loop's
     // gate-clearing step has nothing to clear (#817).
     if (selector === '[data-testid="start-reason-gate"]') {
       return { count: async () => 0 };

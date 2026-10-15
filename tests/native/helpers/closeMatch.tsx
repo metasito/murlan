@@ -1,4 +1,4 @@
-// tests/native/helpers/closePartita.tsx — a partita closed through GameTable's own wiring, for the
+// tests/native/helpers/closeMatch.tsx — a match closed through GameTable's own wiring, for the
 // files that judge its outcome on the felt (#1423).
 import { jest } from '@jest/globals';
 import React from 'react';
@@ -58,7 +58,7 @@ export const table = (c: Case, over: boolean, decided = over) => {
     lastPlayedBy: over ? c.closer : (c.closer + 3) % 4,
     passCount: 0,
     gameMode: c.teams ? 'teams' : 'free_for_all',
-    roundWinner: null,
+    trickWinner: null,
     gameOver: over,
     rankings: over ? RANKINGS : [],
     firstPlayMade: true,
@@ -81,12 +81,12 @@ export const table = (c: Case, over: boolean, decided = over) => {
   );
 };
 
-export async function closePartita(c: Case) {
+export async function closeMatch(c: Case) {
   const target = jest.spyOn(lampControls, 'setTarget');
   const r = await render(table(c, false));
   await settle(2000);
   await bootFeedback();
-  const motes = jest.spyOn(particles, 'mancheMotes');
+  const motes = jest.spyOn(particles, 'roundMotes');
   const rain = jest.spyOn(coneRain, 'startRain');
   const trauma = jest.spyOn(flightPhysics, 'traumaFor');
   const level = jest.spyOn(lampControls, 'setLevel');
@@ -101,12 +101,12 @@ export async function closePartita(c: Case) {
   const motesBeforeLanding = motes.mock.calls.length;
   await settle(1500);
   const momentsOf = (kind: string) => sent.mock.calls.flatMap(([ms, at]) => ms.filter((m) => m.kind === kind).map((m) => ({ m, at: at! })));
-  const stingMoments = momentsOf('partitaOver');
+  const stingMoments = momentsOf('matchOver');
   return {
     r, motes, rain, trauma, target, level, aimBefore, motesBeforeLanding,
     landed: momentsOf('landing')[0]?.at,
     stings: stingMoments.map(({ at }) => at),
-    stingOutcomes: stingMoments.map(({ m }) => (m.kind === 'partitaOver' ? m.outcome : undefined)),
+    stingOutcomes: stingMoments.map(({ m }) => (m.kind === 'matchOver' ? m.outcome : undefined)),
     taps: haptics().slice(tapsBefore),
   };
 }

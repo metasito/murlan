@@ -1,4 +1,4 @@
-// tests/e2e/resultCutout.spec.ts — nothing on the end-of-partita board falls under the display
+// tests/e2e/resultCutout.spec.ts — nothing on the end-of-match board falls under the display
 // cutout, in either landscape rotation (#816, #1267).
 //
 // The owner once lost the result screen's whole left column — winner, name, verdict — under a
@@ -100,7 +100,7 @@ test("the board keeps its content out of the cutout, on either edge", async ({ p
     expect(
       boxes.map((b) => b.label),
       "the winner's name was never measured, so the board is not in this sweep"
-    ).toContain("partita-winner-name");
+    ).toContain("match-winner-name");
 
     const band = cutoutBand(VIEWPORT.height);
     const under = boxes.filter(

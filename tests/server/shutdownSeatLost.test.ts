@@ -66,7 +66,7 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
 
     assert.deepEqual(game.playerMap, { 0: "ana", 1: "besi" });
     assert.equal(game.gameState.gameOver, true);
-    assert.ok(!emitted.includes("game:started"), "a manche was dealt without besi's vote");
+    assert.ok(!emitted.includes("game:started"), "a round was dealt without besi's vote");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

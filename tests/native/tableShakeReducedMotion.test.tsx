@@ -77,7 +77,7 @@ const idleState = () => ({
   canPass: false,
   passCount: 0,
   lastPlayedCombination: null,
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   players: [],
@@ -153,7 +153,7 @@ describe('the shake reads reduced motion at the point trauma is set (#794)', () 
     await r.unmount();
   });
 
-  it.each<[ImpactTier, boolean]>([['bomb', true], ['mancheWon', false]])('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
+  it.each<[ImpactTier, boolean]>([['bomb', true], ['roundWon', false]])('%s: the shake rotates the table only for a bomb', async (tier, turns) => {
     setMotionPreference('off');
     const { r, land } = await mount();
     await land(tier);

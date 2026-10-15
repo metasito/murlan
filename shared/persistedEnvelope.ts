@@ -120,7 +120,7 @@ export const persistedMatchSchema = z.object({
     .int("max players missing")
     .min(1, "max players missing"),
   // Defaulted rather than required: a row written before the field existed
-  // restores as a match with no manches behind it, which costs the results
+  // restores as a match with no rounds behind it, which costs the results
   // board one number and never the hand.
   handsPlayed: z.number().int().min(0).catch(0).default(0),
   endedByVote: z.boolean().catch(false).default(false),

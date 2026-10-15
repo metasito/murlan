@@ -19,7 +19,7 @@ describe("scorePillStandings, solo", () => {
     viewerId: "player_0",
   });
 
-  test("one row per seat, best first, a tie broken by the manche just played", () => {
+  test("one row per seat, best first, a tie broken by the round just played", () => {
     assert.deepEqual(
       s.rows.map((r) => r.key),
       ["player_1", "player_0", "player_2", "player_3"]
@@ -57,7 +57,7 @@ describe("scorePillStandings, solo", () => {
     });
   });
 
-  test("each row knows where it stood before the manche, which the ending re-ranks it from", () => {
+  test("each row knows where it stood before the round, which the ending re-ranks it from", () => {
     assert.deepEqual(
       s.rows.map((r) => [r.key, r.before, r.beforePos, r.beforePlace]),
       [

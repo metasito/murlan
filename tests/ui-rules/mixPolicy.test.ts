@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { LANDING_PULSES, MOMENTS, cueFor, isCombo, landingPulsesFor, mix, type Moment, type MomentKind } from "../../lib/device/moments.ts";
 
 const KINDS: MomentKind[] = [
-  "landing", "mancheOver", "partitaOver", "roundWon", "roundStart", "select", "deselect",
+  "landing", "roundOver", "matchOver", "trickWon", "trickStart", "select", "deselect",
   "reject", "give", "pass", "deal", "exchange", "turn", "clockRunningOut", "reconnected",
 ];
 const tapAt = (tap: string, atMs = 0) => ({ tap, atMs });
@@ -48,26 +48,26 @@ describe("every moment maps", () => {
     }
   });
 
-  test("a manche ends on a notification haptic with its sting; a draw has its own soft one (D6)", () => {
-    assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "won" }), { sound: "mancheWon", bus: "sting", haptics: [tapAt("success")] });
-    assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "lost" }), { sound: "mancheLost", bus: "sting", haptics: [tapAt("warn")] });
-    assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "neutral" }), { sound: "mancheNeutral", bus: "sting", haptics: [] });
-    assert.deepEqual(cueFor({ kind: "mancheOver", outcome: "draw" }), { sound: "mancheNeutral", bus: "sting", haptics: [] });
+  test("a round ends on a notification haptic with its sting; a draw has its own soft one (D6)", () => {
+    assert.deepEqual(cueFor({ kind: "roundOver", outcome: "won" }), { sound: "roundWon", bus: "sting", haptics: [tapAt("success")] });
+    assert.deepEqual(cueFor({ kind: "roundOver", outcome: "lost" }), { sound: "roundLost", bus: "sting", haptics: [tapAt("warn")] });
+    assert.deepEqual(cueFor({ kind: "roundOver", outcome: "neutral" }), { sound: "roundNeutral", bus: "sting", haptics: [] });
+    assert.deepEqual(cueFor({ kind: "roundOver", outcome: "draw" }), { sound: "roundNeutral", bus: "sting", haptics: [] });
   });
 
-  test("a partita's haptic opens 300 ms ahead of its sting", () => {
-    assert.deepEqual(cueFor({ kind: "partitaOver", outcome: "won" }), {
-      sound: "partitaWon", bus: "sting", haptics: [tapAt("medium", -300), tapAt("success")],
+  test("a match's haptic opens 300 ms ahead of its sting", () => {
+    assert.deepEqual(cueFor({ kind: "matchOver", outcome: "won" }), {
+      sound: "matchWon", bus: "sting", haptics: [tapAt("medium", -300), tapAt("success")],
     });
-    assert.deepEqual(cueFor({ kind: "partitaOver", outcome: "lost" }), {
-      sound: "partitaLost", bus: "sting", haptics: [tapAt("medium", -300), tapAt("warn")],
+    assert.deepEqual(cueFor({ kind: "matchOver", outcome: "lost" }), {
+      sound: "matchLost", bus: "sting", haptics: [tapAt("medium", -300), tapAt("warn")],
     });
   });
 
-  test("a drawn partita congratulates nobody and consoles nobody: the neutral sting, only the contact's tap", () => {
+  test("a drawn match congratulates nobody and consoles nobody: the neutral sting, only the contact's tap", () => {
     for (const outcome of ["draw", "neutral"] as const) {
-      assert.deepEqual(cueFor({ kind: "partitaOver", outcome }), {
-        sound: "mancheNeutral", bus: "sting", haptics: [tapAt("medium", -300)],
+      assert.deepEqual(cueFor({ kind: "matchOver", outcome }), {
+        sound: "roundNeutral", bus: "sting", haptics: [tapAt("medium", -300)],
       });
     }
   });
@@ -78,7 +78,7 @@ describe("every moment maps", () => {
     assert.deepEqual(cueFor({ kind: "reject" }), { sound: "reject", bus: "sfx", haptics: [tapAt("rigid")] });
     assert.deepEqual(cueFor({ kind: "give" }), { sound: "play", bus: "sfx", haptics: [tapAt("medium")] });
     assert.deepEqual(cueFor({ kind: "turn" }), { sound: "turn", bus: "sfx", haptics: [tapAt("light")] });
-    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", roundWon: "round_win", roundStart: "round_start", reconnected: "reconnected" } as const;
+    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", trickWon: "trick_win", trickStart: "trick_start", reconnected: "reconnected" } as const;
     for (const [kind, id] of Object.entries(soundOnly)) {
       assert.deepEqual(cueFor({ kind } as Moment), { sound: id, bus: "sfx", haptics: [] });
     }
@@ -88,7 +88,7 @@ describe("every moment maps", () => {
 describe("one event sounds one thing", () => {
   test("the research's pile-ups, each as one event", () => {
     assert.equal(sound([{ kind: "turn" }, { kind: "pass" }]), "pass");
-    assert.equal(sound([{ kind: "pass" }, { kind: "roundWon" }]), "round_win");
+    assert.equal(sound([{ kind: "pass" }, { kind: "trickWon" }]), "trick_win");
     assert.equal(sound([land(1, false, false), { kind: "turn" }]), "play");
   });
 
@@ -123,8 +123,8 @@ describe("one event sounds one thing", () => {
   });
 
   test("the haptic comes from the highest moment that has one, even when a higher one is silent to the hand", () => {
-    const out = mix([{ kind: "pass" }, { kind: "roundWon" }, { kind: "turn" }], 0, []);
-    assert.equal(out.sound?.id, "round_win");
+    const out = mix([{ kind: "pass" }, { kind: "trickWon" }, { kind: "turn" }], 0, []);
+    assert.equal(out.sound?.id, "trick_win");
     assert.deepEqual(out.haptics, [tapAt("light")]);
   });
 

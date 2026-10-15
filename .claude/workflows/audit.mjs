@@ -45,17 +45,17 @@ const LENSES = [
 - Intents are idempotent across retries. Ack timeouts. Backoff with jitter.
 - Flapping networks. iOS background and foreground.
 - Turn timers survive an instance handoff. Ownership races. The postgres adapter is really wired in.
-- Graceful shutdown mid-manche. Room and presence cleanup. One socket per user. The session-replaced path. OfflineBanner semantics.
+- Graceful shutdown mid-round. Room and presence cleanup. One socket per user. The session-replaced path. OfflineBanner semantics.
 - Every line of DISCONNECT-POLICY.md has code, and all such code has a policy line.`,
   },
   {
     key: 'game-logic', model: 'opus', skills: [],
-    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/GAME-RULES.md § Decisions, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealManche.ts, lib/exchangeCeremony.ts, lib/game/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/gameOver.ts',
+    start: 'lib/game/gameEngine.ts, docs/GAME-RULES.md, docs/GAME-RULES.md § Decisions, lib/game/autoMove.ts, server/game/botSeat.ts, server/game/dealRound.ts, lib/exchangeCeremony.ts, lib/game/placement.ts, lib/game/standings.ts, lib/game/rating.ts, server/game/ratings.ts, lib/game/replay.ts, lib/game/matchState.ts, lib/offlineSave.ts, lib/game/sharedGameFlow.ts, server/game/gameOver.ts',
     refs: 'docs/GAME-RULES.md is the specification; docs/GAME-RULES.md § Decisions records every rule change.',
     ask: `Build a matrix: rule in docs/GAME-RULES.md -> engine code -> pinning test. Report every row with a gap on any side.
 Edge cases to cover:
 - the last card; passes wrapping round the table; bombs; ties;
-- the end of a partita; a vacated seat; a bot taking over mid-turn;
+- the end of a match; a vacated seat; a bot taking over mid-turn;
 - the exchange with a disconnected player; replay determinism.
 Invariants to confirm:
 - the server decides every outcome;
@@ -166,7 +166,7 @@ Return up to 40 concrete, buildable proposals that clear FEEL-BAR, ranked by imp
     key: 'a11y', model: 'sonnet', skills: ['accessibility'],
     start: 'lib/a11y.tsx, lib/accessibility.ts, components/tableA11y.ts, components/AppModal.tsx, components/IconButton.tsx, tests/ui-rules/a11y*.test.ts, tests/ui-rules/touchTargets.test.ts, tests/e2e/a11yOverlays.spec.ts, tests/e2e/ariaTwins.spec.ts',
     refs: 'WCAG 2.2 AA (new: focus not obscured, dragging alternative, target size minimum, consistent help); reactnative.dev/docs/accessibility; gameaccessibilityguidelines.com (colour-safe suits, text size, timing).',
-    ask: `The key question: can a screen-reader user play a whole manche?
+    ask: `The key question: can a screen-reader user play a whole round?
 Check:
 - one accessible node per labelled control;
 - a11yGroup containers;

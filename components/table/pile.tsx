@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
-import { Beaten, BombFx, CardGlow, Colors, MancheMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, BombFx, CardGlow, Colors, RoundMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -25,10 +25,10 @@ import { useTranslation, type TranslationKey } from "@/lib/i18n";
 import type { Card, Combination } from "@/lib/game/gameEngine";
 import { CARD_W, CARD_H, FIELD_SCALE, cardRadius } from "@/components/cardFaceModel";
 import { seatDirection } from "@/components/seatLayout";
-import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrownPlay, roundClosedWithWinner, seatPoint, type ThrownPlayInput } from "@/components/flightPhysics";
+import { comboKey, flinchFor, landingTier, LAND_WOBBLE_MS, landWobble, readThrownPlay, trickClosedWithWinner, seatPoint, type ThrownPlayInput } from "@/components/flightPhysics";
 import { clearTrick, NO_TRICK, playOnto, roleOf, sweepEnded, sweepTrick, topPlay, type PlayRole, type Trick, type TrickPlay } from "./trick";
 import { flightPose, pileSlots, type CardFrom } from "@/components/flightPose";
-import { ComboMark, PileLabelMark, RoundWinnerMark } from "./notices/pileNotices";
+import { ComboMark, PileLabelMark, TrickWinnerMark } from "./notices/pileNotices";
 import { noticeTiming } from "./noticeModel";
 import { a11yHidden } from "@/lib/a11y";
 import { landingPulsesFor } from "@/lib/device/moments";
@@ -334,7 +334,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
-        {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + MancheMoment.litRingPt }]} />}
+        {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + RoundMoment.litRingPt }]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} rects={ownRects} />
         </View>
@@ -385,7 +385,7 @@ export interface PileLayerProps {
   onSweepEnd: () => void;
   /** The combination the chip names, which may run ahead of the cards landing. */
   comboLabel: Combination | null;
-  roundWinner: string | null;
+  trickWinner: string | null;
   /** Said by the combination's chip in place of the combination: the exchange's who gives what to whom, under the card resting there. */
   note?: PileNote | null;
   /** The width share the field's arc may take — see FIELD_WIDTH_SHARE. */
@@ -396,7 +396,7 @@ export interface PileLayerProps {
   hidden?: boolean;
   /** The whole pile's, for its fade before the next deal. */
   opacity?: SharedValue<number>;
-  /** The viewer won the manche: the top play's top card is lit. */
+  /** The viewer won the round: the top play's top card is lit. */
   lit?: boolean;
 }
 
@@ -405,7 +405,7 @@ export interface PileLayerProps {
  * the throw to the end of its sweep, with the pile's chip, note and winner tag.
  */
 export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
-  const { trick, flights, signal, bombClock, comboLabel, roundWinner, note, roomW, scale = 1, hidden = false, lit = false } = props;
+  const { trick, flights, signal, bombClock, comboLabel, trickWinner, note, roomW, scale = 1, hidden = false, lit = false } = props;
   const { t } = useTranslation();
   const cardScale = scale * FIELD_SCALE;
   const reduceMotion = usePrefersReducedMotion();
@@ -505,12 +505,12 @@ export const PileLayer = memo(function PileLayer(props: PileLayerProps) {
   // A plain view with no z-index of its own, so each group's `zIndex` reaches the moments beside it.
   return (
     <Animated.View style={[pileStyles.pileArea, hidden && pileStyles.aside, fadeStyle]} testID="pile-area">
-      {roundWinner && !hidden ? (
+      {trickWinner && !hidden ? (
         <Animated.View
           exiting={FadeOut.duration(noticeTiming("chip", reduceMotion).exit).reduceMotion(ReduceMotion.Never)}
           style={pileStyles.winnerAt}
         >
-          <RoundWinnerMark name={roundWinner} scale={scale} />
+          <TrickWinnerMark name={trickWinner} scale={scale} />
         </Animated.View>
       ) : null}
 
@@ -579,18 +579,18 @@ export function getComboLabel(
 
 // How long the round-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
-const ROUND_WINNER_MS = 1800;
+const TRICK_WINNER_MS = 1800;
 
 export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "playedBy"> {
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
-  roundWinner: number | null;
+  trickWinner: number | null;
   gameOver: boolean;
   /**
    * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
    * second render the dedupe below skips, so a flight still in the air is
    * re-armed with the tier it now closes on. `viewerWon` the same: online, a
-   * teams manche's outcome waits for `game:over`'s scores, and a win scored
+   * teams round's outcome waits for `game:over`'s scores, and a win scored
    * after the contact never shakes, the shake being the contact's.
    */
   matchOver: boolean;
@@ -600,7 +600,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   celebrateFlush: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
-  playRoundStart: () => void;
+  playTrickStart: () => void;
   /** The viewer's hand cards as last drawn (`StraightHand`'s `onOrigins`), from the hand zone's centre. */
   handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
   /** The width share the field's cards may take — see FIELD_WIDTH_SHARE. */
@@ -617,7 +617,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
 export function usePileFlight({
   lastPlayedCombination,
   lastPlayedBy,
-  roundWinner,
+  trickWinner,
   gameOver,
   matchOver,
   viewerWon,
@@ -636,7 +636,7 @@ export function usePileFlight({
   timeline,
   celebrateFlush,
   onClock,
-  playRoundStart,
+  playTrickStart,
   handOrigins,
   roomW,
   catchUp,
@@ -649,7 +649,7 @@ export function usePileFlight({
   // closed. The counter is what makes an identical repeat a new announcement:
   // the seat that wins a round leads the next one, so the same seat winning
   // twice running is ordinary play.
-  const [roundWinnerTag, setRoundWinnerTag] = useState<{ seat: number; closure: number } | null>(
+  const [trickWinnerTag, setTrickWinnerTag] = useState<{ seat: number; closure: number } | null>(
     null
   );
   const [trick, setTrick] = useState<Trick>(NO_TRICK);
@@ -663,11 +663,11 @@ export function usePileFlight({
   // Non-null while the winning combination is being held on the felt under the
   // round-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
-  const roundHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
+  const trickHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
     null
   );
   const prevComboKeyRef = useRef<string>("");
-  const roundClosedRef = useRef(false);
+  const trickClosedRef = useRef(false);
   const closureRef = useRef({ matchOver, viewerWon });
   const clocks = useRef(new Map<string, FlightClock>());
   useEffect(() => {
@@ -677,7 +677,7 @@ export function usePileFlight({
       clocks.current.get(f.key)?.arm({
         ...f.landing,
         tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }),
-        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesPartita: f.handOver && matchOver }),
+        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.handOver && matchOver }),
       });
     }
   }, [matchOver, viewerWon]);
@@ -692,7 +692,7 @@ export function usePileFlight({
 
   useEffect(
     () => () => {
-      if (roundHoldRef.current) clearTimeout(roundHoldRef.current.timer);
+      if (trickHoldRef.current) clearTimeout(trickHoldRef.current.timer);
     },
     []
   );
@@ -703,8 +703,8 @@ export function usePileFlight({
   useEffect(() => {
     // Clearing the felt and announcing a new round are one beat, whether it
     // happens now or after the winning cards have been held.
-    const openNewRound = () => {
-      playRoundStart();
+    const openNewTrick = () => {
+      playTrickStart();
       setTrick(clearTrick);
     };
 
@@ -726,32 +726,32 @@ export function usePileFlight({
     if (combo === null) {
       // The winning cards are being held for the tag; nothing may take the
       // felt out from under them until the hold expires or a new lead arrives.
-      if (roundHoldRef.current) return;
+      if (trickHoldRef.current) return;
       if (prevComboKeyRef.current === "") {
         setTrick(clearTrick);
         return;
       }
       prevComboKeyRef.current = "";
-      if (roundClosedWithWinner({ lastPlayedCombination: combo, roundWinner })) {
-        const origin = seatPoint(geometry, seatDirection(roundWinner!, viewerSeat, players.length));
+      if (trickClosedWithWinner({ lastPlayedCombination: combo, trickWinner })) {
+        const origin = seatPoint(geometry, seatDirection(trickWinner!, viewerSeat, players.length));
         const collect = () => {
-          roundHoldRef.current = null;
+          trickHoldRef.current = null;
           setTrick((t) => sweepTrick(t, origin));
-          openNewRound();
+          openNewTrick();
         };
-        roundHoldRef.current = { timer: setTimeout(collect, ROUND_WINNER_MS), collect };
+        trickHoldRef.current = { timer: setTimeout(collect, TRICK_WINNER_MS), collect };
         return;
       }
-      openNewRound();
+      openNewTrick();
       return;
     }
     const key = comboKey(combo, lastPlayedBy);
     if (key === prevComboKeyRef.current) return;
     // A lead inside the hold window ends it early: the new card has to fly
     // onto a cleared pile while the won cards sweep away underneath it.
-    if (roundHoldRef.current) {
-      clearTimeout(roundHoldRef.current.timer);
-      roundHoldRef.current.collect();
+    if (trickHoldRef.current) {
+      clearTimeout(trickHoldRef.current.timer);
+      trickHoldRef.current.collect();
     }
     prevComboKeyRef.current = key;
 
@@ -777,7 +777,7 @@ export function usePileFlight({
         cards: thrown.cards.length,
         bomb: thrown.heavy,
         mine: thrown.dir === "bottom",
-        closesPartita: gameOver && closureRef.current.matchOver,
+        closesMatch: gameOver && closureRef.current.matchOver,
       }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
@@ -789,12 +789,12 @@ export function usePileFlight({
   }, [
     lastPlayedCombination,
     lastPlayedBy,
-    roundWinner,
+    trickWinner,
     gameOver,
     viewerSeat,
     players.length,
     reduceMotion,
-    playRoundStart,
+    playTrickStart,
     players,
     opponents,
     scale,
@@ -815,30 +815,30 @@ export function usePileFlight({
   ]);
 
   // Round-winner tag over the pile, keyed on the round *closing* rather than on
-  // the value of `roundWinner`: processPlay leaves that field standing through
+  // the value of `trickWinner`: processPlay leaves that field standing through
   // the round the winner goes on to lead, so with two players it never changes
   // and every win after the first would go unannounced. The seat is what is
   // stored, not the name — the name is looked up at render, so a game update
   // that only changes the player list cannot restart the banner's own timers.
   useEffect(() => {
-    if (!roundClosedWithWinner({ lastPlayedCombination, roundWinner })) {
-      roundClosedRef.current = false;
+    if (!trickClosedWithWinner({ lastPlayedCombination, trickWinner })) {
+      trickClosedRef.current = false;
       return;
     }
-    if (roundClosedRef.current) return;
-    roundClosedRef.current = true;
-    const seat = roundWinner!;
-    setRoundWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
-  }, [lastPlayedCombination, roundWinner]);
+    if (trickClosedRef.current) return;
+    trickClosedRef.current = true;
+    const seat = trickWinner!;
+    setTrickWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
+  }, [lastPlayedCombination, trickWinner]);
 
   // A round closes on a pass, never on a play, so the round-win sting is that
   // closing pass's own event (useTableFeedback) and this tag is only the banner —
   // the round-start sting is deferred for as long as it is up.
   useEffect(() => {
-    if (roundWinnerTag === null) return;
-    const dismiss = setTimeout(() => setRoundWinnerTag(null), ROUND_WINNER_MS);
+    if (trickWinnerTag === null) return;
+    const dismiss = setTimeout(() => setTrickWinnerTag(null), TRICK_WINNER_MS);
     return () => clearTimeout(dismiss);
-  }, [roundWinnerTag]);
+  }, [trickWinnerTag]);
 
   const onFlightContact = useCallback(
     (key: string) => {
@@ -875,7 +875,7 @@ export function usePileFlight({
     trick,
     endSweep,
     flights,
-    roundWinnerTag,
+    trickWinnerTag,
     onFlightStart,
     onFlightContact,
     onFlightDone,
@@ -910,7 +910,7 @@ const pileStyles = StyleSheet.create({
   // Behind the card for the same reason: only the ring's edge shows around it.
   litRing: {
     position: "absolute",
-    top: -MancheMoment.litRingPt, left: -MancheMoment.litRingPt, right: -MancheMoment.litRingPt, bottom: -MancheMoment.litRingPt,
+    top: -RoundMoment.litRingPt, left: -RoundMoment.litRingPt, right: -RoundMoment.litRingPt, bottom: -RoundMoment.litRingPt,
     zIndex: Layer.felt,
     backgroundColor: Colors.goldLit,
     ...Shadow.litCard,

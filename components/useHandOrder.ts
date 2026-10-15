@@ -10,7 +10,7 @@ import type { Card } from "@/lib/game/gameEngine";
 
 /**
  * How many cards a hand may gain and still be the same hand. Exactly one: the
- * exchange hands a card back mid-manche and the arrangement has to survive
+ * exchange hands a card back mid-round and the arrangement has to survive
  * that. Nothing else adds to a hand except a deal, which brings thirteen or
  * fourteen strangers at once.
  */
@@ -39,7 +39,7 @@ export function useHandOrder(seat: number, sorted: Card[]): HandOrder {
 
   // A deal is read off which cards are new rather than off how many there are.
   // Counting was wrong twice over: a hand momentarily absent from the state
-  // reads as zero and makes the next one look dealt, and a manche a player sat
+  // reads as zero and makes the next one look dealt, and a round a player sat
   // out entirely ends on the same thirteen it started with, so the next deal
   // changes no count at all.
   const order = useMemo(() => {

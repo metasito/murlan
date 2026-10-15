@@ -5,9 +5,9 @@ import type { KindTone, NoticeKind } from "../noticeModel";
 import { ErrorToast, PassFloat, RejectFloat } from "./floats";
 import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
-import { EndMatchVote, MancheVote } from "./netNotes";
+import { EndMatchVote, RoundVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
-import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
+import { ComboMark, PileLabelMark, TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const underDisc = (scale: number) => {
@@ -110,7 +110,7 @@ export const NOTICE_GALLERY = {
     { name: "a pair", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Coppia" /> },
     { name: "a bomb, the same mark", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Bomba ×4" /> },
   ],
-  roundWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <RoundWinnerMark scale={scale} name="Besnik" /> }],
+  trickWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <TrickWinnerMark scale={scale} name="Besnik" /> }],
   pileLabel: [
     {
       name: "the exchange's card on the pile",
@@ -140,9 +140,9 @@ export const NOTICE_GALLERY = {
     { name: "another seat voted", tone: "neutral", render: (scale) => <EndMatchVote {...vote(false, 1)} scale={scale} /> },
     { name: "you voted", tone: "lit", render: (scale) => <EndMatchVote {...vote(true, 2)} scale={scale} /> },
   ],
-  mancheVote: [
-    { name: "the manche is over", tone: "neutral", render: (scale) => <MancheVote {...vote(false, 0)} scale={scale} /> },
-    { name: "another seat is ready", tone: "neutral", render: (scale) => <MancheVote {...vote(false, 1)} scale={scale} /> },
-    { name: "you are ready", tone: "lit", render: (scale) => <MancheVote {...vote(true, 2)} scale={scale} /> },
+  roundVote: [
+    { name: "the round is over", tone: "neutral", render: (scale) => <RoundVote {...vote(false, 0)} scale={scale} /> },
+    { name: "another seat is ready", tone: "neutral", render: (scale) => <RoundVote {...vote(false, 1)} scale={scale} /> },
+    { name: "you are ready", tone: "lit", render: (scale) => <RoundVote {...vote(true, 2)} scale={scale} /> },
   ],
 } satisfies { [K in NoticeKind]: NoticeFixture<K>[] };

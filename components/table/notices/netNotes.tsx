@@ -6,7 +6,7 @@ import { NoticeBadge, NoticeGlyph, NoticeText, TableNotice } from "../TableNotic
 import { noticeBox, type NoticeKind } from "../noticeModel";
 
 export type EndMatchVoteNote = { voted: boolean; votes: number; total: number; onPress: () => void };
-export type MancheVoteNote = EndMatchVoteNote;
+export type RoundVoteNote = EndMatchVoteNote;
 
 /** The pill's own box grown to the floor, its footprint unchanged: react-native-web ignores `hitSlop` on a Pressable. */
 function reach(kind: NoticeKind, scale: number) {
@@ -15,21 +15,21 @@ function reach(kind: NoticeKind, scale: number) {
 }
 
 /** The next-hand vote at the open pill's foot: the tally as a count, lit and spent once the viewer has voted. */
-export function MancheVote({ scale, voted, votes, total, onPress }: MancheVoteNote & { scale: number }) {
+export function RoundVote({ scale, voted, votes, total, onPress }: RoundVoteNote & { scale: number }) {
   const { t } = useTranslation();
   const waiting = t("gameOverOverlay.waitingA11yLabel", { count: votes, total });
   return (
     <>
       <A11yStatus label={voted ? waiting : ""} />
       <Pressable
-        style={reach("mancheVote", scale)}
+        style={reach("roundVote", scale)}
         {...a11yState({ role: "button", disabled: voted })}
         accessibilityLabel={voted ? waiting : t("gameOverOverlay.nextHandA11yLabel")}
         disabled={voted}
         onPress={onPress}
       >
         <View {...a11yHidden()}>
-          <TableNotice kind="mancheVote" tone={voted ? "lit" : "neutral"} scale={scale}>
+          <TableNotice kind="roundVote" tone={voted ? "lit" : "neutral"} scale={scale}>
             <NoticeGlyph name={voted ? "checkmark-circle" : "play-forward-outline"} px={12} />
             <NoticeText>{voted ? t("gameOverOverlay.nextHandWaiting", { count: votes, total }) : t("result.nextHand")}</NoticeText>
             {!voted && <NoticeBadge>{`${votes}/${total}`}</NoticeBadge>}

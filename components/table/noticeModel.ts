@@ -57,7 +57,7 @@ export const NOTICES = {
   reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
-  roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  trickWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
   rejectFloat: { shape: "float", selector: "#n-reject", tones: ["bad"] },
@@ -65,7 +65,7 @@ export const NOTICES = {
   waitingOthers: { shape: "pill", selector: "#n-waiting", tones: ["gold"] },
   emptyHand: { shape: "pill", selector: "#n-empty", tones: ["gold"] },
   endMatchVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
-  mancheVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
+  roundVote: { shape: "pill", selector: "#n-vote", tones: ["neutral", "lit"] },
 } as const satisfies Record<string, NoticeSpec>;
 export type NoticeKind = keyof typeof NOTICES;
 export type KindTone<K extends NoticeKind> = (typeof NOTICES)[K]["tones"][number];

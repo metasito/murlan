@@ -115,7 +115,7 @@ const STATE: GameState = {
   lastPlayedBy: 1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -488,7 +488,7 @@ describe("the table's refusals and lines", () => {
     await r.unmount();
   });
 
-  it('a seat the manche placed last keeps its hand and is not told it finished', async () => {
+  it('a seat the round placed last keeps its hand and is not told it finished', async () => {
     const r = await render(at(withAna({ finishPosition: 4 })));
     expect(screen.queryByTestId('notice-waitingOthers', hidden)).toBeNull();
     expect(screen.queryByText(t('gameTable.waitingOthers'), hidden)).toBeNull();

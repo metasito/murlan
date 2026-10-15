@@ -71,14 +71,14 @@ export function landWobble(k: number): { scale: number; rotate: number } {
 // their own magnitudes off, by the same five tiers, rather than inventing a
 // second classification that could disagree with this one.
 
-export type ImpactTier = "ordinary" | "straightFlush" | "bomb" | "mancheWon" | "partitaWon";
+export type ImpactTier = "ordinary" | "straightFlush" | "bomb" | "roundWon" | "matchWon";
 
 const TRAUMA_BY_TIER: Record<ImpactTier, number> = {
   ordinary: 0,
   straightFlush: 0,
   bomb: Trauma.bomb,
-  mancheWon: Trauma.mancheWon,
-  partitaWon: Trauma.partitaWon,
+  roundWon: Trauma.roundWon,
+  matchWon: Trauma.matchWon,
 };
 
 /** The tier a played combination's own shape lands at, on its own. */
@@ -91,19 +91,19 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
 /**
  * The tier one landing falls at, once whatever it closed is folded in.
  *
- * A manche closes when `GameState.gameOver` turns true — `processPlay`
+ * A round closes when `GameState.gameOver` turns true — `processPlay`
  * (lib/game/gameEngine.ts) sets it the moment a hand empties, its own comment
  * calling that "the hand is decided", which `docs/GAME-RULES.md` names the
- * manche. A partita closing is a *further* fact about that same landing,
+ * round. A match closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
  * `context/GameContext.tsx` `applyHandToMatch`, the online
  * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
  * also the hand that happens to close the match, never a second, later
- * event. `GameState.roundWinner` is not read here — `docs/GAME-RULES.md` §9
+ * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
  * calls that a *trick*, and it closes many times a hand.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes
- * the manche or the partita is still only as loud as its loudest rung —
+ * the round or the match is still only as loud as its loudest rung —
  * `TRAUMA_BY_TIER` is what decides which that is, so this can't disagree
  * with the table by naming a tier lower than the play already earned.
  */
@@ -111,12 +111,12 @@ export function landingTier(input: {
   comboType: Combination["type"];
   handOver: boolean;
   matchOver: boolean;
-  /** The viewer won what this landing closes: the partita when `matchOver`, else the manche. A pending outcome is not a win. */
+  /** The viewer won what this landing closes: the match when `matchOver`, else the round. A pending outcome is not a win. */
   viewerWon: boolean;
 }): ImpactTier {
   const playTier = comboImpactTier(input.comboType);
   if (!input.handOver || !input.viewerWon) return playTier;
-  const closureTier: ImpactTier = input.matchOver ? "partitaWon" : "mancheWon";
+  const closureTier: ImpactTier = input.matchOver ? "matchWon" : "roundWon";
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
 
@@ -139,8 +139,8 @@ const FLINCH_BY_TIER: Record<ImpactTier, number> = {
   ordinary: 0,
   straightFlush: Spacing.xxs,
   bomb: Spacing.slim,
-  mancheWon: Spacing.slim,
-  partitaWon: Spacing.slim,
+  roundWon: Spacing.slim,
+  matchWon: Spacing.slim,
 };
 
 /** The tier's own flinch, or 0 outright when the player asked for less motion — the caller scales the answer by the table the way `shakeOffset` scales trauma. */
@@ -181,7 +181,7 @@ const SHAKE_AMPLITUDE_Y = Spacing.snug;
 /**
  * The bomb's own peak, layered on top of the amplitude above rather than
  * replacing it: `kick` (`components/useTableFeedback.ts`) is gated to
- * `bomb`/`royal_straight` alone, so a manche or partita closed by an
+ * `bomb`/`royal_straight` alone, so a round or match closed by an
  * ordinary combination has no kick to lean on, and one shared amplitude
  * moves every tier by the same ratio once trauma is squared — this is
  * reserved for the one tier that needs the headroom.
@@ -240,10 +240,10 @@ export function shakeOffset(
 //
 // The lamp's own reaction to a landing, at the graduated tiers #101 settled
 // (the "C — Cinema" row of #772's grammar). Reads `ImpactTier` — the same
-// tier #763 squares into a shake — rather than a second table: a manche is
+// tier #763 squares into a shake — rather than a second table: a round is
 // the expected ending and hands over to its own banner, so it lifts instead
-// of flaring; the bomb and the partita both throw light, because both are the
-// surprise the shake already ranks above a manche closing.
+// of flaring; the bomb and the match both throw light, because both are the
+// surprise the shake already ranks above a round closing.
 
 /** What the lamp's own flare does at a tier's landing, if anything. */
 export type FlareKind = "none" | "brief" | "settle";
@@ -251,7 +251,7 @@ export type FlareKind = "none" | "brief" | "settle";
 export function flareKindFor(tier: ImpactTier): FlareKind {
   "worklet";
   if (tier === "bomb") return "brief";
-  if (tier === "partitaWon") return "settle";
+  if (tier === "matchWon") return "settle";
   return "none";
 }
 
@@ -335,19 +335,19 @@ export function comboKey(combo: Combination, playedBy: number): string {
 
 /**
  * The pass that just closed a round, seen from one state. `processPass`
- * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
+ * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`
  * in the same transition, so the table gets both on a single commit — and the
  * winning cards must stay on the felt under the tag that announces them
  * instead of being wiped by the empty-table branch.
  */
-export function roundClosedWithWinner(state: {
+export function trickClosedWithWinner(state: {
   lastPlayedCombination: Combination | null;
-  roundWinner?: number | null;
+  trickWinner?: number | null;
 }): boolean {
   return (
     state.lastPlayedCombination === null &&
-    state.roundWinner !== null &&
-    state.roundWinner !== undefined
+    state.trickWinner !== null &&
+    state.trickWinner !== undefined
   );
 }
 
@@ -385,7 +385,7 @@ export function passedSeats(state: {
   return passed;
 }
 
-type PassView = Parameters<typeof passedSeats>[0] & { roundWinner?: number | null };
+type PassView = Parameters<typeof passedSeats>[0] & { trickWinner?: number | null };
 
 /**
  * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
@@ -395,7 +395,7 @@ export function seatsJustPassed(before: PassView, after: PassView): number[] {
   const was = passedSeats(before);
   const now = passedSeats(after).filter((seat) => !was.includes(seat));
   const closedByPass =
-    before.lastPlayedCombination !== null && roundClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
+    before.lastPlayedCombination !== null && trickClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
   return closedByPass ? [...now, before.currentTurnIndex] : now;
 }
 

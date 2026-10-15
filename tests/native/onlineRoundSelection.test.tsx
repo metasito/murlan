@@ -1,4 +1,4 @@
-// tests/native/onlineMancheSelection.test.tsx — the online screen holds no selection; the table's
+// tests/native/onlineRoundSelection.test.tsx — the online screen holds no selection; the table's
 // own keeps what the server's answer leaves in the hand and drops the rest at the deal.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
@@ -40,7 +40,7 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -165,7 +165,7 @@ describe('the online table selection', () => {
     await r.unmount();
   });
 
-  it('leaves a selection alone while the manche is still being played', async () => {
+  it('leaves a selection alone while the round is still being played', async () => {
     const r = await render(screenUnderTest());
     await tap(KING);
 

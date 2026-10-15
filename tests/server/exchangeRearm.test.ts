@@ -79,7 +79,7 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
   }
 });
 
-test("a bot opening a both-Jokers manche waits out the deal and the ceremony it opens with", (t) => {
+test("a bot opening a both-Jokers round waits out the deal and the ceremony it opens with", (t) => {
   t.mock.method(persistence, "writeActiveGame", async () => {});
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const game = exchangeTable(true);
@@ -97,7 +97,7 @@ test("a bot opening a both-Jokers manche waits out the deal and the ceremony it 
     t.mock.timers.tick(botMoveDelayMs() - 1);
     assert.deepEqual(game.gameState, opened, "the next seat moved early");
     t.mock.timers.tick(1);
-    assert.notDeepEqual(game.gameState, opened, "the next seat waited out the exchange floor again, after the manche was played into");
+    assert.notDeepEqual(game.gameState, opened, "the next seat waited out the exchange floor again, after the round was played into");
   } finally {
     clearRoomTimers(ROOM);
     activeGames.delete(ROOM);

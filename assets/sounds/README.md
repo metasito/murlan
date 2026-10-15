@@ -8,7 +8,7 @@ on #1237 and vendored as they were picked. Six are built by `node scripts/build-
 Copied from `origin/research/lantern-assets:mockups/the-lantern-table/audio/`. They were
 loudness-matched per action before the listening: BS.1770 integrated loudness, a sample-peak cap of
 0.89, high-passed at 80 Hz (60 Hz for the boom). They carry their level in the file, so the engine
-plays them at unity. `manche_lost`, `partita_lost`, `reconnected` and `select` are cut at an MP3
+plays them at unity. `round_lost`, `match_lost`, `reconnected` and `select` are cut at an MP3
 frame boundary (`ffmpeg -c:a copy -t`, no re-encode) where their tail falls 55 dB under their own
 peak.
 
@@ -23,10 +23,10 @@ peak.
 | `exchange.mp3` | Card exchange | `exchange-1` | ElevenLabs | "Two playing cards slid across a felt table to another player, smooth realistic sliding sound, clean" | free-tier prototype |
 | `turn.mp3` | Your turn | `turn-2` | ElevenLabs | "Gentle two-note marimba notification, warm and clean, short, casual card game" | free-tier prototype |
 | `clock_running_out.mp3` | Turn clock running out | `clock-2` | ElevenLabs | "Countdown timer ticking getting faster, clean realistic clock ticks" | free-tier prototype |
-| `manche_won.mp3` | Manche won | `mwin-6` | ElevenLabs | "Short happy piano arpeggio going up with a soft bell at the end, clean, card game win" | free-tier prototype |
-| `manche_lost.mp3` | Manche lost | `mlose-1` | ElevenLabs | "Short soft losing sound for a card game, gentle descending piano notes, not sad, clean" | free-tier prototype |
-| `partita_won.mp3` | Partita won | `pwin-3` | ElevenLabs | "Triumphant short orchestral win music with bells, mobile game victory, polished" | free-tier prototype |
-| `partita_lost.mp3` | Partita lost | `plose-1` | ElevenLabs | "Short game over sound for a card game, calm descending piano phrase, gentle, clean" | free-tier prototype |
+| `round_won.mp3` | Round won | `mwin-6` | ElevenLabs | "Short happy piano arpeggio going up with a soft bell at the end, clean, card game win" | free-tier prototype |
+| `round_lost.mp3` | Round lost | `mlose-1` | ElevenLabs | "Short soft losing sound for a card game, gentle descending piano notes, not sad, clean" | free-tier prototype |
+| `match_won.mp3` | Match won | `pwin-3` | ElevenLabs | "Triumphant short orchestral win music with bells, mobile game victory, polished" | free-tier prototype |
+| `match_lost.mp3` | Match lost | `plose-1` | ElevenLabs | "Short game over sound for a card game, calm descending piano phrase, gentle, clean" | free-tier prototype |
 | `reconnected.mp3` | The viewer's own connection is back | `reconnect-1` | ElevenLabs | "Soft clean confirmation chime, connected, short, modern app sound" | free-tier prototype |
 
 **The twelve ElevenLabs files are free-tier prototypes.** Free-tier output is non-commercial: they
@@ -34,7 +34,7 @@ are regenerated from these prompts on a paid plan and re-listened before the gam
 
 ## The built effects
 
-`round_start`, `round_win`, `reject`, `seat_fill`, `room_full` and `manche_neutral`, each a recipe in
+`trick_start`, `trick_win`, `reject`, `seat_fill`, `room_full` and `round_neutral`, each a recipe in
 `scripts/build-sounds.mjs`: one or more source clips, each with a gain, a start offset and a playback
 rate. All are CC0 1.0; no attribution is required, and it is given here because the work deserves it.
 
@@ -52,8 +52,8 @@ gives decoding, gain, pitch and overlap with no native binary.
 **`room_full`** is one struck glass note at a third and a fifth, two quick notes for the last seat of
 the lobby filling; each seat before it is `seat_fill`, a single *Casino Audio* chip laid down.
 **`reject`**, a refused GIOCA, is *Interface Sounds* `error_004.wav`.
-**`manche_neutral`** is a drawn manche (D6): two glass notes a major second apart, under both verdict
-stings; built by `node scripts/build-sounds.mjs manche_neutral`, which rebuilds only the recipes it names.
+**`round_neutral`** is a drawn round (D6): two glass notes a major second apart, under both verdict
+stings; built by `node scripts/build-sounds.mjs round_neutral`, which rebuilds only the recipes it names.
 
 Every built output is then:
 
@@ -61,17 +61,17 @@ Every built output is then:
    floor is absolute rather than a proportion of total energy, because a proportional measure is not
    idempotent — trimming the quiet tail shrinks the total it is a proportion of, so each rebuild eats
    further into the sound.
-2. **Normalised** to a sample peak of 0.89, except `round_start` (0.79, which keeps its true peak
-   under −1 dBTP once encoded), `round_win` (0.3, which puts a trick won under the manche won) and
-   `manche_neutral` (0.25, under both verdicts).
+2. **Normalised** to a sample peak of 0.89, except `trick_start` (0.79, which keeps its true peak
+   under −1 dBTP once encoded), `trick_win` (0.3, which puts a trick won under the round won) and
+   `round_neutral` (0.25, under both verdicts).
 3. **Encoded to MP3** at 96 kbps mono with `lamejs`.
 
 ## What the test holds
 
 `tests/tooling/soundAssets.test.ts` decodes every file `soundAssets.ts` requires through
 `mpg123-decoder`: that each is real mono 44.1 kHz audio of its pinned length and pinned integrated
-loudness, free of a trailing silent tail, never above −1 dBFS, and that `round_win` sits under
-`manche_won`.
+loudness, free of a trailing silent tail, never above −1 dBFS, and that `trick_win` sits under
+`round_won`.
 
 `lib/device/audioEngine.ts` varies the pitch and gain of the effects that repeat through a hand — select, play,
 combo, pass, deal and reject — so a hand of them is not one clip repeated; the stings always sound

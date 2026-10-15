@@ -238,7 +238,7 @@ export function registerRoomHandlers({ io, socket, userId }: RoomHandlerContext)
       async ({ fillWithBots, botPersonality, matchLength }) => {
         const roomId = socketRoomMap.get(socket.id);
         if (!roomId) return { ok: false, code: "NOT_AT_A_TABLE" };
-        // Routed like every other table action: between the manches of a match
+        // Routed like every other table action: between the rounds of a match
         // the game already exists, and it exists on whichever instance dealt
         // the last one rather than on whichever one is holding the host.
         return applyOrForward(io, {

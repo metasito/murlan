@@ -75,7 +75,7 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
 }
 
 /**
- * Clears the manche-opening announcement if one is up (#817).
+ * Clears the round-opening announcement if one is up (#817).
  *
  * It is a gate: it covers the table so the first tap is spent reading it
  * rather than playing a card, which is exactly what a spec's own first tap

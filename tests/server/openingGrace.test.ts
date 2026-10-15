@@ -1,4 +1,4 @@
-// #830: the online opener's first turn of a manche carries the announcement's
+// #830: the online opener's first turn of a round carries the announcement's
 // reading time (`Reading.notice`) on top of the normal AFK window, so a client
 // holding the table behind the opening gate does not spend its own turn clock
 // on time the game itself imposed. Derived from state the server already
@@ -29,8 +29,8 @@ function player(id: string, name: string): Player {
   return { id, name, hand: [], type: "human" };
 }
 
-/** A freshly dealt manche, opener at seat 0, nothing played yet. */
-function freshManche(): GameState {
+/** A freshly dealt round, opener at seat 0, nothing played yet. */
+function freshRound(): GameState {
   return {
     players: [player("p0", "Opener"), player("p1", "Other")],
     currentTurnIndex: 0,
@@ -38,7 +38,7 @@ function freshManche(): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: false,
@@ -59,8 +59,8 @@ function teardown() {
 }
 
 describe("the opener's first-turn AFK grace (#830)", () => {
-  test("grants Reading.notice on the opener's first turn, and never again once the manche has a play in it", () => {
-    const game = seat(freshManche(), { 0: OPENER, 1: OTHER });
+  test("grants Reading.notice on the opener's first turn, and never again once the round has a play in it", () => {
+    const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       const before = Date.now();
       armTurn(io, ROOM);
@@ -73,7 +73,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
       );
 
       // The opener has now played — the rank tally is no longer all zero, so
-      // `openingIsPending` reads this manche as past its opening even though
+      // `openingIsPending` reads this round as past its opening even though
       // nothing else about the turn changed.
       game.gameState.playedRanks![0] = 1;
 
@@ -91,7 +91,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
 
   test("a seat vacated to a bot gets no grant and no AFK timer, even on the opener's own turn", () => {
     // No entry for seat 0: the opener's seat is vacant.
-    const game = seat(freshManche(), { 1: OTHER });
+    const game = seat(freshRound(), { 1: OTHER });
     try {
       armTurn(io, ROOM);
       assert.equal(
@@ -110,7 +110,7 @@ describe("the opener's first-turn AFK grace (#830)", () => {
   });
 
   test("a rejoin mid-opening does not renew the grant, and nobody but the opener carries a timer", async () => {
-    const game = seat(freshManche(), { 0: OPENER, 1: OTHER });
+    const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       armTurn(io, ROOM);
       const granted = game.turnDeadlineMs;

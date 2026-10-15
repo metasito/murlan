@@ -29,7 +29,7 @@ const mockMidHand: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -109,7 +109,7 @@ const lastTable = () =>
     ownLink: string;
     catchUp: boolean;
     connection: Connection;
-    partitaActions?: object;
+    matchActions?: object;
     overlays: (veiled: object) => React.ReactNode;
   };
 
@@ -169,8 +169,8 @@ describe("the online table on the viewer's own link", () => {
         <OnlineGameScreen />
       </SafeAreaProvider>
     );
-    const { connection, partitaActions } = lastTable();
-    expect(partitaActions).toBeDefined();
+    const { connection, matchActions } = lastTable();
+    expect(matchActions).toBeDefined();
     expect(connection?.state).toBe('lost');
     connection?.action?.onPress();
     expect(mockRetry).toHaveBeenCalledTimes(1);

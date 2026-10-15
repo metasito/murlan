@@ -10,8 +10,8 @@ const row = (name: string, total: number, points: number, finishedAt: number) =>
 });
 
 describe("standings", () => {
-  it("orders by match points, not by the manche just played", () => {
-    // The manche finished shtiz7, rotonmeta, KenziGmbH — but KenziGmbH has
+  it("orders by match points, not by the round just played", () => {
+    // The round finished shtiz7, rotonmeta, KenziGmbH — but KenziGmbH has
     // carried more points into it than rotonmeta.
     const ordered = standings([
       row("shtiz7", 14, 2, 0),
@@ -21,7 +21,7 @@ describe("standings", () => {
     assert.deepEqual(ordered.map((r) => r.name), ["shtiz7", "KenziGmbH", "rotonmeta"]);
   });
 
-  it("breaks a tie on points with the manche just played", () => {
+  it("breaks a tie on points with the round just played", () => {
     const ordered = standings([
       row("late", 7, 0, 2),
       row("early", 7, 2, 0),

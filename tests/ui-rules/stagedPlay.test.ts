@@ -26,7 +26,7 @@ const staged = (over: Partial<Parameters<typeof readStagedPlay>[0]>) =>
     lastPlayedCombination: null,
     startCard: undefined,
     firstPlayMade: true,
-    isNewRound: true,
+    isNewTrick: true,
     isMyTurn: true,
     isFinished: false,
     ...over,
@@ -70,7 +70,7 @@ describe("whether GIOCA will take them", () => {
   test("a lower pair cannot answer the pile", () => {
     const s = staged({
       ...pair,
-      isNewRound: false,
+      isNewTrick: false,
       lastPlayedCombination: pairOfSevens,
     });
     assert.equal(s.playable, false);
@@ -79,12 +79,12 @@ describe("whether GIOCA will take them", () => {
 
   /**
    * The pile is still on the table when the round it belongs to has closed, so
-   * only `isNewRound` says whether it must be beaten. Reading the pile alone
+   * only `isNewTrick` says whether it must be beaten. Reading the pile alone
    * would refuse the lead that opens the next round.
    */
   test("the same pair leads freely once the round has closed", () => {
     assert.equal(
-      staged({ ...pair, isNewRound: true, lastPlayedCombination: pairOfSevens }).playable,
+      staged({ ...pair, isNewTrick: true, lastPlayedCombination: pairOfSevens }).playable,
       true
     );
   });
@@ -123,19 +123,19 @@ describe("whether the hand can answer the pile at all", () => {
       lastPlayedCombination: null,
       startCard: undefined,
       firstPlayMade: true,
-      isNewRound: true,
+      isNewTrick: true,
       isMyTurn: true,
       isFinished: false,
       ...over,
     });
 
   test("a hand holding a higher pair can beat a pair", () => {
-    assert.equal(beatable({ lastPlayedCombination: pairOfSevens, isNewRound: false }), false);
+    assert.equal(beatable({ lastPlayedCombination: pairOfSevens, isNewTrick: false }), false);
     assert.equal(
       beatable({
         hand: [...HAND, card("J", "spades"), card("J", "hearts")],
         lastPlayedCombination: pairOfSevens,
-        isNewRound: false,
+        isNewTrick: false,
       }),
       true
     );

@@ -13,16 +13,16 @@ import {
 
 describe("canPassNow", () => {
   test("you may pass when answering someone else's combination", () => {
-    assert.equal(canPassNow({ isMyTurn: true, isFinished: false, isNewRound: false }), true);
+    assert.equal(canPassNow({ isMyTurn: true, isFinished: false, isNewTrick: false }), true);
   });
 
   test("leading a round is compulsory — you cannot pass", () => {
-    assert.equal(canPassNow({ isMyTurn: true, isFinished: false, isNewRound: true }), false);
+    assert.equal(canPassNow({ isMyTurn: true, isFinished: false, isNewTrick: true }), false);
   });
 
   test("not your turn, or already out: never", () => {
-    assert.equal(canPassNow({ isMyTurn: false, isFinished: false, isNewRound: false }), false);
-    assert.equal(canPassNow({ isMyTurn: true, isFinished: true, isNewRound: false }), false);
+    assert.equal(canPassNow({ isMyTurn: false, isFinished: false, isNewTrick: false }), false);
+    assert.equal(canPassNow({ isMyTurn: true, isFinished: true, isNewTrick: false }), false);
   });
 });
 
@@ -129,10 +129,10 @@ describe("turnTimerActive", () => {
   const base = {
     isMyTurn: true,
     isFinished: false,
-    isNewRound: false,
+    isNewTrick: false,
     gameOver: false,
     exchangeActive: false,
-    includeNewRound: false,
+    includeNewTrick: false,
   };
 
   test("runs while answering a combination on your turn", () => {
@@ -140,12 +140,12 @@ describe("turnTimerActive", () => {
   });
 
   test("offline: leading a new round has no deadline", () => {
-    assert.equal(turnTimerActive({ ...base, isNewRound: true }), false);
+    assert.equal(turnTimerActive({ ...base, isNewTrick: true }), false);
   });
 
   test("online: the server AFK window covers leading too", () => {
     assert.equal(
-      turnTimerActive({ ...base, isNewRound: true, includeNewRound: true }),
+      turnTimerActive({ ...base, isNewTrick: true, includeNewTrick: true }),
       true
     );
   });
@@ -157,9 +157,9 @@ describe("turnTimerActive", () => {
     assert.equal(turnTimerActive({ ...base, isFinished: true }), false);
   });
 
-  test("includeNewRound never overrides the harder stops", () => {
+  test("includeNewTrick never overrides the harder stops", () => {
     assert.equal(
-      turnTimerActive({ ...base, includeNewRound: true, exchangeActive: true }),
+      turnTimerActive({ ...base, includeNewTrick: true, exchangeActive: true }),
       false
     );
   });
@@ -167,9 +167,9 @@ describe("turnTimerActive", () => {
   test("an announcement holding the table stops a clock this client owns", () => {
     // The floor: without the hold the same case runs, so this is about the
     // hold and not about some other stop already covering it.
-    assert.equal(turnTimerActive({ ...base, includeNewRound: true }), true);
+    assert.equal(turnTimerActive({ ...base, includeNewTrick: true }), true);
     assert.equal(
-      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: true }),
+      turnTimerActive({ ...base, includeNewTrick: true, announcementHolds: true }),
       false
     );
   });
@@ -178,7 +178,7 @@ describe("turnTimerActive", () => {
     // Online the deadline is the server's: `app/(online)/game.tsx` passes no
     // `pausable`, so the hold never reaches here and the clock keeps running.
     assert.equal(
-      turnTimerActive({ ...base, includeNewRound: true, announcementHolds: false }),
+      turnTimerActive({ ...base, includeNewTrick: true, announcementHolds: false }),
       true
     );
   });

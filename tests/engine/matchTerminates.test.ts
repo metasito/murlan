@@ -1,7 +1,7 @@
 // #770 — an offline 2-player match sometimes never reaches its target, and
 // the e2e watchdogs cannot see it: `driveGameToCompletion` (tests/e2e/helpers/bot.ts)
 // only guards "the turn froze" and "no card moved". Neither fires while
-// manches keep completing and the match itself never ends, so the only
+// rounds keep completing and the match itself never ends, so the only
 // symptom on record was a bare 300s Playwright timeout.
 //
 // This harness plays real offline matches — the real engine, the real bot AI
@@ -29,16 +29,16 @@
 //     the real function can't grade its own homework.
 //   - `HandNotShrunkError` — a play was accepted (the turn moved on) but the
 //     acting seat's hand didn't shed exactly the cards it played.
-//   - `MatchStallError` — a manche or the match itself blew its move/manche
+//   - `MatchStallError` — a round or the match itself blew its move/round
 //     ceiling; collected rather than thrown so a soak run reports every
 //     stalling seed, not just the first.
 //   - `AiTurnKeyCollision` — two different engine states hashing to the same
 //     `app/game.tsx` `aiTurnKey`, so a real render would never reschedule
 //     the second AI decision; collected the same way as stalls.
-//   - a manche past `MANCHE_MOVES_CEILING` — not a stall (it still reaches
-//     `gameOver`), but a manche that takes an order of magnitude more moves
+//   - a round past `ROUND_MOVES_CEILING` — not a stall (it still reaches
+//     `gameOver`), but a round that takes an order of magnitude more moves
 //     than any this file has measured is the shape that costs real-world
-//     wall clock without ever tripping `maxMovesPerManche`, which is exactly
+//     wall clock without ever tripping `maxMovesPerRound`, which is exactly
 //     what a bare 300s Playwright timeout with no thrown error looks like
 //     from the outside.
 import { test } from "node:test";
@@ -66,37 +66,37 @@ function tableOf(playerCount: number): OfflinePlayerSetup[] {
 }
 
 /**
- * A manche needing far more moves than any real deal does is the shape that
+ * A round needing far more moves than any real deal does is the shape that
  * would explain #770's recorded 5-minute stall without ever tripping
- * `maxMovesPerManche` (2000, an order of magnitude looser): a manche that is
+ * `maxMovesPerRound` (2000, an order of magnitude looser): a round that is
  * merely *slow* rather than stuck still terminates, so `MatchStallError`
  * never fires for it, and the only trace it leaves is real-world wall clock —
  * exactly what a headless run cannot see for itself. Measured directly
  * (2-player, free_for_all, AI-vs-AI / contesting-human-vs-AI /
- * contesting-both, 8,000 seeds each): the worst manche across all three
+ * contesting-both, 8,000 seeds each): the worst round across all three
  * needed 39 moves. 150 is four times that ceiling with zero seeds this file
  * has ever produced coming within shouting distance of it, so a seed that
  * trips it is worth capturing as a fixture on its own, independent of
  * whether the match it belongs to ever stalls outright.
  */
-const MANCHE_MOVES_CEILING = 150;
+const ROUND_MOVES_CEILING = 150;
 
-interface SlowManche {
+interface SlowRound {
   seed: number;
-  mancheIndex: number;
+  roundIndex: number;
   moves: number;
 }
 
 /**
  * Plays `count` seeded matches at `playerCount` seats and fails the test
- * naming every stall, every anomalously slow manche and every `aiTurnKey`
+ * naming every stall, every anomalously slow round and every `aiTurnKey`
  * collision found, or reports the total states checked when it finds none.
  */
 function soakMatches(playerCount: number, count: number, contest?: boolean[]): void {
   const players = tableOf(playerCount);
   const failures: MatchStallError[] = [];
   const collisions: AiTurnKeyCollision[] = [];
-  const slowManches: SlowManche[] = [];
+  const slowRounds: SlowRound[] = [];
   let aiTurnKeyChecks = 0;
 
   for (let i = 0; i < count; i++) {
@@ -119,9 +119,9 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
       throw err;
     }
     aiTurnKeyChecks += result.aiTurnKeyChecks;
-    result.manches.forEach((m, mancheIndex) => {
-      if (m.moves > MANCHE_MOVES_CEILING) {
-        slowManches.push({ seed, mancheIndex, moves: m.moves });
+    result.rounds.forEach((m, roundIndex) => {
+      if (m.moves > ROUND_MOVES_CEILING) {
+        slowRounds.push({ seed, roundIndex, moves: m.moves });
       }
     });
     assert.ok(
@@ -138,12 +138,12 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
     );
   }
 
-  if (slowManches.length > 0) {
-    const [first] = slowManches;
+  if (slowRounds.length > 0) {
+    const [first] = slowRounds;
     assert.fail(
-      `${playerCount}p: ${slowManches.length} manche(s) needed more than ` +
-        `${MANCHE_MOVES_CEILING} moves (seeds: ${slowManches.map((s) => s.seed).join(", ")}). ` +
-        `First: seed ${first.seed}, manche ${first.mancheIndex}, ${first.moves} moves.`
+      `${playerCount}p: ${slowRounds.length} round(s) needed more than ` +
+        `${ROUND_MOVES_CEILING} moves (seeds: ${slowRounds.map((s) => s.seed).join(", ")}). ` +
+        `First: seed ${first.seed}, round ${first.roundIndex}, ${first.moves} moves.`
     );
   }
 
@@ -151,13 +151,13 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
     const [first] = collisions;
     assert.fail(
       `${playerCount}p: ${collisions.length} aiTurnKey collision(s) across ${aiTurnKeyChecks} ` +
-        `states checked. First: seed ${first.seed}, manche ${first.mancheIndex}, ` +
+        `states checked. First: seed ${first.seed}, round ${first.roundIndex}, ` +
         `key "${first.key}", hands ${first.before.fingerprint} -> ${first.after.fingerprint}`
     );
   }
 }
 
-// Cheap (a manche is a few hundred synchronous engine calls) and, per the
+// Cheap (a round is a few hundred synchronous engine calls) and, per the
 // ticket, high enough that a 1-in-10 stall cannot pass by luck (0.9^200 is
 // effectively zero).
 test("an offline 2-player match reaches its target over many shuffles", () => {
@@ -174,7 +174,7 @@ test("an offline 2-player match reaches its target when the human seat contests 
 });
 
 // 3 and 4 seats deal more cards and score every placement, not just the
-// winner's, so a manche runs longer — the default here stays small enough
+// winner's, so a round runs longer — the default here stays small enough
 // that the whole file is still a sub-two-second local loop; the nightly
 // soak job widens it.
 test("an offline 3-player match reaches its target over many shuffles", () => {

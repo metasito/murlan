@@ -142,8 +142,8 @@ jobs:
       # Every flow is in one shard (`tests/tooling/iosShards.test.ts`).
       matrix:
         include:
-          - shard: new-partita
-            flows: .maestro/new-partita.yaml
+          - shard: new-match
+            flows: .maestro/new-match.yaml
           - shard: offline-game
             flows: .maestro/offline-game.yaml
           - shard: exchange-phase

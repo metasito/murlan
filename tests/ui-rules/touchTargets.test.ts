@@ -37,7 +37,7 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/table/chrome.tsx", 1, "the rail's knobs take `physicalTouchTarget(scale)`, floored at TOUCH_TARGET_MIN"],
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
-  ["components/table/partitaBoard.tsx", 1, "Home and Nuova partita on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
+  ["components/table/matchBoard.tsx", 1, "Home and New match on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
   ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes paint a pill notice inside a box `reach` grows to the floor"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
@@ -347,7 +347,7 @@ test("the settings sheet's exit floors rather than scales", () => {
 test("the votes grow their own box to the floor rather than borrow hitSlop", () => {
   const source = read("components/table/notices/netNotes.tsx");
   assert.doesNotMatch(source, /hitSlop=/,"react-native-web ignores hitSlop on a Pressable");
-  assert.match(source, /style=\{reach\("mancheVote", scale\)\}/);
+  assert.match(source, /style=\{reach\("roundVote", scale\)\}/);
   assert.match(source, /style=\{reach\("endMatchVote", scale\)\}/);
 });
 

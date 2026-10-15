@@ -2,7 +2,7 @@
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true online and nowhere else: server acknowledgement of a
-// play, reactions, the end-of-partita board's rematch vote, and the connection-loss
+// play, reactions, the end-of-match board's rematch vote, and the connection-loss
 // states (reconnect notice, a player leaving, a failed rejoin).
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -20,7 +20,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
-import type { PartitaRating } from "@/components/table/partitaBoard";
+import type { MatchRating } from "@/components/table/matchBoard";
 import { PROVISIONAL_GAMES } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
 import { computeScreenPads, railWidth } from "@/components/tableFrame";
@@ -200,12 +200,12 @@ export default function OnlineGameScreen() {
         });
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
-  const mancheOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
+  const roundOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
   const myDelta = isSpectator ? undefined : ratingDeltas[myUserId];
   const myRating = ratingsAfter[myUserId];
-  // `continues` is false for a partita the server closed unscored, which is unrecorded for a
+  // `continues` is false for a match the server closed unscored, which is unrecorded for a
   // reason other than bots.
-  const partitaRating: PartitaRating | undefined =
+  const matchRating: MatchRating | undefined =
     myDelta !== undefined
       ? {
           delta: myDelta,
@@ -227,10 +227,10 @@ export default function OnlineGameScreen() {
       gameState={gameState}
       matchOver={matchState.over}
       matchWinners={matchState.winners}
-      // Until `game:over` lands, `handScores` still holds the last manche's, and the table decides this one's outcome on them.
+      // Until `game:over` lands, `handScores` still holds the last round's, and the table decides this one's outcome on them.
       handScores={handScoresCurrent ? handScores : undefined}
       matchScore={{ scores: cumulativeScores, target: matchState.target, single: matchState.length === "single" }}
-      partitaActions={
+      matchActions={
         handScoresCurrent
           ? {
               onHome: requestLeave,
@@ -248,7 +248,7 @@ export default function OnlineGameScreen() {
             }
           : undefined
       }
-      partitaRating={partitaRating}
+      matchRating={matchRating}
       // A spectator holds no seat, so the table is drawn from seat 0 and told
       // it is being watched. Every hand arrives blank from the server either
       // way; `spectating` is what makes the bottom one draw as backs rather
@@ -264,7 +264,7 @@ export default function OnlineGameScreen() {
         seconds: turnSeconds,
         resetKey: String(turnDeadlineMs ?? ""),
         // The server arms its AFK timer on every turn, leading included.
-        includeNewRound: true,
+        includeNewTrick: true,
         // No onExpire: the server auto-passes, the client only shows the clock.
       }}
       exchangeAnnouncement={{
@@ -319,8 +319,8 @@ export default function OnlineGameScreen() {
             }
           : null
       }
-      mancheVote={
-        mancheOnTable
+      roundVote={
+        roundOnTable
           ? {
               voted: nextHandVotes.includes(user?.id ?? ""),
               votes: nextHandVotes.length,

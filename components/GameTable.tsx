@@ -26,7 +26,7 @@ import {
   getSuitSymbol,
   getValidGivebackCards,
   givebackIsFallback,
-  mancheUnplayed,
+  roundUnplayed,
   openingIsPending,
   sortHand,
   type Card,
@@ -63,7 +63,7 @@ import {
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
 import type { ServerError } from "@/context/OnlineGameContext";
-import { EndMatchVote, MancheVote, type EndMatchVoteNote, type MancheVoteNote } from "@/components/table/notices/netNotes";
+import { EndMatchVote, RoundVote, type EndMatchVoteNote, type RoundVoteNote } from "@/components/table/notices/netNotes";
 import { mockupPx } from "@/components/table/noticeModel";
 import { WaitingLine } from "@/components/table/notices/tableLines";
 import { ExchangeLegs, type LegName, type RingFlash } from "@/components/table/ExchangeLegs";
@@ -78,8 +78,8 @@ import {
   physicalTouchTarget,
 } from "@/components/cardFaceModel";
 import { ScorePill } from "@/components/table/scorePill";
-import type { PartitaBoardActions, PartitaRating } from "@/components/table/partitaBoard";
-import { partitaDim } from "@/lib/game/partitaEnding";
+import type { MatchBoardActions, MatchRating } from "@/components/table/matchBoard";
+import { matchDim } from "@/lib/game/matchEnding";
 import { MOCKUP_SHORT_EDGE, scorePillBox, scorePillHitBox } from "@/components/table/scorePillModel";
 import { scorePillStandings } from "@/lib/game/scorePill";
 import { useTranslation } from "@/lib/i18n";
@@ -119,9 +119,9 @@ import type { OwnLink } from "@/lib/ownLink";
 import { CardTableProvider, useCardTableValue } from "@/components/table/useCardRects";
 import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
-import { useMancheEnding } from "@/components/table/useMancheEnding";
-import { mancheVoteShown } from "@/lib/game/mancheEnding";
-import { handOutcomeFor, partitaOutcomeFor } from "@/lib/game/matchState";
+import { useRoundEnding } from "@/components/table/useRoundEnding";
+import { roundVoteShown } from "@/lib/game/roundEnding";
+import { handOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -137,8 +137,8 @@ import { TopOppSlot, SideOppSlot, usePassedSeats } from "@/components/table/seat
 import { CardCastContext, useCardCast, useFeltReady } from "@/components/table/feltReady";
 import { restingCast } from "@/components/table/cardShadows";
 import { DealFlights, useDeal, useDealBreath } from "@/components/table/deal";
-import { dealSpecks, mancheMotes, type ParticleEmitter } from "@/components/table/particles";
-import { useMancheOutcome, type ShownOutcome } from "@/components/table/useMancheOutcome";
+import { dealSpecks, roundMotes, type ParticleEmitter } from "@/components/table/particles";
+import { useRoundOutcome, type ShownOutcome } from "@/components/table/useRoundOutcome";
 import { traceOnset } from "@/lib/e2eTrace";
 import { event, uiFeedback } from "@/lib/device/feedback";
 import { useOrientedWindow, usePortraitInterface } from "@/lib/device/orientation";
@@ -204,7 +204,7 @@ const raised = (standing: Float | null, kind: Float["kind"], text: string, live 
 });
 
 const NO_DISMISS = () => {};
-const roundStart = () => event([{ kind: "roundStart" }]);
+const trickStart = () => event([{ kind: "trickStart" }]);
 
 const lockLandscape = () => {
   ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
@@ -224,7 +224,7 @@ export interface TurnTimerConfig {
    * The viewer's own chip counts down while leading a new round too (seat rings
    * always do). False offline, no deadline; true online, armed every turn.
    */
-  includeNewRound?: boolean;
+  includeNewTrick?: boolean;
   /**
    * Called when the countdown reaches zero. Offline this auto-passes locally;
    * online it is omitted, because the server owns the timeout and the client
@@ -256,7 +256,7 @@ export interface GameTableProps {
    */
   gameState: GameState;
   /**
-   * Whether the *match* — the partita, not this hand — is over. `MatchVerdict.over`
+   * Whether the *match* — the match, not this hand — is over. `MatchVerdict.over`
    * offline, `matchState.over` online: the same landing that empties a hand can
    * also be the one that closes the match, so this is read alongside
    * `gameState.gameOver` at the moment a play lands, never inferred from it.
@@ -265,20 +265,20 @@ export interface GameTableProps {
   matchOver?: boolean;
   matchWinners?: readonly string[];
   /**
-   * What the manche just played awarded, by engine player id — the score
+   * What the round just played awarded, by engine player id — the score
    * pill's gains, fed to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
    * for the same callers `matchOver` defaults false for: with no scores to
    * read, the sting simply stays silent rather than guessing.
    */
   handScores?: Record<string, number>;
   /**
-   * The partita's running points by engine player id, and the target they race to — what
-   * the score pill shows. Absent in a replay. A `single` manche shows the pill only as its board.
+   * The match's running points by engine player id, and the target they race to — what
+   * the score pill shows. Absent in a replay. A `single` round shows the pill only as its board.
    */
   matchScore?: { scores: Record<string, number>; target: number; single?: boolean };
-  /** Present where a partita ends on the table: the score pill becomes the board, with these. */
-  partitaActions?: PartitaBoardActions;
-  partitaRating?: PartitaRating;
+  /** Present where a match ends on the table: the score pill becomes the board, with these. */
+  matchActions?: MatchBoardActions;
+  matchRating?: MatchRating;
   /** Seat the table is drawn from. Always rendered at the bottom. */
   viewerSeat: number;
   /**
@@ -297,10 +297,10 @@ export interface GameTableProps {
   /** The exchange's choice opens: the received card has landed and been read. The offline bot winner gives on it. */
   onExchangeReady?: () => void;
   /**
-   * Present where a manche ends on the table: the score pill's payoff runs, and this hears the
-   * landing that ended it, which the next deal is timed from (`MancheEnding.deal`).
+   * Present where a round ends on the table: the score pill's payoff runs, and this hears the
+   * landing that ended it, which the next deal is timed from (`RoundEnding.deal`).
    */
-  onMancheLanded?: (landsAt: number) => void;
+  onRoundLanded?: (landsAt: number) => void;
 
   turnTimer?: TurnTimerConfig;
   exchangeAnnouncement?: ExchangeAnnouncementSlot;
@@ -321,8 +321,8 @@ export interface GameTableProps {
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
   endMatchVote?: EndMatchVoteNote | null;
-  /** Present where the next deal waits on a vote: the manche's ending holds the pill open with this at its foot. */
-  mancheVote?: MancheVoteNote | null;
+  /** Present where the next deal waits on a vote: the round's ending holds the pill open with this at its foot. */
+  roundVote?: RoundVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
   /** The table is being replayed after a reconnect: a throw takes the catch-up timing. */
@@ -354,8 +354,8 @@ export function GameTable({
   matchWinners,
   handScores = {},
   matchScore,
-  partitaActions,
-  partitaRating,
+  matchActions,
+  matchRating,
   viewerSeat,
   spectating = false,
   onPlay,
@@ -363,7 +363,7 @@ export function GameTable({
   onQuit,
   onExchangeGive,
   onExchangeReady,
-  onMancheLanded,
+  onRoundLanded,
   turnTimer,
   exchangeAnnouncement,
   disconnectedSeats = {},
@@ -372,7 +372,7 @@ export function GameTable({
   error = null,
   autoPassed = 0,
   endMatchVote = null,
-  mancheVote = null,
+  roundVote = null,
   connection,
   catchUp = false,
   ownLink = "up",
@@ -406,7 +406,7 @@ export function GameTable({
   // vibration are the persisted ones, which the sheet reads for itself.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [scoreOpen, setScoreOpen] = useState(false);
-  // Who opens the manche, held over the table for as long as that opening has
+  // Who opens the round, held over the table for as long as that opening has
   // yet to be played. The opening ending is what turns the sentence into a
   // statement about the past, so it is a condition of showing it at all rather
   // than something a timer happens to outrun.
@@ -419,8 +419,8 @@ export function GameTable({
   const [openingSpent, setOpeningSpent] = useState(false);
   // Spent for this opening only, and cleared by the opening itself passing —
   // the play that ends it, or the deal that replaces it. Online this component
-  // is never unmounted between manches, and nothing in the state names which
-  // manche is which, so a flag that outlived the opening would swallow the next
+  // is never unmounted between rounds, and nothing in the state names which
+  // round is which, so a flag that outlived the opening would swallow the next
   // one whenever two deals ran the same way.
   const [spentForPending, setSpentForPending] = useState(openingPending);
   if (openingPending !== spentForPending) {
@@ -464,9 +464,9 @@ export function GameTable({
   const viewer = players[viewerSeat];
   const isMyTurn = viewerOwnsSeat(gameState.currentTurnIndex, viewerSeat, spectating);
   const isFinished = viewer?.finishPosition !== undefined;
-  // The manche's end places the last player too, still holding cards: they keep their hand, untold.
+  // The round's end places the last player too, still holding cards: they keep their hand, untold.
   const wentOut = viewer?.finishPosition !== undefined && handCountOf(viewer) === 0;
-  const isNewRound = gameState.lastPlayedCombination === null;
+  const isNewTrick = gameState.lastPlayedCombination === null;
   const exchange = readExchange(gameState, viewerSeat, spectating);
 
   // A spectator receives every hand blanked, so the bottom seat's cards come
@@ -495,7 +495,7 @@ export function GameTable({
   const trade: ExchangeAnnounceData | null =
     announced ??
     (phase?.active && !phase.bothJokersException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
-  // A pairing and its card repeat across manches, so each trade is also counted.
+  // A pairing and its card repeat across rounds, so each trade is also counted.
   const [tradeSeq, setTradeSeq] = useState({ open: false, seq: 0 });
   if (!!trade !== tradeSeq.open) setTradeSeq({ open: !!trade, seq: tradeSeq.seq + (trade ? 1 : 0) });
   const tradeId = trade ? `${tradeSeq.seq}:${tradeKey(trade)}` : "";
@@ -547,8 +547,8 @@ export function GameTable({
   // A memo so the compiler sees `isMyTurn` frozen before an object carries it into a call: bare,
   // every later memo on `isMyTurn` fails to preserve and GameTable goes uncompiled.
   const canPass = React.useMemo(
-    () => canPassNowOf({ isMyTurn, isFinished, isNewRound }),
-    [isMyTurn, isFinished, isNewRound]
+    () => canPassNowOf({ isMyTurn, isFinished, isNewTrick }),
+    [isMyTurn, isFinished, isNewTrick]
   );
   const passIsOnlyMove = React.useMemo(
     () =>
@@ -558,7 +558,7 @@ export function GameTable({
         lastPlayedCombination: gameState.lastPlayedCombination,
         startCard: gameState.startCard,
         firstPlayMade: gameState.firstPlayMade,
-        isNewRound,
+        isNewTrick,
         isMyTurn,
         isFinished,
       }),
@@ -568,7 +568,7 @@ export function GameTable({
       gameState.lastPlayedCombination,
       gameState.startCard,
       gameState.firstPlayMade,
-      isNewRound,
+      isNewTrick,
       isMyTurn,
       isFinished,
     ]
@@ -648,21 +648,21 @@ export function GameTable({
       rankings: gameState.rankings,
       viewerId: spectating ? undefined : viewer?.id,
     });
-  const partitaBoard = (() => {
-    if (!pillStandings || !matchScore || !partitaActions) return null;
+  const matchBoard = (() => {
+    if (!pillStandings || !matchScore || !matchActions) return null;
     const teamOf: Record<string, string | undefined> = Object.fromEntries(players.map((p) => [p.id, p.team]));
     const winnerKeys = (matchWinners ?? []).map((id) => (pillStandings.teams ? (teamOf[id] ?? id) : id));
     const won = pillStandings.rows.filter((row) => winnerKeys.includes(row.key));
     const race = matchScore.single ? t("result.singleHandFormat") : t("scorePill.race", { target: matchScore.target });
     return {
       winnerKeys,
-      actions: partitaActions,
+      actions: matchActions,
       winner: {
         name: won.map((row) => (pillStandings.teams ? t("lobby.team", { team: row.name }) : row.name)).join(" · "),
         mine: won.length === 1 && won[0].mine,
         draw: won.length > 1,
         line: won.length === 1 ? `${race} · ${won[0].total}` : race,
-        rating: partitaRating,
+        rating: matchRating,
       },
     };
   })();
@@ -670,8 +670,8 @@ export function GameTable({
   // whatever it was for, so the pill never costs a play. The pill's own box is left to
   // the pill, whose press toggles it.
   const closeScoreElsewhere = (e: GestureResponderEvent) => {
-    mancheEnding.skip();
-    partitaEnding.skip();
+    roundEnding.skip();
+    matchEnding.skip();
     if (scoreOpen) {
       const hit = scorePillHitBox(1, 0, pillAnchor, TOUCH_TARGET_MIN);
       const { pageX: x, pageY: y } = e.nativeEvent;
@@ -696,7 +696,7 @@ export function GameTable({
   };
 
   const [entryMs] = useState(() => motionMs("reveal", reduceMotion));
-  const dealFresh = mancheUnplayed(gameState);
+  const dealFresh = roundUnplayed(gameState);
   const deal = useDeal({
     geometry: seatGeometry,
     fresh: dealFresh,
@@ -795,7 +795,7 @@ export function GameTable({
   const timeline = useTableTimeline();
   const isTeamMode = gameState.gameMode === "teams";
   const outcome = handOutcomeFor(players, gameState.rankings, handScores, viewer?.id, isTeamMode);
-  const partitaOutcome = partitaOutcomeFor(players, matchWinners ?? [], viewer?.id, isTeamMode);
+  const matchOutcome = matchOutcomeFor(players, matchWinners ?? [], viewer?.id, isTeamMode);
   const {
     passaFlashStyle,
     kickStyle,
@@ -811,7 +811,7 @@ export function GameTable({
     canPass,
     passCount: gameState.passCount,
     lastPlayedCombination: gameState.lastPlayedCombination,
-    roundWinner: gameState.roundWinner,
+    trickWinner: gameState.trickWinner,
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
     players,
@@ -839,7 +839,7 @@ export function GameTable({
     trick,
     endSweep,
     flights,
-    roundWinnerTag,
+    trickWinnerTag,
     onFlightStart,
     onFlightContact,
     onFlightDone,
@@ -849,43 +849,43 @@ export function GameTable({
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
-    roundWinner: gameState.roundWinner,
+    trickWinner: gameState.trickWinner,
     gameOver: gameState.gameOver,
     matchOver,
-    viewerWon: (matchOver ? partitaOutcome : outcome) === "won",
+    viewerWon: (matchOver ? matchOutcome : outcome) === "won",
     ...seatGeometry,
     timeline,
     celebrateFlush,
-    playRoundStart: roundStart,
+    playTrickStart: trickStart,
     handOrigins,
     roomW: frame.fieldRoomW,
     catchUp,
   });
-  const mancheEnding = useMancheEnding({
-    ended: gameState.gameOver && !matchOver && (onMancheLanded !== undefined || mancheVote !== null),
-    hold: mancheVote !== null,
+  const roundEnding = useRoundEnding({
+    ended: gameState.gameOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null),
+    hold: roundVote !== null,
     timeline,
     pileEmpty: trick.plays.length === 0,
-    onLanded: onMancheLanded,
+    onLanded: onRoundLanded,
   });
-  const mancheShown = useMancheOutcome({ ended: gameState.gameOver && !matchOver, outcome, timeline });
-  const partitaShown = useMancheOutcome({ ended: gameState.gameOver && matchOver, outcome: partitaOutcome, timeline });
-  const shown = partitaShown ?? mancheShown;
-  // A won partita bursts from the viewer's own seat, so a teams win never lands on the partner's.
-  const winnerId = partitaShown === null ? gameState.rankings[0] : partitaShown === "won" ? viewer?.id : matchWinners?.[0];
+  const roundShown = useRoundOutcome({ ended: gameState.gameOver && !matchOver, outcome, timeline });
+  const matchShown = useRoundOutcome({ ended: gameState.gameOver && matchOver, outcome: matchOutcome, timeline });
+  const shown = matchShown ?? roundShown;
+  // A won match bursts from the viewer's own seat, so a teams win never lands on the partner's.
+  const winnerId = matchShown === null ? gameState.rankings[0] : matchShown === "won" ? viewer?.id : matchWinners?.[0];
   const winnerSeat = players.findIndex((p) => p.id === winnerId);
   const winnerDir = winnerSeat < 0 ? null : seatDirection(winnerSeat, viewerSeat, players.length);
   const lampToWinner = winnerDir !== null && (shown === "lost" || shown === "neutral");
-  const partitaOnTable = gameState.gameOver && matchOver && partitaActions !== undefined;
-  const partitaEnding = useMancheEnding({
-    ended: partitaOnTable,
-    partita: true,
+  const matchOnTable = gameState.gameOver && matchOver && matchActions !== undefined;
+  const matchEnding = useRoundEnding({
+    ended: matchOnTable,
+    match: true,
     timeline,
     pileEmpty: trick.plays.length === 0,
   });
-  const dimStyle = useAnimatedStyle(() => ({ opacity: partitaDim(partitaEnding.clock.value) }));
-  const mancheVoteStyle = useAnimatedStyle(() => {
-    const shown = mancheVoteShown(mancheEnding.clock.value);
+  const dimStyle = useAnimatedStyle(() => ({ opacity: matchDim(matchEnding.clock.value) }));
+  const roundVoteStyle = useAnimatedStyle(() => {
+    const shown = roundVoteShown(roundEnding.clock.value);
     return { opacity: shown, display: shown > 0 ? "flex" : "none" };
   });
   const openPill = scorePillBox(1, 0, pillAnchor);
@@ -926,9 +926,9 @@ export function GameTable({
     if (motesFor.current === shown) return;
     motesFor.current = shown;
     if (shown === null || winnerDir === null) return;
-    particles.current?.emit(mancheMotes(shown, { x: wx, y: wy }, reduceMotion, rigSx, rigSy, Math.random));
-    if (partitaShown === "won") particles.current?.rain();
-  }, [shown, partitaShown, winnerDir, wx, wy, reduceMotion, rigSx, rigSy]);
+    particles.current?.emit(roundMotes(shown, { x: wx, y: wy }, reduceMotion, rigSx, rigSy, Math.random));
+    if (matchShown === "won") particles.current?.rain();
+  }, [shown, matchShown, winnerDir, wx, wy, reduceMotion, rigSx, rigSy]);
   const cardTable = useCardTableValue(
     {
       pile: anchors.pile,
@@ -1022,13 +1022,13 @@ export function GameTable({
   // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
   // React Compiler skips the whole component.
   const handlePass = useCallback(() => {
-    if (!canPassNowOf({ isMyTurn, isFinished, isNewRound })) return;
+    if (!canPassNowOf({ isMyTurn, isFinished, isNewTrick })) return;
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
     selection.set({ ...settle(selection.get(), heldIds, selectionMode), ids: [] });
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass, selection, heldIds, selectionMode]);
+  }, [isMyTurn, isFinished, isNewTrick, onPass, selection, heldIds, selectionMode]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1038,10 +1038,10 @@ export function GameTable({
     turnTimerActive({
       isMyTurn,
       isFinished,
-      isNewRound,
+      isNewTrick,
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
-      includeNewRound: turnTimer.includeNewRound ?? false,
+      includeNewTrick: turnTimer.includeNewTrick ?? false,
       announcementHolds,
     });
 
@@ -1057,7 +1057,7 @@ export function GameTable({
   const onTop = top?.combo ?? null;
   const closer = top ? players[top.playedBy] : undefined;
   const closedByWinners =
-    mancheShown === "won" && closer !== undefined && (isTeamMode ? closer.team === viewer?.team : closer.id === viewer?.id);
+    roundShown === "won" && closer !== undefined && (isTeamMode ? closer.team === viewer?.team : closer.id === viewer?.id);
   const comboLabel = getComboLabel(onTop, t);
 
   // Named off the trick, not `gameState.lastPlayedBy` — the pile lags the
@@ -1097,10 +1097,10 @@ export function GameTable({
       // an empty hand rather than landing on it.
       isMyTurn: true,
       isFinished: false,
-      isNewRound,
+      isNewTrick,
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
-      includeNewRound: true,
+      includeNewTrick: true,
       announcementHolds,
     })
       ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}`, held: clockHeld }
@@ -1248,10 +1248,10 @@ export function GameTable({
           </A11yVeil>
         </Animated.View>
 
-        {pillStandings && matchScore && (!matchScore.single || partitaOnTable) && (
+        {pillStandings && matchScore && (!matchScore.single || matchOnTable) && (
           <Animated.View {...behindVeil} testID="score-pill-layer" pointerEvents="box-none" style={[styles.pillLayer, greyStyle]}>
-            {partitaOnTable && (
-              <Animated.View testID="partita-dim" pointerEvents="none" style={[styles.partitaDim, dimStyle]} />
+            {matchOnTable && (
+              <Animated.View testID="match-dim" pointerEvents="none" style={[styles.matchDim, dimStyle]} />
             )}
             <ScorePill
               standings={pillStandings}
@@ -1259,8 +1259,8 @@ export function GameTable({
               open={scoreOpen}
               onPress={() => setScoreOpen((open) => !open)}
               anchor={pillAnchor}
-              ending={partitaOnTable ? partitaEnding.clock : mancheEnding.clock}
-              partita={partitaOnTable ? partitaBoard : null}
+              ending={matchOnTable ? matchEnding.clock : roundEnding.clock}
+              match={matchOnTable ? matchBoard : null}
             />
           </Animated.View>
         )}
@@ -1280,19 +1280,19 @@ export function GameTable({
           </View>
         )}
 
-        {mancheVote && (
+        {roundVote && (
           <Animated.View
             {...behindVeil}
-            testID="manche-vote"
+            testID="round-vote"
             pointerEvents="box-none"
             style={[
               styles.voteSpot,
               { right: W - pillAnchor.right, top: openPill.y + openPill.h + mockupPx(VOTE_BELOW_PILL, scale) },
-              mancheVoteStyle,
+              roundVoteStyle,
             ]}
           >
             <A11yVeil veil={behindVeil}>
-              <MancheVote {...mancheVote} scale={scale} />
+              <RoundVote {...roundVote} scale={scale} />
             </A11yVeil>
           </Animated.View>
         )}
@@ -1474,12 +1474,12 @@ export function GameTable({
                   onFlightClock={onFlightClock}
                   onSweepEnd={endSweep}
                   comboLabel={timeline.inFlight ? null : onTop}
-                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
+                  trickWinner={trickWinnerTag === null ? null : players[trickWinnerTag.seat]?.name ?? ""}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                   note={pileNote}
                   hidden={startCardDue}
-                  opacity={mancheEnding.pileOpacity}
+                  opacity={roundEnding.pileOpacity}
                   lit={closedByWinners}
                 />
 
@@ -1626,7 +1626,7 @@ export function GameTable({
                   lastPlayedCombination={gameState.lastPlayedCombination}
                   startCard={gameState.startCard}
                   firstPlayMade={gameState.firstPlayMade}
-                  isNewRound={isNewRound}
+                  isNewTrick={isNewTrick}
                   isMyTurn={isMyTurn}
                   isFinished={isFinished}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}
@@ -1673,7 +1673,7 @@ const styles = StyleSheet.create({
   hudCentre: { position: "absolute", alignItems: "center", zIndex: Layer.moment },
   pillLayer: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.moment },
   greyScrim: { ...StyleSheet.absoluteFill, zIndex: Layer.greyScrim, backgroundColor: Colors.shadow },
-  partitaDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
+  matchDim: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: Layer.felt, backgroundColor: Colors.shadow },
   handSectionReversed: { flexDirection: "row-reverse" },
 
 

@@ -40,7 +40,7 @@ import {
   flightOrigin,
   comboKey,
   seatPoint,
-  roundClosedWithWinner,
+  trickClosedWithWinner,
   readExchange,
   INACTIVE_EXCHANGE,
   landWobble,
@@ -167,41 +167,41 @@ describe("comboKey", () => {
   });
 });
 
-describe("roundClosedWithWinner", () => {
+describe("trickClosedWithWinner", () => {
   test("the closing pass — the table is empty and a seat took it", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 2 }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 2 }),
       true
     );
   });
 
   test("seat 0 counts, which a truthiness check would miss", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 0 }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 0 }),
       true
     );
   });
 
   test("a round in progress has not closed, whoever won the last one", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: 1 }),
+      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: 1 }),
       false
     );
   });
 
   test("a pass that does not close the round leaves nobody credited", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: null }),
+      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: null }),
       false
     );
   });
 
   test("a freshly dealt hand is empty but nothing has been won", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: null }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: null }),
       false
     );
-    assert.equal(roundClosedWithWinner({ lastPlayedCombination: null }), false);
+    assert.equal(trickClosedWithWinner({ lastPlayedCombination: null }), false);
   });
 });
 
@@ -533,9 +533,9 @@ describe("the table's own trauma escalation (#763)", () => {
     assert.equal(comboImpactTier("triple"), "ordinary");
   });
 
-  // The manche rung is `GameState.gameOver` (processPlay: "the hand is
-  // decided"), never `roundWinner` — that is a trick, closing many times a
-  // hand (docs/GAME-RULES.md §9). The partita rung is a further fact about the
+  // The round rung is `GameState.gameOver` (processPlay: "the hand is
+  // decided"), never `trickWinner` — that is a trick, closing many times a
+  // hand (docs/GAME-RULES.md §9). The match rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {
@@ -543,29 +543,29 @@ describe("the table's own trauma escalation (#763)", () => {
       assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying, with the match still open, is the manche rung for the viewer who won it", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: true }), "mancheWon");
+    test("the hand emptying, with the match still open, is the round rung for the viewer who won it", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: true }), "roundWon");
     });
 
-    test("a manche the viewer did not win lands at the play's own tier: no shake for lost, neutral or draw (#1469)", () => {
+    test("a round the viewer did not win lands at the play's own tier: no shake for lost, neutral or draw (#1469)", () => {
       assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: false }), "ordinary");
       assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying and the match closing with it is the partita rung for the viewer who won the partita", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: true }), "partitaWon");
+    test("the hand emptying and the match closing with it is the match rung for the viewer who won the match", () => {
+      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: true }), "matchWon");
     });
 
-    test("a partita the viewer lost lands at the play's own tier: no shake (#1423)", () => {
+    test("a match the viewer lost lands at the play's own tier: no shake (#1423)", () => {
       assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: false }), "ordinary");
       assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: false }), "bomb");
     });
 
-    test("matchOver with handOver false never fires the partita rung — a match cannot close on a hand still in play", () => {
+    test("matchOver with handOver false never fires the match rung — a match cannot close on a hand still in play", () => {
       assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true, viewerWon: true }), "ordinary");
     });
 
-    test("a bomb that also closes the manche is only as loud as its loudest rung", () => {
+    test("a bomb that also closes the round is only as loud as its loudest rung", () => {
       assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: true }), "bomb");
       assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: true }), "bomb");
     });
@@ -575,20 +575,20 @@ describe("the table's own trauma escalation (#763)", () => {
     assert.equal(traumaFor("ordinary", false, false), 0);
     assert.equal(traumaFor("straightFlush", false, false), 0);
     assert.equal(traumaFor("bomb", false, false), Trauma.bomb);
-    assert.equal(traumaFor("mancheWon", false, false), Trauma.mancheWon);
-    assert.equal(traumaFor("partitaWon", false, false), Trauma.partitaWon);
+    assert.equal(traumaFor("roundWon", false, false), Trauma.roundWon);
+    assert.equal(traumaFor("matchWon", false, false), Trauma.matchWon);
   });
 
-  test("the bomb outranks the manche and the partita both — a later 'tidy-up' that sorts by event size must fail this", () => {
+  test("the bomb outranks the round and the match both — a later 'tidy-up' that sorts by event size must fail this", () => {
     const bomb = traumaFor("bomb", false, false);
-    const manche = traumaFor("mancheWon", false, false);
-    const partita = traumaFor("partitaWon", false, false);
+    const round = traumaFor("roundWon", false, false);
+    const match = traumaFor("matchWon", false, false);
     assert.ok(
-      bomb > manche,
-      "a bomb is a surprise and a manche ending is expected — the bomb shakes harder on purpose"
+      bomb > round,
+      "a bomb is a surprise and a round ending is expected — the bomb shakes harder on purpose"
     );
-    assert.ok(bomb > partita, "the bomb outranks even the partita: it is the surprise in the game");
-    assert.ok(partita > manche, "a partita closing still outshakes a manche closing");
+    assert.ok(bomb > match, "the bomb outranks even the match: it is the surprise in the game");
+    assert.ok(match > round, "a match closing still outshakes a round closing");
   });
 
   // The four probes a blind critique ran against the shipped shake: the
@@ -599,7 +599,7 @@ describe("the table's own trauma escalation (#763)", () => {
   // at mount — so they
   // are pinned here, directly against the pure functions, the way #783 did.
   test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
-    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
     for (const tier of tiers) {
       assert.equal(traumaFor(tier, true, false), 0, `${tier} must carry no trauma under reduced motion`);
     }
@@ -607,13 +607,13 @@ describe("the table's own trauma escalation (#763)", () => {
 
   test("reduced motion answers exactly 0, not merely a small number", () => {
     assert.ok(
-      Object.is(traumaFor("partitaWon", true, false), 0),
+      Object.is(traumaFor("matchWon", true, false), 0),
       "a fix that shrinks trauma instead of zeroing it would still shake, just less"
     );
   });
 
   test("screen shake switched off answers exactly 0 at every tier, and on leaves the tier's trauma", () => {
-    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
     for (const tier of tiers) {
       assert.ok(Object.is(traumaFor(tier, false, true), 0), `${tier} must not shake with screen shake off`);
       assert.equal(traumaFor(tier, false, false), Trauma[tier as keyof typeof Trauma] ?? 0);
@@ -628,14 +628,14 @@ describe("the table's own trauma escalation (#763)", () => {
     );
   });
 
-  test("the tiers separate quadratically, not linearly — a bomb stands further above a manche than the raw trauma table shows", () => {
+  test("the tiers separate quadratically, not linearly — a bomb stands further above a round than the raw trauma table shows", () => {
     const bomb = shakeMagnitude(Trauma.bomb, 0, DECAY_MS);
-    const manche = shakeMagnitude(Trauma.mancheWon, 0, DECAY_MS);
-    const rawRatio = Trauma.bomb / Trauma.mancheWon;
-    const squaredRatio = bomb / manche;
+    const round = shakeMagnitude(Trauma.roundWon, 0, DECAY_MS);
+    const rawRatio = Trauma.bomb / Trauma.roundWon;
+    const squaredRatio = bomb / round;
     assert.ok(
       squaredRatio > rawRatio + 1e-9,
-      `squaring trauma must widen the bomb-over-manche gap past its raw ${rawRatio}, got ${squaredRatio}`
+      `squaring trauma must widen the bomb-over-round gap past its raw ${rawRatio}, got ${squaredRatio}`
     );
   });
 
@@ -697,14 +697,14 @@ describe("the table's own trauma escalation (#763)", () => {
 });
 
 describe("the beaten pile's flinch (#764)", () => {
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
 
   test("the tier→displacement mapping reads the same five tiers #763's trauma table does", () => {
     assert.equal(flinchFor("ordinary", false), 0);
     assert.equal(flinchFor("straightFlush", false), Spacing.xxs);
     assert.equal(flinchFor("bomb", false), Spacing.slim);
-    assert.equal(flinchFor("mancheWon", false), Spacing.slim);
-    assert.equal(flinchFor("partitaWon", false), Spacing.slim);
+    assert.equal(flinchFor("roundWon", false), Spacing.slim);
+    assert.equal(flinchFor("matchWon", false), Spacing.slim);
   });
 
   test("a straight or flush still displaces what it beat — only the ordinary win is silent", () => {
@@ -714,9 +714,9 @@ describe("the beaten pile's flinch (#764)", () => {
     );
   });
 
-  test("bomb, manche and partita all knock the beaten pile the same distance — the escalation past the bomb rides the shake and the hold, not a bigger knock", () => {
-    assert.equal(flinchFor("bomb", false), flinchFor("mancheWon", false));
-    assert.equal(flinchFor("mancheWon", false), flinchFor("partitaWon", false));
+  test("bomb, round and match all knock the beaten pile the same distance — the escalation past the bomb rides the shake and the hold, not a bigger knock", () => {
+    assert.equal(flinchFor("bomb", false), flinchFor("roundWon", false));
+    assert.equal(flinchFor("roundWon", false), flinchFor("matchWon", false));
   });
 
   test("reduced motion answers exactly 0 at every tier, without a bespoke branch", () => {
@@ -835,15 +835,15 @@ describe("the beaten pile's flinch (#764)", () => {
 });
 
 describe("the lamp's flare (#765)", () => {
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
 
-  test("the graduated table #101 settled: only the bomb and the partita flare", () => {
+  test("the graduated table #101 settled: only the bomb and the match flare", () => {
     const expected: Record<ImpactTier, FlareKind> = {
       ordinary: "none",
       straightFlush: "none",
       bomb: "brief",
-      mancheWon: "none",
-      partitaWon: "settle",
+      roundWon: "none",
+      matchWon: "settle",
     };
     for (const tier of ALL_TIERS) {
       assert.equal(flareKindFor(tier), expected[tier], `${tier} flare kind`);
@@ -867,7 +867,7 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   const PHONE_EDGE = 320;
   const TABLET_EDGE = 834;
 
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "mancheWon", "partitaWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
 
   test("only the bomb reads a different peak — every other tier shares one amplitude", () => {
     const bomb = shakeAmplitudeFor("bomb");
@@ -888,7 +888,7 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
 
   test("the bomb's own peak is strictly larger on both axes than the shared one", () => {
     const bomb = shakeAmplitudeFor("bomb");
-    const shared = shakeAmplitudeFor("mancheWon");
+    const shared = shakeAmplitudeFor("roundWon");
     assert.ok(bomb.x > shared.x, `expected the bomb's x peak (${bomb.x}) to exceed the shared one (${shared.x})`);
     assert.ok(bomb.y > shared.y, `expected the bomb's y peak (${bomb.y}) to exceed the shared one (${shared.y})`);
   });
@@ -946,8 +946,8 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
     });
   }
 
-  test("a manche or partita closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
-    for (const tier of ["mancheWon", "partitaWon"] as const) {
+  test("a round or match closed by an ordinary combination — no kick to lean on — keeps exactly the shake it had before this ticket", () => {
+    for (const tier of ["roundWon", "matchWon"] as const) {
       const scale = PHONE_EDGE / BASE_EDGE;
       const untouched = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale);
       const withThisTicketsHelper = shakeOffset(traumaFor(tier, false, false), 0, DECAY_MS, scale, shakeAmplitudeFor(tier));
@@ -1471,7 +1471,7 @@ describe("seatsJustPassed", () => {
     currentTurnIndex: s.currentTurnIndex,
     lastPlayedBy: s.lastPlayedBy,
     lastPlayedCombination: s.lastPlayedCombination,
-    roundWinner: s.roundWinner,
+    trickWinner: s.trickWinner,
     outOfCards: s.players.map((p) => p.hand.length === 0),
   });
 

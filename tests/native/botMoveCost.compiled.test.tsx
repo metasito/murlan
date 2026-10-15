@@ -6,7 +6,7 @@ import React, { Profiler, type ProfilerOnRenderCallback } from 'react';
 import { act, render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import type { GameState } from '@/lib/game/gameEngine';
-import { botManche, STEP_MS } from './helpers/botManche';
+import { botRound, STEP_MS } from './helpers/botRound';
 import { settle } from './helpers/feedback';
 
 const mockRenders: Record<string, number> = {};
@@ -71,7 +71,7 @@ const MOVES = 8;
 const ids = (play: GameState['lastPlayedCombination']) => play?.cards.map((c) => c.id).join() ?? '';
 
 async function costPerMove(): Promise<Cost[]> {
-  const [dealt, ...moves] = botManche().map((s): GameState => JSON.parse(JSON.stringify(s)));
+  const [dealt, ...moves] = botRound().map((s): GameState => JSON.parse(JSON.stringify(s)));
   const view = await render(table(dealt));
   await settle(3000);
   const costs: Cost[] = [];

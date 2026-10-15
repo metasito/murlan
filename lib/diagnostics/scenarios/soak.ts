@@ -13,7 +13,7 @@ const CYCLE: Moment[][] = [
   [{ kind: "landing", cards: 2, bomb: false, mine: false }],
   [{ kind: "select" }],
   [{ kind: "landing", cards: 4, bomb: true, mine: false }],
-  [{ kind: "pass" }, { kind: "roundWon" }],
+  [{ kind: "pass" }, { kind: "trickWon" }],
   [{ kind: "deal" }],
 ];
 const TRACKS: TrackId[] = ["menu", "hand"];
@@ -28,7 +28,7 @@ async function soak(ctx: BenchContext, minutes: number): Promise<void> {
   setMusicVolume(1);
   const t0 = performance.now();
   let lastSample = -Infinity;
-  let lastManche = t0;
+  let lastRound = t0;
   let minute = -1;
   for (let i = 0; performance.now() - t0 < minutes * 60000; i++) {
     const now = performance.now();
@@ -38,9 +38,9 @@ async function soak(ctx: BenchContext, minutes: number): Promise<void> {
       backgroundMusic(TRACKS[m % TRACKS.length]);
     }
     const batch = CYCLE[i % CYCLE.length];
-    if (now - lastManche >= 300000) {
-      lastManche = now;
-      event([{ kind: "mancheOver", outcome: "won" }], now + 500);
+    if (now - lastRound >= 300000) {
+      lastRound = now;
+      event([{ kind: "roundOver", outcome: "won" }], now + 500);
     } else {
       event(batch);
       if (batch[0].kind === "landing") startLandingPulses(batch[0]);

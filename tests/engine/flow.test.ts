@@ -104,11 +104,11 @@ describe("processPass — round end threshold (defect 5)", () => {
     );
 
     state = processPass(state);
-    assert.equal(state.roundWinner, null, "one pass does not end the round");
+    assert.equal(state.trickWinner, null, "one pass does not end the round");
     state = processPass(state);
-    assert.equal(state.roundWinner, null, "two passes do not end the round");
+    assert.equal(state.trickWinner, null, "two passes do not end the round");
     state = processPass(state);
-    assert.equal(state.roundWinner, 0, "the third pass hands the round to p0");
+    assert.equal(state.trickWinner, 0, "the third pass hands the round to p0");
     assert.equal(state.lastPlayedCombination, null);
     assert.equal(state.passCount, 0);
     assert.equal(state.currentTurnIndex, 0, "the round winner leads next");
@@ -128,9 +128,9 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
     state = processPass(state);
-    assert.equal(state.roundWinner, null);
+    assert.equal(state.trickWinner, null);
     state = processPass(state);
-    assert.equal(state.roundWinner, 0);
+    assert.equal(state.trickWinner, 0);
   });
 
   test("2 players still holding cards: a single pass closes the round", () => {
@@ -144,7 +144,7 @@ describe("processPass — round end threshold (defect 5)", () => {
         }
       )
     );
-    assert.equal(state.roundWinner, 0);
+    assert.equal(state.trickWinner, 0);
     assert.equal(state.currentTurnIndex, 0);
   });
 
@@ -167,7 +167,7 @@ describe("processPass — round end threshold (defect 5)", () => {
 
     state = processPass(state);
     assert.equal(
-      state.roundWinner,
+      state.trickWinner,
       null,
       "one pass must not close the round while another opponent can still answer"
     );
@@ -175,7 +175,7 @@ describe("processPass — round end threshold (defect 5)", () => {
     assert.notEqual(state.currentTurnIndex, 0, "the finished player never gets the turn");
 
     state = processPass(state);
-    assert.equal(state.roundWinner, 0, "the second pass closes the round");
+    assert.equal(state.trickWinner, 0, "the second pass closes the round");
     assert.equal(state.lastPlayedCombination, null);
     assert.notEqual(
       state.currentTurnIndex,
@@ -201,11 +201,11 @@ describe("processPass — round end threshold (defect 5)", () => {
       }
     );
     state = processPass(state);
-    assert.equal(state.roundWinner, null);
+    assert.equal(state.trickWinner, null);
     state = processPass(state);
-    assert.equal(state.roundWinner, null);
+    assert.equal(state.trickWinner, null);
     state = processPass(state);
-    assert.equal(state.roundWinner, 0);
+    assert.equal(state.trickWinner, 0);
   });
 
   test("a pass that does not close the round leaves the round winner unset", () => {
@@ -220,11 +220,11 @@ describe("processPass — round end threshold (defect 5)", () => {
           currentTurnIndex: 2,
           lastPlayedBy: 0,
           lastPlayedCombination: combo(pair("5")),
-          roundWinner: 1,
+          trickWinner: 1,
         }
       )
     );
-    assert.equal(state.roundWinner, null);
+    assert.equal(state.trickWinner, null);
   });
 });
 
@@ -326,16 +326,16 @@ describe("a 3-player game", () => {
         `turn ${turns} landed on seat ${seat}, which has already gone out`
       );
 
-      const isNewRound = state.lastPlayedCombination === null;
+      const isNewTrick = state.lastPlayedCombination === null;
       const plays = getAllValidPlays(
         state.players[seat].hand,
-        isNewRound ? null : state.lastPlayedCombination,
-        isNewRound,
+        isNewTrick ? null : state.lastPlayedCombination,
+        isNewTrick,
         state.firstPlayMade ? undefined : state.startCard
       );
 
       if (plays.length === 0) {
-        assert.ok(!isNewRound, `seat ${seat} had no legal lead on turn ${turns}`);
+        assert.ok(!isNewTrick, `seat ${seat} had no legal lead on turn ${turns}`);
         state = processPass(state);
         continue;
       }

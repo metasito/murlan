@@ -26,7 +26,7 @@ function finishedHand(players: Player[], rankings: string[]): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: true,
     rankings,
     firstPlayMade: true,
@@ -151,7 +151,7 @@ describe("a table restored after a restart", () => {
   });
 });
 
-describe("dealing the next manche", () => {
+describe("dealing the next round", () => {
   test("a rooms.status write that fails still reaches every client", async (t) => {
     const { io, emitted } = stubIo();
     t.mock.method(roomStore, "getRoomById", async () => room);
@@ -168,7 +168,7 @@ describe("dealing the next manche", () => {
     const outcome = await vote(io, "besi").catch((err: unknown) => err);
 
     assert.deepEqual(outcome, { ok: true });
-    assert.equal(game.gameState.gameOver, false, "the next manche was dealt in memory");
+    assert.equal(game.gameState.gameOver, false, "the next round was dealt in memory");
     assert.ok(emitted.some((e) => e.event === "game:state"), "nobody was sent their hand");
     assert.ok(emitted.some((e) => e.event === "game:started"));
   });

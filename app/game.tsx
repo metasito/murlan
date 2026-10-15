@@ -3,7 +3,7 @@
 // Everything visual lives in components/GameTable.tsx. What is left here is
 // exactly what is true offline and nowhere else: the AI turn loop, the AI's
 // side of the exchange phase, a local response timer that auto-passes,
-// the next deal after a manche, and the end-of-partita board's actions.
+// the next deal after a round, and the end-of-match board's actions.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
@@ -22,7 +22,7 @@ import { GameTable } from "@/components/GameTable";
 import { comboKey } from "@/components/flightPhysics";
 import { uiFeedback } from "@/lib/device/feedback";
 import { useTranslation } from "@/lib/i18n";
-import { MancheEnding } from "@/lib/theme";
+import { RoundEnding } from "@/lib/theme";
 
 // Read once at module scope, never per-call. EXPO_PUBLIC_ vars are inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -93,14 +93,14 @@ export default function GameScreen() {
 
   // Every hook runs unconditionally, before the null guard below.
 
-  const [mancheLandedAt, setMancheLandedAt] = useState<number | null>(null);
-  const mancheEnding = gameState?.gameOver === true && !match.over;
-  if (!mancheEnding && mancheLandedAt !== null) setMancheLandedAt(null);
+  const [roundLandedAt, setRoundLandedAt] = useState<number | null>(null);
+  const roundEnding = gameState?.gameOver === true && !match.over;
+  if (!roundEnding && roundLandedAt !== null) setRoundLandedAt(null);
   useEffect(() => {
-    if (mancheLandedAt === null) return;
-    const t = setTimeout(() => startNextHandRef.current(), mancheLandedAt + MancheEnding.deal - performance.now());
+    if (roundLandedAt === null) return;
+    const t = setTimeout(() => startNextHandRef.current(), roundLandedAt + RoundEnding.deal - performance.now());
     return () => clearTimeout(t);
-  }, [mancheLandedAt]);
+  }, [roundLandedAt]);
 
   // AI turn loop. The key identifies one AI turn — seat, pass count and the
   // combination on the table — and is null whenever no AI is on move, so an
@@ -173,14 +173,14 @@ export default function GameScreen() {
       matchWinners={match.winners}
       handScores={lastHandScores}
       matchScore={{ scores: match.scores, target: match.target, single: match.length === "single" }}
-      partitaActions={{
+      matchActions={{
         onHome: () => {
           uiFeedback("light");
           resetGame();
           router.replace("/");
         },
         again: {
-          testID: "btn-nuova-partita",
+          testID: "btn-new-match",
           onPress: () => {
             uiFeedback("medium");
             startNewMatch();
@@ -192,7 +192,7 @@ export default function GameScreen() {
       onPass={passTurn}
       onExchangeGive={chooseExchangeCard}
       onExchangeReady={onExchangeReady}
-      onMancheLanded={mancheEnding ? setMancheLandedAt : undefined}
+      onRoundLanded={roundEnding ? setRoundLandedAt : undefined}
       onQuit={() =>
         setConfirming({
           title: t("offlineGame.quitConfirmTitle"),
@@ -209,7 +209,7 @@ export default function GameScreen() {
       turnTimer={{
         seconds: HUMAN_TURN_SECONDS,
         // Leading a round has no deadline offline.
-        includeNewRound: false,
+        includeNewTrick: false,
         // Nothing else is keeping this clock, so it can be stopped while an
         // announcement holds the table.
         pausable: true,

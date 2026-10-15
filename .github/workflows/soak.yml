@@ -136,7 +136,7 @@ jobs:
       - name: Choose today's band
         env:
           MURLAN_MATCH_SOAK_SEEDS: "20000"
-          # 3- and 4-seat manches deal more cards and run longer per match
+          # 3- and 4-seat rounds deal more cards and run longer per match
           # (measured ~24-30ms vs. ~5.5ms at 2 seats), so their band is
           # narrower to keep this job well inside its budget.
           MURLAN_MATCH_SOAK_SEEDS_3P: "3000"

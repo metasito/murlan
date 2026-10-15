@@ -157,7 +157,7 @@ test("the same bot still bombs an opponent about to go out", () => {
   assert.equal(choice?.type, "bomb", "the emergency branch must stay armed");
 });
 
-// Emptying the hand ends the manche in the team's favour, so the pass rule
+// Emptying the hand ends the round in the team's favour, so the pass rule
 // must sit below the finishing branch, not above it.
 test("a bot that can go out still goes out on its partner's play", () => {
   const state = table(
@@ -179,7 +179,7 @@ test("a bot that can go out still goes out on its partner's play", () => {
   assert.equal(choice?.cards.length, 1, "the last card goes down");
 });
 
-// `opponentsOf` derives the partner from seat parity, while the manche-end
+// `opponentsOf` derives the partner from seat parity, while the round-end
 // scoring reads `Player.team`. They agree today only because every seating
 // path assigns the team from the same rule; nothing else keeps them together,
 // and a bot protecting one seat while the score credits another would be
@@ -224,14 +224,14 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
   while (!state.gameOver && turns < 2000) {
     turns++;
     const seat = state.currentTurnIndex;
-    const isNewRound = state.lastPlayedCombination === null;
+    const isNewTrick = state.lastPlayedCombination === null;
     const view = opponentsOf(state, seat);
     const requireCard = !state.firstPlayMade ? state.startCard : undefined;
 
     const play = aiChoosePlay(
       state.players[seat],
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
+      isNewTrick ? null : state.lastPlayedCombination,
+      isNewTrick,
       view.handCounts,
       requireCard,
       rng,
@@ -239,7 +239,7 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
     );
 
     assert.ok(
-      play !== null || !isNewRound,
+      play !== null || !isNewTrick,
       `turn ${turns}: seat ${seat} declined to lead, which no caller can recover from`
     );
     state = play ? processPlay(state, play) : processPass(state);

@@ -122,7 +122,7 @@ describe("visibleExchangePhase", () => {
     });
 
     // `exchangePhase` is never cleared, so the flag alone would keep the card
-    // public for the rest of the manche — and hand it to anyone connecting long
+    // public for the rest of the round — and hand it to anyone connecting long
     // after the trade, having never watched it cross.
     describe("is bounded to the ceremony that reads it", () => {
       const OVER = SETTLED_AT + exchangeAnnounceMs(false);

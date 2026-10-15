@@ -159,7 +159,7 @@ describe('ParticleLayer', () => {
     });
 
     for (const reduced of [false, true]) {
-      it(`rains ${reduced ? 'nothing under reduced motion' : "a won partita's 60 motes through the cone over 1.2 s"}`, async () => {
+      it(`rains ${reduced ? 'nothing under reduced motion' : "a won match's 60 motes through the cone over 1.2 s"}`, async () => {
         mockReduced = reduced;
         const ref = React.createRef<ParticleEmitter>();
         const rig = { lamp: makeMutable(restingLamp(TABLE_CENTRE)), sx: 1, sy: 1 };

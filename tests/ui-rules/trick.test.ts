@@ -50,12 +50,12 @@ describe("playOnto", () => {
     assert.equal(topPlay(back.plays)?.key, b.key);
   });
 
-  test("a card already on the felt, thrown again, is a new manche: the felt starts over", () => {
+  test("a card already on the felt, thrown again, is a new round: the felt starts over", () => {
     const next = thrown(["3_hearts", "3_spades"], 2);
     assert.deepEqual(keys(playOnto(trickOf(a, b), next).plays), [next.key]);
   });
 
-  test("a new manche's card still being swept ends the sweep; an unrelated sweep runs on", () => {
+  test("a new round's card still being swept ends the sweep; an unrelated sweep runs on", () => {
     const sweeping = sweepTrick(trickOf(a, b), { dx: 1, dy: 1 });
     assert.equal(playOnto(sweeping, thrown(["3_hearts"], 3)).swept, null);
     assert.equal(playOnto(sweeping, c).swept, sweeping.swept);
@@ -102,13 +102,13 @@ describe("sweepTrick", () => {
   });
 });
 
-test("over 400 seeded throws, rewinds, sweeps, clears and new manches no card is on the felt twice or lost", () => {
+test("over 400 seeded throws, rewinds, sweeps, clears and new rounds no card is on the felt twice or lost", () => {
   const rand = mulberry32(1259);
   const deckIds = createDeck().map((card) => card.id);
   const shuffled = () => [...deckIds].sort(() => rand() - 0.5);
   let deck = shuffled();
   let t: Trick = NO_TRICK;
-  const counts = { throw: 0, fresh: 0, repeat: 0, rewind: 0, sweep: 0, clear: 0, ended: 0, manche: 0 };
+  const counts = { throw: 0, fresh: 0, repeat: 0, rewind: 0, sweep: 0, clear: 0, ended: 0, round: 0 };
   for (let step = 0; step < 400; step++) {
     const before = t;
     const r = rand();
@@ -142,7 +142,7 @@ test("over 400 seeded throws, rewinds, sweeps, clears and new manches no card is
       const felt = onFelt(before);
       const back = felt[Math.floor(rand() * felt.length)];
       deck = back ? [back, ...shuffled().filter((id) => id !== back)] : shuffled();
-      counts.manche++;
+      counts.round++;
     }
     const ids = onFelt(t);
     assert.equal(new Set(ids).size, ids.length, `step ${step}: ${ids.join(",")}`);

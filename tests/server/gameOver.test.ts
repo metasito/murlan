@@ -102,7 +102,7 @@ function finishedState(overrides: Partial<GameState> = {}): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: true,
     rankings: ["player_0", "player_1"],
     firstPlayMade: true,
@@ -183,7 +183,7 @@ describe("handleGameOver — the broadcast", () => {
     assert.equal(payload.matchOver, game.matchOver);
     assert.equal(payload.matchLength, "match");
     assert.equal(payload.isDraw, false);
-    assert.equal(payload.handsPlayed, 1, "the manche just decided is counted");
+    assert.equal(payload.handsPlayed, 1, "the round just decided is counted");
     // One row per seat carries every identity: the totals used to ride
     // alongside as a name -> total map, where two seats sharing a name
     // collapsed into one entry.
@@ -232,21 +232,21 @@ describe("handleGameOver — the broadcast", () => {
     });
   });
 
-  test("a single-manche game names the manche winner as the match winner", async () => {
+  test("a single-round game names the round winner as the match winner", async () => {
     const s = stubServer();
     const game = makeGame({ matchLength: "single" });
 
     await handleGameOver(s.io, ROOM, game, s.writers);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
-    assert.equal(payload.matchOver, true, "one manche is the whole match");
+    assert.equal(payload.matchOver, true, "one round is the whole match");
     assert.deepEqual(payload.matchWinnerIds, ["player_0"], "Alice emptied her hand first");
     assert.equal(payload.isDraw, false);
-    assert.equal(payload.matchContinues, true, "a new partita is offered with nobody asked");
+    assert.equal(payload.matchContinues, true, "a new match is offered with nobody asked");
     assert.equal(game.matchOver, true, "the game carries the same verdict");
   });
 
-  test("the ready gate is emptied so the next manche starts from no votes", async () => {
+  test("the ready gate is emptied so the next round starts from no votes", async () => {
     const s = stubServer();
     const game = makeGame();
 

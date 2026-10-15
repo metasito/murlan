@@ -1,5 +1,5 @@
 // tests/e2e/startAnnouncement.spec.ts — the announcement of who opens the
-// manche holds the table until it has been read, and the lamp points at it
+// round holds the table until it has been read, and the lamp points at it
 // (#817).
 //
 // Two of the three claims are only answerable in a browser. Whether a layer
@@ -22,7 +22,7 @@ import { LIGHT_ABOVE } from "../../components/table/lampRig";
 const VIEWPORT = { width: 874, height: 402 };
 const NEAREST_PT = 0.5;
 
-/** A manche just dealt, opened by the viewer's own seat because it lost the last round. */
+/** A round just dealt, opened by the viewer's own seat because it lost the last round. */
 function openingSave() {
   const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
   return {
@@ -47,12 +47,12 @@ function openingSave() {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
       startReason: { type: "lost_round", playerIdx: 0 },
-      // Nothing played yet — the manche the `startReason` describes is still at
+      // Nothing played yet — the round the `startReason` describes is still at
       // its opening, which is the whole condition for announcing it.
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },

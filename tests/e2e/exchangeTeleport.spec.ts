@@ -15,7 +15,7 @@ const MAX_STEP = 40;
 interface Sample { leg: string; t: number; x: number; y: number; back: number }
 
 const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
-/** The viewer, Ana, has just won a manche and is choosing what to hand back to Bea. */
+/** The viewer, Ana, has just won a round and is choosing what to hand back to Bea. */
 const midExchangeSave = () => ({
   version: 2,
   gameState: {
@@ -28,7 +28,7 @@ const midExchangeSave = () => ({
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,

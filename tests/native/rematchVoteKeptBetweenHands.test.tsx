@@ -40,7 +40,7 @@ const table = (gameOver: boolean): GameStateBroadcast => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver,
   rankings: gameOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
@@ -76,7 +76,7 @@ describe('the rematch tally', () => {
     await view.unmount();
   });
 
-  it('goes once the next manche is dealt', async () => {
+  it('goes once the next round is dealt', async () => {
     const view = await mount();
     await deliver('game:state', table(true));
     await deliver('game:vote_state', { votes: ['u1'], total: 2 });

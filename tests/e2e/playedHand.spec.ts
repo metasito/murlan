@@ -67,7 +67,7 @@ const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
  * Thirteen cards: one short of the fourteen two seats are dealt (`dealCards`),
- * so a hand one play into a manche, and enough of them that the fan overlaps —
+ * so a hand one play into a round, and enough of them that the fan overlaps —
  * which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
@@ -94,7 +94,7 @@ function save(gameState: Record<string, unknown>) {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       // Past the opening, so the table renders a hand in progress rather than a
@@ -102,7 +102,7 @@ function save(gameState: Record<string, unknown>) {
       firstPlayMade: true,
       ...gameState,
     },
-    // One manche: a match deals every manche after this one by a real shuffle,
+    // One round: a match deals every round after this one by a real shuffle,
     // so anything played past the seeded hand would be undealt. A match belongs
     // in `offlineMatch.spec.ts`.
     match: {
@@ -142,7 +142,7 @@ const midHandSave = () =>
     lastPlayedBy: 1,
   });
 
-/** The viewer as the manche's winner, choosing what to give back. */
+/** The viewer as the round's winner, choosing what to give back. */
 const exchangeSave = () =>
   save({
     players: seats(VIEWER_HAND, BOT_HAND.slice(0, 2)),
@@ -300,7 +300,7 @@ test("one hand, played through every interaction the table has", async ({ page, 
 
   // --- exchange ---
   //
-  // Seeded rather than played to: which seat wins a manche is the bot's
+  // Seeded rather than played to: which seat wins a round is the bot's
   // business, so a spec that waits for the viewer to win one fails on the deal.
   await resumeSaved(page, baseURL!, exchangeSave());
   await expect(page.getByTestId("exchange-prompt"), "the exchange asks on the felt").toBeVisible({

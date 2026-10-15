@@ -91,7 +91,7 @@ function GradientLayers({ size, layers }: { size: number; layers: readonly Gradi
 }
 
 /**
- * The bomb/partita flare's own falloff — a hand-stepped approximation of the
+ * The bomb/match flare's own falloff — a hand-stepped approximation of the
  * three-stop SVG radial gradient this effect shipped with in #200 (core
  * `rgba(255,250,232,.98)` at the centre, through gold at 40% of the radius,
  * to transparent at 72%). Every diameter and alpha step is its own named
@@ -120,7 +120,7 @@ const FLARE_SIZE = 150;
 /** The bomb's own window — brief, because the surprise is over the instant it lands. */
 const FLARE_BRIEF_MS = 1500;
 /**
- * The partita's own window — long enough to carry the closing beat rather
+ * The match's own window — long enough to carry the closing beat rather
  * than read as a second bomb: `flareKindFor` (flightPhysics.ts) is what
  * decides which of the two a landing plays, never a branch in here.
  */
@@ -290,7 +290,7 @@ const BURST_Z = Layer.band;
  * The bomb's three layers, centred on the impact point — the same point
  * `PileLayer` draws the pile at. Rendered as a sibling of it inside the
  * table's own centre section. Each fires on the contact frame of a landing
- * whose tier flares (#765) — "brief" for the bomb, "settle" for the partita.
+ * whose tier flares (#765) — "brief" for the bomb, "settle" for the match.
  */
 export function BombBurst({ landing, scale }: { landing: SharedValue<LandingSignal>; scale: number }) {
   return (

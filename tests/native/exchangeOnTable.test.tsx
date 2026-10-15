@@ -64,7 +64,7 @@ const state = (exchange = true): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -126,7 +126,7 @@ describe('the winner picks from their own hand', () => {
     await r.unmount();
   });
 
-  it("opens a later manche's choice on its own receive, though the pairing and the card repeat", async () => {
+  it("opens a later round's choice on its own receive, though the pairing and the card repeat", async () => {
     const onExchangeReady = jest.fn();
     const r = await render(table({ viewerSeat: 0, onExchangeReady }));
     await open();

@@ -179,7 +179,7 @@ export function useOnlineMatch() {
   );
 }
 
-/** The card that changes hands between manches, and the banner about it. */
+/** The card that changes hands between rounds, and the banner about it. */
 export function useOnlineExchange() {
   const { exchangeAnnouncing, exchangeAnnounceData, giveExchangeCard, acknowledgeExchange } =
     useExchangeSlice();

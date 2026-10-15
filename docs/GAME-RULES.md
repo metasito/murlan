@@ -111,7 +111,7 @@ Where Tier 1 and Tier 2 disagree, this spec follows Tier 1 and records the disag
 
 ## 9. Passing, end of a trick/round, next lead
 
-*Engine: `processPass`, `passesToCloseRound`, `getNextActivePlayer` (`lib/game/gameEngine.ts`).*
+*Engine: `processPass`, `passesToCloseTrick`, `getNextActivePlayer` (`lib/game/gameEngine.ts`).*
 
 - A player who cannot or does not wish to beat the current play **passes**.
 - **Passing does not lock a player out of the round.** The round ends only when **all other active players pass consecutively** — i.e. **three consecutive passes** in a 4-player game (`activePlayers − 1`). catsatcards: *"If there are three consecutive passes after a legal play, the player who played the last play to the table removes all cards currently on the table, setting them aside and out of play. He then starts the next series of plays."*

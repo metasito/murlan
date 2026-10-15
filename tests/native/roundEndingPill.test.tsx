@@ -1,4 +1,4 @@
-// tests/native/mancheEndingPill.test.tsx — the score pill's payoff at the end of a manche: it
+// tests/native/roundEndingPill.test.tsx — the score pill's payoff at the end of a round: it
 // counts the viewer's gain in on its own clock, a tap jumps it to the settled pill, and reduced
 // motion starts it there, its glow still fading over its own length under the app's reduced root.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -8,7 +8,7 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-nativ
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameTable } from '@/components/GameTable';
 import { setMotionPreference } from '@/lib/accessibility';
-import { mancheEndingOnsets } from '@/lib/game/mancheEnding';
+import { roundEndingOnsets } from '@/lib/game/roundEnding';
 import type { GameState, Player } from '@/lib/game/gameEngine';
 
 const METRICS = {
@@ -25,16 +25,16 @@ const ENDED: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: true,
   rankings: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
 };
 const BEFORE = 7;
 const AFTER = 10;
-const { gains, settled, pileFade, deal } = mancheEndingOnsets(4);
+const { gains, settled, pileFade, deal } = roundEndingOnsets(4);
 
-function table(onMancheLanded: (at: number) => void, gameState: GameState = ENDED) {
+function table(onRoundLanded: (at: number) => void, gameState: GameState = ENDED) {
   return (
     <>
       <ReducedMotionConfig mode={ReduceMotion.Always} />
@@ -48,7 +48,7 @@ function table(onMancheLanded: (at: number) => void, gameState: GameState = ENDE
           onPass={noop}
           onQuit={noop}
           onExchangeGive={noop}
-          onMancheLanded={onMancheLanded}
+          onRoundLanded={onRoundLanded}
         />
       </SafeAreaProvider>
     </>
@@ -66,7 +66,7 @@ afterEach(() => {
   setMotionPreference('system');
 });
 
-describe('the score pill at the end of a manche', () => {
+describe('the score pill at the end of a round', () => {
   it('counts the viewer gain in at its onset, and a tap jumps to the settled pill', async () => {
     const landed = jest.fn();
     const view = await render(table(landed));

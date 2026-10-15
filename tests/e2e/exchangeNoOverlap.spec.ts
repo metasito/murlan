@@ -24,7 +24,7 @@ function intersection(a: Box, b: Box): number {
 
 const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
 
-/** The viewer has just won a manche and is about to choose what to hand back. */
+/** The viewer has just won a round and is about to choose what to hand back. */
 function midExchangeSave() {
   return {
     version: 2,
@@ -48,7 +48,7 @@ function midExchangeSave() {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,

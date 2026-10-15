@@ -1,6 +1,6 @@
 // tests/e2e/tableMoments.spec.ts — #1102's four table moments, sampled live:
 // the lamp comes up with the deal, an opponent's hand ramps in as it lands, a
-// flown card's raised shadow drops once it is down, and a won partita dusts gold.
+// flown card's raised shadow drops once it is down, and a won match dusts gold.
 import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { openApp } from "./helpers/navigation";
@@ -150,7 +150,7 @@ function flightSave(): object {
       lastPlayedBy: 1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
@@ -165,8 +165,8 @@ function flightSave(): object {
   };
 }
 
-/** The viewer one card and one point short of the partita, so throwing `BEATER` wins it. */
-function partitaPointSave(): object {
+/** The viewer one card and one point short of the match, so throwing `BEATER` wins it. */
+function matchPointSave(): object {
   const save: any = flightSave();
   const target = targetsFor(2)[0];
   save.gameState.players[0].hand = [BEATER];
@@ -174,11 +174,11 @@ function partitaPointSave(): object {
   return save;
 }
 
-test.describe("a partita won on the felt", () => {
-  test("winning the partita turns the score pill into the board, on the table", async ({ page, baseURL }) => {
+test.describe("a match won on the felt", () => {
+  test("winning the match turns the score pill into the board, on the table", async ({ page, baseURL }) => {
     test.setTimeout(60_000);
     await page.setViewportSize(VIEWPORT);
-    await resumeSaved(page, baseURL!, partitaPointSave());
+    await resumeSaved(page, baseURL!, matchPointSave());
     await settled(page, 1_500, TABLE);
 
     await tap(page, page.locator(HAND_ZONE).getByRole("button", { name: BEATER_LABEL, exact: true }));
@@ -186,12 +186,12 @@ test.describe("a partita won on the felt", () => {
     await expect(gioca).toHaveAttribute("aria-label", GIOCA_VALID_LABEL, { timeout: 10_000 });
     await tap(page, gioca);
 
-    await expect(page.getByTestId("btn-nuova-partita")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId("btn-new-match")).toBeVisible({ timeout: 20_000 });
     await expect(page).toHaveURL(/\/game/);
-    await expect(page.getByTestId("partita-winner-name")).toHaveText("Ana");
+    await expect(page.getByTestId("match-winner-name")).toHaveText("Ana");
     await expect(page.getByText("Hai vinto")).toBeVisible();
 
-    await test.info().attach("partita-board.png", {
+    await test.info().attach("match-board.png", {
       body: await page.screenshot(),
       contentType: "image/png",
     });

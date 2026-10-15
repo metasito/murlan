@@ -224,7 +224,7 @@ interface Options {
  * is ever sent another seat's cards.
  */
 export type SoakAction =
-  | { kind: "deal"; manche: number; hands: string[][] }
+  | { kind: "deal"; round: number; hands: string[][] }
   | { kind: "play"; seat: number; cardIds: string[] }
   | { kind: "pass"; seat: number }
   | { kind: "exchange"; seat: number; cardId: string }
@@ -242,7 +242,7 @@ export function formatLogEntry(entry: SoakLogEntry): string {
   const at = String(entry.at).padStart(4, " ");
   switch (entry.kind) {
     case "deal":
-      return `${at}  deal   manche ${entry.manche}  ${entry.hands
+      return `${at}  deal   round ${entry.round}  ${entry.hands
         .map((hand, seat) => `seat${seat}=[${hand.join(" ")}]`)
         .join("  ")}`;
     case "play":
@@ -427,9 +427,9 @@ export class Seat {
     const hand = s.players[seat]?.hand ?? [];
     if (hand.length === 0) return null;
 
-    const isNewRound = s.lastPlayedCombination === null;
+    const isNewTrick = s.lastPlayedCombination === null;
     const mustPlay = !s.firstPlayMade ? s.startCard : undefined;
-    const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewRound, mustPlay);
+    const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewTrick, mustPlay);
 
     if (plays.length === 0) {
       this.socket.emit("game:pass");
@@ -485,7 +485,7 @@ const SETTLE_QUIET_MS = 250;
 export interface SoakResult {
   violations: Violation[];
   moves: number;
-  manches: number;
+  rounds: number;
   chaosEvents: string[];
   /** Every refusal the run collected, keyed `event code`. See `Seat.refusals`. */
   refusals: Record<string, number>;
@@ -525,7 +525,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
   const deckSize = createDeck().length;
   const moveLog: SoakLogEntry[] = [];
   let moves = 0;
-  let manches = 0;
+  let rounds = 0;
   let dealLoggedFor = -1;
   let highWaterMark = deckSize;
   let wasOver = false;
@@ -554,34 +554,34 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       //
       // The signal is that no card has left a hand yet, not `firstPlayMade`:
       // `initializeRematch` returns that already `true`, so keying on it logged
-      // a deal for the first manche and for no other, and every later entry
+      // a deal for the first round and for no other, and every later entry
       // named cards the log never dealt. The exchange moves one card between
       // two hands and so leaves the total alone, which is why this still holds
       // over it.
       const inHand = views[0]?.handCounts.reduce((a, b) => a + b, 0) ?? 0;
-      if (dealLoggedFor !== manches && views.length === seats.length && inHand === deckSize) {
-        moveLog.push({ at: moves, kind: "deal", manche: manches, hands: seats.map((s) => s.hand()) });
-        dealLoggedFor = manches;
+      if (dealLoggedFor !== rounds && views.length === seats.length && inHand === deckSize) {
+        moveLog.push({ at: moves, kind: "deal", round: rounds, hands: seats.map((s) => s.hand()) });
+        dealLoggedFor = rounds;
       }
       if (views.length >= 1) {
         const total = views[0].handCounts.reduce((a, b) => a + b, 0);
         violations.push(...checkAll(views, deckSize, highWaterMark));
         // A fresh deal legitimately refills every hand, so the ceiling is reset
-        // by a deal rather than being the running maximum of a single manche.
+        // by a deal rather than being the running maximum of a single round.
         highWaterMark = Math.max(total, highWaterMark);
       }
       if (violations.length > 0) break;
 
       const over = seats.every((s) => s.state?.gameOver);
       if (over && !wasOver) {
-        manches += 1;
-        log(`soak: manche ${manches} finished`);
+        rounds += 1;
+        log(`soak: round ${rounds} finished`);
       }
       wasOver = over;
       if (over) {
         for (const seat of seats) seat.socket.emit("game:rematch_vote");
         // A fresh deal refills every hand, so the ceiling the oracle measures
-        // against belongs to the manche that is starting, not the one that
+        // against belongs to the round that is starting, not the one that
         // just emptied.
         highWaterMark = deckSize;
         await sleep(700);
@@ -641,7 +641,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
     result = {
       violations,
       moves,
-      manches,
+      rounds,
       // Read off the log rather than collected beside it: two records of one
       // fact drift, and this one is asserted on.
       chaosEvents: moveLog.flatMap((e) =>
@@ -798,7 +798,7 @@ async function main() {
   result.violations.push(...progressViolations(result));
 
   console.log(
-    `soak: ${result.moves} rounds of moves, ${result.manches} manches, ` +
+    `soak: ${result.moves} rounds of moves, ${result.rounds} rounds, ` +
       `${result.chaosEvents.length} disconnections, ${formatRefusals(result.refusals)}`
   );
   if (result.violations.length === 0) {
