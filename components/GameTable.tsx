@@ -122,7 +122,7 @@ import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/game/roundEnding";
-import { roundOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
+import { roundOutcomeFor, matchOutcomeFor, scoredOutcome } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -803,14 +803,9 @@ export function GameTable({
     lastPlayedCombination: gameState.lastPlayedCombination,
     trickWinner: gameState.trickWinner,
     roundOver: gameState.roundOver,
-    finishingOrder: gameState.finishingOrder,
-    players,
-    isTeamMode,
-    placementPoints,
-    viewerId: viewer?.id,
+    outcome: scoredOutcome(outcome, gameState.finishingOrder, placementPoints),
+    matchOutcome: matchOver ? matchOutcome : "pending",
     scale,
-    matchOver,
-    matchWinners,
     landing: landingSignal,
     timeline,
   });

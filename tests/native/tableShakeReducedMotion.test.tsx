@@ -66,9 +66,8 @@ import { fireLanding, useFeedbackOnTimeline } from './helpers/landing';
 // `shake()`'s write actually carries what `traumaFor` returned.
 const SENTINEL = 0.918273645;
 
-// `roundOver` stays false for the whole probe, so `roundOutcomeFor` (which
-// reads `players`/`isTeamMode`/`placementPoints`) is never reached — these are
-// here only to satisfy `TableFeedbackState`, empty and neutral.
+// `roundOver` stays false for the whole probe, so the outcomes are never read —
+// they are here only to satisfy `TableFeedbackState`.
 const idleState = () => ({
   isMyTurn: false,
   currentTurnIndex: 0,
@@ -79,11 +78,8 @@ const idleState = () => ({
   lastPlayedCombination: null,
   trickWinner: null,
   roundOver: false,
-  finishingOrder: [],
-  players: [],
-  isTeamMode: false,
-  placementPoints: {},
-  viewerId: undefined,
+  outcome: "neutral" as const,
+  matchOutcome: "pending" as const,
   scale: 1,
 });
 

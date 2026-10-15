@@ -122,6 +122,20 @@ export function roundOutcomeFor(
 }
 
 /**
+ * `outcome`, held at `"pending"` until every ranked id carries a score, in every mode. For a decision made
+ * once and latched (the round's sting): online the scores arrive after `roundOver`, together with a
+ * match's winners. `roundOutcomeFor` itself stays decided without scores in free-for-all, where a replay
+ * has none to give.
+ */
+export function scoredOutcome(
+  outcome: RoundOutcome,
+  finishingOrder: readonly string[],
+  placementPoints: Record<string, number>
+): RoundOutcome {
+  return finishingOrder.every((id) => id in placementPoints) ? outcome : "pending";
+}
+
+/**
  * What a finished match did to `viewerId`: `"pending"` until its winners are known, `"neutral"` for a spectator,
  * `"draw"` for a co-winner of a match tied at the last target (GAME-RULES.md §12, tie escalation).
  */

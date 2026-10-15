@@ -21,11 +21,8 @@ const state = {
   lastPlayedCombination: null,
   trickWinner: null,
   roundOver: false,
-  finishingOrder: [],
-  players: [],
-  isTeamMode: false,
-  placementPoints: {},
-  viewerId: "viewer",
+  outcome: "neutral" as const,
+  matchOutcome: "pending" as const,
   scale: 1,
 };
 
