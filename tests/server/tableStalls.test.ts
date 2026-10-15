@@ -127,3 +127,26 @@ describe("a table restored after a restart", () => {
     assert.equal(game.gameState.gameOver, false);
   });
 });
+
+describe("dealing the next manche", () => {
+  test("a rooms.status write that fails still reaches every client", async (t) => {
+    const { io, emitted } = stubIo();
+    t.mock.method(roomStore, "getRoomById", async () => room);
+    t.mock.method(roomStore, "updateRoomStatus", async () => {
+      throw new Error("connection terminated");
+    });
+    const game = baseGame({
+      gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
+      playerMap: { 0: "ana", 1: "besi" },
+      rematchVotes: new Set(["ana"]),
+    });
+    activeGames.set(ROOM, game);
+
+    const outcome = await vote(io, "besi").catch((err: unknown) => err);
+
+    assert.deepEqual(outcome, { ok: true });
+    assert.equal(game.gameState.gameOver, false, "the next manche was dealt in memory");
+    assert.ok(emitted.some((e) => e.event === "game:state"), "nobody was sent their hand");
+    assert.ok(emitted.some((e) => e.event === "game:started"));
+  });
+});
