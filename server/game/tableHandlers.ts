@@ -102,6 +102,7 @@ import {
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealManche } from "./dealManche.ts";
+import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
   UNKNOWN_ACTION,
@@ -629,7 +630,10 @@ function carriedRankings(
   const newSeatOf = (engineId: string | undefined): number => {
     const seat = engineId === undefined ? undefined : seatOfEngineId.get(engineId);
     if (seat === undefined) return -1;
-    const userId = previous.playerMap[seat] ?? previous.vacatedSeats.get(seat)?.userId;
+    const userId =
+      previous.playerMap[seat] ??
+      previous.vacatedSeats.get(seat)?.userId ??
+      (previous.botSeatsAtStart.has(seat) ? botSeatKey(seat) : undefined);
     return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
   };
 
