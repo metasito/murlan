@@ -14,7 +14,7 @@ import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
 
-const seat = (i: number): Player => ({ id: `player_${i}`, name: ['Ana', 'Luan', 'Erion', 'Besa'][i], hand: [], type: i === 0 ? 'human' : 'ai' });
+const seat = (i: number): Player => ({ id: `player_${i}`, name: ['Ana', 'Luan', 'Erion', 'Besa'][i], hand: [], type: i === 0 ? 'human' : 'bot' });
 const MOCK_ENDED: GameState = {
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
@@ -23,13 +23,13 @@ const MOCK_ENDED: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: true,
-  rankings: ['player_1', 'player_0', 'player_2', 'player_3'],
+  roundOver: true,
+  finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'],
   firstPlayMade: true,
 };
 const MOCK_SCORES = { player_0: 12, player_1: 22, player_2: 6, player_3: 3 };
-const MOCK_HAND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };
-const MOCK_MATCH = { target: 21, over: true, winners: ['player_1'], isDraw: false, continues: true, handsPlayed: 6 };
+const MOCK_ROUND = { player_0: 1, player_1: 3, player_2: 0, player_3: 0 };
+const MOCK_MATCH = { target: 21, over: true, winners: ['player_1'], isDraw: false, continues: true, roundsPlayed: 6 };
 
 const mockStartNewMatch = jest.fn();
 const mockResetGame = jest.fn();
@@ -39,7 +39,7 @@ let mockError: { text: string; seq: number } | null = null;
 let mockScoresCurrent = true;
 let mockRatingDeltas: Record<string, number> = {};
 let mockRecorded = true;
-let mockRatingsAfter: Record<string, { rating: number; games: number }> = {};
+let mockRatingsAfter: Record<string, { rating: number; rounds: number }> = {};
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
 jest.mock('@/context/NotificationContext', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
@@ -52,13 +52,13 @@ jest.mock('@/context/GameContext', () => ({
     playCards: () => {},
     passTurn: () => {},
     resetGame: mockResetGame,
-    runAITurn: () => {},
+    runBotTurn: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    startNextHand: () => {},
+    startNextRound: () => {},
     startNewMatch: mockStartNewMatch,
-    match: { ...MOCK_MATCH, length: 'match', scores: MOCK_SCORES, hands: [{ pointsAwarded: MOCK_HAND, rankings: MOCK_ENDED.rankings }] },
+    match: { ...MOCK_MATCH, length: 'match', scores: MOCK_SCORES, hands: [{ pointsAwarded: MOCK_ROUND, finishingOrder: MOCK_ENDED.finishingOrder }] },
   }),
 }));
 jest.mock('@/context/onlineGameHooks', () => ({
@@ -87,10 +87,10 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { ...MOCK_MATCH, length: 'match' },
     cumulativeScores: MOCK_SCORES,
-    handScores: MOCK_HAND,
-    handScoresCurrent: mockScoresCurrent,
+    placementPoints: MOCK_ROUND,
+    placementPointsCurrent: mockScoresCurrent,
     ratingDeltas: mockRatingDeltas,
-    handRecorded: mockRecorded,
+    roundRecorded: mockRecorded,
     ratingsAfter: mockRatingsAfter,
     rematchVoteState: mockVotes,
     endMatchVoteState: null,
@@ -196,7 +196,7 @@ describe('New match on the board', () => {
     await view.unmount();
   });
 
-  it('holds the online board until the round scores arrive', async () => {
+  it('holds the online board until the placement points arrive', async () => {
     mockScoresCurrent = false;
     const view = await render(wrap(OnlineGameScreen));
     await advance(settled + 100);
@@ -217,7 +217,7 @@ describe('New match on the board', () => {
 
     mockVotes = { votes: ['alice'], total: 4 };
     await act(async () => view.rerender(wrap(OnlineGameScreen)));
-    expect(screen.getAllByText(t('gameOverOverlay.nextHandWaiting', { count: 1, total: 4 }), HIDDEN).length).toBe(1);
+    expect(screen.getAllByText(t('roundOverOverlay.nextRoundWaiting', { count: 1, total: 4 }), HIDDEN).length).toBe(1);
     expect(pressable('btn-rivincita')).toBe(false);
     await view.unmount();
   });
@@ -246,7 +246,7 @@ describe('the viewer rating under the winner', () => {
 
   it('shows the signed delta, the new rating and the provisional count for a ranked match', async () => {
     mockRatingDeltas = { alice: -8, luan: 14 };
-    mockRatingsAfter = { alice: { rating: 1192, games: 3 }, luan: { rating: 1214, games: 9 } };
+    mockRatingsAfter = { alice: { rating: 1192, rounds: 3 }, luan: { rating: 1214, rounds: 9 } };
     const view = await settle(OnlineGameScreen);
     expect(screen.getByText(t('matchBoard.ratingLabel'), HIDDEN)).toBeTruthy();
     expect(screen.getByTestId('match-rating-delta', HIDDEN)).toHaveTextContent('−8');

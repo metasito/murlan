@@ -38,7 +38,7 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
   ["components/MenuButton.tsx", 1, "the box is `styles[size]`, one of three steps the scan reads as declared styles in their own right"],
   ["components/table/settingsSheet.tsx", 1, "the exit button's box is the gradient it wraps, floored at `physicalTouchTarget(scale)`"],
   ["components/table/matchBoard.tsx", 1, "Home and New match on the board paint a `PX.btnH * u` pill inside a box grown to the floor"],
-  ["components/table/notices/netNotes.tsx", 2,"the end-match and next-hand votes paint a pill notice inside a box `reach` grows to the floor"],
+  ["components/table/notices/netNotes.tsx", 2,"the end-match and next-round votes paint a pill notice inside a box `reach` grows to the floor"],
   ["app/(online)/room.tsx", 1, "an invite row takes `{ height: ROW_H }` inline, and ROW_H is the token"],
 ];
 
@@ -49,7 +49,7 @@ const SIZED_AT_RUNTIME: [string, number, string][] = [
  */
 const WIDTH_FROM_LAYOUT: [string, number, string, string][] = [
   ["components/DifficultyLadder.tsx", 1, "a ladder segment, `flex: 1` in the ladder row", "offline lobby"],
-  ["components/HistoryRow.tsx", 1, "a history row, the list's full width", "profile, after a hand"],
+  ["components/HistoryRow.tsx", 1, "a history row, the list's full width", "profile, after a round"],
   ["components/NotificationBanner.tsx", 1, "the banner body, the banner's full width", "notification banner"],
   ["components/ReplayControls.tsx", 1, "a move row, the move list's full width", "replay"],
   ["components/SegmentedControl.tsx", 1, "a segment, `flex: 1` in the track", "leaderboard"],
@@ -202,7 +202,7 @@ test("every control's touch size has been ruled on", () => {
 
 // A label only counts where the spec passes it as `sweepSizes`'s own argument, outside a comment.
 test("every control whose width comes from layout is measured by a named sweep", () => {
-  const specs = ["tests/e2e/tapTargets.spec.ts", "tests/e2e/tapTargetsOnlineHand.spec.ts", "tests/e2e/reconnect.spec.ts"];
+  const specs = ["tests/e2e/tapTargets.spec.ts", "tests/e2e/tapTargetsOnlineRound.spec.ts", "tests/e2e/reconnect.spec.ts"];
   const spec = specs.map((f) => blankComments(read(f))).join("\n");
   const swept = new Set([...spec.matchAll(/\bsweepSizes\(\s*page\s*,\s*"([^"]+)"/g)].map((m) => m[1]));
   const unswept = WIDTH_FROM_LAYOUT.filter(([, , , screen]) => !swept.has(screen)).map(

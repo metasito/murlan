@@ -433,10 +433,19 @@ export function schemaStatements(): string[] {
  */
 const RENAMED_COLUMNS = [
   { table: "active_games", from: "room_code", to: "room_id" },
-  { table: "match_replays", from: "room_code", to: "room_id" },
+  { table: "round_replays", from: "room_code", to: "room_id" },
+  { table: "user_stats", from: "games_played", to: "rounds_played" },
+  { table: "user_stats", from: "games_won", to: "rounds_won" },
+  { table: "user_ratings", from: "games", to: "rounds" },
 ] as const;
 
-/** Refuses a database still holding a column the code no longer writes. */
+/** Tables `shared/schema.ts` renamed, under the same constraint as `RENAMED_COLUMNS`. */
+const RENAMED_TABLES = [
+  { from: "match_history", to: "round_history" },
+  { from: "match_replays", to: "round_replays" },
+] as const;
+
+/** Refuses a database still holding a table or column the code no longer writes. */
 export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<void> {
   for (const { table, from, to } of RENAMED_COLUMNS) {
     const { rows } = await pool.query(
@@ -449,6 +458,18 @@ export async function assertRenamesApplied(pool: Pick<Pool, "query">): Promise<v
         `Database out of date: "${table}"."${from}" is now "${to}", and ` +
           `ensureSchema() is additive — it cannot rename it. Run ` +
           `\`npm run db:push\` against this database, then start the server again.`
+      );
+    }
+  }
+  for (const { from, to } of RENAMED_TABLES) {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1`,
+      [from]
+    );
+    if (rows.length > 0) {
+      throw new Error(
+        `Database out of date: table "${from}" is now "${to}", and ensureSchema() is additive — ` +
+          `it cannot rename it. Run \`npm run db:push\` against this database, then start the server again.`
       );
     }
   }

@@ -195,7 +195,7 @@ function normalizeForDupCheck(text: string): string {
 const ARCHITECTURE_DUP_PHRASES: [string, string][] = [
   ["the hook-before-null-guard order", "every hook runs before `if (!gamestate)`"],
   ["autoMove.ts is the sole bot-move chooser", "chooses a bot's move"],
-  ["a winner travels as an engine player id", "every client can map at every moment `game:over` can arrive"],
+  ["a winner travels as an engine player id", "every client can map at every moment `game:round_over` can arrive"],
   ["ticket auth closes the bare handshake.auth.userId vector", "handshake.auth.userid"],
   ["locales/en.ts, it.ts and sq.ts are Record<keyof typeof en, string>", "record<keyof typeof en, string>"],
   [

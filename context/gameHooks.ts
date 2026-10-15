@@ -15,14 +15,14 @@ import { useGame } from "./GameContext";
 
 /** The hand and the ways to spend a turn. */
 export function useLocalTable() {
-  const { gameState, playCards, passTurn, runAITurn } = useGame();
+  const { gameState, playCards, passTurn, runBotTurn } = useGame();
   return useMemo(
-    () => ({ gameState, playCards, passTurn, runAITurn }),
-    [gameState, playCards, passTurn, runAITurn]
+    () => ({ gameState, playCards, passTurn, runBotTurn }),
+    [gameState, playCards, passTurn, runBotTurn]
   );
 }
 
-/** Starting a game, abandoning one, and picking up the one that was interrupted. */
+/** Starting a match, abandoning one, and picking up the one that was interrupted. */
 export function useLocalSession() {
   const { setupGame, resetGame, hasSavedGame, resumeGame } = useGame();
   return useMemo(
@@ -33,10 +33,10 @@ export function useLocalSession() {
 
 /** Where the match stands, and how the table goes on from it. */
 export function useLocalMatch() {
-  const { match, startNextHand, startNewMatch } = useGame();
+  const { match, startNextRound, startNewMatch } = useGame();
   return useMemo(
-    () => ({ match, startNextHand, startNewMatch }),
-    [match, startNextHand, startNewMatch]
+    () => ({ match, startNextRound, startNewMatch }),
+    [match, startNextRound, startNewMatch]
   );
 }
 

@@ -321,19 +321,19 @@ export const en = {
   "cards.nameFormat": "{{rank}} of {{suit}}",
 
   // -------------------------------------------------------- exchangeAnnouncement.*
-  "exchangeAnnouncement.a11yNoSwap": "Exchange: no exchange, {{loserName}} showed both Jokers",
+  "exchangeAnnouncement.a11yNoExchange": "Exchange: no exchange, {{loserName}} showed both Jokers",
   "exchangeAnnouncement.giveLine": "{{from}} gives {{card}} to {{to}}",
-  "exchangeAnnouncement.noSwapText": "No exchange — double Joker 🃏",
+  "exchangeAnnouncement.noExchangeText": "No exchange — double Joker 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "result.position1": "1st",
   "result.position2": "2nd",
   "result.position3": "3rd",
   "result.position4": "4th",
-  "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} ready",
-  "gameOverOverlay.nextHandA11yLabel": "Ready for the next hand",
-  "gameOverOverlay.waitingA11yLabel": "Waiting for the others: {{count}} of {{total}} ready",
-  "gameOverOverlay.newMatchA11yLabel": "Start a new match",
+  "roundOverOverlay.nextRoundWaiting": "{{count}}/{{total}} ready",
+  "roundOverOverlay.nextRoundA11yLabel": "Ready for the next hand",
+  "roundOverOverlay.waitingA11yLabel": "Waiting for the others: {{count}} of {{total}} ready",
+  "roundOverOverlay.newMatchA11yLabel": "Start a new match",
   "result.modeTeams": "Teams",
   "result.modeFreeForAll": "Free-for-all",
 
@@ -354,14 +354,14 @@ export const en = {
   "gameShared.startReasonCard": "{{name}} starts — holds the {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(the 3♠ was not dealt)",
   "gameShared.startReasonLostRound": "{{name}} starts — lost the round",
-  "gameShared.startReasonWonNoSwap": "{{name}} starts — won (no exchange)",
+  "gameShared.startReasonWonNoExchange": "{{name}} starts — won (no exchange)",
   "gameShared.startReasonDismiss": "Tap to continue",
   "gameShared.you": "You",
   "gameShared.emptyTable": "— Table clear —",
   "gameShared.yourTurn": "Your turn",
   "gameShared.dealing": "Dealing",
   "gameShared.turnOf": "{{name}}'s turn",
-  "gameShared.handOver": "Hand over",
+  "gameShared.roundOver": "Hand over",
   "gameShared.matchOver": "Match over",
   "gameShared.passedLabel": "PASSED",
 
@@ -406,7 +406,7 @@ export const en = {
   "gameTable.a11yYourTurn": "It's your turn.",
   "gameTable.a11yDealing": "The cards are being dealt.",
   "gameTable.a11yTurnOf": "{{name}}'s turn.",
-  "gameTable.a11yHandOver": "The hand is over.",
+  "gameTable.a11yRoundOver": "The hand is over.",
   "gameTable.a11yMatchOver": "The match is over.",
   "gameTable.a11yEmptyTable": "No cards on the table.",
   "gameTable.a11yYouPlayed": "You played {{label}}.",
@@ -561,7 +561,7 @@ export const en = {
   "ladder.cardTitle": "Ranked",
   "ladder.ratingLabel": "Rating",
   "ladder.seasonLabel": "Season {{season}}",
-  "ladder.gamesLabel": "{{n}} ranked hands",
+  "ladder.roundsLabel": "{{n}} ranked hands",
   "ladder.provisional": "Provisional — {{n}} more hands to enter the leaderboard",
   "ladder.open": "View the leaderboard",
   "ladder.loadingA11yLabel": "Loading leaderboard",
@@ -588,8 +588,8 @@ export const en = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
-  "lobby.aiNameA11yLabel": "AI player name",
-  "lobby.aiNameA11yHint": "Enter a name for this computer-controlled player",
+  "lobby.botNameA11yLabel": "AI player name",
+  "lobby.botNameA11yHint": "Enter a name for this computer-controlled player",
   "lobby.difficultyA11yLabel": "{{name}} difficulty: {{difficulty}}",
   "bot.difficultyEasy": "Easy",
   "bot.difficultyNormal": "Normal",
@@ -609,7 +609,7 @@ export const en = {
   "lobby.formatSingleSub": "One hand only",
   "lobby.formatA11yLabel": "{{format}}: {{detail}}",
   "lobby.playersLabel": "PLAYERS",
-  "lobby.titleVsAI": "Play vs AI",
+  "lobby.titleVsBot": "Play vs AI",
   "lobby.titlePassPlay": "Pass & Play",
 
   // ------------------------------------------------------------------ rules.*
@@ -684,9 +684,9 @@ export const en = {
   // ----------------------------------------------------------------- result.*
   "result.matchOverTitle": "Match Over",
   "result.matchDrawTitle": "Match Drawn",
-  "result.singleHandFormat": "Single hand",
+  "result.singleRoundFormat": "Single hand",
   "result.home": "Home",
-  "result.nextHand": "Next hand",
+  "result.nextRound": "Next hand",
   "result.newMatch": "New match",
   "result.tableStops": "The table stops here",
 
@@ -725,7 +725,7 @@ export const en = {
   "tutorial.justReceived": "just received",
   "tutorial.playCombination": "Play the combination",
   "tutorial.continue": "Continue",
-  "tutorial.returnCard": "Give back a card",
+  "tutorial.giveback": "Give back a card",
   "tutorial.rereadRules": "Re-read the Rules & FAQ",
   "tutorial.backToHome": "Back to Home",
 
@@ -1017,8 +1017,8 @@ export const en = {
   "profile.retryStatsA11yLabel": "Retry loading stats",
   "profile.statsEmptyTitle": "No games yet",
   "profile.statsEmptyBody": "Play your first hand to start building your stats.",
-  "profile.statGamesPlayed": "Hands played",
-  "profile.statGamesWon": "Hands won",
+  "profile.statRoundsPlayed": "Hands played",
+  "profile.statRoundsWon": "Hands won",
   "profile.statWinRate": "Win rate",
   "profile.statMatchesWon": "Matches won",
   "profile.statCurrentStreak": "Current streak",

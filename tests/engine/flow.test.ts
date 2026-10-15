@@ -40,7 +40,7 @@ describe("processPlay", () => {
     );
   });
 
-  test("records the finishing order and ends the hand when one player is left", () => {
+  test("records the finishing order and ends the round when one player is left", () => {
     const state = makeState(
       [
         makePlayer("p0", pair("7")),
@@ -49,8 +49,8 @@ describe("processPlay", () => {
       { currentTurnIndex: 0 }
     );
     const next = processPlay(state, combo(pair("7")));
-    assert.equal(next.gameOver, true);
-    assert.deepEqual(next.rankings, ["p0", "p1"]);
+    assert.equal(next.roundOver, true);
+    assert.deepEqual(next.finishingOrder, ["p0", "p1"]);
     assert.equal(next.players[0].finishPosition, 1);
     assert.equal(next.players[1].finishPosition, 2);
   });
@@ -161,7 +161,7 @@ describe("processPass — round end threshold (defect 5)", () => {
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
-        rankings: ["p0"],
+        finishingOrder: ["p0"],
       }
     );
 
@@ -197,7 +197,7 @@ describe("processPass — round end threshold (defect 5)", () => {
         currentTurnIndex: 3,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
-        rankings: ["p0"],
+        finishingOrder: ["p0"],
       }
     );
     state = processPass(state);
@@ -261,7 +261,7 @@ describe("turn rotation", () => {
           currentTurnIndex: 2,
           lastPlayedCombination: combo(single("3")),
           lastPlayedBy: 3,
-          rankings: ["p1"],
+          finishingOrder: ["p1"],
         }
       )
     );
@@ -318,7 +318,7 @@ describe("a 3-player game", () => {
 
     let state = state0;
     let turns = 0;
-    while (!state.gameOver && turns < 500) {
+    while (!state.roundOver && turns < 500) {
       turns++;
       const seat = state.currentTurnIndex;
       assert.ok(
@@ -345,15 +345,15 @@ describe("a 3-player game", () => {
       assert.equal(new Set(live).size, live.length, "a card was duplicated mid-game");
     }
 
-    assert.ok(state.gameOver, `three seats did not finish in ${turns} turns`);
-    assert.equal(state.rankings.length, 3, "every seat is placed");
-    assert.equal(new Set(state.rankings).size, 3);
+    assert.ok(state.roundOver, `three seats did not finish in ${turns} turns`);
+    assert.equal(state.finishingOrder.length, 3, "every seat is placed");
+    assert.equal(new Set(state.finishingOrder).size, 3);
     assert.deepEqual(
       state.players.map((p) => p.finishPosition).sort(),
       [1, 2, 3]
     );
     assert.deepEqual(
-      state.rankings,
+      state.finishingOrder,
       [...state.players].sort((x, y) => x.finishPosition! - y.finishPosition!).map((p) => p.id)
     );
   }

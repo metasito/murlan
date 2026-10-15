@@ -8,23 +8,23 @@ import type { TranslationKey } from "../i18n.ts";
 /** Where an unrated player starts, and the centre a season's soft reset pulls toward. */
 export const START_RATING = 1000;
 
-/** Games before a rating is settled enough to list publicly. */
-export const PROVISIONAL_GAMES = 5;
+/** Rounds before a rating is settled enough to list publicly. */
+export const PROVISIONAL_ROUNDS = 5;
 
 /**
  * How much one result can move a rating. Falls as a record grows, so a new
  * account converges quickly and an established rating stops jittering.
  */
-export function kFactor(gamesPlayed: number): number {
-  if (gamesPlayed < PROVISIONAL_GAMES * 2) return 40;
-  if (gamesPlayed < 30) return 24;
+export function kFactor(roundsPlayed: number): number {
+  if (roundsPlayed < PROVISIONAL_ROUNDS * 2) return 40;
+  if (roundsPlayed < 30) return 24;
   return 16;
 }
 
 /**
  * Half the distance from the mean carries into the next season.
  *
- * A hard reset throws away every game of signal each month; no reset at all
+ * A hard reset throws away every round of signal each month; no reset at all
  * ossifies the ladder around whoever played first. Halving is a convention
  * rather than a measurement, which is exactly why it is named.
  */
@@ -80,7 +80,7 @@ export function expectedScore(a: number, b: number): number {
 const BOT_ID_PREFIX = "bot:";
 
 /**
- * The human seats of a finished hand, renumbered 1..n among themselves.
+ * The human seats of a finished round, renumbered 1..n among themselves.
  *
  * Renumbering is the part that is easy to get wrong: with a bot finishing
  * second of four, the humans placed 1st, 3rd and 4th, and rating them on those
@@ -100,8 +100,8 @@ export function ratedFinishers(
 export interface RatedSeat {
   userId: string;
   rating: number;
-  games: number;
-  /** 1 = won the hand. Distinct per seat; the engine never ties placements. */
+  rounds: number;
+  /** 1 = won the round. Distinct per seat; the engine never ties placements. */
   placement: number;
 }
 
@@ -129,11 +129,11 @@ export function ratingDeltas(seats: RatedSeat[]): Map<string, number> {
       if (other.userId === seat.userId) continue;
       expected += expectedScore(seat.rating, other.rating);
     }
-    const value = kFactor(seat.games) * (n - 1) * (actual - expected / pairs);
+    const value = kFactor(seat.rounds) * (n - 1) * (actual - expected / pairs);
     return { userId: seat.userId, value, whole: Math.floor(value), frac: value - Math.floor(value) };
   });
 
-  // Rounding each delta on its own would move the table's total, so a hand
+  // Rounding each delta on its own would move the table's total, so a round
   // could leak a point into or out of the ladder through arithmetic alone.
   // Largest remainder makes the rounded total match the exact one — which is
   // zero whenever every seat shares a K. Ties break on id, so the result never

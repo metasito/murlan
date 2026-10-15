@@ -36,17 +36,17 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Open the finished match from your profile's history and press play on the replay.
       Does the pause icon actually draw, rather than showing a blank box?
 
-## Someone leaves mid-hand
-- [ ] Mid-hand, one player force-quits (close the tab / kill the app).
+## Someone leaves mid-round
+- [ ] Mid-round, one player force-quits (close the tab / kill the app).
 - [ ] The other three: does the table keep playing with a bot in that seat?
 - [ ] Is there a visible marker on that seat for the rest of the match — not just a banner
       that disappears?
 - [ ] With the bot still holding that seat, reach the card exchange between rounds. Does
-      it hand back a card on its own, without the hand stalling?
+      it hand back a card on its own, without the round stalling?
 - [ ] Does the match finish, and is the seat that left recorded as last place?
 
 ## Someone loses signal
-- [ ] Mid-hand, one player turns off wi-fi for ~20 seconds, then turns it back on.
+- [ ] Mid-round, one player turns off wi-fi for ~20 seconds, then turns it back on.
 - [ ] Do they come back into the same hand, with their own cards?
 - [ ] Did the others see a "disconnected" notice, and then a "back" one?
 - [ ] Do it again but stay offline for over a minute, past the grace period. What happens?
@@ -78,7 +78,7 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Open the settings modal in landscape. Does the app flip to portrait behind it?
 - [ ] Turn the phone's text size up to maximum and look at the table. Is anything clipped?
 - [ ] Turn on the OS "reduce motion" setting and play a card.
-- [ ] Still with "reduce motion" on, win a hand. Does the celebration buzz once, not twice?
+- [ ] Still with "reduce motion" on, win a round. Does the celebration buzz once, not twice?
 - [ ] Turn the volume up. Do you hear every table effect: selecting a card
       (`select`), playing one (`play`) and several (`combo`), passing (`pass`), a
       bomb (`bomb`), the deal (`deal`), your turn arriving (`turn`), the clock

@@ -65,11 +65,11 @@ const state = (exchange = true): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   exchangePhase: exchange
-    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, bothJokersException: false }
+    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, twoJokerException: false }
     : undefined,
 });
 
@@ -274,7 +274,7 @@ describe('the other seats can read the exchange from the table', () => {
   });
 
   // #602: the card the loser gave is a public move — GAME-RULES.md §10.1 makes it
-  // compulsory, so no seat is being told a secret — and watching a trade you
+  // compulsory, so no seat is being told a secret — and watching an exchange you
   // cannot see is the defect the ticket names. The winner's own case is
   // covered above; these are the two seats that used to get nothing.
   it.each([

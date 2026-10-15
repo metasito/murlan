@@ -165,8 +165,8 @@ describe("locale key parity", () => {
 
 describe("no server string assumes the player's gender", () => {
   // A server.* string names one player and is shown to the whole table several
-  // times a hand, so a form that agrees with that player's gender misgenders
-  // someone on most hands. Italian and Albanian both inflect; English does not,
+  // times a round, so a form that agrees with that player's gender misgenders
+  // someone on most rounds. Italian and Albanian both inflect; English does not,
   // which is why en.ts reads as the neutral original and the translations —
   // and the server's own English fallbacks — are where the assumption creeps in.
   //
@@ -298,13 +298,13 @@ describe("no server string assumes the player's gender", () => {
 // key that already existed — the code and the params were being sent all
 // along, only the fallback was written out by hand in the wrong language.
 describe("the server writes its fallbacks in the source language", () => {
-  // Words that cannot be an English sentence and are not a proper noun. Short
-  // ones like `la` and `non` are deliberately absent: `non-null` and `a la`
-  // would answer for them. That narrowness is the trade: this catches the
-  // vocabulary that shipped, not Italian in general, so a fresh sentence
-  // reaching for different words is past it.
-  const ITALIAN =
-    /\b(?:devi|deve|giocare|lasciato|partita|valido|valida|eliminazione|codice|carta|prima|della|dello|questa|questo|posto|solo|lettere|numeri|utente|nome|scegli|inserisci|riprova|errore|impossibile|almeno|troppo|essere|sono|hanno|degli|delle)\b/i;
+  // Italian is whatever it.ts writes that en.ts and sq.ts never do. Words under
+  // four letters are left out: `la` and `non` would answer for `a la` and `non-null`.
+  const words = (s: string) => s.toLowerCase().match(/\p{L}{4,}/gu) ?? [];
+  const vocabulary = (locale: Record<string, string>) => new Set(Object.values(locale).flatMap(words));
+  const [english, albanian] = [vocabulary(en), vocabulary(sq)];
+  const italianOnly = new Set([...vocabulary(it)].filter((w) => !english.has(w) && !albanian.has(w)));
+  const ITALIAN = { test: (s: string) => words(s).some((w) => italianOnly.has(w)) };
 
   test("the marker list can see an Italian sentence", () => {
     // Without this the assertion below would also hold on a list that matches
@@ -1211,7 +1211,7 @@ describe("Albanian card terminology", () => {
 
   /**
    * "mund" is a modal clitic here, not the bare verb "beats" — the literal
-   * calque ("Shkalla Mbretërore mund gjithçka") is ungrammatical Albanian.
+   * calque ("… mund gjithçka") is ungrammatical Albanian.
    * Fixed to "i mund të gjitha" / "nuk mund t'i përgjigjesh" per #29.
    */
   test("the royal-straight-is-unbeatable strings use the fixed mund clitic", () => {

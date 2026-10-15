@@ -35,7 +35,7 @@ interface TableState {
   players: SanitizedPlayer[];
   currentTurnIndex: number;
   lastPlayedCombination: Combination | null;
-  gameOver: boolean;
+  roundOver: boolean;
   firstPlayMade: boolean;
   startCard?: Card;
   exchangePhase?: { active: boolean; winnerIdx: number; cardFromLoser?: Card };
@@ -72,7 +72,7 @@ function makeRng(seed: number): () => number {
 export const REJOIN_BUDGET_MS = 5_000 * DEADLINE_SCALE;
 
 /**
- * How long a dropped seat stays away, and why it may not grow.
+ * How long a disconnected seat stays away, and why it may not grow.
  *
  * The oracle below calls an unanswered rejoin a violation. That holds only while the seat
  * still exists; once the server has released it the refusal is correct, and only
@@ -84,9 +84,9 @@ export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
 /**
  * The grace a seat dropped by the chaos below is actually held for.
  *
- * A drop always starts mid-hand — the chaos only runs while the hand is live — so
- * `seatLostAction` arms `disconnectGraceMs()`. But the hand can end while the seat is away,
- * and a seat between hands is held by `lobbyGraceMs()` instead: that is the window #736
+ * A drop always starts mid-round — the chaos only runs while the round is live — so
+ * `seatLostAction` arms `disconnectGraceMs()`. But the round can end while the seat is away,
+ * and a seat between rounds is held by `lobbyGraceMs()` instead: that is the window #736
  * lived in. Whichever is shorter is the one that can expire first.
  */
 export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs());
@@ -162,7 +162,7 @@ export function awayWindowOutsideGrace(
   const longest = window.floor + window.spread;
   if (longest * AWAY_HEADROOM < graceMs) return null;
   return (
-    `a dropped seat can stay away ${longest}ms, and the shortest grace holding it is ` +
+    `a disconnected seat can stay away ${longest}ms, and the shortest grace holding it is ` +
     `${graceMs}ms — under the ${AWAY_HEADROOM}x headroom the reconnect's own cost needs. ` +
     `The server may release the seat while the soak still expects it held, and every ` +
     `unanswered rejoin past that point reports working behaviour as a defect. Shorten the ` +
@@ -388,7 +388,7 @@ export class Seat {
     return {
       seat,
       currentTurnIndex: s.currentTurnIndex,
-      gameOver: s.gameOver,
+      roundOver: s.roundOver,
       handCounts: s.players.map((p) => p.handCount),
       ownHand: (s.players[seat]?.hand ?? []).map((c) => c.id),
     };
@@ -407,7 +407,7 @@ export class Seat {
   act(rng: () => number): SeatAction | null {
     const s = this.state;
     const seat = s?.viewerSeatIndex;
-    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return null;
+    if (!s || s.roundOver || typeof seat !== "number" || seat < 0) return null;
 
     const phase = s.exchangePhase;
     if (phase?.active) {
@@ -572,7 +572,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
       if (violations.length > 0) break;
 
-      const over = seats.every((s) => s.state?.gameOver);
+      const over = seats.every((s) => s.state?.roundOver);
       if (over && !wasOver) {
         rounds += 1;
         log(`soak: round ${rounds} finished`);
@@ -632,7 +632,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
     }
 
-    // The last broadcast of a hand has no successor to correct it, so a view
+    // The last broadcast of a round has no successor to correct it, so a view
     // captured before the table went quiet is exactly the one worth checking.
     await settle(seats);
     const finalViews = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);
@@ -686,7 +686,7 @@ async function playTable(
   let moves = 0;
   let unanswered = 0;
   while (Date.now() < until) {
-    if (seats.every((s) => s.state?.gameOver)) {
+    if (seats.every((s) => s.state?.roundOver)) {
       for (const seat of seats) seat.socket.emit("game:rematch_vote");
       await sleep(700);
       continue;

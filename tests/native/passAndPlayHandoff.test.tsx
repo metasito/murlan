@@ -29,8 +29,8 @@ const mockTable: { state: GameState } = {
     passCount: 0,
     gameMode: 'free_for_all',
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   },
 };
@@ -52,13 +52,13 @@ jest.mock('@/context/GameContext', () => ({
     playCards: mockPlayCards,
     passTurn: () => {},
     resetGame: () => {},
-    runAITurn: () => {},
+    runBotTurn: () => {},
     chooseExchangeCard: () => {},
     releaseStuckExchange: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    match: { length: 'single', target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
   }),
 }));
 

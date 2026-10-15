@@ -1,4 +1,4 @@
-// tests/e2e/playedHand.spec.ts — one hand, played through every interaction the
+// tests/e2e/playedRound.spec.ts — one round, played through every interaction the
 // table gives the viewer: select, deselect, arrange, play, pass, exchange.
 //
 // Every press is a real one — down, a finger's worth of time, up — because
@@ -67,7 +67,7 @@ const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
  * Thirteen cards: one short of the fourteen two seats are dealt (`dealCards`),
- * so a hand one play into a round, and enough of them that the fan overlaps —
+ * so a hand one play into a trick, and enough of them that the fan overlaps —
  * which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
@@ -87,7 +87,7 @@ const GIVEBACK = TO_SELECT;
 
 function save(gameState: Record<string, unknown>) {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -95,9 +95,9 @@ function save(gameState: Record<string, unknown>) {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
-      // Past the opening, so the table renders a hand in progress rather than a
+      roundOver: false,
+      finishingOrder: [],
+      // Past the opening, so the table renders a round in progress rather than a
       // first move waiting on the 3 of spades.
       firstPlayMade: true,
       ...gameState,
@@ -109,14 +109,14 @@ function save(gameState: Record<string, unknown>) {
       length: "single",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -125,7 +125,7 @@ function save(gameState: Record<string, unknown>) {
 
 const seats = (viewer: Card[], bot: Card[]) => [
   { id: "player_0", name: "Ana", hand: viewer, type: "human" },
-  { id: "player_1", name: "Bea", hand: bot, type: "ai" },
+  { id: "player_1", name: "Bea", hand: bot, type: "bot" },
 ];
 
 /**
@@ -135,7 +135,7 @@ const seats = (viewer: Card[], bot: Card[]) => [
  * a strength the rules derive, and a hand-written one is a number this file
  * would have to keep in step with `getCombinationStrength`.
  */
-const midHandSave = () =>
+const midRoundSave = () =>
   save({
     players: seats(VIEWER_HAND, BOT_HAND),
     lastPlayedCombination: buildCombination([PILE_CARD]),
@@ -151,7 +151,7 @@ const exchangeSave = () =>
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: card("2_spades", "2", "spades"),
-      bothJokersException: false,
+      twoJokerException: false,
     },
   });
 
@@ -207,10 +207,10 @@ const tableState = async (page: Page) => (await page.locator(TABLE).getAttribute
 
 test.use({ viewport: { width: PHONE.width, height: PHONE.height } });
 
-test("one hand, played through every interaction the table has", async ({ page, baseURL }) => {
+test("one round, played through every interaction the table has", async ({ page, baseURL }) => {
   test.setTimeout(5 * 60_000);
 
-  await resumeSaved(page, baseURL!, midHandSave());
+  await resumeSaved(page, baseURL!, midRoundSave());
   await settled(page, SETTLE_MS, TABLE);
 
   // --- arrange ---

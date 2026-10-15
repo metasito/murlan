@@ -31,7 +31,7 @@ function Home({ onRender }: { onRender: () => void }) {
         setupGame(
           [
             { name: 'Ana', type: 'human' },
-            { name: 'Luan', type: 'ai', personality: 'luan' },
+            { name: 'Luan', type: 'bot', personality: 'luan' },
           ],
           'free_for_all'
         )

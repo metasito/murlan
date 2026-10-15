@@ -206,14 +206,14 @@ describe("takeoverMode", () => {
   });
 
   test("the actions a player is waiting on take a dead owner's table over", () => {
-    // A move that answered "no live game" because the instance holding the hand
+    // A move that answered "no live game" because the instance holding the round
     // had gone is the whole of #570's second half. Reviving a table to hand one
-    // seat to a bot is not: that sets the hand playing itself with nobody there.
+    // seat to a bot is not: that sets the round playing itself with nobody there.
     for (const kind of ["play", "pass", "exchange", "rejoin"] as const) {
       assert.equal(takeoverMode(kind), "restore", `${kind} must be able to take a table over`);
     }
     for (const kind of ["seatLost", "vacate", "reaction", "spectate"] as const) {
-      assert.equal(takeoverMode(kind), "forward", `${kind} must not revive a stranded hand`);
+      assert.equal(takeoverMode(kind), "forward", `${kind} must not revive a stranded round`);
     }
   });
 });

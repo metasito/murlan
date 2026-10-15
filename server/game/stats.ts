@@ -2,8 +2,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { lockUsers } from "../store/userLock.ts";
 import { logger } from "../http/logger.ts";
-import { userStats, matchHistory, userAchievements } from "../../shared/schema.ts";
-import type { UserStats, MatchHistory } from "../../shared/schema.ts";
+import { userStats, roundHistory, userAchievements } from "../../shared/schema.ts";
+import type { UserStats, RoundHistory } from "../../shared/schema.ts";
 import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
@@ -24,8 +24,8 @@ import { isBotSeatKey } from "./botSeat.ts";
 export const MAX_HISTORY_ROWS_PER_USER = 50;
 
 /**
- * Per-hand score for a placement, mirroring lib/game/gameEngine.ts's `scoreHand`
- * exactly (N-1 for 1st, down to 0), so match_history.points always agrees
+ * Placement points for one round, mirroring lib/game/gameEngine.ts's `scoreRound`
+ * exactly (N-1 for 1st, down to 0), so round_history.points always agrees
  * with what the scoreboard actually awarded. GameResult (lib/achievements.ts)
  * does not carry the raw score, only placement/playerCount, so this
  * recomputes the same published rule rather than inventing a new one.
@@ -35,25 +35,25 @@ function pointsForPlacement(placement: number, playerCount: number): number {
 }
 
 /**
- * Persists one hand's outcome for every human in `results`. Bot seats
+ * Persists one round's outcome for every human in `results`. Bot seats
  * (`bot:<seat>`) are skipped: no `users` row, so every foreign key here would
  * fail. `gameMode` is threaded in because GameResult has no such field and
- * `match_history.gameMode` is NOT NULL.
+ * `round_history.gameMode` is NOT NULL.
  *
- * Callers must never `await` this on the game-over path — see handleGameOver.
+ * Callers must never `await` this on the game-over path — see handleRoundOver.
  */
 export async function recordGameResult(
   results: GameResult[],
   gameMode: GameMode,
   /**
-   * The hand's one end time, shared with the replay written beside this. It is
+   * The round's one end time, shared with the replay written beside this. It is
    * required rather than defaulted so that `(userId, finishedAt)` pairs the two
    * exactly — a caller falling back to `defaultNow()` would leave the pairing
    * to whichever write the database served first.
    */
   finishedAt: Date,
   /**
-   * What this hand did to each seat's ladder rating, read before the hand was
+   * What this round did to each seat's ladder rating, read before the round was
    * written (server/game/ratings.ts `previewRatedDeltas`). Absent for every seat a
    * table did not rate, which is what leaves `rating_delta` null rather than
    * claiming a rated match that moved nobody.
@@ -64,10 +64,10 @@ export async function recordGameResult(
   if (humanResults.length === 0) return;
 
   for (const result of humanResults) {
-    // One transaction per seat, not one for the whole hand: an account deleted
-    // mid-hand still holds its seat in `results`, and its insert violates a
+    // One transaction per seat, not one for the whole round: an account deleted
+    // mid-round still holds its seat in `results`, and its insert violates a
     // foreign key. Sharing a transaction would roll that failure back over
-    // every other player's stats, history and achievements for the hand.
+    // every other player's stats, history and achievements for the round.
     await db
       .transaction(async (tx) => {
         const { userId, placement, playerCount, playedBomb, matchWon, abandoned } = result;
@@ -82,8 +82,8 @@ export async function recordGameResult(
           .insert(userStats)
           .values({
             userId,
-            gamesPlayed: 1,
-            gamesWon: won ? 1 : 0,
+            roundsPlayed: 1,
+            roundsWon: won ? 1 : 0,
             matchesWon: matchWon ? 1 : 0,
             currentStreak: won ? 1 : 0,
             bestStreak: won ? 1 : 0,
@@ -93,8 +93,8 @@ export async function recordGameResult(
           .onConflictDoUpdate({
             target: userStats.userId,
             set: {
-              gamesPlayed: sql`${userStats.gamesPlayed} + 1`,
-              gamesWon: sql`${userStats.gamesWon} + ${won ? 1 : 0}`,
+              roundsPlayed: sql`${userStats.roundsPlayed} + 1`,
+              roundsWon: sql`${userStats.roundsWon} + ${won ? 1 : 0}`,
               matchesWon: sql`${userStats.matchesWon} + ${matchWon ? 1 : 0}`,
               currentStreak: won ? sql`${userStats.currentStreak} + 1` : sql`0`,
               bestStreak: won
@@ -105,14 +105,14 @@ export async function recordGameResult(
             },
           });
 
-        // Every other participant in this hand (human or bot) — honest data
+        // Every other participant in this round (human or bot) — honest data
         // straight from the batch, not a fabricated field. Bot ids are stored
         // as-is; resolving them to a display label is a read-side concern.
         const opponents = results
           .filter((r) => r.userId !== userId)
           .map((r) => r.userId);
 
-        await tx.insert(matchHistory).values({
+        await tx.insert(roundHistory).values({
           userId,
           finishedAt,
           gameMode,
@@ -126,17 +126,17 @@ export async function recordGameResult(
 
         // Prune in the same transaction as the insert above, so the table
         // cannot grow without bound. One statement under the row lock, so no
-        // other hand's row can commit between choosing what to keep and
+        // other round's row can commit between choosing what to keep and
         // deleting the rest.
         await tx
-          .delete(matchHistory)
+          .delete(roundHistory)
           .where(
             and(
-              eq(matchHistory.userId, userId),
-              sql`${matchHistory.id} NOT IN (
-                SELECT ${matchHistory.id} FROM ${matchHistory}
-                WHERE ${matchHistory.userId} = ${userId}
-                ORDER BY ${matchHistory.finishedAt} DESC, ${matchHistory.id} DESC
+              eq(roundHistory.userId, userId),
+              sql`${roundHistory.id} NOT IN (
+                SELECT ${roundHistory.id} FROM ${roundHistory}
+                WHERE ${roundHistory.userId} = ${userId}
+                ORDER BY ${roundHistory.finishedAt} DESC, ${roundHistory.id} DESC
                 LIMIT ${MAX_HISTORY_ROWS_PER_USER}
               )`
             )
@@ -162,12 +162,12 @@ export async function recordGameResult(
   }
 }
 
-/** Zeroed stats for a user who has no `user_stats` row yet (never finished a hand). */
+/** Zeroed stats for a user who has no `user_stats` row yet (never finished a round). */
 function emptyStats(userId: string): UserStats {
   return {
     userId,
-    gamesPlayed: 0,
-    gamesWon: 0,
+    roundsPlayed: 0,
+    roundsWon: 0,
     matchesWon: 0,
     currentStreak: 0,
     bestStreak: 0,
@@ -186,10 +186,10 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
   const [row, played] = await Promise.all([
     db.query.userStats.findFirst({ where: eq(userStats.userId, userId) }),
     db
-      .select({ finishedAt: matchHistory.finishedAt })
-      .from(matchHistory)
-      .where(eq(matchHistory.userId, userId))
-      .orderBy(desc(matchHistory.finishedAt))
+      .select({ finishedAt: roundHistory.finishedAt })
+      .from(roundHistory)
+      .where(eq(roundHistory.userId, userId))
+      .orderBy(desc(roundHistory.finishedAt))
       .limit(MAX_HISTORY_ROWS_PER_USER),
   ]);
 
@@ -199,7 +199,7 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
   // this figure being approximate. It is bounded by the retained history, so a
   // player with more than MAX_HISTORY_ROWS_PER_USER matches inside their streak
   // would see it undercounted; a match is a full match, so that is a great
-  // many games in a row of days.
+  // many matches in a row of days.
   return {
     ...(row ?? emptyStats(userId)),
     dailyStreak: dailyStreak(
@@ -209,10 +209,10 @@ export async function getUserStats(userId: string): Promise<UserStatsView> {
   };
 }
 
-export async function getMatchHistory(userId: string): Promise<MatchHistory[]> {
-  return db.query.matchHistory.findMany({
-    where: eq(matchHistory.userId, userId),
-    orderBy: desc(matchHistory.finishedAt),
+export async function getRoundHistory(userId: string): Promise<RoundHistory[]> {
+  return db.query.roundHistory.findMany({
+    where: eq(roundHistory.userId, userId),
+    orderBy: desc(roundHistory.finishedAt),
     limit: MAX_HISTORY_ROWS_PER_USER,
   });
 }

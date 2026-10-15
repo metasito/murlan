@@ -92,7 +92,7 @@ test("the catch lifts a card in its own frame, and the wobble and the throw's sc
   close(d.h, 90 * 3, "h");
 });
 
-test("a dealt back and a traded card sit on the pile's offsets, a flipped card narrowed by its turn", () => {
+test("a dealt back and a exchanged card sit on the pile's offsets, a flipped card narrowed by its turn", () => {
   const d = dealBack(PILE, { dx: -40, dy: 60, rot: 90, scale: 0.9 }, 30, 44);
   assert.deepEqual([d.cx, d.cy, d.rot, d.back], [360, 260, 90, true]);
   close(d.w, 30 * 0.9, "w");

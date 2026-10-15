@@ -73,7 +73,7 @@ const spectatorState = () => ({
   ],
   viewerSeatIndex: null,
   currentTurnIndex: 0,
-  gameOver: false,
+  roundOver: false,
 });
 
 describe('a refused spectate', () => {

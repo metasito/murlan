@@ -47,9 +47,9 @@ import {
 } from "./authTokens.ts";
 import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "../game/stats.ts";
-import { getMatchHistoryView } from "./matchHistoryView.ts";
+import { getRoundHistoryView } from "./roundHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "../game/replays.ts";
-import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_GAMES } from "../game/ratings.ts";
+import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_ROUNDS } from "../game/ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
 import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
@@ -421,12 +421,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // rather than degrade into a second, session-less registration outcome
   // that a client cannot tell apart from success.
   app.post("/api/auth/register", authLimiter, validate(RegisterSchema), registerEmailLimiter, async (req, res) => {
-    const { username, password, email, locale } = req.body as {
-      username: string;
-      password: string;
-      email: string;
-      locale?: string;
-    };
+    const { username, password, email, locale } = req.body;
 
     const existingUsername = await userStore.getUserByUsername(username);
     if (existingUsername) {
@@ -484,7 +479,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/auth/login", authLimiter, validate(LoginSchema), loginUsernameLimiter, async (req, res) => {
-    const { username, password } = req.body as { username: string; password: string };
+    const { username, password } = req.body;
 
     const user = await userStore.getUserByUsername(username);
     if (!user) {
@@ -538,11 +533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // The token rides the session so /api/auth/logout can withdraw it: a client
   // cold-started since registering no longer knows it.
   app.post("/api/push/token", requireAuth, pushLimiter, validate(PushTokenSchema), async (req, res) => {
-    const { token, platform, locale } = req.body as {
-      token: string;
-      platform: string;
-      locale?: Locale;
-    };
+    const { token, platform, locale } = req.body;
     await savePushToken(req.session.userId!, token, platform, locale ?? DEFAULT_LOCALE);
     req.session.pushToken = token;
     res.json({ ok: true });
@@ -565,7 +556,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // mirrors login's own bcrypt.compare, and answers a wrong currentPassword
   // with the same generic code login does, so the two are indistinguishable.
   app.post("/api/auth/change-password", requireAuth, changePasswordLimiter, validate(ChangePasswordSchema), async (req, res) => {
-    const { currentPassword, newPassword } = req.body as { currentPassword: string; newPassword: string };
+    const { currentPassword, newPassword } = req.body;
     const userId = req.session.userId!;
 
     const user = await userStore.getUser(userId);
@@ -597,7 +588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // write below are not one transaction, and this is an authenticated
   // account overwriting its own row, not a public lookup.
   app.post("/api/auth/add-email", requireAuth, validate(AddEmailSchema), addEmailLimiter, async (req, res) => {
-    const { email, locale } = req.body as { email: string; locale?: string };
+    const { email, locale } = req.body;
     const userId = req.session.userId!;
 
     const existing = await userStore.getUser(userId);
@@ -626,7 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // that write — a timing difference authLimiter's per-IP cap makes
   // uneconomical to enumerate through.
   app.post("/api/auth/verify-email", authLimiter, validate(VerifyEmailSchema), async (req, res) => {
-    const { email, code } = req.body as { email: string; code: string };
+    const { email, code } = req.body;
     const userId = await redeemAuthCode({ email, purpose: "email_verify", code });
     if (!userId) {
       res.status(400).json({ ...payload("INVALID_TOKEN") });
@@ -701,7 +692,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     validate(RequestPasswordResetSchema),
     passwordResetRequestLimiter,
     async (req, res) => {
-      const { email, locale } = req.body as { email: string; locale?: string };
+      const { email, locale } = req.body;
       const user = await userStore.getVerifiedUserByEmail(email);
       res.json({ ok: true });
       if (!user?.emailVerifiedAt) return;
@@ -721,7 +712,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     resetPasswordLimiter,
     validate(ResetPasswordSchema),
     async (req, res) => {
-      const { token, newPassword } = req.body as { token: string; newPassword: string };
+      const { token, newPassword } = req.body;
       const userId = await redeemAuthToken(token, "password_reset");
       const user = userId ? await userStore.getUser(userId) : undefined;
       if (!user?.emailVerifiedAt) {
@@ -751,12 +742,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── User ─────────────────────────────────────────────────────────────────
 
-  // Nothing stores a username as history: `matchHistory.userId`, `replays.playerIds` and every
+  // Nothing stores a username as history: `roundHistory.userId`, `replays.playerIds` and every
   // stats, rating and friends table key on the id, so each read projects whatever the name is
-  // now. A rename is one column, with no backfill behind it. `match_replays.seats.name` is the
+  // now. A rename is one column, with no backfill behind it. `round_replays.seats.name` is the
   // one stored copy, and `server/game/replays.ts` resolves it against the account on every read.
   //
-  // Seated players keep the name the room was joined under — rewriting live room state mid-hand
+  // Seated players keep the name the room was joined under — rewriting live room state mid-round
   // would change an opponent's name under the other players for no benefit. The table catches up
   // when the player next sits down.
   // Validation before the limiter: a body that fails the rule never renamed anything, and the
@@ -764,7 +755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // rename they never made.
   app.patch("/api/users/me", requireAuth, validate(RenameSchema), renameLimiter, async (req, res) => {
     const userId = req.session.userId!;
-    const { username } = req.body as { username: string };
+    const { username } = req.body;
 
     // Case-insensitively, by `users_username_lower_uq`. Comparing ids rather than names is what
     // lets a player recase their own: that lookup finds their own row.
@@ -805,7 +796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.destroy(() => {});
       // After the delete has committed, never before: the account's live
       // socket outlives its session, and a seat still held by an id no `users`
-      // row answers to fails every write the hand's end makes for the whole
+      // row answers to fails every write the round's end makes for the whole
       // table.
       await evictUser(userId, seatedRoomIds);
       logger.info({ userId }, "User account deleted");
@@ -864,7 +855,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
-    const { username } = req.body as { username: string };
+    const { username } = req.body;
 
     const friend = await userStore.getUserByUsername(username);
     if (!friend) {
@@ -967,7 +958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/stats/history", requireAuth, async (req, res) => {
-    const history = await getMatchHistoryView(req.session.userId!);
+    const history = await getRoundHistoryView(req.session.userId!);
     res.json(history);
   });
 
@@ -975,7 +966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //
   // The season is derived from the clock on every read, so a month boundary
   // needs no job to cross: `getRating` seeds the new season from the previous
-  // one and only writes when a rated hand actually finishes.
+  // one and only writes when a rated round actually finishes.
   app.get("/api/ratings/me", requireAuth, async (req, res) => {
     res.json(await getRating(req.session.userId!, new Date()));
   });
@@ -986,7 +977,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // admin code reaches a player's browser (#103).
   app.get("/admin", requireAdmin, async (_req, res) => {
     try {
-      const snapshot = await adminSnapshot(PROVISIONAL_GAMES);
+      const snapshot = await adminSnapshot(PROVISIONAL_ROUNDS);
       res.type("html").send(renderAdminPage(snapshot));
     } catch (err) {
       logger.error({ err }, "Failed to build the admin snapshot");
@@ -1045,14 +1036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     errorReportLimiter,
     validate(ClientErrorSchema),
     (req, res) => {
-      const report = req.body as {
-        message: string;
-        stack?: string;
-        componentStack?: string;
-        platform?: string;
-        appVersion?: string;
-        screen?: string;
-      };
+      const report = req.body;
       logger.error({ platform: report.platform }, "Client reported an unhandled error");
       // Also kept as a row, so the owner can read it on /admin later rather
       // than only in the log stream. Fire-and-forget: a crash report failing
@@ -1094,13 +1078,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     errorReportLimiter,
     validate(BugReportSchema),
     async (req, res) => {
-      const report = req.body as {
-        description: string;
-        screen?: string;
-        appVersion?: string;
-        platform?: string;
-        locale?: string;
-      };
+      const report = req.body;
       try {
         await recordBugReport({ userId: req.session.userId!, ...report });
         res.status(201).json({ ok: true });

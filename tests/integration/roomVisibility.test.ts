@@ -121,7 +121,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     assert.ok(!ids.includes(privateRoom.roomId), "a private room must never be in it");
   });
 
-  test("a started room stops taking players before the hand exists, not after", async () => {
+  test("a started room stops taking players before the round exists, not after", async () => {
     // The window this closes: the roster is frozen when the game is built, so
     // a seat claimed between that moment and the status write belongs to
     // nobody — the straggler never receives game state and their row corrupts
@@ -148,7 +148,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     const open = await roomStore.findWaitingPublicRooms();
     assert.ok(
       !open.some((c) => c.room.id === room.roomId),
-      "a room whose hand has been dealt must not still be on quick-match's list"
+      "a room whose round has been dealt must not still be on quick-match's list"
     );
   });
 
@@ -281,7 +281,7 @@ describe("room visibility", { skip: hasDatabase() ? false : skipMessage() }, () 
     return joined;
   }
 
-  // Teams, because a hold only exists on a table with sides: `heldSeats`
+  // Teams, because a hold only exists on a table with teams: `heldSeats`
   // returns nothing at all for a free-for-all (docs/BRIEF.md §3.3), so the
   // same case written free-for-all would pass without a hold ever existing.
   async function teamsRoomHoldingASeat(tag: string) {

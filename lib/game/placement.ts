@@ -10,7 +10,7 @@ const PLACEMENT_COLORS = [
   Colors.textMuted,
 ];
 
-/** 1-based, as `match_history.placement` and the engine's rankings state it. */
+/** 1-based, as `round_history.placement` and the engine's finishingOrder state it. */
 export function placementColor(placement: number): string {
   return PLACEMENT_COLORS[placement - 1] ?? Colors.textMuted;
 }

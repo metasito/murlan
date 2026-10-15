@@ -1,5 +1,5 @@
 // tests/native/profileHistoryCard.test.tsx — the profile's one card of recent
-// hands: who was at the table, and which of them can still be watched.
+// rounds: who was at the table, and which of them can still be watched.
 //
 // Its own file rather than a describe inside profileForm.test.tsx: this
 // harness renders the whole profile screen, and a render left un-unmounted
@@ -95,8 +95,8 @@ function show(history: unknown[]) {
   mockData['/api/stats/history'] = history;
   mockData['/api/stats/me'] = {
     userId: 'u1',
-    gamesPlayed: history.length,
-    gamesWon: 1,
+    roundsPlayed: history.length,
+    roundsWon: 1,
     matchesWon: 1,
     currentStreak: 1,
     bestStreak: 2,
@@ -104,7 +104,7 @@ function show(history: unknown[]) {
     bombsPlayed: 0,
     updatedAt: new Date().toISOString(),
   };
-  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, games: history.length, provisional: true };
+  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, rounds: history.length, provisional: true };
   mockData['/api/stats/achievements'] = [];
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
@@ -121,7 +121,7 @@ beforeEach(() => {
   mockPush.mockClear();
 });
 
-describe('the recent-hands card', () => {
+describe('the recent-rounds card', () => {
   it('names who was at the table, bots and humans alike', async () => {
     const view = await show([
       hand('a', [{ name: 'Bea', bot: false }, { name: 'Luan', bot: true }], null),
@@ -154,7 +154,7 @@ describe('the recent-hands card', () => {
     await view.unmount();
   });
 
-  it('offers a watchable hand as one labelled control, and plays it', async () => {
+  it('offers a watchable round as one labelled control, and plays it', async () => {
     const view = await show([hand('a', [{ name: 'Bea', bot: false }], 'r1')]);
     await act(async () => {});
 
@@ -165,7 +165,7 @@ describe('the recent-hands card', () => {
 
   // The floor: without this, the assertions above would pass just as well on a
   // card that offered every row, watchable or not.
-  it('offers nothing on a hand whose replay is gone', async () => {
+  it('offers nothing on a round whose replay is gone', async () => {
     const view = await show([hand('a', [{ name: 'Bea', bot: false }], null)]);
     await act(async () => {});
 
@@ -175,7 +175,7 @@ describe('the recent-hands card', () => {
 
   // Counted on the participants line, which only this card draws: the trend
   // panels above it render placements and points of their own.
-  it('shows five hands at most, however many are held', async () => {
+  it('shows five rounds at most, however many are held', async () => {
     const view = await show(
       Array.from({ length: 8 }, (_, i) => hand(`h${i}`, [{ name: 'Bea', bot: false }], null))
     );
@@ -188,11 +188,11 @@ describe('the recent-hands card', () => {
 
 /**
  * The door out to the full list. It appears only when there is something
- * behind it — five hands are all of them, and a door onto nothing is a dead
+ * behind it — five rounds are all of them, and a door onto nothing is a dead
  * end the reader has to discover by walking through it.
  */
 describe('the door out of the card', () => {
-  it('is absent when the card already shows every hand', async () => {
+  it('is absent when the card already shows every round', async () => {
     const view = await show(
       Array.from({ length: 5 }, (_, i) => hand(`h${i}`, [], null))
     );
@@ -202,7 +202,7 @@ describe('the door out of the card', () => {
     await view.unmount();
   });
 
-  it('says how many hands are behind it, and opens them', async () => {
+  it('says how many rounds are behind it, and opens them', async () => {
     const view = await show(
       Array.from({ length: 8 }, (_, i) => hand(`h${i}`, [], null))
     );
@@ -217,7 +217,7 @@ describe('the door out of the card', () => {
 });
 
 describe('a failed refresh of the card', () => {
-  it('keeps the hands it has and says only that it could not refresh', async () => {
+  it('keeps the rounds it has and says only that it could not refresh', async () => {
     mockFailing.add('/api/stats/history');
     const view = await show([hand('a', [{ name: 'Bea', bot: false }], null)]);
     await act(async () => {});

@@ -43,7 +43,7 @@ export interface RoomSeatListProps {
 }
 
 /**
- * The room's seats: who is in them, which side they are on, and which of the
+ * The room's seats: who is in them, which team they are on, and which of the
  * empty ones are being held for a friend who has been invited.
  *
  * The hold is dropped on this side as well as the server's. The server refuses

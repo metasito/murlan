@@ -56,7 +56,7 @@ function fieldSlots(cards: Card[], cardScale: number, roomW: number) {
 /** A play still in the air: what it lands with, from `usePileFlight`. */
 export interface Flight extends TrickPlay {
   landing: LandingPayload;
-  handOver: boolean;
+  roundOver: boolean;
   /** Thrown while no frames were drawn (`inBackground`). */
   hidden: boolean;
 }
@@ -106,7 +106,7 @@ function wobbleAt(elapsed: number, end: number, still: boolean): WobblePose {
   return { scale, rot: rotate };
 }
 
-// The flush's "catch": a hand-emptying play's own cards bloom gold and lift,
+// Going out's "catch": a hand-emptying play's own cards bloom gold and lift,
 // same 620ms every time — verbatim off the prototype's `catch` keyframe.
 // Two segments (0-50%, 50-100%), each ease-out, rather than one duration
 // straight through: the bloom and lift both peak at the midpoint and return,
@@ -170,19 +170,19 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
     clock.arm(armed.landing);
     clock.begin(armed.spec);
   }, [clock, armed, report]);
-  const flush = armed?.landing.flush ?? false;
+  const goingOut = armed?.landing.goingOut ?? false;
   const catching = useSharedValue(0);
   const settled = useRef<Flight | null>(null);
   useEffect(() => {
     if (flying || !armed || settled.current === armed) return;
     settled.current = armed;
     // Only a flight that came to rest on its own frames catches; one withdrawn unseen lands in silence.
-    if (flush && !still && clock.elapsed.get() >= armed.spec.end + LAND_WOBBLE_MS) {
+    if (goingOut && !still && clock.elapsed.get() >= armed.spec.end + LAND_WOBBLE_MS) {
       const half = CATCH_MS / 2;
       catching.set(withSequence(withTiming(1, { duration: half, easing: CATCH_EASING }), withTiming(0, { duration: half, easing: CATCH_EASING })));
     }
     clock.halt();
-  }, [flying, armed, clock, flush, still, catching]);
+  }, [flying, armed, clock, goingOut, still, catching]);
   useEffect(() => () => cancelAnimation(catching), [catching]);
 
   const heavy = armed?.landing.heavy ?? false;
@@ -253,7 +253,7 @@ function PlayGroup({ play, flight, role, sweep, sweepTop, hidden, lit, flinchY, 
           return (
             <Fragment key={card.id}>
               {flying && <View testID="flight-slot" pointerEvents="none" style={box} />}
-              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={flush ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
+              <PlayCard card={card} i={i} spec={spec} still={still} elapsed={clock.elapsed} box={box} flying={flying} catching={goingOut ? catching : null} turned={turned} cardScale={cardScale} group={group} out={out} lit={lit && i === cards.length - 1} />
             </Fragment>
           );
         })}
@@ -394,9 +394,9 @@ export interface PileLayerProps {
   scale?: number;
   /** Out of the layout while something else holds the centre: plays at rest hide, and a play still moving keeps moving. */
   hidden?: boolean;
-  /** The whole pile's, for its fade before the next deal. */
+  /** The whole pile's, for its fade before the next round. */
   opacity?: SharedValue<number>;
-  /** The viewer won the round: the top play's top card is lit. */
+  /** The viewer won the trick: the top play's top card is lit. */
   lit?: boolean;
 }
 
@@ -577,7 +577,7 @@ export function getComboLabel(
 
 // ─── usePileFlight ────────────────────────────────────────────────────────────
 
-// How long the round-winner tag stays over the pile. A domain beat, not a
+// How long the trick-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const TRICK_WINNER_MS = 1800;
 
@@ -585,19 +585,19 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
   trickWinner: number | null;
-  gameOver: boolean;
+  roundOver: boolean;
   /**
-   * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
+   * Online, `matchOver` arrives on its own socket packet after `roundOver` — a
    * second render the dedupe below skips, so a flight still in the air is
    * re-armed with the tier it now closes on. `viewerWon` the same: online, a
-   * teams round's outcome waits for `game:over`'s scores, and a win scored
+   * teams round's outcome waits for `game:round_over`'s scores, and a win scored
    * after the contact never shakes, the shake being the contact's.
    */
   matchOver: boolean;
   viewerWon: boolean;
   /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
   timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop">;
-  celebrateFlush: () => void;
+  celebrateGoingOut: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
   playTrickStart: () => void;
@@ -610,7 +610,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
 }
 
 /**
- * The flying card, the pile under it and the round-winner tag over it, derived
+ * The flying card, the pile under it and the trick-winner tag over it, derived
  * straight from the game state so a card can never be shown twice or dropped.
  * CLAUDE.md marks this load-bearing.
  */
@@ -618,7 +618,7 @@ export function usePileFlight({
   lastPlayedCombination,
   lastPlayedBy,
   trickWinner,
-  gameOver,
+  roundOver,
   matchOver,
   viewerWon,
   viewerSeat,
@@ -634,7 +634,7 @@ export function usePileFlight({
   bottomPad,
   handCardH,
   timeline,
-  celebrateFlush,
+  celebrateGoingOut,
   onClock,
   playTrickStart,
   handOrigins,
@@ -645,9 +645,9 @@ export function usePileFlight({
   const { awaitFlight, moment, flightStarted, drop } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
-  // The seat that took the last round and a counter of how many rounds have
+  // The seat that took the last trick and a counter of how many tricks have
   // closed. The counter is what makes an identical repeat a new announcement:
-  // the seat that wins a round leads the next one, so the same seat winning
+  // the seat that wins a trick leads the next one, so the same seat winning
   // twice running is ordinary play.
   const [trickWinnerTag, setTrickWinnerTag] = useState<{ seat: number; closure: number } | null>(
     null
@@ -661,7 +661,7 @@ export function usePileFlight({
   const touched = useRef(new Set<string>());
   const started = useRef(new Set<string>());
   // Non-null while the winning combination is being held on the felt under the
-  // round-winner tag. Its presence is what tells the pile effect the felt is
+  // trick-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
   const trickHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
     null
@@ -676,8 +676,8 @@ export function usePileFlight({
       if (touched.current.has(f.key)) continue;
       clocks.current.get(f.key)?.arm({
         ...f.landing,
-        tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }),
-        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.handOver && matchOver }),
+        tier: landingTier({ comboType: f.combo.type, roundOver: f.roundOver, matchOver, viewerWon }),
+        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.roundOver && matchOver }),
       });
     }
   }, [matchOver, viewerWon]);
@@ -701,7 +701,7 @@ export function usePileFlight({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
-    // Clearing the felt and announcing a new round are one beat, whether it
+    // Clearing the felt and announcing a new trick are one beat, whether it
     // happens now or after the winning cards have been held.
     const openNewTrick = () => {
       playTrickStart();
@@ -765,11 +765,11 @@ export function usePileFlight({
 
     const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
-      tier: landingTier({ comboType: combo.type, handOver: gameOver, ...closureRef.current }),
+      tier: landingTier({ comboType: combo.type, roundOver: roundOver, ...closureRef.current }),
       cards: thrown.cards.length,
       x: thrown.pile.x,
       y: thrown.pile.y,
-      flush: thrown.emptiedHand,
+      goingOut: thrown.emptiedHand,
       heavy: thrown.heavy,
       mine: thrown.dir === "bottom",
       catchUp,
@@ -777,7 +777,7 @@ export function usePileFlight({
         cards: thrown.cards.length,
         bomb: thrown.heavy,
         mine: thrown.dir === "bottom",
-        closesMatch: gameOver && closureRef.current.matchOver,
+        closesMatch: roundOver && closureRef.current.matchOver,
       }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
@@ -785,12 +785,12 @@ export function usePileFlight({
     unseen.forEach((k) => clocks.current.delete(k));
     touched.current.delete(key);
     started.current.delete(key);
-    setFlights((f) => [...f.filter((x) => !unseen.has(x.key) && x.key !== key), { ...play, landing, handOver: gameOver, hidden: inBackground() }]);
+    setFlights((f) => [...f.filter((x) => !unseen.has(x.key) && x.key !== key), { ...play, landing, roundOver: roundOver, hidden: inBackground() }]);
   }, [
     lastPlayedCombination,
     lastPlayedBy,
     trickWinner,
-    gameOver,
+    roundOver,
     viewerSeat,
     players.length,
     reduceMotion,
@@ -814,9 +814,9 @@ export function usePileFlight({
     drop,
   ]);
 
-  // Round-winner tag over the pile, keyed on the round *closing* rather than on
+  // Trick-winner tag over the pile, keyed on the trick *closing* rather than on
   // the value of `trickWinner`: processPlay leaves that field standing through
-  // the round the winner goes on to lead, so with two players it never changes
+  // the trick the winner goes on to lead, so with two players it never changes
   // and every win after the first would go unannounced. The seat is what is
   // stored, not the name — the name is looked up at render, so a game update
   // that only changes the player list cannot restart the banner's own timers.
@@ -831,9 +831,9 @@ export function usePileFlight({
     setTrickWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
   }, [lastPlayedCombination, trickWinner]);
 
-  // A round closes on a pass, never on a play, so the round-win sting is that
+  // A trick closes on a pass, never on a play, so the trick-win sting is that
   // closing pass's own event (useTableFeedback) and this tag is only the banner —
-  // the round-start sting is deferred for as long as it is up.
+  // the trick-start sting is deferred for as long as it is up.
   useEffect(() => {
     if (trickWinnerTag === null) return;
     const dismiss = setTimeout(() => setTrickWinnerTag(null), TRICK_WINNER_MS);
@@ -844,9 +844,9 @@ export function usePileFlight({
     (key: string) => {
       touched.current.add(key);
       const flight = flightsRef.current.find((f) => f.key === key);
-      if (flight?.landing.flush) celebrateFlush();
+      if (flight?.landing.goingOut) celebrateGoingOut();
     },
-    [celebrateFlush]
+    [celebrateGoingOut]
   );
   const onFlightStart = useCallback(
     (key: string, landsAt: number, endsAt: number) => {

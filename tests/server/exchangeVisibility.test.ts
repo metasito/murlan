@@ -5,12 +5,8 @@
 // the ceremony that reads it is on screen.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  markExchangeSettled,
-  packPersistedState,
-  unpackPersistedState,
-  visibleExchangePhase,
-} from "../../server/game/onlineGameLogic.ts";
+import { markExchangeSettled, visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
+import { packPersistedState, unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";
@@ -21,7 +17,7 @@ const activePhase = {
   active: true,
   winnerIdx: 1,
   loserIdx: 3,
-  bothJokersException: false,
+  twoJokerException: false,
   cardFromLoser: CARD,
 };
 
@@ -35,7 +31,7 @@ describe("visibleExchangePhase", () => {
   });
 
   // #602: the card has to be on the felt for every seat, not just the two
-  // trading. Watching a trade you cannot see is the defect that ticket names.
+  // exchanging. Watching an exchange you cannot see is the defect that ticket names.
   test("the seats watching see it too", () => {
     for (const seat of [0, 2]) {
       assert.deepEqual(
@@ -69,7 +65,7 @@ describe("visibleExchangePhase", () => {
           active: true,
           winnerIdx: 1,
           loserIdx: 3,
-          bothJokersException: false,
+          twoJokerException: false,
           cardFromLoser: undefined,
         }
       );
@@ -106,13 +102,13 @@ describe("visibleExchangePhase", () => {
     });
 
     // With only one leg, the watching seats animate a delivery rather than a
-    // trade.
-    test("the watching seats see the trade cross once it is settled", () => {
+    // exchange.
+    test("the watching seats see the announced cross once it is settled", () => {
       for (const seat of [0, 2]) {
         assert.deepEqual(
           visibleExchangePhase(settled, seat, DURING)?.cardToLoser,
           RETURNED,
-          `seat ${seat} saw only half the trade`
+          `seat ${seat} saw only half the announced`
         );
       }
     });
@@ -123,7 +119,7 @@ describe("visibleExchangePhase", () => {
 
     // `exchangePhase` is never cleared, so the flag alone would keep the card
     // public for the rest of the round — and hand it to anyone connecting long
-    // after the trade, having never watched it cross.
+    // after the exchange, having never watched it cross.
     describe("is bounded to the ceremony that reads it", () => {
       const OVER = SETTLED_AT + exchangeAnnounceMs(false);
 
@@ -131,7 +127,7 @@ describe("visibleExchangePhase", () => {
        * `sendGameStateTo` owes one resend to a client that never acknowledged
        * the settle, and that resend re-derives from live state when it fires.
        * If the ack timeout ever outgrew the window it would be answered with
-       * half a trade, and `OnlineGameContext`'s `cardReceived || cardGiven`
+       * half an exchange, and `OnlineGameContext`'s `cardReceived || cardGiven`
        * guard raises that as a one-legged ceremony rather than refusing it.
        *
        * Asserted here rather than added to the window in `onlineGameLogic.ts`:
@@ -142,7 +138,7 @@ describe("visibleExchangePhase", () => {
        * its 60s default and hung `sessionReplaced.test.ts`.
        *
        * The two-Joker window is shorter than the ack timeout and does not need
-       * to be: that exception cancels the trade, so no card is ever chosen and
+       * to be: that exception cancels the exchange, so no card is ever chosen and
        * `cardToLoser` stays absent.
        */
       test("the resend a client is owed lands inside the window", () => {
@@ -150,7 +146,7 @@ describe("visibleExchangePhase", () => {
           stateAckTimeoutMs() < exchangeAnnounceMs(false),
           `the state-ack resend (${stateAckTimeoutMs()}ms) now fires after the ceremony ` +
             `(${exchangeAnnounceMs(false)}ms), so a client that missed the settle is re-sent ` +
-            `half a trade`
+            `half a announced`
         );
       });
 
@@ -181,7 +177,7 @@ describe("visibleExchangePhase", () => {
           assert.deepEqual(
             visibleExchangePhase(settled, seat, OVER + 60 * 60_000)?.cardToLoser,
             RETURNED,
-            `seat ${seat} lost the card out of its own trade`
+            `seat ${seat} lost the card out of its own announced`
           );
         }
       });
@@ -189,7 +185,7 @@ describe("visibleExchangePhase", () => {
       // Both Jokers cancel the flight, so the ceremony is shorter — the window
       // is the ceremony's own clock rather than a number of its own.
       test("the two-joker ceremony closes on its own shorter clock", () => {
-        const cancelled = { ...settled, bothJokersException: true };
+        const cancelled = { ...settled, twoJokerException: true };
         const shorter = SETTLED_AT + exchangeAnnounceMs(true);
         assert.deepEqual(visibleExchangePhase(cancelled, 0, shorter - 1)?.cardToLoser, RETURNED);
         assert.equal("cardToLoser" in visibleExchangePhase(cancelled, 0, shorter)!, false);
@@ -217,7 +213,7 @@ describe("visibleExchangePhase", () => {
           endedByVote: false,
           gameMode: "free_for_all",
           matchLength: "match",
-          handsPlayed: 0,
+          roundsPlayed: 0,
           matchTarget: 1,
           maxPlayers: 4,
         }, { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] });
@@ -260,8 +256,8 @@ describe("visibleExchangePhase", () => {
   });
 
   test("the two-joker exception is visible to the table", () => {
-    const both = { ...activePhase, active: false, bothJokersException: true };
-    assert.equal(visibleExchangePhase(both, 0)?.bothJokersException, true);
+    const both = { ...activePhase, active: false, twoJokerException: true };
+    assert.equal(visibleExchangePhase(both, 0)?.twoJokerException, true);
   });
 });
 

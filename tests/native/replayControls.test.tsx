@@ -31,7 +31,7 @@ const REPLAY = {
     // What a deleted account leaves behind, after the screen's fallback.
     { seatIndex: 1, userId: null, name: 'Deleted player' },
   ],
-  rankings: [],
+  finishingOrder: [],
   moves: [
     { seat: 0, combo: combo('single', [card('3', 'spades')]), handCounts: [2, 3] },
     { seat: 1, combo: null, handCounts: [2, 3] },
@@ -143,7 +143,7 @@ describe('the replay move list', () => {
     ).toBeTruthy();
   });
 
-  it('says so rather than rendering an empty panel when a hand has no moves', async () => {
+  it('says so rather than rendering an empty panel when a round has no moves', async () => {
     const view = await render(
       <ReplayMoveList
         replay={{ ...REPLAY, moves: [] } as ReplayDto}

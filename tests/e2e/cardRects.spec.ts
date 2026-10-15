@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 import { offlineGameSave, resumeSaved } from "./helpers/offlineSeed";
 import { settled } from "./helpers/settle";
 import { tap, tapPoint } from "./helpers/press";
-import { E2E_SUSPEND_AI_KEY } from "../../lib/storageKeys";
+import { E2E_SUSPEND_BOT_KEY } from "../../lib/storageKeys";
 import { HAND_ZONE } from "./helpers/selectors.ts";
 import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
 
@@ -135,7 +135,7 @@ function bombSave() {
       ...save.gameState,
       players: [
         { id: "player_0", name: "Ana", hand: [...bomb, card("4", "hearts"), card("5", "diamonds"), card("6", "clubs")], type: "human" },
-        { id: "player_1", name: "Bea", hand: (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spades")), type: "ai" },
+        { id: "player_1", name: "Bea", hand: (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spades")), type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: buildCombination([card("3", "clubs")]),
@@ -150,7 +150,7 @@ for (const vp of VIEWPORTS) {
     test.beforeEach(async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.emulateMedia({ reducedMotion: "no-preference" });
-      await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+      await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
     });
 
     test("at rest and through a throw, every hand card, back and played card is where it is drawn", async ({ page, baseURL }) => {
@@ -202,7 +202,7 @@ for (const vp of VIEWPORTS) {
       expectOnTheCards(await sample(page, 4_000), ["deal", "fan", "hand"]);
     });
 
-    test("mid-exchange, both traded cards are where they are drawn", async ({ page, baseURL }) => {
+    test("mid-exchange, both exchanged cards are where they are drawn", async ({ page, baseURL }) => {
       test.setTimeout(90_000);
       const save = offlineGameSave(2);
       await resumeSaved(page, baseURL!, {
@@ -211,9 +211,9 @@ for (const vp of VIEWPORTS) {
           ...save.gameState,
           players: [
             { id: "player_0", name: "Ana", hand: [card("5", "hearts"), card("K", "spades"), card("2", "spades")], type: "human" },
-            { id: "player_1", name: "Bea", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "ai" },
+            { id: "player_1", name: "Bea", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "bot" },
           ],
-          exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2", "spades"), bothJokersException: false },
+          exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2", "spades"), twoJokerException: false },
         },
       });
       expectOnTheCards(await sample(page, 4_000), ["fan", "hand", "leg"]);
@@ -224,7 +224,7 @@ for (const vp of VIEWPORTS) {
 test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to it, and its rect follows", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
   await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
   await settled(page, 3_000, '[data-testid="game-table"]');
   // Measured about the centre at the unturned width: a tilted card's bounding box outgrows what the row can show.
@@ -264,7 +264,7 @@ test("on a 4:3 tablet, Tab onto a card the scrolled hand clips pans the row to i
 test("on a 4:3 tablet, a mouse press on the scrolled hand's clipped edge card leaves the row where it is", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1024, height: 768 });
-  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_AI_KEY);
+  await page.addInitScript((key) => window.localStorage.setItem(key, "1"), E2E_SUSPEND_BOT_KEY);
   await resumeSaved(page, baseURL!, offlineGameSave(2, 13, 0));
   await settled(page, 3_000, '[data-testid="game-table"]');
   const row = () =>

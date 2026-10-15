@@ -73,7 +73,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
 
   const table = (s: GameState) => (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
+      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} placementPoints={{}} />
     </SafeAreaProvider>
   );
 
@@ -92,7 +92,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
     });
 
     it('draws each played card with one view from its throw until its trick is swept', async () => {
-      let state = initializeGame(['A', 'B', 'C', 'D'].map((n) => ({ name: n, type: 'ai' as const })), 'free_for_all');
+      let state = initializeGame(['A', 'B', 'C', 'D'].map((n) => ({ name: n, type: 'bot' as const })), 'free_for_all');
       const view = await render(table(state));
       await settle(1100);
       const plays: string[] = [];

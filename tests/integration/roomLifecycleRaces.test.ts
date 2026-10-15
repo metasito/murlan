@@ -74,7 +74,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     }
   }
 
-  test("149/120: a join queued ahead of the start is dealt a hand", async () => {
+  test("149/120: a join queued ahead of the start is dealt a round", async () => {
     const [host, a, late] = await players(3);
     const room = await lobby([host!, a!], 3);
     const lock = await lockRoom(room.roomId);
@@ -90,7 +90,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     assert.equal(dealt.players.length, 3);
   });
 
-  test("178: a leave queued ahead of the start is not dealt a hand", async () => {
+  test("178: a leave queued ahead of the start is not dealt a round", async () => {
     const [host, a, leaver] = await players(3);
     const room = await lobby([host!, a!, leaver!], 3);
     const lock = await lockRoom(room.roomId);
@@ -239,7 +239,7 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     }
   });
 
-  test("151: a seat left and reclaimed mid-hand keeps its row across a gap in the seats", async () => {
+  test("151: a seat left and reclaimed mid-round keeps its row across a gap in the seats", async () => {
     const [host, gone, b, c] = await players(4);
     const room = await lobby([host!, gone!, b!, c!], 4);
     const left = waitFor(host!.socket, "room:state");
@@ -315,16 +315,16 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const gate = new Promise<void>((r) => (open = r));
     let held = 0;
     persistence.writeActiveGame = async function (roomId, state) {
-      if (roomId === room.roomId && state.match.handsPlayed === 101) {
+      if (roomId === room.roomId && state.match.roundsPlayed === 101) {
         held += 1;
         await gate;
       }
       return real.call(this, roomId, state);
     };
     try {
-      game.handsPlayed = 101;
+      game.roundsPlayed = 101;
       const first = persistGameState(room.roomId, game);
-      game.handsPlayed = 102;
+      game.roundsPlayed = 102;
       const second = persistGameState(room.roomId, game);
       await new Promise((r) => setTimeout(r, 200));
       open();
@@ -333,10 +333,10 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       persistence.writeActiveGame = real;
     }
     assert.equal(held, 1);
-    const { rows } = await pool.query<{ game_state: { match: { handsPlayed: number } } }>(
+    const { rows } = await pool.query<{ game_state: { match: { roundsPlayed: number } } }>(
       "SELECT game_state FROM active_games WHERE room_id = $1",
       [room.roomId]
     );
-    assert.equal(rows[0]!.game_state.match.handsPlayed, 102);
+    assert.equal(rows[0]!.game_state.match.roundsPlayed, 102);
   });
 });

@@ -21,7 +21,7 @@ export interface RoundEndingClock {
   /** ms since the landing that ended the round, 0 while that play flies; ROUND_IDLE before any ending. */
   clock: SharedValue<number>;
   pileOpacity: SharedValue<number>;
-  /** Jumps a running ending to the settled pill, or a held one to its hold; the deal keeps its own time. */
+  /** Jumps a running ending to the settled pill, or a held one to its hold; the next round keeps its own time. */
   skip: () => void;
 }
 
@@ -74,7 +74,7 @@ export function useRoundEnding({
     if (!ended) {
       if (endedAt.current === null) return;
       endedAt.current = null;
-      // The deal comes before the glow has faded: a started ending runs on to its end.
+      // The next round comes before the glow has faded: a started ending runs on to its end.
       if (!started.current || match) {
         cancelAnimation(clock);
         clock.set(ROUND_IDLE);

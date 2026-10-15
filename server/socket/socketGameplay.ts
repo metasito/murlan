@@ -1,5 +1,5 @@
 // server/socket/socketGameplay.ts — everything a player does at a live table: playing
-// and passing, the exchange a round winner owes, rejoining a hand in progress,
+// and passing, the exchange a round winner owes, rejoining a round in progress,
 // reactions, and voting for another round.
 //
 // Every handler here resolves the room and hands the intent to
@@ -33,7 +33,7 @@ import { testOnlyEnv } from "../http/testOnlyEnv.ts";
  * Read once at module scope — same shape as authMaxFromEnv in routes.ts — so
  * a test process must set MURLAN_GAME_ACTION_RATE_LIMIT before this module
  * is first imported. Shared by game:play and game:pass: a suite replaying
- * several hands down one socket to reach a probabilistic phase needs
+ * several rounds down one socket to reach a probabilistic phase needs
  * headroom a live session never does.
  */
 function gameActionLimitFromEnv(): number {

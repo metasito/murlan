@@ -21,7 +21,7 @@ const save = (over = false) => ({
   gameState: {
     players: [
       { id: "player_0", name: "Ana", hand: [], type: "human" },
-      { id: "player_1", name: "Luan", hand: [], type: "ai" },
+      { id: "player_1", name: "Luan", hand: [], type: "bot" },
     ],
     currentTurnIndex: 0,
     lastPlayedCombination: null,
@@ -29,14 +29,14 @@ const save = (over = false) => ({
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: false,
   },
-  match: { length: "match", target: 21, scores: { player_0: 3 }, hands: [], over, winners: [], isDraw: false },
+  match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
   players: [
     { name: "Ana", type: "human" },
-    { name: "Luan", type: "ai", personality: "luan" },
+    { name: "Luan", type: "bot", personality: "luan" },
   ],
   gameMode: "free_for_all",
   dealFirstSeat: 1,
@@ -78,7 +78,7 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
 });
 
 test("the golden save of this version still decodes and plays a legal move", () => {
-  const raw = readFileSync(new URL("../fixtures/offlineSave.v2.json", import.meta.url), "utf8");
+  const raw = readFileSync(new URL("../fixtures/offlineSave.v3.json", import.meta.url), "utf8");
   assert.equal(
     JSON.parse(raw).version,
     OFFLINE_SAVE_VERSION,
@@ -105,7 +105,7 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["no seats at all", (s) => { (s.gameState as Record<string, unknown>).players = []; }],
     ["no match", (s) => delete s.match],
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
-    ["match without hands", (s) => { (s.match as Record<string, unknown>).hands = "nope"; }],
+    ["match without rounds", (s) => { (s.match as Record<string, unknown>).rounds = "nope"; }],
     ["no player setup", (s) => delete s.players],
     ["setup that disagrees with the seats", (s) => { s.players = [{ name: "Ana", type: "human" }]; }],
     ["an unknown game mode", (s) => { s.gameMode = "battle_royale"; }],
@@ -123,11 +123,11 @@ test("a match still running is resumable; a finished one is not", () => {
   assert.equal(isResumable(null), false);
 });
 
-// The result screen between rounds: the hand is over, the match is not, and
+// The result screen between rounds: the round is over, the match is not, and
 // the next round is still to deal. That is exactly when a player is most
 // likely to put the phone down.
-test("a finished hand inside a running match is still resumable", () => {
+test("a finished round inside a running match is still resumable", () => {
   const blob = JSON.parse(encodeOfflineSave(save(false)));
-  blob.gameState.gameOver = true;
+  blob.gameState.roundOver = true;
   assert.equal(isResumable(decodeOfflineSave(JSON.stringify(blob))), true);
 });

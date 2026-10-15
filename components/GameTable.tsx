@@ -54,12 +54,12 @@ import {
   JOKERS,
   NO_STAGES,
   readExchange,
-  readTradeSeats,
+  readExchangeSeats,
   floatTop,
   seatsJustPassed,
   tableGeometry,
-  tradeKey,
-  type TradeStages,
+  exchangeKey,
+  type ExchangeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
 import type { ServerError } from "@/context/OnlineGameContext";
@@ -121,7 +121,7 @@ import { lampPools } from "@/components/table/lampRig";
 import { useTableTimeline } from "@/components/table/tableTimeline";
 import { useRoundEnding } from "@/components/table/useRoundEnding";
 import { roundVoteShown } from "@/lib/game/roundEnding";
-import { handOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
+import { roundOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
 import { ParticleLayer } from "@/components/table/particleLayer";
 import { StraightHand, useHandArrival } from "@/components/table/hand";
 import { RotateOverlay } from "@/components/table/rotateOverlay";
@@ -221,7 +221,7 @@ export interface TurnTimerConfig {
    */
   resetKey?: string;
   /**
-   * The viewer's own chip counts down while leading a new round too (seat rings
+   * The viewer's own chip counts down while leading a new trick too (seat rings
    * always do). False offline, no deadline; true online, armed every turn.
    */
   includeNewTrick?: boolean;
@@ -259,18 +259,18 @@ export interface GameTableProps {
    * Whether the *match* — the match, not this hand — is over. `MatchVerdict.over`
    * offline, `matchState.over` online: the same landing that empties a hand can
    * also be the one that closes the match, so this is read alongside
-   * `gameState.gameOver` at the moment a play lands, never inferred from it.
+   * `gameState.roundOver` at the moment a play lands, never inferred from it.
    * Defaults false: replay, capture and reaction-preview callers hold no match.
    */
   matchOver?: boolean;
   matchWinners?: readonly string[];
   /**
    * What the round just played awarded, by engine player id — the score
-   * pill's gains, fed to the table's own win/lose sting via `handOutcomeFor`. Defaults empty
+   * pill's gains, fed to the table's own win/lose sting via `roundOutcomeFor`. Defaults empty
    * for the same callers `matchOver` defaults false for: with no scores to
    * read, the sting simply stays silent rather than guessing.
    */
-  handScores?: Record<string, number>;
+  placementPoints?: Record<string, number>;
   /**
    * The match's running points by engine player id, and the target they race to — what
    * the score pill shows. Absent in a replay. A `single` round shows the pill only as its board.
@@ -298,7 +298,7 @@ export interface GameTableProps {
   onExchangeReady?: () => void;
   /**
    * Present where a round ends on the table: the score pill's payoff runs, and this hears the
-   * landing that ended it, which the next deal is timed from (`RoundEnding.deal`).
+   * landing that ended it, which the next round is timed from (`RoundEnding.deal`).
    */
   onRoundLanded?: (landsAt: number) => void;
 
@@ -321,7 +321,7 @@ export interface GameTableProps {
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
   endMatchVote?: EndMatchVoteNote | null;
-  /** Present where the next deal waits on a vote: the round's ending holds the pill open with this at its foot. */
+  /** Present where the next round waits on a vote: the round's ending holds the pill open with this at its foot. */
   roundVote?: RoundVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
@@ -352,7 +352,7 @@ export function GameTable({
   gameState,
   matchOver = false,
   matchWinners,
-  handScores = {},
+  placementPoints = {},
   matchScore,
   matchActions,
   matchRating,
@@ -418,10 +418,10 @@ export function GameTable({
     exchangeAnnouncement?.visible !== true;
   const [openingSpent, setOpeningSpent] = useState(false);
   // Spent for this opening only, and cleared by the opening itself passing —
-  // the play that ends it, or the deal that replaces it. Online this component
+  // the play that ends it, or the round that replaces it. Online this component
   // is never unmounted between rounds, and nothing in the state names which
   // round is which, so a flag that outlived the opening would swallow the next
-  // one whenever two deals ran the same way.
+  // one whenever two rounds ran the same way.
   const [spentForPending, setSpentForPending] = useState(openingPending);
   if (openingPending !== spentForPending) {
     setSpentForPending(openingPending);
@@ -489,23 +489,23 @@ export function GameTable({
   // have arranged on top of it (#531). Spectated hands are excluded by the
   // seat's own cards being synthetic above — there is nothing there to arrange.
   const { arranged: shownHand, moveTo, order: handOrder } = useHandOrder(viewerSeat, sortedHand);
-  // The trade runs from the phase opening, before any announcement: the receive flies ahead of the choice.
-  const announced = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
+  // The exchange runs from the phase opening, before any announcement: the receive flies ahead of the choice.
+  const announcement = exchangeAnnouncement?.visible ? exchangeAnnouncement.data : null;
   const phase = gameState.exchangePhase;
-  const trade: ExchangeAnnounceData | null =
-    announced ??
-    (phase?.active && !phase.bothJokersException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
-  // A pairing and its card repeat across rounds, so each trade is also counted.
-  const [tradeSeq, setTradeSeq] = useState({ open: false, seq: 0 });
-  if (!!trade !== tradeSeq.open) setTradeSeq({ open: !!trade, seq: tradeSeq.seq + (trade ? 1 : 0) });
-  const tradeId = trade ? `${tradeSeq.seq}:${tradeKey(trade)}` : "";
-  const [reported, setReported] = useState<TradeStages>({ key: "", ...NO_STAGES });
-  const stages: TradeStages = trade && reported.key === tradeId ? reported : { key: tradeId, ...NO_STAGES };
-  const choiceReady = reported.key === tradeId && reported.ready;
-  const onTradeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
+  const shownExchange: ExchangeAnnounceData | null =
+    announcement ??
+    (phase?.active && !phase.twoJokerException ? buildExchangeAnnounce(players, phase, { received: phase.cardFromLoser }) : null);
+  // A pairing and its card repeat across rounds, so each exchange is also counted.
+  const [exchangeSeq, setExchangeSeq] = useState({ open: false, seq: 0 });
+  if (!!shownExchange !== exchangeSeq.open) setExchangeSeq({ open: !!shownExchange, seq: exchangeSeq.seq + (shownExchange ? 1 : 0) });
+  const exchangeId = shownExchange ? `${exchangeSeq.seq}:${exchangeKey(shownExchange)}` : "";
+  const [reported, setReported] = useState<ExchangeStages>({ key: "", ...NO_STAGES });
+  const stages: ExchangeStages = shownExchange && reported.key === exchangeId ? reported : { key: exchangeId, ...NO_STAGES };
+  const choiceReady = reported.key === exchangeId && reported.ready;
+  const onExchangeStage = useCallback((key: string, leg: LegName, stage: LegStage) => {
     setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), [leg]: stage }));
   }, []);
-  const onTradeReady = useCallback(
+  const onExchangeLegsReady = useCallback(
     (key: string) => {
       setReported((s) => ({ ...(s.key === key ? s : { key, ...NO_STAGES }), ready: true }));
       onExchangeReady?.();
@@ -514,12 +514,12 @@ export function GameTable({
   );
   const ringFlash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
   const lifted = useSharedValue<string[]>([]);
-  const tradeSeats = readTradeSeats(trade, stages);
+  const exchangeSeats = readExchangeSeats(shownExchange, stages);
   const { handOnTable, holding, arrivingIndex, descendingId, receivedId } = useHandArrival({
     hand: shownHand,
     sorted: sortedHand,
     order: handOrder,
-    trade,
+    announced: shownExchange,
     stages,
     viewerSeat: spectating ? null : viewerSeat,
   });
@@ -644,8 +644,8 @@ export function GameTable({
       players,
       teams: gameState.gameMode === "teams",
       scores: matchScore.scores,
-      handScores,
-      rankings: gameState.rankings,
+      placementPoints,
+      finishingOrder: gameState.finishingOrder,
       viewerId: spectating ? undefined : viewer?.id,
     });
   const matchBoard = (() => {
@@ -653,7 +653,7 @@ export function GameTable({
     const teamOf: Record<string, string | undefined> = Object.fromEntries(players.map((p) => [p.id, p.team]));
     const winnerKeys = (matchWinners ?? []).map((id) => (pillStandings.teams ? (teamOf[id] ?? id) : id));
     const won = pillStandings.rows.filter((row) => winnerKeys.includes(row.key));
-    const race = matchScore.single ? t("result.singleHandFormat") : t("scorePill.race", { target: matchScore.target });
+    const race = matchScore.single ? t("result.singleRoundFormat") : t("scorePill.race", { target: matchScore.target });
     return {
       winnerKeys,
       actions: matchActions,
@@ -755,14 +755,14 @@ export function GameTable({
         lastPlay,
         opponents: opponentsA11y,
         exchange: exchangeA11y,
-        handOver: gameState.gameOver,
+        roundOver: gameState.roundOver,
         matchOver,
         dealing: deal.dealing,
       },
       tableA11yStrings
     );
   }, [
-    gameState.gameOver,
+    gameState.roundOver,
     matchOver,
     gameState.lastPlayedCombination,
     gameState.lastPlayedBy,
@@ -794,15 +794,15 @@ export function GameTable({
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
   const isTeamMode = gameState.gameMode === "teams";
-  const outcome = handOutcomeFor(players, gameState.rankings, handScores, viewer?.id, isTeamMode);
+  const outcome = roundOutcomeFor(players, gameState.finishingOrder, placementPoints, viewer?.id, isTeamMode);
   const matchOutcome = matchOutcomeFor(players, matchWinners ?? [], viewer?.id, isTeamMode);
   const {
     passaFlashStyle,
     kickStyle,
     giocaRejectX,
     rejectPlay,
-    flushTrigger,
-    celebrateFlush,
+    goingOutTrigger,
+    celebrateGoingOut,
     shakeStyle,
     tableMotion,
   } = useTableFeedback({
@@ -812,11 +812,11 @@ export function GameTable({
     passCount: gameState.passCount,
     lastPlayedCombination: gameState.lastPlayedCombination,
     trickWinner: gameState.trickWinner,
-    gameOver: gameState.gameOver,
-    rankings: gameState.rankings,
+    roundOver: gameState.roundOver,
+    finishingOrder: gameState.finishingOrder,
     players,
     isTeamMode,
-    handScores,
+    placementPoints,
     viewerId: viewer?.id,
     scale,
     matchOver,
@@ -850,33 +850,33 @@ export function GameTable({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
     trickWinner: gameState.trickWinner,
-    gameOver: gameState.gameOver,
+    roundOver: gameState.roundOver,
     matchOver,
     viewerWon: (matchOver ? matchOutcome : outcome) === "won",
     ...seatGeometry,
     timeline,
-    celebrateFlush,
+    celebrateGoingOut,
     playTrickStart: trickStart,
     handOrigins,
     roomW: frame.fieldRoomW,
     catchUp,
   });
   const roundEnding = useRoundEnding({
-    ended: gameState.gameOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null),
+    ended: gameState.roundOver && !matchOver && (onRoundLanded !== undefined || roundVote !== null),
     hold: roundVote !== null,
     timeline,
     pileEmpty: trick.plays.length === 0,
     onLanded: onRoundLanded,
   });
-  const roundShown = useRoundOutcome({ ended: gameState.gameOver && !matchOver, outcome, timeline });
-  const matchShown = useRoundOutcome({ ended: gameState.gameOver && matchOver, outcome: matchOutcome, timeline });
+  const roundShown = useRoundOutcome({ ended: gameState.roundOver && !matchOver, outcome, timeline });
+  const matchShown = useRoundOutcome({ ended: gameState.roundOver && matchOver, outcome: matchOutcome, timeline });
   const shown = matchShown ?? roundShown;
   // A won match bursts from the viewer's own seat, so a teams win never lands on the partner's.
-  const winnerId = matchShown === null ? gameState.rankings[0] : matchShown === "won" ? viewer?.id : matchWinners?.[0];
+  const winnerId = matchShown === null ? gameState.finishingOrder[0] : matchShown === "won" ? viewer?.id : matchWinners?.[0];
   const winnerSeat = players.findIndex((p) => p.id === winnerId);
   const winnerDir = winnerSeat < 0 ? null : seatDirection(winnerSeat, viewerSeat, players.length);
   const lampToWinner = winnerDir !== null && (shown === "lost" || shown === "neutral");
-  const matchOnTable = gameState.gameOver && matchOver && matchActions !== undefined;
+  const matchOnTable = gameState.roundOver && matchOver && matchActions !== undefined;
   const matchEnding = useRoundEnding({
     ended: matchOnTable,
     match: true,
@@ -900,7 +900,7 @@ export function GameTable({
     lampToWinner ? winnerDir : holdingForStart ? "centre" : seatDirection(shownTurnIndex, viewerSeat, players.length)
   ];
   const emberFrom = useRef(shownTurnIndex);
-  const emberRuns = !holdingForStart && !trade && !gameState.gameOver && gameState.firstPlayMade;
+  const emberRuns = !holdingForStart && !shownExchange && !gameState.roundOver && gameState.firstPlayMade;
   useEffect(() => {
     const from = emberFrom.current;
     emberFrom.current = shownTurnIndex;
@@ -1039,14 +1039,14 @@ export function GameTable({
       isMyTurn,
       isFinished,
       isNewTrick,
-      gameOver: gameState.gameOver,
+      roundOver: gameState.roundOver,
       exchangeActive: exchange.active,
       includeNewTrick: turnTimer.includeNewTrick ?? false,
       announcementHolds,
     });
 
   // Changes on every move and every pass, so the countdown restarts once per
-  // turn — including when the same seat leads a new round after winning one.
+  // turn — including when the same seat leads a new trick after winning one.
   const turnToken =
     `${gameState.currentTurnIndex}|${gameState.passCount}|` +
     (gameState.lastPlayedCombination
@@ -1075,7 +1075,7 @@ export function GameTable({
 
   const topBarA11yLabel = topBarLabel(onTop, playedByViewer, lastPlayName, t);
 
-  const viewerClockShown = shownTurnIsMine && !isFinished && !gameState.gameOver;
+  const viewerClockShown = shownTurnIsMine && !isFinished && !gameState.roundOver;
   const viewerOnMove = viewerClockShown && !deal.dealing;
   const onMoveName = players[shownTurnIndex]?.name ?? "";
 
@@ -1098,7 +1098,7 @@ export function GameTable({
       isMyTurn: true,
       isFinished: false,
       isNewTrick,
-      gameOver: gameState.gameOver,
+      roundOver: gameState.roundOver,
       exchangeActive: exchange.active,
       includeNewTrick: true,
       announcementHolds,
@@ -1114,30 +1114,30 @@ export function GameTable({
       : undefined);
   const startGated = holdingForStart && !!startReason;
 
-  const tradeName = (seat: number) => players[seat]?.name ?? "";
+  const exchangeName = (seat: number) => players[seat]?.name ?? "";
   const shortName = (card: Card) => `${getCardDisplayRank(card.rank)}${getSuitSymbol(card.suit)}`;
   const giveNote = (card: Card | undefined, from: number, to: number) => {
     if (!card) return "";
     const c = shortName(card);
-    if (viewerOwnsSeat(from, viewerSeat, spectating)) return t("exchange.pileYouGive", { card: c, to: tradeName(to) });
-    if (viewerOwnsSeat(to, viewerSeat, spectating)) return t("exchange.pileGivesYou", { from: tradeName(from), card: c });
-    return t("exchange.pileGives", { from: tradeName(from), card: c, to: tradeName(to) });
+    if (viewerOwnsSeat(from, viewerSeat, spectating)) return t("exchange.pileYouGive", { card: c, to: exchangeName(to) });
+    if (viewerOwnsSeat(to, viewerSeat, spectating)) return t("exchange.pileGivesYou", { from: exchangeName(from), card: c });
+    return t("exchange.pileGives", { from: exchangeName(from), card: c, to: exchangeName(to) });
   };
-  const pileNote = !trade
+  const pileNote = !shownExchange
     ? null
-    : trade.bothJokersException
+    : shownExchange.twoJokerException
       ? stages.receive === "rest"
-        ? { text: t("exchangeAnnouncement.noSwapText"), testID: "exchange-no-swap", cards: JOKERS }
+        ? { text: t("exchangeAnnouncement.noExchangeText"), testID: "exchange-none", cards: JOKERS }
         : null
-      : stages.receive === "rest" && trade.cardReceived
-        ? { text: giveNote(trade.cardReceived, trade.loserIdx, trade.winnerIdx), testID: "exchange-pile-label", cards: [trade.cardReceived] }
-        : stages.give === "rest" && trade.cardGiven
-          ? { text: giveNote(trade.cardGiven, trade.winnerIdx, trade.loserIdx), testID: "exchange-pile-label", cards: [trade.cardGiven] }
+      : stages.receive === "rest" && shownExchange.cardReceived
+        ? { text: giveNote(shownExchange.cardReceived, shownExchange.loserIdx, shownExchange.winnerIdx), testID: "exchange-pile-label", cards: [shownExchange.cardReceived] }
+        : stages.give === "rest" && shownExchange.cardGiven
+          ? { text: giveNote(shownExchange.cardGiven, shownExchange.winnerIdx, shownExchange.loserIdx), testID: "exchange-pile-label", cards: [shownExchange.cardGiven] }
           : null;
 
   // The choice opens once the received card has landed and been read; until then the chip names the exchange.
   const choiceOpen = exchange.active && stages.ready;
-  const exchangeChip = !trade
+  const exchangeChip = !shownExchange
     ? null
     : !choiceOpen
       ? t("exchange.chipTitle")
@@ -1148,10 +1148,10 @@ export function GameTable({
         : exchange.viewerIsLoser
           ? t("exchange.waitingForYou", { winner: exchange.winner?.name ?? "" })
           : t("exchange.watching", { winner: exchange.winner?.name ?? "", loser: exchangeLoserName });
-  const seatMark = (seat: number) => ({ marked: tradeSeats.lit.includes(seat), seat, flash: ringFlash });
-  const onMove = (seat: number) => !trade && shown === null && seat === shownTurnIndex;
+  const seatMark = (seat: number) => ({ marked: exchangeSeats.lit.includes(seat), seat, flash: ringFlash });
+  const onMove = (seat: number) => !shownExchange && shown === null && seat === shownTurnIndex;
   useBenchHandle("tableAnchors", () => ({ width: W, height: H, anchors }));
-  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (tradeSeats.shift.get(seat) ?? 0);
+  const seatCount = (seat: number, player: (typeof players)[number]) => handCountOf(player) + (exchangeSeats.shift.get(seat) ?? 0);
 
   // The last hook: effects run in declaration order, so every producer above has queued its moments.
   useEffect(() => timeline.flush());
@@ -1176,7 +1176,7 @@ export function GameTable({
           moving edge, so the strip the kick uncovers is the cloth behind it
           rather than whatever the window is drawn on. */}
       <Animated.View style={[styles.kick, WEB_CLIP, TABLE_Z, kickStyle]}>
-        <Sweep trigger={flushTrigger} width={W} height={H} />
+        <Sweep trigger={goingOutTrigger} width={W} height={H} />
         <View style={[StyleSheet.absoluteFill, CARD_SHADE_Z]} pointerEvents="none" {...a11yHidden()}>
           <HandShade lamp={rig.lamp} cards={cardTable} ready={cardCast === "felt"} />
         </View>
@@ -1218,8 +1218,8 @@ export function GameTable({
                 lit={exchangeChip === null ? viewerOnMove : choiceOpen && exchange.viewerIsWinner}
                 chipText={
                   exchangeChip ??
-                  (gameState.gameOver
-                    ? t(matchOver ? "gameShared.matchOver" : "gameShared.handOver")
+                  (gameState.roundOver
+                    ? t(matchOver ? "gameShared.matchOver" : "gameShared.roundOver")
                     : deal.dealing
                       ? t("gameShared.dealing")
                       : viewerOnMove
@@ -1228,8 +1228,8 @@ export function GameTable({
                 }
                 spokenSeat={
                   exchangeChip ??
-                  (gameState.gameOver
-                    ? t(matchOver ? "gameTable.a11yMatchOver" : "gameTable.a11yHandOver")
+                  (gameState.roundOver
+                    ? t(matchOver ? "gameTable.a11yMatchOver" : "gameTable.a11yRoundOver")
                     : deal.dealing
                       ? t("gameTable.a11yDealing")
                       : viewerOnMove
@@ -1442,7 +1442,7 @@ export function GameTable({
                 and the field centre in what is actually there rather than at a
                 guessed percentage. */}
             {/* The flier's first frame sits on its own hand slot or fan, so the pile's band paints above both while one is up. */}
-            <View style={[sharedTableStyles.midSection, (flights.length > 0 || trade !== null) && { zIndex: Layer.moment }]}>
+            <View style={[sharedTableStyles.midSection, (flights.length > 0 || shownExchange !== null) && { zIndex: Layer.moment }]}>
               <View style={[sharedTableStyles.sideSection, sharedTableStyles.sideSectionLeft, { height: sideSlotHeight(scale) }]}>
                 {opponents.left && (
                   <SideOppSlot
@@ -1491,10 +1491,10 @@ export function GameTable({
                     settle exactly where the pile then draws the same cards,
                     and the rail makes the table box asymmetric — centred on the
                     screen instead, the combination lands and then jumps. */}
-                {trade && (
+                {shownExchange && (
                   <ExchangeLegs
                     key={stages.key}
-                    trade={trade}
+                    announced={shownExchange}
                     stages={stages}
                     geometry={seatGeometry}
                     handOrigins={handOrigins}
@@ -1503,8 +1503,8 @@ export function GameTable({
                     scale={scale}
                     flash={ringFlash}
                     lifted={lifted}
-                    onStage={onTradeStage}
-                    onReady={onTradeReady}
+                    onStage={onExchangeStage}
+                    onReady={onExchangeLegsReady}
                     onDismiss={exchangeAnnouncement?.onDismiss ?? NO_DISMISS}
                     holdMsOverride={exchangeAnnouncement?.holdMsOverride}
                   />

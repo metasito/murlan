@@ -60,7 +60,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 - **Integration** creates an empty Postgres schema and nothing else; every table comes from the
   app's own `ensureSchema()`, so each run also tests that boot-time schema creation works on a
   database that has never seen it. `tests/helpers/gameDriver.ts` is the shared "play a real hand
-  to completion" machinery every suite needing `handleGameOver`'s writes rides.
+  to completion" machinery every suite needing `handleRoundOver`'s writes rides.
   ```sh
   node scripts/dev-stack.mjs up
   DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p')
@@ -69,7 +69,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
   An empty `DATABASE_URL` means every test silently skips. Each server takes its own schema and
   drops it, so runs don't collide and the container can stay up between runs of one sitting
   (`node scripts/dev-stack.mjs down` when you're done).
-- **Web e2e** plays real games, offline and online, against the real server, in Italian, and
+- **Web e2e** plays real matches, offline and online, against the real server, in Italian, and
   rebuilds the bundle first; `E2E_SKIP_BUILD=1` reuses the last one (rule 5). Two
   runs at once are safe, each takes its own port (#491). Reach a table without playing to one:
   `openSeededGame(page, baseURL, 4)` (`tests/e2e/helpers/offlineSeed.ts`).
@@ -300,10 +300,10 @@ one that doesn't needs a device capture (above).
 
 ## What a green loop does not mean
 
-- **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every AI delay, so **no
+- **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every bot delay, so **no
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
-  (`lib/e2eAiSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
+  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
   hands (`tests/e2e/helpers/bot.ts`) and sample *through* a turn handover — one frame is not a
   state.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`** — flipping the env var

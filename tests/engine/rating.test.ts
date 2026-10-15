@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PROVISIONAL_GAMES,
+  PROVISIONAL_ROUNDS,
   START_RATING,
   expectedScore,
   formatSeason,
@@ -15,10 +15,10 @@ import {
   type RatedSeat,
 } from "../../lib/game/rating.ts";
 
-const seat = (userId: string, placement: number, rating = START_RATING, games = 30): RatedSeat => ({
+const seat = (userId: string, placement: number, rating = START_RATING, rounds = 30): RatedSeat => ({
   userId,
   rating,
-  games,
+  rounds,
   placement,
 });
 
@@ -45,7 +45,7 @@ function seeded(seed: number) {
 }
 
 // Exact, not approximate: deltas are integers, and rounding each on its own
-// would let a hand leak a point into or out of the ladder through arithmetic.
+// would let a round leak a point into or out of the ladder through arithmetic.
 test("a table on one K conserves rating exactly, whatever the field", () => {
   const next = seeded(12345);
   for (let trial = 0; trial < 500; trial++) {
@@ -59,7 +59,7 @@ test("a table on one K conserves rating exactly, whatever the field", () => {
 
 // Mixed records cannot conserve exactly — paying a provisional account faster
 // than its opponents lose is what a provisional period *is*. What must hold is
-// that the leak stays bounded per hand rather than compounding, and the bound
+// that the leak stays bounded per round rather than compounding, and the bound
 // falls straight out of the formula: the spread between the fastest and
 // slowest K, once per pairing a seat takes part in.
 test("mixed records leak no more than the K spread allows", () => {
@@ -99,7 +99,7 @@ test("beating a much stronger field pays more than beating a weaker one", () => 
   assert.ok(vsStrong.get("me")! > vsWeak.get("me")!);
 });
 
-test("a hand with fewer than two rated seats is not a contest", () => {
+test("a round with fewer than two rated seats is not a contest", () => {
   assert.equal(ratingDeltas([]).size, 0);
   assert.equal(ratingDeltas([seat("a", 1)]).size, 0);
 });
@@ -120,8 +120,8 @@ test("a fixed pair farming each other asymptotes", () => {
     const before = winner;
     for (let i = 0; i < rounds; i++) {
       const deltas = ratingDeltas([
-        { userId: "w", rating: winner, games: 100, placement: 1 },
-        { userId: "l", rating: loser, games: 100, placement: 2 },
+        { userId: "w", rating: winner, rounds: 100, placement: 1 },
+        { userId: "l", rating: loser, rounds: 100, placement: 2 },
       ]);
       winner += deltas.get("w")!;
       loser += deltas.get("l")!;
@@ -159,8 +159,8 @@ test("a new season keeps half the distance from the mean", () => {
 });
 
 test("the provisional gate is smaller than the window K treats as new", () => {
-  assert.ok(PROVISIONAL_GAMES > 0);
-  assert.equal(kFactor(PROVISIONAL_GAMES), kFactor(0), "still provisional-speed at the gate");
+  assert.ok(PROVISIONAL_ROUNDS > 0);
+  assert.equal(kFactor(PROVISIONAL_ROUNDS), kFactor(0), "still provisional-speed at the gate");
 });
 
 test("bots are dropped and the humans renumbered among themselves", () => {

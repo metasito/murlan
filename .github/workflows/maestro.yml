@@ -94,7 +94,7 @@ jobs:
       EXPO_PUBLIC_E2E_REDUCE_MOTION: "1"
       # Read at module scope by every screen that names it (`app/game.tsx`,
       # `app/(online)/game.tsx`, `context/GameContext.tsx`), so it zeroes
-      # every AI delay any of them has across all
+      # every bot delay any of them has across all
       # four flows this job drives, not only exchange-phase.yaml's. What
       # that ticket needed from it is the offline exchange overlay holding
       # open until exchange-phase.yaml taps it (#915, #1560), instead of
@@ -239,7 +239,7 @@ jobs:
 
       # KVM is present on the standard Linux runner but not exposed to the
       # user by default; without it the emulator falls back to software
-      # emulation and is far too slow to finish a hand.
+      # emulation and is far too slow to finish a round.
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \

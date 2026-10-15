@@ -3,8 +3,8 @@ import type { Socket } from "socket.io-client";
 import type { Card } from "../../lib/game/gameEngine.ts";
 import { connectAs, waitFor, DEADLINE_SCALE, type RegisteredUser } from "./client.ts";
 import type { TestServer } from "./testServer.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
-export type { GameOverPayload };
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
+export type { RoundOverPayload };
 
 /**
  * Shared machinery for the integration suites that seat a table and play a
@@ -31,7 +31,7 @@ export interface ExchangePhase {
   winnerIdx: number;
   loserIdx: number;
   cardFromLoser: Card;
-  bothJokersException: boolean;
+  twoJokerException: boolean;
 }
 
 export interface SanitizedState {
@@ -39,7 +39,7 @@ export interface SanitizedState {
   currentTurnIndex: number;
   lastPlayedCombination: unknown | null;
   lastPlayedBy: number;
-  gameOver: boolean;
+  roundOver: boolean;
   firstPlayMade: boolean;
   startCard?: Card;
   exchangePhase?: ExchangePhase;
@@ -103,29 +103,28 @@ export async function startGame(clients: Client[]): Promise<SanitizedState[]> {
 }
 
 export type DriveResult =
-  | { stoppedOn: "gameOver"; payload: unknown }
+  | { stoppedOn: "roundOver"; payload: unknown }
   | { stoppedOn: "exchange"; states: Map<Client, SanitizedState> };
 
 /**
  * Drives forced-minimum play for every idle client attached: whoever is
- * leading a new round plays the largest same-rank group anchored on their
- * lowest card (or the mandatory start card, for the very first play of the
- * game), everyone else always passes. This mirrors the server's own
+ * leading a new trick plays the largest same-rank group anchored on their
+ * lowest card (or the 3♠, for the opening of the round), everyone else always passes. This mirrors the server's own
  * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket/socket.ts),
  * but is triggered immediately by the test instead of waiting on a timer,
  * and sheds several cards per play to keep the per-socket event count
- * comfortably under the rate limiter across repeated hands.
+ * comfortably under the rate limiter across repeated rounds.
  *
  * Listeners attach before `kickoff()`, so the first game:state — which decides
- * who plays the mandatory start card — is never missed. Resolves once
- * `game:over` or an active exchange has been seen from every client, so no
- * closing broadcast is left in flight to be read as the next hand starting.
+ * who makes the opening — is never missed. Resolves once
+ * `game:round_over` or an active exchange has been seen from every client, so no
+ * closing broadcast is left in flight to be read as the next round starting.
  *
  * `stopOnExchange: false` plays straight through an exchange instead: the
  * driver simply idles while it is up, and the server's own AFK/bot forced
- * move resolves it, so the round runs to `game:over`.
+ * move resolves it, so the round runs to `game:round_over`.
  */
-export function driveHandToExchangeOrOver(
+export function driveRoundToExchangeOrOver(
   clients: Client[],
   kickoff: () => void,
   opts: { stopOnExchange?: boolean } = {}
@@ -142,13 +141,13 @@ export function driveHandToExchangeOrOver(
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error("timed out driving a hand toward completion or an exchange phase"));
+      reject(new Error("timed out driving a round toward completion or an exchange phase"));
     }, 15_000 * DEADLINE_SCALE);
 
     function cleanup() {
       clearTimeout(timer);
       for (const [c, h] of stateHandlers) c.socket.off("game:state", h);
-      for (const [c, h] of overHandlers) c.socket.off("game:over", h);
+      for (const [c, h] of overHandlers) c.socket.off("game:round_over", h);
     }
 
     function finish(result: DriveResult) {
@@ -162,14 +161,14 @@ export function driveHandToExchangeOrOver(
       const onOver = (payload: unknown) => {
         overPayloads.set(client, payload);
         if (overPayloads.size === clients.length) {
-          finish({ stoppedOn: "gameOver", payload });
+          finish({ stoppedOn: "roundOver", payload });
         }
       };
       overHandlers.push([client, onOver]);
-      client.socket.on("game:over", onOver);
+      client.socket.on("game:round_over", onOver);
 
       const onState = (state: SanitizedState) => {
-        if (settled || state.gameOver) return;
+        if (settled || state.roundOver) return;
         if (state.exchangePhase?.active) {
           if (!stopOnExchange) return;
           exchangeStates.set(client, state);
@@ -205,34 +204,34 @@ export function driveHandToExchangeOrOver(
 }
 
 /**
- * The next deal a client is sent — a `game:state` that is not the finished
- * state of the round just played. `driveHandToExchangeOrOver` settles on the
- * *first* client's `game:over`, so the other clients' closing broadcasts can
- * still be in flight when a caller starts waiting for the next hand.
+ * The next round a client is sent — a `game:state` that is not the finished
+ * state of the round just played. `driveRoundToExchangeOrOver` settles on the
+ * *first* client's `game:round_over`, so the other clients' closing broadcasts can
+ * still be in flight when a caller starts waiting for the next round.
  */
 export function waitForDeal(socket: Socket, ms = 8_000): Promise<SanitizedState> {
   return new Promise((resolve, reject) => {
     const onState = (state: SanitizedState) => {
-      if (state.gameOver) return;
+      if (state.roundOver) return;
       clearTimeout(timer);
       socket.off("game:state", onState);
       resolve(state);
     };
     const timer = setTimeout(() => {
       socket.off("game:state", onState);
-      reject(new Error("timed out waiting for the next deal"));
+      reject(new Error("timed out waiting for the next round"));
     }, ms * DEADLINE_SCALE);
     socket.on("game:state", onState);
   });
 }
 
-/** The `game:over` payload of a hand a suite drove to completion. */
-export function gameOverOf(result: DriveResult): GameOverPayload {
+/** The `game:round_over` payload of a round a suite drove to completion. */
+export function roundOverOf(result: DriveResult): RoundOverPayload {
   assert.ok(
-    result.stoppedOn === "gameOver",
+    result.stoppedOn === "roundOver",
     `the round had to run to game:over, stopped on ${result.stoppedOn}`
   );
-  return result.payload as GameOverPayload;
+  return result.payload as RoundOverPayload;
 }
 
 /**

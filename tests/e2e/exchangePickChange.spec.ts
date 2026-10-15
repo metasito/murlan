@@ -19,7 +19,7 @@ const FIVE_SPOKEN = "5 di Cuori";
 const NINE_SPOKEN = "9 di Fiori";
 
 /**
- * A hand mid-exchange, with the viewer as the winner choosing a giveback —
+ * A round mid-exchange, with the viewer as the winner choosing a giveback —
  * seeded rather than played, the same way tests/e2e/a11yOverlays.spec.ts
  * reaches this phase. `lib/offlineSave.ts` is the app's own restore path, so
  * this arrives at the exchange through the same code an interrupted match does.
@@ -29,11 +29,11 @@ function midExchangeSave() {
   const winnerHand = [FIVE, NINE, card("K_spades", "K", "spades")];
   const loserHand = [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: winnerHand, type: "human" },
-        { id: "player_1", name: "Bea", hand: loserHand, type: "ai" },
+        { id: "player_1", name: "Bea", hand: loserHand, type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -41,29 +41,29 @@ function midExchangeSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       exchangePhase: {
         active: true,
         winnerIdx: 0,
         loserIdx: 1,
         cardFromLoser: card("2_spades", "2", "spades"),
-        bothJokersException: false,
+        twoJokerException: false,
       },
     },
     match: {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

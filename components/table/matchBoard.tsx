@@ -16,7 +16,7 @@ export interface MatchWinner {
   mine: boolean;
   draw: boolean;
   line: string;
-  /** Online only: what the match did to the viewer's rating, or that the hand went unrecorded. */
+  /** Online only: what the match did to the viewer's rating, or that the round went unrecorded. */
   rating?: MatchRating;
 }
 
@@ -152,7 +152,7 @@ export function MatchBoardButtons({ actions, unit: u, live }: { actions: MatchBo
   const { t } = useTranslation();
   const tally = actions.again?.tally;
   const waiting = tally?.voted
-    ? t("gameOverOverlay.nextHandWaiting", { count: tally.votes, total: tally.total })
+    ? t("roundOverOverlay.nextRoundWaiting", { count: tally.votes, total: tally.total })
     : null;
   return (
     <View style={[styles.actions, { gap: PX.btnGap * u }]} pointerEvents={live ? "box-none" : "none"}>
@@ -164,8 +164,8 @@ export function MatchBoardButtons({ actions, unit: u, live }: { actions: MatchBo
           label={waiting ?? t("result.newMatch")}
           a11yLabel={
             tally?.voted
-              ? t("gameOverOverlay.waitingA11yLabel", { count: tally.votes, total: tally.total })
-              : t("gameOverOverlay.newMatchA11yLabel")
+              ? t("roundOverOverlay.waitingA11yLabel", { count: tally.votes, total: tally.total })
+              : t("roundOverOverlay.newMatchA11yLabel")
           }
           disabled={tally?.voted}
           onPress={actions.again.onPress}

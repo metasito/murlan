@@ -24,7 +24,7 @@ import {
   shakeAmplitudeFor,
 } from "@/components/flightPhysics";
 import { cancelLandingPulses, runLandingPulses } from "@/lib/device/feedback";
-import { handOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
+import { roundOutcomeFor, matchOutcomeFor } from "@/lib/game/matchState";
 import { Hold, Motion, motionMs } from "@/lib/theme";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { useLandingReaction } from "@/components/table/useLandingReaction";
@@ -71,13 +71,13 @@ interface TableFeedbackState {
   passCount: number;
   lastPlayedCombination: Combination | null;
   trickWinner: number | null;
-  gameOver: boolean;
-  rankings: string[];
-  /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
+  roundOver: boolean;
+  finishingOrder: string[];
+  /** Only `id` and `team` are read — enough to resolve `roundOutcomeFor`. */
   players: readonly { id: string; team?: string }[];
   isTeamMode: boolean;
-  /** What the round just played awarded, by engine player id — `handOutcomeFor`'s draw check. */
-  handScores: Record<string, number>;
+  /** What the round just played awarded, by engine player id — `roundOutcomeFor`'s draw check. */
+  placementPoints: Record<string, number>;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
@@ -120,9 +120,9 @@ interface TableFeedback {
   giocaRejectX: SharedValue<number>;
   rejectPlay: () => void;
   /** Increments when a play empties a hand; the table's Sweep reads it. */
-  flushTrigger: number;
+  goingOutTrigger: number;
   /** Call once, at the flight's contact, when that play emptied a hand. */
-  celebrateFlush: () => void;
+  celebrateGoingOut: () => void;
   /** The escalation's own shake (#763): a translate, decaying to rest. */
   shakeStyle: AnimatedStyle<ViewStyle>;
   tableMotion: SharedValue<TableMotion>;
@@ -260,11 +260,11 @@ export function useTableFeedback({
   passCount,
   lastPlayedCombination,
   trickWinner,
-  gameOver,
-  rankings,
+  roundOver,
+  finishingOrder,
   players,
   isTeamMode,
-  handScores,
+  placementPoints,
   viewerId,
   scale,
   matchOver = false,
@@ -275,7 +275,7 @@ export function useTableFeedback({
   const reduceMotion = usePrefersReducedMotion();
   const screenShake = useScreenShakeEnabled();
   const prevMyTurnRef = useRef(false);
-  const prevGameOverRef = useRef(false);
+  const prevRoundOverRef = useRef(false);
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
   const prevPassCountRef = useRef(passCount);
@@ -293,22 +293,22 @@ export function useTableFeedback({
   const passaFlashVal = useSharedValue(0);
   const { kickStyle, giocaRejectX, rejectPlay, shakeStyle, tableMotion } = useImpactFeedback(landing, reduceMotion, screenShake, scale);
   // Sweep and the pile's catch own their animations; this just says "again".
-  const [flushTrigger, setFlushTrigger] = useState(0);
+  const [goingOutTrigger, setGoingOutTrigger] = useState(0);
 
   const { moment } = timeline;
   useEffect(() => () => cancelLandingPulses(), []);
 
   useEffect(() => {
-    if (isMyTurn && !isFinished && !gameOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
+    if (isMyTurn && !isFinished && !roundOver && !prevMyTurnRef.current) moment({ kind: "turn" }, "handoff");
     prevMyTurnRef.current = isMyTurn;
-  }, [isMyTurn, isFinished, gameOver, moment]);
+  }, [isMyTurn, isFinished, roundOver, moment]);
 
   // A pass moves nothing on the felt, so the sound is the whole event. Keyed
   // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
   //
-  // `processPass` zeroes `passCount` on the pass that closes a round, so the
-  // round closing stands in for that edge — heads-up, every legal pass closes
+  // `processPass` zeroes `passCount` on the pass that closes a trick, so the
+  // trick closing stands in for that edge — heads-up, every legal pass closes
   // one, and without this a two-player game would hear nothing.
   useEffect(() => {
     const prevCount = prevPassCountRef.current;
@@ -324,35 +324,35 @@ export function useTableFeedback({
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the
     // table — gets its own win/lose sting instead of staying silent.
-    if (!gameOver) {
-      prevGameOverRef.current = false;
+    if (!roundOver) {
+      prevRoundOverRef.current = false;
       return;
     }
-    if (prevGameOverRef.current) return;
+    if (prevRoundOverRef.current) return;
     // The round/match shake itself is NOT fired here: it reacts to the
     // winning card's own landing signal, on its contact frame.
-    // `rankings` holds engine player ids (`player_0`), never display names.
+    // `finishingOrder` holds engine player ids (`player_0`), never display names.
     // `lib/game/matchState.ts` decides who a round celebrates, from the caller's
-    // own `handScores`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
-    const outcome = handOutcomeFor(players, rankings, handScores, viewerId, isTeamMode);
-    // Online, `gameOver` reaches this effect (`game:state`) a render ahead of
-    // the scores that decide it (`game:over`, unawaited server-side and
+    // own `placementPoints`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
+    const outcome = roundOutcomeFor(players, finishingOrder, placementPoints, viewerId, isTeamMode);
+    // Online, `roundOver` reaches this effect (`game:state`) a render ahead of
+    // the scores that decide it (`game:round_over`, unawaited server-side and
     // strictly later) — `"pending"` is that gap. Latching here would freeze
     // the decision on data that was never real; returning without touching
-    // the ref lets the next render, carrying the real `handScores`, run this
+    // the ref lets the next render, carrying the real `placementPoints`, run this
     // same effect again instead.
     // The sting is placed in the engine ahead of time, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
     // also when an online match's winners have arrived.
-    if (outcome === "pending" || rankings.some((id) => !(id in handScores))) return;
-    prevGameOverRef.current = true;
+    if (outcome === "pending" || finishingOrder.some((id) => !(id in placementPoints))) return;
+    prevRoundOverRef.current = true;
     const match = matchOver ? matchOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
     moment(
       match !== "pending" ? { kind: "matchOver", outcome: match } : { kind: "roundOver", outcome },
       "landing",
       Hold.sting
     );
-  }, [gameOver, rankings, players, isTeamMode, handScores, viewerId, matchOver, matchWinners, moment]);
+  }, [roundOver, finishingOrder, players, isTeamMode, placementPoints, viewerId, matchOver, matchWinners, moment]);
 
   // PASSA flash the moment passing becomes possible. `canPass` already folds in
   // whose turn it is, whether the viewer has finished, and whether the round is
@@ -373,10 +373,10 @@ export function useTableFeedback({
 
   const passaFlashStyle = useAnimatedStyle(() => ({ opacity: passaFlashVal.value }));
 
-  const celebrateFlush = useCallback(() => {
+  const celebrateGoingOut = useCallback(() => {
     if (reduceMotion) return;
-    traceOnset("moment", "flush");
-    setFlushTrigger((t) => t + 1);
+    traceOnset("moment", "goingOut");
+    setGoingOutTrigger((t) => t + 1);
   }, [reduceMotion]);
 
   return {
@@ -384,8 +384,8 @@ export function useTableFeedback({
     kickStyle,
     giocaRejectX,
     rejectPlay,
-    flushTrigger,
-    celebrateFlush,
+    goingOutTrigger,
+    celebrateGoingOut,
     shakeStyle,
     tableMotion,
   };

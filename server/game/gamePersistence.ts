@@ -15,7 +15,7 @@ import {
 import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import type { GameOverWriters } from "./gameOver.ts";
+import type { RoundOverWriters } from "./roundOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
@@ -29,9 +29,8 @@ import {
   seatOfUser,
   visibleExchangePhase,
   markExchangeSettled,
-  packPersistedState,
-  type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
+import { packPersistedState, type PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 
@@ -160,15 +159,15 @@ function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unk
  */
 export function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
   // Stamped so a restart can tell a current-shape row from a stale one (see
-  // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const gameState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, game.joinCode, {
+  // GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
+  const gameState = packPersistedState(game.gameState, game.roundFlags, game.dealFirstSeat, game.joinCode, {
     playerMap: game.playerMap,
     scores: game.cumulativeScores,
     gameMode: game.gameMode,
     matchLength: game.matchLength,
     matchTarget: game.matchTarget,
     maxPlayers: game.maxPlayers,
-    handsPlayed: game.handsPlayed,
+    roundsPlayed: game.roundsPlayed,
     endedByVote: !!game.endedByVote,
   }, {
     vacatedSeats: [...game.vacatedSeats],
@@ -188,7 +187,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
  * if they do not say it arrived.
  *
  * `sanitizeStateForPlayer` ships a whole snapshot, so a dropped `game:state` is
- * corrected by the next one — except for the last of a hand, and for the one
+ * corrected by the next one — except for the last of a round, and for the one
  * answering a rejoin. Those have nothing coming after them, and a player who
  * misses one is left looking at a table that will never right itself.
  *
@@ -198,7 +197,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
  *
  * The retry re-derives from whatever is live now rather than replaying the
  * snapshot it was called with. That is what makes it safe: by the time it fires
- * the hand may have moved on, and re-sending the older state would rewind the
+ * the round may have moved on, and re-sending the older state would rewind the
  * player's table rather than repair it.
  */
 export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameState) {
@@ -339,7 +338,7 @@ let sweeper: ReturnType<typeof setInterval> | null = null;
  * someone to ask.
  */
 async function sweepFinishedTables(io: SocketServer): Promise<void> {
-  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.gameOver);
+  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.roundOver);
   if (finished.length === 0) return;
   const connected = new Set(
     (await io.fetchSockets())
@@ -400,7 +399,7 @@ export function startSweeper(io: SocketServer, resumeOrphans: (io: SocketServer)
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
-export const gameOverWriters: GameOverWriters = {
+export const roundOverWriters: RoundOverWriters = {
   updateRoomStatus: (roomId, status) => roomStore.updateRoomStatus(roomId, status),
   persistGameState,
   recordGameResult,

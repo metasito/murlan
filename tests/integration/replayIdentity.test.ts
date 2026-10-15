@@ -1,4 +1,4 @@
-// A replay seat's stored `name` is a copy taken when the hand ended. Two things
+// A replay seat's stored `name` is a copy taken when the round ended. Two things
 // have to reach it anyway: a rename, and the erasure a deleted account is owed —
 // including for a seat its owner left mid-match, which carries no user id in
 // `player_ids` and so is invisible to the ownership filter deleteUser uses.
@@ -25,7 +25,7 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
         { seatIndex: 1, userId: null, vacatedBy: leaver.id, name: leaver.username },
       ],
       moves: [],
-      rankings: [],
+      finishingOrder: [],
     });
     return { stayer, leaver, cookie, leaverCookie };
   }

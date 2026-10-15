@@ -1,13 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  readPersistedPlayerMap,
   seatOfUser,
   scoreKeyForSeat,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
 } from "../../server/game/onlineGameLogic.ts";
+import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
 import { isBotSeatKey } from "../../server/game/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 
@@ -143,7 +143,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
       restoredMatchOver({
         matchLength: "match",
         gameMode: "teams",
-        handOver: true,
+        roundOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
         playerCount: 4,
@@ -158,7 +158,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
       restoredMatchOver({
         matchLength: "match",
         gameMode: "free_for_all",
-        handOver: true,
+        roundOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
         playerCount: 4,
@@ -173,7 +173,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
       restoredMatchOver({
         matchLength: "match",
         gameMode: "teams",
-        handOver: true,
+        roundOver: true,
         scores: { a1: 9, b1: 5, a2: 9, b2: 4 },
         target: 21,
         playerCount: 4,
@@ -196,7 +196,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
       restoredMatchOver({
         matchLength: "match",
         gameMode: "teams",
-        handOver: true,
+        roundOver: true,
         scores: { a1: 11, b1: 5, a2: 11, b2: 4 },
         target: 21,
         playerCount: 4,
@@ -213,7 +213,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
       restoredMatchOver({
         matchLength: "match",
         gameMode: "teams",
-        handOver: true,
+        roundOver: true,
         scores: { a1: 12, b1: 5, "bot:2": 10, b2: 4 },
         target: 21,
         playerCount: 4,
@@ -223,12 +223,12 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
     );
   });
 
-  test("a single-round game is over exactly when its hand is", () => {
-    const single = (handOver: boolean) =>
+  test("a single-round match is over exactly when its round is", () => {
+    const single = (roundOver: boolean) =>
       restoredMatchOver({
         matchLength: "single",
         gameMode: "teams",
-        handOver,
+        roundOver,
         scores: {},
         target: 21,
         playerCount: 4,

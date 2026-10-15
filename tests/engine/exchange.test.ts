@@ -65,7 +65,7 @@ describe("processExchangeChoice", () => {
           winnerIdx: 0,
           loserIdx: 1,
           cardFromLoser: c("2", "spades"),
-          bothJokersException: false,
+          twoJokerException: false,
         },
       }
     );
@@ -76,7 +76,7 @@ describe("processExchangeChoice", () => {
     assert.deepEqual(next.players[0].hand.map((card) => card.id), ["K_spades"]);
     assert.ok(next.players[1].hand.some((card) => card.id === "4_hearts"));
     assert.equal(next.exchangePhase?.active, false);
-    assert.equal(next.currentTurnIndex, 1, "the loser leads the new hand");
+    assert.equal(next.currentTurnIndex, 1, "the loser leads the new round");
     assert.equal(next.lastPlayedBy, 1);
   });
 
@@ -135,7 +135,7 @@ describe("processExchangeChoice", () => {
           winnerIdx: 0,
           loserIdx: 1,
           cardFromLoser: received,
-          bothJokersException: false,
+          twoJokerException: false,
         },
       }
     );
@@ -193,7 +193,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
           winnerIdx: 0,
           loserIdx: 1,
           cardFromLoser: c("2", "spades"),
-          bothJokersException: false,
+          twoJokerException: false,
         },
       }
     );
@@ -228,7 +228,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
   });
 });
 
-describe("hand-to-hand exchange setup", () => {
+describe("round-to-round exchange setup", () => {
   const setup = [0, 1, 2, 3].map((i) => ({
     name: `p${i}`,
     type: "human" as const,
@@ -241,8 +241,8 @@ describe("hand-to-hand exchange setup", () => {
         "player_0", "player_1", "player_2", "player_3",
       ]);
       const phase = state.exchangePhase!;
-      if (phase.bothJokersException) {
-        assert.equal(phase.active, false, "no swap happens on the two-joker exception");
+      if (phase.twoJokerException) {
+        assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
         assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
         continue;
       }
@@ -296,11 +296,11 @@ describe("the two-joker exception, on a fixed deal", () => {
       hands
     );
     const phase = state.exchangePhase!;
-    assert.equal(phase.bothJokersException, true);
+    assert.equal(phase.twoJokerException, true);
     assert.equal(phase.active, false);
     assert.equal(state.currentTurnIndex, phase.winnerIdx);
     assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
-    assert.equal(state.startReason?.type, "won_no_swap");
+    assert.equal(state.startReason?.type, "won_no_exchange");
     assert.deepEqual(
       state.players.map((p) => ids(p.hand)),
       hands.map(ids),

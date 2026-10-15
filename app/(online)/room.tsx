@@ -139,7 +139,7 @@ function MatchmakingToggle({
   );
 }
 
-/** Host-only: how long the game runs. Mirrors the offline lobby's picker. */
+/** Host-only: how long the match runs. Mirrors the offline lobby's picker. */
 function MatchLengthControls({
   value,
   onChange,

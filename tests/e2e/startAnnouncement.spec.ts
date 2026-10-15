@@ -26,7 +26,7 @@ const NEAREST_PT = 0.5;
 function openingSave() {
   const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         {
@@ -39,7 +39,7 @@ function openingSave() {
           id: "player_1",
           name: "Bea",
           hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "ai",
+          type: "bot",
         },
       ],
       currentTurnIndex: 0,
@@ -48,8 +48,8 @@ function openingSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       startReason: { type: "lost_round", playerIdx: 0 },
       // Nothing played yet — the round the `startReason` describes is still at
@@ -60,14 +60,14 @@ function openingSave() {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

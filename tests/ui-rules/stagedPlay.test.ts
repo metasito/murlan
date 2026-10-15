@@ -93,13 +93,13 @@ describe("whether GIOCA will take them", () => {
 describe("the opening play", () => {
   const opening = { firstPlayMade: false, startCard: THREE_SPADES };
 
-  test("a selection without the start card is refused, however legal it is", () => {
+  test("a selection without the opening card is refused, however legal it is", () => {
     const s = staged({ ...opening, selectedIds: ["9_diamonds"] });
     assert.equal(s.playable, false);
     assert.equal(s.refusal, "needsStartCard");
   });
 
-  test("and accepted once the start card is in it", () => {
+  test("and accepted once the opening card is in it", () => {
     assert.equal(staged({ ...opening, selectedIds: ["3_spades"] }).playable, true);
     assert.equal(
       staged({ ...opening, selectedIds: ["3_spades", "3_hearts"] }).playable,
@@ -116,7 +116,7 @@ describe("the opening play", () => {
   });
 });
 
-describe("whether the hand can answer the pile at all", () => {
+describe("whether the hand can answer the trick at all", () => {
   const beatable = (over: Partial<Parameters<typeof canBeatPileOf>[0]>) =>
     canBeatPileOf({
       hand: HAND,
@@ -150,7 +150,7 @@ describe("whether the hand can answer the pile at all", () => {
     assert.equal(beatable({ isFinished: true }), false);
   });
 
-  test("the start card constrains the opening lead", () => {
+  test("the opening card constrains the opening lead", () => {
     const opening = { startCard: card("4", "clubs"), firstPlayMade: false };
     assert.equal(beatable(opening), false);
     assert.equal(beatable({ ...opening, startCard: THREE_SPADES }), true);

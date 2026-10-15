@@ -1,7 +1,7 @@
 // tests/native/stagedSelection.test.tsx — a play can be staged while somebody
 // else is thinking.
 //
-// With three opponents the viewer spends three-odd seconds a round holding a
+// With three opponents the viewer spends three-odd seconds a trick holding a
 // hand they were not allowed to touch, and then starts the turn clock from a blank
 // selection. Selection is now open at all times; only the submission is gated
 // on the turn, which GIOCA's staged play (`readStagedPlay`) already does.
@@ -53,8 +53,8 @@ const state = (currentTurnIndex: number, over: Partial<GameState> = {}): GameSta
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -189,7 +189,7 @@ describe('passing', () => {
 });
 
 function OfflineTable() {
-  const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
+  const { gameState, playCards, passTurn, runBotTurn } = useLocalTable();
   const { setupGame } = useLocalSession();
   const start = gameState?.startCard;
   return (
@@ -200,7 +200,7 @@ function OfflineTable() {
           setupGame(
             [
               { name: 'Ana', type: 'human' },
-              { name: 'Luan', type: 'ai', personality: 'luan' },
+              { name: 'Luan', type: 'bot', personality: 'luan' },
             ],
             'free_for_all'
           )
@@ -211,7 +211,7 @@ function OfflineTable() {
       <Pressable testID="open" onPress={() => start && gameState?.currentTurnIndex === 0 && playCards([start.id])}>
         <Text>open</Text>
       </Pressable>
-      <Pressable testID="ai" onPress={runAITurn}>
+      <Pressable testID="bot" onPress={runBotTurn}>
         <Text>ai</Text>
       </Pressable>
       <Text testID="turn">{gameState ? String(gameState.currentTurnIndex) : '-'}</Text>
@@ -223,7 +223,7 @@ function OfflineTable() {
   );
 }
 
-describe('an AI taking its turn offline', () => {
+describe('a bot taking its turn offline', () => {
   it('leaves the staged selection alone', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
@@ -249,7 +249,7 @@ describe('an AI taking its turn offline', () => {
       await activate(heldNode());
     });
 
-    await tapTestId('ai');
+    await tapTestId('bot');
     expect(screen.getByTestId('turn').props.children).toBe('0');
     expect(heldNode().props.accessibilityState?.selected).toBe(true);
 

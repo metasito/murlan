@@ -1,5 +1,5 @@
 // tests/integration/seatHold.test.ts — the seat a friend is invited into is
-// held for them, on the inviter's own side, and it stops being held.
+// held for them, on the inviter's own team, and it stops being held.
 //
 // Driven through the real socket server and a real database, because the whole
 // claim is about what `claimRoomSeat` does under its row lock with the invite
@@ -184,7 +184,7 @@ describe(
 
       const heard = waitFor<RoomState>(host.socket, "room:state");
       host.socket.emit("friend:invite", { friendUserId: friend.user.id, roomCode: room.code });
-      assert.deepEqual((await heard).seatHolds, [], "there is no side to hold a seat on");
+      assert.deepEqual((await heard).seatHolds, [], "there is no team to hold a seat on");
 
       const stranger = await player("ffa_stranger");
       const seated = await joins(stranger, room.code, host.socket);

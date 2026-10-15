@@ -1,15 +1,15 @@
 // Trends over a player's finished matches.
 //
 // A lifetime average is the least interesting number a player has: it stops
-// moving after fifty games and never says whether they are improving. Every
-// shape here reads the same bounded `match_history` rows the profile already
+// moving after fifty rounds and never says whether they are improving. Every
+// shape here reads the same bounded `round_history` rows the profile already
 // fetches — nothing new is stored, and nothing reads further back than the
 // server already sends.
 
-import type { MatchHistoryDto } from "./wire";
+import type { RoundHistoryDto } from "./wire";
 
 /** The three fields of a history row these trends read. */
-export type MatchRecord = Pick<MatchHistoryDto, "finishedAt" | "placement" | "playerCount">;
+export type MatchRecord = Pick<RoundHistoryDto, "finishedAt" | "placement" | "playerCount">;
 
 export interface PlacementSlice {
   placement: number;
@@ -37,7 +37,7 @@ function newestFirst(history: MatchRecord[]): MatchRecord[] {
 }
 
 /**
- * The last few placements, newest first. Bounded, because `match_history`
+ * The last few placements, newest first. Bounded, because `round_history`
  * grows with every match a player finishes and this strip must not.
  */
 export function recentForm(history: MatchRecord[], limit = RECENT_FORM_LIMIT): number[] {

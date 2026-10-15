@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import type { Combination } from "@/lib/game/gameEngine";
+import type { Combination, PlayRefusal } from "@/lib/game/gameEngine";
 
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
@@ -12,7 +12,7 @@ export interface TurnFacts {
   isNewTrick: boolean;
 }
 
-/** Leading a round is compulsory: you may only pass in answer to a combination. */
+/** Leading a trick is compulsory: you may only pass in answer to a combination. */
 export function canPassNow(facts: TurnFacts): boolean {
   return !facts.isNewTrick && facts.isMyTurn && !facts.isFinished;
 }
@@ -20,17 +20,10 @@ export function canPassNow(facts: TurnFacts): boolean {
 /**
  * Why a selection cannot be played. Identifiers, not copy: GameTable.tsx maps
  * each to a short button label and to the longer sentence a screen reader (and
- * the rejection toast) speaks.
+ * the rejection toast) speaks. Only the refusals a selection itself earns: one
+ * drawn from the hand is always held.
  */
-export type PlayButtonLabel =
-  | "play"
-  | "notACombination"
-  | "needsStartCard"
-  | "royalUnbeatable"
-  | "bombOnly"
-  | "wrongType"
-  | "wrongLength"
-  | "tooLow";
+export type PlayButtonLabel = "play" | Exclude<PlayRefusal, "exchangeOpen" | "notHeld">;
 
 /** As much of a combination as the rejection ladder needs. */
 export interface ComboShape {
@@ -39,14 +32,15 @@ export interface ComboShape {
 }
 
 /**
- * Why the GIOCA button is dim, in the same reason order `canPlay`
+ * Why the GIOCA button is dim, in the same reason order `checkPlay`
  * (lib/game/gameEngine.ts) refuses in — so a pair offered against a single is told
  * it is the wrong shape, and the opening play is told it needs the 3♠, rather
- * than both being called too low.
+ * than both being called too low. `tests/ui-rules/playRefusalParity.test.ts`
+ * holds the two to the same answer.
  *
  * Answers "why would this be refused"; the caller decides whether to show it,
- * because only the caller can run `canPlay` — this takes a `ComboShape`, and
- * `canPlay` wants the two whole `Combination`s.
+ * because only the caller can run the engine — this takes a `ComboShape`, and
+ * `checkPlay` wants the whole cards.
  */
 export function playButtonLabel(opts: {
   isMyTurn: boolean;
@@ -54,9 +48,9 @@ export function playButtonLabel(opts: {
   selectedCount: number;
   /** The selection's shape, null when it is not a recognised combination. */
   selection: ComboShape | null;
-  /** What has to be beaten. Null while leading a new round. */
+  /** What has to be beaten. Null while leading a new trick. */
   pile: ComboShape | null;
-  /** The opening play of a hand must contain the start card. */
+  /** The opening play of a round must contain the 3♠. */
   requiresStartCard: boolean;
   selectionHasStartCard: boolean;
 }): PlayButtonLabel {
@@ -112,7 +106,7 @@ export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
   isNewTrick: boolean;
-  gameOver: boolean;
+  roundOver: boolean;
   exchangeActive: boolean;
   includeNewTrick: boolean;
   /**
@@ -124,7 +118,7 @@ export function turnTimerActive(opts: {
   announcementHolds?: boolean;
 }): boolean {
   if (!opts.isMyTurn || opts.isFinished) return false;
-  if (opts.gameOver || opts.exchangeActive) return false;
+  if (opts.roundOver || opts.exchangeActive) return false;
   if (opts.announcementHolds) return false;
   if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;

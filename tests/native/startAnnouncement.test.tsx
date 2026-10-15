@@ -62,8 +62,8 @@ function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
     passCount: 0,
     gameMode: 'free_for_all',
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     startReason: { type: 'lost_round', playerIdx: OPENER },
     playedRanks,
@@ -170,7 +170,7 @@ describe('the round-opening announcement', () => {
   // `startReason` labels the whole round and is never cleared, and the opener
   // takes the lead again every round they win. A table mounted after the
   // opening — an online reload, a rejoin, a resumed offline game — would
-  // otherwise cover the felt mid-hand with the deal's own news.
+  // otherwise cover the felt mid-round with the deal's own news.
   it('stays away on a table mounted after the opening was played', async () => {
     const view = await render(table(midRound(OPENER + 1)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();

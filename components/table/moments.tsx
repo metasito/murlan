@@ -1,6 +1,6 @@
-// The bomb's burst (flare + two waves) and flash, and the flush's sweep —
+// The bomb's burst (flare + two waves) and flash, and the going-out sweep —
 // one-shot celebrations. The burst reacts to the landing signal on its contact
-// frame; the sweep plays again when `flushTrigger`
+// frame; the sweep plays again when `goingOutTrigger`
 // (components/useTableFeedback.ts) changes. Each piece decides for itself,
 // against `usePrefersReducedMotion`, whether to animate.
 //
@@ -355,7 +355,7 @@ const SWEEP_H_FACTOR = 1.4;
 const SWEEP_TRAVEL_FACTOR = 0.6;
 const SWEEP_Z = Layer.sheet + 1;
 
-/** A diagonal pass of light across the whole table — the flush's own sweep. */
+/** A diagonal pass of light across the whole table — the going-out sweep. */
 export function Sweep({
   trigger,
   width,

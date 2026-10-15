@@ -107,7 +107,7 @@ describe("playButtonLabel", () => {
     );
   });
 
-  test("the opening play without the start card is told exactly that", () => {
+  test("the opening play without the opening card is told exactly that", () => {
     // The empty table used to report "too low" here, contradicting the banner
     // in the middle of the same screen.
     assert.equal(
@@ -130,7 +130,7 @@ describe("turnTimerActive", () => {
     isMyTurn: true,
     isFinished: false,
     isNewTrick: false,
-    gameOver: false,
+    roundOver: false,
     exchangeActive: false,
     includeNewTrick: false,
   };
@@ -152,7 +152,7 @@ describe("turnTimerActive", () => {
 
   test("never during the exchange, after the game, or when it is not your turn", () => {
     assert.equal(turnTimerActive({ ...base, exchangeActive: true }), false);
-    assert.equal(turnTimerActive({ ...base, gameOver: true }), false);
+    assert.equal(turnTimerActive({ ...base, roundOver: true }), false);
     assert.equal(turnTimerActive({ ...base, isMyTurn: false }), false);
     assert.equal(turnTimerActive({ ...base, isFinished: true }), false);
   });

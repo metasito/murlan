@@ -1,10 +1,10 @@
-// tests/native/trickClose.test.tsx — winning a round pays off on the cards
+// tests/native/trickClose.test.tsx — winning a trick pays off on the cards
 // that won it.
 //
 // `processPass` clears `lastPlayedCombination` and credits `trickWinner` in the
 // same transition, so the table sees both on one commit. Taken naively that
 // wipes the felt at the exact moment the winner tag goes up, and plays the
-// new-round sting ahead of the round-win sting.
+// new-round sting ahead of the trick-win sting.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { act, render, screen, within } from '@testing-library/react-native';
@@ -34,7 +34,7 @@ const METRICS = {
 
 /** How long the winning cards are held. Mirrors TRICK_WINNER_MS. */
 const HOLD_MS = 1800;
-/** `botMoveDelayMs()`'s default — a bot round winner leads inside the hold. */
+/** `botMoveDelayMs()`'s default — a bot trick winner leads inside the hold. */
 const BOT_DELAY_MS = 1200;
 
 const KING: Card = { id: 'K_hearts', rank: 'K', suit: 'hearts', isJoker: false };
@@ -56,8 +56,8 @@ const state = (over: Partial<GameState>): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -81,11 +81,11 @@ const table = (gameState: GameState) => (
 const onFelt = (card: Card) =>
   within(screen.getByTestId('pile-area')).queryByLabelText(cardSpokenName(card, t));
 
-/** Seat 1 leads the King; seat 0's pass closes the round in seat 1's favour. */
+/** Seat 1 leads the King; seat 0's pass closes the trick in seat 1's favour. */
 const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0 });
 const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1 });
 
-describe('the pass that closes a round', () => {
+describe('the pass that closes a trick', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -119,7 +119,7 @@ describe('the pass that closes a round', () => {
     await r.unmount();
   });
 
-  it('plays the round-win sting before the new-round sting', async () => {
+  it('plays the trick-win sting before the new-round sting', async () => {
     const r = await render(table(LED));
     await act(async () => {
       jest.advanceTimersByTime(500);
@@ -146,7 +146,7 @@ describe('the pass that closes a round', () => {
     });
 
     await act(async () => r.rerender(table(CLOSED)));
-    // Seat 1 won the round, so seat 1 leads the next one — well inside the hold.
+    // Seat 1 won the trick, so seat 1 leads the next one — well inside the hold.
     await act(async () => {
       jest.advanceTimersByTime(200);
       r.rerender(

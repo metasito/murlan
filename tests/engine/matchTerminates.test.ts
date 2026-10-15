@@ -4,7 +4,7 @@
 // rounds keep completing and the match itself never ends, so the only
 // symptom on record was a bare 300s Playwright timeout.
 //
-// This harness plays real offline matches — the real engine, the real bot AI
+// This harness plays real offline matches — the real engine, the real bot
 // on every seat, no browser — over many seeds and asserts every one reaches
 // `match.over`. It is the missing guard rotonmeta's comment on #770 asked
 // for, run standalone rather than folded into `driveGameToCompletion`: that
@@ -32,11 +32,11 @@
 //   - `MatchStallError` — a round or the match itself blew its move/round
 //     ceiling; collected rather than thrown so a soak run reports every
 //     stalling seed, not just the first.
-//   - `AiTurnKeyCollision` — two different engine states hashing to the same
-//     `app/game.tsx` `aiTurnKey`, so a real render would never reschedule
-//     the second AI decision; collected the same way as stalls.
+//   - `BotTurnKeyCollision` — two different engine states hashing to the same
+//     `app/game.tsx` `botTurnKey`, so a real render would never reschedule
+//     the second bot decision; collected the same way as stalls.
 //   - a round past `ROUND_MOVES_CEILING` — not a stall (it still reaches
-//     `gameOver`), but a round that takes an order of magnitude more moves
+//     `roundOver`), but a round that takes an order of magnitude more moves
 //     than any this file has measured is the shape that costs real-world
 //     wall clock without ever tripping `maxMovesPerRound`, which is exactly
 //     what a bare 300s Playwright timeout with no thrown error looks like
@@ -46,22 +46,22 @@ import assert from "node:assert/strict";
 import {
   MatchStallError,
   simulateOfflineMatch,
-  type AiTurnKeyCollision,
+  type BotTurnKeyCollision,
   type OfflinePlayerSetup,
   type SimulateMatchResult,
 } from "../helpers/offlineMatch.ts";
 
 const SOAK_START = Number(process.env.MURLAN_MATCH_SOAK_START ?? 1);
 
-/** One AI opponent per seat past the first — this repo's "ai" lobby default
+/** One bot opponent per seat past the first — this repo's "bot" lobby default
  * (`app/lobby.tsx`'s `buildDefaultPlayers`), and the shape #770's second
  * review named: a human seat exists specifically so the key can go null
- * when it holds the turn, and every remaining seat is `"ai"` so the key
- * chase actually has AI-owned turns to compare. */
+ * when it holds the turn, and every remaining seat is `"bot"` so the key
+ * chase actually has bot-owned turns to compare. */
 function tableOf(playerCount: number): OfflinePlayerSetup[] {
   return Array.from({ length: playerCount }, (_, i) => ({
     name: i === 0 ? "You" : `Bot${i}`,
-    type: i === 0 ? ("human" as const) : ("ai" as const),
+    type: i === 0 ? ("human" as const) : ("bot" as const),
   }));
 }
 
@@ -72,7 +72,7 @@ function tableOf(playerCount: number): OfflinePlayerSetup[] {
  * merely *slow* rather than stuck still terminates, so `MatchStallError`
  * never fires for it, and the only trace it leaves is real-world wall clock —
  * exactly what a headless run cannot see for itself. Measured directly
- * (2-player, free_for_all, AI-vs-AI / contesting-human-vs-AI /
+ * (2-player, free_for_all, bot-vs-bot / contesting-human-vs-bot /
  * contesting-both, 8,000 seeds each): the worst round across all three
  * needed 39 moves. 150 is four times that ceiling with zero seeds this file
  * has ever produced coming within shouting distance of it, so a seed that
@@ -89,15 +89,15 @@ interface SlowRound {
 
 /**
  * Plays `count` seeded matches at `playerCount` seats and fails the test
- * naming every stall, every anomalously slow round and every `aiTurnKey`
+ * naming every stall, every anomalously slow round and every `botTurnKey`
  * collision found, or reports the total states checked when it finds none.
  */
 function soakMatches(playerCount: number, count: number, contest?: boolean[]): void {
   const players = tableOf(playerCount);
   const failures: MatchStallError[] = [];
-  const collisions: AiTurnKeyCollision[] = [];
+  const collisions: BotTurnKeyCollision[] = [];
   const slowRounds: SlowRound[] = [];
-  let aiTurnKeyChecks = 0;
+  let botTurnKeyChecks = 0;
 
   for (let i = 0; i < count; i++) {
     const seed = SOAK_START + i;
@@ -109,7 +109,7 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
         gameMode: "free_for_all",
         length: "match",
         contest,
-        collectAiTurnKeyCollisions: collisions,
+        collectBotTurnKeyCollisions: collisions,
       });
     } catch (err) {
       if (err instanceof MatchStallError) {
@@ -118,7 +118,7 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
       }
       throw err;
     }
-    aiTurnKeyChecks += result.aiTurnKeyChecks;
+    botTurnKeyChecks += result.botTurnKeyChecks;
     result.rounds.forEach((m, roundIndex) => {
       if (m.moves > ROUND_MOVES_CEILING) {
         slowRounds.push({ seed, roundIndex, moves: m.moves });
@@ -150,7 +150,7 @@ function soakMatches(playerCount: number, count: number, contest?: boolean[]): v
   if (collisions.length > 0) {
     const [first] = collisions;
     assert.fail(
-      `${playerCount}p: ${collisions.length} aiTurnKey collision(s) across ${aiTurnKeyChecks} ` +
+      `${playerCount}p: ${collisions.length} botTurnKey collision(s) across ${botTurnKeyChecks} ` +
         `states checked. First: seed ${first.seed}, round ${first.roundIndex}, ` +
         `key "${first.key}", hands ${first.before.fingerprint} -> ${first.after.fingerprint}`
     );
@@ -165,10 +165,10 @@ test("an offline 2-player match reaches its target over many shuffles", () => {
 });
 
 // The seat-0 "human" actually contests every round (`contest`), rather than
-// the AFK floor `useAi:false` gives — #770's own recorded stall
+// the AFK floor `useBot:false` gives — #770's own recorded stall
 // (resultActions.spec.ts, run 33556887782) was driven by
 // tests/e2e/helpers/bot.ts's always-contesting bot, not an AFK one, and
-// nothing in this file's default AI-vs-AI seeds plays that shape either.
+// nothing in this file's default bot-vs-bot seeds plays that shape either.
 test("an offline 2-player match reaches its target when the human seat contests every round", () => {
   soakMatches(2, Number(process.env.MURLAN_MATCH_SOAK_SEEDS ?? 200), [true, false]);
 });

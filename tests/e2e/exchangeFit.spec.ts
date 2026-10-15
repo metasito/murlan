@@ -42,7 +42,7 @@ function midExchangeSave(): object {
     winnerIdx: 0,
     loserIdx: 1,
     cardFromLoser,
-    bothJokersException: false,
+    twoJokerException: false,
   };
   return save;
 }

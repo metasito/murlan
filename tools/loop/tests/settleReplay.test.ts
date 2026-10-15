@@ -778,7 +778,7 @@ describe("ciRedBody", () => {
 
   // One long e2e id once ate a 200-character budget and hid two failing files behind `+10 more`.
   const long = [
-    "tests/e2e/offlineMatch.spec.ts › offline vs AI — a match plays multiple hands and exercises the exchange",
+    "tests/e2e/offlineMatch.spec.ts › offline vs bots — a match plays multiple rounds and exercises the exchange",
     "tests/tooling/fontSubset.test.ts › the subsets carry every character the app can render",
     "tests/tooling/iconSubset.test.ts › the shipped subsets carry a glyph for every name the app renders",
   ];

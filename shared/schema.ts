@@ -170,8 +170,8 @@ export const activeGames = pgTable("active_games", {
 
 export const userStats = pgTable("user_stats", {
   userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
-  gamesPlayed: integer("games_played").notNull().default(0),
-  gamesWon: integer("games_won").notNull().default(0),
+  roundsPlayed: integer("rounds_played").notNull().default(0),
+  roundsWon: integer("rounds_won").notNull().default(0),
   matchesWon: integer("matches_won").notNull().default(0),
   currentStreak: integer("current_streak").notNull().default(0),
   bestStreak: integer("best_streak").notNull().default(0),
@@ -179,7 +179,7 @@ export const userStats = pgTable("user_stats", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const matchHistory = pgTable("match_history", {
+export const roundHistory = pgTable("round_history", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   finishedAt: timestamp("finished_at").defaultNow().notNull(),
@@ -197,21 +197,21 @@ export const matchHistory = pgTable("match_history", {
    *
    * Kept here rather than derived later because it cannot be: `user_ratings`
    * holds only the current rating, and `ratingDeltas()` needs every seat's
-   * rating and game count as they were *before* the match. Once the match is
+   * rating and match count as they were *before* the match. Once the match is
    * written those inputs are gone.
    */
   ratingDelta: integer("rating_delta"),
   /**
-   * This row is the seat the player walked out on, scored as a forfeit
+   * This row is the seat the player walked out on, scored as an abandonment
    * (`GameResult.abandoned`, lib/achievements.ts) rather than played to its
-   * placement — docs/GAME-RULES.md § Decisions "Abandoning a hand". Defaulted rather than
+   * placement — docs/GAME-RULES.md § Decisions "Abandoning a round". Defaulted rather than
    * nullable: every row written before this column existed was not one, and
    * `false` says that outright instead of leaving it to a reader's `?? false`.
    * The matchmaking cooldown (docs/DISCONNECT-POLICY.md §6.12) counts
    * these directly rather than needing a table of its own.
    */
   abandoned: boolean("abandoned").notNull().default(false),
-}, (t) => [index("match_history_user_idx").on(t.userId, t.finishedAt)]);
+}, (t) => [index("round_history_user_idx").on(t.userId, t.finishedAt)]);
 
 /**
  * What a client crash looked like, kept for CLIENT_ERROR_RETENTION_DAYS so the
@@ -301,9 +301,9 @@ export const userAchievements = pgTable("user_achievements", {
 }, (t) => [primaryKey({ columns: [t.userId, t.achievementId] })]);
 
 // One finished round, replayable by anyone who sat at it. Its own table rather
-// than a column on match_history: a write to a missing table fails alone, and a
+// than a column on round_history: a write to a missing table fails alone, and a
 // replay belongs to the table rather than to any one player's history row.
-export const matchReplays = pgTable("match_replays", {
+export const roundReplays = pgTable("round_replays", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   roomId: text("room_id").notNull(),
   finishedAt: timestamp("finished_at").defaultNow().notNull(),
@@ -313,12 +313,12 @@ export const matchReplays = pgTable("match_replays", {
   seats: jsonb("seats").$type<ReplaySeat[]>().notNull().default([]),
   moves: jsonb("moves").$type<ReplayMove[]>().notNull().default([]),
   /** Engine player ids, best first. */
-  rankings: jsonb("rankings").$type<string[]>().notNull().default([]),
+  finishingOrder: jsonb("finishing_order").$type<string[]>().notNull().default([]),
 }, (t) => [
-  index("match_replays_finished_idx").on(t.finishedAt),
+  index("round_replays_finished_idx").on(t.finishedAt),
   // Every read of this table filters on `player_ids @> '["<uid>"]'`. Containment
   // is not a btree predicate — only a GIN index can answer it.
-  index("match_replays_player_ids_idx").using("gin", t.playerIds),
+  index("round_replays_player_ids_idx").using("gin", t.playerIds),
 ]);
 
 // One row per player per season. `season` is part of the key rather than a
@@ -328,7 +328,7 @@ export const userRatings = pgTable("user_ratings", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
   season: text("season").notNull(),
   rating: integer("rating").notNull(),
-  games: integer("games").notNull().default(0),
+  rounds: integer("rounds").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [
   primaryKey({ columns: [t.userId, t.season] }),
@@ -443,7 +443,7 @@ export type RoomVisibility = (typeof roomVisibilityEnum.enumValues)[number];
 export type RoomPlayer = typeof roomPlayers.$inferSelect;
 export type Friend = typeof friends.$inferSelect;
 export type UserStats = typeof userStats.$inferSelect;
-export type MatchHistory = typeof matchHistory.$inferSelect;
+export type RoundHistory = typeof roundHistory.$inferSelect;
 export type PushToken = typeof pushTokens.$inferSelect;
 export type AuthToken = typeof authTokens.$inferSelect;
 export type AuthTokenPurpose = AuthToken["purpose"];

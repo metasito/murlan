@@ -20,7 +20,7 @@ export const METRICS = {
 };
 const noop = () => {};
 const LAST: Combination = { type: 'pair', cards: [card('k1', 'K', 'clubs'), card('k2', 'K', 'diamonds')], strength: 13 };
-const RANKINGS = ['player_1', 'player_2', 'player_3', 'player_0'];
+const FINISHING_ORDER = ['player_1', 'player_2', 'player_3', 'player_0'];
 
 export interface Case {
   name: string;
@@ -29,7 +29,7 @@ export interface Case {
   winners: string[];
   closer: number;
 }
-// Seat 0 is the viewer, seat 2 sits opposite; in teams seats 0 and 3 are side A.
+// Seat 0 is the viewer, seat 2 sits opposite; in teams seats 0 and 3 are team A.
 export const CASES: Case[] = [
   { name: 'won, an opponent closing', outcome: 'won', teams: false, winners: ['player_0'], closer: 3 },
   { name: 'won, the viewer closing', outcome: 'won', teams: false, winners: ['player_0'], closer: 0 },
@@ -59,16 +59,16 @@ export const table = (c: Case, over: boolean, decided = over) => {
     passCount: 0,
     gameMode: c.teams ? 'teams' : 'free_for_all',
     trickWinner: null,
-    gameOver: over,
-    rankings: over ? RANKINGS : [],
+    roundOver: over,
+    finishingOrder: over ? FINISHING_ORDER : [],
     firstPlayMade: true,
   };
-  const handScores = decided ? Object.fromEntries(RANKINGS.map((id, i) => [id, 3 - i])) : {};
+  const placementPoints = decided ? Object.fromEntries(FINISHING_ORDER.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
         gameState={state}
-        handScores={handScores}
+        placementPoints={placementPoints}
         matchOver={decided}
         matchWinners={decided ? c.winners : []}
         viewerSeat={0}

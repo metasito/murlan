@@ -67,7 +67,7 @@ const ONLINE: Record<string, string[]> = {
   useOnlineTable: ["gameState", "mySeatIndex", "playCards", "pass", "sendReaction", "disconnectedSeats", "autoPassed"],
   useOnlineTurnClock: ["turnSeconds", "turnDeadlineMs"],
   useOnlineMatch: [
-    "matchState", "cumulativeScores", "handScores", "handScoresCurrent", "ratingDeltas", "handRecorded", "ratingsAfter",
+    "matchState", "cumulativeScores", "placementPoints", "placementPointsCurrent", "ratingDeltas", "roundRecorded", "ratingsAfter",
     "rematchVoteState", "endMatchVoteState", "voteRematch", "voteToEndMatch",
   ],
   useOnlineExchange: [
@@ -94,9 +94,9 @@ const VIA: Record<string, string> = {
 };
 
 const LOCAL: Record<string, string[]> = {
-  useLocalTable: ["gameState", "playCards", "passTurn", "runAITurn"],
+  useLocalTable: ["gameState", "playCards", "passTurn", "runBotTurn"],
   useLocalSession: ["setupGame", "resetGame", "hasSavedGame", "resumeGame"],
-  useLocalMatch: ["match", "startNextHand", "startNewMatch"],
+  useLocalMatch: ["match", "startNextRound", "startNewMatch"],
   useLocalExchange: [
     "exchangeAnnouncing", "exchangeAnnounceData", "exchangeHoldMsOverride", "chooseExchangeCard",
     "acknowledgeExchange", "releaseStuckExchange",

@@ -31,7 +31,7 @@ const seat = (id: string, name: string, extra: Partial<Player> = {}): Player => 
 const stateWith = (over: Partial<GameState>): GameState => ({
   players: [
     seat('player_0', 'Alice'),
-    seat('player_1', 'Drita', { type: 'ai', vacated: true } as Partial<Player>),
+    seat('player_1', 'Drita', { type: 'bot', vacated: true } as Partial<Player>),
     seat('player_2', 'Carl'),
   ],
   currentTurnIndex: 0,
@@ -40,8 +40,8 @@ const stateWith = (over: Partial<GameState>): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -79,10 +79,10 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
     cumulativeScores: {},
-    handScores: {},
+    placementPoints: {},
     ratingDeltas: {},
     ratingsAfter: {},
-    handRecorded: false,
+    roundRecorded: false,
     rematchVoteState: null,
     endMatchVoteState: mockEndMatchVoteState,
     voteRematch: jest.fn(),

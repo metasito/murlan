@@ -275,7 +275,7 @@ export const CardShadow = {
   fall: { x: 26, y: 30, drop: 3 },
 } as const;
 
-// Design gate G1 (#1259 plan 4), tests/e2e/fixtures/card-glow: under a selected hand card and the flush catch.
+// Design gate G1 (#1259 plan 4), tests/e2e/fixtures/card-glow: under a selected hand card and the going-out catch.
 export const CardGlow = { color: '#FFD27A', alpha: 0.7, blur: 18 } as const;
 
 // What a table notice paints, by shape and tone (components/table/TableNotice.tsx,

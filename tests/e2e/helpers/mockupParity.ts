@@ -29,7 +29,7 @@ import {
   type TraceFrame,
 } from "./traceDiff";
 import { regionBrightness, regionsFor, TABLE, type Region, type SideLayout } from "./parityRegions";
-import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
+import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../../lib/storageKeys";
 
 export const FIXTURE = pathToFileURL(path.resolve(__dirname, "..", "fixtures", "lantern-table", "index.html")).href;
 const DPR = 2;
@@ -151,10 +151,10 @@ const bombTable = (page: Page, baseURL: string) => {
 const SEAT = { you: 0, luan: 1, besnik: 2, gent: 3 } as const;
 const scoresBy = (s: Record<keyof typeof SEAT, number>) =>
   Object.fromEntries(Object.entries(SEAT).map(([k, seat]) => [`player_${seat}`, s[k as keyof typeof SEAT]]));
-/** The seats already out, in their order; a seat's badge reads its `finishPosition`, not `rankings`. */
+/** The seats already out, in their order; a seat's badge reads its `finishPosition`, not `finishingOrder`. */
 const outInOrder = (save: ReturnType<typeof offlineGameSave>, ...seats: number[]) => {
   seats.forEach((seat, i) => Object.assign(save.gameState.players[seat], { finishPosition: i + 1 }));
-  Object.assign(save.gameState, { rankings: seats.map((seat) => `player_${seat}`) });
+  Object.assign(save.gameState, { finishingOrder: seats.map((seat) => `player_${seat}`) });
 };
 
 /** The mockup's `pwin`: you and besnik out, luan on move with his last card, the 2c, over gent's 9h. */
@@ -214,7 +214,7 @@ const seatTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
     },
     [
       [TUTORIAL_SEEN_KEY, "1"],
-      [E2E_SUSPEND_AI_KEY, "1"],
+      [E2E_SUSPEND_BOT_KEY, "1"],
       [OFFLINE_SAVE_KEY, JSON.stringify(save)],
     ]
   );

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import type { HandOutcome } from "@/lib/game/matchState";
+import type { RoundOutcome } from "@/lib/game/matchState";
 import type { TableTimeline } from "./tableTimeline";
 
-export type ShownOutcome = Exclude<HandOutcome, "pending">;
+export type ShownOutcome = Exclude<RoundOutcome, "pending">;
 
 /**
  * The round's outcome from the landing of the play that ended it, once decided, until the next
- * deal. Call it after `usePileFlight`: `pending()` is read at call time, so this effect sees the
+ * round. Call it after `usePileFlight`: `pending()` is read at call time, so this effect sees the
  * throw that ended the round.
  */
 export function useRoundOutcome({
@@ -15,7 +15,7 @@ export function useRoundOutcome({
   timeline,
 }: {
   ended: boolean;
-  outcome: HandOutcome;
+  outcome: RoundOutcome;
   timeline: Pick<TableTimeline, "inFlight" | "pending">;
 }): ShownOutcome | null {
   const [shown, setShown] = useState<ShownOutcome | null>(null);

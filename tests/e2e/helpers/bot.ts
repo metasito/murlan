@@ -4,7 +4,7 @@
 // selects real cards by their `accessibilityLabel`, and asserts the game
 // keeps progressing. A game that stops advancing is treated as a failure,
 // not something to wait out — that is exactly how the exchange-phase
-// freezes and the AI-lead deadlock this suite targets used to present.
+// freezes and the bot-lead deadlock this suite targets used to present.
 //
 // Card legality itself is never modelled here: every candidate combination
 // is verified against the real GIOCA button state ("Gioca le carte
@@ -74,7 +74,7 @@ export const NO_PROGRESS_YET: Progress = { held: null, stale: 0 };
 
 /**
  * Folds one new table state into the progress seen so far. Any move of the
- * total counts, including the deal that grows it again between hands: what a
+ * total counts, including the deal that grows it again between rounds: what a
  * game that cannot end never does is change it.
  */
 export function observeProgress(prev: Progress, desc: string): Progress {
@@ -131,8 +131,8 @@ export class SearchTimeoutError extends StuckError {}
 
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/tableA11y.ts
-// `describeTableForA11y`), with no notion of `gameOver` — so for one tick
-// after an opponent's move ends the game, the description can still read as
+// `describeTableForA11y`), with no notion of `roundOver` — so for one tick
+// after an opponent's move ends the round, the description can still read as
 // "your turn" while the hand itself is already correctly disabled. A short
 // per-click timeout turns that harmless one-tick race into "this turn
 // evaporated, go round the loop again" instead of hanging until the test's
@@ -194,7 +194,7 @@ function rankIndex(cardLabel: string): number {
  * pattern misses it, which is right: everyone passed and the viewer now leads.
  *
  * Leading must stay exhaustive. The opening play of a match has to contain the
- * dealt start card specifically, so skipping any candidate there can skip the
+ * dealt opening card specifically, so skipping any candidate there can skip the
  * only legal move.
  */
 function tableSingleStrength(desc: string): number | null {
@@ -224,7 +224,7 @@ function requiredReplySize(desc: string): number | null {
  *
  * Singles are tried card by card, not one per rank: suit never affects a
  * single's legality except on the first play of a match, which must contain
- * the dealt start card — one representative per rank would miss it.
+ * the dealt opening card — one representative per rank would miss it.
  *
  * Cards are clicked by their accessibilityLabel, not by list position: the
  * hand re-renders (selection state, entrance/lift animations) between one
@@ -444,7 +444,7 @@ async function giveCandidateLabels(page: Page): Promise<string[]> {
 }
 
 /**
- * Gives back a card during the between-hands exchange (docs/GAME-RULES.md §10).
+ * Gives back a card during the between-rounds exchange (docs/GAME-RULES.md §10).
  *
  * Select-then-confirm: clicking a card only picks it, and the give happens on
  * the table's own GIOCA, which the exchange borrows (#533). Both clicks are
@@ -517,13 +517,13 @@ export interface DriveOptions {
  * identical to "still thinking" until you compare consecutive polls.
  */
 export async function driveGameToCompletion(page: Page, opts: DriveOptions): Promise<void> {
-  // A hand ends when someone runs out, so cards leaving hands is the only
+  // A round ends when someone runs out, so cards leaving hands is the only
   // progress there is. Legitimately it pauses for a round of passes and the
   // turn churn around it — a handful of states; this sits an order above that.
   const maxStatesWithoutProgress = opts.maxStatesWithoutProgress ?? 100;
   // Generous relative to a normal turn (a few seconds, measured, with
   // EXPO_PUBLIC_E2E_FAST and reduced motion both active) without being so
-  // tight that one slow AI response false-positives a healthy game.
+  // tight that one slow bot response false-positives a healthy game.
   const stallMs = opts.stallMs ?? 15_000;
   const maxTotalMs = opts.maxTotalMs ?? 240_000;
   const maxCombosTried = opts.maxCombosTried ?? DEFAULT_MAX_COMBOS_TRIED;
@@ -598,7 +598,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       log(`${action ?? "abandoned"} (was: "${desc}") [search ${Date.now() - searchStartedAt}ms]`);
       if (action === null) {
         // The hand stopped being interactive mid-search — most often the
-        // one-tick "your turn" / gameOver race described above `playOrPass`.
+        // one-tick "your turn" / roundOver race described above `playOrPass`.
         // Let the next iteration's isFinished/description check decide what
         // actually happened, except for the count below, which is the one
         // thing that check cannot see.

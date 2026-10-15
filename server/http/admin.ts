@@ -68,7 +68,7 @@ async function signups(): Promise<DayCount[]> {
 async function activePlayers(days: number): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(DISTINCT user_id)::int AS n
-    FROM match_history
+    FROM round_history
     WHERE finished_at >= now() - make_interval(days => ${days})
   `);
   return rows.rows[0]?.n ?? 0;
@@ -83,7 +83,7 @@ async function retention(): Promise<{ cohort: string; joined: number; played: nu
     SELECT to_char(date_trunc('week', u.created_at), 'YYYY-MM-DD') AS cohort,
            count(*)::int AS joined,
            count(*) FILTER (WHERE EXISTS (
-             SELECT 1 FROM match_history m WHERE m.user_id = u.id
+             SELECT 1 FROM round_history m WHERE m.user_id = u.id
            ))::int AS played
     FROM users u
     WHERE u.created_at >= now() - make_interval(days => ${WINDOW_DAYS * 2})
@@ -101,7 +101,7 @@ async function aroundNotPlaying(): Promise<number> {
     FROM users u
     WHERE u.last_seen >= now() - make_interval(days => 7)
       AND NOT EXISTS (
-        SELECT 1 FROM match_history m
+        SELECT 1 FROM round_history m
         WHERE m.user_id = u.id
           AND m.finished_at >= now() - make_interval(days => 7)
       )
@@ -126,11 +126,11 @@ async function ratingSpread(): Promise<{ bucket: string; n: number }[]> {
   return rows.rows;
 }
 
-async function provisionalPlayers(provisionalGames: number): Promise<number> {
+async function provisionalPlayers(provisionalRounds: number): Promise<number> {
   const rows = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n
     FROM user_ratings
-    WHERE season = to_char(now(), 'YYYY-MM') AND games < ${provisionalGames}
+    WHERE season = to_char(now(), 'YYYY-MM') AND rounds < ${provisionalRounds}
   `);
   return rows.rows[0]?.n ?? 0;
 }
@@ -141,7 +141,7 @@ async function matchBalance(): Promise<{ playerCount: number; matches: number; a
     SELECT player_count AS "playerCount",
            count(*)::int AS matches,
            round(avg(points)::numeric, 1)::float8 AS "averagePoints"
-    FROM match_history
+    FROM round_history
     WHERE finished_at >= now() - make_interval(days => ${WINDOW_DAYS})
     GROUP BY 1
     ORDER BY 1
@@ -153,7 +153,7 @@ async function matchBalance(): Promise<{ playerCount: number; matches: number; a
 async function placements(): Promise<{ placement: number; n: number }[]> {
   const rows = await db.execute<{ placement: number; n: number }>(sql`
     SELECT placement, count(*)::int AS n
-    FROM match_history
+    FROM round_history
     WHERE finished_at >= now() - make_interval(days => ${WINDOW_DAYS})
     GROUP BY 1
     ORDER BY 1
@@ -162,7 +162,7 @@ async function placements(): Promise<{ placement: number; n: number }[]> {
   return rows.rows;
 }
 
-/** 7. Started but never finished — rooms by status, and games left mid-hand. */
+/** 7. Started but never finished — rooms by status, and games left mid-round. */
 async function unfinished(): Promise<{ status: string; n: number }[]> {
   const rows = await db.execute<{ status: string; n: number }>(sql`
     SELECT status::text AS status, count(*)::int AS n
@@ -212,7 +212,7 @@ async function forDisplay(groups: ClientErrorGroup[]): Promise<AdminSnapshot["cr
 }
 
 /** Every panel on the page, gathered concurrently. */
-export async function adminSnapshot(provisionalGames: number): Promise<AdminSnapshot> {
+export async function adminSnapshot(provisionalRounds: number): Promise<AdminSnapshot> {
   const [
     signupRows,
     users,
@@ -240,7 +240,7 @@ export async function adminSnapshot(provisionalGames: number): Promise<AdminSnap
     retention(),
     aroundNotPlaying(),
     ratingSpread(),
-    provisionalPlayers(provisionalGames),
+    provisionalPlayers(provisionalRounds),
     matchBalance(),
     placements(),
     unfinished(),

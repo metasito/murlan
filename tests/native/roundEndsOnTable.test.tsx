@@ -11,14 +11,14 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockStartNextHand = jest.fn();
+const mockStartNextRound = jest.fn();
 const mockTable: { props: { onRoundLanded?: (landsAt: number) => void } } = { props: {} };
 const mockMatch = { over: false };
 
 const OVER: GameState = {
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
-    { id: 'player_1', name: 'Luan', hand: [], type: 'ai' },
+    { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
   ],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -26,8 +26,8 @@ const OVER: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: true,
-  rankings: ['player_0', 'player_1'],
+  roundOver: true,
+  finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
 };
 
@@ -39,12 +39,12 @@ jest.mock('@/context/GameContext', () => ({
     playCards: () => {},
     passTurn: () => {},
     resetGame: () => {},
-    runAITurn: () => {},
+    runBotTurn: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    startNextHand: mockStartNextHand,
-    match: { length: 'match', target: 21, over: mockMatch.over, scores: {}, hands: [] },
+    startNextRound: mockStartNextRound,
+    match: { length: 'match', target: 21, over: mockMatch.over, scores: {}, rounds: [] },
   }),
 }));
 
@@ -84,21 +84,21 @@ describe('the end of a round, offline', () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
     expect(router.replace).not.toHaveBeenCalled();
-    expect(mockStartNextHand).not.toHaveBeenCalled();
+    expect(mockStartNextRound).not.toHaveBeenCalled();
 
     await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await act(async () => {
       jest.advanceTimersByTime(RoundEnding.deal - 1);
     });
-    expect(mockStartNextHand).not.toHaveBeenCalled();
+    expect(mockStartNextRound).not.toHaveBeenCalled();
     await act(async () => {
       jest.advanceTimersByTime(1);
     });
-    expect(mockStartNextHand).toHaveBeenCalledTimes(1);
+    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
     await act(async () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
-    expect(mockStartNextHand).toHaveBeenCalledTimes(1);
+    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
     await view.unmount();
   });
@@ -113,7 +113,7 @@ describe('the end of a round, offline', () => {
     await act(async () => {
       jest.advanceTimersByTime(RoundEnding.deal - 1_000);
     });
-    expect(mockStartNextHand).toHaveBeenCalledTimes(1);
+    expect(mockStartNextRound).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
 
@@ -122,7 +122,7 @@ describe('the end of a round, offline', () => {
     await act(async () => mockTable.props.onRoundLanded?.(performance.now()));
     await view.unmount();
     jest.advanceTimersByTime(LONG_AFTER);
-    expect(mockStartNextHand).not.toHaveBeenCalled();
+    expect(mockStartNextRound).not.toHaveBeenCalled();
   });
 
   it('a match ends on the table too, and the table is not asked to deal', async () => {
@@ -133,7 +133,7 @@ describe('the end of a round, offline', () => {
       jest.advanceTimersByTime(LONG_AFTER);
     });
     expect(router.replace).not.toHaveBeenCalled();
-    expect(mockStartNextHand).not.toHaveBeenCalled();
+    expect(mockStartNextRound).not.toHaveBeenCalled();
     await view.unmount();
   });
 });

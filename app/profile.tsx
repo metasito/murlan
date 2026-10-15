@@ -33,7 +33,7 @@ import { getLocale, useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import type { TranslationKey } from "@/lib/i18n";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
-import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
+import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { shouldShowAddEmailCard, shouldShowVerifyEmailCard } from "@/lib/emailNudge";
 import { HistoryRow } from "@/components/HistoryRow";
@@ -41,7 +41,7 @@ import { serverErrorMessage } from "@/lib/apiError";
 import { apiRequest } from "@/lib/query-client";
 import { USERNAME_MAX, USERNAME_MIN, usernameProblem } from "@/shared/username";
 import { placementColor, positionLabelKey } from "@/lib/game/placement";
-import type { UserStatsDto, RatingDto, AchievementStatusDto, MatchHistoryDto } from "@/lib/wire";
+import type { UserStatsDto, RatingDto, AchievementStatusDto, RoundHistoryDto } from "@/lib/wire";
 
 type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -543,7 +543,7 @@ export default function ProfileScreen() {
   // that renders nothing anyway.
   const signedIn = !!user;
   const statsQuery = useQuery<UserStatsDto>({ queryKey: ["/api/stats/me"], enabled: signedIn });
-  const historyQuery = useQuery<MatchHistoryDto[]>({
+  const historyQuery = useQuery<RoundHistoryDto[]>({
     queryKey: ["/api/stats/history"],
     enabled: signedIn,
   });
@@ -558,7 +558,7 @@ export default function ProfileScreen() {
   const achievements = achievementsQuery.data ?? [];
   const rating = ratingQuery.data;
   const unlockedCount = achievements.filter((a) => a.unlocked).length;
-  const winRate = stats && stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
+  const winRate = stats && stats.roundsPlayed > 0 ? Math.round((stats.roundsWon / stats.roundsPlayed) * 100) : 0;
 
   const achievementsTitle = achievementsQuery.isSuccess
     ? `${t("profile.achievementsTitle")} · ${unlockedCount}/${achievements.length}`
@@ -598,17 +598,17 @@ export default function ProfileScreen() {
               )}
               {rating && (() => {
                 const season = t("ladder.seasonLabel", { season: formatSeason(rating.season, t) });
-                const games = rating.provisional
-                  ? t("ladder.provisional", { n: PROVISIONAL_GAMES - rating.games })
-                  : t("ladder.gamesLabel", { n: rating.games });
+                const rounds = rating.provisional
+                  ? t("ladder.provisional", { n: PROVISIONAL_ROUNDS - rating.rounds })
+                  : t("ladder.roundsLabel", { n: rating.rounds });
                 return (
                   <View
                     style={styles.ratingBlock}
-                    {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${season}. ${games}`)}
+                    {...a11yGroup(`${t("ladder.ratingLabel")}: ${rating.rating}. ${season}. ${rounds}`)}
                   >
                     <Text style={styles.ratingValue} {...a11yHidden()}>{rating.rating}</Text>
                     <Text style={styles.ratingSeason} {...a11yHidden()}>{season}</Text>
-                    <Text style={styles.ratingGames} {...a11yHidden()}>{games}</Text>
+                    <Text style={styles.ratingRounds} {...a11yHidden()}>{rounds}</Text>
                   </View>
                 );
               })()}
@@ -633,17 +633,17 @@ export default function ProfileScreen() {
                   retry={{ label: t("common.retry"), a11yLabel: t("profile.retryStatsA11yLabel"), onPress: () => statsQuery.refetch() }}
                 />
               )}
-              {stats && stats.gamesPlayed === 0 && (
+              {stats && stats.roundsPlayed === 0 && (
                 <EmptyBlock
                   icon="game-controller-outline"
                   title={t("profile.statsEmptyTitle")}
                   body={t("profile.statsEmptyBody")}
                 />
               )}
-              {stats && stats.gamesPlayed > 0 && (
+              {stats && stats.roundsPlayed > 0 && (
                 <View style={styles.statsGrid}>
-                  <StatTile icon="game-controller" value={String(stats.gamesPlayed)} label={t("profile.statGamesPlayed")} />
-                  <StatTile icon="trophy" value={String(stats.gamesWon)} label={t("profile.statGamesWon")} />
+                  <StatTile icon="game-controller" value={String(stats.roundsPlayed)} label={t("profile.statRoundsPlayed")} />
+                  <StatTile icon="trophy" value={String(stats.roundsWon)} label={t("profile.statRoundsWon")} />
                   <StatTile icon="stats-chart" value={`${winRate}%`} label={t("profile.statWinRate")} />
                   <StatTile icon="ribbon" value={String(stats.matchesWon)} label={t("profile.statMatchesWon")} />
                   <StatTile icon="flame" value={String(stats.currentStreak)} label={t("profile.statCurrentStreak")} />
@@ -1038,7 +1038,7 @@ const styles = StyleSheet.create({
   ratingBlock: { alignItems: "center", gap: Spacing.xxs, paddingBottom: Spacing.md },
   ratingValue: { fontFamily: "Rajdhani_700Bold", fontSize: FontSize.hero, color: Colors.gold },
   ratingSeason: { ...Type.label },
-  ratingGames: { ...Type.caption, textAlign: "center" },
+  ratingRounds: { ...Type.caption, textAlign: "center" },
 
   rowInfo: { flex: 1, gap: Spacing.xxs },
 

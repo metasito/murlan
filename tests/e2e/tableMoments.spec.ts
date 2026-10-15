@@ -139,11 +139,11 @@ const BEATER_LABEL = "8 di Cuori";
 
 function flightSave(): object {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [BEATER, SPARE], type: "human" },
-        { id: "player_1", name: "Bea", hand: [BOT_CARD], type: "ai" },
+        { id: "player_1", name: "Bea", hand: [BOT_CARD], type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: buildCombination([PILE_CARD]),
@@ -151,14 +151,14 @@ function flightSave(): object {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
     },
-    match: { length: "single", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "single", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

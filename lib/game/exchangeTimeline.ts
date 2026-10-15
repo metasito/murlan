@@ -41,7 +41,7 @@ export function legTimes(reduced: boolean): LegTimes {
   return reduced ? REDUCED_LEG : LEG;
 }
 
-/** The pile's centre, where a traded card rests face up at a played card's size; `dx` lays the two Jokers side by side. */
+/** The pile's centre, where an exchanged card rests face up at a played card's size; `dx` lays the two Jokers side by side. */
 export function restPoint(dx = 0): From {
   "worklet";
   return { x: dx, y: 0, rot: dx / 9, scale: 1 };
@@ -99,13 +99,13 @@ export function legPose(t: number, p: LegPoints, reduced = false): ExchangePose 
   };
 }
 
-/** When the choice opens, on the trade's clock: the receive landed and read. */
+/** When the choice opens, on the exchange's clock: the receive landed and read. */
 export function choiceOpensAt(reduced: boolean): number {
   "worklet";
   return X.beat + legTimes(reduced).end + X.read;
 }
 
-/** When the receive and the give first show, on the trade's clock; `choice` is when the choice was seen, null before it. */
+/** When the receive and the give first show, on the exchange's clock; `choice` is when the choice was seen, null before it. */
 export function legShows(choice: number | null, reduced: boolean): [number, number] {
   "worklet";
   return [X.beat, choice === null ? Infinity : Math.max(choice + X.giveWait, choiceOpensAt(reduced))];
@@ -123,6 +123,6 @@ export function exchangeGiveDelayMs(counts: readonly number[]): number {
 }
 
 /** From the choice to the ceremony's close; for both Jokers, from the deal's end. */
-export function exchangeAnnounceFrom(bothJokersException: boolean): number {
-  return (bothJokersException ? X.beat : X.giveWait) + LEG.end + X.read;
+export function exchangeAnnounceFrom(twoJokerException: boolean): number {
+  return (twoJokerException ? X.beat : X.giveWait) + LEG.end + X.read;
 }

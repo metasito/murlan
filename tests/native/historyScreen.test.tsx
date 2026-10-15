@@ -1,4 +1,4 @@
-// tests/native/historyScreen.test.tsx — every hand the player has, a page at
+// tests/native/historyScreen.test.tsx — every round the player has, a page at
 // a time. The property under test is that it pages: an endless scroll is the
 // defect #678 exists to remove, so a list with no last page would be the same
 // defect one screen along.
@@ -54,7 +54,7 @@ const METRICS = {
   insets: { top: 0, left: 0, right: 0, bottom: 0 },
 };
 
-/** Each hand is given the seat name its index makes, so a row is identifiable. */
+/** Each round is given the seat name its index makes, so a row is identifiable. */
 const hands = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
     id: `h${i}`,
@@ -91,7 +91,7 @@ beforeEach(() => {
 });
 
 describe('the full history screen', () => {
-  it('shows one page of hands and says which page it is', async () => {
+  it('shows one page of rounds and says which page it is', async () => {
     const view = await show(hands(23));
     await act(async () => {});
 
@@ -142,7 +142,7 @@ describe('the full history screen', () => {
     await view.unmount();
   });
 
-  it('says so when there are no hands at all', async () => {
+  it('says so when there are no rounds at all', async () => {
     const view = await show([]);
     await act(async () => {});
 
@@ -152,8 +152,8 @@ describe('the full history screen', () => {
   });
 });
 
-describe('a refresh that fails over hands already shown', () => {
-  it('keeps the hands and offers a compact retry, not the full error', async () => {
+describe('a refresh that fails over rounds already shown', () => {
+  it('keeps the rounds and offers a compact retry, not the full error', async () => {
     mockState = { isError: true, isSuccess: false };
     const view = await show(hands(4));
     await act(async () => {});

@@ -1,4 +1,4 @@
-// The offline game, as it is stored between app launches.
+// The offline match, as it is stored between app launches.
 //
 // An offline match lives entirely in memory (context/GameContext.tsx), so a
 // phone call, a low-memory kill or a swipe-away ends it. Online play survives a
@@ -14,11 +14,11 @@ import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
 /**
  * Bumped whenever the stored shape changes. A blob written by an older build is
  * discarded rather than migrated — the same call `server/game/onlineGameLogic.ts`
- * makes for `active_games`, and for the same reason: restoring a hand into a
- * shape the engine no longer expects corrupts a game silently, while losing one
+ * makes for `active_games`, and for the same reason: restoring a round into a
+ * shape the engine no longer expects corrupts a match silently, while losing one
  * abandoned match costs nothing.
  */
-export const OFFLINE_SAVE_VERSION = 2;
+export const OFFLINE_SAVE_VERSION = 3;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -74,7 +74,7 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   const { gameState, match, players, gameMode, dealFirstSeat } = parsed;
   if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
   if (gameState.players.length === 0) return INCOMPATIBLE;
-  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return INCOMPATIBLE;
+  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
   if (!Array.isArray(players) || players.length !== gameState.players.length) return INCOMPATIBLE;
   if (gameMode !== "free_for_all" && gameMode !== "teams") return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;
@@ -85,10 +85,10 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
 /**
  * Whether a decoded save is worth offering to resume.
  *
- * The match being unfinished is the whole rule. A finished *hand* is still
+ * The match being unfinished is the whole rule. A finished *round* is still
  * resumable — that is the table's ending between rounds, with the next one
  * still to deal — but a finished match is not: the player saw its final
- * scoreboard and is done, and offering to resume it would lead to a game with
+ * scoreboard and is done, and offering to resume it would lead to a match with
  * nothing left to play.
  */
 export function isResumable(save: OfflineSave | null): save is OfflineSave {

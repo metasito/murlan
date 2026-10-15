@@ -1,7 +1,7 @@
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
-import { rollMatchForward } from "./gameOver.ts";
+import { rollMatchForward } from "./roundOver.ts";
 import { emitMatchState } from "../socket/emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
@@ -23,23 +23,23 @@ export async function dealRound(
   nextState: GameState
 ) {
   game.gameState = nextState;
-  // A new hand: last hand's flags would record the same bombs, jokers and
+  // A new round: last round's flags would record the same bombs, jokers and
   // departures again in every remaining round.
-  game.handFlags = {};
+  game.roundFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
-  // Minimum-legal play (docs/GAME-RULES.md § Decisions) is scoped to the hand a seat was
-  // taken over mid-play; a fresh deal always starts full AI. The end-match
+  // Minimum-legal play (docs/GAME-RULES.md § Decisions) is scoped to the round a seat was
+  // taken over mid-play; a fresh deal always starts full-strength bots. The end-match
   // vote is answered against the table as it stands now, not a stalled tally
-  // from the hand that just ended.
+  // from the round that just ended.
   game.weakSeats.clear();
   game.endMatchVotes.clear();
   // Not required for correctness — announceRejoin's `else if` already makes a
-  // stale payload unreachable the instant gameState.gameOver goes false, and
-  // handleGameOver clears this itself before the next hand it plays can end.
-  // Cleared here anyway so the table does not hold a finished hand's payload
+  // stale payload unreachable the instant gameState.roundOver goes false, and
+  // handleRoundOver clears this itself before the next round it plays can end.
+  // Cleared here anyway so the table does not hold a finished round's payload
   // in memory for the whole of the next one.
-  game.lastGameOverPayload = undefined;
+  game.lastRoundOverPayload = undefined;
   rollMatchForward(game);
 
   await roomStore

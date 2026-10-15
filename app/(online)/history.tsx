@@ -1,6 +1,6 @@
 // Every hand the player still has, a page at a time.
 //
-// Paging is client-side: `match_history` is capped at
+// Paging is client-side: `round_history` is capped at
 // MAX_HISTORY_ROWS_PER_USER per account, and the profile already fetches every
 // row for its trend panels, so this screen pages over a list it is holding
 // anyway.
@@ -15,14 +15,14 @@ import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { HistoryRow } from "@/components/HistoryRow";
 import { Colors, Spacing, Type } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
-import type { MatchHistoryDto } from "@/lib/wire";
+import type { RoundHistoryDto } from "@/lib/wire";
 
 /** Rows per page. Chosen to fill a phone in portrait without spilling. */
 const PAGE_SIZE = 10;
 
 export default function HistoryScreen() {
   const { t } = useTranslation();
-  const historyQuery = useQuery<MatchHistoryDto[]>({ queryKey: ["/api/stats/history"] });
+  const historyQuery = useQuery<RoundHistoryDto[]>({ queryKey: ["/api/stats/history"] });
   const history = historyQuery.data ?? [];
 
   const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));

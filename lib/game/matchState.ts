@@ -24,8 +24,8 @@ export interface PlayerSetupConfig {
 }
 
 /** One played-out round, keyed by engine player id (`player_0`). */
-export interface HandResult {
-  rankings: string[];
+export interface RoundResult {
+  finishingOrder: string[];
   pointsAwarded: Record<string, number>;
 }
 
@@ -36,14 +36,14 @@ export interface HandResult {
 export interface MatchState extends MatchVerdict {
   /** Engine player id -> cumulative match points. */
   scores: Record<string, number>;
-  hands: HandResult[];
+  rounds: RoundResult[];
 }
 
 /**
  * Whether `viewerId` is the first seat named by `candidates` (or, in team
  * mode, its teammate). `candidates` is ordered best-first, and one naming no
  * seat is passed over: a client that rejoins a finished table never receives
- * `game:over`, and a winner id can outlive the seat it named. False for a
+ * `game:round_over`, and a winner id can outlive the seat it named. False for a
  * viewer holding no seat.
  */
 export function celebratesViewer(
@@ -68,9 +68,9 @@ export function celebratesViewer(
  * Whether a just-played round paid every team the same total (GAME-RULES.md §11):
  * first-and-fourth pays 3+0, second-and-third pays 2+1, both 3.
  */
-export function isDrawnHand(
+export function isDrawnRound(
   players: readonly { id: string; team?: string }[],
-  handScores: Record<string, number>
+  placementPoints: Record<string, number>
 ): boolean {
   const teamOfKey: Record<string, string> = {};
   for (const p of players) {
@@ -79,43 +79,43 @@ export function isDrawnHand(
   // An absent or incomplete score set is not known yet, and "not known" must
   // never collapse into "drawn": with no entries at all, aggregateTeamScores
   // totals every team to zero and zero equals zero.
-  if (Object.keys(teamOfKey).some((id) => !(id in handScores))) return false;
-  const totals = aggregateTeamScores(handScores, teamOfKey);
+  if (Object.keys(teamOfKey).some((id) => !(id in placementPoints))) return false;
+  const totals = aggregateTeamScores(placementPoints, teamOfKey);
   const values = Object.values(totals);
   return values.length > 1 && values.every((v) => v === values[0]);
 }
 
-export type HandOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
+export type RoundOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
 
 /**
  * What the round that just ended did to `viewerId` — the decision the
  * table's own win/lose sting reads (`components/useTableFeedback.ts`).
- * `handScores` is a parameter rather than recomputed here, so the round is
+ * `placementPoints` is a parameter rather than recomputed here, so the round is
  * scored from the one value its caller already holds (the server's
- * `game:over` payload online, the played hand's own `pointsAwarded` offline)
- * instead of a second call to `scoreHand` that happens to agree today.
+ * `game:round_over` payload online, the played round's own `pointsAwarded` offline)
+ * instead of a second call to `scoreRound` that happens to agree today.
  *
  * `"pending"` is an answer of its own, not a stand-in for `"draw"`: online, a
- * finished hand's `rankings` reach the client (`game:state`, `gameOver:
- * true`) before its scores do (the separate, unawaited `game:over`), and a
+ * finished round's `finishingOrder` reach the client (`game:state`, `roundOver:
+ * true`) before its scores do (the separate, unawaited `game:round_over`), and a
  * genuine draw is indistinguishable from "not scored yet" without them —
  * both leave every team's known total at zero. This is the caller's signal
  * to wait for the render the scores arrive on rather than decide without
- * them, the same way `isDrawnHand` itself refuses to call an incomplete
+ * them, the same way `isDrawnRound` itself refuses to call an incomplete
  * score set a draw.
  */
-export function handOutcomeFor(
+export function roundOutcomeFor(
   players: readonly { id: string; team?: string }[],
-  rankings: readonly string[],
-  handScores: Record<string, number>,
+  finishingOrder: readonly string[],
+  placementPoints: Record<string, number>,
   viewerId: string | undefined,
   isTeamMode: boolean
-): HandOutcome {
-  if (viewerId === undefined || rankings.length === 0) return "neutral";
-  if (isTeamMode && rankings.some((id) => !(id in handScores))) return "pending";
-  if (isTeamMode && isDrawnHand(players, handScores)) return "draw";
-  if (celebratesViewer(players, [rankings[0]], viewerId, isTeamMode)) return "won";
-  if (celebratesViewer(players, [rankings[rankings.length - 1]], viewerId, isTeamMode)) {
+): RoundOutcome {
+  if (viewerId === undefined || finishingOrder.length === 0) return "neutral";
+  if (isTeamMode && finishingOrder.some((id) => !(id in placementPoints))) return "pending";
+  if (isTeamMode && isDrawnRound(players, placementPoints)) return "draw";
+  if (celebratesViewer(players, [finishingOrder[0]], viewerId, isTeamMode)) return "won";
+  if (celebratesViewer(players, [finishingOrder[finishingOrder.length - 1]], viewerId, isTeamMode)) {
     return "lost";
   }
   return "neutral";
@@ -130,7 +130,7 @@ export function matchOutcomeFor(
   matchWinners: readonly string[],
   viewerId: string | undefined,
   isTeamMode: boolean
-): HandOutcome {
+): RoundOutcome {
   if (matchWinners.length === 0) return "pending";
   if (viewerId === undefined) return "neutral";
   const celebrated = matchWinners.map((id) => celebratesViewer(players, [id], viewerId, isTeamMode));
@@ -141,7 +141,7 @@ export function matchOutcomeFor(
 /** One seat's line on the end-of-round scoreboard, in every identity it is indexed by. */
 export interface ScoreLine {
   seatIndex: number;
-  /** The engine player id the rankings and the match winners are stated in. */
+  /** The engine player id the finishingOrder and the match winners are stated in. */
   engineId: string;
   userId: string | null;
   username: string;
@@ -157,50 +157,50 @@ export interface ScoreLine {
 
 export interface RatingAfter {
   rating: number;
-  games: number;
+  rounds: number;
 }
 
 /**
- * `game:over`, as the server states it and the client reads it.
+ * `game:round_over`, as the server states it and the client reads it.
  *
  * Declared once and with no optional field: both halves were writing their own
  * copy, and the client's had every field optional, which makes a server that
  * stops sending one indistinguishable from one that never did.
  */
-export interface GameOverPayload {
+export interface RoundOverPayload {
   /** Finish order, as engine player ids. */
-  rankings: string[];
+  finishingOrder: string[];
   scores: ScoreLine[];
   matchTarget: number;
   matchLength: MatchLength;
-  handsPlayed: number;
+  roundsPlayed: number;
   matchOver: boolean;
   matchWinnerIds: string[];
   matchContinues: boolean;
   isDraw: boolean;
   /**
-   * By user id, and empty for a hand that earns no rating. The server reads
+   * By user id, and empty for a round that earns no rating. The server reads
    * this before it writes the ladder, because the inputs stop existing once
    * that write lands (server/game/ratings.ts).
    */
   ratingDeltas: Record<string, number>;
   /**
-   * Each rated seat's standing once this hand is written, keyed as
+   * Each rated seat's standing once this round is written, keyed as
    * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
-   * `game:over`, so `/api/ratings/me` read on it can still be the old rating.
+   * `game:round_over`, so `/api/ratings/me` read on it can still be the old rating.
    */
   ratingsAfter: Record<string, RatingAfter>;
   /**
-   * Whether this hand wrote a `/api/stats/history` row — a bot-majority
-   * table writes none. Wider than `ratingDeltas` being empty: a teams hand
+   * Whether this round wrote a `/api/stats/history` row — a bot-majority
+   * table writes none. Wider than `ratingDeltas` being empty: a teams round
    * is recorded and unrated.
    */
   recorded: boolean;
   /**
    * The match ended before its first point, on an abandonment
    * (docs/GAME-RULES.md § Decisions) — nothing earned, nothing taken, rated for nobody.
-   * `rankings` and `scores` are empty and `recorded` is false alongside it;
-   * false for every other hand, voided or not.
+   * `finishingOrder` and `scores` are empty and `recorded` is false alongside it;
+   * false for every other round, voided or not.
    */
   voided: boolean;
 }

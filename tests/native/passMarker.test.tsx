@@ -63,8 +63,8 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -107,7 +107,7 @@ describe('the per-seat pass marker', () => {
     jest.useRealTimers();
   });
 
-  it('marks every seat that has answered the round, and no others', async () => {
+  it('marks every seat that has answered the trick, and no others', async () => {
     // Seat 0 led; turns run downward, so seats 3 and 2 have passed and seat 1
     // is the one still on the clock.
     const r = await render(
@@ -155,7 +155,7 @@ describe('the per-seat pass marker', () => {
     await r.unmount();
   });
 
-  it('clears every marker when the round closes', async () => {
+  it('clears every marker when the trick closes', async () => {
     const r = await render(
       table(
         state(4, {
@@ -296,8 +296,8 @@ describe('the pass sound', () => {
     await r.unmount();
   });
 
-  it('sounds the pass that closes the round as the round won, which raises no count edge', async () => {
-    // `processPass` resets passCount to zero on the pass that closes a round,
+  it('sounds the pass that closes the trick as the trick won, which raises no count edge', async () => {
+    // `processPass` resets passCount to zero on the pass that closes a trick,
     // so the close itself is the edge. One state change sounds one thing.
     const r = await seated(
       table(
@@ -329,9 +329,9 @@ describe('the pass sound', () => {
     await r.unmount();
   });
 
-  it('heads-up: the viewer’s own pass closes the round and still sounds', async () => {
+  it('heads-up: the viewer’s own pass closes the trick and still sounds', async () => {
     // Two seats means `passesNeeded` is 1, so every legal pass closes the
-    // round — this is the only pass a two-player game ever has.
+    // trick — this is the only pass a two-player game ever has.
     const onPass = jest.fn();
     const r = await seated(
       table(

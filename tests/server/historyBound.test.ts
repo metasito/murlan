@@ -1,4 +1,4 @@
-// tests/server/historyBound.test.ts — match_history is pruned on every write, and the
+// tests/server/historyBound.test.ts — round_history is pruned on every write, and the
 // same bound has to govern the read.
 //
 // If the read limit were larger, the profile would list rows that the next
@@ -38,8 +38,8 @@ describe("match history stays bounded", () => {
   test("pruning happens in the same transaction as the insert that triggers it", () => {
     // A prune outside the transaction can interleave with a concurrent write
     // and delete a row that was just added for another game.
-    const tx = source.slice(source.indexOf("tx.insert(matchHistory)"));
-    const pruneAt = tx.indexOf("delete(matchHistory)");
+    const tx = source.slice(source.indexOf("tx.insert(roundHistory)"));
+    const pruneAt = tx.indexOf("delete(roundHistory)");
     assert.ok(pruneAt > 0, "no prune found after the history insert");
     const txEnd = tx.indexOf("});", pruneAt);
     assert.ok(txEnd > pruneAt, "the prune appears to fall outside the transaction block");

@@ -14,7 +14,7 @@ import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
-import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
+import { driveHumansToRoundOver } from "../helpers/gameDriver.ts";
 
 const PORTS = [5561, 5562] as const;
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
@@ -70,7 +70,7 @@ describe("broadcasts cross server instances", {
     // `CREATE TYPE` is not idempotent against a concurrent identical one.
     for (const port of PORTS) instances.push(await boot(port, scoped, {
       MURLAN_STATE_ACK_TIMEOUT_MS: String(ACK_TIMEOUT_MS),
-      // Nothing here plays a hand; an AFK auto-move mid-assertion would be
+      // Nothing here plays a round; an AFK auto-move mid-assertion would be
       // state arriving for a reason that is not a re-send.
       MURLAN_AFK_TIMEOUT_MS: "600000",
     }));
@@ -350,19 +350,19 @@ describe("broadcasts cross server instances", {
     return room;
   }
 
-  test("a player on the other instance can play the hand out", async () => {
+  test("a player on the other instance can play the round out", async () => {
     // `room:start` runs on instance 1, so the game lives in instance 1's
     // `activeGames`. Every move the other player makes arrives at instance 2,
     // which holds no copy of it — and answered `NO_LIVE_GAME`, so the table
     // was playable by exactly the half of it that happened to land on the
     // instance that dealt.
     await openTable();
-    const over = await driveHumansToGameOver(
+    const over = await driveHumansToRoundOver(
       [aSocket, bSocket],
       () => aSocket.emit("room:start"),
       45_000
     );
-    assert.ok(over, "the hand never finished");
+    assert.ok(over, "the round never finished");
   });
 
   test("the table outlives the instance that owned it", async () => {
@@ -403,7 +403,7 @@ describe("broadcasts cross server instances", {
     assert.notEqual(
       reply.code,
       "NO_LIVE_GAME",
-      "the surviving instance never took the table over — the hand died with " +
+      "the surviving instance never took the table over — the round died with " +
         "the process that dealt it"
     );
   });

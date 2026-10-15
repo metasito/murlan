@@ -34,7 +34,7 @@ import { useTranslation } from "@/lib/i18n";
 /** A replay has no actions; the table's handlers are wired to nothing. */
 const NOOP = () => {};
 
-/** Gap between moves when a replay plays itself: one combination read, and a whole hand not a sitting. */
+/** Gap between moves when a replay plays itself: one combination read, and a whole round not a sitting. */
 const STEP_MS = 1200;
 
 export default function ReplayScreen() {
@@ -102,7 +102,7 @@ export default function ReplayScreen() {
   // A player who deleted their account is erased from the stored seat, which
   // keeps no wording of its own (server/http/deleteAccount.ts). The label is
   // supplied here so it is in the reader's language rather than the language
-  // the hand happened to be played in.
+  // the round happened to be played in.
   const named = useMemo(
     () =>
       replay

@@ -48,7 +48,7 @@ test("a match interrupted mid-hand is offered back, with the same cards", async 
   await resume.click();
   await page.locator(TABLE).waitFor({ timeout: 30_000 });
 
-  // The same hand, not a fresh deal. A new game would almost certainly differ,
+  // The same round, not a fresh deal. A new round would almost certainly differ,
   // and comparing the cards themselves is what makes that certain.
   expect(await handOf(page)).toEqual(before);
 });

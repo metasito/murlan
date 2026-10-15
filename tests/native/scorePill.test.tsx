@@ -40,8 +40,8 @@ const state = (teams: boolean): GameState => ({
   passCount: 0,
   gameMode: teams ? 'teams' : 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 
@@ -112,7 +112,7 @@ describe('the score pill', () => {
     await r.unmount();
   });
 
-  it('reads one row per pair in teams mode, partners summed', async () => {
+  it('reads one row per team in teams mode, partners summed', async () => {
     const r = await render(table({ teams: true }));
     expect(pill().props.accessibilityLabel).toBe(tn('scorePill.a11yLabel', 16, { target: 21, place: 1 }));
     await press(pill());

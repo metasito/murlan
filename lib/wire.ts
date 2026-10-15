@@ -4,8 +4,8 @@ import type { GameMode } from "./game/gameEngine";
 
 export interface UserStatsDto {
   userId: string;
-  gamesPlayed: number;
-  gamesWon: number;
+  roundsPlayed: number;
+  roundsWon: number;
   matchesWon: number;
   currentStreak: number;
   bestStreak: number;
@@ -17,7 +17,7 @@ export interface UserStatsDto {
 export interface RatingDto {
   season: string;
   rating: number;
-  games: number;
+  rounds: number;
   provisional: boolean;
 }
 
@@ -26,7 +26,7 @@ export interface LeaderboardEntryDto {
   userId: string;
   username: string;
   rating: number;
-  games: number;
+  rounds: number;
 }
 
 export interface AchievementStatusDto {
@@ -73,7 +73,7 @@ export interface HistoryParticipantDto {
   bot: boolean;
 }
 
-export interface MatchHistoryDto {
+export interface RoundHistoryDto {
   id: string;
   userId: string;
   finishedAt: string;
@@ -84,8 +84,8 @@ export interface MatchHistoryDto {
   opponents: unknown[];
   participants: HistoryParticipantDto[];
   replayId: string | null;
-  /** Null for a hand the ladder did not rate — never 0, which is a rated hand that moved nobody. */
+  /** Null for a round the ladder did not rate — never 0, which is a rated round that moved nobody. */
   ratingDelta: number | null;
-  /** True when this seat left before the hand finished — docs/GAME-RULES.md § Decisions. */
+  /** True when this seat left before the round finished — docs/GAME-RULES.md § Decisions. */
   abandoned: boolean;
 }

@@ -1,5 +1,5 @@
 // tests/native/leaderboardScreen.test.tsx — the viewer's own rating on the
-// ladder says when it is loading or failed, and a finished hand refreshes it.
+// ladder says when it is loading or failed, and a finished round refreshes it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
@@ -55,7 +55,7 @@ describe("the viewer's own rating", () => {
   });
 
   it('keeps a rating it has when a refresh fails', async () => {
-    mockMe = { data: { season: '2026-08', rating: 1234, games: 30, provisional: false }, isLoading: false, isError: true };
+    mockMe = { data: { season: '2026-08', rating: 1234, rounds: 30, provisional: false }, isLoading: false, isError: true };
     const view = await show();
     expect(view.getByLabelText(/1234/)).toBeTruthy();
     expect(view.getByText(locale['common.refreshFailed'])).toBeTruthy();

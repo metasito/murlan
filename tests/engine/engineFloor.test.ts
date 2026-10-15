@@ -1,7 +1,7 @@
 // tests/engine/engineFloor.test.ts — the engine refuses a move that cannot happen.
 //
 // `processPlay` used to strip exactly the ids it was handed. Every caller gates
-// first — the server by seat, the offline context before it commits, and an AI
+// first — the server by seat, the offline context before it commits, and a bot
 // play is legal by construction — so the hole never opened. A caller that
 // forgot would have corrupted the state silently rather than been refused, and
 // two call sites re-implement a legality check the engine already owns.
@@ -131,7 +131,7 @@ describe("a play that cannot happen", () => {
     winnerIdx: 0,
     loserIdx: 1,
     cardFromLoser: c("K", "hearts"),
-    bothJokersException: false,
+    twoJokerException: false,
   };
 
   test("refuses a combination that names the same card twice", () => {

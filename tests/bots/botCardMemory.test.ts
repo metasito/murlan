@@ -14,7 +14,7 @@
 // is deliberate; see the ticket.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { aiChoosePlay, bombPossible, outstandingAbove } from "../../lib/game/ai.ts";
+import { botChoosePlay, bombPossible, outstandingAbove } from "../../lib/game/bot.ts";
 import {
   buildCombination,
   createDeck,
@@ -29,7 +29,7 @@ import type { Card, GameState, Rank } from "../../lib/game/gameEngine.ts";
 const seats = (n: number) =>
   Array.from({ length: n }, (_, i) => ({
     name: `bot${i}`,
-    type: "ai" as const,
+    type: "bot" as const,
     personality: "gent" as const,
   }));
 
@@ -43,7 +43,7 @@ const tallyOf = (cards: Card[]): number[] => {
 };
 
 describe("the game records what has been played", () => {
-  test("a fresh deal starts with an empty tally", () => {
+  test("a fresh round starts with an empty tally", () => {
     for (const n of [2, 3, 4]) {
       const state = initializeGame(seats(n), "free_for_all");
       assert.deepEqual(
@@ -59,15 +59,15 @@ describe("the game records what has been played", () => {
       let state = initializeGame(seats(n), "free_for_all");
       const dealt = tallyOf(allHands(state));
 
-      // Drive the table with the engine's own chooser until the hand ends, so
+      // Drive the table with the engine's own chooser until the round ends, so
       // the plays are real ones rather than a fixture's idea of them.
-      for (let turn = 0; turn < 400 && !state.gameOver; turn++) {
+      for (let turn = 0; turn < 400 && !state.roundOver; turn++) {
         const player = state.players[state.currentTurnIndex];
         if (player.hand.length === 0) break;
         const others = state.players
           .filter((p) => p.id !== player.id)
           .map((p) => p.hand.length);
-        const choice = aiChoosePlay(
+        const choice = botChoosePlay(
           player,
           state.lastPlayedCombination,
           state.lastPlayedCombination === null,
@@ -82,7 +82,7 @@ describe("the game records what has been played", () => {
       }
 
       // Whatever is no longer in a hand is what was played. Nothing else can
-      // have moved it: the exchange is not part of this hand.
+      // have moved it: the exchange is not part of this round.
       const remaining = tallyOf(allHands(state));
       const expected = dealt.map((count, i) => count - remaining[i]);
 
@@ -186,7 +186,7 @@ function leadWith(hand: Card[], played: Partial<Record<Rank, number>>, personali
   for (const [rank, n] of Object.entries(played)) {
     playedRanks[getRankStrength(rank as Rank)] = n as number;
   }
-  const me = makePlayer("me", hand, { type: "ai", personality: personality as never });
+  const me = makePlayer("me", hand, { type: "bot", personality: personality as never });
   return { me, playedRanks };
 }
 
@@ -199,7 +199,7 @@ describe("the hard bot plays what it knows", () => {
                   c("9", "hearts"), c("J", "spades"), c("Q", "clubs")];
     const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "gent");
 
-    const choice = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+    const choice = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
 
     assert.ok(choice, "the bot must lead something");
     assert.equal(choice!.cards.length, 1);
@@ -217,7 +217,7 @@ describe("the hard bot plays what it knows", () => {
     // The 7 in hand would otherwise account for one of the four.
     const noSeven = { ...me, hand: hand.filter((card) => card.rank !== "7") };
 
-    const choice = aiChoosePlay(noSeven, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+    const choice = botChoosePlay(noSeven, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
 
     assert.ok(choice, "the bot must still lead something");
     assert.notEqual(choice!.cards[0].rank, "joker_colored", "led into a possible bomb");
@@ -238,7 +238,7 @@ describe("the hard bot plays what it knows", () => {
     );
     const lead = buildCombination([c("9", "clubs")])!;
 
-    const choice = aiChoosePlay(me, lead, false, [3, 3, 3], undefined, () => 0.5, false, playedRanks);
+    const choice = botChoosePlay(me, lead, false, [3, 3, 3], undefined, () => 0.5, false, playedRanks);
 
     assert.ok(choice, "the bot can beat a 9 and must not pass");
     assert.equal(choice!.cards[0].rank, "J", "spent a 2 it did not need");
@@ -250,7 +250,7 @@ describe("the medium bot takes an unbeatable lead and nothing more", () => {
     const hand = [j("colored"), c("4", "hearts"), c("5", "spades"), c("7", "clubs")];
     const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "besnik");
 
-    const choice = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+    const choice = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
 
     assert.ok(choice);
     assert.equal(choice!.cards[0].rank, "joker_colored");
@@ -260,8 +260,8 @@ describe("the medium bot takes an unbeatable lead and nothing more", () => {
     const hand = [c("4", "hearts"), c("5", "spades"), c("7", "clubs"), c("9", "hearts")];
     const { me, playedRanks } = leadWith(hand, {}, "besnik");
 
-    const withMemory = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
-    const without = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, undefined);
+    const withMemory = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+    const without = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, undefined);
 
     assert.deepEqual(withMemory?.cards.map((x) => x.id), without?.cards.map((x) => x.id));
   });
@@ -272,8 +272,8 @@ describe("the easy bot is untouched", () => {
     const hand = [j("colored"), c("4", "hearts"), c("5", "spades"), c("7", "clubs")];
     const { me, playedRanks } = leadWith(hand, { "2": 4, joker_bw: 1 }, "luan");
 
-    const withMemory = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
-    const without = aiChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, undefined);
+    const withMemory = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, playedRanks);
+    const without = botChoosePlay(me, null, true, [8, 8, 8], undefined, () => 0.5, false, undefined);
 
     assert.deepEqual(withMemory?.cards.map((x) => x.id), without?.cards.map((x) => x.id));
   });
@@ -285,10 +285,10 @@ describe("a game rehydrated from before the tally existed", () => {
   // as it did before it existed, and nothing may throw.
   test("chooses a legal play and does not throw", () => {
     const hand = [c("2", "hearts"), c("J", "spades"), c("4", "clubs")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "gent" });
+    const me = makePlayer("me", hand, { type: "bot", personality: "gent" });
 
     for (const lead of [null, buildCombination([c("9", "clubs")])!]) {
-      const choice = aiChoosePlay(me, lead, lead === null, [5, 5, 5], undefined, () => 0.5, false, undefined);
+      const choice = botChoosePlay(me, lead, lead === null, [5, 5, 5], undefined, () => 0.5, false, undefined);
       if (choice) {
         assert.ok(choice.cards.every((card) => hand.some((h) => h.id === card.id)));
       }

@@ -21,7 +21,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { GameTable } from "@/components/GameTable";
 import type { MatchRating } from "@/components/table/matchBoard";
-import { PROVISIONAL_GAMES } from "@/lib/game/rating";
+import { PROVISIONAL_ROUNDS } from "@/lib/game/rating";
 import { vacatedOf } from "@/shared/protocol";
 import { computeScreenPads, railWidth } from "@/components/tableFrame";
 import { cardScale } from "@/components/cardFaceModel";
@@ -69,10 +69,10 @@ export default function OnlineGameScreen() {
   const {
     matchState,
     cumulativeScores,
-    handScores,
-    handScoresCurrent,
+    placementPoints,
+    placementPointsCurrent,
     ratingDeltas,
-    handRecorded,
+    roundRecorded,
     ratingsAfter,
     rematchVoteState,
     endMatchVoteState,
@@ -104,7 +104,7 @@ export default function OnlineGameScreen() {
     else router.replace("/(online)");
   }, [entrySource]);
 
-  // Another player abandoned the table — there is no game left to play, so
+  // Another player abandoned the table — there is no match left to play, so
   // this one has no way out but the acknowledgement.
   // Seeded empty: the notice can already be standing when this screen mounts.
   const [announcedLeave, setAnnouncedLeave] = useState(false);
@@ -200,7 +200,7 @@ export default function OnlineGameScreen() {
         });
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
-  const roundOnTable = gameState.gameOver && handScoresCurrent && !matchState.over;
+  const roundOnTable = gameState.roundOver && placementPointsCurrent && !matchState.over;
   const myDelta = isSpectator ? undefined : ratingDeltas[myUserId];
   const myRating = ratingsAfter[myUserId];
   // `continues` is false for a match the server closed unscored, which is unrecorded for a
@@ -211,12 +211,12 @@ export default function OnlineGameScreen() {
           delta: myDelta,
           rating: myRating?.rating,
           provisionalLeft:
-            myRating && myRating.games < PROVISIONAL_GAMES ? PROVISIONAL_GAMES - myRating.games : undefined,
+            myRating && myRating.rounds < PROVISIONAL_ROUNDS ? PROVISIONAL_ROUNDS - myRating.rounds : undefined,
         }
-      : !isSpectator && !handRecorded && matchState.continues
+      : !isSpectator && !roundRecorded && matchState.continues
         ? { notRecorded: true }
         : undefined;
-  const nextHandVotes = rematchVoteState?.votes ?? [];
+  const nextRoundVotes = rematchVoteState?.votes ?? [];
   const voteRematchNow = () => {
     uiFeedback("medium");
     voteRematch();
@@ -227,11 +227,11 @@ export default function OnlineGameScreen() {
       gameState={gameState}
       matchOver={matchState.over}
       matchWinners={matchState.winners}
-      // Until `game:over` lands, `handScores` still holds the last round's, and the table decides this one's outcome on them.
-      handScores={handScoresCurrent ? handScores : undefined}
+      // Until `game:round_over` lands, `placementPoints` still holds the last round's, and the table decides this one's outcome on them.
+      placementPoints={placementPointsCurrent ? placementPoints : undefined}
       matchScore={{ scores: cumulativeScores, target: matchState.target, single: matchState.length === "single" }}
       matchActions={
-        handScoresCurrent
+        placementPointsCurrent
           ? {
               onHome: requestLeave,
               again: matchState.continues
@@ -239,8 +239,8 @@ export default function OnlineGameScreen() {
                     testID: "btn-rivincita",
                     onPress: voteRematchNow,
                     tally: {
-                      voted: nextHandVotes.includes(user?.id ?? ""),
-                      votes: nextHandVotes.length,
+                      voted: nextRoundVotes.includes(user?.id ?? ""),
+                      votes: nextRoundVotes.length,
                       total: rematchVoteState?.total ?? gameState.players.length,
                     },
                   }
@@ -296,7 +296,7 @@ export default function OnlineGameScreen() {
       }
       autoPassed={autoPassed}
       endMatchVote={
-        anyVacatedSeat && !gameState.gameOver
+        anyVacatedSeat && !gameState.roundOver
           ? {
               voted: hasVotedToEndMatch,
               votes: endMatchVoteState?.votes.length ?? 0,
@@ -322,8 +322,8 @@ export default function OnlineGameScreen() {
       roundVote={
         roundOnTable
           ? {
-              voted: nextHandVotes.includes(user?.id ?? ""),
-              votes: nextHandVotes.length,
+              voted: nextRoundVotes.includes(user?.id ?? ""),
+              votes: nextRoundVotes.length,
               total: rematchVoteState?.total ?? gameState.players.length,
               onPress: voteRematchNow,
             }

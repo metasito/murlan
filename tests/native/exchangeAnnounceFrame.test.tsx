@@ -7,7 +7,7 @@ import { StyleSheet, type ViewStyle } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { LEG } from '@/lib/game/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
-import { GEOMETRY, Legs, card, frames, trade } from './helpers/exchangeLegs';
+import { GEOMETRY, Legs, card, frames, announced } from './helpers/exchangeLegs';
 
 const X = Motion.exchange;
 const spans = (style: ViewStyle, size: 'width' | 'height', from: 'left' | 'top', to: 'right' | 'bottom') =>
@@ -20,7 +20,7 @@ describe('ExchangeLegs with no geometry measured', () => {
     const onDismiss = jest.fn();
     const view = await render(
       <Legs
-        trade={trade({ cardGiven: card('6_clubs', '6') })}
+        announced={announced({ cardGiven: card('6_clubs', '6') })}
         geometry={{ ...GEOMETRY, windowWidth: 0, windowHeight: 0, handCardH: 0 }}
         onStage={onStage}
         onDismiss={onDismiss}
@@ -40,7 +40,7 @@ describe('ExchangeLegs with no geometry measured', () => {
 
 describe('ExchangeLegs frame', () => {
   it.each([false, true])('exposes exchange-announce with a non-zero frame (bothJokers=%s)', async (bothJokers) => {
-    const view = await render(<Legs trade={trade({ bothJokersException: bothJokers })} />);
+    const view = await render(<Legs announced={announced({ twoJokerException: bothJokers })} />);
     await act(async () => {});
     const style = StyleSheet.flatten(view.getByTestId('exchange-announce').props.style) as ViewStyle;
     expect(spans(style, 'width', 'left', 'right')).toBe(true);

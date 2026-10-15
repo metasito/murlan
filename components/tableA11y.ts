@@ -43,7 +43,7 @@ export interface TableA11yStrings {
   yourCardCount: (count: number) => string;
   exchangeGiveCard: (loserName: string) => string;
   exchangeWaitForCard: (winnerName: string) => string;
-  handOver: string;
+  roundOver: string;
   matchOver: string;
   dealing: string;
 }
@@ -59,8 +59,8 @@ export interface TableA11yInput {
   opponents: TableA11yOpponent[];
   exchange?: TableA11yExchange;
   /** The round is over and its ending still holds the table: nobody is on move. */
-  handOver?: boolean;
-  /** Read only with `handOver`: that round was the match's last. */
+  roundOver?: boolean;
+  /** Read only with `roundOver`: that round was the match's last. */
   matchOver?: boolean;
   dealing?: boolean;
 }
@@ -75,8 +75,8 @@ export interface TableA11yInput {
 export function describeTableForA11y(input: TableA11yInput, strings: TableA11yStrings): string {
   const parts: string[] = [];
 
-  if (input.handOver) {
-    parts.push(input.matchOver ? strings.matchOver : strings.handOver);
+  if (input.roundOver) {
+    parts.push(input.matchOver ? strings.matchOver : strings.roundOver);
   } else if (input.dealing) {
     parts.push(strings.dealing);
   } else if (input.exchange?.active && (input.exchange.viewerIsWinner || input.exchange.viewerIsLoser)) {

@@ -9,8 +9,8 @@ import {
 import { waitFor } from "../helpers/client.ts";
 import {
   assertHandSecrecy,
-  driveHandToExchangeOrOver,
-  gameOverOf,
+  driveRoundToExchangeOrOver,
+  roundOverOf,
   makeClients,
   setUpRoom,
   waitForDeal,
@@ -40,7 +40,7 @@ process.env.MURLAN_LOBBY_GRACE_MS = "800";
  * roster, never from `room_players`: that table holds humans only, so a roster
  * rebuilt from it drops every bot seat and renumbers the survivors — which
  * moves seats under `playerMap`, the one thing deciding whose cards a viewer
- * is sent and which seats the turn arbiter drives with the AI.
+ * is sent and which seats the turn arbiter drives with the bot.
  */
 describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -73,8 +73,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const [ivan] = await makeClients(server, ["rematch_solo_ivan"]);
     const room = await setUpRoom([ivan], 4);
 
-    const over = gameOverOf(
-      await driveHandToExchangeOrOver([ivan], () => {
+    const over = roundOverOf(
+      await driveRoundToExchangeOrOver([ivan], () => {
         ivan.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
@@ -93,10 +93,10 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       1,
       "the second round deals one seat further round, so the extra cards move"
     );
-    assert.equal(next.players.filter((p) => p.type === "ai").length, 3);
+    assert.equal(next.players.filter((p) => p.type === "bot").length, 3);
     assertHandSecrecy(next, "solo rematch deal");
     // A seat with no playerMap entry is exactly what armTurn drives with the
-    // AI, so this is the assertion that the three bot seats are still bots and
+    // Bot, so this is the assertion that the three bot seats are still bots and
     // that the human's seat did not move under him.
     assert.deepEqual(
       seatedUsers(room.roomId),
@@ -108,13 +108,13 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.ok(phase, "a rematch deal always carries an exchange phase");
     assert.equal(
       next.players[phase.winnerIdx].id,
-      over.rankings[0],
+      over.finishingOrder[0],
       "the exchange must be seeded from the previous round's winner"
     );
 
     // And the second round is playable end to end: the bot seats really act.
-    gameOverOf(
-      await driveHandToExchangeOrOver([ivan], () => {}, { stopOnExchange: false })
+    roundOverOf(
+      await driveRoundToExchangeOrOver([ivan], () => {}, { stopOnExchange: false })
     );
     await closeTable(room.roomId, ivan);
   });
@@ -127,8 +127,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     ]);
     const room = await setUpRoom([jack, kira], 4);
 
-    gameOverOf(
-      await driveHandToExchangeOrOver([jack, kira], () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver([jack, kira], () => {
         jack.socket.emit("room:start", { fillWithBots: true });
       })
     );
@@ -143,7 +143,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       // Dropping the two bot seats would leave a 2-seat table scoring 1/0
       // while cumulativeScores and matchTarget carried on from a 3/2/1/0 match.
       assert.equal(state.players.length, 4, "a bot seat must not be dropped by the rematch");
-      assert.equal(state.players.filter((p) => p.type === "ai").length, 2);
+      assert.equal(state.players.filter((p) => p.type === "bot").length, 2);
       assertHandSecrecy(state, "mixed rematch deal");
     }
     assert.notEqual(
@@ -173,8 +173,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     ]);
     const room = await setUpRoom([nora, omar], 4);
 
-    gameOverOf(
-      await driveHandToExchangeOrOver([nora, omar], () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver([nora, omar], () => {
         nora.socket.emit("room:start", { fillWithBots: true });
       })
     );
@@ -191,11 +191,11 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
 
   /**
-   * `handleGameOver` sets `rooms.status = "finished"` after every round, not
+   * `handleRoundOver` sets `rooms.status = "finished"` after every round, not
    * only at the end of a match, so the room row alone cannot tell a running
    * match from an ended one. Accepting room:start on that status is a second
    * deal path: it deals with `initializeGame` (no exchange phase, so the
-   * loser never forfeits their strongest card) and takes `matchLength`
+   * loser never gives up their strongest card) and takes `matchLength`
    * straight from the payload while the running match's scores and target
    * carry on.
    */
@@ -204,8 +204,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const [mira] = await makeClients(server, ["newmatch_running_mira"]);
     const room = await setUpRoom([mira], 4);
 
-    const over = gameOverOf(
-      await driveHandToExchangeOrOver([mira], () => {
+    const over = roundOverOf(
+      await driveRoundToExchangeOrOver([mira], () => {
         mira.socket.emit("room:start", { fillWithBots: true, botPersonality: "gent" });
       })
     );
@@ -213,14 +213,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(before?.matchOver, false, "one round of a 21-point match settles nothing");
 
     const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
-    // The payload a losing host would send: convert the match into a one-hand
+    // The payload a losing host would send: convert the match into a one-round
     // shootout and re-deal it without the exchange.
     mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
     assert.equal((await refused).code, "MATCH_IN_PROGRESS");
     assert.deepEqual(
       matchSnapshot(room.roomId),
       before,
-      "a refused room:start must leave the format, target, scores and hand exactly as they were"
+      "a refused room:start must leave the format, target, scores and round exactly as they were"
     );
 
     // The one path that may deal it, still dealing it properly.
@@ -228,7 +228,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     mira.socket.emit("game:rematch_vote");
     const next = await dealt;
     assert.ok(next.exchangePhase, "the next round of a running match carries an exchange phase");
-    assert.equal(next.players[next.exchangePhase.winnerIdx].id, over.rankings[0]);
+    assert.equal(next.players[next.exchangePhase.winnerIdx].id, over.finishingOrder[0]);
     await closeTable(room.roomId, mira);
   });
 
@@ -240,9 +240,9 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([nadia, omar], 2);
 
     // `matchLength: "single"` ends the match with the first round, so what
-    // follows is a genuinely new match rather than the next hand of this one.
-    gameOverOf(
-      await driveHandToExchangeOrOver([nadia, omar], () => {
+    // follows is a genuinely new match rather than the next round of this one.
+    roundOverOf(
+      await driveRoundToExchangeOrOver([nadia, omar], () => {
         nadia.socket.emit("room:start", { matchLength: "single" });
       })
     );
@@ -274,8 +274,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
   test("a rejoin at the results screen is told the votes so far", async () => {
     const [pia, remy] = await makeClients(server, ["rejoin_tally_pia", "rejoin_tally_remy"]);
     const room = await setUpRoom([pia, remy], 2);
-    gameOverOf(
-      await driveHandToExchangeOrOver([pia, remy], () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver([pia, remy], () => {
         pia.socket.emit("room:start");
       })
     );
@@ -294,8 +294,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const { matchSnapshot } = await import("../helpers/liveGame.ts");
     const [liam, mona] = await makeClients(server, ["rematch_unasked_liam", "rematch_unasked_mona"]);
     const room = await setUpRoom([liam, mona], 2);
-    gameOverOf(
-      await driveHandToExchangeOrOver([liam, mona], () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver([liam, mona], () => {
         liam.socket.emit("room:start", { matchLength: "single" });
       })
     );
@@ -322,8 +322,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     ]);
     const room = await setUpRoom([pia, quinn], 2);
 
-    gameOverOf(
-      await driveHandToExchangeOrOver([pia, quinn], () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver([pia, quinn], () => {
         pia.socket.emit("room:start");
       })
     );
@@ -341,8 +341,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     // out and deal again rather than asserting on whichever one turns up.
     let next = await dealNextRound();
     for (let attempt = 0; attempt < 6 && !next.exchangePhase?.active; attempt++) {
-      gameOverOf(
-        await driveHandToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
+      roundOverOf(
+        await driveRoundToExchangeOrOver([pia, quinn], () => {}, { stopOnExchange: false })
       );
       next = await dealNextRound();
     }
@@ -390,8 +390,8 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const [a] = clients;
     const room = await setUpRoom(clients, 4);
 
-    gameOverOf(
-      await driveHandToExchangeOrOver(clients, () => {
+    roundOverOf(
+      await driveRoundToExchangeOrOver(clients, () => {
         a.socket.emit("room:start");
       })
     );
@@ -428,7 +428,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
       [clients[2].user.id]: -1_000_000,
       [clients[3].user.id]: -1_000_000,
     });
-    gameOverOf(await driveHandToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
+    roundOverOf(await driveRoundToExchangeOrOver(clients, () => {}, { stopOnExchange: false }));
     assert.equal(
       matchSnapshot(room.roomId)?.matchOver,
       true,

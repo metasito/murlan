@@ -23,7 +23,7 @@ test("names come from the seats, and both cards ride along", () => {
       loserName: "Ana",
       winnerIdx: 2,
       loserIdx: 0,
-      bothJokersException: false,
+      twoJokerException: false,
       cardGiven: ACE,
       cardReceived: THREE,
     }
@@ -42,9 +42,9 @@ test("the both-jokers exception is carried, not inferred", () => {
   const announce = buildExchangeAnnounce(PLAYERS, {
     winnerIdx: 0,
     loserIdx: 1,
-    bothJokersException: true,
+    twoJokerException: true,
   });
-  assert.equal(announce.bothJokersException, true);
+  assert.equal(announce.twoJokerException, true);
   // Neither card exists in that case; the banner reads the flag instead.
   assert.equal(announce.cardGiven, undefined);
   assert.equal(announce.cardReceived, undefined);

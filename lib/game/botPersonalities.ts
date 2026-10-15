@@ -1,9 +1,9 @@
-// Named AI opponents. A personality is a preset over the engine's existing
+// Named bot opponents. A personality is a preset over the engine's existing
 // strategy tier plus two knobs that re-rank an already-legal candidate list —
 // it never changes what is legal, which stays entirely in getAllValidPlays.
 //
 // Loads under `node --test` — docs/agents/checks.md, "Node's TypeScript loader".
-import type { AIDifficulty } from "./gameEngine.ts";
+import type { BotDifficulty } from "./gameEngine.ts";
 import type { TranslationKey } from "../i18n.ts";
 
 export type BotPersonalityId = "luan" | "besnik" | "gent";
@@ -13,7 +13,7 @@ export interface BotPersonality {
   /** A person's name, deliberately not translated — it reads the same in every locale. */
   name: string;
   /** Which of the engine's strategy tiers this personality plays on. */
-  difficulty: AIDifficulty;
+  difficulty: BotDifficulty;
   /** 0–1. How readily it spends a 2, a joker or a bomb, and how rarely it passes. */
   aggression: number;
   /** 0–1. How often it takes a same-shape play that is legal but not the best one. */
@@ -21,7 +21,7 @@ export interface BotPersonality {
 }
 
 /**
- * Exactly three, one per AIDifficulty tier (#904) — a difficulty ladder needs
+ * Exactly three, one per BotDifficulty tier (#904) — a difficulty ladder needs
  * a worse policy at each step, which lib/game/gameEngine.ts's tiers already are
  * (only "hard" counts cards, protects 2s/jokers, and branches in the
  * endgame), not the same policy with aggression/unpredictability turned down.
@@ -50,14 +50,14 @@ export function botBlurbKey(id: BotPersonalityId): TranslationKey {
   return `bot.${id}Blurb` as TranslationKey;
 }
 
-const DIFFICULTY_LABEL_KEY: Record<AIDifficulty, TranslationKey> = {
+const DIFFICULTY_LABEL_KEY: Record<BotDifficulty, TranslationKey> = {
   easy: "bot.difficultyEasy",
   medium: "bot.difficultyNormal",
   hard: "bot.difficultyHard",
 };
 
 /** The Easy/Normal/Hard label for a personality's engine tier. */
-export function difficultyLabelKey(difficulty: AIDifficulty): TranslationKey {
+export function difficultyLabelKey(difficulty: BotDifficulty): TranslationKey {
   return DIFFICULTY_LABEL_KEY[difficulty];
 }
 

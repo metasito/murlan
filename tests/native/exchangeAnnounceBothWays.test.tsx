@@ -6,7 +6,7 @@ import React from 'react';
 import { render, within } from '@testing-library/react-native';
 import { LEG } from '@/lib/game/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
-import { Legs, card, frames, trade } from './helpers/exchangeLegs';
+import { Legs, card, frames, announced } from './helpers/exchangeLegs';
 
 const WINNER = 'Ana';
 const LOSER = 'Bea';
@@ -16,8 +16,8 @@ const X = Motion.exchange;
 const BOTH_LANDED = X.beat + 2 * LEG.end + 2 * X.read + 64;
 
 /** A bystander's view, so both names are spoken as names. */
-const legs = (over: Parameters<typeof trade>[0]) =>
-  render(<Legs trade={trade({ winnerIdx: 2, loserIdx: 1, winnerName: WINNER, loserName: LOSER, ...over })} viewerSeat={0} />);
+const legs = (over: Parameters<typeof announced>[0]) =>
+  render(<Legs announced={announced({ winnerIdx: 2, loserIdx: 1, winnerName: WINNER, loserName: LOSER, ...over })} viewerSeat={0} />);
 
 const spoken = (view: { getByRole: (r: string) => { props: Record<string, unknown> } }) =>
   String(view.getByRole('alert').props.accessibilityLabel ?? '');
@@ -66,7 +66,7 @@ describe('the exchange ceremony states both legs', () => {
   });
 
   it('replaces both legs with the two-Joker notice', async () => {
-    const view = await legs({ bothJokersException: true, cardReceived: undefined });
+    const view = await legs({ twoJokerException: true, cardReceived: undefined });
     await frames(X.beat + LEG.rest + 32);
 
     expect(spoken(view)).toContain(LOSER);

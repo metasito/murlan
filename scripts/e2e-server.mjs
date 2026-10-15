@@ -10,7 +10,7 @@
  * local runs — the suite itself never sets it, so CI always builds fresh.
  *
  * EXPO_PUBLIC_E2E_FAST=1 is set before the build so app/game.tsx and
- * app/(online)/game.tsx bake in a zero-delay AI/result pacing instead of
+ * app/(online)/game.tsx bake in a zero-delay bot/result pacing instead of
  * their production values (EXPO_PUBLIC_ vars are inlined at bundle build
  * time, not read at runtime — production builds never set this, so their
  * pacing is untouched). The AFK/disconnect-grace timers are the server's

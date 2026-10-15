@@ -3,7 +3,7 @@
 // lead straight into the hand it knows can beat it (#907).
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { aiChoosePlay, knownOpponentExchangeCard } from "../../lib/game/ai.ts";
+import { botChoosePlay, knownOpponentExchangeCard } from "../../lib/game/bot.ts";
 import { buildCombination, getRankStrength, RANK_SLOTS } from "../../lib/game/gameEngine.ts";
 import { autoMoveForSeat } from "../../lib/game/autoMove.ts";
 import { c, makePlayer, makeState } from "../engine/helpers.ts";
@@ -18,7 +18,7 @@ const exchange = (
   winnerIdx,
   loserIdx,
   cardFromLoser: c("4", "hearts"),
-  bothJokersException: false,
+  twoJokerException: false,
   ...overrides,
 });
 
@@ -34,7 +34,7 @@ describe("knownOpponentExchangeCard", () => {
   });
 
   test("the both-jokers exception moves no card, so the loser learns nothing", () => {
-    const phase = exchange(0, 1, { bothJokersException: true, cardFromLoser: c("2", "spades") });
+    const phase = exchange(0, 1, { twoJokerException: true, cardFromLoser: c("2", "spades") });
     assert.equal(knownOpponentExchangeCard(phase, 1), undefined);
   });
 
@@ -52,10 +52,10 @@ describe("every tier: never lead the exact card known to lose", () => {
   for (const personality of ["luan", "besnik", "gent"] as const) {
     test(`${personality} leads the safe alternative instead of the known-beaten card`, () => {
       const hand = [c("4", "hearts"), c("9", "clubs")];
-      const me = makePlayer("me", hand, { type: "ai", personality });
+      const me = makePlayer("me", hand, { type: "bot", personality });
       const knownOpponentCard = c("6", "spades");
 
-      const choice = aiChoosePlay(
+      const choice = botChoosePlay(
         me, null, true, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
       );
 
@@ -65,10 +65,10 @@ describe("every tier: never lead the exact card known to lose", () => {
 
     test(`${personality} still leads something when every play loses to the known card`, () => {
       const hand = [c("4", "hearts"), c("5", "clubs")];
-      const me = makePlayer("me", hand, { type: "ai", personality });
+      const me = makePlayer("me", hand, { type: "bot", personality });
       const knownOpponentCard = c("9", "spades");
 
-      const choice = aiChoosePlay(
+      const choice = botChoosePlay(
         me, null, true, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
       );
 
@@ -78,14 +78,14 @@ describe("every tier: never lead the exact card known to lose", () => {
 
   test("responding is not leading — the filter does not touch an answer to a play", () => {
     const hand = [c("4", "hearts"), c("9", "clubs")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "besnik" });
+    const me = makePlayer("me", hand, { type: "bot", personality: "besnik" });
     const lastPlayed = buildCombination([c("3", "diamonds")])!;
     const knownOpponentCard = c("6", "spades");
 
-    const withKnown = aiChoosePlay(
+    const withKnown = botChoosePlay(
       me, lastPlayed, false, [8], undefined, () => 0.5, false, undefined, knownOpponentCard
     );
-    const without = aiChoosePlay(
+    const without = botChoosePlay(
       me, lastPlayed, false, [8], undefined, () => 0.5, false, undefined, undefined
     );
 
@@ -94,14 +94,14 @@ describe("every tier: never lead the exact card known to lose", () => {
 
   test("a known card already spent no longer bends the lead — it is stale", () => {
     const hand = [c("4", "hearts"), c("9", "clubs")];
-    const me = makePlayer("me", hand, { type: "ai", personality: "luan" });
+    const me = makePlayer("me", hand, { type: "bot", personality: "luan" });
     const knownOpponentCard = c("6", "spades");
     // All four 6s accounted for by the public tally: the opponent cannot
     // still be holding the one the exchange gave it.
     const playedRanks = new Array<number>(RANK_SLOTS).fill(0);
     playedRanks[getRankStrength("6")] = 4;
 
-    const choice = aiChoosePlay(
+    const choice = botChoosePlay(
       me, null, true, [8], undefined, () => 0.5, false, playedRanks, knownOpponentCard
     );
 
@@ -113,8 +113,8 @@ describe("autoMoveForSeat wires the exchange into the loser that leads next", ()
   test("the loser does not lead under its own former card now in the winner's hand", () => {
     const state = makeState(
       [
-        makePlayer("winner", [c("9", "clubs"), c("K", "hearts")], { type: "ai", personality: "luan" }),
-        makePlayer("loser", [c("4", "hearts"), c("Q", "spades")], { type: "ai", personality: "luan" }),
+        makePlayer("winner", [c("9", "clubs"), c("K", "hearts")], { type: "bot", personality: "luan" }),
+        makePlayer("loser", [c("4", "hearts"), c("Q", "spades")], { type: "bot", personality: "luan" }),
       ],
       {
         currentTurnIndex: 1,

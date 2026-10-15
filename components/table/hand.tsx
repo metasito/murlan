@@ -50,7 +50,7 @@ import {
   HAND_SCALE_ON_TURN,
 } from "@/components/cardFaceModel";
 import type { CardFrom } from "@/components/flightPose";
-import { readHandArrival, type TradeStages } from "@/components/flightPhysics";
+import { readHandArrival, type ExchangeStages } from "@/components/flightPhysics";
 import { useSameCards } from "@/components/useSameCards";
 import type { ExchangeAnnounceData } from "@/lib/game/sharedGameFlow";
 import { designRect, handCard, panShown, type Felt, type HandPlace, type TableMotion } from "./cardRects";
@@ -58,7 +58,7 @@ import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
 import { handCardZ, handPaintOrder } from "./cardShadows";
 
 /**
- * The viewer's hand as the table draws it while a traded card is on its way in or out.
+ * The viewer's hand as the table draws it while a exchanged card is on its way in or out.
  *
  * Held back at display rather than by deferring the state: online the state is
  * the server's, and freezing a whole snapshot for the length of a phase would
@@ -71,8 +71,8 @@ export function useHandArrival(input: {
   /** The engine's order and the player's, which place a lent card back in its arranged slot. */
   sorted: Card[];
   order: readonly string[];
-  trade: ExchangeAnnounceData | null;
-  stages: TradeStages;
+  announced: ExchangeAnnounceData | null;
+  stages: ExchangeStages;
   viewerSeat: number | null;
 }): { handOnTable: Card[]; holding: boolean; arrivingIndex?: number; descendingId?: string; receivedId?: string } {
   const first = readHandArrival(input);
@@ -771,7 +771,7 @@ export const StraightHand = React.memo(function StraightHand({
   );
 
   // Armed while the hand is empty, so the render on which a hand appears —
-  // the start of a game, or of the next one after a rematch — is the render
+  // the start of a match, or of the next one after a rematch — is the render
   // whose cards mount staggered. A single card arriving later (the exchange
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);

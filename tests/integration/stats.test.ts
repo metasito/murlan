@@ -11,7 +11,7 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor, register } from "../helpers/client.ts";
 import {
-  driveHumansToGameOver,
+  driveHumansToRoundOver,
   waitForRow,
   type RoomState,
 
@@ -58,7 +58,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       bob.socket.emit("room:join", { code: room.code });
       await joined;
 
-      const payload = await driveHumansToGameOver([alice.socket, bob.socket], () => {
+      const payload = await driveHumansToRoundOver([alice.socket, bob.socket], () => {
         alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
@@ -66,17 +66,17 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       for (const { user } of [alice, bob]) {
         const statsRow = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT user_id, games_played, games_won FROM user_stats WHERE user_id = $1",
+            "SELECT user_id, rounds_played, rounds_won FROM user_stats WHERE user_id = $1",
             [user.id]
           );
           return res.rows[0] ?? null;
         });
         assert.equal(statsRow.user_id, user.id);
-        assert.equal(Number(statsRow.games_played), 1);
+        assert.equal(Number(statsRow.rounds_played), 1);
 
         const historyRows = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT user_id, game_mode, placement, player_count, points, opponents FROM match_history WHERE user_id = $1",
+            "SELECT user_id, game_mode, placement, player_count, points, opponents FROM round_history WHERE user_id = $1",
             [user.id]
           );
           return res.rows.length > 0 ? res.rows : null;
@@ -100,9 +100,9 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       assert.equal(botStats.rows.length, 0, "no bot seat should ever appear in user_stats");
 
       const botHistory = await dbPool.query(
-        "SELECT 1 FROM match_history WHERE user_id LIKE 'bot:%'"
+        "SELECT 1 FROM round_history WHERE user_id LIKE 'bot:%'"
       );
-      assert.equal(botHistory.rows.length, 0, "no bot seat should ever appear in match_history");
+      assert.equal(botHistory.rows.length, 0, "no bot seat should ever appear in round_history");
     } finally {
       alice.socket.close();
       bob.socket.close();
@@ -110,12 +110,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
-   * The profile's one card reads through `getMatchHistoryView`, which pairs a
+   * The profile's one card reads through `getRoundHistoryView`, which pairs a
    * history row to its replay on `(userId, finishedAt)` — the two tables share
    * no key, and before #739 the only correlation available was "written within
    * a few milliseconds of each other".
    */
-  test("the history view names the table and pairs each hand to its replay", async () => {
+  test("the history view names the table and pairs each round to its replay", async () => {
     const cara = await connectAs(server, "view_cara");
     const dan = await connectAs(server, "view_dan");
     try {
@@ -127,14 +127,14 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       dan.socket.emit("room:join", { code: room.code });
       await joined;
 
-      const payload = await driveHumansToGameOver([cara.socket, dan.socket], () => {
+      const payload = await driveHumansToRoundOver([cara.socket, dan.socket], () => {
         cara.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       });
       assert.ok(payload, "game:over must fire");
 
-      const { getMatchHistoryView } = await import("../../server/http/matchHistoryView.ts");
+      const { getRoundHistoryView } = await import("../../server/http/roundHistoryView.ts");
       const rows = await waitForRow(async () => {
-        const view = await getMatchHistoryView(cara.user.id);
+        const view = await getRoundHistoryView(cara.user.id);
         return view.length > 0 && view[0].replayId !== null ? view : null;
       });
 
@@ -161,8 +161,8 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       // so equal columns read back as Dates an offset apart. The claim is about
       // the stored values, which is where it can be asked without that.
       const paired = await dbPool.query(
-        `SELECT r.id FROM match_replays r
-           JOIN match_history h ON h.finished_at = r.finished_at
+        `SELECT r.id FROM round_replays r
+           JOIN round_history h ON h.finished_at = r.finished_at
           WHERE r.id = $1 AND h.user_id = $2 AND h.id = $3`,
         [hand.replayId, cara.user.id, hand.id]
       );
@@ -182,16 +182,16 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * with no replay however recently it was played. That is the same shape as a
    * replay that has expired, which is what the card already has to render.
    */
-  test("a hand with no paired replay is listed, unwatchable, with its bot seats unnamed", async () => {
+  test("a round with no paired replay is listed, unwatchable, with its bot seats unnamed", async () => {
     const { user } = await register(server, "view_unpaired");
     await dbPool.query(
-      `INSERT INTO match_history (user_id, finished_at, game_mode, placement, player_count, points, opponents)
+      `INSERT INTO round_history (user_id, finished_at, game_mode, placement, player_count, points, opponents)
        VALUES ($1, now() - interval '30 days', 'free_for_all', 2, 3, 1, $2::jsonb)`,
       [user.id, JSON.stringify(["bot:1", "bot:2"])]
     );
 
-    const { getMatchHistoryView } = await import("../../server/http/matchHistoryView.ts");
-    const [hand] = await getMatchHistoryView(user.id);
+    const { getRoundHistoryView } = await import("../../server/http/roundHistoryView.ts");
+    const [hand] = await getRoundHistoryView(user.id);
 
     assert.equal(hand.replayId, null, "no replay pairs it, so nothing offers to play it");
     assert.deepEqual(hand.participants, [
@@ -201,12 +201,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
-   * Leaving a hand in progress used to produce no record at all for the
+   * Leaving a round in progress used to produce no record at all for the
    * leaver: their seat drops out of `playerMap`, after which it scores as
-   * `bot:<seat>` and every write here filters it out. A losing hand cost
+   * `bot:<seat>` and every write here filters it out. A losing round cost
    * nothing to walk away from.
    */
-  test("a player who leaves mid-hand is recorded as a last-place finish and earns nothing", async () => {
+  test("a player who leaves mid-round is recorded as a last-place finish and earns nothing", async () => {
     const clients = [];
     for (const name of ["quit_ada", "quit_bea", "quit_cleo", "quit_dora"]) {
       clients.push(await connectAs(server, name));
@@ -226,54 +226,54 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       leaver.socket.emit("room:start");
       await Promise.all(dealt);
 
-      // A bot takes the empty seat, so the hand reaches game over the ordinary
+      // A bot takes the empty seat, so the round reaches game over the ordinary
       // way and the seat that was walked out on is scored inside it.
-      await driveHumansToGameOver(
+      await driveHumansToRoundOver(
         stayers.map((c) => c.socket),
         () => leaver.socket.emit("room:leave")
       );
 
       const history = await waitForRow(async () => {
         const res = await dbPool.query(
-          "SELECT placement, player_count FROM match_history WHERE user_id = $1",
+          "SELECT placement, player_count FROM round_history WHERE user_id = $1",
           [leaver.user.id]
         );
         return res.rows[0] ?? null;
       });
-      assert.equal(Number(history.placement), 4, "a forfeit is recorded as last of the table");
+      assert.equal(Number(history.placement), 4, "an abandonment is recorded as last of the table");
       assert.equal(Number(history.player_count), 4);
 
       const stats = await dbPool.query(
-        "SELECT games_played, games_won, current_streak FROM user_stats WHERE user_id = $1",
+        "SELECT rounds_played, rounds_won, current_streak FROM user_stats WHERE user_id = $1",
         [leaver.user.id]
       );
-      assert.equal(Number(stats.rows[0].games_played), 1, "the hand counts as played");
-      assert.equal(Number(stats.rows[0].games_won), 0);
+      assert.equal(Number(stats.rows[0].rounds_played), 1, "the round counts as played");
+      assert.equal(Number(stats.rows[0].rounds_won), 0);
       assert.equal(Number(stats.rows[0].current_streak), 0, "and it breaks the streak");
 
       // Written in the same transaction as the history row above, so this read
-      // is not a race: the hand's achievements have already had their chance.
+      // is not a race: the round's achievements have already had their chance.
       const unlocked = await dbPool.query(
         "SELECT achievement_id FROM user_achievements WHERE user_id = $1",
         [leaver.user.id]
       );
-      assert.deepEqual(unlocked.rows, [], "nothing is earned from a hand you walked out on");
+      assert.deepEqual(unlocked.rows, [], "nothing is earned from a round you walked out on");
     } finally {
       clients.forEach((c) => c.socket.close());
     }
   });
 
   /**
-   * The walkout is last, and every seat that played the hand out keeps the
+   * The walkout is last, and every seat that played the round out keeps the
    * position it earned — one total order, so no two seats share a number.
-   * The AI that inherits a vacated seat routinely finishes ahead of a player
+   * The bot that inherits a vacated seat routinely finishes ahead of a player
    * who stayed, and placing the walkout last while everyone else is numbered
-   * by their own ranking index hands the same placement to two seats. Nothing
-   * refuses that: match_history stores it verbatim, and lib/game/rating.ts breaks
+   * by their own finishing-order index hands the same placement to two seats. Nothing
+   * refuses that: round_history stores it verbatim, and lib/game/rating.ts breaks
    * the tie by sorting, which rates the quitter ahead of the player they tied
    * with.
    */
-  test("every seat of a hand someone walked out on gets a distinct placement", async () => {
+  test("every seat of a round someone walked out on gets a distinct placement", async () => {
     const clients: Awaited<ReturnType<typeof connectAs>>[] = [];
     for (const name of ["dist_ada", "dist_bea", "dist_cleo", "dist_dora"]) {
       clients.push(await connectAs(server, name));
@@ -293,14 +293,14 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       leaver.socket.emit("room:start");
       await Promise.all(dealt);
 
-      await driveHumansToGameOver(
+      await driveHumansToRoundOver(
         stayers.map((c) => c.socket),
         () => leaver.socket.emit("room:leave")
       );
 
       const rows = await waitForRow<{ user_id: string; placement: number }[]>(async () => {
         const res = await dbPool.query(
-          "SELECT user_id, placement FROM match_history WHERE user_id = ANY($1)",
+          "SELECT user_id, placement FROM round_history WHERE user_id = ANY($1)",
           [clients.map((c) => c.user.id)]
         );
         return res.rows.length === 4 ? res.rows : null;
@@ -323,10 +323,10 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
-   * The gate that decides whether a hand is recorded at all counts an
+   * The gate that decides whether a round is recorded at all counts an
    * abandoned seat as the human seat it is. A two-human table filled to four
    * with bots is contested; counting the seat someone walked out on as a
-   * third bot makes it bot-majority and drops every write — losing the hand
+   * third bot makes it bot-majority and drops every write — losing the round
    * for the player who stayed, in the one case the gate exists to protect.
    *
    * #850 clause 11 (docs/GAME-RULES.md § Decisions) voids a match abandoned before its
@@ -335,7 +335,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * for real, then abandoning the second, is what keeps this test honest
    * about the thing it is pinning.
    */
-  test("a hand on a half-bot table is still recorded when a human walks out", async () => {
+  test("a round on a half-bot table is still recorded when a human walks out", async () => {
     const stayer = await connectAs(server, "half_ilir");
     const leaver = await connectAs(server, "half_jeta");
     try {
@@ -351,18 +351,18 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       stayer.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
       await Promise.all(dealt);
 
-      await driveHumansToGameOver([stayer.socket, leaver.socket], () => {});
+      await driveHumansToRoundOver([stayer.socket, leaver.socket], () => {});
 
       const nextDeal = waitForDeal(stayer.socket);
       stayer.socket.emit("game:rematch_vote");
       leaver.socket.emit("game:rematch_vote");
       await nextDeal;
 
-      // One human left at the table: the hand is conceded to them there and
+      // One human left at the table: the round is conceded to them there and
       // then, and the walkout is scored inside it.
       leaver.socket.emit("room:leave");
 
-      // Two rounds, two rows each by now — the first hand, played out fairly,
+      // Two rounds, two rows each by now — the first round, played out fairly,
       // already wrote one row per user before the walkout below could. Only
       // the latest row per user is the one the walkout wrote.
       // One statement, so the count and the latest row come from one snapshot: each seat commits in its own transaction.
@@ -371,7 +371,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
           const res = await dbPool.query(
             `SELECT DISTINCT ON (user_id) user_id, placement, player_count,
                     COUNT(*) OVER (PARTITION BY user_id)::int AS n
-             FROM match_history WHERE user_id = ANY($1)
+             FROM round_history WHERE user_id = ANY($1)
              ORDER BY user_id, finished_at DESC`,
             [[stayer.user.id, leaver.user.id]]
           );
@@ -383,7 +383,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       );
 
       const rowOf = (id: string) => rows.find((r) => r.user_id === id)!;
-      assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the hand");
+      assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the round");
       assert.equal(Number(rowOf(leaver.user.id).placement), 4, "the walkout is last of four seats");
       assert.equal(Number(rowOf(stayer.user.id).player_count), 4);
     } finally {
@@ -421,7 +421,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     // 52 separate hands for the same user — well past the 50-row cap, and
     // repeated enough that a non-idempotent achievement insert would throw
     // on the composite primary key long before this loop finishes.
-    // A distinct end time per hand, as real play gives them: the prune keeps
+    // A distinct end time per round, as real play gives them: the prune keeps
     // the newest 50 by `finishedAt`, so 52 rows sharing one instant would
     // leave which two go entirely to the database's discretion.
     const firstFinishedAt = Date.now() - 52 * 60_000;
@@ -434,22 +434,22 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     }
 
     const botRows = await dbPool.query(
-      "SELECT 1 FROM match_history WHERE user_id = 'bot:0' UNION SELECT 1 FROM user_stats WHERE user_id = 'bot:0'"
+      "SELECT 1 FROM round_history WHERE user_id = 'bot:0' UNION SELECT 1 FROM user_stats WHERE user_id = 'bot:0'"
     );
     assert.equal(botRows.rows.length, 0, "the bot seat riding along in the batch must never be written");
 
     const statsRes = await dbPool.query(
-      "SELECT games_played, games_won, current_streak, best_streak FROM user_stats WHERE user_id = $1",
+      "SELECT rounds_played, rounds_won, current_streak, best_streak FROM user_stats WHERE user_id = $1",
       [user.id]
     );
     assert.equal(statsRes.rows.length, 1);
-    assert.equal(Number(statsRes.rows[0].games_played), 52);
-    assert.equal(Number(statsRes.rows[0].games_won), 52);
+    assert.equal(Number(statsRes.rows[0].rounds_played), 52);
+    assert.equal(Number(statsRes.rows[0].rounds_won), 52);
     assert.equal(Number(statsRes.rows[0].current_streak), 52);
     assert.equal(Number(statsRes.rows[0].best_streak), 52);
 
     const historyRes = await dbPool.query(
-      "SELECT count(*) FROM match_history WHERE user_id = $1",
+      "SELECT count(*) FROM round_history WHERE user_id = $1",
       [user.id]
     );
     assert.equal(Number(historyRes.rows[0].count), 50, "history must be pruned to 50 rows");
@@ -465,7 +465,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   test("two hands for one player wait on the row lock, and both history rows survive the prune", async () => {
     const { user } = await register(server, "stats_race_user");
     await dbPool.query(
-      `INSERT INTO match_history (user_id, finished_at, game_mode, placement, player_count, points)
+      `INSERT INTO round_history (user_id, finished_at, game_mode, placement, player_count, points)
        SELECT $1, now() - make_interval(hours => g), 'free_for_all', 2, 2, 0 FROM generate_series(1, $2::int) g`,
       [user.id, 50]
     );
@@ -483,13 +483,13 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     await whileUserLocked(dbPool, [user.id], () => ends.map((end) => recordGameResult([result], "free_for_all", end)));
 
     const rows = await dbPool.query(
-      "SELECT (extract(epoch FROM finished_at) * 1000)::bigint AS ms FROM match_history WHERE user_id = $1",
+      "SELECT (extract(epoch FROM finished_at) * 1000)::bigint AS ms FROM round_history WHERE user_id = $1",
       [user.id]
     );
     assert.equal(rows.rowCount, MAX_HISTORY_ROWS_PER_USER);
     const kept = rows.rows.map((r) => Number(r.ms));
-    for (const end of ends) assert.ok(kept.includes(end.getTime()), `the hand ending ${end.toISOString()} was pruned`);
-    const stats = await dbPool.query("SELECT games_played FROM user_stats WHERE user_id = $1", [user.id]);
-    assert.equal(Number(stats.rows[0].games_played), 2);
+    for (const end of ends) assert.ok(kept.includes(end.getTime()), `the round ending ${end.toISOString()} was pruned`);
+    const stats = await dbPool.query("SELECT rounds_played FROM user_stats WHERE user_id = $1", [user.id]);
+    assert.equal(Number(stats.rows[0].rounds_played), 2);
   });
 });

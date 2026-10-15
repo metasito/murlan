@@ -25,11 +25,11 @@ const noop = () => {};
 const LAST: Combination = { type: 'pair', cards: [card('k1', 'K', 'clubs'), card('k2', 'K', 'diamonds')], strength: 13 };
 
 type Outcome = 'won' | 'lost' | 'neutral' | 'draw';
-const CASES: { outcome: Outcome; sting: string; teams: boolean; rankings: string[] }[] = [
-  { outcome: 'won', sting: 'roundWon', teams: false, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
-  { outcome: 'lost', sting: 'roundLost', teams: false, rankings: ['player_1', 'player_2', 'player_3', 'player_0'] },
-  { outcome: 'neutral', sting: 'roundNeutral', teams: false, rankings: ['player_1', 'player_0', 'player_2', 'player_3'] },
-  { outcome: 'draw', sting: 'roundNeutral', teams: true, rankings: ['player_0', 'player_1', 'player_2', 'player_3'] },
+const CASES: { outcome: Outcome; sting: string; teams: boolean; finishingOrder: string[] }[] = [
+  { outcome: 'won', sting: 'roundWon', teams: false, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'] },
+  { outcome: 'lost', sting: 'roundLost', teams: false, finishingOrder: ['player_1', 'player_2', 'player_3', 'player_0'] },
+  { outcome: 'neutral', sting: 'roundNeutral', teams: false, finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'] },
+  { outcome: 'draw', sting: 'roundNeutral', teams: true, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'] },
 ];
 
 const seat = (i: number, teams: boolean): Player => ({
@@ -40,7 +40,7 @@ const seat = (i: number, teams: boolean): Player => ({
   ...(teams ? { team: i === 0 || i === 3 ? 'A' : 'B' } : {}),
 });
 
-const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean) => {
+const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean) => {
   const state: GameState = {
     players: [0, 1, 2, 3].map((i) => seat(i, teams)),
     currentTurnIndex: 3,
@@ -49,14 +49,14 @@ const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean) => {
     passCount: 0,
     gameMode: teams ? 'teams' : 'free_for_all',
     trickWinner: null,
-    gameOver: over,
-    rankings: over ? rankings : [],
+    roundOver: over,
+    finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
   };
-  const handScores = over ? Object.fromEntries(rankings.map((id, i) => [id, 3 - i])) : {};
+  const placementPoints = over ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} handScores={handScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={state} placementPoints={placementPoints} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
 };

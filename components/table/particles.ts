@@ -4,7 +4,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 import { BombFx, Dust, RoundMoment } from "../../lib/tokens.ts";
-import type { HandOutcome } from "../../lib/game/matchState.ts";
+import type { RoundOutcome } from "../../lib/game/matchState.ts";
 import type { LandingPayload } from "./useFlightClock.ts";
 import type { FlyDirection } from "../seatLayout.ts";
 import { MOTES } from "./air.ts";
@@ -172,8 +172,8 @@ export function landingDust(l: Pick<LandingPayload, "catchUp" | "cards" | "x" | 
   return landDust(l.cards, landingDustCount(l.cards), l.x / sx, l.y / sy, rng);
 }
 
-/** The mockup's `burstMotes` at the round winner's seat `at`: the full burst for a win, a smaller one for any other decided finish. */
-export function roundMotes(outcome: HandOutcome, at: { x: number; y: number }, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
+/** The mockup's `burstMotes` at the trick winner's seat `at`: the full burst for a win, a smaller one for any other decided finish. */
+export function roundMotes(outcome: RoundOutcome, at: { x: number; y: number }, reduced: boolean, sx: number, sy: number, rng: Rng): ParticleSpawn[] {
   "worklet";
   if (reduced || outcome === "draw" || outcome === "pending") return [];
   const M = RoundMoment;

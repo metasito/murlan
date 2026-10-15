@@ -8,18 +8,18 @@ import {
   persistedEnvelopeSchema,
   persistedMatchSchema,
   unpackPersistedState,
-  type HandFlags,
+  type RoundFlags,
   type PersistedMatch,
   type PersistedSeats,
-} from "../../server/game/onlineGameLogic.ts";
+} from "../../shared/persistedEnvelope.ts";
 
 const gameState = {
   currentTurnIndex: 2,
-  gameOver: false,
+  roundOver: false,
   gameMode: "teams",
   players: [{ id: "player_0" }],
 };
-const flags: HandFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
+const flags: RoundFlags = { 0: { bomb: true, joker: false }, 3: { bomb: false, joker: true } };
 const match: PersistedMatch = {
   playerMap: { 0: "alice", 3: "dan" },
   scores: { alice: 7, dan: 12 },
@@ -27,7 +27,7 @@ const match: PersistedMatch = {
   matchLength: "match",
   matchTarget: 21,
   maxPlayers: 4,
-  handsPlayed: 2,
+  roundsPlayed: 2,
   endedByVote: true,
 };
 
@@ -56,9 +56,9 @@ describe("persisted game_state envelope", () => {
     assert.deepEqual(restored.match, match);
   });
 
-  test("hand flags and the deal rotation survive a round trip", () => {
+  test("round flags and the deal rotation survive a round trip", () => {
     const restored = restore(pack());
-    assert.deepEqual(restored.handFlags, flags);
+    assert.deepEqual(restored.roundFlags, flags);
     assert.equal(restored.dealFirstSeat, 3);
   });
 
@@ -70,7 +70,7 @@ describe("persisted game_state envelope", () => {
 
   test("the vacate bookkeeping survives a round trip", () => {
     // Without these four a restart voids every vacated seat: no reclaim, no
-    // end-match vote, no forfeit recorded, and the takeover plays at full
+    // end-match vote, no abandonment recorded, and the takeover plays at full
     // strength (#958, docs/GAME-RULES.md § Decisions).
     assert.deepEqual(restore(JSON.parse(JSON.stringify(pack()))).seats, seats);
   });
@@ -90,14 +90,14 @@ describe("persisted game_state envelope", () => {
 
   test("the engine state comes back byte-for-byte, with no envelope fields on it", () => {
     // The restored state is broadcast to every client and compared against
-    // engine output — a stray schemaVersion or handFlags on it is a real bug.
+    // engine output — a stray schemaVersion or roundFlags on it is a real bug.
     const restored = restore(pack());
     assert.deepEqual(restored.gameState, gameState);
   });
 
-  test("the match's game mode does not overwrite the hand's", () => {
+  test("the match's game mode does not overwrite the round's", () => {
     // GameState carries its own gameMode. A flat envelope would have the two
-    // share a key, and the hand on the table would come back a different game.
+    // share a key, and the round on the table would come back a different game.
     const restored = restore(pack({ gameMode: "free_for_all" }));
     assert.equal(restored.gameState.gameMode, "teams");
     assert.equal(restored.match.gameMode, "free_for_all");
@@ -185,9 +185,9 @@ describe("rows the restore path refuses", () => {
     assert.match(refusal(pack({ maxPlayers: -1 })), /max players/);
   });
 
-  test("a missing engine state, hand flags, deal rotation or match block", () => {
+  test("a missing engine state, round flags, deal rotation or match block", () => {
     assert.match(refusal({ ...pack(), gameState: null }), /game state/);
-    assert.match(refusal({ ...pack(), handFlags: undefined }), /hand flags/);
+    assert.match(refusal({ ...pack(), roundFlags: undefined }), /round flags/);
     assert.match(refusal({ ...pack(), dealFirstSeat: "3" }), /deal rotation/);
     assert.match(refusal({ ...pack(), match: undefined }), /match state/);
   });

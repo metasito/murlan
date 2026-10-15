@@ -61,7 +61,7 @@ test("bot seats are excluded from match scoring", () => {
   assert.deepEqual(scored, ["u1"]);
 });
 
-// A bot-filled table stays playable — practice against the AI is a feature —
+// A bot-filled table stays playable — practice against the bot is a feature —
 // but its results must not be recorded, or a private room of bots is an
 // endless supply of guaranteed points, streaks and achievements.
 test("a lone human plus bots is not a recordable table", () => {
@@ -80,9 +80,9 @@ test("bot-majority tables of every size are excluded", () => {
 
 test("tables humans hold at least half of are recorded", () => {
   assert.equal(isContestedTable(2, 2), true); // two friends plus two bots
-  assert.equal(isContestedTable(1, 1), true); // a straight duel with the AI
+  assert.equal(isContestedTable(1, 1), true); // a straight duel with the bot
   assert.equal(isContestedTable(4, 0), true); // a full human table
-  assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-game
+  assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-match
 });
 
 // seatAssignmentsFromRoster is what startMatchAction actually calls to build
@@ -121,7 +121,7 @@ test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () 
   const players = [
     { personality: undefined }, // human seat 0
     { personality: "gent" as const }, // born-bot seat 1
-    // A seat that started human and was later vacated: type flips to "ai",
+    // A seat that started human and was later vacated: type flips to "bot",
     // personality is never set (vacateSeat doesn't touch it).
     { personality: undefined },
   ];

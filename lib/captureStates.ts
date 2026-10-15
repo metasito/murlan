@@ -141,7 +141,7 @@ export const SEAT_COUNT_STATES: readonly CaptureState[] = [
 export const LINK_STATES: readonly CaptureState[] = [
   {
     id: "held",
-    label: "Your link down mid-hand — the whole table held in grey",
+    label: "Your link down mid-round — the whole table held in grey",
     playerCount: 4,
     turn: 1,
     side: "right",
@@ -217,10 +217,10 @@ function takeOfARank(deck: Card[], size: number): Combination | null {
 }
 
 /**
- * The table as a capture wants it: mid-hand, only the pile in flight, no deal
+ * The table as a capture wants it: mid-round, only the pile in flight, no deal
  * running, and the turn pinned where the state says.
  *
- * Pinned is the point. `app/game.tsx` runs the AI turn loop, so a seeded save
+ * Pinned is the point. `app/game.tsx` runs the bot turn loop, so a seeded save
  * with the turn on a bot is a bot's turn for about a second — long enough to
  * navigate to and not to photograph. Nothing here advances the turn on its own.
  */
@@ -231,18 +231,18 @@ export function captureGameState(state: CaptureState): GameState {
   const pile = state.pile ? takeOfARank(deck, state.pile === "bomb" ? 4 : 2) : null;
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
-  const rankings: string[] = [];
+  const finishingOrder: string[] = [];
 
   const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
     const id = `capture_${seat}`;
     const held = heldAt(state, seat);
-    if (held === "out") rankings.push(id);
+    if (held === "out") finishingOrder.push(id);
     return {
       id,
       name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : BOTS[seat - 1],
       hand: held === "out" ? [] : dealt[seat].slice(0, held),
-      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "ai",
-      ...(held === "out" && { finishPosition: rankings.length }),
+      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "bot",
+      ...(held === "out" && { finishPosition: finishingOrder.length }),
     };
   });
 
@@ -254,10 +254,10 @@ export function captureGameState(state: CaptureState): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings,
+    roundOver: false,
+    finishingOrder,
     // Past the opening, so nothing waits on the 3 of spades and the table draws
-    // as a hand in progress rather than a first move.
+    // as a round in progress rather than a first move.
     firstPlayMade: true,
   };
 }

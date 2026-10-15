@@ -1,7 +1,7 @@
 // tests/integration/ladderAndReplay.test.ts — what the game-over path writes
 // for the ranked ladder and for match replay.
 //
-// Both writes are fire-and-forget from `handleGameOver`, both go to tables that
+// Both writes are fire-and-forget from `handleRoundOver`, both go to tables that
 // were added after the app shipped, and neither had ever executed before this
 // suite existed: the unit tests cover the arithmetic, and nothing covered the
 // SQL. The two properties that actually matter here are things a unit test
@@ -18,10 +18,10 @@ import {
 } from "../helpers/testServer.ts";
 import { connectAs, waitFor, register } from "../helpers/client.ts";
 import { whileUserLocked } from "../helpers/userLock.ts";
-import { driveHumansToGameOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
+import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 
 // Same convention as the other integration suites: an exchange phase left to
 // the AFK path must not stall the run.
@@ -43,8 +43,8 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     await server.stop();
   });
 
-  /** Two humans plus a bot, played to the end of one hand. */
-  async function playOneHand(prefix: string) {
+  /** Two humans plus a bot, played to the end of one round. */
+  async function playOneRound(prefix: string) {
     const alice = await connectAs(server, `${prefix}_alice`);
     const bob = await connectAs(server, `${prefix}_bob`);
 
@@ -56,25 +56,25 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     bob.socket.emit("room:join", { code: room.code });
     await joined;
 
-    const over = (await driveHumansToGameOver([alice.socket, bob.socket], () => {
+    const over = (await driveHumansToRoundOver([alice.socket, bob.socket], () => {
       alice.socket.emit("room:start", { fillWithBots: true, botPersonality: "luan" });
-    })) as GameOverPayload;
+    })) as RoundOverPayload;
 
     return { alice, bob, room, over };
   }
 
-  // Each of these plays its own hand under its own `playOneHand` prefix, so
+  // Each of these plays its own round under its own `playOneRound` prefix, so
   // its own accounts and its own room, and every registry the server keeps is
   // keyed by room or user. Sequentially the file cost 126s — the longest in
   // the suite by an order of magnitude, and so the floor for `npm test`, which
   // runs files concurrently but never the tests inside one.
-  describe("what a finished hand writes", { concurrency: true }, () => {
+  describe("what a finished round writes", { concurrency: true }, () => {
     test("a finished hand is stored as a replay, and the replay holds no hand", async () => {
-      const { alice, bob } = await playOneHand("rep");
+      const { alice, bob } = await playOneRound("rep");
       try {
         const row = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT player_ids, seats, moves, rankings, game_mode FROM match_replays WHERE player_ids @> $1::jsonb",
+            "SELECT player_ids, seats, moves, finishing_order, game_mode FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
           );
           return res.rows[0] ?? null;
@@ -86,7 +86,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
         assert.equal(row.game_mode, "free_for_all");
         assert.equal(seats.length, 3, "every seat is recorded, bot included");
-        assert.ok(moves.length > 0, "a played hand produces moves");
+        assert.ok(moves.length > 0, "a played round produces moves");
 
         // The whole privacy premise of the feature: a replay records what was
         // played, never what was held. If a `hand` key ever appears here, the
@@ -107,36 +107,36 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         assert.deepEqual([...playerIds].sort(), [alice.user.id, bob.user.id].sort());
         assert.equal(seats.filter((s) => s.userId === null).length, 1, "the bot seat is userId null");
 
-        assert.ok((row.rankings as string[]).length > 0);
+        assert.ok((row.finishing_order as string[]).length > 0);
       } finally {
         alice.socket.close();
         bob.socket.close();
       }
     });
 
-    test("a rated hand moves both humans and never creates a row for a bot", async () => {
-      const { alice, bob, over } = await playOneHand("lad");
+    test("a rated round moves both humans and never creates a row for a bot", async () => {
+      const { alice, bob, over } = await playOneRound("lad");
       try {
         const season = seasonKey(new Date());
 
         for (const { user } of [alice, bob]) {
           const row = await waitForRow(async () => {
             const res = await dbPool.query(
-              "SELECT rating, games, season FROM user_ratings WHERE user_id = $1",
+              "SELECT rating, rounds, season FROM user_ratings WHERE user_id = $1",
               [user.id]
             );
             return res.rows[0] ?? null;
           });
           assert.equal(row.season, season, "the row lands in the month it was played");
-          assert.equal(Number(row.games), 1);
+          assert.equal(Number(row.rounds), 1);
           assert.notEqual(
             Number(row.rating),
             START_RATING,
-            "a finished hand must actually move the rating"
+            "a finished round must actually move the rating"
           );
           assert.deepEqual(
             over.ratingsAfter[user.id],
-            { rating: Number(row.rating), games: Number(row.games) },
+            { rating: Number(row.rating), rounds: Number(row.rounds) },
             "game:over announces the standing the ladder then writes"
           );
         }
@@ -155,11 +155,11 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     });
 
     test("the two humans' rating changes cancel out", async () => {
-      const { alice, bob } = await playOneHand("cons");
+      const { alice, bob } = await playOneRound("cons");
       try {
         const ratings = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT user_id, rating, games FROM user_ratings WHERE user_id = ANY($1)",
+            "SELECT user_id, rating, rounds FROM user_ratings WHERE user_id = ANY($1)",
             [[alice.user.id, bob.user.id]]
           );
           return res.rows.length === 2 ? res.rows : null;
@@ -171,7 +171,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
           (sum: number, r: { rating: number }) => sum + (Number(r.rating) - START_RATING),
           0
         );
-        assert.equal(total, 0, "a hand between equals moves rating from one to the other, not into it");
+        assert.equal(total, 0, "a round between equals moves rating from one to the other, not into it");
       } finally {
         alice.socket.close();
         bob.socket.close();
@@ -187,7 +187,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
      * #850 clause 11 (docs/GAME-RULES.md § Decisions) carved a narrow exception into that
      * fix: a match abandoned before its very first point is scored — this
      * one, still mid-deal-one with nothing on the board — is voided and
-     * rated for nobody, not scored as a forfeit. Was pinned the other way
+     * rated for nobody, not scored as an abandonment. Was pinned the other way
      * (quitter rated down, survivor rated up); re-pinned to the decided rule,
      * proved by the absence of a `user_ratings` row for either seat rather
      * than by a rating value.
@@ -212,7 +212,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         // near its target — the narrow window clause 11 covers.
         const over = waitFor<{ voided?: boolean; recorded?: boolean }>(
           survivor.socket,
-          "game:over",
+          "game:round_over",
           5_000
         );
         quitter.socket.disconnect();
@@ -245,12 +245,12 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     });
 
     test("a player can read their own replay back, and cannot read a stranger's", async () => {
-      const { alice, bob } = await playOneHand("own");
+      const { alice, bob } = await playOneRound("own");
       const stranger = await connectAs(server, "own_stranger");
       try {
         await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT id FROM match_replays WHERE player_ids @> $1::jsonb",
+            "SELECT id FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
           );
           return res.rows[0] ?? null;
@@ -265,7 +265,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
         // The list is a projection now, so the summary has to still carry
         // exactly ReplaySummary — no column dropped, and none of the ones it
-        // deliberately leaves in the database (moves, rankings, player_ids,
+        // deliberately leaves in the database (moves, finishingOrder, player_ids,
         // room_code) handed out with it.
         assert.deepEqual(Object.keys(summaries[0]).sort(), [
           "finishedAt",
@@ -276,7 +276,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
           "seats",
         ]);
         const stored = await dbPool.query(
-          "SELECT moves FROM match_replays WHERE id = $1",
+          "SELECT moves FROM round_replays WHERE id = $1",
           [summaries[0].id]
         );
         assert.equal(
@@ -301,16 +301,16 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       }
     });
 
-    // Every other table naming a user cascades on delete. match_replays cannot —
+    // Every other table naming a user cascades on delete. round_replays cannot —
     // a replay belongs to up to four players, so it carries their ids and display
     // names inside jsonb. Without this, deleting your account left your username
     // sitting in other people's replays.
     test("deleting an account erases that player from replays others keep", async () => {
-      const { alice, bob } = await playOneHand("del");
+      const { alice, bob } = await playOneRound("del");
       try {
         const before = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT id, player_ids, seats FROM match_replays WHERE player_ids @> $1::jsonb",
+            "SELECT id, player_ids, seats FROM round_replays WHERE player_ids @> $1::jsonb",
             [JSON.stringify([alice.user.id])]
           );
           return res.rows[0] ?? null;
@@ -327,7 +327,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         assert.equal(res.status, 200, await res.text());
 
         const after = await dbPool.query(
-          "SELECT player_ids, seats FROM match_replays WHERE id = $1",
+          "SELECT player_ids, seats FROM round_replays WHERE id = $1",
           [before.id]
         );
         assert.equal(after.rows.length, 1, "Bob keeps the replay he played in");
@@ -338,7 +338,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         assert.ok(ids.includes(bob.user.id), "his is not");
 
         const hers = seats.find((s) => s.name === "");
-        assert.ok(hers, "her seat is blanked rather than removed, so the hand still has four");
+        assert.ok(hers, "her seat is blanked rather than removed, so the round still has four");
         assert.equal(hers.userId, null);
         assert.equal(seats.length, 3, "the seat count is untouched");
         assert.ok(
@@ -354,14 +354,14 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
   // Kept out of the group above: this one replaces `query` on the app's own
   // pool to read the SQL back, then counts how many captured statements name
-  // the moves column. A hand finishing in a parallel test writes one through
+  // the moves column. A round finishing in a parallel test writes one through
   // that same pool, and would be counted as a second.
   test("the list counts the moves in Postgres and leaves them there", async () => {
-    const { alice, bob } = await playOneHand("proj");
+    const { alice, bob } = await playOneRound("proj");
     try {
       await waitForRow(async () => {
         const res = await dbPool.query(
-          "SELECT id FROM match_replays WHERE player_ids @> $1::jsonb",
+          "SELECT id FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([alice.user.id])]
         );
         return res.rows[0] ?? null;
@@ -404,11 +404,11 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         await client.query("BEGIN");
         await client.query("SET LOCAL enable_seqscan = off");
         const explained = await client.query<{ "QUERY PLAN": string }>(
-          "EXPLAIN SELECT id FROM match_replays WHERE player_ids @> $1::jsonb",
+          "EXPLAIN SELECT id FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([alice.user.id])]
         );
         const plan = explained.rows.map((r) => r["QUERY PLAN"]).join("\n");
-        assert.match(plan, /match_replays_player_ids_idx/, `planned a scan instead:\n${plan}`);
+        assert.match(plan, /round_replays_player_ids_idx/, `planned a scan instead:\n${plan}`);
       } finally {
         await client.query("ROLLBACK");
         client.release();
@@ -430,14 +430,14 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     const committed = await whileUserLocked(dbPool, [ann.id, ben.id], () => [hand(ann.id, ben.id), hand(ben.id, ann.id)]);
 
     const rows = await dbPool.query(
-      "SELECT user_id, rating, games FROM user_ratings WHERE season = $1 AND user_id = ANY($2)",
+      "SELECT user_id, rating, rounds FROM user_ratings WHERE season = $1 AND user_id = ANY($2)",
       [seasonKey(now), [ann.id, ben.id]]
     );
     for (const id of [ann.id, ben.id]) {
       const row = rows.rows.find((r) => r.user_id === id);
-      assert.equal(row?.games, 2, "both hands are counted");
+      assert.equal(row?.rounds, 2, "both hands are counted");
       const summed = committed.reduce((sum, deltas) => sum + (deltas.get(id) ?? 0), 0);
-      assert.equal(row?.rating, START_RATING + summed, "neither hand's delta was overwritten");
+      assert.equal(row?.rating, START_RATING + summed, "neither round's delta was overwritten");
     }
   });
 });

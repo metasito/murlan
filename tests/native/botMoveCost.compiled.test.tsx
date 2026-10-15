@@ -53,7 +53,7 @@ const noop = () => {};
 const table = (s: GameState) => (
   <Profiler id="commits" onRender={onCommit}>
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} />
+      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} placementPoints={{}} />
     </SafeAreaProvider>
   </Profiler>
 );

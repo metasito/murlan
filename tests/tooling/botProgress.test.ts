@@ -1,6 +1,6 @@
-// tests/tooling/botProgress.test.ts — the browser suite's runaway guard. A hand ends
-// when someone runs out, so cards leaving hands is the only progress a game
-// makes, and a game that keeps changing the table without ever moving that
+// tests/tooling/botProgress.test.ts — the browser suite's runaway guard. A round ends
+// when someone runs out, so cards leaving hands is the only progress a round
+// makes, and a round that keeps changing the table without ever moving that
 // total is one that cannot end. Counting states rather than seconds is what
 // keeps a slow runner from reading as a runaway (#433).
 import { test, describe } from "node:test";
@@ -32,7 +32,7 @@ describe("cardsInHands", () => {
 });
 
 describe("the runaway guard", () => {
-  test("a game where cards keep leaving hands never goes stale", () => {
+  test("a round where cards keep leaving hands never goes stale", () => {
     const descs = [];
     for (let n = 13; n > 0; n--) descs.push(state(n, n));
     assert.equal(fold(descs).stale, 0);
@@ -47,8 +47,8 @@ describe("the runaway guard", () => {
     assert.equal(fold(descs).stale, descs.length - 1);
   });
 
-  test("a fresh deal counts as progress, so a match does not accumulate", () => {
-    // Between hands the total grows rather than shrinks. What a game that
+  test("a fresh round counts as progress, so a match does not accumulate", () => {
+    // Between rounds the total grows rather than shrinks. What a round that
     // cannot end never does is change it at all.
     const after = fold([state(2, 1), state(1, 1), state(13, 13)]);
     assert.equal(after.stale, 0);

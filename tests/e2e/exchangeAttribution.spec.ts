@@ -4,7 +4,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { installVirtualClock, step, stepUntil, takeOver } from "./helpers/virtualClock";
 import { HAND_CARDS } from "./helpers/selectors";
-import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
+import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY, TUTORIAL_SEEN_KEY } from "../../lib/storageKeys";
 import { LEG } from "../../lib/game/exchangeTimeline";
 import { Hold, RoundEnding, Motion } from "../../lib/tokens";
 
@@ -35,23 +35,23 @@ const card = (id: string) => {
 
 function save(winnerIdx: number, loserIdx: number, hands: string[][], over: object = {}) {
   return {
-    version: 2,
+    version: 3,
     gameState: {
-      players: NAMES.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i].map(card), type: i === 0 ? "human" : "ai" })),
+      players: NAMES.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i].map(card), type: i === 0 ? "human" : "bot" })),
       currentTurnIndex: winnerIdx,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
-      exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser: card("2_spades"), bothJokersException: false },
+      exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser: card("2_spades"), twoJokerException: false },
       ...over,
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
+    players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
   };
@@ -65,7 +65,7 @@ async function open(page: Page, baseURL: string, seed: object) {
     },
     [
       [TUTORIAL_SEEN_KEY, "1"],
-      [E2E_SUSPEND_AI_KEY, "1"],
+      [E2E_SUSPEND_BOT_KEY, "1"],
       [OFFLINE_SAVE_KEY, JSON.stringify(seed)],
     ]
   );
@@ -79,7 +79,7 @@ async function open(page: Page, baseURL: string, seed: object) {
 const table = (page: Page) =>
   stepUntil(page, () => page.locator('[data-testid="game-table"]').isVisible(), "the table");
 
-/** Room for a deal the table may run before the trade goes. */
+/** Room for a deal the table may run before the exchange goes. */
 const SLACK = 3000;
 
 /** React commits on a MessageChannel task after the frame, so the DOM is read after one. */
@@ -105,7 +105,7 @@ async function frame(page: Page): Promise<Frame> {
       if (el && seen(el) > 0) out[id] = { ...centre(el), face: seen(el.firstElementChild) > 0.5 };
     }
     const pile = document.querySelector('[data-testid="pile-area"]');
-    const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-no-swap"]');
+    const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-none"]');
     const seats = [...document.querySelectorAll('[data-testid="top-seat"], [data-testid^="side-seat-"]')].map((s) => ({
       name: s.querySelector('[data-testid="seat-name"]')?.textContent ?? "",
       lit: s.querySelector('[data-testid="seat-ring"]')?.getAttribute("data-seat-lit") === "true",
@@ -224,7 +224,7 @@ test("the loser's card lifts out of its hand, and the winner's comes back to it"
   checkGlow(frames, give.landed);
 });
 
-test("a seat outside the trade reads both legs off the pile and the lit seats", async ({ page, baseURL }) => {
+test("a seat outside the announced reads both legs off the pile and the lit seats", async ({ page, baseURL }) => {
   await open(page, baseURL!, save(1, 2, [["5_hearts", "K_spades"], ["2_spades", "6_diamonds", "K_diamonds"], ["7_clubs", "8_clubs"]]));
   await table(page);
   const frames: Frame[] = [];
@@ -237,7 +237,7 @@ test("a seat outside the trade reads both legs off the pile and the lit seats", 
 // A deal the loser holds both Jokers in: the shuffle draws from `crypto.getRandomValues`, held at 92
 // for the deal (found by running `initializeRematch` under the same stub).
 test("both Jokers rest side by side on the pile under their notice, and go back", async ({ page, baseURL }) => {
-  const over = save(0, 2, [[], [], []], { gameOver: true, exchangePhase: undefined, rankings: ["player_0", "player_1", "player_2"] });
+  const over = save(0, 2, [[], [], []], { roundOver: true, exchangePhase: undefined, finishingOrder: ["player_0", "player_1", "player_2"] });
   await open(page, baseURL!, over);
   await page.evaluate(() => {
     crypto.getRandomValues = (<T extends ArrayBufferView | null>(a: T) => {
@@ -263,7 +263,7 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
       expect(near(f.fliers[id], { x: f.pile!.x + dx, y: f.pile!.y }, 4), `${id} beside the pile centre`).toBe(true);
       expect(f.fliers[id].face).toBe(true);
     }
-    expect(f.label?.text, "the notice names no swap").toBe("Nessuno scambio — Jolly doppio 🃏");
+    expect(f.label?.text, "the notice names no exchange").toBe("Nessuno scambio — Jolly doppio 🃏");
     expect(Math.abs(f.label!.x - f.pile!.x), "the notice is centred on the pile").toBeLessThanOrEqual(4);
     expect(f.label!.y, "and sits under it").toBeGreaterThan(f.pile!.y);
   }

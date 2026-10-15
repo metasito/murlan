@@ -270,8 +270,8 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
     else if (k === "p" && ctx.pr) reveal(ctx.pr);
     else if (k === "o" && ctx.url) reveal(ctx.url);
     else if (k === "l" && ctx.log) reveal(ctx.log);
-    else if (k === "t" && ctx.session) handOver(`claude --resume ${ctx.session} --fork-session`);
-    else if (k === "c" && ctx.log) handOver([ctx.branch, ctx.log].filter(Boolean).join("\n"));
+    else if (k === "t" && ctx.session) roundOver(`claude --resume ${ctx.session} --fork-session`);
+    else if (k === "c" && ctx.log) roundOver([ctx.branch, ctx.log].filter(Boolean).join("\n"));
     else if (k === "r" && board.recap && !open?.wait) view.recap = !view.recap;
     else if (k === "?") view.help = !view.help;
     else return false;
@@ -279,7 +279,7 @@ export function ticker(out = process.stdout, err = process.stderr, reveal = open
   };
 
   /** Copied, and printed too: a clipboard nothing confirmed is a key that seemed to do nothing. */
-  const handOver = (text) => {
+  const roundOver = (text) => {
     copy(text);
     over(stepRow({ label: "copied", detail: text.replace(/\n/g, " · "), state: "done" }, t));
   };

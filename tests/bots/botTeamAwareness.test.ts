@@ -2,7 +2,7 @@
 // personality suite's seeded pins stay untouched — #216 requires them to.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aiChoosePlay, opponentsOf } from "../../lib/game/ai.ts";
+import { botChoosePlay, opponentsOf } from "../../lib/game/bot.ts";
 import {
   buildCombination,
   initializeGame,
@@ -23,7 +23,7 @@ function table(hands: Card[][], overrides: Partial<GameState> = {}): GameState {
   return makeState(
     hands.map((hand, seat) =>
       makePlayer(`p${seat}`, hand, {
-        type: "ai",
+        type: "bot",
         // Hard tier, aggression 0.85 — the tier that reaches for a bomb and the
         // knob that contests a round.
         personality: "gent",
@@ -79,7 +79,7 @@ test("leading a new round is never declining to beat the partner", () => {
   const view = opponentsOf(state, 0);
   assert.equal(view.partnerHoldsTop, false, "there is no top play to hold");
 
-  const choice = aiChoosePlay(
+  const choice = botChoosePlay(
     state.players[0],
     null,
     true,
@@ -102,7 +102,7 @@ test("a partner who has already gone out no longer holds the round", () => {
   const view = opponentsOf(state, 0);
   assert.equal(view.partnerHoldsTop, false);
 
-  const choice = aiChoosePlay(
+  const choice = botChoosePlay(
     state.players[0],
     TOP_PLAY,
     false,
@@ -121,7 +121,7 @@ test("a bot passes rather than bomb its own partner's play", () => {
   );
   const view = opponentsOf(state, 0);
 
-  const choice = aiChoosePlay(
+  const choice = botChoosePlay(
     state.players[0],
     TOP_PLAY,
     false,
@@ -144,7 +144,7 @@ test("the same bot still bombs an opponent about to go out", () => {
   const view = opponentsOf(state, 0);
   assert.equal(Math.min(...view.handCounts), 1, "the fixture must be an emergency");
 
-  const choice = aiChoosePlay(
+  const choice = botChoosePlay(
     state.players[0],
     TOP_PLAY,
     false,
@@ -167,7 +167,7 @@ test("a bot that can go out still goes out on its partner's play", () => {
   const view = opponentsOf(state, 0);
   assert.equal(view.partnerHoldsTop, true, "the fixture must be a partner-held round");
 
-  const choice = aiChoosePlay(
+  const choice = botChoosePlay(
     state.players[0],
     buildCombination([c("2", "clubs")])!,
     false,
@@ -188,7 +188,7 @@ test("the seat opponentsOf protects is the one Player.team calls a teammate", ()
   const state = initializeGame(
     Array.from({ length: 4 }, (_, i) => ({
       name: `bot${i}`,
-      type: "ai" as const,
+      type: "bot" as const,
       personality: "gent" as const,
       team: (i % 2 === 0 ? "A" : "B") as "A" | "B",
     })),
@@ -206,13 +206,13 @@ test("the seat opponentsOf protects is the one Player.team calls a teammate", ()
 });
 
 // Every assertion above is one call. This is the only one that walks a whole
-// teams hand through `opponentsOf`, so it is what would catch a pass rule that
+// teams round through `opponentsOf`, so it is what would catch a pass rule that
 // stalls a table rather than one that misjudges a single turn.
-test("a full teams hand played through opponentsOf still reaches game over", () => {
+test("a full teams round played through opponentsOf still reaches game over", () => {
   let state = initializeGame(
     Array.from({ length: 4 }, (_, i) => ({
       name: `bot${i}`,
-      type: "ai" as const,
+      type: "bot" as const,
       personality: "gent" as const,
       team: (i % 2 === 0 ? "A" : "B") as "A" | "B",
     })),
@@ -221,14 +221,14 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
 
   const rng = mulberry32(0x7ea3);
   let turns = 0;
-  while (!state.gameOver && turns < 2000) {
+  while (!state.roundOver && turns < 2000) {
     turns++;
     const seat = state.currentTurnIndex;
     const isNewTrick = state.lastPlayedCombination === null;
     const view = opponentsOf(state, seat);
     const requireCard = !state.firstPlayMade ? state.startCard : undefined;
 
-    const play = aiChoosePlay(
+    const play = botChoosePlay(
       state.players[seat],
       isNewTrick ? null : state.lastPlayedCombination,
       isNewTrick,
@@ -245,6 +245,6 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
     state = play ? processPlay(state, play) : processPass(state);
   }
 
-  assert.ok(state.gameOver, `the hand did not finish in ${turns} turns`);
-  assert.equal(state.rankings.length, 4, "every seat is placed");
+  assert.ok(state.roundOver, `the round did not finish in ${turns} turns`);
+  assert.equal(state.finishingOrder.length, 4, "every seat is placed");
 });

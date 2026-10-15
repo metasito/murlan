@@ -1,16 +1,16 @@
-// tests/server/gameOver.test.ts — what server/game/gameOver.ts does *around* the hand
+// tests/server/roundOver.test.ts — what server/game/roundOver.ts does *around* the round
 // resolution: the broadcast, the two awaited writes and the three
 // fire-and-forget ones.
 //
-// The resolution itself is tests/server/handEnd.test.ts's: match at target, tie
+// The resolution itself is tests/server/roundEnd.test.ts's: match at target, tie
 // escalation, draws, the teams pair total and the `bot:<seat>` exclusion are
-// all proved against resolveHandEnd there, and are deliberately not repeated.
+// all proved against resolveRoundEnd there, and are deliberately not repeated.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
-import { handleGameOver } from "../../server/game/gameOver.ts";
+import { handleRoundOver } from "../../server/game/roundOver.ts";
 import { logger } from "../../server/http/logger.ts";
-import type { GameOverWriters } from "../../server/game/gameOver.ts";
+import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
@@ -24,12 +24,12 @@ type Call = { name: string; args: unknown[] };
  * A stub socket server and a stub writer set sharing one `order` log, so a
  * test can assert what ran before what: the table has to hear the result
  * before any write is attempted, because two of the four call sites invoke
- * handleGameOver as a bare `void` and a slow database would otherwise hold
+ * handleRoundOver as a bare `void` and a slow database would otherwise hold
  * the result back.
  *
  * A writer given an Error rejects with it instead of resolving.
  */
-function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {}) {
+function stubServer(overrides: Partial<Record<keyof RoundOverWriters, Error>> = {}) {
   const order: string[] = [];
   const emitted: Emitted[] = [];
   const calls: Call[] = [];
@@ -44,7 +44,7 @@ function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {
   };
 
   const record =
-    (name: keyof GameOverWriters) =>
+    (name: keyof RoundOverWriters) =>
     (...args: unknown[]) => {
       order.push(name);
       calls.push({ name, args });
@@ -63,11 +63,11 @@ function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {
     // broadcast: the rating delta stops existing once the rated write lands.
     previewRatedDeltas: (...args: unknown[]) => {
       order.push("previewRatedDeltas");
-      calls.push({ name: "previewRatedDeltas" as keyof GameOverWriters, args });
+      calls.push({ name: "previewRatedDeltas" as keyof RoundOverWriters, args });
       const failure = overrides.previewRatedDeltas;
       return failure ? Promise.reject(failure) : Promise.resolve(new Map<string, number>());
     },
-  } as unknown as GameOverWriters;
+  } as unknown as RoundOverWriters;
 
   return {
     io: io as unknown as SocketServer,
@@ -75,7 +75,7 @@ function stubServer(overrides: Partial<Record<keyof GameOverWriters, Error>> = {
     order,
     emitted,
     names: () => calls.map((c) => c.name),
-    of: (name: keyof GameOverWriters) => calls.filter((c) => c.name === name),
+    of: (name: keyof RoundOverWriters) => calls.filter((c) => c.name === name),
   };
 }
 
@@ -103,8 +103,8 @@ function finishedState(overrides: Partial<GameState> = {}): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: true,
-    rankings: ["player_0", "player_1"],
+    roundOver: true,
+    finishingOrder: ["player_0", "player_1"],
     firstPlayMade: true,
     ...overrides,
   };
@@ -124,9 +124,9 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 0,
+    roundsPlayed: 0,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set<number>(),
     releasedSeats: new Set<string>(),
@@ -140,11 +140,11 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
   };
 }
 
-describe("handleGameOver — the broadcast", () => {
+describe("handleRoundOver — the broadcast", () => {
   test("the table is told once, before any write is attempted", async () => {
     const s = stubServer();
 
-    await handleGameOver(s.io, ROOM, makeGame(), s.writers);
+    await handleRoundOver(s.io, ROOM, makeGame(), s.writers);
 
     // By name rather than by position: `previewRatedDeltas` runs first and is
     // a read. What the guarantee is about is that no *write* is attempted
@@ -156,7 +156,7 @@ describe("handleGameOver — the broadcast", () => {
       "recordRatedResult",
       "saveReplay",
     ];
-    const emittedAt = s.order.indexOf("game:over");
+    const emittedAt = s.order.indexOf("game:round_over");
     const firstWrite = s.order.findIndex((name) => WRITES.includes(name));
     assert.ok(emittedAt >= 0, "the table is told");
     assert.ok(
@@ -165,8 +165,8 @@ describe("handleGameOver — the broadcast", () => {
     );
     assert.deepEqual(
       s.emitted.map((e) => e.event),
-      ["game:over"],
-      "one hand, one game:over"
+      ["game:round_over"],
+      "one round, one game:over"
     );
     assert.equal(s.emitted[0].room, ROOM);
   });
@@ -175,15 +175,15 @@ describe("handleGameOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
-    assert.deepEqual(payload.rankings, ["player_0", "player_1"]);
+    assert.deepEqual(payload.finishingOrder, ["player_0", "player_1"]);
     assert.equal(payload.matchTarget, game.matchTarget);
     assert.equal(payload.matchOver, game.matchOver);
     assert.equal(payload.matchLength, "match");
     assert.equal(payload.isDraw, false);
-    assert.equal(payload.handsPlayed, 1, "the round just decided is counted");
+    assert.equal(payload.roundsPlayed, 1, "the round just decided is counted");
     // One row per seat carries every identity: the totals used to ride
     // alongside as a name -> total map, where two seats sharing a name
     // collapsed into one entry.
@@ -211,24 +211,24 @@ describe("handleGameOver — the broadcast", () => {
     ]);
   });
 
-  test("game:over carries each rated seat's rating after the hand beside its delta", async () => {
+  test("game:over carries each rated seat's rating after the round beside its delta", async () => {
     const s = stubServer();
     const writers = {
       ...s.writers,
       previewRatedDeltas: async () =>
         new Map([
-          ["u_alice", { delta: 14, rating: 1014, games: 3 }],
-          ["u_bob", { delta: -14, rating: 986, games: 7 }],
+          ["u_alice", { delta: 14, rating: 1014, rounds: 3 }],
+          ["u_bob", { delta: -14, rating: 986, rounds: 7 }],
         ]),
     };
 
-    await handleGameOver(s.io, ROOM, makeGame(), writers);
+    await handleRoundOver(s.io, ROOM, makeGame(), writers);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.deepEqual(payload.ratingDeltas, { u_alice: 14, u_bob: -14 });
     assert.deepEqual(payload.ratingsAfter, {
-      u_alice: { rating: 1014, games: 3 },
-      u_bob: { rating: 986, games: 7 },
+      u_alice: { rating: 1014, rounds: 3 },
+      u_bob: { rating: 986, rounds: 7 },
     });
   });
 
@@ -236,7 +236,7 @@ describe("handleGameOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame({ matchLength: "single" });
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
 
     const payload = s.emitted[0].payload as Record<string, unknown>;
     assert.equal(payload.matchOver, true, "one round is the whole match");
@@ -250,18 +250,18 @@ describe("handleGameOver — the broadcast", () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
 
     assert.equal(game.rematchVotes.size, 0);
   });
 });
 
-describe("handleGameOver — the writes", () => {
+describe("handleRoundOver — the writes", () => {
   test("each writer is called exactly once, with the arguments it expects", async () => {
     const s = stubServer();
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
     await game.resultWrites;
 
     assert.deepEqual(s.names(), [
@@ -312,7 +312,7 @@ describe("handleGameOver — the writes", () => {
     // nothing else, so one instant reaching all three writes is the whole of
     // what makes that pairing exact rather than approximate (#739).
     assert.ok(historyFinishedAt instanceof Date);
-    assert.equal(historyFinishedAt, rated[2], "the ladder is stamped with the hand's own clock");
+    assert.equal(historyFinishedAt, rated[2], "the ladder is stamped with the round's own clock");
     assert.equal(
       (s.of("saveReplay")[0].args[0] as { finishedAt: Date }).finishedAt,
       historyFinishedAt,
@@ -328,7 +328,7 @@ describe("handleGameOver — the writes", () => {
         { seatIndex: 1, userId: "u_bob", vacatedBy: null, name: "Bob" },
       ],
       moves: [A_MOVE],
-      rankings: ["player_0", "player_1"],
+      finishingOrder: ["player_0", "player_1"],
     });
   });
 
@@ -343,34 +343,34 @@ describe("handleGameOver — the writes", () => {
           seat("player_2", "Bot 2", 3, 3),
           seat("player_3", "Bot 3", 4, 4),
         ],
-        rankings: ["player_0", "player_1", "player_2", "player_3"],
+        finishingOrder: ["player_0", "player_1", "player_2", "player_3"],
       }),
       playerMap: { 0: "u_alice" },
       maxPlayers: 4,
     });
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
 
     assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
   });
 
-  test("a hand with no move log writes no replay", async () => {
+  test("a round with no move log writes no replay", async () => {
     const noLog = stubServer();
-    await handleGameOver(noLog.io, ROOM, makeGame({ moveLog: null }), noLog.writers);
+    await handleRoundOver(noLog.io, ROOM, makeGame({ moveLog: null }), noLog.writers);
     assert.deepEqual(noLog.of("saveReplay"), []);
 
     const empty = stubServer();
-    await handleGameOver(empty.io, ROOM, makeGame({ moveLog: [] }), empty.writers);
+    await handleRoundOver(empty.io, ROOM, makeGame({ moveLog: [] }), empty.writers);
     assert.deepEqual(empty.of("saveReplay"), []);
   });
 });
 
-describe("handleGameOver — a failing write is not the table's problem", () => {
+describe("handleRoundOver — a failing write is not the table's problem", () => {
   test("the room status failing does not stop the row being written", async () => {
     const s = stubServer({ updateRoomStatus: new Error("no rooms row") });
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, s.writers);
+    await handleRoundOver(s.io, ROOM, game, s.writers);
     await game.resultWrites;
 
     assert.equal(s.of("persistGameState").length, 1);
@@ -387,17 +387,17 @@ describe("handleGameOver — a failing write is not the table's problem", () => 
     // Two of the four call sites invoke this as a bare `void`, so a
     // rejection has nothing to catch it: it surfaces as an unhandled
     // rejection and takes the process out through the boot guards.
-    await handleGameOver(s.io, ROOM, makeGame(), s.writers);
+    await handleRoundOver(s.io, ROOM, makeGame(), s.writers);
 
     assert.deepEqual(
       s.emitted.map((e) => e.event),
-      ["game:over"],
+      ["game:round_over"],
       "the table still heard the result"
     );
   });
 });
 
-describe("handleGameOver — the ladder and history chain", () => {
+describe("handleRoundOver — the ladder and history chain", () => {
   test("a declined rated write leaves history's delta null and says so", async (t) => {
     const warn = t.mock.method(logger, "warn", () => undefined);
     const s = stubServer();
@@ -405,13 +405,13 @@ describe("handleGameOver — the ladder and history chain", () => {
       ...s.writers,
       previewRatedDeltas: async () =>
         new Map([
-          ["u_alice", { delta: 8, rating: 1008, games: 1 }],
-          ["u_bob", { delta: -8, rating: 992, games: 1 }],
+          ["u_alice", { delta: 8, rating: 1008, rounds: 1 }],
+          ["u_bob", { delta: -8, rating: 992, rounds: 1 }],
         ]),
     };
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, writers);
+    await handleRoundOver(s.io, ROOM, game, writers);
     await game.resultWrites;
 
     const deltas = s.of("recordGameResult")[0].args[3] as Map<string, number>;
@@ -422,7 +422,7 @@ describe("handleGameOver — the ladder and history chain", () => {
     );
   });
 
-  test("a hand's writes wait for the previous hand's to settle", async () => {
+  test("a round's writes wait for the previous round's to settle", async () => {
     const s = stubServer();
     const finished: string[] = [];
     let releaseFirst!: () => void;
@@ -430,15 +430,15 @@ describe("handleGameOver — the ladder and history chain", () => {
     const writers = {
       ...s.writers,
       recordGameResult: (...args: unknown[]) => {
-        const hand = ++calls;
-        void s.writers.recordGameResult(...(args as Parameters<GameOverWriters["recordGameResult"]>));
-        if (hand > 1) {
-          finished.push("hand 2");
+        const nth = ++calls;
+        void s.writers.recordGameResult(...(args as Parameters<RoundOverWriters["recordGameResult"]>));
+        if (nth > 1) {
+          finished.push("round 2");
           return Promise.resolve();
         }
         return new Promise<void>((resolve) => {
           releaseFirst = () => {
-            finished.push("hand 1");
+            finished.push("round 1");
             resolve();
           };
         });
@@ -446,17 +446,17 @@ describe("handleGameOver — the ladder and history chain", () => {
     };
     const game = makeGame();
 
-    await handleGameOver(s.io, ROOM, game, writers);
-    await handleGameOver(s.io, ROOM, game, writers);
+    await handleRoundOver(s.io, ROOM, game, writers);
+    await handleRoundOver(s.io, ROOM, game, writers);
     await new Promise((r) => setImmediate(r));
 
-    assert.equal(s.of("recordGameResult").length, 1, "hand 2 has not started while hand 1 is pending");
+    assert.equal(s.of("recordGameResult").length, 1, "round 2 has not started while round 1 is pending");
     assert.equal(s.of("recordRatedResult").length, 1);
 
     releaseFirst();
     await game.resultWrites;
 
-    assert.deepEqual(finished, ["hand 1", "hand 2"]);
+    assert.deepEqual(finished, ["round 1", "round 2"]);
     assert.equal(s.of("recordRatedResult").length, 2);
   });
 });

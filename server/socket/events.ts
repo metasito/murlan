@@ -1,13 +1,13 @@
 // Funnel steps: where people stop.
 //
-// `rooms.status` with no matching `match_history` already gives a rough
+// `rooms.status` with no matching `round_history` already gives a rough
 // "started but never finished" (#40). It cannot say that someone bounced off
 // the lobby, or never made a move after sitting down. Those are steps, and a
 // step that is not a finished game is recorded nowhere else.
 //
 // Written here, from the server, on the server's clock. A client-emitted event
 // is telemetry the player can forge or block, and CLAUDE.md's server-authority
-// rule is about what gets recorded as much as about who wins a hand.
+// rule is about what gets recorded as much as about who wins a round.
 import { desc, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";

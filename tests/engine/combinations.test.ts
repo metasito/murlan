@@ -116,7 +116,7 @@ describe("combination strength", () => {
     assert.equal(triple?.strength, cardStrength(c("4", "hearts")));
   });
 
-  test("straight strength is the top of the sequence, not the card ranking", () => {
+  test("straight strength is the top of the straight, not the card ranking", () => {
     // 2 is low inside a straight: 2-3-4-5-6 tops out at 6, not at the 2.
     const low = buildCombination([
       c("2", "hearts"), c("3", "clubs"), c("4", "spades"),

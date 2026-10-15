@@ -63,8 +63,8 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   exchangePhase: {
     active: false,
@@ -72,16 +72,16 @@ const settled = (winnerHand: Card[] = [...KEPT_BY_WINNER, FROM_LOSER]): GameStat
     loserIdx: LOSER_SEAT,
     cardFromLoser: FROM_LOSER,
     cardToLoser: TO_LOSER,
-    bothJokersException: false,
+    twoJokerException: false,
   },
 });
 
-const announce = (bothJokersException = false) => ({
+const announce = (twoJokerException = false) => ({
   winnerName: 'Ana',
   loserName: 'Bea',
   winnerIdx: WINNER_SEAT,
   loserIdx: LOSER_SEAT,
-  bothJokersException,
+  twoJokerException,
   cardGiven: TO_LOSER,
   cardReceived: FROM_LOSER,
 });
@@ -102,9 +102,9 @@ const prompting = (): GameState => {
 const table = (opts: {
   viewerSeat: number;
   visible: boolean;
-  bothJokersException?: boolean;
+  twoJokerException?: boolean;
   spectating?: boolean;
-  /** Build the winner's hand without the traded card, as a size control. */
+  /** Build the winner's hand without the exchanged card, as a size control. */
   shortOne?: boolean;
   /** The phase still open, rather than one tick after the choice. */
   choosing?: boolean;
@@ -122,7 +122,7 @@ const table = (opts: {
       onExchangeGive={noop}
       exchangeAnnouncement={{
         visible: opts.visible,
-        data: announce(opts.bothJokersException),
+        data: announce(opts.twoJokerException),
         onDismiss: noop,
       }}
     />
@@ -206,7 +206,7 @@ describe('the hand leaves a place for the card still in the air', () => {
 
   it('holds nothing back when both Jokers cancelled the exchange', async () => {
     const r = await render(
-      table({ viewerSeat: WINNER_SEAT, visible: true, bothJokersException: true })
+      table({ viewerSeat: WINNER_SEAT, visible: true, twoJokerException: true })
     );
 
     expect(named(FROM_LOSER)).toBeGreaterThan(0);

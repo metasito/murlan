@@ -312,19 +312,19 @@ export const it: Record<keyof typeof en, string> = {
   "cards.nameFormat": "{{rank}} di {{suit}}",
 
   // -------------------------------------------------------- exchangeAnnouncement.*
-  "exchangeAnnouncement.a11yNoSwap": "Scambio: nessuno scambio, {{loserName}} ha mostrato entrambi i Jolly",
+  "exchangeAnnouncement.a11yNoExchange": "Scambio: nessuno scambio, {{loserName}} ha mostrato entrambi i Jolly",
   "exchangeAnnouncement.giveLine": "{{from}} dà {{card}} a {{to}}",
-  "exchangeAnnouncement.noSwapText": "Nessuno scambio — Jolly doppio 🃏",
+  "exchangeAnnouncement.noExchangeText": "Nessuno scambio — Jolly doppio 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "result.position1": "1°",
   "result.position2": "2°",
   "result.position3": "3°",
   "result.position4": "4°",
-  "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} pronti",
-  "gameOverOverlay.nextHandA11yLabel": "Pronto per la prossima manche",
-  "gameOverOverlay.waitingA11yLabel": "In attesa degli altri: {{count}} su {{total}} pronti",
-  "gameOverOverlay.newMatchA11yLabel": "Inizia una nuova partita",
+  "roundOverOverlay.nextRoundWaiting": "{{count}}/{{total}} pronti",
+  "roundOverOverlay.nextRoundA11yLabel": "Pronto per la prossima manche",
+  "roundOverOverlay.waitingA11yLabel": "In attesa degli altri: {{count}} su {{total}} pronti",
+  "roundOverOverlay.newMatchA11yLabel": "Inizia una nuova partita",
   "result.modeTeams": "Coppie",
   "result.modeFreeForAll": "Libero",
 
@@ -345,14 +345,14 @@ export const it: Record<keyof typeof en, string> = {
   "gameShared.startReasonCard": "{{name}} inizia — ha il {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(il 3♠ non è stato distribuito)",
   "gameShared.startReasonLostRound": "{{name}} inizia — ha perso il round",
-  "gameShared.startReasonWonNoSwap": "{{name}} inizia — ha vinto (nessuno scambio)",
+  "gameShared.startReasonWonNoExchange": "{{name}} inizia — ha vinto (nessuno scambio)",
   "gameShared.startReasonDismiss": "Tocca per continuare",
   "gameShared.you": "Tu",
   "gameShared.emptyTable": "— Tavolo libero —",
   "gameShared.yourTurn": "Il tuo turno",
   "gameShared.dealing": "Distribuzione",
   "gameShared.turnOf": "Turno di {{name}}",
-  "gameShared.handOver": "Manche finita",
+  "gameShared.roundOver": "Manche finita",
   "gameShared.matchOver": "Partita finita",
   // Sul posto di un avversario: quel posto ha già risposto al giro in corso.
   // È la dichiarazione del giocatore, non il pulsante ("PASSA") che il
@@ -402,7 +402,7 @@ export const it: Record<keyof typeof en, string> = {
   "gameTable.a11yYourTurn": "È il tuo turno.",
   "gameTable.a11yDealing": "Si distribuiscono le carte.",
   "gameTable.a11yTurnOf": "Turno di {{name}}.",
-  "gameTable.a11yHandOver": "Manche finita.",
+  "gameTable.a11yRoundOver": "Manche finita.",
   "gameTable.a11yMatchOver": "Partita finita.",
   "gameTable.a11yEmptyTable": "Nessuna carta sul tavolo.",
   "gameTable.a11yYouPlayed": "Hai giocato {{label}}.",
@@ -557,7 +557,7 @@ export const it: Record<keyof typeof en, string> = {
   "ladder.cardTitle": "Classifica",
   "ladder.ratingLabel": "Punteggio",
   "ladder.seasonLabel": "Stagione {{season}}",
-  "ladder.gamesLabel": "{{n}} mani classificate",
+  "ladder.roundsLabel": "{{n}} mani classificate",
   "ladder.provisional": "Provvisorio — ancora {{n}} mani per entrare in classifica",
   "ladder.open": "Vedi la classifica",
   "ladder.loadingA11yLabel": "Caricamento classifica",
@@ -584,8 +584,8 @@ export const it: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Team {{team}}",
-  "lobby.aiNameA11yLabel": "Nome giocatore intelligente",
-  "lobby.aiNameA11yHint": "Inserisci il nome per questo giocatore controllato dal computer",
+  "lobby.botNameA11yLabel": "Nome giocatore intelligente",
+  "lobby.botNameA11yHint": "Inserisci il nome per questo giocatore controllato dal computer",
   "lobby.difficultyA11yLabel": "Difficoltà di {{name}}: {{difficulty}}",
   "bot.difficultyEasy": "Facile",
   "bot.difficultyNormal": "Normale",
@@ -605,7 +605,7 @@ export const it: Record<keyof typeof en, string> = {
   "lobby.formatSingleSub": "Una sola mano",
   "lobby.formatA11yLabel": "{{format}}: {{detail}}",
   "lobby.playersLabel": "GIOCATORI",
-  "lobby.titleVsAI": "Gioca vs AI",
+  "lobby.titleVsBot": "Gioca vs AI",
   "lobby.titlePassPlay": "Passa e Gioca",
 
   // ------------------------------------------------------------------ rules.*
@@ -680,9 +680,9 @@ export const it: Record<keyof typeof en, string> = {
   // ----------------------------------------------------------------- result.*
   "result.matchOverTitle": "Partita Finita",
   "result.matchDrawTitle": "Partita Pari",
-  "result.singleHandFormat": "Manche secca",
+  "result.singleRoundFormat": "Manche secca",
   "result.home": "Home",
-  "result.nextHand": "Prossima manche",
+  "result.nextRound": "Prossima manche",
   "result.newMatch": "Nuova partita",
   "result.tableStops": "Il tavolo si ferma qui",
 
@@ -721,7 +721,7 @@ export const it: Record<keyof typeof en, string> = {
   "tutorial.justReceived": "appena ricevuta",
   "tutorial.playCombination": "Gioca la combinazione",
   "tutorial.continue": "Continua",
-  "tutorial.returnCard": "Restituisci carta",
+  "tutorial.giveback": "Restituisci carta",
   "tutorial.rereadRules": "Rileggi le Regole & FAQ",
   "tutorial.backToHome": "Torna alla Home",
 
@@ -1014,8 +1014,8 @@ export const it: Record<keyof typeof en, string> = {
   "profile.retryStatsA11yLabel": "Riprova a caricare le statistiche",
   "profile.statsEmptyTitle": "Ancora nessuna partita",
   "profile.statsEmptyBody": "Gioca la tua prima mano per iniziare a costruire le tue statistiche.",
-  "profile.statGamesPlayed": "Mani giocate",
-  "profile.statGamesWon": "Mani vinte",
+  "profile.statRoundsPlayed": "Mani giocate",
+  "profile.statRoundsWon": "Mani vinte",
   "profile.statWinRate": "% vittorie",
   "profile.statMatchesWon": "Partite vinte",
   "profile.statCurrentStreak": "Serie attuale",

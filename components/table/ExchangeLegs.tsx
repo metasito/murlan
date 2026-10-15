@@ -11,7 +11,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView } from "@/components/CardView";
 import { BACK_SCALE, CARD_BACK_H, CARD_BACK_W, CARD_H, CARD_W, FIELD_SCALE } from "@/components/cardFaceModel";
-import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, type SeatGeometry, type TradeStages } from "@/components/flightPhysics";
+import { FAN_CARD_SCALE, JOKERS, readExchangeLegs, type SeatGeometry, type ExchangeStages } from "@/components/flightPhysics";
 import type { CardFrom } from "@/components/flightPose";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { A11yStatus, a11yHidden } from "@/lib/a11y";
@@ -37,7 +37,7 @@ interface Run { origin: number; stage: number[]; ready: boolean; done: boolean }
 interface Report { cue: (at: number) => void; stage: (leg: number, stage: number) => void; ready: () => void; done: () => void }
 
 /**
- * One clock for the trade: the receive (or both Jokers) shows `beat` after the go, the give
+ * One clock for the exchange: the receive (or both Jokers) shows `beat` after the go, the give
  * `giveWait` after the choice and never before the receive has landed and been read.
  */
 function stepper(
@@ -152,12 +152,12 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
 }
 
 /**
- * The trade on the table, giver → pile → receiver (tests/e2e/fixtures/exchange-legs, "Through the
+ * The exchange on the table, giver → pile → receiver (tests/e2e/fixtures/exchange-legs, "Through the
  * pile"). Mounted from the phase opening; `go` is the deal having landed. It reports each leg's
  * stage, the choice opening (`onReady`) and the ceremony's end, all off its own frame clock.
  */
 export function ExchangeLegs({
-  trade,
+  announced,
   stages,
   geometry,
   handOrigins,
@@ -171,8 +171,8 @@ export function ExchangeLegs({
   onDismiss,
   holdMsOverride,
 }: {
-  trade: ExchangeAnnounceData;
-  stages: TradeStages;
+  announced: ExchangeAnnounceData;
+  stages: ExchangeStages;
   geometry: SeatGeometry;
   handOrigins: { readonly current: ReadonlyMap<string, CardFrom> };
   go: boolean;
@@ -189,7 +189,7 @@ export function ExchangeLegs({
 }) {
   const { t } = useTranslation();
   const reduceMotion = usePrefersReducedMotion();
-  const jokers = trade.bothJokersException;
+  const jokers = announced.twoJokerException;
   const key = stages.key;
   const calls = useRef({ onStage, onReady, onDismiss, key });
   useEffect(() => {
@@ -204,10 +204,10 @@ export function ExchangeLegs({
   const reduced = useSharedValue(reduceMotion);
   const own = (seat: number) => (seat === viewerSeat ? -1 : seat);
   const ends = useSharedValue(
-    jokers ? [own(trade.loserIdx), -1, -1, -1] : [own(trade.loserIdx), own(trade.winnerIdx), own(trade.winnerIdx), own(trade.loserIdx)]
+    jokers ? [own(announced.loserIdx), -1, -1, -1] : [own(announced.loserIdx), own(announced.winnerIdx), own(announced.winnerIdx), own(announced.loserIdx)]
   );
   const [initial] = useState(() => {
-    const legs = readExchangeLegs({ ...geometry, trade });
+    const legs = readExchangeLegs({ ...geometry, announced });
     return [legs.receive, legs.give, ...legs.jokers];
   });
   const pointsValue = useSharedValue<Points>(initial);
@@ -223,8 +223,8 @@ export function ExchangeLegs({
   }, []);
   const mine = (seat: number, card: Card | undefined) => (seat === viewerSeat && card ? [card.id] : []);
   const out = jokers
-    ? [trade.loserIdx === viewerSeat ? JOKERS.map((j) => j.id) : [], []]
-    : [mine(trade.loserIdx, trade.cardReceived), mine(trade.winnerIdx, trade.cardGiven)];
+    ? [announced.loserIdx === viewerSeat ? JOKERS.map((j) => j.id) : [], []]
+    : [mine(announced.loserIdx, announced.cardReceived), mine(announced.winnerIdx, announced.cardGiven)];
   const outgoing = useSharedValue(out);
   const drawn = useSharedValue([false, false]);
   const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, { cue, stage, ready, done });
@@ -254,13 +254,13 @@ export function ExchangeLegs({
   useEffect(() => {
     if (go && goAt.get() < 0) goAt.set(inBackground() ? Infinity : performance.now());
   }, [go, goAt]);
-  const chosen = trade.cardGiven !== undefined;
+  const chosen = announced.cardGiven !== undefined;
   useEffect(() => {
     if (chosen && choiceAt.get() < 0) choiceAt.set(inBackground() ? Infinity : performance.now());
   }, [chosen, choiceAt]);
   // Read after commit: the hand publishes where it drew each card then. A leg keeps the points it left with.
   useEffect(() => {
-    const next = readExchangeLegs({ ...geometry, trade }, handOrigins.current);
+    const next = readExchangeLegs({ ...geometry, announced }, handOrigins.current);
     const cur = pointsValue.get();
     const fresh = (stage: LegStage) => stage === "waiting";
     pointsValue.set([
@@ -281,15 +281,15 @@ export function ExchangeLegs({
   }, [holdMsOverride, chosen, jokers]);
   const tapToRelease = holdMsOverride === "untilTapped" && (chosen || jokers);
 
-  const nameOf = (seat: number) => (seat === trade.winnerIdx ? trade.winnerName : trade.loserName);
+  const nameOf = (seat: number) => (seat === announced.winnerIdx ? announced.winnerName : announced.loserName);
   const shown = (stage: LegStage) => stage !== "waiting" && stage !== "flying";
   const giveLine = (card: Card, from: number, to: number) =>
     t("exchangeAnnouncement.giveLine", { from: nameOf(from), card: cardSpokenName(card, t), to: nameOf(to) });
   const a11yLabel = jokers
-    ? shown(stages.receive) ? t("exchangeAnnouncement.a11yNoSwap", { loserName: trade.loserName }) : ""
+    ? shown(stages.receive) ? t("exchangeAnnouncement.a11yNoExchange", { loserName: announced.loserName }) : ""
     : [
-        trade.cardReceived && shown(stages.receive) && giveLine(trade.cardReceived, trade.loserIdx, trade.winnerIdx),
-        trade.cardGiven && shown(stages.give) && giveLine(trade.cardGiven, trade.winnerIdx, trade.loserIdx),
+        announced.cardReceived && shown(stages.receive) && giveLine(announced.cardReceived, announced.loserIdx, announced.winnerIdx),
+        announced.cardGiven && shown(stages.give) && giveLine(announced.cardGiven, announced.winnerIdx, announced.loserIdx),
       ]
         .filter(Boolean)
         .join(". ");
@@ -310,8 +310,8 @@ export function ExchangeLegs({
         {jokers
           ? JOKERS.map((j, i) => card(j, 2 + i, 0, `exchange-joker-${i}`))
           : [
-              trade.cardReceived && card(trade.cardReceived, 0, 0, "exchange-flier-to-winner"),
-              trade.cardGiven && card(trade.cardGiven, 1, 1, "exchange-flier-to-loser"),
+              announced.cardReceived && card(announced.cardReceived, 0, 0, "exchange-flier-to-winner"),
+              announced.cardGiven && card(announced.cardGiven, 1, 1, "exchange-flier-to-loser"),
             ]}
       </View>
     </View>
