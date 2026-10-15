@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { clearAllTimersForUser, clearRoomTimers, disconnectTimers, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
+import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
 import { packPersistedState } from "../../server/game/onlineGameLogic.ts";
@@ -83,6 +84,7 @@ before(() => {
 });
 
 afterEach(() => {
+  for (const userId of ["ana", "besi"]) clearAllTimersForUser(userId, ROOM);
   clearRoomTimers(ROOM);
   activeGames.delete(ROOM);
 });
@@ -176,4 +178,26 @@ describe("dealing the next manche", () => {
     assert.equal(emitted.filter((e) => e.event === "game:started").length, 1);
     assert.equal(game.gameState.exchangePhase?.active, true, "the second deal threw the exchange away");
   });
+});
+
+describe("a seatLost that arrives after its player is back", () => {
+  for (const gameOver of [false, true]) {
+    test(`arms nothing ${gameOver ? "between hands" : "mid-hand"}`, async (t) => {
+      const { io, emitted } = stubIo();
+      const cluster = {
+        in: (room: string) => ({ fetchSockets: async () => (room === "user:besi" ? [{}] : []) }),
+      } as unknown as SocketServer;
+      setSocketServer(cluster);
+      t.after(() => setSocketServer(null as unknown as SocketServer));
+      const state = finishedHand(twoHumans(), gameOver ? ["player_0", "player_1"] : []);
+      state.gameOver = gameOver;
+      activeGames.set(ROOM, baseGame({ gameState: state, playerMap: { 0: "ana", 1: "besi" } }));
+
+      await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });
+
+      assert.ok(!emitted.some((e) => e.event === "game:player_disconnected"));
+      assert.ok(!disconnectTimers.has("besi"), "a disconnect grace no reconnect will clear");
+      assert.deepEqual(usersInLobbyGrace(ROOM), []);
+    });
+  }
 });
