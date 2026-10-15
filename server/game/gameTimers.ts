@@ -2,15 +2,88 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import { testOnlyEnv } from "../http/testOnlyEnv.ts";
 import { TURN_TIMEOUT_MS } from "../../lib/game/gameEngine.ts";
 
-// Timers. Every entry added here has exactly one matching delete — see
-// clearAfkTimer / clearRoomTimers / clearAllTimersForUser / disposeGame.
-export const afkTimers = new Map<string, ReturnType<typeof setTimeout>>();
-export const disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
-/** When each `disconnectTimers` entry fires; set and deleted with it. */
-export const disconnectDeadlines = new Map<string, number>();
-/** Keyed `roomId:userId`, so one account can hold a seat in only one lobby. */
-export const lobbyGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-export const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * Keys: `afk` and `lobbyGrace` are `roomId:userId` (`seatKey`), `bot` and
+ * `autoStart` are the room id, `disconnect` is the user id.
+ */
+export const TIMER_KINDS = ["afk", "disconnect", "lobbyGrace", "bot", "autoStart"] as const;
+export type TimerKind = (typeof TIMER_KINDS)[number];
+
+export interface Clock {
+  now(): number;
+  setTimeout(fn: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+const realClock: Clock = {
+  now: () => Date.now(),
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+};
+
+let clock = realClock;
+
+/** Swaps the clock every timer here runs on; no argument restores the real one. */
+export function setClock(next: Clock = realClock) {
+  clock = next;
+}
+
+export function now(): number {
+  return clock.now();
+}
+
+/**
+ * A seat waiting to be given back must not be what keeps the process alive:
+ * shutdown disconnects every socket, which arms a lobby grace per lobby, and
+ * the row outlives the process either way.
+ */
+const UNREF: ReadonlySet<TimerKind> = new Set(["lobbyGrace"]);
+
+interface Armed {
+  handle: unknown;
+  deadline: number;
+}
+
+const timers = new Map<TimerKind, Map<string, Armed>>(TIMER_KINDS.map((kind) => [kind, new Map()]));
+
+/** Replaces whatever this key had armed. The entry is gone before `onExpire` runs. */
+export function arm(kind: TimerKind, key: string, ms: number, onExpire: () => void) {
+  clear(kind, key);
+  const entries = timers.get(kind)!;
+  const handle = clock.setTimeout(() => {
+    entries.delete(key);
+    onExpire();
+  }, ms);
+  if (UNREF.has(kind)) (handle as { unref?: () => void }).unref?.();
+  entries.set(key, { handle, deadline: clock.now() + ms });
+}
+
+/** Returns whether one was armed. */
+export function clear(kind: TimerKind, key: string): boolean {
+  const entries = timers.get(kind)!;
+  const armed = entries.get(key);
+  if (!armed) return false;
+  clock.clearTimeout(armed.handle);
+  entries.delete(key);
+  return true;
+}
+
+export function pending(kind: TimerKind, key: string): boolean {
+  return timers.get(kind)!.has(key);
+}
+
+/** When it fires, on `now()`'s clock; undefined when nothing is armed. */
+export function deadline(kind: TimerKind, key: string): number | undefined {
+  return timers.get(kind)!.get(key)?.deadline;
+}
+
+export function pendingKeys(kind: TimerKind): string[] {
+  return [...timers.get(kind)!.keys()];
+}
+
+function clearByPrefix(kind: TimerKind, prefix: string) {
+  for (const key of pendingKeys(kind)) if (key.startsWith(prefix)) clear(kind, key);
+}
 
 /**
  * Read per call, never frozen at module scope.
@@ -66,62 +139,36 @@ export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 
  * round already in flight, short enough that nobody reads it as a stall.
  */
 export const autoStartDelayMs = () => timeoutFromEnv("MURLAN_AUTOSTART_DELAY_MS", 4_000);
-/** One entry per room, deleted when it fires or the room stops being full. */
-export const autoStartTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export function clearAutoStart(roomId: string) {
-  const t = autoStartTimers.get(roomId);
-  if (t) clearTimeout(t);
-  autoStartTimers.delete(roomId);
+  clear("autoStart", roomId);
 }
 
 /** Whole seconds left on a deadline, floored at 0. Zero when nothing is armed. */
 export function secondsUntil(deadlineMs: number | undefined): number {
   if (deadlineMs === undefined) return 0;
-  return Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000));
+  return Math.max(0, Math.ceil((deadlineMs - now()) / 1000));
+}
+
+/** Keyed per room, so one account can hold a seat in only one lobby. */
+export function seatKey(roomId: string, userId: string): string {
+  return `${roomId}:${userId}`;
 }
 
 export function clearAfkTimer(roomId: string, userId: string) {
-  const key = `${roomId}:${userId}`;
-  const t = afkTimers.get(key);
-  if (t) {
-    clearTimeout(t);
-    afkTimers.delete(key);
-  }
-}
-
-function clearRoomAfkTimers(roomId: string) {
-  const prefix = `${roomId}:`;
-  for (const [key, timer] of afkTimers) {
-    if (key.startsWith(prefix)) {
-      clearTimeout(timer);
-      afkTimers.delete(key);
-    }
-  }
-}
-
-function clearBotTimer(roomId: string) {
-  const t = botTimers.get(roomId);
-  if (t) {
-    clearTimeout(t);
-    botTimers.delete(roomId);
-  }
+  clear("afk", seatKey(roomId, userId));
 }
 
 export function clearRoomTimers(roomId: string) {
-  clearRoomAfkTimers(roomId);
-  clearBotTimer(roomId);
+  clearByPrefix("afk", `${roomId}:`);
+  clear("bot", roomId);
   clearAutoStart(roomId);
-}
-
-export function lobbyGraceKey(roomId: string, userId: string): string {
-  return `${roomId}:${userId}`;
 }
 
 /** Who is holding a seat in this room without a connection to it. */
 export function usersInLobbyGrace(roomId: string): string[] {
   const prefix = `${roomId}:`;
-  return Array.from(lobbyGraceTimers.keys())
+  return pendingKeys("lobbyGrace")
     .filter((k) => k.startsWith(prefix))
     .map((k) => k.slice(prefix.length));
 }
@@ -139,12 +186,7 @@ export function clearRoomLobbyGraces(roomId: string) {
 
 /** Cancels a pending lobby release. Returns whether one was armed. */
 export function clearLobbyGrace(roomId: string, userId: string): boolean {
-  const key = lobbyGraceKey(roomId, userId);
-  const t = lobbyGraceTimers.get(key);
-  if (!t) return false;
-  clearTimeout(t);
-  lobbyGraceTimers.delete(key);
-  return true;
+  return clear("lobbyGrace", seatKey(roomId, userId));
 }
 
 /**
@@ -154,21 +196,11 @@ export function clearLobbyGrace(roomId: string, userId: string): boolean {
  * every rejoin lets a client loop hold a table open indefinitely.
  */
 export function clearDisconnectGrace(userId: string): boolean {
-  const t = disconnectTimers.get(userId);
-  if (!t) return false;
-  clearTimeout(t);
-  disconnectTimers.delete(userId);
-  disconnectDeadlines.delete(userId);
-  return true;
+  return clear("disconnect", userId);
 }
 
 export function clearAllTimersForUser(userId: string, roomId?: string) {
-  const dcTimer = disconnectTimers.get(userId);
-  if (dcTimer) {
-    clearTimeout(dcTimer);
-    disconnectTimers.delete(userId);
-    disconnectDeadlines.delete(userId);
-  }
+  clearDisconnectGrace(userId);
   if (roomId) {
     clearAfkTimer(roomId, userId);
     clearLobbyGrace(roomId, userId);
@@ -177,12 +209,5 @@ export function clearAllTimersForUser(userId: string, roomId?: string) {
 
 /** Cancels the grace timers of everyone seated in this room. */
 export function clearRoomDisconnectTimers(game: OnlineGameState) {
-  for (const uid of Object.values(game.playerMap)) {
-    const t = disconnectTimers.get(uid);
-    if (t) {
-      clearTimeout(t);
-      disconnectTimers.delete(uid);
-      disconnectDeadlines.delete(uid);
-    }
-  }
+  for (const uid of Object.values(game.playerMap)) clearDisconnectGrace(uid);
 }

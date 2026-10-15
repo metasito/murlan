@@ -769,12 +769,12 @@ export async function runThroughput(
 /** Waits out the seat graces for the module maps to empty, then reports what did not. */
 async function drainedMaps(): Promise<Violation[]> {
   const { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap } = await import("../../server/game/gameRoom.ts");
-  const { afkTimers, disconnectTimers, lobbyGraceTimers, botTimers } = await import("../../server/game/gameTimers.ts");
+  const { pendingKeys, TIMER_KINDS } = await import("../../server/game/gameTimers.ts");
   const { inFlight } = await import("../../server/game/tableRouter.ts");
-  const maps = {
-    activeGames, socketRoomMap, spectatorRoomMap, userSocketMap,
-    afkTimers, disconnectTimers, lobbyGraceTimers, botTimers, inFlight,
-  };
+  const timers = Object.fromEntries(
+    TIMER_KINDS.map((kind) => [`${kind} timers`, { get size() { return pendingKeys(kind).length; } }])
+  );
+  const maps = { activeGames, socketRoomMap, spectatorRoomMap, userSocketMap, ...timers, inFlight };
   const deadline = Date.now() + Math.max(disconnectGraceMs(), lobbyGraceMs()) + SETTLE_CAP_MS;
   while (checkTeardown(maps).length > 0 && Date.now() < deadline) await sleep(SETTLE_QUIET_MS);
   return checkTeardown(maps);

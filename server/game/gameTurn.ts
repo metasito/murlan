@@ -9,8 +9,10 @@ import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
-  afkTimers,
-  botTimers,
+  arm,
+  pending,
+  now,
+  seatKey,
   afkTimeoutMs,
   botMoveDelayMs,
   clearAfkTimer,
@@ -139,13 +141,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
     const delayMs = exchangeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
       : botDelayMs;
-    botTimers.set(
-      roomId,
-      setTimeout(() => {
-        botTimers.delete(roomId);
-        safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId));
-      }, delayMs)
-    );
+    arm("bot", roomId, delayMs, () => safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId)));
     emitTurnDeadline(io, roomId, game);
     return;
   }
@@ -159,7 +155,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   // seat replaying a turn it already spent its grant on.
   const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
   const timeoutMs = afkTimeoutMs() + openingGraceMs;
-  game.turnDeadlineMs = Date.now() + timeoutMs;
+  game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(io, roomId, userId, username, timeoutMs);
   emitTurnDeadline(io, roomId, game);
 }
@@ -183,9 +179,9 @@ export function armTurnIfIdle(io: SocketServer, roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  if (botTimers.has(roomId)) return emitTurnDeadline(io, roomId, game);
+  if (pending("bot", roomId)) return emitTurnDeadline(io, roomId, game);
   const seatUserId = game.playerMap[actingSeat(game.gameState)];
-  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) {
+  if (seatUserId !== undefined && pending("afk", seatKey(roomId, seatUserId))) {
     return emitTurnDeadline(io, roomId, game);
   }
 
@@ -257,30 +253,24 @@ function startAfkTimer(
   username: string,
   timeoutMs: number
 ) {
-  clearAfkTimer(roomId, userId);
-  const key = `${roomId}:${userId}`;
-  afkTimers.set(
-    key,
-    setTimeout(() => {
-      afkTimers.delete(key);
-      safeTimer(io, "afkAutoPass", roomId, () => {
-        const acted = handleAutoPass(io, roomId, userId);
-        // Only announce when something actually happened, not on an early
-        // return that did nothing.
-        if (acted) {
-          const exchanged = acted === "exchange";
-          io.to(roomId).emit("game:notification", {
-            type: "afk",
-            code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
-            message: exchanged
-              ? `${username} is inactive — the card was exchanged automatically`
-              : `${username} is inactive — passed automatically`,
-            params: { username },
-          });
-        }
-      });
-    }, timeoutMs)
-  );
+  arm("afk", seatKey(roomId, userId), timeoutMs, () => {
+    safeTimer(io, "afkAutoPass", roomId, () => {
+      const acted = handleAutoPass(io, roomId, userId);
+      // Only announce when something actually happened, not on an early
+      // return that did nothing.
+      if (acted) {
+        const exchanged = acted === "exchange";
+        io.to(roomId).emit("game:notification", {
+          type: "afk",
+          code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
+          message: exchanged
+            ? `${username} is inactive — the card was exchanged automatically`
+            : `${username} is inactive — passed automatically`,
+          params: { username },
+        });
+      }
+    });
+  });
 }
 
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────

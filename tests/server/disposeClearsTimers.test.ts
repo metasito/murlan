@@ -4,18 +4,12 @@
 // for a table nobody is at, and the seat it frees belongs to whatever room has
 // since taken the id.
 //
-// Written against the maps rather than one of them, so the next map added to
+// Written against every kind rather than one of them, so the next kind added to
 // gameTimers.ts fails here until disposal clears it too.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  afkTimers,
-  botTimers,
-  disconnectTimers,
-  lobbyGraceTimers,
-  lobbyGraceKey,
-} from "../../server/game/gameTimers.ts";
+import { arm, pending, seatKey, TIMER_KINDS, type TimerKind } from "../../server/game/gameTimers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { disposeGame } from "../../server/game/gamePersistence.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
@@ -33,34 +27,32 @@ function seatOneUser() {
   activeGames.set(ROOM, roster as unknown as OnlineGameState);
 }
 
-/** A timer of each kind, keyed the way its own map keys them. */
-function armOneOfEach() {
-  const idle = () => setTimeout(() => {}, 60_000);
-  afkTimers.set(`${ROOM}:${SEATED}`, idle());
-  botTimers.set(ROOM, idle());
-  disconnectTimers.set(SEATED, idle());
-  lobbyGraceTimers.set(lobbyGraceKey(ROOM, SEATED), idle());
-}
+/** How each kind is keyed; a kind missing here fails to compile. */
+const KEY_OF: Record<TimerKind, string> = {
+  afk: seatKey(ROOM, SEATED),
+  disconnect: SEATED,
+  lobbyGrace: seatKey(ROOM, SEATED),
+  bot: ROOM,
+  autoStart: ROOM,
+};
 
 describe("disposing a room", () => {
   test("leaves no timer of any kind behind", () => {
     seatOneUser();
-    armOneOfEach();
+    for (const kind of TIMER_KINDS) arm(kind, KEY_OF[kind], 60_000, () => {});
+    assert.deepEqual(
+      TIMER_KINDS.filter((kind) => !pending(kind, KEY_OF[kind])),
+      [],
+      "a kind was not armed, so its clearing proves nothing"
+    );
 
     // `false`: the row is a database write, and what is under test is memory.
     disposeGame(ROOM, false);
 
-    const left = [
-      ["afk", [...afkTimers.keys()].filter((k) => k.startsWith(`${ROOM}:`))],
-      ["bot", [...botTimers.keys()].filter((k) => k === ROOM)],
-      ["disconnect", [...disconnectTimers.keys()].filter((k) => k === SEATED)],
-      ["lobby grace", [...lobbyGraceTimers.keys()].filter((k) => k.startsWith(`${ROOM}:`))],
-    ] as const;
-
     assert.deepEqual(
-      left.filter(([, keys]) => keys.length > 0).map(([kind]) => kind),
+      TIMER_KINDS.filter((kind) => pending(kind, KEY_OF[kind])),
       [],
-      "every timer map keyed by a disposed room has to be empty"
+      "every timer keyed by a disposed room has to be cleared"
     );
     assert.equal(activeGames.has(ROOM), false);
   });
