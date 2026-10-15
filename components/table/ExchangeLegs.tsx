@@ -24,6 +24,7 @@ import { useTranslation } from "@/lib/i18n";
 import { inBackground } from "./useFlightClock";
 import { designRect, legCard } from "./cardRects";
 import { useCardRect, useCardTable } from "./useCardRects";
+import { useCardProbe } from "@/lib/diagnostics/cardProbe";
 
 export interface RingFlash { seq: number; seat: number }
 export type LegName = "receive" | "give";
@@ -228,6 +229,7 @@ export function ExchangeLegs({
   const outgoing = useSharedValue(out);
   const drawn = useSharedValue([false, false]);
   const frames = useLegClock(run, goAt, choiceAt, clock, shows, reduced, ends, flash, lifted, outgoing, jokers, { cue, stage, ready, done });
+  useCardProbe("flow", {}, () => ({ at: "legs", go, run: run.value, goAt: goAt.value, choiceAt: choiceAt.value, clock: clock.value, shows: shows.value, key }));
 
   useEffect(() => {
     outgoing.set(out);

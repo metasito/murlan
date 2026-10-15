@@ -55,7 +55,7 @@ function nativeFrames(nativeId: string | undefined): Promise<unknown> {
   return native?.viewFrames ? native.viewFrames(nativeId).then(round, (e: unknown) => String(e)) : Promise.resolve("no viewFrames");
 }
 
-export function useCardProbe(kind: "pile" | "hand", views: Record<string, RefObject<View | null>>, meta: () => Record<string, unknown>, nativeId?: string): void {
+export function useCardProbe(kind: "pile" | "hand" | "flow", views: Record<string, RefObject<View | null>>, meta: () => Record<string, unknown>, nativeId?: string): void {
   const latest = useRef({ views, meta });
   useEffect(() => {
     latest.current = { views, meta };

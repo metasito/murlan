@@ -152,6 +152,7 @@ import {
 import { useTableFelt } from "@/lib/cosmetics";
 import { A11yStatus, A11yVeil, a11yGroup, a11yHidden, a11yVeiled } from "@/lib/a11y";
 import { useBenchHandle, useOrientationRows } from "@/lib/diagnostics";
+import { useCardProbe } from "@/lib/diagnostics/cardProbe";
 import nativeOrientation from "@/modules/murlan-orientation";
 
 // Whole-pixel travel, mirroring components/MenuButton.tsx: PASSA/GIOCA hold
@@ -705,6 +706,23 @@ export function GameTable({
   });
   // What the table shows, not what the player may do: `canPass` and the clock keep the true turn.
   const turnShown = isMyTurn && !deal.dealing;
+  useCardProbe("flow", {}, () => ({
+    at: "table",
+    dealing: deal.dealing,
+    dealCards: deal.cards.length,
+    dealClock: deal.clock.value,
+    dealEnd: deal.endMs,
+    fresh: dealFresh,
+    reduceMotion,
+    over: gameState.gameOver,
+    phase: phase ? { active: phase.active, w: phase.winnerIdx, l: phase.loserIdx, from: phase.cardFromLoser?.id ?? null, jokers: !!phase.bothJokersException } : null,
+    viewerSeat,
+    tradeId,
+    stages,
+    choiceReady,
+    announcing: !!exchangeAnnouncement?.visible,
+    turn: gameState.currentTurnIndex,
+  }));
   const particles = useRef<ParticleEmitter>(null);
   const onDealt = useCallback(
     (x: number, y: number) => {

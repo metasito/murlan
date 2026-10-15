@@ -22,6 +22,7 @@ import { dealBreath, dealFlight, dealPose } from "@/components/table/dealPose";
 import { useTraceSource } from "@/lib/e2eTrace";
 import { dealBack, designRect } from "@/components/table/cardRects";
 import { useCardRect, useCardTable } from "@/components/table/useCardRects";
+import { useCardProbe } from "@/lib/diagnostics/cardProbe";
 
 function pileFromHand(geometry: SeatGeometry) {
   const hand = seatPoint(geometry, "bottom");
@@ -176,6 +177,7 @@ export function DealFlights({ cards, scale, clock, startMs, endMs, onStarted, on
     onLanded();
   }));
   const frames = useFrameCallback(step);
+  useCardProbe("flow", {}, () => ({ at: "deal", origin: origin.value, clock: clock.value, startMs, endMs, landed, legs: cards.length, active: frames.isActive }));
   useEffect(() => {
     if (landed) frames.setActive(false);
   }, [landed, frames]);
