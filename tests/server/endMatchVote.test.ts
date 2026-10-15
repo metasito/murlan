@@ -300,7 +300,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
       await new Promise((r) => setTimeout(r, 20));
       activeGames.delete(ROOM);
 
-      assert.equal(await rehydrateGame(ROOM, "alice"), "restored");
+      assert.equal(await rehydrateGame(ROOM, "alice", io), "restored");
       const outcome = await applyOrForward(io, {
         kind: "rematchVote",
         roomId: ROOM,
