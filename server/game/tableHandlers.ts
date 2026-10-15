@@ -417,6 +417,9 @@ async function dealVotedManche(
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
   const room = await roomStore.getRoomById(roomId);
+  // Every gate-closer reaches the read above, so the first one back deals and
+  // the rest find the votes it cleared.
+  if (!game.gameState.gameOver || !rematchAnswered(game)) return OK;
   if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
