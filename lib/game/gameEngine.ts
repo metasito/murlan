@@ -415,33 +415,90 @@ export function buildCombination(cards: Card[]): Combination | null {
   return combo;
 }
 
+/** Why the table refuses a combination: what it fails to beat. */
+export type BeatRefusal = "royalUnbeatable" | "bombOnly" | "wrongType" | "wrongLength" | "tooLow";
+
+/**
+ * Why a play is refused, in the order `checkPlay` asks. The UI's own ladder
+ * (`playButtonLabel`, components/turnTimerUi.ts) uses these same names.
+ */
+export type PlayRefusal =
+  | "exchangeOpen"
+  | "notHeld"
+  | "notACombination"
+  | "needsStartCard"
+  | BeatRefusal;
+
+export type PassRefusal = "exchangeOpen" | "mustLead";
+
+function beatRefusal(candidate: Combination, lastPlayed: Combination | null): BeatRefusal | null {
+  if (!lastPlayed) return null;
+  const higher = candidate.strength > lastPlayed.strength ? null : "tooLow";
+
+  if (candidate.type === "royal_straight") {
+    if (lastPlayed.type !== "royal_straight") return null;
+    return candidate.cards.length === lastPlayed.cards.length ? higher : "wrongLength";
+  }
+
+  if (candidate.type === "bomb") {
+    if (lastPlayed.type === "royal_straight") return "royalUnbeatable";
+    return lastPlayed.type === "bomb" ? higher : null;
+  }
+
+  if (lastPlayed.type === "royal_straight") return "royalUnbeatable";
+  if (lastPlayed.type === "bomb") return "bombOnly";
+  if (candidate.type !== lastPlayed.type) return "wrongType";
+  if (candidate.cards.length !== lastPlayed.cards.length) return "wrongLength";
+  return higher;
+}
+
 export function canPlay(
   candidate: Combination,
   lastPlayed: Combination | null
 ): boolean {
-  if (!lastPlayed) return true;
+  return beatRefusal(candidate, lastPlayed) === null;
+}
 
-  if (candidate.type === "royal_straight") {
-    if (lastPlayed.type === "royal_straight") {
-      return (
-        candidate.cards.length === lastPlayed.cards.length &&
-        candidate.strength > lastPlayed.strength
-      );
-    }
-    return true;
+/**
+ * Whether `seat` may play `cardIds` now, and the combination its own cards form
+ * if so. Turn ownership is the transport's: `seat` names whose hand to read,
+ * not a claim that it is on move. A repeated id is the one card it names.
+ */
+export function checkPlay(
+  state: GameState,
+  seat: number,
+  cardIds: string[]
+): PlayCheck {
+  if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
+  const hand = state.players[seat]?.hand ?? [];
+  const wanted = new Set(cardIds);
+  const cards = hand.filter((card) => wanted.has(card.id));
+  if (cards.length !== wanted.size) return { ok: false, code: "notHeld" };
+  return checkSelection(cards, state);
+}
+
+export type PlayCheck = { ok: true; combo: Combination } | { ok: false; code: PlayRefusal };
+
+/** `checkPlay` past the seat: whether these cards, already known held, answer this table. */
+export function checkSelection(
+  cards: Card[],
+  table: Pick<GameState, "lastPlayedCombination" | "firstPlayMade" | "startCard">
+): PlayCheck {
+  const combo = buildCombination(cards);
+  if (!combo) return { ok: false, code: "notACombination" };
+  const startCard = table.firstPlayMade ? undefined : table.startCard;
+  if (startCard && !cards.some((card) => card.id === startCard.id)) {
+    return { ok: false, code: "needsStartCard" };
   }
+  const refusal = beatRefusal(combo, table.lastPlayedCombination);
+  return refusal ? { ok: false, code: refusal } : { ok: true, combo };
+}
 
-  if (candidate.type === "bomb") {
-    if (lastPlayed.type === "royal_straight") return false;
-    if (lastPlayed.type === "bomb") return candidate.strength > lastPlayed.strength;
-    return true;
-  }
-
-  if (lastPlayed.type === "bomb" || lastPlayed.type === "royal_straight") return false;
-
-  if (candidate.type !== lastPlayed.type) return false;
-  if (candidate.cards.length !== lastPlayed.cards.length) return false;
-  return candidate.strength > lastPlayed.strength;
+/** Whether the seat on move may pass now. Turn ownership is the transport's, as in `checkPlay`. */
+export function checkPass(state: GameState): { ok: true } | { ok: false; code: PassRefusal } {
+  if (state.exchangePhase?.active) return { ok: false, code: "exchangeOpen" };
+  if (state.lastPlayedCombination === null) return { ok: false, code: "mustLead" };
+  return { ok: true };
 }
 
 // ─── Complete, correct valid-play enumeration ─────────────────────────────────
@@ -622,16 +679,12 @@ function placeLastSeat(state: GameState): void {
  *
  * Turn ownership is not here on purpose: which seat is acting is resolved by
  * the transport, so the engine has nothing independent to check a claim of it
- * against. What it can check is that the seat on move holds what it is
- * playing, that the shape it claims is the shape its own cards actually form,
- * that the play beats the table, and — on the very first play of the match —
- * that it is the 3♠ (docs/GAME-RULES.md §4). Leading a fresh trick otherwise
- * passes — there is nothing to beat, and `canPlay` says so.
+ * against. What it can check is what `checkPlay` checks for the seat on move,
+ * and that the shape it claims is the shape its own cards actually form.
  *
  * `combination.type`/`.strength` are re-derived from `.cards` rather than
  * trusted as given: a caller could otherwise claim any shape for any cards,
- * and `canPlay` compares only the claim. `buildCombination` is the one place
- * that derivation happens, so this calls it rather than repeating it.
+ * and `canPlay` compares only the claim.
  */
 function assertPlayable(state: GameState, combination: Combination): void {
   const player = state.players[state.currentTurnIndex];
@@ -641,35 +694,40 @@ function assertPlayable(state: GameState, combination: Combination): void {
   if (combination.cards.length === 0) {
     throw new Error(`${player.name} played nothing`);
   }
-  if (state.exchangePhase?.active) {
-    throw new Error(`${player.name} cannot play while the exchange is open`);
-  }
   const played = combination.cards.map((c) => c.id);
   // Membership alone passes `[7s,7s,7s,7s]` as a bomb: every id is held, once.
   if (new Set(played).size !== played.length) {
     throw new Error(`${player.name} played ${played.join(", ")}, which repeats a card`);
   }
-  const held = new Set(player.hand.map((c) => c.id));
-  const missing = combination.cards.filter((c) => !held.has(c.id)).map((c) => c.id);
-  if (missing.length > 0) {
-    throw new Error(`${player.name} does not hold ${missing.join(", ")}`);
+  const check = checkPlay(state, state.currentTurnIndex, played);
+  if (!check.ok) {
+    throw new Error(refusalMessage(check.code, player, combination, state));
   }
-  const actual = buildCombination(combination.cards);
-  if (!actual || actual.type !== combination.type || actual.strength !== combination.strength) {
-    throw new Error(
-      `${combination.cards.map((c) => c.id).join(", ")} is not a ${combination.type}`
-    );
+  if (check.combo.type !== combination.type || check.combo.strength !== combination.strength) {
+    throw new Error(`${played.join(", ")} is not a ${combination.type}`);
   }
-  if (!canPlay(combination, state.lastPlayedCombination)) {
-    throw new Error(
-      `${combination.type} of ${combination.cards.length} does not beat the table`
-    );
-  }
-  if (!state.firstPlayMade && state.startCard) {
-    const hasStartCard = combination.cards.some((c) => c.id === state.startCard!.id);
-    if (!hasStartCard) {
-      throw new Error(`${player.name} must open with ${state.startCard.id}`);
+}
+
+function refusalMessage(
+  code: PlayRefusal,
+  player: Player,
+  combination: Combination,
+  state: GameState
+): string {
+  const played = combination.cards.map((c) => c.id);
+  switch (code) {
+    case "exchangeOpen":
+      return `${player.name} cannot play while the exchange is open`;
+    case "notHeld": {
+      const held = new Set(player.hand.map((c) => c.id));
+      return `${player.name} does not hold ${played.filter((id) => !held.has(id)).join(", ")}`;
     }
+    case "notACombination":
+      return `${played.join(", ")} is not a ${combination.type}`;
+    case "needsStartCard":
+      return `${player.name} must open with ${state.startCard!.id}`;
+    default:
+      return `${combination.type} of ${combination.cards.length} does not beat the table`;
   }
 }
 
@@ -726,8 +784,7 @@ export function processPass(state: GameState): GameState {
   // A player leading a new trick must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
-  if (state.exchangePhase?.active) return state;
-  if (state.lastPlayedCombination === null) return state;
+  if (!checkPass(state).ok) return state;
 
   const newState = structuredClone(state);
   newState.passCount += 1;

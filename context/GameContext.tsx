@@ -20,8 +20,8 @@ import {
   processExchangeChoice,
   processPlay,
   processPass,
-  buildCombination,
-  canPlay,
+  checkPass,
+  checkPlay,
 } from "@/lib/game/gameEngine";
 import { offlineBotMove, resolveStuckExchange } from "@/lib/game/autoMove";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -242,32 +242,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const playCards = useCallback((cardIds: string[]): boolean => {
     if (!gameState) return false;
-    const player = gameState.players[gameState.currentTurnIndex];
-    if (!player) return false;
-    const cards = player.hand.filter((c) => cardIds.includes(c.id));
-    if (cards.length === 0) return false;
+    const check = checkPlay(gameState, gameState.currentTurnIndex, cardIds);
+    if (!check.ok) return false;
 
-    const combo = buildCombination(cards);
-    if (!combo) return false;
-
-    const isNewTrick = gameState.lastPlayedCombination === null;
-    if (!canPlay(combo, isNewTrick ? null : gameState.lastPlayedCombination))
-      return false;
-
-    if (!gameState.firstPlayMade && gameState.startCard) {
-      const hasStartCard = combo.cards.some(
-        (c) => c.id === gameState.startCard!.id
-      );
-      if (!hasStartCard) return false;
-    }
-
-    commitState(processPlay(gameState, combo), gameState);
+    commitState(processPlay(gameState, check.combo), gameState);
     return true;
   }, [gameState, commitState]);
 
   const passTurn = useCallback(() => {
     if (!gameState) return;
-    if (gameState.lastPlayedCombination === null) return;
+    if (!checkPass(gameState).ok) return;
 
     const newState = processPass(gameState);
     commitState(newState, gameState);

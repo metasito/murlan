@@ -38,6 +38,7 @@
 // through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
 // writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
 import type { ServerPayload } from "../../shared/protocol.ts";
+import type { TranslationParams } from "../../shared/i18n.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { eq } from "drizzle-orm";
 import { db } from "../store/db.ts";
@@ -46,7 +47,6 @@ import { emitVoteState, emitEndMatchVoteState } from "../socket/emit.ts";
 import { payload } from "../socket/payload.ts";
 import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
-import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
 import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
@@ -88,8 +88,8 @@ import {
   teamsSizeRefusal,
 } from "../socket/socketTable.ts";
 import {
-  buildCombination,
-  canPlay,
+  checkPass,
+  checkPlay,
   dealFirstSeatFor,
   initializeGame,
   initializeRematch,
@@ -99,7 +99,7 @@ import {
   firstTargetFor,
   teamForSeat,
 } from "../../lib/game/gameEngine.ts";
-import type { GameState } from "../../lib/game/gameEngine.ts";
+import type { GameState, PlayRefusal } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealRound } from "./dealRound.ts";
 import { botSeatKey } from "./botSeat.ts";
@@ -230,6 +230,18 @@ export async function rehydrateGame(
   return "restored";
 }
 
+const PLAY_REFUSAL_CODES = {
+  exchangeOpen: "EXCHANGE_PENDING",
+  notHeld: "INVALID_CARD",
+  notACombination: "INVALID_COMBINATION",
+  needsStartCard: "MUST_PLAY_START_CARD",
+  royalUnbeatable: "INVALID_MOVE",
+  bombOnly: "INVALID_MOVE",
+  wrongType: "INVALID_MOVE",
+  wrongLength: "INVALID_MOVE",
+  tooLow: "INVALID_MOVE",
+} as const satisfies Record<PlayRefusal, string>;
+
 function playAction(
   io: SocketServer,
   game: OnlineGameState,
@@ -249,43 +261,21 @@ function playAction(
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
 
-  const player = gameState.players[currentIdx];
-  if (!player) return { ok: false, code: "NO_LIVE_GAME" };
-  const unique = Array.from(new Set(cardIds));
-  const cards = player.hand.filter((c) => unique.includes(c.id));
-  if (cards.length !== unique.length) {
-    gameError(io, userId, payload("INVALID_CARD"));
-    return { ok: false, code: "INVALID_CARD" };
-  }
+  if (!gameState.players[currentIdx]) return { ok: false, code: "NO_LIVE_GAME" };
 
-  const combo = buildCombination(cards);
-  if (!combo) {
-    gameError(io, userId, payload("INVALID_COMBINATION"));
-    return { ok: false, code: "INVALID_COMBINATION" };
+  const check = checkPlay(gameState, currentIdx, cardIds);
+  if (!check.ok) {
+    const code = PLAY_REFUSAL_CODES[check.code];
+    const params: TranslationParams =
+      code === "MUST_PLAY_START_CARD" ? { rank: gameState.startCard!.rank } : {};
+    gameError(io, userId, payload(code, params));
+    return { ok: false, code };
   }
+  const combo = check.combo;
 
-  const isNewTrick = gameState.lastPlayedCombination === null;
   // Read before the engine sets it, so the transition is observable once
   // rather than on every play after it.
   const wasFirstPlay = !gameState.firstPlayMade;
-
-  if (!gameState.firstPlayMade && gameState.startCard) {
-    const startCardId = gameState.startCard.id;
-    if (!combo.cards.some((c) => c.id === startCardId)) {
-      const sc = gameState.startCard;
-      gameError(io, userId, {
-        message: translate(DEFAULT_LOCALE, "server.MUST_PLAY_START_CARD", { rank: sc.rank }),
-        code: "MUST_PLAY_START_CARD",
-        params: { rank: sc.rank },
-      });
-      return { ok: false, code: "MUST_PLAY_START_CARD" };
-    }
-  }
-
-  if (!canPlay(combo, isNewTrick ? null : gameState.lastPlayedCombination)) {
-    gameError(io, userId, payload("INVALID_MOVE"));
-    return { ok: false, code: "INVALID_MOVE" };
-  }
 
   // Achievement bookkeeping — see recordPlayFlags; this is the human-initiated
   // path, autoMoveForSeat covers bot/AFK-forced plays.
@@ -334,9 +324,11 @@ function passAction(
 
   const currentIdx = gameState.currentTurnIndex;
   if (playerMap[currentIdx] !== userId) return { ok: false, code: "NOT_YOUR_TURN" };
-  if (gameState.lastPlayedCombination === null) {
-    gameError(io, userId, payload("CANNOT_PASS"));
-    return { ok: false, code: "CANNOT_PASS" };
+  const check = checkPass(gameState);
+  if (!check.ok) {
+    const code = check.code === "exchangeOpen" ? "EXCHANGE_PENDING" : "CANNOT_PASS";
+    gameError(io, userId, payload(code));
+    return { ok: false, code };
   }
 
   const newState = processPass(gameState);

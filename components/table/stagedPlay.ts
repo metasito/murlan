@@ -3,14 +3,14 @@
 //
 // Its own file rather than `turnTimerUi.ts`, which takes nothing from
 // `lib/game/gameEngine` but a type — see `playButtonLabel`'s docstring, which states
-// that only the caller can run `canPlay`. This file is that caller, and it runs
-// the engine for real.
+// that only the caller can run the engine. This file is that caller, and it runs
+// `checkSelection` for real.
 
 // Relative and extensioned, not `@/`: these are runtime imports — docs/agents/checks.md,
 // "Node's TypeScript loader".
 import {
   buildCombination,
-  canPlay,
+  checkSelection,
   getAllValidPlays,
   type Card,
   type Combination,
@@ -53,22 +53,22 @@ export function canBeatPileOf(input: TableFacts): boolean {
 
 export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): StagedPlay {
   const cards = input.hand.filter((c) => input.selectedIds.includes(c.id));
-  const combo = cards.length > 0 ? buildCombination(cards) : null;
   const { toBeat, requiredCard } = whatMustBeMet(input);
+  const check = checkSelection(cards, {
+    lastPlayedCombination: toBeat,
+    firstPlayMade: input.firstPlayMade,
+    startCard: input.startCard,
+  });
+  const combo = check.ok ? check.combo : buildCombination(cards);
   const requiresStartCard = !!requiredCard;
   const selectionHasStartCard =
     !!input.startCard && cards.some((c) => c.id === input.startCard!.id);
-
-  const isValid =
-    combo !== null &&
-    canPlay(combo, toBeat) &&
-    (!requiresStartCard || selectionHasStartCard);
 
   const pile = input.lastPlayedCombination;
   const myMove = input.isMyTurn && !input.isFinished;
   return {
     cards,
-    playable: isValid && myMove,
+    playable: check.ok && myMove,
     refusal: playButtonLabel({
       isMyTurn: input.isMyTurn,
       isFinished: input.isFinished,
