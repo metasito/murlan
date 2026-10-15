@@ -102,7 +102,8 @@ export type RoundOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
  * both leave every team's known total at zero. This is the caller's signal
  * to wait for the render the scores arrive on rather than decide without
  * them, the same way `isDrawnRound` itself refuses to call an incomplete
- * score set a draw.
+ * score set a draw. Free-for-all never returns it, so a caller that latches its
+ * decision waits on `scoredOutcome` instead.
  */
 export function roundOutcomeFor(
   players: readonly { id: string; team?: string }[],
