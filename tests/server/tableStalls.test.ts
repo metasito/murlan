@@ -149,4 +149,31 @@ describe("dealing the next manche", () => {
     assert.ok(emitted.some((e) => e.event === "game:state"), "nobody was sent their hand");
     assert.ok(emitted.some((e) => e.event === "game:started"));
   });
+
+  test("two votes closing the gate together deal once, with the exchange", async (t) => {
+    const { io, emitted } = stubIo();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    t.mock.method(roomStore, "getRoomById", async () => {
+      await held;
+      return room;
+    });
+    t.mock.method(roomStore, "updateRoomStatus", async () => {});
+    const game = baseGame({
+      gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
+      playerMap: { 0: "ana", 1: "besi" },
+      rematchVotes: new Set(["ana"]),
+    });
+    activeGames.set(ROOM, game);
+
+    const first = vote(io, "besi");
+    const second = vote(io, "ana");
+    await sleep(10);
+    assert.ok(!emitted.some((e) => e.event === "game:started"), "both are still waiting on the room read");
+    release();
+    await Promise.all([first, second]);
+
+    assert.equal(emitted.filter((e) => e.event === "game:started").length, 1);
+    assert.equal(game.gameState.exchangePhase?.active, true, "the second deal threw the exchange away");
+  });
 });
