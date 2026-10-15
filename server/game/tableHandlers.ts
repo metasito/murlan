@@ -823,17 +823,20 @@ async function startMatchAction(
  * dropped: on the instance that held no copy of the table, the same code read
  * a hand in progress as a waiting lobby and released the seat outright.
  */
-function seatLostAction(
+async function seatLostAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "seatLost" }>
-): Promise<EventOutcome> | EventOutcome {
+): Promise<EventOutcome> {
   const { roomId, userId } = action;
-  const seat = seatOfUser(game, userId);
-  if (seat === null) return { ok: false, code: "NOT_SEATED" };
   // Every socket drops at a shutdown, and the next process restores this table
   // from active_games and arms the graces itself.
   if (isShuttingDown()) return OK;
+  // Forwarded from another instance, this can land after the player's rejoin
+  // has already cleared the graces it would arm.
+  if (await isUserOnline(userId)) return OK;
+  const seat = seatOfUser(game, userId);
+  if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
   if (!game.gameState.gameOver) {
     // Distinct from losing: the hand was still running when they went.
