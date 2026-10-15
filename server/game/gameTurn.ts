@@ -5,11 +5,14 @@ import { logger } from "../http/logger.ts";
 import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames, seatName } from "./gameRoom.ts";
 import { seatOfUser } from "./onlineGameLogic.ts";
+import { vacate } from "./seatLedger.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
-  afkTimers,
-  botTimers,
+  arm,
+  pending,
+  now,
+  seatKey,
   afkTimeoutMs,
   botMoveDelayMs,
   clearAfkTimer,
@@ -138,13 +141,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
     const delayMs = exchangeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
       : botDelayMs;
-    botTimers.set(
-      roomId,
-      setTimeout(() => {
-        botTimers.delete(roomId);
-        safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId));
-      }, delayMs)
-    );
+    arm("bot", roomId, delayMs, () => safeTimer(io, "botTurn", roomId, () => runBotTurn(io, roomId)));
     emitTurnDeadline(io, roomId, game);
     return;
   }
@@ -158,7 +155,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   // seat replaying a turn it already spent its grant on.
   const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
   const timeoutMs = afkTimeoutMs() + openingGraceMs;
-  game.turnDeadlineMs = Date.now() + timeoutMs;
+  game.turnDeadlineMs = now() + timeoutMs;
   startAfkTimer(io, roomId, userId, username, timeoutMs);
   emitTurnDeadline(io, roomId, game);
 }
@@ -182,9 +179,9 @@ export function armTurnIfIdle(io: SocketServer, roomId: string) {
   const game = activeGames.get(roomId);
   if (!game) return;
 
-  if (botTimers.has(roomId)) return emitTurnDeadline(io, roomId, game);
+  if (pending("bot", roomId)) return emitTurnDeadline(io, roomId, game);
   const seatUserId = game.playerMap[actingSeat(game.gameState)];
-  if (seatUserId !== undefined && afkTimers.has(`${roomId}:${seatUserId}`)) {
+  if (seatUserId !== undefined && pending("afk", seatKey(roomId, seatUserId))) {
     return emitTurnDeadline(io, roomId, game);
   }
 
@@ -256,30 +253,24 @@ function startAfkTimer(
   username: string,
   timeoutMs: number
 ) {
-  clearAfkTimer(roomId, userId);
-  const key = `${roomId}:${userId}`;
-  afkTimers.set(
-    key,
-    setTimeout(() => {
-      afkTimers.delete(key);
-      safeTimer(io, "afkAutoPass", roomId, () => {
-        const acted = handleAutoPass(io, roomId, userId);
-        // Only announce when something actually happened, not on an early
-        // return that did nothing.
-        if (acted) {
-          const exchanged = acted === "exchange";
-          io.to(roomId).emit("game:notification", {
-            type: "afk",
-            code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
-            message: exchanged
-              ? `${username} is inactive — the card was exchanged automatically`
-              : `${username} is inactive — passed automatically`,
-            params: { username },
-          });
-        }
-      });
-    }, timeoutMs)
-  );
+  arm("afk", seatKey(roomId, userId), timeoutMs, () => {
+    safeTimer(io, "afkAutoPass", roomId, () => {
+      const acted = handleAutoPass(io, roomId, userId);
+      // Only announce when something actually happened, not on an early
+      // return that did nothing.
+      if (acted) {
+        const exchanged = acted === "exchange";
+        io.to(roomId).emit("game:notification", {
+          type: "afk",
+          code: exchanged ? "PLAYER_AFK_AUTO_EXCHANGE" : "PLAYER_AFK_AUTO_PASS",
+          message: exchanged
+            ? `${username} is inactive — the card was exchanged automatically`
+            : `${username} is inactive — passed automatically`,
+          params: { username },
+        });
+      }
+    });
+  });
 }
 
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
@@ -336,33 +327,8 @@ export async function vacateSeat(
   if (seat === null) return;
   const username = seatName(game, seat);
 
-  game.releasedSeats.add(userId);
-  delete game.playerMap[seat];
+  vacate(game, seat, { midHand: !game.gameState.roundOver });
   clearAfkTimer(roomId, userId);
-
-  const seatPlayer = game.gameState.players[seat];
-  if (seatPlayer) seatPlayer.type = "bot";
-
-  // The seat is reclaimable by this account for the life of the match
-  // (docs/GAME-RULES.md § Decisions) — every vacate is recorded here, whether it happened
-  // mid-round or between them, so the rejoin path can find it, the sanitizer
-  // can label the seat, and `resolveRoundEnd` can find the person's frozen
-  // total once `playerMap` has forgotten them.
-  game.vacatedSeats.set(seat, { userId, username });
-  // A vote to end the match answers "is the table still the one everyone
-  // joined" — a roster change makes that question new again.
-  game.endMatchVotes.clear();
-
-  // Walking out on a round still holding cards is an abandonment, and is recorded as
-  // one at game over. A seat between rounds has no round to abandon, and a seat
-  // that already emptied its hand has finished the one it was playing.
-  if (!game.gameState.roundOver && seatPlayer?.finishPosition === undefined) {
-    game.abandonedSeats.set(seat, userId);
-    // The takeover plays this round at minimum strength only — `dealRound`
-    // clears this at the next deal, by which point the seat is honestly a
-    // bot's (docs/GAME-RULES.md § Decisions).
-    game.weakSeats.add(seat);
-  }
 
   const remaining = Object.keys(game.playerMap).length;
 

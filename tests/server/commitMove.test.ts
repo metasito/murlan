@@ -5,7 +5,7 @@ import { commitMove } from "../../server/game/gameTurn.ts";
 import { persistence, roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
-import { botMoveDelayMs, botTimers, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import { botMoveDelayMs, clearRoomTimers, pending } from "../../server/game/gameTimers.ts";
 import {
   checkPlay,
   createDeck,
@@ -71,7 +71,7 @@ async function assertCommitted(
   await writesSettle();
   assert.equal(writes.mock.callCount(), 1, "the move was not persisted once");
   assert.equal(game.moveLog?.length, logged, "the replay log holds the wrong number of moves");
-  assert.ok(botTimers.has(ROOM), "the next seat was not armed");
+  assert.ok(pending("bot", ROOM), "the next seat was not armed");
   const after = structuredClone(game.gameState);
   t.mock.timers.tick(delayMs - 1);
   assert.deepEqual(game.gameState, after, "the next seat moved before its delay");
@@ -127,7 +127,7 @@ test("a play that ends the round is logged, persisted, and handed to round over 
     const game = table(state);
     const over = commitMove(io, game, next, { seat, combo: check.combo });
     assert.ok(over instanceof Promise, "the round-over handoff was not returned");
-    assert.equal(botTimers.has(ROOM), false, "a seat was armed on a finished round");
+    assert.equal(pending("bot", ROOM), false, "a seat was armed on a finished round");
     await over;
     await writesSettle();
     assert.ok(writes.mock.callCount() >= 1, "the final move was never persisted");

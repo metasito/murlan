@@ -66,11 +66,11 @@ import {
   clearRoomTimers,
   clearDisconnectGrace,
   clearLobbyGrace,
-  disconnectTimers,
-  disconnectDeadlines,
+  arm,
   usersInLobbyGrace,
 } from "./gameTimers.ts";
-import { buildSeatRoster, scoreKeyForSeat, seatOfUser } from "./onlineGameLogic.ts";
+import { buildSeatRoster, seatOfUser } from "./onlineGameLogic.ts";
+import { castEndMatchVote, reclaim } from "./seatLedger.ts";
 import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { fromEnvelope, newTable } from "./tableState.ts";
 import {
@@ -432,8 +432,7 @@ async function endMatchVoteAction(
   if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
   if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
 
-  if (wants) game.endMatchVotes.add(userId);
-  else game.endMatchVotes.delete(userId);
+  castEndMatchVote(game, userId, wants);
   emitEndMatchVoteState(io, roomId, game);
   // A withdrawal can never end a match, and votesUnanimous on a shrinking set
   // must not be asked.
@@ -462,38 +461,6 @@ async function dealIfSeatLeftGateClosed(
   return dealVotedRound(io, game, roomId, null);
 }
 
-/**
- * The seat `userId` used to hold, if this table still has it open — the seat
- * is reclaimable by the same account for the life of the match
- * (docs/GAME-RULES.md § Decisions). `vacatedSeats` is the whole of the decision, so a match
- * `endMatchByAgreement` closed still hands the seat back while the table sits at
- * its results screen. `SEAT_RELEASED` beside this is reachable only on a
- * restored row that kept `releasedSeats` and lost the seat entry: the two are
- * written together and cleared together everywhere else.
- */
-function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
-  for (const [seat, vacated] of game.vacatedSeats) {
-    if (vacated.userId === userId) return seat;
-  }
-  return null;
-}
-
-/** Restores a vacated seat to the account that left it. */
-function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
-  const botKey = scoreKeyForSeat(game.playerMap, seat);
-  game.playerMap[seat] = userId;
-  const carried = game.cumulativeScores[botKey] ?? 0;
-  if (carried !== 0) {
-    game.cumulativeScores[userId] = (game.cumulativeScores[userId] ?? 0) + carried;
-  }
-  delete game.cumulativeScores[botKey];
-  game.vacatedSeats.delete(seat);
-  game.releasedSeats.delete(userId);
-  game.endMatchVotes.clear();
-  const seatPlayer = game.gameState.players[seat];
-  if (seatPlayer) seatPlayer.type = "human";
-}
-
 async function rejoinAction(
   io: SocketServer,
   game: OnlineGameState,
@@ -502,19 +469,19 @@ async function rejoinAction(
   const { roomId, userId } = action;
   let seat = seatOfUser(game.playerMap, userId);
   if (seat === null) {
-    const reclaim = reclaimableSeat(game, userId);
-    if (reclaim === null) {
+    seat = reclaim(game, userId);
+    if (seat === null) {
+      // Reachable only on a restored row that kept `releasedSeats` and lost the
+      // seat entry: `seatLedger.ts` writes and clears the two together.
       const code = game.releasedSeats.has(userId) ? "SEAT_RELEASED" : "UNAUTHORIZED";
       return { ok: false, code };
     }
-    reclaimSeat(game, reclaim, userId);
-    seat = reclaim;
     // Every viewer's own `vacated` flag for this seat must flip false, and
     // the returning player's hand — still theirs; `vacateSeat` never touched
     // it — has to reach them. A normal reconnect skips this: the seat was
     // never vacated on the wire in the first place.
     broadcastGameState(io, game);
-    // reclaimSeat clears the (now-stale) end-match tally; every seat still
+    // reclaim clears the (now-stale) end-match tally; every seat still
     // holding a vote for it has to be told, or its banner keeps counting a
     // vote the server no longer has.
     emitEndMatchVoteState(io, roomId, game);
@@ -743,14 +710,9 @@ function armSeatGrace(
   // full minute on this player's turn.
   armTurnIfIdle(io, roomId);
 
-  const prevTimer = disconnectTimers.get(userId);
-  if (prevTimer) clearTimeout(prevTimer);
-
-  const dcTimer = setTimeout(() => {
+  arm("disconnect", userId, disconnectGraceMs(), () => {
     void (async () => {
       try {
-        disconnectTimers.delete(userId);
-        disconnectDeadlines.delete(userId);
         // Asked of the cluster, not of this process: the instance that owns a
         // table need not be the one holding the player's socket, and reading
         // the local map alone hands a connected player's seat to a bot.
@@ -773,9 +735,7 @@ function armSeatGrace(
         logger.error({ err, userId, roomId }, "Disconnect timeout handler failed");
       }
     })();
-  }, disconnectGraceMs());
-  disconnectTimers.set(userId, dcTimer);
-  disconnectDeadlines.set(userId, Date.now() + disconnectGraceMs());
+  });
 }
 
 async function applyTableAction(

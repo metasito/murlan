@@ -6,6 +6,7 @@ import { emitMatchState } from "../socket/emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
 import { startReplayLog } from "./replayShape.ts";
+import { clearForDeal } from "./seatLedger.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 
@@ -27,13 +28,7 @@ export async function dealRound(
   // departures again in every remaining round.
   game.roundFlags = {};
   game.moveLog = startReplayLog();
-  game.abandonedSeats.clear();
-  // Minimum-legal play (docs/GAME-RULES.md § Decisions) is scoped to the round a seat was
-  // taken over mid-play; a fresh deal always starts full-strength bots. The end-match
-  // vote is answered against the table as it stands now, not a stalled tally
-  // from the round that just ended.
-  game.weakSeats.clear();
-  game.endMatchVotes.clear();
+  clearForDeal(game);
   // Not required for correctness — announceRejoin's `else if` already makes a
   // stale payload unreachable the instant gameState.roundOver goes false, and
   // handleRoundOver clears this itself before the next round it plays can end.

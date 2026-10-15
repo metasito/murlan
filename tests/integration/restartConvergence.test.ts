@@ -502,7 +502,7 @@ describe(
       // Polled on the reclaim's own effect, not on the row being newer: the
       // vacated seat is a bot until this moment and `runBotTurn` persists after
       // every move, so a newer row can be one of those. An empty `vacatedSeats`
-      // on a row that carried one is a row only `reclaimSeat` can have written,
+      // on a row that carried one is a row only `seatLedger.ts` `reclaim` can have written,
       // which makes the two collections it leaves alone evidence of the restore
       // rather than of the row they were read from.
       const afterReclaim = await storedSeats(

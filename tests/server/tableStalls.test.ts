@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { installTableHandlers, applyOrForward, rehydrateGame } from "../../server/game/tableHandlers.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
-import { clearAllTimersForUser, clearRoomTimers, disconnectTimers, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
+import { clearAllTimersForUser, clearRoomTimers, pending, usersInLobbyGrace } from "../../server/game/gameTimers.ts";
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
@@ -303,8 +303,8 @@ describe("a restore with one player present and one away", () => {
     t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
 
     assert.equal(await rehydrateGame(ROOM, null, io), "restored");
-    assert.ok(disconnectTimers.has("besi"));
-    assert.ok(!disconnectTimers.has("ana"), "ana is online and was given 60 s to come back anyway");
+    assert.ok(pending("disconnect", "besi"));
+    assert.ok(!pending("disconnect", "ana"), "ana is online and was given 60 s to come back anyway");
   });
 });
 
@@ -337,7 +337,7 @@ describe("a seatLost that arrives after its player is back", () => {
       await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });
 
       assert.ok(!emitted.some((e) => e.event === "game:player_disconnected"));
-      assert.ok(!disconnectTimers.has("besi"), "a disconnect grace no reconnect will clear");
+      assert.ok(!pending("disconnect", "besi"), "a disconnect grace no reconnect will clear");
       assert.deepEqual(usersInLobbyGrace(ROOM), []);
     });
   }

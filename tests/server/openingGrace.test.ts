@@ -7,11 +7,18 @@
 // granted once, on the opener's own first turn, and nowhere else.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { setTimeout as setTimeoutPromise } from "node:timers/promises";
 import type { Server as SocketServer } from "socket.io";
 
 import { armTurn, armTurnIfIdle } from "../../server/game/gameTurn.ts";
-import { afkTimers, afkTimeoutMs, clearRoomTimers } from "../../server/game/gameTimers.ts";
+import {
+  afkTimeoutMs,
+  clearRoomTimers,
+  pending,
+  pendingKeys,
+  seatKey,
+  setClock,
+} from "../../server/game/gameTimers.ts";
+import { fakeClock } from "../helpers/fakeClock.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally } from "../../lib/game/gameEngine.ts";
@@ -56,20 +63,22 @@ function seat(gameState: GameState, playerMap: Record<number, string>): OnlineGa
 function teardown() {
   clearRoomTimers(ROOM);
   activeGames.delete(ROOM);
+  setClock();
 }
+
+const afkKeysInRoom = () => pendingKeys("afk").filter((k) => k.startsWith(`${ROOM}:`));
 
 describe("the opener's first-turn AFK grace (#830)", () => {
   test("grants Reading.notice on the opener's first turn, and never again once the round has a play in it", () => {
+    const clock = fakeClock();
+    setClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
-      const before = Date.now();
       armTurn(io, ROOM);
-      const openingWindowMs = game.turnDeadlineMs! - before;
-      assert.ok(
-        Math.abs(openingWindowMs - (afkTimeoutMs() + Reading.notice)) < 200,
-        `opener's first turn: expected afkTimeoutMs() + Reading.notice (${
-          afkTimeoutMs() + Reading.notice
-        }ms), got ${openingWindowMs}ms`
+      assert.equal(
+        game.turnDeadlineMs! - clock.now(),
+        afkTimeoutMs() + Reading.notice,
+        "opener's first turn: expected afkTimeoutMs() + Reading.notice"
       );
 
       // The opener has now played — the rank tally is no longer all zero, so
@@ -77,12 +86,12 @@ describe("the opener's first-turn AFK grace (#830)", () => {
       // nothing else about the turn changed.
       game.gameState.playedRanks![0] = 1;
 
-      const before2 = Date.now();
+      clock.advance(1_000);
       armTurn(io, ROOM);
-      const laterWindowMs = game.turnDeadlineMs! - before2;
-      assert.ok(
-        Math.abs(laterWindowMs - afkTimeoutMs()) < 200,
-        `a later turn must carry only afkTimeoutMs() (${afkTimeoutMs()}ms), got ${laterWindowMs}ms — the grant must not renew`
+      assert.equal(
+        game.turnDeadlineMs! - clock.now(),
+        afkTimeoutMs(),
+        "a later turn must carry only afkTimeoutMs() — the grant must not renew"
       );
     } finally {
       teardown();
@@ -99,28 +108,24 @@ describe("the opener's first-turn AFK grace (#830)", () => {
         undefined,
         "a vacant opener's turn carries no deadline — a bot has no clock to grant a window on"
       );
-      assert.deepEqual(
-        [...afkTimers.keys()].filter((k) => k.startsWith(`${ROOM}:`)),
-        [],
-        "a vacant seat must not arm a human AFK timer"
-      );
+      assert.deepEqual(afkKeysInRoom(), [], "a vacant seat must not arm a human AFK timer");
     } finally {
       teardown();
     }
   });
 
-  test("a rejoin mid-opening does not renew the grant, and nobody but the opener carries a timer", async () => {
+  test("a rejoin mid-opening does not renew the grant, and nobody but the opener carries a timer", () => {
+    const clock = fakeClock();
+    setClock(clock);
     const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
     try {
       armTurn(io, ROOM);
       const granted = game.turnDeadlineMs;
       assert.equal(typeof granted, "number");
 
-      // A real gap, not zero: `Date.now()` in a re-arm that ignored the idle
-      // guard would land in the same millisecond as the call above and pass
-      // this assertion by accident. Advancing the clock first is what makes a
-      // silent renewal show up as a changed deadline instead of a coincidence.
-      await setTimeoutPromise(20);
+      // A re-arm that ignored the idle guard would land on the same instant
+      // without this, and pass by coincidence.
+      clock.advance(20);
 
       // Simulates the opener's own client reconnecting while its AFK timer is
       // still pending — the path `game:rejoin` takes.
@@ -132,10 +137,29 @@ describe("the opener's first-turn AFK grace (#830)", () => {
       );
 
       assert.deepEqual(
-        [...afkTimers.keys()].filter((k) => k.startsWith(`${ROOM}:`)),
-        [`${ROOM}:${OPENER}`],
+        afkKeysInRoom(),
+        [seatKey(ROOM, OPENER)],
         "only the acting seat carries a timer — a spectator or the seat not yet on turn gets nothing"
       );
+    } finally {
+      teardown();
+    }
+  });
+
+  test("the opener's AFK timer expires at the granted deadline, not at the bare AFK window", () => {
+    const clock = fakeClock();
+    setClock(clock);
+    const game = seat(freshRound(), { 0: OPENER, 1: OTHER });
+    try {
+      armTurn(io, ROOM);
+      // The expiry auto-passes against this stub table, which has nothing to pass.
+      game.gameState.roundOver = true;
+
+      clock.advance(afkTimeoutMs());
+      assert.equal(pending("afk", seatKey(ROOM, OPENER)), true, "expired without the opening grant");
+
+      clock.advance(Reading.notice);
+      assert.equal(pending("afk", seatKey(ROOM, OPENER)), false, "still pending past its deadline");
     } finally {
       teardown();
     }
