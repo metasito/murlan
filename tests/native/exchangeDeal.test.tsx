@@ -80,19 +80,19 @@ describe('an exchange round', () => {
     await view.unmount();
   }, 20_000);
 
-  it('is dealt and opens its trade on every manche at a standing table, not only the first', async () => {
+  it('is dealt and opens its exchange on every round at a standing table, not only the first', async () => {
     const view = await render(table(exchange));
-    for (let manche = 0; manche < 3; manche++) {
-      if (manche > 0) {
+    for (let round = 0; round < 3; round++) {
+      if (round > 0) {
         await view.rerender(table(ended));
         await frames(64);
         await view.rerender(table({ ...exchange }));
       }
       let dealt = false;
-      await frames(dealEndMs(COUNTS, manche === 0 ? 600 : 0) + choiceOpensAt(false) + 200, () => {
+      await frames(dealEndMs(COUNTS, round === 0 ? 600 : 0) + choiceOpensAt(false) + 200, () => {
         if (backs().length > 0) dealt = true;
       });
-      expect({ manche, dealt, prompt: prompt() !== null }).toEqual({ manche, dealt: true, prompt: true });
+      expect({ round, dealt, prompt: prompt() !== null }).toEqual({ round, dealt: true, prompt: true });
     }
     await view.unmount();
   }, 30_000);

@@ -94,7 +94,7 @@ describe('the deal flies on a pool of backs', () => {
     await view.unmount();
   });
 
-  it('gives the next manche’s deal a clock of its own, never the landed one', async () => {
+  it('gives the next round’s deal a clock of its own, never the landed one', async () => {
     const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ geometry: GEOMETRY, fresh, entryMs: 600, reduceMotion: false }), {
       initialProps: { fresh: true },
     });

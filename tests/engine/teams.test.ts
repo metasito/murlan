@@ -224,7 +224,7 @@ describe("teams: folding a round into the match", () => {
     assert.deepEqual(result.winners.sort(), ["player_1", "player_3"]);
   });
 
-  test("a single manche paying both pairs 3 is a draw, whoever emptied first", () => {
+  test("a single round paying both teams 3 is a draw, whoever emptied first", () => {
     const result = foldHandIntoMatch({
       ...base,
       length: "single",
