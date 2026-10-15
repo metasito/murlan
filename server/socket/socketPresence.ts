@@ -13,7 +13,7 @@ import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { userStore } from "../store/userStore.ts";
 import { logger } from "../http/logger.ts";
-import { notifyUser } from "./push.ts";
+import { friendships, type InviteRefusal } from "./friendships.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
@@ -25,16 +25,19 @@ import {
 } from "../game/gameRoom.ts";
 import { seatOfUser } from "../game/onlineGameLogic.ts";
 import { clearDisconnectGrace } from "../game/gameTimers.ts";
-import {
-  announceRejoin,
-  armLobbyGrace,
-  roomStatePayload,
-} from "./socketTable.ts";
+import { announceRejoin, armLobbyGrace } from "./socketTable.ts";
 import { seatSocket, stopSpectating } from "./seating.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
 import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.ts";
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import { payload } from "./payload.ts";
+
+/** Spelled out because tests/tooling/refusalCodesTested.test.ts reads a refusal's code only as a literal. */
+const INVITE_REFUSAL_CODE = {
+  NOT_FRIENDS: "NOT_FRIENDS",
+  ROOM_NOT_FOUND: "ROOM_NOT_FOUND",
+  NOT_IN_ROOM: "NOT_IN_ROOM",
+} as const satisfies { [C in InviteRefusal]: C };
 
 export interface PresenceContext {
   io: SocketServer;
@@ -42,70 +45,18 @@ export interface PresenceContext {
   userId: string;
 }
 
-export function registerFriendHandlers({ io, socket, userId }: PresenceContext) {
+export function registerFriendHandlers({ socket, userId }: PresenceContext) {
 
     onEvent(
       socket,
       "friend:invite",
       FriendInviteSchema,
       async ({ friendUserId, roomCode }) => {
-        // Only accepted friends may invite each other, and only a few per
-        // minute — an invite is otherwise an unauthenticated broadcast
-        // primitive that would let any user spam any userId.
-        const areFriends = await friendStore.areFriends(userId, friendUserId);
-        if (!areFriends) {
-          socket.emit("friend:error", payload("NOT_FRIENDS"));
-          return { ok: false, code: "NOT_FRIENDS" };
-        }
-
-        const room = await roomStore.getRoomByCode(roomCode.toUpperCase());
-        if (!room || room.status !== "waiting") {
-          socket.emit("friend:error", payload("ROOM_NOT_FOUND"));
-          return { ok: false, code: "ROOM_NOT_FOUND" };
-        }
-
-        // The code comes from the client, and the client is not what decides
-        // whether the sender is at that table. Without this, naming any waiting
-        // room's code would invite a friend into a stranger's room.
-        const seated = await roomStore.getRoomPlayers(room.id);
-        if (!seated.some((p) => p.userId === userId)) {
-          socket.emit("friend:error", payload("NOT_IN_ROOM"));
-          return { ok: false, code: "NOT_IN_ROOM" };
-        }
-
-        // Written before it is announced. The emit and the push are both ways
-        // of saying "look now"; the row is what makes the invite exist, and it
-        // is the only one of the three that survives the friend being away.
-        await friendStore.recordGameInvite(room.id, userId, friendUserId);
-
-        // The row is what holds the seat, so the room has to be told the moment
-        // it exists — otherwise the seat waiting for this friend reads as an
-        // empty one until something else happens to broadcast.
-        io.to(room.id).emit("room:state", await roomStatePayload(room, seated));
-
-        // Read now, not at the handshake: a rename in between would send the
-        // name a stranger may have registered since.
-        const username = (await userStore.getUser(userId))?.username ?? "";
-        const friendIsHere = await isUserOnline(friendUserId);
-        if (friendIsHere) {
-          io.to(userRoom(friendUserId)).emit("friend:invite", {
-            from: username,
-            roomCode,
-          });
-        } else {
-          // Not awaited: the invite must not be held up by a push, and the row
-          // above already means a failed push costs nothing.
-          void notifyUser(friendUserId, {
-            title: "Murlan",
-            code: "FRIEND_INVITE",
-            params: { username },
-            data: { roomCode },
-          });
-        }
-        // Not "delivered or lost" — the invite is written down either way, so
-        // what the host learns is whether their friend is looking right now.
-        return { ok: true, code: friendIsHere ? "INVITE_SHOWN" : "INVITE_WAITING" };
+        const result = await friendships.invite(userId, friendUserId, roomCode);
+        if (!result.ok) socket.emit("friend:error", payload(INVITE_REFUSAL_CODE[result.code]));
+        return result;
       },
+      // An invite is a broadcast to another account: only a few per minute.
       { limit: 5, windowMs: 60_000 }
     );
 
@@ -156,7 +107,7 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
       // be told this account came online, and the online list this socket is
       // sent, are the same rows.
       const friends = await friendStore.getFriends(userId);
-      await announceOnlineToFriends(io, userId, friends);
+      await announceOnlineToFriends(userId, friends);
       const online = await onlineUserIds();
       const onlineIds = friends
         .map((f) => f.friend.id)
@@ -209,7 +160,7 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
             );
 
           const lastSeen = new Date().toISOString();
-          void emitFriendStatusOffline(io, userId, lastSeen);
+          void emitFriendStatusOffline(userId, lastSeen);
 
           const currentRoomId = socketRoomMap.get(socket.id);
           socketRoomMap.delete(socket.id);
@@ -360,33 +311,20 @@ export function evictReplacedSession(
 /** Takes the friend rows rather than reading them: the connection handler pays
  *  for one `getFriends`, not two. */
 async function announceOnlineToFriends(
-  io: SocketServer,
   userId: string,
   friends: Awaited<ReturnType<typeof friendStore.getFriends>>
 ) {
   // The read the caller did is awaited, so the socket may already be gone.
   if (!(await isUserOnline(userId))) return;
-  friends.forEach((f) => {
-    io.to(userRoom(f.friend.id)).emit("friend:status", { userId, online: true });
-  });
+  friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: true });
 }
 
-async function emitFriendStatusOffline(
-  io: SocketServer,
-  userId: string,
-  lastSeen: string
-) {
+async function emitFriendStatusOffline(userId: string, lastSeen: string) {
   // Debounced, and re-checked after every await: a reconnect inside any of
   // these windows must cancel the offline notice rather than race it.
   await new Promise((resolve) => setTimeout(resolve, 400));
   if (await isUserOnline(userId)) return;
   const friends = await friendStore.getFriends(userId).catch(() => []);
   if (await isUserOnline(userId)) return;
-  friends.forEach((f) => {
-    io.to(userRoom(f.friend.id)).emit("friend:status", {
-      userId,
-      online: false,
-      lastSeen,
-    });
-  });
+  friendships.tellStatus(userId, friends.map((f) => f.friend.id), { online: false, lastSeen });
 }

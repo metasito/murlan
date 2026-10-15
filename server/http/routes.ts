@@ -2,11 +2,11 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcryptjs";
 import { routeLimiter } from "./rateLimit.ts";
-import { friendStore, type AddFriendRefusal } from "../store/friendStore.ts";
+import { friendStore } from "../store/friendStore.ts";
+import { friendships, type FriendRequestRefusal } from "../socket/friendships.ts";
 import { userStore, UsernameTakenError } from "../store/userStore.ts";
 import { deleteUser } from "./deleteAccount.ts";
 import { friendRequestRow, friendRow } from "../store/friendRows.ts";
-import type { FriendRequestAccepted, FriendRequestIncoming } from "../../lib/wire.ts";
 import type { User } from "../../shared/schema.ts";
 import { logger } from "./logger.ts";
 import { runningCommitSha } from "./buildInfo.ts";
@@ -27,14 +27,7 @@ import {
 } from "./schemas.ts";
 import { deletePushToken, savePushToken } from "../socket/push.ts";
 import { DEFAULT_LOCALE, isLocale, translate, type Locale } from "../../shared/i18n.ts";
-import {
-  declineGameInviteAndNotify,
-  emitToUser,
-  evictUser,
-  isUserOnline,
-  removeFriendAndNotify,
-  revokeAccountSockets,
-} from "../socket/socket.ts";
+import { evictUser, revokeAccountSockets } from "../socket/socket.ts";
 import { mintSocketTicket } from "../socket/ticket.ts";
 import {
   mintAuthToken,
@@ -76,6 +69,11 @@ function readParam(res: Response, raw: unknown): string | null {
     return null;
   }
   return parsed.data;
+}
+
+function sendFriendshipResult(res: Response, result: { ok: true } | { ok: false; code: "FRIEND_REQUEST_NOT_FOUND" }) {
+  if (result.ok) res.json(result);
+  else res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
 }
 
 /**
@@ -252,16 +250,22 @@ const resendVerificationLimiter = routeLimiter({
   message: payload("RATE_LIMITED"),
 });
 
-/**
- * What each refusal is called to a player. The same three answers whether the
- * store's own checks refused or the constraint did, so a request losing a race
- * reads exactly as one arriving second.
- */
-const ADD_FRIEND_REFUSAL = {
-  already_friends: "ALREADY_FRIENDS",
-  already_sent: "FRIEND_REQUEST_ALREADY_SENT",
-  incoming_pending: "FRIEND_REQUEST_INCOMING_PENDING",
-} as const satisfies Record<AddFriendRefusal, string>;
+const FRIEND_REQUEST_REFUSAL_STATUS = {
+  USER_NOT_FOUND: 404,
+  CANNOT_ADD_SELF: 400,
+  ALREADY_FRIENDS: 409,
+  FRIEND_REQUEST_ALREADY_SENT: 409,
+  FRIEND_REQUEST_INCOMING_PENDING: 409,
+} as const satisfies Record<FriendRequestRefusal, number>;
+
+/** Spelled out because tests/tooling/refusalCodesTested.test.ts reads a refusal's code only as a literal. */
+const FRIEND_REQUEST_REFUSAL_CODE = {
+  USER_NOT_FOUND: "USER_NOT_FOUND",
+  CANNOT_ADD_SELF: "CANNOT_ADD_SELF",
+  ALREADY_FRIENDS: "ALREADY_FRIENDS",
+  FRIEND_REQUEST_ALREADY_SENT: "FRIEND_REQUEST_ALREADY_SENT",
+  FRIEND_REQUEST_INCOMING_PENDING: "FRIEND_REQUEST_INCOMING_PENDING",
+} as const satisfies { [C in FriendRequestRefusal]: C };
 
 const friendLimiter = routeLimiter({
   windowMs: 60 * 1000,
@@ -831,8 +835,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ ...payload("INVALID_ROOM_CODE") });
       return;
     }
-    await declineGameInviteAndNotify(req.session.userId!, roomCode.data);
-    res.json({ ok: true });
+    res.json(await friendships.decline(req.session.userId!, roomCode.data));
   });
 
   app.get("/api/users/search", requireAuth, async (req, res) => {
@@ -857,97 +860,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/friends/add", requireAuth, friendLimiter, validate(AddFriendSchema), async (req, res) => {
     const { username } = req.body;
 
-    const friend = await userStore.getUserByUsername(username);
-    if (!friend) {
-      res.status(404).json({ ...payload("USER_NOT_FOUND") });
-      return;
-    }
-
-    if (friend.id === req.session.userId) {
-      res.status(400).json({ ...payload("CANNOT_ADD_SELF") });
-      return;
-    }
-
-    const result = await friendStore.addFriend(req.session.userId!, friend.id);
+    const result = await friendships.request(req.session.userId!, username);
     if (!result.ok) {
-      res.status(409).json({ ...payload(ADD_FRIEND_REFUSAL[result.reason]) });
+      res.status(FRIEND_REQUEST_REFUSAL_STATUS[result.code]).json({ ...payload(FRIEND_REQUEST_REFUSAL_CODE[result.code]) });
       return;
     }
-
-    const sender = await userStore.getUser(req.session.userId!);
-    const request = result.request;
-
-    // The row travels with the announcement: the recipient's cache holds the
-    // request on the frame the banner goes up, rather than seconds later when
-    // the fetch the invalidation started comes back.
-    emitToUser(friend.id, "friend:request_incoming", {
-      from: sender?.username ?? "Qualcuno",
-      request: sender && request ? friendRequestRow(request, sender) : undefined,
-    } satisfies FriendRequestIncoming);
-
-    logger.info({ fromUserId: req.session.userId, toUserId: friend.id }, "Friend request sent");
-    res.json({ ok: true, username: friend.username });
+    res.json(result);
   });
 
   app.delete("/api/friends/requests/:id", requireAuth, async (req, res) => {
     const id = readParam(res, req.params.id);
     if (id === null) return;
-    // Only the sender can cancel — enforced inside cancelFriendRequest.
-    const cancelled = await friendStore.cancelFriendRequest(id, req.session.userId!);
-    if (!cancelled) {
-      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
-      return;
-    }
-    res.json({ ok: true });
+    sendFriendshipResult(res, await friendships.cancelRequest(id, req.session.userId!));
   });
 
   app.post("/api/friends/accept/:id", requireAuth, async (req, res) => {
     const id = readParam(res, req.params.id);
     if (id === null) return;
-    const accepterId = req.session.userId!;
-    // Scoped to the recipient: the sender must not be able to accept their
-    // own request by id (IDOR).
-    const result = await friendStore.acceptFriend(id, accepterId);
-    if (!result) {
-      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
-      return;
-    }
-    const accepter = await userStore.getUser(accepterId);
-    const requesterId = result.requesterId;
-
-    emitToUser(requesterId, "friend:request_accepted", {
-      by: accepter?.username ?? "Qualcuno",
-      friend: accepter ? friendRow(accepter) : undefined,
-    } satisfies FriendRequestAccepted);
-
-    if (await isUserOnline(accepterId)) {
-      emitToUser(requesterId, "friend:status", { userId: accepterId, online: true });
-    }
-    if (await isUserOnline(requesterId)) {
-      emitToUser(accepterId, "friend:status", { userId: requesterId, online: true });
-    }
-
-    res.json({ ok: true });
+    sendFriendshipResult(res, await friendships.accept(id, req.session.userId!));
   });
 
   app.post("/api/friends/decline/:id", requireAuth, async (req, res) => {
     const id = readParam(res, req.params.id);
     if (id === null) return;
-    // Only the recipient can decline (IDOR: any user could destroy any
-    // pending request by id).
-    const declined = await friendStore.declineFriendRequest(id, req.session.userId!);
-    if (!declined) {
-      res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
-      return;
-    }
-    res.json({ ok: true });
+    sendFriendshipResult(res, await friendships.declineRequest(id, req.session.userId!));
   });
 
   app.delete("/api/friends/:friendUserId", requireAuth, async (req, res) => {
     const friendUserId = readParam(res, req.params.friendUserId);
     if (friendUserId === null) return;
-    await removeFriendAndNotify(req.session.userId!, friendUserId);
-    res.json({ ok: true });
+    res.json(await friendships.remove(req.session.userId!, friendUserId));
   });
 
   // ── Stats / history / achievements ──────────────────────────────────────
