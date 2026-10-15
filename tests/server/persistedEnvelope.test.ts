@@ -11,7 +11,7 @@ import {
   type RoundFlags,
   type PersistedMatch,
   type PersistedSeats,
-} from "../../server/game/onlineGameLogic.ts";
+} from "../../shared/persistedEnvelope.ts";
 
 const gameState = {
   currentTurnIndex: 2,

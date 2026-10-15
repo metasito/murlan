@@ -11,11 +11,11 @@ import { logger } from "../http/logger.ts";
 import {
   isShuttingDown,
   seatName,
-  seatOfUser,
   socketRoomMap,
   userRoom,
   userSocketMap,
 } from "../game/gameRoom.ts";
+import { seatOfUser } from "../game/onlineGameLogic.ts";
 import type { OnlineGameState } from "../game/gameRoom.ts";
 import { applyOrForward } from "../game/tableRouter.ts";
 import {
@@ -185,7 +185,7 @@ export async function announceRejoin(
   roomId: string,
   game: OnlineGameState
 ) {
-  const seatIndex = seatOfUser(game, userId);
+  const seatIndex = seatOfUser(game.playerMap, userId);
   const username = seatName(game, seatIndex);
   // Caught, not propagated: the handler's blanket catch would turn a failed
   // roster refresh into a SERVER_ERROR that costs a live game.
@@ -212,7 +212,7 @@ export async function announceRejoin(
   for (const other of Object.values(game.playerMap)) {
     const deadline = disconnectDeadlines.get(other);
     if (other === userId || deadline === undefined || !disconnectTimers.has(other)) continue;
-    const otherSeat = seatOfUser(game, other);
+    const otherSeat = seatOfUser(game.playerMap, other);
     const otherName = seatName(game, otherSeat);
     const seconds = Math.max(1, Math.ceil((deadline - Date.now()) / 1000));
     io.to(userRoom(userId)).emit("game:player_disconnected", {

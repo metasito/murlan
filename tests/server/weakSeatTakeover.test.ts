@@ -360,7 +360,7 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       firstPlayMade: true,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false);
+    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
     assert.ok(next, "a weak seat must always resolve its turn — the table cannot stall on it");
     const lowest = sortHand([...state.players[0]!.hand])[0]!;
     assert.deepEqual(next!.lastPlayedCombination?.cards.map((c) => c.id ?? c.rank), [
@@ -390,7 +390,7 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       firstPlayMade: true,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false);
+    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
     assert.ok(next, "a weak seat must always resolve its turn even when it only ever passes");
     assert.equal(next!.lastPlayedBy, 1, "a pass leaves the last play credited to whoever made it");
   });
@@ -413,7 +413,7 @@ describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to 
       startCard: { rank: "3", suit: "clubs", id: "start" } as never,
     };
 
-    const next = autoMoveForSeat(mkGame(state), 0, false);
+    const next = autoMoveForSeat(mkGame(state), 0, false)?.next;
     assert.ok(next, "the mandatory opening card is always playable, so this must never be null");
   });
 });

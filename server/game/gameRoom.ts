@@ -4,10 +4,6 @@
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
 import type { RoundOverPayload } from "../../lib/game/matchState.ts";
-import {
-  scoreKeyForSeat as scoreKeyForMapSeat,
-  seatOfUser as seatOfUserInMap,
-} from "./onlineGameLogic.ts";
 
 export interface OnlineGameState {
   gameState: GameState;
@@ -200,14 +196,6 @@ export function userRoom(userId: string): string {
   return `user:${userId}`;
 }
 
-
-export function scoreKeyForSeat(game: OnlineGameState, seat: number): string {
-  return scoreKeyForMapSeat(game.playerMap, seat);
-}
-
-export function seatOfUser(game: OnlineGameState, userId: string): number | null {
-  return seatOfUserInMap(game.playerMap, userId);
-}
 
 /** The one denominator every vote gate and every `*_vote_state` payload divides by:
  * a bot, and a seat whose player left, can answer nothing and hold no vote. */

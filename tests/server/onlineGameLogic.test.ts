@@ -1,13 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
-  readPersistedPlayerMap,
   seatOfUser,
   scoreKeyForSeat,
   buildSeatRoster,
   teamKeyMap,
   restoredMatchOver,
 } from "../../server/game/onlineGameLogic.ts";
+import { readPersistedPlayerMap } from "../../shared/persistedEnvelope.ts";
 import { isBotSeatKey } from "../../server/game/botSeat.ts";
 import { teamForSeat, TEAMS_PLAYER_COUNT } from "../../lib/game/gameEngine.ts";
 

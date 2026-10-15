@@ -8,7 +8,7 @@ import { clearAllTimersForUser, clearRoomTimers, disconnectTimers, usersInLobbyG
 import { setSocketServer } from "../../server/socket/socketRegistry.ts";
 import { roomStore } from "../../server/store/roomStore.ts";
 import { db } from "../../server/store/db.ts";
-import { packPersistedState } from "../../server/game/onlineGameLogic.ts";
+import { packPersistedState } from "../../shared/persistedEnvelope.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 

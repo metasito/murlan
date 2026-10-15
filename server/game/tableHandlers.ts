@@ -14,11 +14,10 @@
 // `registerGameplayHandlers` → `tableRouter.ts` `applyOrForward` (reaching
 // here through a module-local `apply` set by `setTableHandlers`, to dodge a
 // circular import) → `playAction`/`passAction` here (`gameTurn.ts`
-// `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
-// `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
-// that ends the round — `lib/game/gameEngine.ts` decides which one — takes a sixth
-// file instead of `armTurn`: `roundOver.ts` `handleRoundOver`; a pass never
-// reaches it.
+// `recordPlayFlags` runs first, play only) → `gameTurn.ts` `commitMove`, which
+// sends and persists through `gamePersistence.ts` and arms the next seat. The
+// play that ends the round — `lib/game/gameEngine.ts` decides which one — takes
+// a sixth file instead of the arming: `roundOver.ts` `handleRoundOver`.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
 // `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
@@ -49,7 +48,7 @@ import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
-import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
+import { activeGames, isShuttingDown, seatName, userRoom, voterCount } from "./gameRoom.ts";
 import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -60,8 +59,8 @@ import {
   persistGameState,
   sendGameStateTo,
 } from "./gamePersistence.ts";
-import { endMatchByAgreement, handleRoundOver } from "./roundOver.ts";
-import { armAfterMove, armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
+import { endMatchByAgreement } from "./roundOver.ts";
+import { armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
   clearRoomTimers,
@@ -75,10 +74,12 @@ import {
   botSeatsFromPersonality,
   buildSeatRoster,
   restoredMatchOver,
+  scoreKeyForSeat,
   seatAssignmentsFromRoster,
+  seatOfUser,
   teamKeyMap,
-  unpackPersistedState,
 } from "./onlineGameLogic.ts";
+import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import {
   announceRejoin,
   armLobbyGrace,
@@ -100,7 +101,7 @@ import {
   teamForSeat,
 } from "../../lib/game/gameEngine.ts";
 import type { GameState, PlayRefusal } from "../../lib/game/gameEngine.ts";
-import { appendReplayMove, startReplayLog } from "./replayShape.ts";
+import { startReplayLog } from "./replayShape.ts";
 import { dealRound } from "./dealRound.ts";
 import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -282,8 +283,6 @@ function playAction(
   recordPlayFlags(game, currentIdx, combo);
 
   const newState = processPlay(gameState, combo);
-  appendReplayMove(game, currentIdx, combo, newState);
-  game.gameState = newState;
 
   // A count and a type, never card identities: enabling debug in production
   // must not be able to expose a hand.
@@ -292,9 +291,6 @@ function playAction(
     "Play accepted"
   );
 
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-
   if (wasFirstPlay && newState.firstPlayMade) {
     trackEvent("game.firstMoveMade", userId, {
       playerCount: newState.players.length,
@@ -302,11 +298,7 @@ function playAction(
     });
   }
 
-  if (newState.roundOver) {
-    return handleRoundOver(io, roomId, game, roundOverWriters).then(() => OK);
-  }
-  armTurn(io, roomId);
-  return OK;
+  return commitMove(io, game, newState, { seat: currentIdx, combo })?.then(() => OK) ?? OK;
 }
 
 function passAction(
@@ -314,7 +306,7 @@ function passAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "pass" }>
 ): EventOutcome {
-  const { roomId, userId } = action;
+  const { userId } = action;
   if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
   if (gameState.exchangePhase?.active) {
@@ -331,13 +323,7 @@ function passAction(
     return { ok: false, code };
   }
 
-  const newState = processPass(gameState);
-  appendReplayMove(game, currentIdx, null, newState);
-  game.gameState = newState;
-
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-  armTurn(io, roomId);
+  commitMove(io, game, processPass(gameState), { seat: currentIdx, combo: null });
   return OK;
 }
 
@@ -346,25 +332,20 @@ function exchangeAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "exchange" }>
 ): EventOutcome {
-  const { roomId, userId, cardId } = action;
+  const { userId, cardId } = action;
   if (!game.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
 
-  const seat = seatOfUser(game, userId);
+  const seat = seatOfUser(game.playerMap, userId);
   if (seat === null || seat !== game.gameState.exchangePhase.winnerIdx) {
     return { ok: false, code: "NOT_YOUR_EXCHANGE" };
   }
 
-  const prevState = game.gameState;
   const next = processExchangeChoice(game.gameState, cardId);
   if (next === game.gameState) {
     gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
-  game.gameState = next;
-
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-  armAfterMove(io, roomId, prevState);
+  commitMove(io, game, next, null);
   return OK;
 }
 
@@ -470,7 +451,7 @@ async function rematchVoteAction(
 ): Promise<EventOutcome> {
   const { roomId, userId } = action;
   if (!game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   // Nobody gets to restart it from the results screen after that.
   if (rematchRefused(game)) {
@@ -497,7 +478,7 @@ async function endMatchVoteAction(
   action: Extract<TableAction, { kind: "endMatchVote" }>
 ): Promise<EventOutcome> {
   const { roomId, userId, wants } = action;
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
   if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
 
   if (wants) game.endMatchVotes.add(userId);
@@ -548,7 +529,7 @@ function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
 
 /** Restores a vacated seat to the account that left it. */
 function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
-  const botKey = scoreKeyForSeat(game, seat);
+  const botKey = scoreKeyForSeat(game.playerMap, seat);
   game.playerMap[seat] = userId;
   const carried = game.cumulativeScores[botKey] ?? 0;
   if (carried !== 0) {
@@ -568,7 +549,7 @@ async function rejoinAction(
   action: Extract<TableAction, { kind: "rejoin" }>
 ): Promise<EventOutcome> {
   const { roomId, userId } = action;
-  let seat = seatOfUser(game, userId);
+  let seat = seatOfUser(game.playerMap, userId);
   if (seat === null) {
     const reclaim = reclaimableSeat(game, userId);
     if (reclaim === null) {
@@ -670,7 +651,7 @@ async function startMatchAction(
     // Same ready set as game:rematch_vote, and the same abstention — a seat
     // with no playerMap entry (a bot, or a human who left) has nobody who can
     // answer and is not counted.
-    if (seatOfUser(previous, userId) !== null) previous.rematchVotes.add(userId);
+    if (seatOfUser(previous.playerMap, userId) !== null) previous.rematchVotes.add(userId);
     const seatedIds = Object.values(previous.playerMap);
     emitVoteState(io, roomId, previous);
     if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
@@ -839,7 +820,7 @@ async function seatLostAction(
     ? await isUserAtTable(userId, roomId)
     : await isUserOnline(userId);
   if (back) return OK;
-  const seat = seatOfUser(game, userId);
+  const seat = seatOfUser(game.playerMap, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
   if (!game.gameState.roundOver) {
@@ -935,7 +916,7 @@ async function applyTableAction(
     case "exchange":
       return exchangeAction(io, game, action);
     case "reaction": {
-      const seat = seatOfUser(game, action.userId);
+      const seat = seatOfUser(game.playerMap, action.userId);
       if (seat === null) return { ok: false, code: "NOT_SEATED" };
       io.to(action.roomId).emit("game:reaction", {
         emoji: action.emoji,
@@ -954,7 +935,7 @@ async function applyTableAction(
       if (game.gameState.roundOver) return { ok: false, code: "GAME_NOT_FOUND" };
       // A seated player watching their own table would be handed the seatless
       // view and lose sight of their own hand.
-      if (seatOfUser(game, action.userId) !== null) {
+      if (seatOfUser(game.playerMap, action.userId) !== null) {
         return { ok: false, code: "ALREADY_IN_ROOM" };
       }
       game.spectators.add(action.userId);

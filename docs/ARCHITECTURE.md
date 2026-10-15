@@ -51,7 +51,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   and calls `applyOrForward` (`server/game/tableRouter.ts`) and does nothing else. **The single
   mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
   `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
-  `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
+  `seatLostAction`; those in turn use `gameTurn.ts` (`commitMove`, `armTurn`, the AFK timer and bot turns),
   `roundOver.ts` (`handleRoundOver`) and `dealRound.ts` (the shared fresh-round reset used by
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
   owns the room.
@@ -181,9 +181,9 @@ single round.
   `game:rejoin_failed`; the client leaves the room and returns to the lobby.
 
 **AFK (distinct from disconnect):** a connected-but-idle player gets a 30s-default
-(`afkTimeoutMs()`) auto-pass/auto-play timer, re-armed on every turn transition through a
-single `armTurn` epilogue so it can't be armed once and then silently stop covering
-later turns.
+(`afkTimeoutMs()`) auto-pass/auto-play timer, re-armed on every turn transition: every move,
+human or automated, lands through `gameTurn.ts` `commitMove`, which ends in `armTurn`, so it
+can't be armed once and then silently stop covering later turns.
 
 ## 4. Persistence
 

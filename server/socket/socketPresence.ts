@@ -19,11 +19,11 @@ import { onEvent } from "./socketSafety.ts";
 import {
   activeGames,
   isShuttingDown,
-  seatOfUser,
   socketRoomMap,
   userRoom,
   userSocketMap,
 } from "../game/gameRoom.ts";
+import { seatOfUser } from "../game/onlineGameLogic.ts";
 import { clearDisconnectGrace } from "../game/gameTimers.ts";
 import {
   announceRejoin,
@@ -136,7 +136,7 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
-        if (seatOfUser(game, userId) === null || game.gameState.roundOver) continue;
+        if (seatOfUser(game.playerMap, userId) === null || game.gameState.roundOver) continue;
         await seatSocket(io, socket, userId, roomId);
         try {
           await announceRejoin(io, userId, roomId, game);
