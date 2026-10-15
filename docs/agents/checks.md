@@ -303,7 +303,10 @@ one that doesn't needs a device capture (above).
 - **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every bot delay, so **no
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
-  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
+  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. The same build
+  holds the offline exchange open on a timer, and the `consoleErrors` fixture reduces motion: only
+  `tests/e2e/helpers/motionPath.ts` drops both (`lib/e2eRealExchange.ts`), so only its specs
+  (`motionMatch`, `motionThirdDeal`) play a deal and an exchange the way a player's build does. Play real
   hands (`tests/e2e/helpers/bot.ts`) and sample *through* a turn handover — one frame is not a
   state.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`** — flipping the env var
