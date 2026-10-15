@@ -972,7 +972,7 @@ export function GameTable({
     const relock = setInterval(lockLandscape, 1000);
     return () => clearInterval(relock);
   }, [upright]);
-  const dealCue = useCallback((at: number) => event([{ kind: "deal" }], Math.max(performance.now(), at)), []);
+  const dealCue = useCallback((at: number) => event([{ kind: "deal" }], at > performance.now() ? at : undefined), []);
   // Under reduced motion no deal flies to start the cue, and sound is not motion.
   useEffect(() => {
     if (dealFresh && reduceMotion) dealCue(performance.now());

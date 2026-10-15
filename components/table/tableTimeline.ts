@@ -49,7 +49,7 @@ export function useTableTimeline(): TableTimeline {
         if (DIAGNOSTICS) diag({ k: "dropped", t: now, name: moments.map((m) => m.kind).join("+") });
         continue;
       }
-      event(moments, Math.max(now, at));
+      event(moments, at > now ? at : undefined);
     }
   }, []);
 
