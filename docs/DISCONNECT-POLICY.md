@@ -100,7 +100,7 @@ almost certainly not what anyone chose:
    returns `bot:<seat>`, whose total is `0`. So a player who won three rounds and then
    dropped shows **0** to everyone still at the table. This is the visible half of what #815
    reported, and #815's fix did not address it.
-2. **The score keys support reclaiming a seat.** `reclaimSeat` merges the `bot:<seat>`
+2. **The score keys support reclaiming a seat.** `seatLedger.ts` `reclaim` merges the `bot:<seat>`
    bucket's carried points into the returning player's own key before deleting it, so
    restoring `playerMap[seat]` restores the row, the name and the total together (#894). The
    only thing preventing a return is `releasedSeats`.
@@ -359,7 +359,7 @@ again.
 **Recommend: reclaimable, by the same account, into the same seat, for as long as the match
 is live.** `SEAT_RELEASED` stops being permanent and becomes the answer for a *finished or
 disposed* table only. This is the cheapest of the recommendations to build and the largest in
-player-facing effect: `reclaimSeat` merges the `bot:<seat>` bucket into the userId key before
+player-facing effect: `seatLedger.ts` `reclaim` merges the `bot:<seat>` bucket into the userId key before
 restoring `playerMap[seat]`, so the row, the name and the total are restored together
 (§2, note 2; #894).
 
