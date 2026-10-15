@@ -148,11 +148,42 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+/** Locals bound to a seat field: `const { weakSeats } = game`, `const votes = game.endMatchVotes`. */
+function aliasesIn(source: string): string[] {
+  const field = new RegExp(`^${FIELD}$`);
+  const names: string[] = [];
+  for (const [, body] of source.matchAll(/(?:const|let|var)\s*\{([^}]*)\}\s*=/g)) {
+    for (const part of body.split(",")) {
+      const [key, alias] = part.split(":").map((s) => s.trim().split(/\s*=/)[0]);
+      if (field.test(key)) names.push(alias || key);
+    }
+  }
+  for (const [, name] of source.matchAll(new RegExp(`(?:const|let|var)\\s+(\\w+)\\s*=\\s*[\\w.]+\\.${FIELD}\\s*;`, "g"))) {
+    names.push(name);
+  }
+  return names;
+}
+
+function writesThrough(source: string, alias: string): string[] {
+  const write = new RegExp(
+    `\\b${alias}\\.(?:add|set|delete|clear)\\(|(?<![\\w.])${alias}\\[[^\\]]*\\]\\s*=(?!=)|\\bdelete\\s+${alias}\\[`,
+    "g"
+  );
+  return [...source.matchAll(write)].map((m) => m[0]);
+}
+
+function writesOf(source: string): string[] {
+  return [
+    ...[...source.matchAll(WRITE)].map((m) => m[0]),
+    ...aliasesIn(source).flatMap((alias) => writesThrough(source, alias)),
+  ];
+}
+
 function writesIn(file: string): string[] {
   const source = readFileSync(path.join(repoRoot, file), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/[^\n]*/g, "");
-  return [...source.matchAll(WRITE)].map((m) => m[0]);
+  return writesOf(source);
 }
 
 describe("only the seat ledger writes the seat fields", () => {
@@ -169,6 +200,17 @@ describe("only the seat ledger writes the seat fields", () => {
     ];
     for (const sample of samples) assert.equal(sample.match(WRITE)?.length, 1, sample);
     assert.equal("game.playerMap[seat] === u || game.weakSeats.has(1)".match(WRITE), null);
+  });
+
+  test("the scan follows a field into a local", () => {
+    const aliased = [
+      "const { weakSeats } = game; weakSeats.add(1);",
+      "const { gameState, playerMap } = game; playerMap[1] = u;",
+      "const { playerMap: seats } = game; delete seats[1];",
+      "const votes = game.endMatchVotes; votes.clear();",
+    ];
+    for (const sample of aliased) assert.equal(writesOf(sample).length, 1, sample);
+    assert.deepEqual(writesOf("const { playerMap } = game; if (playerMap[1] === u) playerMap.x;"), []);
   });
 
   test("the ledger itself writes every field", () => {
