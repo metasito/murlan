@@ -42,7 +42,7 @@ function table(onRoundLanded: (at: number) => void, gameState: GameState = ENDED
         <GameTable
           gameState={gameState}
           viewerSeat={0}
-          roundScores={{ player_0: AFTER - BEFORE, player_1: 1, player_2: 0, player_3: 0 }}
+          placementPoints={{ player_0: AFTER - BEFORE, player_1: 1, player_2: 0, player_3: 0 }}
           matchScore={{ scores: { player_0: AFTER, player_1: 4, player_2: 2, player_3: 1 }, target: 21 }}
           onPlay={noop}
           onPass={noop}

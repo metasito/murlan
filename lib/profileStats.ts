@@ -1,7 +1,7 @@
 // Trends over a player's finished matches.
 //
 // A lifetime average is the least interesting number a player has: it stops
-// moving after fifty games and never says whether they are improving. Every
+// moving after fifty rounds and never says whether they are improving. Every
 // shape here reads the same bounded `round_history` rows the profile already
 // fetches — nothing new is stored, and nothing reads further back than the
 // server already sends.

@@ -1,7 +1,7 @@
 // #850 clause 6: a match abandoned before a single point is scored is voided
 // for every seat — nothing earned, nothing taken, rated for nobody. This is
 // gated on `game.roundsPlayed === 0`, not on the walkout alone, so a table that
-// genuinely finished its first hand and then loses its last human is scored
+// genuinely finished its first round and then loses its last human is scored
 // normally rather than wiped.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -33,7 +33,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 0,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),
@@ -73,8 +73,8 @@ function midRoundTwoSeats(): GameState {
   };
 }
 
-describe("a match abandoned with no hand yet decided is voided, not scored (#850 clause 6)", () => {
-  test("the sole remaining seat leaving a still-0-hands match voids it: no finishingOrder, no winners", async () => {
+describe("a match abandoned with no round yet decided is voided, not scored (#850 clause 6)", () => {
+  test("the sole remaining seat leaving a still-0-round match voids it: no finishingOrder, no winners", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
       gameState: midRoundTwoSeats(),
@@ -102,7 +102,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     }
   });
 
-  test("the same walkout after a hand has been decided is scored normally, not voided", async () => {
+  test("the same walkout after a round has been decided is scored normally, not voided", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
       gameState: midRoundTwoSeats(),
@@ -119,7 +119,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
         | RoundOverPayload
         | undefined;
       assert.ok(over, "the concede-and-score path still ends the match");
-      assert.equal(over!.voided, false, "a hand was genuinely played — nothing here is voided");
+      assert.equal(over!.voided, false, "a round was genuinely played — nothing here is voided");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

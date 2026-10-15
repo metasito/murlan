@@ -43,7 +43,7 @@ const tallyOf = (cards: Card[]): number[] => {
 };
 
 describe("the game records what has been played", () => {
-  test("a fresh deal starts with an empty tally", () => {
+  test("a fresh round starts with an empty tally", () => {
     for (const n of [2, 3, 4]) {
       const state = initializeGame(seats(n), "free_for_all");
       assert.deepEqual(
@@ -59,7 +59,7 @@ describe("the game records what has been played", () => {
       let state = initializeGame(seats(n), "free_for_all");
       const dealt = tallyOf(allHands(state));
 
-      // Drive the table with the engine's own chooser until the hand ends, so
+      // Drive the table with the engine's own chooser until the round ends, so
       // the plays are real ones rather than a fixture's idea of them.
       for (let turn = 0; turn < 400 && !state.roundOver; turn++) {
         const player = state.players[state.currentTurnIndex];
@@ -82,7 +82,7 @@ describe("the game records what has been played", () => {
       }
 
       // Whatever is no longer in a hand is what was played. Nothing else can
-      // have moved it: the exchange is not part of this hand.
+      // have moved it: the exchange is not part of this round.
       const remaining = tallyOf(allHands(state));
       const expected = dealt.map((count, i) => count - remaining[i]);
 

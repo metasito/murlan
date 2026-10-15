@@ -12,7 +12,7 @@ export interface TurnFacts {
   isNewTrick: boolean;
 }
 
-/** Leading a round is compulsory: you may only pass in answer to a combination. */
+/** Leading a trick is compulsory: you may only pass in answer to a combination. */
 export function canPassNow(facts: TurnFacts): boolean {
   return !facts.isNewTrick && facts.isMyTurn && !facts.isFinished;
 }
@@ -54,9 +54,9 @@ export function playButtonLabel(opts: {
   selectedCount: number;
   /** The selection's shape, null when it is not a recognised combination. */
   selection: ComboShape | null;
-  /** What has to be beaten. Null while leading a new round. */
+  /** What has to be beaten. Null while leading a new trick. */
   pile: ComboShape | null;
-  /** The opening play of a hand must contain the start card. */
+  /** The opening play of a round must contain the 3♠. */
   requiresStartCard: boolean;
   selectionHasStartCard: boolean;
 }): PlayButtonLabel {

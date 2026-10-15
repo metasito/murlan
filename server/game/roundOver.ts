@@ -12,7 +12,7 @@ import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
 import type { RatedPreview } from "./ratings.ts";
 
 /**
- * The database writes a finished hand performs, taken as an argument rather
+ * The database writes a finished round performs, taken as an argument rather
  * than imported: importing them would put storage, stats, ratings and replays
  * behind this module, and the point of splitting it out is that the function
  * deciding who won a match can be run against a hand-built game and a stub io.
@@ -31,7 +31,7 @@ export interface RoundOverWriters {
     ratingDeltas?: Map<string, number>
   ) => Promise<void>;
   /**
-   * What the hand is about to do to each seat's rating. Read before
+   * What the round is about to do to each seat's rating. Read before
    * `game:round_over` goes out, because the inputs stop existing once the rated
    * write lands — see server/game/ratings.ts.
    */
@@ -65,7 +65,7 @@ export async function handleRoundOver(
   // Cleared here, synchronously, before anything below can await: the caller
   // already flipped `state.roundOver` true in this same tick, so a rejoin
   // reading `game.lastRoundOverPayload` must never be able to observe that
-  // flag alongside the previous hand's payload. The real assignment below
+  // flag alongside the previous round's payload. The real assignment below
   // runs after a DB round trip; nothing between here and there may add one.
   game.lastRoundOverPayload = undefined;
   const state = game.gameState;
@@ -81,7 +81,7 @@ export async function handleRoundOver(
     matchTarget: game.matchTarget,
     matchLength: game.matchLength,
     gameMode: game.gameMode,
-    handFlags: game.handFlags,
+    roundFlags: game.roundFlags,
     abandonedSeats: game.abandonedSeats,
     botSeatsAtStart: game.botSeatsAtStart,
     vacatedSeats: game.vacatedSeats,
@@ -102,13 +102,13 @@ export async function handleRoundOver(
   // Awaited, unlike the writes below, and deliberately: this is a read, and
   // it is the only moment the delta exists. `user_ratings` keeps only the
   // current rating, so once the rated write lands nothing can reconstruct what
-  // the hand changed. A failure here costs the panel its number, never the
-  // hand — hence the empty map rather than a throw.
+  // the round changed. A failure here costs the panel its number, never the
+  // round — hence the empty map rather than a throw.
   const ratedPreview = result.recordable
     ? await writers
         .previewRatedDeltas(result.gameResults, game.gameMode, finishedAt)
         .catch((err) => {
-          logger.warn({ err, roomId }, "Could not read the hand's rating deltas");
+          logger.warn({ err, roomId }, "Could not read the round's rating deltas");
           return new Map<string, RatedPreview>();
         })
     : new Map<string, RatedPreview>();
@@ -125,7 +125,7 @@ export async function handleRoundOver(
     matchContinues: true,
     isDraw,
     // Keyed by user id, and absent for a table that earns no rating — an
-    // offline or teams hand, or one without two rated finishers. The client
+    // offline or teams round, or one without two rated finishers. The client
     // shows its empty state on absence rather than on a zero, which is a real
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
@@ -136,11 +136,11 @@ export async function handleRoundOver(
     voided: false,
   };
   io.to(roomId).emit("game:round_over", over);
-  // Kept so `announceRejoin` can hand this hand's scores to a client that
+  // Kept so `announceRejoin` can hand this round's scores to a client that
   // rejoins after everyone still in the room has already been sent them.
   game.lastRoundOverPayload = over;
 
-  // The one record of how a hand resolved. `round_replays` is not a substitute:
+  // The one record of how a round resolved. `round_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it
   // stores no scores. Ids and integers only — never hand contents.
   logger.info(
@@ -164,10 +164,10 @@ export async function handleRoundOver(
     .catch((err) =>
       logger.warn(
         { err, roomId },
-        "Failed to set rooms.status = finished after the hand ended"
+        "Failed to set rooms.status = finished after the round ended"
       )
     );
-  // The row is kept (not deleted) so a restart between hands restores the
+  // The row is kept (not deleted) so a restart between rounds restores the
   // running match instead of silently resetting the scoreboard. Awaited so a
   // caller that disposes the table straight after cannot delete the row
   // before this write lands on it.
@@ -192,13 +192,13 @@ export async function handleRoundOver(
     } else {
       // Deliberately not awaited: a stats write must never be able to block
       // or delay whatever runs after handleRoundOver at any of its call sites.
-      // Chained behind the previous hand's writes, because the streak upsert
-      // reads whatever the last committed hand left.
+      // Chained behind the previous round's writes, because the streak upsert
+      // reads whatever the last committed round left.
       //
       // The ladder moves on the same gate as stats: a bot-majority table
       // awards nothing, or a private room of bots would be free rating.
       // recordRatedResult declines a teams result on its own (placement
-      // belongs to the pair, not to either partner). History records what the
+      // belongs to the team, not to either partner). History records what the
       // ladder committed, not the preview, so a declined write leaves null.
       const mode = game.gameMode;
       game.resultWrites = (game.resultWrites ?? Promise.resolve()).then(async () => {
@@ -207,7 +207,7 @@ export async function handleRoundOver(
           return new Map<string, number>();
         });
         if (committed.size < ratingDeltasByUser.size) {
-          logger.warn({ roomId }, "The ladder declined a hand its preview rated");
+          logger.warn({ roomId }, "The ladder declined a round its preview rated");
         }
         await writers.recordGameResult(gameResults, mode, finishedAt, committed);
       }).catch((err) => logger.error({ err, roomId }, "Failed to record game results"));
@@ -239,9 +239,9 @@ export async function handleRoundOver(
 }
 
 /**
- * Ends the match without scoring whatever hand was in progress: nothing is
+ * Ends the match without scoring whatever round was in progress: nothing is
  * folded into `cumulativeScores`, `roundsPlayed` does not advance, and no
- * stats/rating/replay write runs — the whole point being that this hand
+ * stats/rating/replay write runs — the whole point being that this round
  * never happened. `game:round_over` still goes out, so the table's clients leave
  * the game screen the one way they know how, rather than being torn down.
  */
@@ -305,7 +305,7 @@ export async function voidAbandonedMatch(
 /**
  * The table's own unanimous vote to end a match a seat has been vacated
  * from (docs/GAME-RULES.md § Decisions) — penalty-free for everyone still present. Every
- * hand already finished stays exactly as recorded; only the one in progress,
+ * round already finished stays exactly as recorded; only the one in progress,
  * if any, goes unscored. The table is left in place, at the results screen,
  * rather than disposed: the players who agreed to stop are still here.
  */
@@ -319,7 +319,7 @@ export async function endMatchByAgreement(
   await closeMatchWithoutScoring(io, roomId, game, writers, false);
 }
 
-/** Between hands: a finished match starts over, an unfinished one carries on. */
+/** Between rounds: a finished match starts over, an unfinished one carries on. */
 export function rollMatchForward(game: OnlineGameState) {
   if (game.matchOver) {
     const target = firstTargetFor(game.gameState.players.length);

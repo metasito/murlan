@@ -43,7 +43,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     await server.stop();
   });
 
-  /** Two humans plus a bot, played to the end of one hand. */
+  /** Two humans plus a bot, played to the end of one round. */
   async function playOneRound(prefix: string) {
     const alice = await connectAs(server, `${prefix}_alice`);
     const bob = await connectAs(server, `${prefix}_bob`);
@@ -63,12 +63,12 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
     return { alice, bob, room, over };
   }
 
-  // Each of these plays its own hand under its own `playOneRound` prefix, so
+  // Each of these plays its own round under its own `playOneRound` prefix, so
   // its own accounts and its own room, and every registry the server keeps is
   // keyed by room or user. Sequentially the file cost 126s — the longest in
   // the suite by an order of magnitude, and so the floor for `npm test`, which
   // runs files concurrently but never the tests inside one.
-  describe("what a finished hand writes", { concurrency: true }, () => {
+  describe("what a finished round writes", { concurrency: true }, () => {
     test("a finished hand is stored as a replay, and the replay holds no hand", async () => {
       const { alice, bob } = await playOneRound("rep");
       try {
@@ -86,7 +86,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
         assert.equal(row.game_mode, "free_for_all");
         assert.equal(seats.length, 3, "every seat is recorded, bot included");
-        assert.ok(moves.length > 0, "a played hand produces moves");
+        assert.ok(moves.length > 0, "a played round produces moves");
 
         // The whole privacy premise of the feature: a replay records what was
         // played, never what was held. If a `hand` key ever appears here, the
@@ -114,7 +114,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       }
     });
 
-    test("a rated hand moves both humans and never creates a row for a bot", async () => {
+    test("a rated round moves both humans and never creates a row for a bot", async () => {
       const { alice, bob, over } = await playOneRound("lad");
       try {
         const season = seasonKey(new Date());
@@ -132,7 +132,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
           assert.notEqual(
             Number(row.rating),
             START_RATING,
-            "a finished hand must actually move the rating"
+            "a finished round must actually move the rating"
           );
           assert.deepEqual(
             over.ratingsAfter[user.id],
@@ -171,7 +171,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
           (sum: number, r: { rating: number }) => sum + (Number(r.rating) - START_RATING),
           0
         );
-        assert.equal(total, 0, "a hand between equals moves rating from one to the other, not into it");
+        assert.equal(total, 0, "a round between equals moves rating from one to the other, not into it");
       } finally {
         alice.socket.close();
         bob.socket.close();
@@ -338,7 +338,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
         assert.ok(ids.includes(bob.user.id), "his is not");
 
         const hers = seats.find((s) => s.name === "");
-        assert.ok(hers, "her seat is blanked rather than removed, so the hand still has four");
+        assert.ok(hers, "her seat is blanked rather than removed, so the round still has four");
         assert.equal(hers.userId, null);
         assert.equal(seats.length, 3, "the seat count is untouched");
         assert.ok(
@@ -354,7 +354,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
 
   // Kept out of the group above: this one replaces `query` on the app's own
   // pool to read the SQL back, then counts how many captured statements name
-  // the moves column. A hand finishing in a parallel test writes one through
+  // the moves column. A round finishing in a parallel test writes one through
   // that same pool, and would be counted as a second.
   test("the list counts the moves in Postgres and leaves them there", async () => {
     const { alice, bob } = await playOneRound("proj");
@@ -437,7 +437,7 @@ describe("ladder and replay writes", { skip: hasDatabase() ? false : skipMessage
       const row = rows.rows.find((r) => r.user_id === id);
       assert.equal(row?.rounds, 2, "both hands are counted");
       const summed = committed.reduce((sum, deltas) => sum + (deltas.get(id) ?? 0), 0);
-      assert.equal(row?.rating, START_RATING + summed, "neither hand's delta was overwritten");
+      assert.equal(row?.rating, START_RATING + summed, "neither round's delta was overwritten");
     }
   });
 });

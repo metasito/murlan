@@ -6,9 +6,9 @@
 // `UNAUTHORIZED` either way — #736 was found on the right side of this line, and would have
 // been indistinguishable from a harness artefact on the wrong one.
 //
-// Two graces govern it, and the shorter one is what binds: a drop always starts mid-hand, so
-// `disconnectGraceMs()` arms first, but the hand can end while the seat is away and a seat
-// between hands is held by `lobbyGraceMs()` instead. Neither lives in this file, and nothing
+// Two graces govern it, and the shorter one is what binds: a drop always starts mid-round, so
+// `disconnectGraceMs()` arms first, but the round can end while the seat is away and a seat
+// between rounds is held by `lobbyGraceMs()` instead. Neither lives in this file, and nothing
 // else says the window depends on them.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -27,9 +27,9 @@ describe("the soak's away window", () => {
   });
 
   test("reads whichever grace can expire first", () => {
-    // Binding to one of them names the wrong timer for half the drops: a seat lost mid-hand
+    // Binding to one of them names the wrong timer for half the drops: a seat lost mid-round
     // is held by the disconnect grace, and the same seat is held by the lobby grace the
-    // moment the hand ends underneath it.
+    // moment the round ends underneath it.
     assert.equal(heldSeatGraceMs(), Math.min(disconnectGraceMs(), lobbyGraceMs()));
   });
 

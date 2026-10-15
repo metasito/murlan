@@ -13,13 +13,13 @@ version of it: fast, beautiful, fair, and playable both solo against credible bo
 against friends and strangers.
 
 The goal is not "more features". The goal is: **a player can install this from the App Store,
-understand it in 60 seconds, play a full game without a single desync, disconnect, or exploit —
+understand it in 60 seconds, play a full match without a single desync, disconnect, or exploit —
 and want to come back tomorrow.**
 
 Three pillars, in priority order:
 
 1. **Trustworthy** — nobody can see another player's hand, act as another player, or
-   deadlock a table. The server is the only authority. Bugs that lose a game in progress
+   deadlock a table. The server is the only authority. Bugs that lose a match in progress
    are treated as data loss.
 2. **Legible** — a person who has never heard of Murlan can learn it inside the app.
    The rules are documented, consistent between code and UI, and researched against real
@@ -36,7 +36,7 @@ replacement is undecided (#1107) and `deploy/runtime.json` is the contract any h
 
 **Shipped** — do not read any of these as outstanding: interactive tutorial (`app/tutorial.tsx`);
 IT/EN/SQ localization (`locales/`); rejoin-in-progress UX; ranked ladder (`lib/game/rating.ts`);
-a friends-filtered leaderboard (`app/(online)/leaderboard.tsx`); match history and hand replay
+a friends-filtered leaderboard (`app/(online)/leaderboard.tsx`); match history and round replay
 (`lib/game/replay.ts`, `app/(online)/replay.tsx`); achievements and daily streaks
 (`lib/achievements.ts`, `lib/streak.ts`); bot personalities (`lib/game/botPersonalities.ts`);
 spectator mode (`isSpectator`, `app/(online)/game.tsx`); free card-back/table-felt cosmetics
@@ -60,7 +60,7 @@ haptic choreography, every cue timed to the card's landing (the flight's contact
 | Deployment | Superseded 2026-09-21 — see `docs/adr/0006-the-host-is-no-longer-replit.md`. Replit is no longer the host; the replacement is undecided (#1107, under `wayfinder:map` #1105). EAS Cloud for iOS/Android binaries is unaffected, since it points at whichever API host is live. |
 | Socket auth | Short-lived single-use signed ticket, minted by an authenticated REST endpoint, consumed in the handshake. No new dependencies. |
 | Game rules | Research Murlan rules from real sources, consolidate into one documented specification, reconcile code and UI against it. Escalate genuine ambiguities rather than guessing. |
-| Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own side; quick match fills what is left, seating each arrival on the side that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
+| Seating a friend in 2 v 2 | **A seat can be reserved, and the allocator knows about teams.** Invite a friend and their seat is held for them, on your own team; quick match fills what is left, seating each arrival on the team that needs a player. One rule at three reservation counts — one seat held for "bring one friend", three for "four friends", none for "four strangers". See below. |
 | The hand's two sizes | The change between them is a cut, not a transition. The turn is already signalled continuously by the lamp, the seat's ring, the lit turn pill and the hand's own eased lift — the size is the fifth signal, and the one the platform will not let us ease. See below. |
 
 ### 3.1 Rule decisions
@@ -113,7 +113,7 @@ What is not a cut: the hand's lift. `useHandLift` eases 500ms on the same turn c
 not. Revisit if the glyph measurement ever moves off ink-versus-box, which is what makes a
 transformed card unmeasurable.
 
-### 3.3 The held seat, and the side it is on
+### 3.3 The held seat, and the team it is on
 
 The owner's answer to #679, and the three questions the letter itself did not settle.
 
@@ -126,7 +126,7 @@ the only answer that changes what quick match is matching.
 
 **No new column, and no new table.** The reservation is not stored: it is *derived from the
 `game_invites` row that already exists*. An invite younger than the hold means the seat on the
-inviter's own side is spoken for; the row's `createdAt` is the clock, and `recordGameInvite`
+inviter's own team is spoken for; the row's `createdAt` is the clock, and `recordGameInvite`
 deliberately never refreshes it (#840) — the hold is a cap on the room, not a renewable lease, so
 re-inviting the same person updates who is asking and the 120 s still runs from the first invite.
 That is the cheapest rung of the ladder in
@@ -150,10 +150,10 @@ transaction, or opens one. There is no queue and no waiting state, so a held sea
 contested at the instant a stranger's claim runs, which *is* "only while someone is waiting".
 No flag, no bookkeeping.
 
-**The hold is taken in 2-v-2 rooms only.** A free-for-all lobby has no sides, so a hold there
+**The hold is taken in 2-v-2 rooms only.** A free-for-all lobby has no teams, so a hold there
 buys nothing but politeness while costing the room a seat for two minutes — and every case the
 ticket describes is a teams case. The predicate is derived, not a mode string: a room whose
-seats have no team has no side to hold you a seat on. Widening it to free-for-all is a one-line
+seats have no team has no team to hold you a seat on. Widening it to free-for-all is a one-line
 change if the owner wants it.
 
 ---

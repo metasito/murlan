@@ -10,7 +10,7 @@ import { it as copy } from "../../locales/it";
 
 const PHONE = { width: 844, height: 390 };
 
-test("the next-hand vote is a full touch target — phone landscape", async ({ page, baseURL }) => {
+test("the next-round vote is a full touch target — phone landscape", async ({ page, baseURL }) => {
   test.setTimeout(6 * 60_000);
   await page.setViewportSize(PHONE);
 
@@ -22,7 +22,7 @@ test("the next-hand vote is a full touch target — phone landscape", async ({ p
   const vote = page.getByRole("button", { name: copy["roundOverOverlay.nextRoundA11yLabel"], exact: true });
   await driveGameToCompletion(page, { isFinished: () => vote.isVisible() });
   await settled(page, 2500);
-  await sweepSizes(page, "next-hand vote", UNDERSIZED_BY_DESIGN, [
+  await sweepSizes(page, "next-round vote", UNDERSIZED_BY_DESIGN, [
     copy["roundOverOverlay.nextRoundA11yLabel"],
     copy["reactionLayer.triggerA11yLabel"],
   ]);

@@ -1,4 +1,4 @@
-# Plays real hands of Murlan through real sockets and checks that the clients
+# Plays real rounds of Murlan through real sockets and checks that the clients
 # and the server still agree. Deliberately NOT on `pull_request`: a soak is a
 # search, so a run that finds something is a run that fails, and gating every
 # pull request on a search would make `main` red for a defect the pull request

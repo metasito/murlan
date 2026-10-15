@@ -70,7 +70,7 @@ export function celebratesViewer(
  */
 export function isDrawnRound(
   players: readonly { id: string; team?: string }[],
-  roundScores: Record<string, number>
+  placementPoints: Record<string, number>
 ): boolean {
   const teamOfKey: Record<string, string> = {};
   for (const p of players) {
@@ -79,8 +79,8 @@ export function isDrawnRound(
   // An absent or incomplete score set is not known yet, and "not known" must
   // never collapse into "drawn": with no entries at all, aggregateTeamScores
   // totals every team to zero and zero equals zero.
-  if (Object.keys(teamOfKey).some((id) => !(id in roundScores))) return false;
-  const totals = aggregateTeamScores(roundScores, teamOfKey);
+  if (Object.keys(teamOfKey).some((id) => !(id in placementPoints))) return false;
+  const totals = aggregateTeamScores(placementPoints, teamOfKey);
   const values = Object.values(totals);
   return values.length > 1 && values.every((v) => v === values[0]);
 }
@@ -90,13 +90,13 @@ export type RoundOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
 /**
  * What the round that just ended did to `viewerId` — the decision the
  * table's own win/lose sting reads (`components/useTableFeedback.ts`).
- * `roundScores` is a parameter rather than recomputed here, so the round is
+ * `placementPoints` is a parameter rather than recomputed here, so the round is
  * scored from the one value its caller already holds (the server's
- * `game:round_over` payload online, the played hand's own `pointsAwarded` offline)
+ * `game:round_over` payload online, the played round's own `pointsAwarded` offline)
  * instead of a second call to `scoreRound` that happens to agree today.
  *
  * `"pending"` is an answer of its own, not a stand-in for `"draw"`: online, a
- * finished hand's `finishingOrder` reach the client (`game:state`, `roundOver:
+ * finished round's `finishingOrder` reach the client (`game:state`, `roundOver:
  * true`) before its scores do (the separate, unawaited `game:round_over`), and a
  * genuine draw is indistinguishable from "not scored yet" without them —
  * both leave every team's known total at zero. This is the caller's signal
@@ -107,13 +107,13 @@ export type RoundOutcome = "won" | "lost" | "neutral" | "draw" | "pending";
 export function roundOutcomeFor(
   players: readonly { id: string; team?: string }[],
   finishingOrder: readonly string[],
-  roundScores: Record<string, number>,
+  placementPoints: Record<string, number>,
   viewerId: string | undefined,
   isTeamMode: boolean
 ): RoundOutcome {
   if (viewerId === undefined || finishingOrder.length === 0) return "neutral";
-  if (isTeamMode && finishingOrder.some((id) => !(id in roundScores))) return "pending";
-  if (isTeamMode && isDrawnRound(players, roundScores)) return "draw";
+  if (isTeamMode && finishingOrder.some((id) => !(id in placementPoints))) return "pending";
+  if (isTeamMode && isDrawnRound(players, placementPoints)) return "draw";
   if (celebratesViewer(players, [finishingOrder[0]], viewerId, isTeamMode)) return "won";
   if (celebratesViewer(players, [finishingOrder[finishingOrder.length - 1]], viewerId, isTeamMode)) {
     return "lost";
@@ -179,20 +179,20 @@ export interface RoundOverPayload {
   matchContinues: boolean;
   isDraw: boolean;
   /**
-   * By user id, and empty for a hand that earns no rating. The server reads
+   * By user id, and empty for a round that earns no rating. The server reads
    * this before it writes the ladder, because the inputs stop existing once
    * that write lands (server/game/ratings.ts).
    */
   ratingDeltas: Record<string, number>;
   /**
-   * Each rated seat's standing once this hand is written, keyed as
+   * Each rated seat's standing once this round is written, keyed as
    * `ratingDeltas`. Sent rather than fetched: the ladder write lands after
    * `game:round_over`, so `/api/ratings/me` read on it can still be the old rating.
    */
   ratingsAfter: Record<string, RatingAfter>;
   /**
-   * Whether this hand wrote a `/api/stats/history` row — a bot-majority
-   * table writes none. Wider than `ratingDeltas` being empty: a teams hand
+   * Whether this round wrote a `/api/stats/history` row — a bot-majority
+   * table writes none. Wider than `ratingDeltas` being empty: a teams round
    * is recorded and unrated.
    */
   recorded: boolean;
@@ -200,7 +200,7 @@ export interface RoundOverPayload {
    * The match ended before its first point, on an abandonment
    * (docs/GAME-RULES.md § Decisions) — nothing earned, nothing taken, rated for nobody.
    * `finishingOrder` and `scores` are empty and `recorded` is false alongside it;
-   * false for every other hand, voided or not.
+   * false for every other round, voided or not.
    */
   voided: boolean;
 }

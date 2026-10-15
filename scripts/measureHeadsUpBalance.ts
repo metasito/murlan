@@ -255,7 +255,7 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 // The round-winner streak above is a coarse proxy — the fix bears on
 // individual lead decisions, not the round's outcome. This measures the
 // mechanism directly: deals a round and drives it with today's engine
-// (exchange included), and at every new-round lead the loser makes while its
+// (exchange included), and at every new-trick lead the loser makes while its
 // tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
 // `botChoosePlay` applies internally, applied here too so a fact the fix
 // itself has already retired is not scored as a defect), asks whether a
@@ -400,7 +400,7 @@ interface RoyalStraightBlindSpot {
 }
 
 /**
- * At every new-round lead a medium- or hard-tier bot makes where today's
+ * At every new-trick lead a medium- or hard-tier bot makes where today's
  * `certain` filter (isCertainLead, mirroring the module-private
  * `takesTheTrick`) calls a candidate a sure thing, checks the actual, full
  * opponent hand — not sanitized, nothing here reads a sanitized view — for a
@@ -528,7 +528,7 @@ function main(): void {
 
   // ── Measurement 5 ───────────────────────────────────────────────────────
   console.log("\n## 5. Exchange blunder avoidance (#907)\n");
-  console.log("Every new-round lead the loser makes while its tribute is still verifiably live");
+  console.log("Every new-trick lead the loser makes while its tribute is still verifiably live");
   console.log("AND a legal lead exists that does not lose to it outright — asked twice from the");
   console.log("identical state: with the exchange fact (today) and without it (pre-#907, same");
   console.log("call with the last argument omitted) — see the file banner above");
@@ -541,7 +541,7 @@ function main(): void {
 
   // ── Measurement 6 ───────────────────────────────────────────────────────
   console.log("\n## 6. Royal-straight blind spot in \"certain\" leads (#943)\n");
-  console.log("At every medium/hard new-round lead today's engine calls a sure thing,");
+  console.log("At every medium/hard new-trick lead today's engine calls a sure thing,");
   console.log("checks the real opponent hand for a live royal straight that answers it.");
   console.log("Gate (stated before this ran): a fix is worth building only if the Wilson lower");
   console.log("bound clears 1% (#907's own 0.12%/6-of-4950 dead-end precedent x ~8).\n");

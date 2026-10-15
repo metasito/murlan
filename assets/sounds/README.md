@@ -73,6 +73,6 @@ Every built output is then:
 loudness, free of a trailing silent tail, never above −1 dBFS, and that `trick_win` sits under
 `round_won`.
 
-`lib/device/audioEngine.ts` varies the pitch and gain of the effects that repeat through a hand — select, play,
-combo, pass, deal and reject — so a hand of them is not one clip repeated; the stings always sound
+`lib/device/audioEngine.ts` varies the pitch and gain of the effects that repeat through a round — select, play,
+combo, pass, deal and reject — so a round of them is not one clip repeated; the stings always sound
 the same, which is what keeps each recognisable.

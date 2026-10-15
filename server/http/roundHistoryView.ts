@@ -1,4 +1,4 @@
-// The profile's one card of recent hands: every row named, and watchable where
+// The profile's one card of recent rounds: every row named, and watchable where
 // its replay survives.
 //
 // Its own module rather than part of stats.ts, which owns `round_history` and
@@ -14,10 +14,10 @@ import { botSeatIndex, isBotSeatKey } from "../game/botSeat.ts";
 import { getRoundHistory } from "../game/stats.ts";
 import { namesOf } from "../game/userNames.ts";
 
-/** One of the other seats at a hand the reader played. */
+/** One of the other seats at a round the reader played. */
 export interface HistoryParticipant {
   /**
-   * Null where nothing stored can name the seat: a bot at a hand whose replay
+   * Null where nothing stored can name the seat: a bot at a round whose replay
    * has expired, or an account deleted since. The two are different sentences
    * to a reader, which is what `bot` is for — the server picks neither,
    * because it does not know the reader's language.
@@ -29,7 +29,7 @@ export interface HistoryParticipant {
 export interface RoundHistoryRow extends RoundHistory {
   /** The other seats, in the order `opponents` holds them. */
   participants: HistoryParticipant[];
-  /** This hand's replay, while one still exists to watch. */
+  /** This round's replay, while one still exists to watch. */
   replayId: string | null;
 }
 
@@ -40,12 +40,12 @@ interface PairedReplay {
 
 /**
  * The reader's replays by the instant they finished, and only where that
- * instant names one hand.
+ * instant names one round.
  *
- * A seated player is at one table at a time, so two of their own hands sharing
+ * A seated player is at one table at a time, so two of their own rounds sharing
  * a millisecond should not arise — but "should not" is not a key. An instant
  * that names two replays pairs with neither, which costs a play button rather
- * than offering the wrong hand under the right one's row.
+ * than offering the wrong round under the right one's row.
  */
 function replaysByInstant(
   replays: { id: string; finishedAt: Date; seats: ReplaySeat[] }[]
@@ -60,14 +60,14 @@ function replaysByInstant(
 
 
 /**
- * `round_history` and `round_replays` share no key. They do share the hand's
+ * `round_history` and `round_replays` share no key. They do share the round's
  * one `finishedAt`, written by both since #739, so `(userId, finishedAt)` pairs
  * them — rows written before that carry no replay, which is what an expired
  * replay looks like anyway.
  *
  * A bot's stored id is `bot:<seat>` and holds no personality, so its name can
  * only come from the replay's own seats. That makes a bot nameable for exactly
- * as long as its hand is watchable, and anonymous afterwards.
+ * as long as its round is watchable, and anonymous afterwards.
  */
 export async function getRoundHistoryView(userId: string): Promise<RoundHistoryRow[]> {
   const rows = await getRoundHistory(userId);

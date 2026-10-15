@@ -11,7 +11,7 @@ import {
 
 export interface OnlineGameState {
   gameState: GameState;
-  /** The last finished hand's stats and ladder writes; never rejects. */
+  /** The last finished round's stats and ladder writes; never rejects. */
   resultWrites?: Promise<void>;
   /** engine seat index -> userId. A missing seat is a vacated (bot) seat. */
   playerMap: Record<number, string>;
@@ -36,17 +36,17 @@ export interface OnlineGameState {
    */
   endedByVote?: boolean;
   /**
-   * seat -> combination flags for the *current hand* only, reset whenever one
+   * seat -> combination flags for the *current round* only, reset whenever one
    * deals. The engine does not track this, and GameResult has no other honest
    * source for playedBomb/playedJoker. Persisted in the game_state envelope so
-   * a restart mid-hand does not cost the seat its achievement eligibility.
+   * a restart mid-round does not cost the seat its achievement eligibility.
    */
-  handFlags: Record<number, { bomb: boolean; joker: boolean }>;
+  roundFlags: Record<number, { bomb: boolean; joker: boolean }>;
   /**
-   * seat -> the userId who walked out on the hand being played. `playerMap` has
+   * seat -> the userId who walked out on the round being played. `playerMap` has
    * forgotten them by then and a seat missing from it scores as `bot:<seat>`,
    * which every stats and ladder write drops — so this is the only thing still
-   * tying the seat to a person. Cleared wherever a new hand deals: the abandonment
+   * tying the seat to a person. Cleared wherever a new round deals: the abandonment
    * is recorded once, not in every remaining round.
    *
    * Persisted in the game_state envelope's `seats` block: which instance owns
@@ -73,7 +73,7 @@ export interface OnlineGameState {
    * forgotten them, so without this a rejoin cannot tell someone whose grace
    * ran out from an account that never sat here — and answers both the same.
    *
-   * Cleared only by a reclaim, and never by a new hand: the whole point is to
+   * Cleared only by a reclaim, and never by a new round: the whole point is to
    * still recognise them rounds later. Persisted in the `seats` block, like
    * `abandonedSeats` — losing it falls back to UNAUTHORIZED on a rejoin.
    */
@@ -93,22 +93,22 @@ export interface OnlineGameState {
   vacatedSeats: Map<number, { userId: string; username: string }>;
   /**
    * Seats currently held to the minimum legal move because their human left
-   * mid-hand — the takeover plays weakly only for the hand it happened on
+   * mid-round — the takeover plays weakly only for the round it happened on
    * (docs/GAME-RULES.md § Decisions). Cleared at every `dealRound`, so a seat vacated
-   * between hands is never weak: there is no hand in progress to protect, and
+   * between rounds is never weak: there is no round in progress to protect, and
    * it plays properly from its first turn as a bot.
    *
    * Persisted in the `seats` block, with `abandonedSeats`, `releasedSeats` and
-   * `vacatedSeats`: a takeover mid-hand must hold the seat weak for the rest of
-   * that hand, not from the next deal.
+   * `vacatedSeats`: a takeover mid-round must hold the seat weak for the rest of
+   * that round, not from the next deal.
    */
   weakSeats: Set<number>;
   /**
    * Votes to end the match outright once a seat has been vacated
    * (docs/GAME-RULES.md § Decisions) — the same unanimity-among-seated-humans shape as
    * `rematchVotes`, kept apart because it answers a different question and
-   * runs mid-hand as well as between hands. Cleared whenever the roster
-   * changes (a vacate or a reclaim) or a new hand deals, so a stale unanimous
+   * runs mid-round as well as between rounds. Cleared whenever the roster
+   * changes (a vacate or a reclaim) or a new round deals, so a stale unanimous
    * vote from a different table can never end one it was never taken on.
    */
   endMatchVotes: Set<string>;
@@ -129,19 +129,19 @@ export interface OnlineGameState {
    */
   spectators: Set<string>;
   /**
-   * This hand's move log, written once to `round_replays` at game over.
+   * This round's move log, written once to `round_replays` at game over.
    *
-   * Memory only, unlike handFlags: the envelope is rewritten after every move,
+   * Memory only, unlike roundFlags: the envelope is rewritten after every move,
    * and carrying a few hundred combinations through each would buy nothing.
-   * `null` means this hand cannot produce a replay — rehydrated after a
+   * `null` means this round cannot produce a replay — rehydrated after a
    * restart, or past MAX_REPLAY_MOVES — and none will be written.
    */
   moveLog: ReplayMove[] | null;
   /**
-   * The `game:round_over` this hand's `handleRoundOver` broadcast to the room, kept
+   * The `game:round_over` this round's `handleRoundOver` broadcast to the room, kept
    * so a client that was away for it can be sent the same payload on rejoin
    * instead of being left with an empty score map. Cleared wherever
-   * `dealRound` starts the next hand; undefined for a table rehydrated after
+   * `dealRound` starts the next round; undefined for a table rehydrated after
    * a restart, like the other memory-only fields above.
    */
   lastRoundOverPayload?: RoundOverPayload;

@@ -53,7 +53,7 @@ function boot(databaseUrl: string, extraEnv: Record<string, string> = {}): Promi
         SESSION_SECRET: "restart-convergence-secret",
         LOG_LEVEL: "silent",
         NODE_ENV: "development",
-        // Nothing here plays a hand, and an AFK auto-move between the two
+        // Nothing here plays a round, and an AFK auto-move between the two
         // captures would be a table that changed for a reason that is not the
         // restart.
         MURLAN_AFK_TIMEOUT_MS: "600000",
@@ -220,7 +220,7 @@ describe(
     const scoped = scopedDatabaseUrl(baseUrl, schema);
     const clients: Client[] = [];
     let server: ChildProcess;
-    /** The table with a hand in progress, and the lobby nobody has started. */
+    /** The table with a round in progress, and the lobby nobody has started. */
     let table = { roomId: "", code: "" };
     let lobby = { roomId: "", code: "" };
 
@@ -248,10 +248,10 @@ describe(
       await dropSchema(baseUrl, schema);
     });
 
-    test("a hand in progress and a lobby both survive the process that held them", async () => {
+    test("a round in progress and a lobby both survive the process that held them", async () => {
       const [t1, t2, l1, l2, l3] = clients;
 
-      // A table with a hand actually dealt.
+      // A table with a round actually dealt.
       const madeTable = waitFor<{ code: string; roomId: string }>(t1.socket, "room:state");
       t1.socket.emit("room:create", { gameMode: "free_for_all", maxPlayers: 2 });
       const created = await madeTable;
@@ -264,7 +264,7 @@ describe(
 
       const dealt = waitFor(t2.socket, "game:state", 20_000);
       t1.socket.emit("room:start");
-      assert.ok(await dealt, "the hand was never dealt");
+      assert.ok(await dealt, "the round was never dealt");
 
       // A lobby that has not started: three seated, nothing else.
       const madeLobby = waitFor<{ code: string; roomId: string }>(l1.socket, "room:state");
@@ -281,7 +281,7 @@ describe(
       await settled(clients);
       // Quiet sockets are not a persisted table. `persistGameState` is
       // fire-and-forget beside `broadcastGameState`, so a client can be holding
-      // a hand the `active_games` row does not carry yet — and the replacement
+      // a round the `active_games` row does not carry yet — and the replacement
       // rehydrates from that row alone. Killing before it lands fails this test
       // for a race in the test rather than anything about a restart.
       await storedSeats(
@@ -345,7 +345,7 @@ describe(
 /**
  * The table above has nobody leave it, so it says nothing about the four
  * collections `vacateSeat` writes — the reclaim, the end-match vote, the
- * forfeit and the weak takeover all hang off those, and the row is the only
+ * abandonment and the weak takeover all hang off those, and the row is the only
  * thing a replacement instance can read them from (#958, docs/GAME-RULES.md § Decisions).
  */
 describe(
@@ -411,12 +411,12 @@ describe(
 
       const dealt = waitFor(c.socket, "game:state", 20_000);
       a.socket.emit("room:start");
-      assert.ok(await dealt, "the hand was never dealt");
+      assert.ok(await dealt, "the round was never dealt");
       const cSeat = c.game?.viewerSeatIndex as number;
       assert.ok(Number.isInteger(cSeat), "the third seat never learned which seat it was");
 
-      // Mid-hand, so the walkout is an abandonment and the takeover is held weak:
-      // nobody has played, so no seat can have finished its hand.
+      // Mid-round, so the walkout is an abandonment and the takeover is held weak:
+      // nobody has played, so no seat can have finished its round.
       c.socket.close();
       await until(
         "the grace expired without the seat being vacated",

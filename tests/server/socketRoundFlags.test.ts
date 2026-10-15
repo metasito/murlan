@@ -1,4 +1,4 @@
-// tests/server/socketHandFlags.test.ts — pure turn logic, exercised against the
+// tests/server/socketRoundFlags.test.ts — pure turn logic, exercised against the
 // module that owns it with no socket server and no database.
 //
 // recordPlayFlags: a human's AFK-forced move goes through autoMoveForSeat
@@ -17,9 +17,9 @@ import type { AutoMovable } from "../../server/game/gameTurn.ts";
  * cannot carry: recordPlayFlags writes them onto the game, not the state.
  */
 function autoMoveWithFlags(state: GameState, seat: number, useBot: boolean) {
-  const game: AutoMovable = { gameState: state, handFlags: {}, moveLog: null };
+  const game: AutoMovable = { gameState: state, roundFlags: {}, moveLog: null };
   const next = autoMoveForSeat(game, seat, useBot);
-  return { state: next, handFlags: game.handFlags };
+  return { state: next, roundFlags: game.roundFlags };
 }
 
 function baseState(overrides: Partial<GameState> = {}): GameState {
@@ -46,7 +46,7 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
   };
 }
 
-test("an AFK-forced lone-joker play sets handFlags.joker (regression: used to be silently missed)", () => {
+test("an AFK-forced lone-joker play sets roundFlags.joker (regression: used to be silently missed)", () => {
   const joker: Card = { id: "joker_bw", suit: null, rank: "joker_bw", isJoker: true };
   const state = baseState({
     players: [
@@ -63,14 +63,14 @@ test("an AFK-forced lone-joker play sets handFlags.joker (regression: used to be
   // useBot = false is exactly the AFK-forced-human path (see autoMoveForSeat's
   // own doc comment): a new round with only a joker in hand forces it out as
   // the minimum legal play.
-  const { state: next, handFlags } = autoMoveWithFlags(state, 0, false);
+  const { state: next, roundFlags } = autoMoveWithFlags(state, 0, false);
 
   assert.ok(next, "the forced joker play must succeed");
   assert.equal(next!.players[0].hand.length, 0, "the joker must actually have been played");
-  assert.deepEqual(handFlags[0], { bomb: false, joker: true });
+  assert.deepEqual(roundFlags[0], { bomb: false, joker: true });
 });
 
-test("an AFK-forced ordinary single leaves handFlags empty for that seat", () => {
+test("an AFK-forced ordinary single leaves roundFlags empty for that seat", () => {
   const state = baseState({
     players: [
       {
@@ -88,10 +88,10 @@ test("an AFK-forced ordinary single leaves handFlags empty for that seat", () =>
     ],
   });
 
-  const { state: next, handFlags } = autoMoveWithFlags(state, 0, false);
+  const { state: next, roundFlags } = autoMoveWithFlags(state, 0, false);
 
   assert.ok(next);
   assert.equal(next!.players[0].hand.length, 0);
-  assert.equal(handFlags[0]?.joker ?? false, false);
-  assert.equal(handFlags[0]?.bomb ?? false, false);
+  assert.equal(roundFlags[0]?.joker ?? false, false);
+  assert.equal(roundFlags[0]?.bomb ?? false, false);
 });

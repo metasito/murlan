@@ -10,7 +10,7 @@ import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 
-import type { HandFlags } from "../../shared/persistedEnvelope.ts";
+import type { RoundFlags } from "../../shared/persistedEnvelope.ts";
 
 export * from "../../shared/persistedEnvelope.ts";
 
@@ -153,7 +153,7 @@ export function visibleExchangePhase(
  * one human plus bots stays fully playable.
  *
  * The line is bot *majority* — an even split (1v1, 2v2) still counts. Seats
- * vacated mid-game count as bots, so having friends leave is not a route to
+ * vacated mid-match count as bots, so having friends leave is not a route to
  * free points.
  */
 export function isContestedTable(humanSeats: number, botSeats: number): boolean {
@@ -170,7 +170,7 @@ export interface SeatEntry {
 }
 
 /**
- * The full seat roster a game starts with: the seated humans, plus — when
+ * The full seat roster a match starts with: the seated humans, plus — when
  * `fillWithBots` is requested — a bot seat for every gap up to `maxPlayers`.
  *
  * Pure function so room:start's seat-assignment logic (which of the humans
@@ -237,7 +237,7 @@ export function seatAssignmentsFromRoster(roster: SeatEntry[]): {
  * `botSeatsAtStart`, read back from a restored game rather than a fresh
  * roster. `personality` is set once, at `seatAssignmentsFromRoster` time, for
  * a born-bot seat only — `vacateSeat` flips a human seat to a bot without ever
- * setting it — and rides every hand's persisted envelope after that, so it
+ * setting it — and rides every round's persisted envelope after that, so it
  * survives a restart the roster itself does not.
  */
 export function botSeatsFromPersonality(players: readonly { personality?: BotPersonalityId }[]): Set<number> {
@@ -249,8 +249,8 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
 }
 
 /**
- * Scoring key -> team id, for every key whose points belong to a pair: the
- * seat's own key, plus the frozen row of a player who left it. A pair keeps a
+ * Scoring key -> team id, for every key whose points belong to a team: the
+ * seat's own key, plus the frozen row of a player who left it. A team keeps a
  * departed partner's points (docs/GAME-RULES.md § Decisions); who may be *named* a winner
  * is `resolveRoundEnd`'s `winEligible`, not this map.
  */
@@ -271,10 +271,10 @@ export function teamKeyMap(
 
 /**
  * Whether the match a stored row belongs to had already been decided when it
- * was written. Teams races to the target as a *pair* (docs/GAME-RULES.md §11), so
+ * was written. Teams races to the target as a *team* (docs/GAME-RULES.md §11), so
  * it must be read back through the same resolver the live path uses — no
- * individual key in a pair on 11 + 11 reaches a target of 21, and restoring
- * that game as still running plays on inside a match that was already won.
+ * individual key in a team on 11 + 11 reaches a target of 21, and restoring
+ * that match as still running plays on inside a match that was already won.
  */
 export function restoredMatchOver(args: {
   matchLength: MatchLength;
@@ -304,8 +304,8 @@ export interface ResolveRoundEndInput {
   matchTarget: number;
   matchLength: MatchLength;
   gameMode: GameMode;
-  handFlags: HandFlags;
-  /** seat -> the userId who walked out on the hand still holding cards. */
+  roundFlags: RoundFlags;
+  /** seat -> the userId who walked out on the round still holding cards. */
   abandonedSeats: Map<number, string>;
   /**
    * Seats dealt to a bot when this match's roster was built — never a human's
@@ -317,7 +317,7 @@ export interface ResolveRoundEndInput {
   /**
    * Seats a human has left this match, by seat — set at vacate and never
    * cleared while the seat stays open, so a departed player's row can be
-   * found across hands even once `playerMap` has forgotten them. Defaults to
+   * found across rounds even once `playerMap` has forgotten them. Defaults to
    * none.
    */
   vacatedSeats?: Map<number, { userId: string; username: string }>;
@@ -341,14 +341,14 @@ export interface ResolveRoundEndResult {
 }
 
 /**
- * Everything a hand's end decides: the per-hand and cumulative scoreboard,
+ * Everything a round's end decides: the per-round and cumulative scoreboard,
  * whether the match is over (or escalates to a new target), who won, and the
  * per-seat results stats/ratings/replays read from. Pure — server/socket/socket.ts
  * `handleRoundOver` is left owning the broadcast, persistence and the actual
  * (fire-and-forget) stats/ratings/replay writes.
  */
 export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndResult {
-  const { state, playerMap, matchLength, gameMode, handFlags, abandonedSeats } = input;
+  const { state, playerMap, matchLength, gameMode, roundFlags, abandonedSeats } = input;
   const botSeatsAtStart = input.botSeatsAtStart ?? new Set<number>();
   const vacatedSeats = input.vacatedSeats ?? new Map<number, { userId: string; username: string }>();
 
@@ -422,20 +422,20 @@ export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndRes
     .map((key) => detailed.find((d) => scoreKeyForSeat(playerMap, d.seatIndex) === key)?.engineId)
     .filter((id): id is string => id !== undefined);
 
-  // Every seat carries a placement by the time a hand ends — the engine fills
+  // Every seat carries a placement by the time a round ends — the engine fills
   // the remaining positions for anyone still holding cards, in both modes —
   // so every seated player is represented in `gameResults` and counted
   // toward `roundsPlayed`, not just the ones who actually emptied their hand.
   const playerCount = state.players.length;
-  // How many seats actually emptied their hand this hand, read straight off
+  // How many seats actually emptied their hand this round, read straight off
   // the final state rather than inferred from the mode: a seat that was
   // auto-assigned its position while still holding cards never "finished",
   // and must not be counted as one of anyone's finished opponents.
   const realFinisherCount = state.players.filter((p) => p.hand.length === 0).length;
 
   // Placements are handed out from one explicit total order, not from each
-  // seat's own index in `state.finishingOrder`: the seats that played the hand out
-  // in ranking order, then the abandoned ones behind them, ranking order kept
+  // seat's own index in `state.finishingOrder`: the seats that played the round out
+  // in finishing order, then the abandoned ones behind them, finishing order kept
   // within each group so several walkouts fill the last slots stably. That is
   // what makes an abandonment genuinely last (docs/GAME-RULES.md § Decisions) while every
   // placement stays distinct — lib/game/rating.ts renumbers the human seats 1..n
@@ -455,7 +455,7 @@ export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndRes
     // every write that reads this.
     const abandonedBy = abandonedSeats.get(seat);
     const key = abandonedBy ?? scoreKeyForSeat(playerMap, seat);
-    const flags = handFlags[seat] ?? { bomb: false, joker: false };
+    const flags = roundFlags[seat] ?? { bomb: false, joker: false };
     const seatPlayer = state.players[seat];
     if (!seatPlayer) throw new Error(`onlineGameLogic: no player at seat ${seat}`);
     const emptiedOwnHand = seatPlayer.hand.length === 0;

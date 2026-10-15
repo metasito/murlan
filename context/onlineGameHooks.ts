@@ -139,8 +139,8 @@ export function useOnlineMatch() {
   const {
     matchState,
     cumulativeScores,
-    roundScores,
-    roundScoresCurrent,
+    placementPoints,
+    placementPointsCurrent,
     ratingDeltas,
     roundRecorded,
     ratingsAfter,
@@ -153,8 +153,8 @@ export function useOnlineMatch() {
     () => ({
       matchState,
       cumulativeScores,
-      roundScores,
-      roundScoresCurrent,
+      placementPoints,
+      placementPointsCurrent,
       ratingDeltas,
       roundRecorded,
       ratingsAfter,
@@ -166,8 +166,8 @@ export function useOnlineMatch() {
     [
       matchState,
       cumulativeScores,
-      roundScores,
-      roundScoresCurrent,
+      placementPoints,
+      placementPointsCurrent,
       ratingDeltas,
       roundRecorded,
       ratingsAfter,

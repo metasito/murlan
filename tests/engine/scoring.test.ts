@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   MATCH_TARGETS,
   targetsFor,
-  addRoundScores,
+  addPlacementPoints,
   foldRoundIntoMatch,
   nextMatchTarget,
   resolveMatch,
@@ -27,15 +27,15 @@ describe("scoreRound", () => {
     assert.ok(Object.values(scores).every((v) => v >= 0));
   });
 
-  test("an empty ranking scores nobody", () => {
+  test("an empty finishing order scores nobody", () => {
     assert.deepEqual(scoreRound([], 4), {});
   });
 });
 
-describe("addRoundScores", () => {
+describe("addPlacementPoints", () => {
   test("accumulates without mutating the input", () => {
     const cumulative = { a: 5, b: 2 };
-    const merged = addRoundScores(cumulative, { a: 3, c: 1 });
+    const merged = addPlacementPoints(cumulative, { a: 3, c: 1 });
     assert.deepEqual(merged, { a: 8, b: 2, c: 1 });
     assert.deepEqual(cumulative, { a: 5, b: 2 });
   });
@@ -153,7 +153,7 @@ describe("resolveMatch", () => {
       while (rounds < 12 && !finished) {
         // One seat wins every round: the shortest possible match, and the
         // one that has to fit inside the band.
-        cumulative = addRoundScores(cumulative, scoreRound(players, playerCount));
+        cumulative = addPlacementPoints(cumulative, scoreRound(players, playerCount));
         rounds++;
         const result = resolveMatch(cumulative, target, playerCount);
         if (!result) continue;
@@ -177,10 +177,10 @@ describe("resolveMatch", () => {
     let target = MATCH_TARGETS[0];
     let winner: string | null = null;
 
-    for (let hand = 0; hand < 40 && !winner; hand++) {
+    for (let round = 0; round < 40 && !winner; round++) {
       // Rotate the finishing order so "a" wins slightly more often.
-      const finishingOrder = hand % 3 === 0 ? players : [...players.slice(1), players[0]];
-      cumulative = addRoundScores(cumulative, scoreRound(finishingOrder, players.length));
+      const finishingOrder = round % 3 === 0 ? players : [...players.slice(1), players[0]];
+      cumulative = addPlacementPoints(cumulative, scoreRound(finishingOrder, players.length));
       const result = resolveMatch(cumulative, target);
       if (!result) continue;
       if (result.newTarget !== null) {
@@ -305,7 +305,7 @@ describe("foldRoundIntoMatch", () => {
       winEligible: (key: string) => !key.startsWith("bot:"),
     };
 
-    test("a vacated seat's points land on both the hand and the match scoreboard", () => {
+    test("a vacated seat's points land on both the round and the match scoreboard", () => {
       const result = foldRoundIntoMatch({
         ...online,
         target: 21,
@@ -330,7 +330,7 @@ describe("foldRoundIntoMatch", () => {
       assert.equal(result.over, false);
       assert.deepEqual(result.winners, []);
       // Was pinned at 20 (frozen, never added to) under the old `accumulates`
-      // exclusion. It now accumulates this hand's 3 points same as any other
+      // exclusion. It now accumulates this round's 3 points same as any other
       // seat's — `over`/`winners` above are what prove the target/winner gate
       // still holds despite the total sitting past `target`.
       assert.equal(result.cumulative["bot:1"], 23);
@@ -360,8 +360,8 @@ describe("foldRoundIntoMatch", () => {
       assert.deepEqual(result.winners, []);
     });
 
-    test("a single round in teams names the vacated winner's partner, not the other pair", () => {
-      // docs/GAME-RULES.md §11: the pair takes the round, not the seat that
+    test("a single round in teams names the vacated winner's partner, not the other team", () => {
+      // docs/GAME-RULES.md §11: the team takes the round, not the seat that
       // emptied its hand — so the pair that took it still wins.
       const result = foldRoundIntoMatch({
         ...online,
@@ -387,9 +387,9 @@ describe("foldRoundIntoMatch", () => {
     });
   });
 
-  describe("both authorities fold the same hand the same way", () => {
+  describe("both authorities fold the same round the same way", () => {
     // The regression this function exists to prevent. Offline keys by engine
-    // player id and the server by userId, so one hand run through both key
+    // player id and the server by userId, so one round run through both key
     // functions must come out differing by nothing but the keys.
     const userOf: Record<string, string> = {
       player_0: "u0",

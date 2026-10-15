@@ -143,7 +143,7 @@ describe('the replay move list', () => {
     ).toBeTruthy();
   });
 
-  it('says so rather than rendering an empty panel when a hand has no moves', async () => {
+  it('says so rather than rendering an empty panel when a round has no moves', async () => {
     const view = await render(
       <ReplayMoveList
         replay={{ ...REPLAY, moves: [] } as ReplayDto}

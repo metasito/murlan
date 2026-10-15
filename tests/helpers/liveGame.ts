@@ -29,17 +29,17 @@ export function forgetActiveGame(roomId: string): boolean {
 }
 
 /**
- * Deals a room's live table a hand somebody has already played.
+ * Deals a room's live table a round somebody has already played.
  *
  * The server shuffles from `crypto` (`lib/game/gameEngine.ts`'s `shuffleDeck`), so
- * no seed reaches the deal and a hand can only be recovered by handing its
+ * no seed reaches the deal and a round can only be recovered by handing its
  * cards back in. That is what makes a soak log replayable at all, and it is why
  * this is a write where the rest of this file only reads.
  *
  * Everything downstream of the deal — who opens, on which card — is derived by
  * `initializeGame` rather than restated here, so a replay cannot start from a
  * table the real deal path would never produce. The turn is re-armed because
- * the timer running belongs to the hand this one replaces.
+ * the timer running belongs to the round this one replaces.
  */
 export function redealExactly(io: SocketServer, roomId: string, hands: string[][]): boolean {
   const game = activeGames.get(roomId);
@@ -64,15 +64,15 @@ export function redealExactly(io: SocketServer, roomId: string, hands: string[][
     0,
     dealt
   );
-  // Everything `dealRound` resets, because the hand this replaces is gone: its
+  // Everything `dealRound` resets, because the round this replaces is gone: its
   // flags would credit its bombs and jokers to this one, and its `moveLog`
-  // would be written to `round_replays` as this hand's replay.
-  game.handFlags = {};
+  // would be written to `round_replays` as this round's replay.
+  game.roundFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
 
   broadcastGameState(io, game);
-  // Postgres still holds the hand this replaces until this lands, and a rejoin
+  // Postgres still holds the round this replaces until this lands, and a rejoin
   // that rehydrates from it would be dealt the shuffle nobody is playing.
   persistGameState(roomId, game);
   armTurn(io, roomId);
@@ -92,7 +92,7 @@ export function seatedUsers(roomId: string): Record<number, string> | null {
 
 /**
  * The match bookkeeping of a room's live game: the format, the target, the
- * running scores and the identity of the hand on the table. A second deal
+ * running scores and the identity of the round on the table. A second deal
  * path is only observable through these — the clients see an ordinary
  * `game:started` either way.
  */
@@ -112,7 +112,7 @@ export function matchSnapshot(roomId: string) {
 /**
  * Rewrites a room's own match target and running scores, so the round about
  * to be played is guaranteed to end the match without a test having to shape
- * real play toward a particular score. `handleRoundOver` only adds this hand's
+ * real play toward a particular score. `handleRoundOver` only adds this round's
  * own points on top of what is set here, so one seat set far below the target
  * and the other far above it cannot trade places no matter what the round
  * itself awards.

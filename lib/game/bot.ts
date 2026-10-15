@@ -26,7 +26,7 @@ import type {
  * At two seats twenty-six cards are never dealt (`dealCards` excludes them), so they
  * are counted here as outstanding. That errs towards caution — the bot may hold
  * back a card that was actually unbeatable — and never towards over-confidence,
- * which is the only direction that loses a hand it should have won.
+ * which is the only direction that loses a round it should have won.
  *
  * An absent `played` means nothing is known to have been played, which is what a
  * state rehydrated from before the tally existed must look like.
@@ -110,8 +110,8 @@ export function applyPersonality(
   let result = choice;
 
   if (result === null) {
-    // The tier would pass. An aggressive personality contests the round instead.
-    // Leading a round is never a pass, so this only ever runs when responding.
+    // The tier would pass. An aggressive personality contests the trick instead.
+    // Leading a trick is never a pass, so this only ever runs when responding.
     if (!isNewTrick && rng() < traits.aggression) {
       // Strength only compares within a shape, so answer in kind before
       // reaching for a bomb — the tier's emergency branch owns those.
@@ -144,7 +144,7 @@ export function applyPersonality(
   return result;
 }
 
-/** The seat across the table, or `undefined` in any game without teams. */
+/** The seat across the table, or `undefined` in any match without teams. */
 function partnerSeat(state: GameState, seat: number): number | undefined {
   const count = state.players.length;
   const team = teamForSeat(seat, count, state.gameMode);
@@ -168,7 +168,7 @@ export function opponentsOf(
     // `Math.min()` of nothing is Infinity, which reads as "no one is close".
     handCounts: handCounts.length > 0 ? handCounts : [0],
     // Two things stop "my partner played last" from meaning "my partner holds
-    // the round": `lastPlayedBy` still names the winner once everyone has
+    // the trick": `lastPlayedBy` still names the winner once everyone has
     // passed, and `processPass` gives the lead to the next seat *still holding
     // cards*, so a partner who has gone out would hand it to an opponent.
     partnerHoldsTop:
@@ -250,7 +250,7 @@ export function botChoosePlay(
   const leadPlays = isNewTrick && safeLeads.length > 0 ? safeLeads : plays;
 
   /**
-   * Whether leading this card takes the round on everything a tally can see:
+   * Whether leading this card takes the trick on everything a tally can see:
    * no higher card is outstanding, and no rank is missing all four, so no
    * opponent can be holding a bomb (`docs/GAME-RULES.md` §7.2 — a bomb beats any
    * single, joker included).
@@ -288,9 +288,9 @@ export function botChoosePlay(
     return withPersonality([...leadPlays].sort((a, b) => a.strength - b.strength)[0]);
   }
 
-  // A lead nothing left can answer takes the round for free, so holding it back
+  // A lead nothing left can answer takes the trick for free, so holding it back
   // wins nothing and costs the lead. Cheapest such card first — the point is to
-  // take the round, not to spend the best card doing it. Above the knobs
+  // take the trick, not to spend the best card doing it. Above the knobs
   // deliberately: aggression and unpredictability exist to colour a judgement
   // call, and this is as close to a counted one as the tally gets.
   if (isNewTrick) {

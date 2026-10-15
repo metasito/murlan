@@ -395,8 +395,8 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     assert.deepEqual(marked, [1, 0]);
   });
 
-  test("the hand ending on a play marks nobody", () => {
-    // `processPlay` returns as soon as the hand is decided, so the turn never
+  test("the round ending on a play marks nobody", () => {
+    // `processPlay` returns as soon as the round is decided, so the turn never
     // moves off the seat that went out: `currentTurnIndex === lastPlayedBy`
     // with a combination still on the table. Seat 2 has simply not been dealt
     // another turn — it did not pass.
@@ -533,9 +533,9 @@ describe("the table's own trauma escalation (#763)", () => {
     assert.equal(comboImpactTier("triple"), "ordinary");
   });
 
-  // The round rung is `GameState.roundOver` (processPlay: "the hand is
+  // The round rung is `GameState.roundOver` (processPlay: "the round is
   // decided"), never `trickWinner` — that is a trick, closing many times a
-  // hand (docs/GAME-RULES.md §9). The match rung is a further fact about the
+  // round (docs/GAME-RULES.md §9). The match rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {
@@ -543,7 +543,7 @@ describe("the table's own trauma escalation (#763)", () => {
       assert.equal(landingTier({ comboType: "bomb", roundOver: false, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying, with the match still open, is the round rung for the viewer who won it", () => {
+    test("the round emptying, with the match still open, is the round rung for the viewer who won it", () => {
       assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: false, viewerWon: true }), "roundWon");
     });
 
@@ -552,7 +552,7 @@ describe("the table's own trauma escalation (#763)", () => {
       assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: false, viewerWon: false }), "bomb");
     });
 
-    test("the hand emptying and the match closing with it is the match rung for the viewer who won the match", () => {
+    test("the round emptying and the match closing with it is the match rung for the viewer who won the match", () => {
       assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: true, viewerWon: true }), "matchWon");
     });
 
@@ -561,7 +561,7 @@ describe("the table's own trauma escalation (#763)", () => {
       assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: true, viewerWon: false }), "bomb");
     });
 
-    test("matchOver with roundOver false never fires the match rung — a match cannot close on a hand still in play", () => {
+    test("matchOver with roundOver false never fires the match rung — a match cannot close on a round still in play", () => {
       assert.equal(landingTier({ comboType: "single", roundOver: false, matchOver: true, viewerWon: true }), "ordinary");
     });
 
@@ -1159,7 +1159,7 @@ describe("arrivingCard", () => {
     assert.notDeepEqual(arrivingCard(announce, 3), RECEIVED);
   });
 
-  // Each traded card drawn in exactly one place: the hand, its flier, or the hand again (#650).
+  // Each exchanged card drawn in exactly one place: the hand, its flier, or the hand again (#650).
   describe("readHandArrival", () => {
     const KEPT = { id: "9_clubs", suit: "clubs", rank: "9", isJoker: false } as const;
     const choosing = { ...announce, cardGiven: undefined };

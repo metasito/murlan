@@ -728,7 +728,7 @@ export const sq: Record<keyof typeof en, string> = {
   "tutorial.justReceived": "sapo e mori",
   "tutorial.playCombination": "Luaj kombinimin",
   "tutorial.continue": "Vazhdo",
-  "tutorial.returnCard": "Kthe letrën",
+  "tutorial.giveback": "Kthe letrën",
   "tutorial.rereadRules": "Rilexo Rregullat & FAQ",
   "tutorial.backToHome": "Kthehu te Kreu",
 

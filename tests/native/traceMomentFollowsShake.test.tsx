@@ -26,7 +26,7 @@ const idleState = () => ({
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: undefined,
   scale: 1,
 });

@@ -47,7 +47,7 @@ describe('the card the opening play must include', () => {
   });
 
   it('marks no card when nothing has to open', async () => {
-    // Every hand after the first play, and every hand that is not this seat's
+    // Every round after the first play, and every round that is not this seat's
     // to open. A flow that found the id here would be told to play a card the
     // rules do not single out.
     const r = await renderHand(undefined);

@@ -16,7 +16,7 @@ export interface MatchWinner {
   mine: boolean;
   draw: boolean;
   line: string;
-  /** Online only: what the match did to the viewer's rating, or that the hand went unrecorded. */
+  /** Online only: what the match did to the viewer's rating, or that the round went unrecorded. */
   rating?: MatchRating;
 }
 

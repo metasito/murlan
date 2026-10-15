@@ -19,22 +19,22 @@
 // mean first.
 import type { TranslationKey } from "./i18n.ts";
 
-/** One completed game's outcome for a single player, as recorded at game over. */
+/** One completed round's outcome for a single player, as recorded at round over. */
 export interface GameResult {
   userId: string;
-  /** 1 = won the hand, up to `playerCount`. */
+  /** 1 = won the round, up to `playerCount`. */
   placement: number;
   playerCount: number;
-  /** Did this player play a bomb (four of a kind) at any point in this hand? */
+  /** Did this player play a bomb (four of a kind) at any point in this round? */
   playedBomb: boolean;
-  /** Did this player play a joker (always as a single, per the rules) in this hand? */
+  /** Did this player play a joker (always as a single, per the rules) in this round? */
   playedJoker: boolean;
-  /** Did this player win the whole match (reached the 21/31/41/51 target), not just this hand? */
+  /** Did this player win the whole match (reached the 21/31/41/51 target), not just this round? */
   matchWon: boolean;
   /**
-   * How many opponents actually went out (emptied their hand) in this hand —
+   * How many opponents actually went out (emptied their hand) in this round —
    * NOT `playerCount - 1`. Per docs/GAME-RULES.md §9 and lib/game/gameEngine.ts:687-690
-   * ("The hand ends when only one player still holds cards; that player is
+   * ("The round ends when only one player still holds cards; that player is
    * last"), the last-place player is auto-assigned their finish position
    * once they're the sole player left holding cards — they never empty
    * their hand. So this value tops out at `playerCount - 2`: every player
@@ -42,7 +42,7 @@ export interface GameResult {
    */
   opponentsFinished: number;
   /**
-   * The player walked out on this hand and it was scored as an abandonment rather
+   * The player walked out on this round and it was scored as an abandonment rather
    * than played to its placement. Nothing is earned from one.
    */
   abandoned?: boolean;
@@ -54,7 +54,7 @@ export interface AchievementDef {
   descKey: TranslationKey;
 }
 
-/** An `AchievementDef` plus the predicate that decides whether a game result earns it. */
+/** An `AchievementDef` plus the predicate that decides whether a round result earns it. */
 interface AchievementRule extends AchievementDef {
   isEarned: (result: GameResult) => boolean;
 }
@@ -131,7 +131,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = RULES;
 
 /**
  * Returns the ids of every achievement `result` qualifies for. An abandoned
- * hand qualifies for none: the placement it carries was assigned when the
+ * round qualifies for none: the placement it carries was assigned when the
  * player left, not earned at the table.
  */
 export function evaluateAchievements(result: GameResult): string[] {

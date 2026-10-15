@@ -58,38 +58,38 @@ describe("isDrawnRound", () => {
   ];
 
   test("first-and-fourth against second-and-third is a draw", () => {
-    const roundScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
-    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), true);
+    const placementPoints = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, placementPoints), true);
   });
 
   test("a team that placed both members ahead is not a draw", () => {
-    const roundScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
-    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), false);
+    const placementPoints = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, placementPoints), false);
   });
 
   test("a table with no team assignment is never a draw", () => {
-    const roundScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    const placementPoints = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
     assert.equal(
       isDrawnRound(
         TEAMS_TABLE.map(({ id }) => ({ id })),
-        roundScores
+        placementPoints
       ),
       false
     );
   });
 
-  // Online, a hand's finishingOrder reach the client before its scores do — an
+  // Online, a round's finishingOrder reach the client before its scores do — an
   // empty or partial score set totals every team to zero, which is not the
   // same fact as every team scoring the same. "Not known yet" must read as
-  // not-a-draw, or a hand whose scores just haven't arrived reports the same
+  // not-a-draw, or a round whose scores just haven't arrived reports the same
   // answer as one that genuinely tied.
   test("an absent score set is not a draw", () => {
     assert.equal(isDrawnRound(TEAMS_TABLE, {}), false);
   });
 
   test("a partial score set — some seats not scored yet — is not a draw", () => {
-    const roundScores = { player_0: 3, player_1: 2 };
-    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), false);
+    const placementPoints = { player_0: 3, player_1: 2 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, placementPoints), false);
   });
 });
 
@@ -148,7 +148,7 @@ describe("roundOutcomeFor", () => {
   });
 
   // Online, `finishingOrder` reaches the client (`game:state`, roundOver: true) a
-  // render ahead of `roundScores` (the separate `game:round_over`) — the caller
+  // render ahead of `placementPoints` (the separate `game:round_over`) — the caller
   // (components/useTableFeedback.ts) has to be able to tell "not decided
   // yet" apart from "draw" so it knows to wait for the
   // render the scores arrive on instead of latching a decision made with
@@ -157,7 +157,7 @@ describe("roundOutcomeFor", () => {
     assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", true), "pending");
   });
 
-  // Free-for-all never reads roundScores at all — an absent score set must
+  // Free-for-all never reads placementPoints at all — an absent score set must
   // not stall a mode that was never waiting on one.
   test("free-for-all is never pending, even with no scores at all", () => {
     assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", false), "won");

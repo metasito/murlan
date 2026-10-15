@@ -1,5 +1,5 @@
-// tests/native/teamsSingleRound.test.tsx — a one-round teams game is won by
-// a pair. `applyRoundToMatch` lives in a .tsx context module, so it is only
+// tests/native/teamsSingleRound.test.tsx — a one-round teams match is won by
+// a team. `applyRoundToMatch` lives in a .tsx context module, so it is only
 // reachable from the jest-expo suite; tests/engine/teams.test.ts covers the
 // full-match arithmetic in the node suite.
 import { describe, it, expect } from '@jest/globals';

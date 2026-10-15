@@ -206,9 +206,9 @@ test("the seat opponentsOf protects is the one Player.team calls a teammate", ()
 });
 
 // Every assertion above is one call. This is the only one that walks a whole
-// teams hand through `opponentsOf`, so it is what would catch a pass rule that
+// teams round through `opponentsOf`, so it is what would catch a pass rule that
 // stalls a table rather than one that misjudges a single turn.
-test("a full teams hand played through opponentsOf still reaches game over", () => {
+test("a full teams round played through opponentsOf still reaches game over", () => {
   let state = initializeGame(
     Array.from({ length: 4 }, (_, i) => ({
       name: `bot${i}`,
@@ -245,6 +245,6 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
     state = play ? processPlay(state, play) : processPass(state);
   }
 
-  assert.ok(state.roundOver, `the hand did not finish in ${turns} turns`);
+  assert.ok(state.roundOver, `the round did not finish in ${turns} turns`);
   assert.equal(state.finishingOrder.length, 4, "every seat is placed");
 });

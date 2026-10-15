@@ -160,7 +160,7 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
     const next = processPlay(state, combo(pair("7")));
     assert.equal(next.players[0].finishPosition, 1);
     assert.deepEqual(next.finishingOrder, ["p0", "p1"], "the last player left is recorded too");
-    assert.equal(next.roundOver, true, "only one player still held cards — the hand ends");
+    assert.equal(next.roundOver, true, "only one player still held cards — the round ends");
   });
 
   test("play continues among the rest while more than one player still holds cards", () => {

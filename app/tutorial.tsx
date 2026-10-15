@@ -774,7 +774,7 @@ export default function TutorialScreen() {
 
         {!beatDone ? (
           <MenuButton
-            label={t("tutorial.returnCard")}
+            label={t("tutorial.giveback")}
             onPress={() => submitExchange(beat)}
             disabled={selectedIds.size === 0}
             icon={<Ionicons name="swap-horizontal" size={18} color={Colors.bg} />}

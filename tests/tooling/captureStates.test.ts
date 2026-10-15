@@ -186,7 +186,7 @@ describe("the state a capture renders", () => {
     }
   });
 
-  test("nothing waits on the opening, so the table draws mid-hand", () => {
+  test("nothing waits on the opening, so the table draws mid-round", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
       assert.equal(game.firstPlayMade, true, state.id);

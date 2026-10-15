@@ -1,9 +1,9 @@
-// tests/native/trickWinnerBanner.test.tsx — the round-winner tag over the pile
-// is announced once per round, for every round.
+// tests/native/trickWinnerBanner.test.tsx — the trick-winner tag over the pile
+// is announced once per trick, for every trick.
 //
-// The seat that wins a round leads the next one, so the same seat winning two
-// rounds in a row is ordinary play rather than an edge case. `trickWinner`
-// survives the round the winner then leads — `processPlay` never touches it —
+// The seat that wins a trick leads the next one, so the same seat winning two
+// tricks in a row is ordinary play rather than an edge case. `trickWinner`
+// survives the trick the winner then leads — `processPlay` never touches it —
 // so with two players it goes seat → seat with nothing in between, and with
 // three it goes seat → null → seat. The tag has to arrive both times either
 // way, and the sting with the close that raises it.
@@ -53,9 +53,9 @@ const state = (over: Partial<GameState>): GameState => ({
   ...over,
 });
 
-/** The pass that closed the round in the winner's favour. */
+/** The pass that closed the trick in the winner's favour. */
 const closed = () => state({ trickWinner: WINNER_SEAT });
-/** The winner leading the next round; `trickWinner` still stands. */
+/** The winner leading the next trick; `trickWinner` still stands. */
 const leading = () => state({ lastPlayedCombination: LED, trickWinner: WINNER_SEAT });
 /** A pass that closed nothing, three-handed. */
 const between = () => state({ trickWinner: null });
@@ -93,7 +93,7 @@ const tagShown = async () => {
  *  than fading in place, so a plain absence check is the real claim here. */
 const tagGone = () => pileArea().queryByText(WINNER, { includeHiddenElements: true }) === null;
 
-describe('the round-winner tag', () => {
+describe('the trick-winner tag', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     jest.useFakeTimers();
@@ -103,7 +103,7 @@ describe('the round-winner tag', () => {
     jest.useRealTimers();
   });
 
-  it('shows the winner, dismisses itself, and shows the same winner again next round', async () => {
+  it('shows the winner, dismisses itself, and shows the same winner again next trick', async () => {
     const r = await render(table(closed()));
     await tagShown();
 
@@ -124,7 +124,7 @@ describe('the round-winner tag', () => {
   });
 
   it('announces the second win when trickWinner never changes value', async () => {
-    // Two-handed: the winner leads the next round and takes it as well, so
+    // Two-handed: the winner leads the next trick and takes it as well, so
     // `trickWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
     await tagShown();

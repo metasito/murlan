@@ -1,4 +1,4 @@
-// server/socket/socketRooms.ts — everything a player does *before* a hand starts:
+// server/socket/socketRooms.ts — everything a player does *before* a match starts:
 // opening a room, joining one, watching one, leaving, and starting the game.
 //
 // Registration is synchronous and runs before the connection handler's first

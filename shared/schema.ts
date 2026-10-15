@@ -197,7 +197,7 @@ export const roundHistory = pgTable("round_history", {
    *
    * Kept here rather than derived later because it cannot be: `user_ratings`
    * holds only the current rating, and `ratingDeltas()` needs every seat's
-   * rating and game count as they were *before* the match. Once the match is
+   * rating and match count as they were *before* the match. Once the match is
    * written those inputs are gone.
    */
   ratingDelta: integer("rating_delta"),

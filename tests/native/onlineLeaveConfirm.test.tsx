@@ -80,8 +80,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
       roundsPlayed: 1,
     },
     cumulativeScores: {},
-    roundScores: {},
-    roundScoresCurrent: true,
+    placementPoints: {},
+    placementPointsCurrent: true,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),
@@ -144,7 +144,7 @@ async function overlayShown() {
 /** Comfortably past the match ending's settled board. */
 const GAME_OVER_DELAY_CEILING = 10_000;
 
-describe('leaving between hands, online', () => {
+describe('leaving between rounds, online', () => {
   beforeEach(() => {
     mockLeaveRoom.mockClear();
     jest.useFakeTimers();

@@ -42,11 +42,11 @@ function actingSeat(state: GameState): number {
     : state.currentTurnIndex;
 }
 
-export type AutoMovable = Pick<OnlineGameState, "gameState" | "handFlags" | "moveLog">;
+export type AutoMovable = Pick<OnlineGameState, "gameState" | "roundFlags" | "moveLog">;
 
 /** See lib/game/autoMove.ts. Kept here so the human `game:play` path has one import. */
 export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combination) {
-  recordFlags(game.handFlags, seat, combo);
+  recordFlags(game.roundFlags, seat, combo);
 }
 
 /**
@@ -59,7 +59,7 @@ export function autoMoveForSeat(
   useBot: boolean
 ): GameState | null {
   return sharedAutoMove(game.gameState, seat, useBot, {
-    handFlags: game.handFlags,
+    roundFlags: game.roundFlags,
     onMove: (movedSeat, combo, next) => appendReplayMove(game, movedSeat, combo, next),
   });
 }
@@ -171,7 +171,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
     return;
   }
 
-  // The takeover plays the hand it happened on at minimum legal strength
+  // The takeover plays the round it happened on at minimum legal strength
   // (docs/GAME-RULES.md § Decisions) — the same "an AFK human should not be played well"
   // rule the turn timer already applies, kept until `dealRound` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
@@ -272,7 +272,7 @@ function startAfkTimer(
 // ─── Seat vacancy ─────────────────────────────────────────────────────────────
 
 /**
- * Ends a hand nobody is left to play: `winnerSeat` takes it, and every seat
+ * Ends a round nobody is left to play: `winnerSeat` takes it, and every seat
  * still holding cards is placed behind them — closest to finishing first, seat
  * order as a stable tiebreak.
  *
@@ -301,8 +301,8 @@ function concedeRound(game: OnlineGameState, winnerSeat: number | undefined) {
 
 /**
  * Frees a seat whose player is gone for good — grace period expired, or an
- * explicit leave, either mid-hand or at the results screen — and hands it to a
- * bot. The hand stays in play, so the table can always continue: the seat must
+ * explicit leave, either mid-round or at the results screen — and hands it to a
+ * bot. The round stays in play, so the table can always continue: the seat must
  * be removed from `playerMap` *and* marked bot-controlled together, or the table
  * deadlocks as soon as the turn comes round to it.
  */
@@ -332,7 +332,7 @@ export async function vacateSeat(
 
   // The seat is reclaimable by this account for the life of the match
   // (docs/GAME-RULES.md § Decisions) — every vacate is recorded here, whether it happened
-  // mid-hand or between them, so the rejoin path can find it, the sanitizer
+  // mid-round or between them, so the rejoin path can find it, the sanitizer
   // can label the seat, and `resolveRoundEnd` can find the person's frozen
   // total once `playerMap` has forgotten them.
   game.vacatedSeats.set(seat, { userId, username });
@@ -340,12 +340,12 @@ export async function vacateSeat(
   // joined" — a roster change makes that question new again.
   game.endMatchVotes.clear();
 
-  // Walking out on a hand still holding cards is an abandonment, and is recorded as
-  // one at game over. A seat between hands has no round to abandon, and a seat
+  // Walking out on a round still holding cards is an abandonment, and is recorded as
+  // one at game over. A seat between rounds has no round to abandon, and a seat
   // that already emptied its hand has finished the one it was playing.
   if (!game.gameState.roundOver && seatPlayer?.finishPosition === undefined) {
     game.abandonedSeats.set(seat, userId);
-    // The takeover plays this hand at minimum strength only — `dealRound`
+    // The takeover plays this round at minimum strength only — `dealRound`
     // clears this at the next deal, by which point the seat is honestly a
     // bot's (docs/GAME-RULES.md § Decisions).
     game.weakSeats.add(seat);
@@ -354,7 +354,7 @@ export async function vacateSeat(
   const remaining = Object.keys(game.playerMap).length;
 
   if (game.gameState.roundOver) {
-    // Between hands the table is not interrupted — it is waiting to deal
+    // Between rounds the table is not interrupted — it is waiting to deal
     // again — so the leaver simply stops counting towards the rematch vote.
     // This must NOT be `game:player_left`: that event drives the client's
     // "Match interrupted" teardown, which would eject everyone still sitting
@@ -374,15 +374,15 @@ export async function vacateSeat(
         .catch((err) =>
           logger.warn(
             { err, roomId, userId, seat },
-            "Failed to set rooms.status = finished after the last player left between hands"
+            "Failed to set rooms.status = finished after the last player left between rounds"
           )
         );
       disposeGame(roomId);
       return;
     }
-    // The same write the mid-hand tail makes. Nothing above this branch records an abandonment
-    // a hand there is none of, but `releasedSeats` and `vacatedSeats` were both
-    // written, and a seat vacated between hands is as reclaimable as one vacated
+    // The same write the mid-round tail makes. Nothing above this branch records an abandonment
+    // a round there is none of, but `releasedSeats` and `vacatedSeats` were both
+    // written, and a seat vacated between rounds is as reclaimable as one vacated
     // during one (docs/GAME-RULES.md § Decisions).
     writers.persistGameState(roomId, game);
     return;
@@ -399,17 +399,17 @@ export async function vacateSeat(
     });
 
     if (game.roundsPlayed === 0) {
-      // Nothing has been earned yet — no completed hand behind this match —
+      // Nothing has been earned yet — no completed round behind this match —
       // so nothing is taken away: voided and rated for nobody, the walkout
-      // included (docs/GAME-RULES.md § Decisions). A conceded hand's forced placements
+      // included (docs/GAME-RULES.md § Decisions). A conceded round's forced placements
       // are not a genuine finish, so scoring them as the match's own first
-      // hand would defeat the point of the rule.
+      // round would defeat the point of the rule.
       await voidAbandonedMatch(io, roomId, game, writers);
       disposeGame(roomId);
       return;
     }
 
-    // The hand is scored rather than discarded. The win goes to the last seat
+    // The round is scored rather than discarded. The win goes to the last seat
     // still held by a person; concedeRound places every seat still holding
     // cards behind them, the walkout included as the last-place finish a
     // abandonment is. `survivorSeat` is undefined when the departing seat was the

@@ -1,23 +1,23 @@
 ##
-# New match flow: plays a real offline "Manche secca" (single-hand) match to
+# New match flow: plays a real offline single-round match to
 # its end and confirms "New match" actually starts a new match — see
 # #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one round and
-# done" (lib/game/gameEngine.ts), so a single hand is a genuine match ending, not
+# done" (lib/game/gameEngine.ts), so a single round is a genuine match ending, not
 # a shortcut around one: it is the cheapest length that reaches the state
 # this flow is about, and it is exactly the format offline-game.yaml already
 # uses, so this adds almost nothing to that flow's own cost — #823 is open
-# on wall-clock already too slow to gate a PR, and a 7-hand "Match" would
+# on wall-clock already too slow to gate a PR, and a 7-round "Match" would
 # have cost several extra minutes for no more evidence.
 #
 # Maestro has no import mechanism, so the launch/tutorial/lobby boilerplate
 # below is duplicated from offline-game.yaml on purpose, the way smoke.yaml
 # and offline-game.yaml already duplicate it against each other.
 #
-# "Same seats": `startNewMatch` (context/GameContext.tsx) deals a fresh hand
+# "Same seats": `startNewMatch` (context/GameContext.tsx) deals a fresh round
 # from `savedPlayerConfigs` — the seats already on the table — rather than
 # returning to the lobby, so there is no player-setup screen to re-drive and
 # nothing to assert about the seats beyond the table mounting again with a
-# playable hand.
+# playable round.
 #
 # See offline-game.yaml for the performance note on `waitToSettleTimeoutMs`
 # and the reasoning behind every wait below; it is not repeated here.
@@ -39,7 +39,7 @@ appId: "${MAESTRO_APP_ID}"
           notVisible: "Salta il tutorial"
           timeout: 30000
 
-# --- Lobby: offline vs bots, 2 players, single hand ---
+# --- Lobby: offline vs bots, 2 players, single round ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
 - assertVisible: "Manche secca.*"
@@ -85,7 +85,7 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Pass whenever legal, until the hand empties and the board ends the match on the table ---
+# --- Pass whenever legal, until the round ends and the board ends the match on the table ---
 - repeat:
     times: 30
     while:
@@ -97,7 +97,7 @@ appId: "${MAESTRO_APP_ID}"
           optional: true
           waitToSettleTimeoutMs: 500
 
-# --- The board on the felt: a single-hand match is over as soon as the hand is ---
+# --- The board on the felt: a single-round match is over as soon as the round is ---
 - extendedWaitUntil:
     visible:
       id: "btn-new-match"

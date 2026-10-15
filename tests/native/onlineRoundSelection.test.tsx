@@ -71,7 +71,7 @@ jest.mock('@/context/OnlineGameContext', () =>
       entrySource: 'lobby',
       rematchVoteState: null,
       cumulativeScores: {},
-      roundScores: {},
+      placementPoints: {},
       matchState: { target: 21, length: 'match', over: false, winners: [] },
       exchangeAnnouncing: false,
       exchangeAnnounceData: null,

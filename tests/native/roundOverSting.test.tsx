@@ -1,4 +1,4 @@
-// tests/native/roundOverSting.test.tsx — the end-of-hand sting matches the
+// tests/native/roundOverSting.test.tsx — the end-of-round sting matches the
 // placement.
 //
 // `GameState.finishingOrder` holds engine player ids (`player_0`), never display
@@ -54,7 +54,7 @@ const table = (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={{ ...finished(finishingOrder), roundOver }}
-      roundScores={scoresFor(finishingOrder)}
+      placementPoints={scoresFor(finishingOrder)}
       matchOver={matchOver}
       matchWinners={matchWinners}
       viewerSeat={viewerSeat}
@@ -66,7 +66,7 @@ const table = (
   </SafeAreaProvider>
 );
 
-const ID_RANKINGS = ['player_0', 'player_1'];
+const ID_FINISHING_ORDER = ['player_0', 'player_1'];
 
 const teamSeat = (id: string, name: string, team: 'A' | 'B'): Player => ({
   id,
@@ -80,8 +80,8 @@ const teamSeat = (id: string, name: string, team: 'A' | 'B'): Player => ({
 // (GAME-RULES.md §11). player_0 (team A) and player_3 (team A) hold 1st and 4th;
 // player_1 and player_2 (team B) hold 2nd and 3rd. Scores are given
 // explicitly (not left to GameTable's empty default) so this exercises a
-// hand `isDrawnRound` actually knows is a draw, not one it has no scores for.
-const DRAWN_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_2', 'player_3'];
+// round `isDrawnRound` actually knows is a draw, not one it has no scores for.
+const DRAWN_TEAMS_FINISHING_ORDER = ['player_0', 'player_1', 'player_2', 'player_3'];
 const DRAWN_TEAMS_SCORES = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 const drawnTeamsTable = (viewerSeat: number) => (
   <SafeAreaProvider initialMetrics={METRICS}>
@@ -100,10 +100,10 @@ const drawnTeamsTable = (viewerSeat: number) => (
         gameMode: 'teams',
         trickWinner: null,
         roundOver: true,
-        finishingOrder: DRAWN_TEAMS_RANKINGS,
+        finishingOrder: DRAWN_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
       }}
-      roundScores={DRAWN_TEAMS_SCORES}
+      placementPoints={DRAWN_TEAMS_SCORES}
       viewerSeat={viewerSeat}
       onPlay={noop}
       onPass={noop}
@@ -116,7 +116,7 @@ const drawnTeamsTable = (viewerSeat: number) => (
 // Team A (player_0 + player_3) holds 1st and 3rd — 3+1 = 4 — against team B
 // (player_1 + player_2) holding 2nd and 4th — 2+0 = 2. Not a draw: team A
 // wins the round, even though player_3 personally placed third.
-const WON_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_3', 'player_2'];
+const WON_TEAMS_FINISHING_ORDER = ['player_0', 'player_1', 'player_3', 'player_2'];
 const WON_TEAMS_SCORES = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
 const wonTeamsTable = (viewerSeat: number) => (
   <SafeAreaProvider initialMetrics={METRICS}>
@@ -135,10 +135,10 @@ const wonTeamsTable = (viewerSeat: number) => (
         gameMode: 'teams',
         trickWinner: null,
         roundOver: true,
-        finishingOrder: WON_TEAMS_RANKINGS,
+        finishingOrder: WON_TEAMS_FINISHING_ORDER,
         firstPlayMade: true,
       }}
-      roundScores={WON_TEAMS_SCORES}
+      placementPoints={WON_TEAMS_SCORES}
       viewerSeat={viewerSeat}
       onPlay={noop}
       onPass={noop}
@@ -151,7 +151,7 @@ const wonTeamsTable = (viewerSeat: number) => (
 const STING_MS = Hold.sting;
 const settle = (ms = STING_MS) => advance(ms);
 
-describe('the end-of-hand sting', () => {
+describe('the end-of-round sting', () => {
   beforeEach(async () => {
     mockReduceMotion = false;
     jest.useFakeTimers();
@@ -163,21 +163,21 @@ describe('the end-of-hand sting', () => {
 
   it('schedules the win sting in the engine 300 ms after the landing, which with no flight is now', async () => {
     const t0 = performance.now();
-    const r = await render(table(ID_RANKINGS, 0));
+    const r = await render(table(ID_FINISHING_ORDER, 0));
     await advance();
     expect(startsOf('roundWon')).toEqual([expect.closeTo(ctxAt(t0 + STING_MS), 2)]);
     await r.unmount();
   });
 
   it('a sting already in the engine survives the table unmounting (#5)', async () => {
-    const r = await render(table(ID_RANKINGS, 0));
+    const r = await render(table(ID_FINISHING_ORDER, 0));
     await advance();
     await r.unmount();
     expect(startsOf('roundWon')).toHaveLength(1);
   });
 
   it('a finished match sounds its own sting, with the haptic leading by 300 ms', async () => {
-    const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
+    const r = await render(table(ID_FINISHING_ORDER, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
     await advance(300);
     expect(sounds()).toContain('matchWon');
     expect(sounds()).not.toContain('roundWon');
@@ -188,7 +188,7 @@ describe('the end-of-hand sting', () => {
   it('under reduced motion a finished match still leads with its haptic, the sting 300 ms after', async () => {
     mockReduceMotion = true;
     const t0 = performance.now();
-    const r = await render(table(ID_RANKINGS, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
+    const r = await render(table(ID_FINISHING_ORDER, 0, true, { matchOver: true, matchWinners: ['player_0'] }));
     await advance(300);
     expect(haptics()).toEqual(['impactMedium', 'notificationSuccess']);
     expect(startsOf('matchWon')).toEqual([expect.closeTo(ctxAt(t0 + 300), 2)]);
@@ -196,7 +196,7 @@ describe('the end-of-hand sting', () => {
   });
 
   it('plays the win sting for the seat that placed first', async () => {
-    const r = await render(table(ID_RANKINGS, 0));
+    const r = await render(table(ID_FINISHING_ORDER, 0));
     await settle();
     expect(sounds()).toContain('roundWon');
     expect(sounds()).not.toContain('roundLost');
@@ -205,7 +205,7 @@ describe('the end-of-hand sting', () => {
   });
 
   it('plays the lose sting for the seat that placed last', async () => {
-    const r = await render(table(ID_RANKINGS, 1));
+    const r = await render(table(ID_FINISHING_ORDER, 1));
     await settle();
     expect(sounds()).toContain('roundLost');
     expect(sounds()).not.toContain('roundWon');
@@ -213,7 +213,7 @@ describe('the end-of-hand sting', () => {
   });
 
   it('does not hand the last-placed seat the winner’s haptic', async () => {
-    const r = await render(table(ID_RANKINGS, 1));
+    const r = await render(table(ID_FINISHING_ORDER, 1));
     await settle();
     expect(haptics()).not.toContain('notificationSuccess');
     await r.unmount();
@@ -299,7 +299,7 @@ describe('the end-of-hand sting', () => {
         />
       </SafeAreaProvider>
     );
-    const stateArrived = (roundScores: Record<string, number>) => (
+    const stateArrived = (placementPoints: Record<string, number>) => (
       <SafeAreaProvider initialMetrics={METRICS}>
         <GameTable
           gameState={{
@@ -316,10 +316,10 @@ describe('the end-of-hand sting', () => {
             gameMode: 'teams',
             trickWinner: null,
             roundOver: true,
-            finishingOrder: WON_TEAMS_RANKINGS,
+            finishingOrder: WON_TEAMS_FINISHING_ORDER,
             firstPlayMade: true,
           }}
-          roundScores={roundScores}
+          placementPoints={placementPoints}
           viewerSeat={3}
           onPlay={noop}
           onPass={noop}

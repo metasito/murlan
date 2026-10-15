@@ -29,7 +29,7 @@ is a change of arrangement, not a change of music.
 | File | Source | Plays on |
 |---|---|---|
 | `menu.webm` | `Week 1 - Retro Lounge BASE.ogg` | every menu screen |
-| `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a hand is live |
+| `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a round is live |
 
 Chosen by the owner on #113 from the twelve candidates auditioned in #163.
 

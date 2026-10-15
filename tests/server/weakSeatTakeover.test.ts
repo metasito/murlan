@@ -1,7 +1,7 @@
-// #850 clause 3: a takeover finishes the current hand at minimum legal
+// #850 clause 3: a takeover finishes the current round at minimum legal
 // strength — a raw boolean, not the engine's bot — and the engine only plays the
-// seat properly from the next deal. Two things are pinned here: `vacateSeat`
-// marking the seat weak only for a mid-hand departure (server/game/gameTurn.ts's
+// seat properly from the next round. Two things are pinned here: `vacateSeat`
+// marking the seat weak only for a mid-round departure (server/game/gameTurn.ts's
 // own `!game.gameState.roundOver` guard), and `autoMoveForSeat`'s `useBot=false`
 // path — what `runBotTurn` calls once it reads `weakSeats` — always resolving
 // the seat's turn, since a seat that cannot act stalls the whole table.
@@ -49,7 +49,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 0,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),
@@ -64,8 +64,8 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   } as OnlineGameState;
 }
 
-describe("a mid-hand takeover is weak only for the hand it happened on (#850 clause 3)", () => {
-  test("vacateSeat marks the seat weak when the table survives it mid-hand", async () => {
+describe("a mid-round takeover is weak only for the round it happened on (#850 clause 3)", () => {
+  test("vacateSeat marks the seat weak when the table survives it mid-round", async () => {
     const gameState: GameState = {
       players: [
         player("p0", "Alice", [{ rank: "4", suit: "spades" } as never]),
@@ -93,7 +93,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     try {
       await vacateSeat(io, ROOM, "drita",roundOverWriters);
 
-      assert.ok(game.weakSeats.has(3), "the seat just vacated mid-hand must be weak");
+      assert.ok(game.weakSeats.has(3), "the seat just vacated mid-round must be weak");
       assert.equal(game.vacatedSeats.get(3)?.userId, "drita");
       // The table survives (three seats remain) rather than being conceded.
       assert.equal(game.gameState.roundOver, false);
@@ -103,7 +103,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     }
   });
 
-  test("vacateSeat between hands leaves the seat off weakSeats — no hand is in progress to protect", async () => {
+  test("vacateSeat between rounds leaves the seat off weakSeats — no round is in progress to protect", async () => {
     const gameState: GameState = {
       players: [player("p0", "Alice", []), player("p1", "Drita", [])],
       currentTurnIndex: 0,
@@ -112,7 +112,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      roundOver: true, // between hands
+      roundOver: true, // between rounds
       finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
     };
@@ -236,7 +236,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     };
   }
 
-  test("mid-hand, with the table still playing on", async () => {
+  test("mid-round, with the table still playing on", async () => {
     const gameState: GameState = {
       players: [
         player("p0", "Alice", [{ rank: "4", suit: "spades" } as never]),
@@ -274,7 +274,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     }
   });
 
-  test("between hands, with someone left to deal to", async () => {
+  test("between rounds, with someone left to deal to", async () => {
     const gameState: GameState = {
       players: [player("p0", "Alice", []), player("p1", "Drita", [])],
       currentTurnIndex: 0,
@@ -295,7 +295,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       assert.deepEqual(
         spy.wrote,
         [{ roomId: ROOM, seats: ["0"], vacated: [1] }],
-        "a seat vacated between hands is still reclaimable — off the roster, on vacatedSeats"
+        "a seat vacated between rounds is still reclaimable — off the roster, on vacatedSeats"
       );
     } finally {
       clearRoomTimers(ROOM);
@@ -303,7 +303,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
     }
   });
 
-  test("the last player leaving between hands writes nothing — the row is deleted", async () => {
+  test("the last player leaving between rounds writes nothing — the row is deleted", async () => {
     const gameState: GameState = {
       players: [player("p0", "Drita", [])],
       currentTurnIndex: 0,
@@ -338,7 +338,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
 describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to (#850 clause 3)", () => {
   // gameTurn.ts's autoMoveForSeat — the one runBotTurn calls once it reads
   // weakSeats — takes the table's shape, not a bare GameState.
-  const mkGame = (gameState: GameState) => ({ gameState, handFlags: {}, moveLog: null });
+  const mkGame = (gameState: GameState) => ({ gameState, roundFlags: {}, moveLog: null });
 
   test("opening a fresh round plays the single lowest card, never the bot's own choice of combination", () => {
     const state: GameState = {

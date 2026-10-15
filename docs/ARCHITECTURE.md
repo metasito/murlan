@@ -41,7 +41,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 
 - **`lib/game/gameEngine.ts`** is the single rules engine, imported by both the client (offline
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
-  Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
+  Jokers) is dealt in full every round — see `docs/GAME-RULES.md` §3. There is no reduced-deck
   mode. The bot heuristics live apart from the rules, in `lib/game/bot.ts`, reached only through
   `lib/game/autoMove.ts`.
 - **The client sends an intent** (`game:play`, `game:pass`, `game:exchange_give_card`) and renders
@@ -83,7 +83,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 User actions call context methods that call the engine directly and set new state. The
 whole match — engine state, scoreboard, and the seat setup the next
 round is dealt from — is written to AsyncStorage on every change (`lib/offlineSave.ts`),
-so a kill mid-hand is resumable from the home screen. A save from another version is
+so a kill mid-round is resumable from the home screen. A save from another version is
 discarded rather than migrated, the same call `active_games` makes.
 
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
@@ -101,7 +101,7 @@ watched those cards land — so `sanitizeStateForPlayer` passes it through untou
 holds ranks only, never card identities. It is the bots' whole memory: without it no bot at
 any difficulty could know a 2 or a joker was already gone.
 
-The field is **optional**, because `GameState` is persisted as jsonb and a hand in flight
+The field is **optional**, because `GameState` is persisted as jsonb and a round in flight
 across a deploy rehydrates without it. A bot reading an absent tally must play exactly as it
 did before the tally existed. It is an additive protocol change; older clients ignore it.
 
@@ -191,7 +191,7 @@ later turns.
   `roomId` primary key, `updatedAt` (a column because `pruneAbandonedGames` filters on it
   in SQL), and `gameState`, the versioned envelope `PersistedEnvelope`
   (`shared/persistedEnvelope.ts`) specifies. Everything else rides inside that envelope: the
-  hand itself, `handFlags`, `dealFirstSeat`, the room's six-character `joinCode` (duplicated
+  hand itself, `roundFlags`, `dealFirstSeat`, the room's six-character `joinCode` (duplicated
   from `rooms.code` so a cold-start rejoin can still draw the room screen once that row is
   gone — a code cannot be invented, and an unjoinable one on screen is worse than none), and
   a `match` object holding `playerMap`
@@ -212,10 +212,10 @@ later turns.
   lifecycle). Never dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
 - **`round_replays`**: one row per finished round — `seats`, `moves` and `finishingOrder` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
-  can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was
+  can only ever fetch a round they sat at. **No round is stored**: a move carries what was
   played and the counts that followed, never what anyone held. The live log is memory
-  only (`OnlineGameState.moveLog`), unlike `handFlags`, because the `game_state` envelope
-  is rewritten after every move and a hand a restart interrupts has no replay either way.
+  only (`OnlineGameState.moveLog`), unlike `roundFlags`, because the `game_state` envelope
+  is rewritten after every move and a round a restart interrupts has no replay either way.
   Pruned by age (`REPLAY_RETENTION_DAYS`) inside the insert's transaction — a row belongs
   to up to four players, so a per-player cap could not delete one alone. The write is not
   awaited: if it fails it is logged, and the only consequence is an empty replays list.
@@ -240,7 +240,7 @@ React Context, one provider per concern:
 | Context | Owns |
 |---|---|
 | `AuthContext` | Session user, and the account state machine: login/logout/register, rename, change password, add email, `refreshUser` |
-| `GameContext` | Offline `GameState`, the match score and exchange-announcement state; calls `lib/game/gameEngine.ts` directly |
+| `GameContext` | Offline `GameState`, the standings and exchange-announcement state; calls `lib/game/gameEngine.ts` directly |
 | `OnlineGameContext` | Online `GameState` as received from the server, plus the room, the turn clock, match/rematch/end-match vote state, disconnected seats and spectator mode, and the socket intents. Screens read it through the six slices in `context/onlineGameHooks.ts`, not directly — `tests/ui-rules/contextSlices.test.ts` pins that |
 | `SocketContext` | The socket singleton lifecycle, friend presence events, invites |
 | `SettingsContext` | Sound, haptics, motion, and the card back / table felt |
@@ -306,7 +306,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
   order, placement colours and labels, and the ceremony's own clock.
 - **The endings, on the table.** A round ends in the score pill's payoff
   (`lib/game/roundEnding.ts`): offline it deals the next one, online the pill holds open with the
-  next-hand vote at its foot until the deal arrives. A match ends with the pill growing into the
+  next-round vote at its foot until the deal arrives. A match ends with the pill growing into the
   result board over the dimmed table (`lib/game/matchEnding.ts`, `components/table/matchBoard.tsx`),
   with Home and New match; online, New match is the rematch vote. There is no result route.
 - **`server/socket/emit.ts`** — every `game:match_state` and `game:vote_state` broadcast, so the

@@ -22,7 +22,7 @@ const SETUP = [
 
 /** Reports the bits of context state the persistence is supposed to carry. */
 /**
- * A save taken while the between-hands exchange is open.
+ * A save taken while the between-rounds exchange is open.
  *
  * This is the moment a player is most likely to put the phone down — the hand
  * has just ended and they owe, or are owed, a card — and the one where a bad
@@ -165,7 +165,7 @@ test("the save tracks the game rather than being written once", async () => {
   });
 });
 
-// Leaving a game deliberately is not the same as being killed mid-hand. If the
+// Leaving a game deliberately is not the same as being killed mid-round. If the
 // save outlived resetGame, the home screen would keep offering a match the
 // player already walked away from.
 test("leaving the game clears the save", async () => {
@@ -206,7 +206,7 @@ test("a save an update can no longer read is removed, and the player is told", a
 // The exchange is driven entirely by gameState.exchangePhase, which is
 // persisted. The announcement overlay beside it is not, and must not be: it is
 // a one-shot that blocks the screen until it is acknowledged, so restoring it
-// would put a player back behind a notice about a hand they already saw end.
+// would put a player back behind a notice about a round they already saw end.
 test("a game killed mid-exchange comes back with the exchange, and no stuck overlay", async () => {
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, midExchangeSave());
 

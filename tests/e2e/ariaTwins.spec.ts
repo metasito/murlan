@@ -26,7 +26,7 @@ test.describe("the aria twins reach the DOM", () => {
     const reportBug = page.getByRole("button", { name: "Segnala un problema" });
     await expect(reportBug).toHaveAttribute("aria-expanded", BOOLEAN);
 
-    // `aria-pressed` is read off the hand in playedHand.spec.ts; every choice here is a radio.
+    // `aria-pressed` is read off the hand in playedRound.spec.ts; every choice here is a radio.
     await expect(page.getByRole("radio", { name: "Italiano" })).toHaveAttribute(
       "aria-checked",
       "true"

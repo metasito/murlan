@@ -40,7 +40,7 @@ describe("processPlay", () => {
     );
   });
 
-  test("records the finishing order and ends the hand when one player is left", () => {
+  test("records the finishing order and ends the round when one player is left", () => {
     const state = makeState(
       [
         makePlayer("p0", pair("7")),

@@ -97,10 +97,10 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * round. A match closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
  * `context/GameContext.tsx` `applyRoundToMatch`, the online
- * `game:round_over`/`matchOver` payload): the hand that empties a seat's hand is
- * also the hand that happens to close the match, never a second, later
+ * `game:round_over`/`matchOver` payload): the play that empties a seat's hand is
+ * also the play that happens to close the match, never a second, later
  * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
- * calls that a *trick*, and it closes many times a hand.
+ * calls that a *trick*, and it closes many times a round.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes
  * the round or the match is still only as loud as its loudest rung —
@@ -327,14 +327,14 @@ export function flightOrigin(input: TableGeometry & { dir: FlyDirection }): { dx
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
- * combination in a later round is not — hence the seat in the key.
+ * combination in a later trick is not — hence the seat in the key.
  */
 export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
 }
 
 /**
- * The pass that just closed a round, seen from one state. `processPass`
+ * The pass that just closed a trick, seen from one state. `processPass`
  * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`
  * in the same transition, so the table gets both on a single commit — and the
  * winning cards must stay on the felt under the tag that announces them
@@ -352,14 +352,14 @@ export function trickClosedWithWinner(state: {
 }
 
 /**
- * The seats that have passed in the round on the table, in pass order.
+ * The seats that have passed in the trick on the table, in pass order.
  *
  * A pass changes nothing visible, so this derives it from what did: turns run
  * from `lastPlayedBy` in *descending* seat order and the pile only moves on a
  * play, so every seat in between has passed. Seats holding no cards are
  * stepped over — a false marker is worse than none.
  *
- * Empty between rounds, and empty when the seat on move is the one that
+ * Empty between tricks, and empty when the seat on move is the one that
  * played: that span is a full circle. `outOfCards` carries the seat count.
  */
 export function passedSeats(state: {
@@ -389,7 +389,7 @@ type PassView = Parameters<typeof passedSeats>[0] & { trickWinner?: number | nul
 
 /**
  * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
- * when a pass closed the round, which `passedSeats` never names because the round is gone with it.
+ * when a pass closed the trick, which `passedSeats` never names because the trick is gone with it.
  */
 export function seatsJustPassed(before: PassView, after: PassView): number[] {
   const was = passedSeats(before);
@@ -606,7 +606,7 @@ export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap
   };
 }
 
-/** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
+/** A seat's own point from the pile, nothing leaving its hand: where a closed trick is swept, and where a dealt card lands. */
 export function seatPoint(place: SeatPlace, dir: FlyDirection): { dx: number; dy: number } {
   return flightOrigin({ ...tableGeometry(place), dir });
 }

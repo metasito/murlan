@@ -108,18 +108,17 @@ export type DriveResult =
 
 /**
  * Drives forced-minimum play for every idle client attached: whoever is
- * leading a new round plays the largest same-rank group anchored on their
- * lowest card (or the mandatory start card, for the very first play of the
- * game), everyone else always passes. This mirrors the server's own
+ * leading a new trick plays the largest same-rank group anchored on their
+ * lowest card (or the 3♠, for the opening of the round), everyone else always passes. This mirrors the server's own
  * AFK/bot forced-minimum path (see autoMoveForSeat in server/socket/socket.ts),
  * but is triggered immediately by the test instead of waiting on a timer,
  * and sheds several cards per play to keep the per-socket event count
- * comfortably under the rate limiter across repeated hands.
+ * comfortably under the rate limiter across repeated rounds.
  *
  * Listeners attach before `kickoff()`, so the first game:state — which decides
- * who plays the mandatory start card — is never missed. Resolves once
+ * who makes the opening — is never missed. Resolves once
  * `game:round_over` or an active exchange has been seen from every client, so no
- * closing broadcast is left in flight to be read as the next hand starting.
+ * closing broadcast is left in flight to be read as the next round starting.
  *
  * `stopOnExchange: false` plays straight through an exchange instead: the
  * driver simply idles while it is up, and the server's own AFK/bot forced
@@ -142,7 +141,7 @@ export function driveRoundToExchangeOrOver(
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error("timed out driving a hand toward completion or an exchange phase"));
+      reject(new Error("timed out driving a round toward completion or an exchange phase"));
     }, 15_000 * DEADLINE_SCALE);
 
     function cleanup() {
@@ -205,10 +204,10 @@ export function driveRoundToExchangeOrOver(
 }
 
 /**
- * The next deal a client is sent — a `game:state` that is not the finished
+ * The next round a client is sent — a `game:state` that is not the finished
  * state of the round just played. `driveRoundToExchangeOrOver` settles on the
  * *first* client's `game:round_over`, so the other clients' closing broadcasts can
- * still be in flight when a caller starts waiting for the next hand.
+ * still be in flight when a caller starts waiting for the next round.
  */
 export function waitForDeal(socket: Socket, ms = 8_000): Promise<SanitizedState> {
   return new Promise((resolve, reject) => {
@@ -220,13 +219,13 @@ export function waitForDeal(socket: Socket, ms = 8_000): Promise<SanitizedState>
     };
     const timer = setTimeout(() => {
       socket.off("game:state", onState);
-      reject(new Error("timed out waiting for the next deal"));
+      reject(new Error("timed out waiting for the next round"));
     }, ms * DEADLINE_SCALE);
     socket.on("game:state", onState);
   });
 }
 
-/** The `game:round_over` payload of a hand a suite drove to completion. */
+/** The `game:round_over` payload of a round a suite drove to completion. */
 export function roundOverOf(result: DriveResult): RoundOverPayload {
   assert.ok(
     result.stoppedOn === "roundOver",

@@ -253,7 +253,7 @@ const named = (page: Page, name: string) =>
  *
  * The bot is held for the life of the page (`lib/e2eBotSuspend.ts`). It is not a
  * convenience: `EXPO_PUBLIC_E2E_FAST` answers for the seat in ~0ms, and a pass
- * closes the round heads-up, which takes `GameTable`'s own pile effect down the
+ * closes the trick heads-up, which takes `GameTable`'s own pile effect down the
  * `combo === null` branch and **clears the pending impact timer** — so the
  * bomb's whole landing, kick and flare included, is cancelled ~300ms before it
  * was due to fire and every measurement below reads a table at rest.

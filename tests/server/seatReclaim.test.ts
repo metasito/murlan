@@ -35,7 +35,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 1,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),
@@ -240,7 +240,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     activeGames.set(ROOM, game);
 
     try {
-      // Fold one hand while the seat is still vacated — the bot seat (seat 1)
+      // Fold one round while the seat is still vacated — the bot seat (seat 1)
       // finishes first and scores under "bot:1", not under "drita".
       const result = resolveRoundEnd({
         state: finishedRound(["p1", "p0", "p2", "p3"]),
@@ -249,7 +249,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         matchTarget: 21,
         matchLength: "match",
         gameMode: "free_for_all",
-        handFlags: {},
+        roundFlags: {},
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
@@ -280,7 +280,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       assert.equal(
         sum,
         6 * game.roundsPlayed,
-        "the standings must sum to the hands played, asserted as arithmetic"
+        "the standings must sum to the rounds played, asserted as arithmetic"
       );
       assert.equal(game.endMatchVotes.size, 0, "a roster change makes the vote new again");
       const voteState = emitted.filter((e) => e.event === "game:end_match_vote_state").pop();
@@ -310,7 +310,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     activeGames.set(ROOM, game);
 
     try {
-      // Hand 1, still vacated: the bot seat (seat 1) finishes first and
+      // Round 1, still vacated: the bot seat (seat 1) finishes first and
       // carries 3 points under "bot:1" — cumulativeScores.drita stays frozen
       // at 8, below the 12 target either way.
       const first = resolveRoundEnd({
@@ -320,7 +320,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         matchTarget: game.matchTarget,
         matchLength: "match",
         gameMode: "free_for_all",
-        handFlags: {},
+        roundFlags: {},
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
@@ -331,7 +331,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita" });
       assert.equal(game.cumulativeScores.drita, 11, "the reclaim already merged the carried 3 points");
 
-      // Hand 2, seat 1 now drita's own again: she finishes first a second
+      // Round 2, seat 1 now drita's own again: she finishes first a second
       // time. 11 (merged) + 3 = 14, over the 12 target — the match must end
       // and name her the winner. A reader that resolved the target from the
       // orphaned "bot:1" bucket instead of the merged "drita" key would see
@@ -343,7 +343,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         matchTarget: game.matchTarget,
         matchLength: "match",
         gameMode: "free_for_all",
-        handFlags: {},
+        roundFlags: {},
         abandonedSeats: new Map(),
         vacatedSeats: game.vacatedSeats,
       });
@@ -374,7 +374,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: {},
+      roundFlags: {},
       abandonedSeats: new Map(),
       vacatedSeats: game.vacatedSeats,
     });

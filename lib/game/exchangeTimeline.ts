@@ -41,7 +41,7 @@ export function legTimes(reduced: boolean): LegTimes {
   return reduced ? REDUCED_LEG : LEG;
 }
 
-/** The pile's centre, where a exchanged card rests face up at a played card's size; `dx` lays the two Jokers side by side. */
+/** The pile's centre, where an exchanged card rests face up at a played card's size; `dx` lays the two Jokers side by side. */
 export function restPoint(dx = 0): From {
   "worklet";
   return { x: dx, y: 0, rot: dx / 9, scale: 1 };

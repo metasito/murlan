@@ -2,7 +2,7 @@
 // table.
 //
 // `io.to(roomId)` crosses instances; `activeGames.get(roomId)` does not. So a
-// player whose socket landed on an instance that did not deal the hand saw the
+// player whose socket landed on an instance that did not deal the round saw the
 // table perfectly and was refused every move. This is the other half: the
 // action travels to the game rather than the game being read where the action
 // arrived.
@@ -253,7 +253,7 @@ async function askClaimAndApply(
   // over, and no reason to ask Postgres — which matters more than it looks:
   // with one instance this is every lobby disconnect, every seat release and
   // every leave, and probing the lock for each cost a round trip apiece.
-  // Reviving a stranded hand to give one seat to a bot would set the whole
+  // Reviving a stranded round to give one seat to a bot would set the whole
   // table playing itself with nobody watching, so `forward` stops here.
   if (answer === null && mode === "forward") return UNOWNED;
 

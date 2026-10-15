@@ -144,7 +144,7 @@ describe(
         assert.equal(state.players.length, 2, "the same table, with both seats still human");
         assertHandSecrecy(state, "the surviving socket");
 
-        // Plays the hand out from the new socket: broadcasts reach it, its
+        // Plays the round out from the new socket: broadcasts reach it, its
         // moves are accepted, and the seat is still its own.
         const result = await driveRoundToExchangeOrOver([secondClient, bob], () => {
           for (const client of [secondClient, bob]) {
@@ -153,7 +153,7 @@ describe(
         });
         assert.ok(
           result.stoppedOn === "exchange" || result.stoppedOn === "roundOver",
-          "the replacement socket has to be able to play the hand out"
+          "the replacement socket has to be able to play the round out"
         );
         assert.deepEqual(announced, [], "and still nothing was announced about the seat");
       } finally {

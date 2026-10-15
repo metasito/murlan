@@ -37,7 +37,7 @@ const STATE: GameState = {
   firstPlayMade: true,
 };
 
-/** A bot won the last hand and owes the human a card back. */
+/** A bot won the last round and owes the human a card back. */
 const CHOOSING: GameState = {
   ...STATE,
   players: [

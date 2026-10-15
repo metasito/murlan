@@ -60,8 +60,8 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
   after(async () => {
     // Leave each table rather than just dropping the sockets. A match runs to
-    // 21 points, so an abandoned one is handed to the bot and plays hand after
-    // hand — every exchange resolved by an AFK timeout — long after the tests
+    // 21 points, so an abandoned one is handed to the bot and plays round after
+    // round — every exchange resolved by an AFK timeout — long after the tests
     // that created it have finished, holding the event loop open.
     for (const seats of tables) for (const s of seats) s.emit("room:leave");
     await new Promise((r) => setTimeout(r, 200));
@@ -101,7 +101,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const idx = states.findIndex((st) => st.viewerSeatIndex === turn);
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].startCard;
-    assert.ok(start, "the opening hand must name a start card");
+    assert.ok(start, "the opening round must name a start card");
     seats[idx].socket.emit("game:play", { cardIds: [start!.id] });
   }
 

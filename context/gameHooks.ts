@@ -22,7 +22,7 @@ export function useLocalTable() {
   );
 }
 
-/** Starting a game, abandoning one, and picking up the one that was interrupted. */
+/** Starting a match, abandoning one, and picking up the one that was interrupted. */
 export function useLocalSession() {
   const { setupGame, resetGame, hasSavedGame, resumeGame } = useGame();
   return useMemo(

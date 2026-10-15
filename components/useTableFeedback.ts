@@ -77,7 +77,7 @@ interface TableFeedbackState {
   players: readonly { id: string; team?: string }[];
   isTeamMode: boolean;
   /** What the round just played awarded, by engine player id — `roundOutcomeFor`'s draw check. */
-  roundScores: Record<string, number>;
+  placementPoints: Record<string, number>;
   viewerId: string | undefined;
   /** The table's own scale — the kick's travel and the burst's size read off it. */
   scale: number;
@@ -264,7 +264,7 @@ export function useTableFeedback({
   finishingOrder,
   players,
   isTeamMode,
-  roundScores,
+  placementPoints,
   viewerId,
   scale,
   matchOver = false,
@@ -307,8 +307,8 @@ export function useTableFeedback({
   // on the state the pass produced, not the tap, so a bot, an opponent and the
   // server moving for a seat all announce themselves identically.
   //
-  // `processPass` zeroes `passCount` on the pass that closes a round, so the
-  // round closing stands in for that edge — heads-up, every legal pass closes
+  // `processPass` zeroes `passCount` on the pass that closes a trick, so the
+  // trick closing stands in for that edge — heads-up, every legal pass closes
   // one, and without this a two-player game would hear nothing.
   useEffect(() => {
     const prevCount = prevPassCountRef.current;
@@ -333,18 +333,18 @@ export function useTableFeedback({
     // winning card's own landing signal, on its contact frame.
     // `finishingOrder` holds engine player ids (`player_0`), never display names.
     // `lib/game/matchState.ts` decides who a round celebrates, from the caller's
-    // own `roundScores`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
-    const outcome = roundOutcomeFor(players, finishingOrder, roundScores, viewerId, isTeamMode);
+    // own `placementPoints`: a teams-mode 3-3 round (GAME-RULES.md §11) celebrates no seat.
+    const outcome = roundOutcomeFor(players, finishingOrder, placementPoints, viewerId, isTeamMode);
     // Online, `roundOver` reaches this effect (`game:state`) a render ahead of
     // the scores that decide it (`game:round_over`, unawaited server-side and
     // strictly later) — `"pending"` is that gap. Latching here would freeze
     // the decision on data that was never real; returning without touching
-    // the ref lets the next render, carrying the real `roundScores`, run this
+    // the ref lets the next render, carrying the real `placementPoints`, run this
     // same effect again instead.
     // The sting is placed in the engine ahead of time, so leaving the
     // table cannot cancel it (#5); every ranked id must carry a score, which is
     // also when an online match's winners have arrived.
-    if (outcome === "pending" || finishingOrder.some((id) => !(id in roundScores))) return;
+    if (outcome === "pending" || finishingOrder.some((id) => !(id in placementPoints))) return;
     prevRoundOverRef.current = true;
     const match = matchOver ? matchOutcomeFor(players, matchWinners, viewerId, isTeamMode) : "pending";
     moment(
@@ -352,7 +352,7 @@ export function useTableFeedback({
       "landing",
       Hold.sting
     );
-  }, [roundOver, finishingOrder, players, isTeamMode, roundScores, viewerId, matchOver, matchWinners, moment]);
+  }, [roundOver, finishingOrder, players, isTeamMode, placementPoints, viewerId, matchOver, matchWinners, moment]);
 
   // PASSA flash the moment passing becomes possible. `canPass` already folds in
   // whose turn it is, whether the viewer has finished, and whether the round is

@@ -1,12 +1,12 @@
-// tests/engine/teams.test.ts — teams mode is scored as a *pair* (docs/GAME-RULES.md §11,
-// BRIEF §3.1): the two partners' placement points are summed and the pair
+// tests/engine/teams.test.ts — teams mode is scored as a *team* (docs/GAME-RULES.md §11,
+// BRIEF §3.1): the two partners' placement points are summed and the team
 // races to 21. Two invariants are pinned here:
 //
-//  1. the match must resolve on the pair's combined placement points, not
-//     per seat — a pair holding 20 + 1 has won, and both partners must be
+//  1. the match must resolve on the team's combined placement points, not
+//     per seat — a team holding 20 + 1 has won, and both partners must be
 //     reported as winners even though only one of them crossed the line;
-//  2. the hand is played out (docs/GAME-RULES.md §9, § Decisions "Teams win
-//     condition"): a pair going out does not end it, and every seat is placed
+//  2. the round is played out (docs/GAME-RULES.md §9, § Decisions "Teams win
+//     condition"): a team going out does not end it, and every seat is placed
 //     by the order it emptied its hand — the stats writer skips anyone absent
 //     from `finishingOrder`, and the exchange reads who came last.
 import { test, describe } from "node:test";
@@ -89,7 +89,7 @@ describe("teams: every seat gets a placement", () => {
     assert.equal(teamB, 1);
   });
 
-  test("a hand ending with only one seat left over still places it", () => {
+  test("a round ending with only one seat left over still places it", () => {
     // Seats 0 and 1 out already; seat 2 (team A) finishes, completing team A
     // and leaving only seat 3.
     const state = teamsState([0, 0, 1, 4], {
@@ -187,9 +187,9 @@ describe("teams: the match resolves on the summed team total", () => {
   });
 });
 
-// Seats 0/2 are team A, 1/3 team B. `foldRoundIntoMatch` is where the pair
+// Seats 0/2 are team A, 1/3 team B. `foldRoundIntoMatch` is where the team
 // rule meets match progression: both authorities call it, so a partner
-// crossing the line alone has to name the pair on either side of the wire.
+// crossing the line alone has to name the team on either side of the wire.
 describe("teams: folding a round into the match", () => {
   const teamOf = { player_0: "A", player_1: "B", player_2: "A", player_3: "B" };
   const base = {
@@ -256,7 +256,7 @@ describe("teams: folding a round into the match", () => {
       frozenKeysOf: (engineId: string) => (engineId === "p3" ? ["u3"] : []),
     };
 
-    test("the pair keeps the departed partner's points, frozen", () => {
+    test("the team keeps the departed partner's points, frozen", () => {
       const result = foldRoundIntoMatch({
         ...online,
         finishingOrder: ["p3", "p1", "p0", "p2"],

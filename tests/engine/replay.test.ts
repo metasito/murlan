@@ -43,7 +43,7 @@ test("the opening position adds the first move's cards back to its own seat", ()
   assert.equal(state.roundOver, false);
 });
 
-test("a state carries the pile and the counts of the move it names", () => {
+test("a state carries the trick and the counts of the move it names", () => {
   const state = replayStateAt(REPLAY, 0);
   assert.deepEqual(state.lastPlayedCombination?.cards.map((x) => x.id), ["3_spades"]);
   assert.equal(state.lastPlayedBy, 0);
@@ -51,13 +51,13 @@ test("a state carries the pile and the counts of the move it names", () => {
   assert.equal(state.currentTurnIndex, 1, "the turn shows whoever moved next");
 });
 
-test("a pass takes nothing off the hand, and the round-closing one clears the pile", () => {
+test("a pass takes nothing off the hand, and the trick-closing one clears the trick", () => {
   const state = replayStateAt(REPLAY, 2);
   assert.equal(state.lastPlayedCombination, null, "the round closed on that pass");
   assert.deepEqual(handCounts(REPLAY, 2), [2, 2]);
 });
 
-test("a pass short of the threshold leaves the pile standing", () => {
+test("a pass short of the threshold leaves the trick standing", () => {
   const threeUp: ReplayDto = {
     ...REPLAY,
     seats: [
@@ -79,7 +79,7 @@ test("a pass short of the threshold leaves the pile standing", () => {
   assert.equal(replayStateAt(threeUp, 3).lastPlayedCombination, null, "the second pass closed it");
 });
 
-test("the last index is the finished hand", () => {
+test("the last index is the finished round", () => {
   const state = replayStateAt(REPLAY, replayMoveCount(REPLAY) - 1);
   assert.equal(state.roundOver, true);
   assert.deepEqual(state.finishingOrder, ["player_0", "player_1"]);

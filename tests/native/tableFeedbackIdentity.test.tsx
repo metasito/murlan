@@ -25,7 +25,7 @@ const state = (scale: number) => ({
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: "viewer",
   scale,
 });

@@ -21,7 +21,7 @@ export function offlineRoundTests(configs: RoundConfig[]) {
   test.describe("offline vs bots — single round, reaches a result", () => {
     for (const config of configs) {
       test(config.name, async ({ page, baseURL, consoleErrors }) => {
-        // How long a hand takes here is decided by the deal, not by the app:
+        // How long a round takes here is decided by the deal, not by the app:
         // the bot never models card legality, it selects a candidate and reads
         // the real GIOCA button to find out (helpers/bot.ts), so a move costs
         // as many clicks as the deal makes it cost. Measured on one run each

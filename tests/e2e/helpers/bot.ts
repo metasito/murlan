@@ -74,7 +74,7 @@ export const NO_PROGRESS_YET: Progress = { held: null, stale: 0 };
 
 /**
  * Folds one new table state into the progress seen so far. Any move of the
- * total counts, including the deal that grows it again between hands: what a
+ * total counts, including the deal that grows it again between rounds: what a
  * game that cannot end never does is change it.
  */
 export function observeProgress(prev: Progress, desc: string): Progress {
@@ -132,7 +132,7 @@ export class SearchTimeoutError extends StuckError {}
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/tableA11y.ts
 // `describeTableForA11y`), with no notion of `roundOver` — so for one tick
-// after an opponent's move ends the game, the description can still read as
+// after an opponent's move ends the round, the description can still read as
 // "your turn" while the hand itself is already correctly disabled. A short
 // per-click timeout turns that harmless one-tick race into "this turn
 // evaporated, go round the loop again" instead of hanging until the test's
@@ -194,7 +194,7 @@ function rankIndex(cardLabel: string): number {
  * pattern misses it, which is right: everyone passed and the viewer now leads.
  *
  * Leading must stay exhaustive. The opening play of a match has to contain the
- * dealt start card specifically, so skipping any candidate there can skip the
+ * dealt opening card specifically, so skipping any candidate there can skip the
  * only legal move.
  */
 function tableSingleStrength(desc: string): number | null {
@@ -224,7 +224,7 @@ function requiredReplySize(desc: string): number | null {
  *
  * Singles are tried card by card, not one per rank: suit never affects a
  * single's legality except on the first play of a match, which must contain
- * the dealt start card — one representative per rank would miss it.
+ * the dealt opening card — one representative per rank would miss it.
  *
  * Cards are clicked by their accessibilityLabel, not by list position: the
  * hand re-renders (selection state, entrance/lift animations) between one
@@ -444,7 +444,7 @@ async function giveCandidateLabels(page: Page): Promise<string[]> {
 }
 
 /**
- * Gives back a card during the between-hands exchange (docs/GAME-RULES.md §10).
+ * Gives back a card during the between-rounds exchange (docs/GAME-RULES.md §10).
  *
  * Select-then-confirm: clicking a card only picks it, and the give happens on
  * the table's own GIOCA, which the exchange borrows (#533). Both clicks are
@@ -517,7 +517,7 @@ export interface DriveOptions {
  * identical to "still thinking" until you compare consecutive polls.
  */
 export async function driveGameToCompletion(page: Page, opts: DriveOptions): Promise<void> {
-  // A hand ends when someone runs out, so cards leaving hands is the only
+  // A round ends when someone runs out, so cards leaving hands is the only
   // progress there is. Legitimately it pauses for a round of passes and the
   // turn churn around it — a handful of states; this sits an order above that.
   const maxStatesWithoutProgress = opts.maxStatesWithoutProgress ?? 100;

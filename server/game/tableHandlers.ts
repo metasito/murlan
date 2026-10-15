@@ -16,17 +16,17 @@
 // circular import) → `playAction`/`passAction` here (`gameTurn.ts`
 // `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
 // `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
-// that ends the hand — `lib/game/gameEngine.ts` decides which one — takes a sixth
+// that ends the round — `lib/game/gameEngine.ts` decides which one — takes a sixth
 // file instead of `armTurn`: `roundOver.ts` `handleRoundOver`; a pass never
 // reaches it.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
 // `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
-// intent → `seatLostAction` here. Mid-hand, it arms a grace timer and, on
+// intent → `seatLostAction` here. Mid-round, it arms a grace timer and, on
 // expiry, calls `gameTurn.ts` `vacateSeat` and `dealIfSeatLeftGateClosed`
 // here directly — `vacateSeat` settles the departure itself, through a bot
 // takeover, `roundOver.ts` `voidAbandonedMatch`, or `gameTurn.ts`'s own
-// `concedeRound` into `roundOver.ts` `handleRoundOver`. Between hands it instead
+// `concedeRound` into `roundOver.ts` `handleRoundOver`. Between rounds it instead
 // arms `socketTable.ts` `armLobbyGrace`, whose own expiry (`handleSeatRelease`)
 // reaches the same `vacateSeat`/`dealIfSeatLeftGateClosed` pair through a
 // `vacate` intent routed back through `applyOrForward`, landing on the
@@ -34,7 +34,7 @@
 //
 // `roundOver.ts` `handleRoundOver` has more entry points than a play: an
 // AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
-// `vacateSeat`'s abandonment branch reach it too. Inside, it resolves the hand
+// `vacateSeat`'s abandonment branch reach it too. Inside, it resolves the round
 // through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
 // writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
 import type { ServerPayload } from "../../shared/protocol.ts";
@@ -161,7 +161,7 @@ export async function rehydrateGame(
   if (!restored.ok) {
     // Written under an older persisted shape, or holding a value the restore
     // path would carry straight into the engine. Restoring it deals a silently
-    // corrupt hand rather than crashing, which is worse than refusing outright.
+    // corrupt round rather than crashing, which is worse than refusing outright.
     logger.warn({ roomId, reason: restored.reason }, "Discarding unrestorable persisted game");
     disposeGame(roomId);
     return "unrestorable";
@@ -201,7 +201,7 @@ export async function rehydrateGame(
       teamOfKey: teamKeyMap(playerMap, restoredPlayers, new Map(restored.seats.vacatedSeats)),
       playerCount: restoredPlayers.length,
     }),
-    handFlags: restored.handFlags,
+    roundFlags: restored.roundFlags,
     abandonedSeats: new Map(restored.seats.abandonedSeats),
     botSeatsAtStart,
     releasedSeats: new Set(restored.seats.releasedSeats),
@@ -209,8 +209,8 @@ export async function rehydrateGame(
     weakSeats: new Set(restored.seats.weakSeats),
     endMatchVotes: new Set<string>(),
     spectators: new Set<string>(),
-    // The log is memory-only, so a hand restored after a restart produces no
-    // replay. The next hand starts a fresh one.
+    // The log is memory-only, so a round restored after a restart produces no
+    // replay. The next round starts a fresh one.
     moveLog: null,
     dealFirstSeat: restored.dealFirstSeat,
   };
@@ -616,7 +616,7 @@ async function rejoinAction(
 
 /**
  * The previous match's winner and loser, as engine ids of the roster about to
- * be dealt. A session lasts until the table breaks up (docs/GAME-RULES.md § Decisions), so
+ * be dealt. A table lasts until it breaks up (docs/GAME-RULES.md § Decisions), so
  * a new match at a standing table opens with the exchange rather than the 3♠.
  * Empty when there is nothing to carry: no previous match, a round nobody
  * played out, a match ended by the vote, or either seat no longer at the table
@@ -659,7 +659,7 @@ async function startMatchAction(
   // A live in-memory game is the authority on whether this room may deal:
   // `rooms.status` reads "finished" between the rounds of a running match as
   // well as after the last one, and it is written a moment *after* game:over
-  // reaches the clients, so it is stale exactly when a between-hands start
+  // reaches the clients, so it is stale exactly when a between-rounds start
   // arrives.
   const previous = activeGames.get(roomId);
 
@@ -777,7 +777,7 @@ async function startMatchAction(
     matchLength: matchLength ?? previous?.matchLength ?? "match",
     roundsPlayed: previous?.roundsPlayed ?? 0,
     matchOver: previous?.matchOver ?? false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map<number, string>(),
     botSeatsAtStart,
     releasedSeats: new Set<string>(),
@@ -829,7 +829,7 @@ async function startMatchAction(
  *
  * The decision needs the game, so it is made here rather than where the socket
  * dropped: on the instance that held no copy of the table, the same code read
- * a hand in progress as a waiting lobby and released the seat outright.
+ * a round in progress as a waiting lobby and released the seat outright.
  */
 async function seatLostAction(
   io: SocketServer,
@@ -872,7 +872,7 @@ function armSeatGrace(
   const username = seatName(game, seat);
 
   if (game.gameState.roundOver) {
-    // The lobby grace, not the disconnect one: a seat between hands counts
+    // The lobby grace, not the disconnect one: a seat between rounds counts
     // towards the rematch gate, so the table cannot wait a full minute on it.
     // Its expiry also asks the right question — back in *this* room, not
     // merely back online.
@@ -913,7 +913,7 @@ function armSeatGrace(
             )
           );
         await vacateSeat(io, roomId, userId, roundOverWriters);
-        // The hand may well have ended inside the grace, which puts this seat
+        // The round may well have ended inside the grace, which puts this seat
         // in the rematch tally it is now leaving.
         await dealIfSeatLeftGateClosed(io, roomId);
         logger.info({ userId, username, roomId }, "Disconnect grace expired — seat handed to a bot");

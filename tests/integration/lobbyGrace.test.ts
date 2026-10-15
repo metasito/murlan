@@ -186,7 +186,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     );
   });
 
-  test("starting mid-grace does not deal a hand to someone who is not there", async () => {
+  test("starting mid-grace does not deal a round to someone who is not there", async () => {
     const { host, guest, room } = await lobby("start");
 
     guest.socket.close();
@@ -203,7 +203,7 @@ describe("lobby disconnect grace", { skip: hasDatabase() ? false : skipMessage()
     );
     assert.ok(
       !state.players.some((p) => p.name === guest.user.username),
-      "and the seat they held must be a bot, not their name attached to a hand nobody plays"
+      "and the seat they held must be a bot, not their name attached to a round nobody plays"
     );
   });
 

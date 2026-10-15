@@ -4,7 +4,7 @@ import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 
 const base = { userId: "u1", placement: 1, playerCount: 4, playedBomb: false, playedJoker: false, matchWon: false, opponentsFinished: 3 };
 
-test("winning a hand unlocks first_win", () => {
+test("winning a round unlocks first_win", () => {
   assert.ok(evaluateAchievements(base).includes("first_win"));
 });
 

@@ -141,7 +141,7 @@ export const SEAT_COUNT_STATES: readonly CaptureState[] = [
 export const LINK_STATES: readonly CaptureState[] = [
   {
     id: "held",
-    label: "Your link down mid-hand — the whole table held in grey",
+    label: "Your link down mid-round — the whole table held in grey",
     playerCount: 4,
     turn: 1,
     side: "right",
@@ -217,7 +217,7 @@ function takeOfARank(deck: Card[], size: number): Combination | null {
 }
 
 /**
- * The table as a capture wants it: mid-hand, only the pile in flight, no deal
+ * The table as a capture wants it: mid-round, only the pile in flight, no deal
  * running, and the turn pinned where the state says.
  *
  * Pinned is the point. `app/game.tsx` runs the bot turn loop, so a seeded save
@@ -257,7 +257,7 @@ export function captureGameState(state: CaptureState): GameState {
     roundOver: false,
     finishingOrder,
     // Past the opening, so nothing waits on the 3 of spades and the table draws
-    // as a hand in progress rather than a first move.
+    // as a round in progress rather than a first move.
     firstPlayMade: true,
   };
 }

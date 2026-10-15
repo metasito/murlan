@@ -87,7 +87,7 @@ export function offlineGameSave(
       roundOver: false,
       finishingOrder: [],
       // Past the opening, so nothing is waiting on the 3 of spades and the
-      // table renders as a hand in progress rather than a first move.
+      // table renders as a round in progress rather than a first move.
       firstPlayMade: true,
     },
     match: {

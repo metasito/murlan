@@ -1,7 +1,7 @@
 // tests/bots/botPersonalities.test.ts — every personality must stay a legal, finite
 // player. The property test in tests/engine/enumerator.property.test.ts already proves
 // getAllValidPlays is complete; these prove the personality knobs never reach
-// outside it and never stall a hand.
+// outside it and never stall a round.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -105,7 +105,7 @@ function playOutRound(
     state = processPass(state);
   }
 
-  assert.ok(state.roundOver, `${personality} did not finish a hand in ${limit} turns`);
+  assert.ok(state.roundOver, `${personality} did not finish a round in ${limit} turns`);
   return turns;
 }
 
@@ -357,7 +357,7 @@ test("leading a round always produces a play, for every personality and hand siz
 // Every table above is a 4-seat free-for-all. The bot reads the opponent hand
 // counts and, in teams mode, its partner's seat, so neither the shorter table
 // nor the paired one is the same problem.
-test("every personality finishes a hand at 2 and 3 seats, and in teams mode", () => {
+test("every personality finishes a round at 2 and 3 seats, and in teams mode", () => {
   const shapes: [string, Parameters<typeof playOutRound>[2]][] = [
     ["2 seats", { seats: 2 }],
     ["3 seats", { seats: 3 }],

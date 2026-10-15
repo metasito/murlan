@@ -65,7 +65,7 @@ describe('CardView decorative', () => {
   });
 
   // A card with no onPress is information — the pile, or the card handed over
-  // between hands. Naming it is right; calling it a button offers an action
+  // between rounds. Naming it is right; calling it a button offers an action
   // that does not exist, and puts it in the button rotation of every screen
   // reader that has one.
   it('is not a button when it cannot be pressed', async () => {

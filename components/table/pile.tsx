@@ -394,9 +394,9 @@ export interface PileLayerProps {
   scale?: number;
   /** Out of the layout while something else holds the centre: plays at rest hide, and a play still moving keeps moving. */
   hidden?: boolean;
-  /** The whole pile's, for its fade before the next deal. */
+  /** The whole pile's, for its fade before the next round. */
   opacity?: SharedValue<number>;
-  /** The viewer won the round: the top play's top card is lit. */
+  /** The viewer won the trick: the top play's top card is lit. */
   lit?: boolean;
 }
 
@@ -577,7 +577,7 @@ export function getComboLabel(
 
 // ─── usePileFlight ────────────────────────────────────────────────────────────
 
-// How long the round-winner tag stays over the pile. A domain beat, not a
+// How long the trick-winner tag stays over the pile. A domain beat, not a
 // generic UI transition, so it is not a Motion token.
 const TRICK_WINNER_MS = 1800;
 
@@ -610,7 +610,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
 }
 
 /**
- * The flying card, the pile under it and the round-winner tag over it, derived
+ * The flying card, the pile under it and the trick-winner tag over it, derived
  * straight from the game state so a card can never be shown twice or dropped.
  * CLAUDE.md marks this load-bearing.
  */
@@ -645,9 +645,9 @@ export function usePileFlight({
   const { awaitFlight, moment, flightStarted, drop } = timeline;
   useTraceSource("flight", readFlightFromDom);
 
-  // The seat that took the last round and a counter of how many rounds have
+  // The seat that took the last trick and a counter of how many tricks have
   // closed. The counter is what makes an identical repeat a new announcement:
-  // the seat that wins a round leads the next one, so the same seat winning
+  // the seat that wins a trick leads the next one, so the same seat winning
   // twice running is ordinary play.
   const [trickWinnerTag, setTrickWinnerTag] = useState<{ seat: number; closure: number } | null>(
     null
@@ -661,7 +661,7 @@ export function usePileFlight({
   const touched = useRef(new Set<string>());
   const started = useRef(new Set<string>());
   // Non-null while the winning combination is being held on the felt under the
-  // round-winner tag. Its presence is what tells the pile effect the felt is
+  // trick-winner tag. Its presence is what tells the pile effect the felt is
   // spoken for.
   const trickHoldRef = useRef<{ timer: ReturnType<typeof setTimeout>; collect: () => void } | null>(
     null
@@ -701,7 +701,7 @@ export function usePileFlight({
   // re-run for one of the other dependencies leaves the pile, the flying card
   // and the pending impact exactly as they were.
   useEffect(() => {
-    // Clearing the felt and announcing a new round are one beat, whether it
+    // Clearing the felt and announcing a new trick are one beat, whether it
     // happens now or after the winning cards have been held.
     const openNewTrick = () => {
       playTrickStart();
@@ -814,9 +814,9 @@ export function usePileFlight({
     drop,
   ]);
 
-  // Round-winner tag over the pile, keyed on the round *closing* rather than on
+  // Trick-winner tag over the pile, keyed on the trick *closing* rather than on
   // the value of `trickWinner`: processPlay leaves that field standing through
-  // the round the winner goes on to lead, so with two players it never changes
+  // the trick the winner goes on to lead, so with two players it never changes
   // and every win after the first would go unannounced. The seat is what is
   // stored, not the name — the name is looked up at render, so a game update
   // that only changes the player list cannot restart the banner's own timers.
@@ -831,9 +831,9 @@ export function usePileFlight({
     setTrickWinnerTag((prev) => ({ seat, closure: (prev?.closure ?? 0) + 1 }));
   }, [lastPlayedCombination, trickWinner]);
 
-  // A round closes on a pass, never on a play, so the round-win sting is that
+  // A trick closes on a pass, never on a play, so the trick-win sting is that
   // closing pass's own event (useTableFeedback) and this tag is only the banner —
-  // the round-start sting is deferred for as long as it is up.
+  // the trick-start sting is deferred for as long as it is up.
   useEffect(() => {
     if (trickWinnerTag === null) return;
     const dismiss = setTimeout(() => setTrickWinnerTag(null), TRICK_WINNER_MS);

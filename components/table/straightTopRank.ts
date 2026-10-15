@@ -9,7 +9,7 @@ const FACE_VALUE_RANK: Record<number, string> = {
 
 /**
  * Renders a straight's `Combination.strength` — already the correct
- * top-of-sequence face value, ace-high-vs-ace-low resolved by
+ * top-of-straight face value, ace-high-vs-ace-low resolved by
  * `getStraightStrength` — back as a rank character, for the spoken top card.
  *
  * Taking `cards[cards.length - 1].rank` instead gets A-2-3-4-5 wrong: its top

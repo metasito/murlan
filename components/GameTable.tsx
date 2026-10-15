@@ -221,7 +221,7 @@ export interface TurnTimerConfig {
    */
   resetKey?: string;
   /**
-   * The viewer's own chip counts down while leading a new round too (seat rings
+   * The viewer's own chip counts down while leading a new trick too (seat rings
    * always do). False offline, no deadline; true online, armed every turn.
    */
   includeNewTrick?: boolean;
@@ -270,7 +270,7 @@ export interface GameTableProps {
    * for the same callers `matchOver` defaults false for: with no scores to
    * read, the sting simply stays silent rather than guessing.
    */
-  roundScores?: Record<string, number>;
+  placementPoints?: Record<string, number>;
   /**
    * The match's running points by engine player id, and the target they race to — what
    * the score pill shows. Absent in a replay. A `single` round shows the pill only as its board.
@@ -298,7 +298,7 @@ export interface GameTableProps {
   onExchangeReady?: () => void;
   /**
    * Present where a round ends on the table: the score pill's payoff runs, and this hears the
-   * landing that ended it, which the next deal is timed from (`RoundEnding.deal`).
+   * landing that ended it, which the next round is timed from (`RoundEnding.deal`).
    */
   onRoundLanded?: (landsAt: number) => void;
 
@@ -321,7 +321,7 @@ export interface GameTableProps {
   autoPassed?: number;
   /** The vote to end a match a seat has left, under the score pill (online only). */
   endMatchVote?: EndMatchVoteNote | null;
-  /** Present where the next deal waits on a vote: the round's ending holds the pill open with this at its foot. */
+  /** Present where the next round waits on a vote: the round's ending holds the pill open with this at its foot. */
   roundVote?: RoundVoteNote | null;
   /** The online connection, carried by the turn pill; the device being offline outranks it. Left out, the table needs no network and shows neither. */
   connection?: ConnectionNote | null;
@@ -352,7 +352,7 @@ export function GameTable({
   gameState,
   matchOver = false,
   matchWinners,
-  roundScores = {},
+  placementPoints = {},
   matchScore,
   matchActions,
   matchRating,
@@ -418,10 +418,10 @@ export function GameTable({
     exchangeAnnouncement?.visible !== true;
   const [openingSpent, setOpeningSpent] = useState(false);
   // Spent for this opening only, and cleared by the opening itself passing —
-  // the play that ends it, or the deal that replaces it. Online this component
+  // the play that ends it, or the round that replaces it. Online this component
   // is never unmounted between rounds, and nothing in the state names which
   // round is which, so a flag that outlived the opening would swallow the next
-  // one whenever two deals ran the same way.
+  // one whenever two rounds ran the same way.
   const [spentForPending, setSpentForPending] = useState(openingPending);
   if (openingPending !== spentForPending) {
     setSpentForPending(openingPending);
@@ -644,7 +644,7 @@ export function GameTable({
       players,
       teams: gameState.gameMode === "teams",
       scores: matchScore.scores,
-      roundScores,
+      placementPoints,
       finishingOrder: gameState.finishingOrder,
       viewerId: spectating ? undefined : viewer?.id,
     });
@@ -794,7 +794,7 @@ export function GameTable({
   const landingSignal = useSharedValue<LandingSignal>(NO_LANDING);
   const timeline = useTableTimeline();
   const isTeamMode = gameState.gameMode === "teams";
-  const outcome = roundOutcomeFor(players, gameState.finishingOrder, roundScores, viewer?.id, isTeamMode);
+  const outcome = roundOutcomeFor(players, gameState.finishingOrder, placementPoints, viewer?.id, isTeamMode);
   const matchOutcome = matchOutcomeFor(players, matchWinners ?? [], viewer?.id, isTeamMode);
   const {
     passaFlashStyle,
@@ -816,7 +816,7 @@ export function GameTable({
     finishingOrder: gameState.finishingOrder,
     players,
     isTeamMode,
-    roundScores,
+    placementPoints,
     viewerId: viewer?.id,
     scale,
     matchOver,
@@ -1046,7 +1046,7 @@ export function GameTable({
     });
 
   // Changes on every move and every pass, so the countdown restarts once per
-  // turn — including when the same seat leads a new round after winning one.
+  // turn — including when the same seat leads a new trick after winning one.
   const turnToken =
     `${gameState.currentTurnIndex}|${gameState.passCount}|` +
     (gameState.lastPlayedCombination

@@ -38,7 +38,7 @@ function fakePage(): Page {
   return { locator } as unknown as Page;
 }
 
-test("a game that keeps advancing without ever finishing is caught by maxTotalMs, not left to Playwright's own timeout", async () => {
+test("a match that keeps advancing without ever finishing is caught by maxTotalMs, not left to Playwright's own timeout", async () => {
   await assert.rejects(
     () =>
       driveGameToCompletion(fakePage(), {

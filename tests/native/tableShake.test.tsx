@@ -28,7 +28,7 @@ const idleState = () => ({
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: undefined,
   scale: 1,
   landing: makeMutable(NO_LANDING),

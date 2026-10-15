@@ -162,7 +162,7 @@ async function placements(): Promise<{ placement: number; n: number }[]> {
   return rows.rows;
 }
 
-/** 7. Started but never finished — rooms by status, and games left mid-hand. */
+/** 7. Started but never finished — rooms by status, and games left mid-round. */
 async function unfinished(): Promise<{ status: string; n: number }[]> {
   const rows = await db.execute<{ status: string; n: number }>(sql`
     SELECT status::text AS status, count(*)::int AS n

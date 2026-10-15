@@ -82,7 +82,7 @@ test("tables humans hold at least half of are recorded", () => {
   assert.equal(isContestedTable(2, 2), true); // two friends plus two bots
   assert.equal(isContestedTable(1, 1), true); // a straight duel with the bot
   assert.equal(isContestedTable(4, 0), true); // a full human table
-  assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-game
+  assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-match
 });
 
 // seatAssignmentsFromRoster is what startMatchAction actually calls to build

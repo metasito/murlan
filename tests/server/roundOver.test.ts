@@ -1,4 +1,4 @@
-// tests/server/roundOver.test.ts — what server/game/roundOver.ts does *around* the hand
+// tests/server/roundOver.test.ts — what server/game/roundOver.ts does *around* the round
 // resolution: the broadcast, the two awaited writes and the three
 // fire-and-forget ones.
 //
@@ -126,7 +126,7 @@ function makeGame(overrides: Partial<OnlineGameState> = {}): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 0,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set<number>(),
     releasedSeats: new Set<string>(),
@@ -166,7 +166,7 @@ describe("handleRoundOver — the broadcast", () => {
     assert.deepEqual(
       s.emitted.map((e) => e.event),
       ["game:round_over"],
-      "one hand, one game:over"
+      "one round, one game:over"
     );
     assert.equal(s.emitted[0].room, ROOM);
   });
@@ -211,7 +211,7 @@ describe("handleRoundOver — the broadcast", () => {
     ]);
   });
 
-  test("game:over carries each rated seat's rating after the hand beside its delta", async () => {
+  test("game:over carries each rated seat's rating after the round beside its delta", async () => {
     const s = stubServer();
     const writers = {
       ...s.writers,
@@ -312,7 +312,7 @@ describe("handleRoundOver — the writes", () => {
     // nothing else, so one instant reaching all three writes is the whole of
     // what makes that pairing exact rather than approximate (#739).
     assert.ok(historyFinishedAt instanceof Date);
-    assert.equal(historyFinishedAt, rated[2], "the ladder is stamped with the hand's own clock");
+    assert.equal(historyFinishedAt, rated[2], "the ladder is stamped with the round's own clock");
     assert.equal(
       (s.of("saveReplay")[0].args[0] as { finishedAt: Date }).finishedAt,
       historyFinishedAt,
@@ -354,7 +354,7 @@ describe("handleRoundOver — the writes", () => {
     assert.deepEqual(s.names(), ["updateRoomStatus", "persistGameState"]);
   });
 
-  test("a hand with no move log writes no replay", async () => {
+  test("a round with no move log writes no replay", async () => {
     const noLog = stubServer();
     await handleRoundOver(noLog.io, ROOM, makeGame({ moveLog: null }), noLog.writers);
     assert.deepEqual(noLog.of("saveReplay"), []);
@@ -422,7 +422,7 @@ describe("handleRoundOver — the ladder and history chain", () => {
     );
   });
 
-  test("a hand's writes wait for the previous hand's to settle", async () => {
+  test("a round's writes wait for the previous round's to settle", async () => {
     const s = stubServer();
     const finished: string[] = [];
     let releaseFirst!: () => void;
@@ -430,15 +430,15 @@ describe("handleRoundOver — the ladder and history chain", () => {
     const writers = {
       ...s.writers,
       recordGameResult: (...args: unknown[]) => {
-        const hand = ++calls;
+        const nth = ++calls;
         void s.writers.recordGameResult(...(args as Parameters<RoundOverWriters["recordGameResult"]>));
-        if (hand > 1) {
-          finished.push("hand 2");
+        if (nth > 1) {
+          finished.push("round 2");
           return Promise.resolve();
         }
         return new Promise<void>((resolve) => {
           releaseFirst = () => {
-            finished.push("hand 1");
+            finished.push("round 1");
             resolve();
           };
         });
@@ -450,13 +450,13 @@ describe("handleRoundOver — the ladder and history chain", () => {
     await handleRoundOver(s.io, ROOM, game, writers);
     await new Promise((r) => setImmediate(r));
 
-    assert.equal(s.of("recordGameResult").length, 1, "hand 2 has not started while hand 1 is pending");
+    assert.equal(s.of("recordGameResult").length, 1, "round 2 has not started while round 1 is pending");
     assert.equal(s.of("recordRatedResult").length, 1);
 
     releaseFirst();
     await game.resultWrites;
 
-    assert.deepEqual(finished, ["hand 1", "hand 2"]);
+    assert.deepEqual(finished, ["round 1", "round 2"]);
     assert.equal(s.of("recordRatedResult").length, 2);
   });
 });

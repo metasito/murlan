@@ -21,7 +21,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { roundScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; ownLink?: OwnLink };
+type Extra = { placementPoints?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; ownLink?: OwnLink };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -39,7 +39,7 @@ const human = (turn: number, exchange = false): GameState => ({
 
 const table = (s: GameState, x: Extra = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} roundScores={{}} {...x} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} placementPoints={{}} {...x} />
   </SafeAreaProvider>
 );
 
@@ -73,7 +73,7 @@ async function roundEnd(x: (last: GameState) => Extra): Promise<string[]> {
   const last = states[states.length - 1];
   const scores = Object.fromEntries(last.finishingOrder.map((id, i) => [id, i]));
   return heard(table(states[states.length - 2]), async (r) => {
-    await act(async () => r.rerender(table(last, { roundScores: scores, ...x(last) })));
+    await act(async () => r.rerender(table(last, { placementPoints: scores, ...x(last) })));
   });
 }
 

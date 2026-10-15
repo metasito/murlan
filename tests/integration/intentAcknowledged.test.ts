@@ -90,7 +90,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     return { ...leader, waiting: leads ? b : a };
   }
 
-  /** A host alone at a two-seat table, with a bot for company, mid-hand. */
+  /** A host alone at a two-seat table, with a bot for company, mid-round. */
   async function table(tag: string) {
     const host = await player(tag);
     const made = waitFor<RoomState>(host.socket, "room:state");
@@ -154,7 +154,7 @@ describe("an intent is acknowledged", { skip: hasDatabase() ? false : skipMessag
     assert.notEqual(second, null, "the duplicate is answered too, not left hanging");
 
     const finalState = await settled;
-    assert.ok(finalState, "the table reported the hand back");
+    assert.ok(finalState, "the table reported the round back");
     const after = finalState.players[finalState.viewerSeatIndex];
     assert.ok(after);
     assert.equal(

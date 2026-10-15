@@ -213,14 +213,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(before?.matchOver, false, "one round of a 21-point match settles nothing");
 
     const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
-    // The payload a losing host would send: convert the match into a one-hand
+    // The payload a losing host would send: convert the match into a one-round
     // shootout and re-deal it without the exchange.
     mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
     assert.equal((await refused).code, "MATCH_IN_PROGRESS");
     assert.deepEqual(
       matchSnapshot(room.roomId),
       before,
-      "a refused room:start must leave the format, target, scores and hand exactly as they were"
+      "a refused room:start must leave the format, target, scores and round exactly as they were"
     );
 
     // The one path that may deal it, still dealing it properly.
@@ -240,7 +240,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([nadia, omar], 2);
 
     // `matchLength: "single"` ends the match with the first round, so what
-    // follows is a genuinely new match rather than the next hand of this one.
+    // follows is a genuinely new match rather than the next round of this one.
     roundOverOf(
       await driveRoundToExchangeOrOver([nadia, omar], () => {
         nadia.socket.emit("room:start", { matchLength: "single" });

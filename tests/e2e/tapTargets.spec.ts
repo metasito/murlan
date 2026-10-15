@@ -402,7 +402,7 @@ for (const size of SIZES.filter((s) => s.width > s.height)) {
   });
 }
 
-// After an online hand: tapTargetsOnlineHand.spec.ts.
+// After an online round: tapTargetsOnlineRound.spec.ts.
 
 // UI-01: a plain View with no ScrollView/maxHeight overflowed the backdrop on
 // any viewport shorter than ~725pt — every phone in landscape, an iPhone SE

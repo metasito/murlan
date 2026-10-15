@@ -84,9 +84,9 @@ export const AWAY_WINDOW_MS = { floor: 200, spread: 600 };
 /**
  * The grace a seat dropped by the chaos below is actually held for.
  *
- * A drop always starts mid-hand — the chaos only runs while the hand is live — so
- * `seatLostAction` arms `disconnectGraceMs()`. But the hand can end while the seat is away,
- * and a seat between hands is held by `lobbyGraceMs()` instead: that is the window #736
+ * A drop always starts mid-round — the chaos only runs while the round is live — so
+ * `seatLostAction` arms `disconnectGraceMs()`. But the round can end while the seat is away,
+ * and a seat between rounds is held by `lobbyGraceMs()` instead: that is the window #736
  * lived in. Whichever is shorter is the one that can expire first.
  */
 export const heldSeatGraceMs = () => Math.min(disconnectGraceMs(), lobbyGraceMs());
@@ -632,7 +632,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
     }
 
-    // The last broadcast of a hand has no successor to correct it, so a view
+    // The last broadcast of a round has no successor to correct it, so a view
     // captured before the table went quiet is exactly the one worth checking.
     await settle(seats);
     const finalViews = seats.map((s) => s.view()).filter((v): v is SeatView => v !== null);

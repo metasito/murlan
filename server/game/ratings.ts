@@ -68,7 +68,7 @@ async function currentRow(
 }
 
 /**
- * Which seats this hand actually rates, re-ranked so a dropped account closes
+ * Which seats this round actually rates, re-ranked so a dropped account closes
  * the gap it leaves. Shared by the preview and the write so the two cannot
  * disagree about who is in the table.
  */
@@ -109,12 +109,12 @@ async function ratedSeatsOf(
 }
 
 /**
- * What this hand is about to do to each seat's rating, read before the write
+ * What this round is about to do to each seat's rating, read before the write
  * and before `game:round_over` goes out.
  *
  * The delta cannot be recovered afterwards: `user_ratings` keeps only the
- * current rating, while `ratingDeltas()` needs every seat's rating and game
- * count as they were *before* the hand. This is the only moment it exists, so
+ * current rating, while `ratingDeltas()` needs every seat's rating and round
+ * count as they were *before* the round. This is the only moment it exists, so
  * it is read here and carried — one query, on a path that already awaits
  * several, and no client waits on the write that follows.
  *
@@ -143,10 +143,10 @@ export async function previewRatedDeltas(
 /**
  * Applies one round's result to the ladder. Drops bots itself by the same
  * `bot:<seat>` convention scoring uses, so no caller has to reverse-map a score
- * key back to a seat. Free-for-all only — a teams placement belongs to the pair.
+ * key back to a seat. Free-for-all only — a teams placement belongs to the team.
  *
- * One transaction, so a hand moves every seat or none. Which is why the seats
- * are checked against `users` first: an account deleted mid-hand still holds a
+ * One transaction, so a round moves every seat or none. Which is why the seats
+ * are checked against `users` first: an account deleted mid-round still holds a
  * seat, and its foreign key would abort everyone else's rating with it.
  *
  * Returns the deltas it committed, empty when it rated nobody.
@@ -161,7 +161,7 @@ export async function recordRatedResult(
   return db.transaction(async (tx) => {
     // Resolved inside the transaction and under every seat's row lock, not
     // taken from the preview: the absolute values written below are only
-    // right if no other hand's write lands between this read and them.
+    // right if no other round's write lands between this read and them.
     await lockUsers(tx, ratedFinishers(seatResults).map((f) => f.userId));
     const seats = await ratedSeatsOf(seatResults, gameMode, season, tx);
     if (seats.length < 2) return new Map<string, number>();

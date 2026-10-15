@@ -68,7 +68,7 @@ const table = (gameState: GameState, matchOver: boolean) => (
 
 const players: Player[] = [seat("player_0", "Ana"), seat("player_1", "Besi")];
 
-/** A play that lands without closing anything — the round stays open. */
+/** A play that lands without closing anything — the trick stays open. */
 const inPlay = (combo: Combination): GameState => ({
   players,
   currentTurnIndex: 0,

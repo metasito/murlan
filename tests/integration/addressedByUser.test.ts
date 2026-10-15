@@ -99,7 +99,7 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
 
     assert.ok(
       state.players.some((p) => p.name === guest.user.username),
-      "the account was dealt into the hand"
+      "the account was dealt into the round"
     );
     assert.ok(state.viewerSeatIndex >= 0, "and was shown it, on the socket it is holding");
   });
@@ -110,7 +110,7 @@ describe("a message for a person", { skip: hasDatabase() ? false : skipMessage()
    * means a single miss strands the player: no cards, and no record that the
    * room went in-progress, so nothing to rejoin with either.
    */
-  test("the room is told it started, so no player depends on their own copy of the hand", async () => {
+  test("the room is told it started, so no player depends on their own copy of the round", async () => {
     const { host, guest } = await lobby("started");
 
     // Not merely the next `room:state`: the guest's copy of the join broadcast

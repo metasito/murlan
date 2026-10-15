@@ -9,7 +9,7 @@ export function ComboMark({ label, scale }: { label: string; scale: number }) {
   );
 }
 
-/** The seat that took the round, over the pile. */
+/** The seat that took the trick, over the pile. */
 export function TrickWinnerMark({ name, scale }: { name: string; scale: number }) {
   return (
     <TableNotice kind="trickWinner" tone="lit" scale={scale}>

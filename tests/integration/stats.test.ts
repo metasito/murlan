@@ -115,7 +115,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * no key, and before #739 the only correlation available was "written within
    * a few milliseconds of each other".
    */
-  test("the history view names the table and pairs each hand to its replay", async () => {
+  test("the history view names the table and pairs each round to its replay", async () => {
     const cara = await connectAs(server, "view_cara");
     const dan = await connectAs(server, "view_dan");
     try {
@@ -182,7 +182,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * with no replay however recently it was played. That is the same shape as a
    * replay that has expired, which is what the card already has to render.
    */
-  test("a hand with no paired replay is listed, unwatchable, with its bot seats unnamed", async () => {
+  test("a round with no paired replay is listed, unwatchable, with its bot seats unnamed", async () => {
     const { user } = await register(server, "view_unpaired");
     await dbPool.query(
       `INSERT INTO round_history (user_id, finished_at, game_mode, placement, player_count, points, opponents)
@@ -201,12 +201,12 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
-   * Leaving a hand in progress used to produce no record at all for the
+   * Leaving a round in progress used to produce no record at all for the
    * leaver: their seat drops out of `playerMap`, after which it scores as
-   * `bot:<seat>` and every write here filters it out. A losing hand cost
+   * `bot:<seat>` and every write here filters it out. A losing round cost
    * nothing to walk away from.
    */
-  test("a player who leaves mid-hand is recorded as a last-place finish and earns nothing", async () => {
+  test("a player who leaves mid-round is recorded as a last-place finish and earns nothing", async () => {
     const clients = [];
     for (const name of ["quit_ada", "quit_bea", "quit_cleo", "quit_dora"]) {
       clients.push(await connectAs(server, name));
@@ -226,7 +226,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       leaver.socket.emit("room:start");
       await Promise.all(dealt);
 
-      // A bot takes the empty seat, so the hand reaches game over the ordinary
+      // A bot takes the empty seat, so the round reaches game over the ordinary
       // way and the seat that was walked out on is scored inside it.
       await driveHumansToRoundOver(
         stayers.map((c) => c.socket),
@@ -247,33 +247,33 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
         "SELECT rounds_played, rounds_won, current_streak FROM user_stats WHERE user_id = $1",
         [leaver.user.id]
       );
-      assert.equal(Number(stats.rows[0].rounds_played), 1, "the hand counts as played");
+      assert.equal(Number(stats.rows[0].rounds_played), 1, "the round counts as played");
       assert.equal(Number(stats.rows[0].rounds_won), 0);
       assert.equal(Number(stats.rows[0].current_streak), 0, "and it breaks the streak");
 
       // Written in the same transaction as the history row above, so this read
-      // is not a race: the hand's achievements have already had their chance.
+      // is not a race: the round's achievements have already had their chance.
       const unlocked = await dbPool.query(
         "SELECT achievement_id FROM user_achievements WHERE user_id = $1",
         [leaver.user.id]
       );
-      assert.deepEqual(unlocked.rows, [], "nothing is earned from a hand you walked out on");
+      assert.deepEqual(unlocked.rows, [], "nothing is earned from a round you walked out on");
     } finally {
       clients.forEach((c) => c.socket.close());
     }
   });
 
   /**
-   * The walkout is last, and every seat that played the hand out keeps the
+   * The walkout is last, and every seat that played the round out keeps the
    * position it earned — one total order, so no two seats share a number.
    * The bot that inherits a vacated seat routinely finishes ahead of a player
    * who stayed, and placing the walkout last while everyone else is numbered
-   * by their own ranking index hands the same placement to two seats. Nothing
+   * by their own finishing-order index hands the same placement to two seats. Nothing
    * refuses that: round_history stores it verbatim, and lib/game/rating.ts breaks
    * the tie by sorting, which rates the quitter ahead of the player they tied
    * with.
    */
-  test("every seat of a hand someone walked out on gets a distinct placement", async () => {
+  test("every seat of a round someone walked out on gets a distinct placement", async () => {
     const clients: Awaited<ReturnType<typeof connectAs>>[] = [];
     for (const name of ["dist_ada", "dist_bea", "dist_cleo", "dist_dora"]) {
       clients.push(await connectAs(server, name));
@@ -323,10 +323,10 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
   });
 
   /**
-   * The gate that decides whether a hand is recorded at all counts an
+   * The gate that decides whether a round is recorded at all counts an
    * abandoned seat as the human seat it is. A two-human table filled to four
    * with bots is contested; counting the seat someone walked out on as a
-   * third bot makes it bot-majority and drops every write — losing the hand
+   * third bot makes it bot-majority and drops every write — losing the round
    * for the player who stayed, in the one case the gate exists to protect.
    *
    * #850 clause 11 (docs/GAME-RULES.md § Decisions) voids a match abandoned before its
@@ -335,7 +335,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * for real, then abandoning the second, is what keeps this test honest
    * about the thing it is pinning.
    */
-  test("a hand on a half-bot table is still recorded when a human walks out", async () => {
+  test("a round on a half-bot table is still recorded when a human walks out", async () => {
     const stayer = await connectAs(server, "half_ilir");
     const leaver = await connectAs(server, "half_jeta");
     try {
@@ -358,11 +358,11 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       leaver.socket.emit("game:rematch_vote");
       await nextDeal;
 
-      // One human left at the table: the hand is conceded to them there and
+      // One human left at the table: the round is conceded to them there and
       // then, and the walkout is scored inside it.
       leaver.socket.emit("room:leave");
 
-      // Two rounds, two rows each by now — the first hand, played out fairly,
+      // Two rounds, two rows each by now — the first round, played out fairly,
       // already wrote one row per user before the walkout below could. Only
       // the latest row per user is the one the walkout wrote.
       // One statement, so the count and the latest row come from one snapshot: each seat commits in its own transaction.
@@ -383,7 +383,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       );
 
       const rowOf = (id: string) => rows.find((r) => r.user_id === id)!;
-      assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the hand");
+      assert.equal(Number(rowOf(stayer.user.id).placement), 1, "the player left at the table takes the round");
       assert.equal(Number(rowOf(leaver.user.id).placement), 4, "the walkout is last of four seats");
       assert.equal(Number(rowOf(stayer.user.id).player_count), 4);
     } finally {
@@ -421,7 +421,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     // 52 separate hands for the same user — well past the 50-row cap, and
     // repeated enough that a non-idempotent achievement insert would throw
     // on the composite primary key long before this loop finishes.
-    // A distinct end time per hand, as real play gives them: the prune keeps
+    // A distinct end time per round, as real play gives them: the prune keeps
     // the newest 50 by `finishedAt`, so 52 rows sharing one instant would
     // leave which two go entirely to the database's discretion.
     const firstFinishedAt = Date.now() - 52 * 60_000;
@@ -488,7 +488,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
     );
     assert.equal(rows.rowCount, MAX_HISTORY_ROWS_PER_USER);
     const kept = rows.rows.map((r) => Number(r.ms));
-    for (const end of ends) assert.ok(kept.includes(end.getTime()), `the hand ending ${end.toISOString()} was pruned`);
+    for (const end of ends) assert.ok(kept.includes(end.getTime()), `the round ending ${end.toISOString()} was pruned`);
     const stats = await dbPool.query("SELECT rounds_played FROM user_stats WHERE user_id = $1", [user.id]);
     assert.equal(Number(stats.rows[0].rounds_played), 2);
   });

@@ -35,7 +35,7 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 1,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),

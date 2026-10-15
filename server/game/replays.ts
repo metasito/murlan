@@ -14,7 +14,7 @@ const ownedBy = (userId: string) =>
   sql`${roundReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
 
 /**
- * `seats[].name` is a copy taken when the hand ended, so a rename never reaches
+ * `seats[].name` is a copy taken when the round ended, so a rename never reaches
  * it and a departed player's own erasure has to. Whoever the seat still names
  * is asked for live; a seat behind no account — a bot, or a deleted one — keeps
  * what was stored.
@@ -61,7 +61,7 @@ export async function listReplaysForUser(userId: string): Promise<ReplaySummary[
       finishedAt: roundReplays.finishedAt,
       gameMode: roundReplays.gameMode,
       seats: roundReplays.seats,
-      // The list shows how long the hand was, not what was played: one round
+      // The list shows how long the round was, not what was played: one round
       // is ~9 KB of jsonb, so twenty of them are most of this response and all
       // of it is discarded. Postgres counts them instead.
       moveCount: sql<number>`jsonb_array_length(${roundReplays.moves})`,

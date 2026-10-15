@@ -771,7 +771,7 @@ export const StraightHand = React.memo(function StraightHand({
   );
 
   // Armed while the hand is empty, so the render on which a hand appears —
-  // the start of a game, or of the next one after a rematch — is the render
+  // the start of a match, or of the next one after a rematch — is the render
   // whose cards mount staggered. A single card arriving later (the exchange
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);

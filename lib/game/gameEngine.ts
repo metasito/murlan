@@ -87,8 +87,8 @@ export interface GameState {
   lastPlayedCombination: Combination | null;
   /**
    * Who made the play on the table. `processPass` clears the combination when a
-   * round closes but leaves this naming that round's winner, so it answers "who
-   * holds the round" only while `lastPlayedCombination` is set.
+   * trick closes but leaves this naming that trick's winner, so it answers "who
+   * holds the trick" only while `lastPlayedCombination` is set.
    */
   lastPlayedBy: number;
   passCount: number;
@@ -105,7 +105,7 @@ export interface GameState {
    * `getRankStrength`. Public information — every seat watched them land — so
    * `sanitizeStateForPlayer` passes it through untouched.
    *
-   * Optional because `GameState` is persisted as jsonb: a hand in flight across
+   * Optional because `GameState` is persisted as jsonb: a round in flight across
    * a deploy rehydrates without it, and a bot reading an absent tally must play
    * exactly as it did before the tally existed.
    */
@@ -145,13 +145,13 @@ export function getStraightFaceValue(rank: Rank, aceAsHigh: boolean): number | n
 }
 
 // A straight is 5..13 cards. The rules impose no maximum beyond the 13
-// distinct sequence positions available (the Ace picks one end, never both).
+// distinct straight positions available (the Ace picks one end, never both).
 export const STRAIGHT_MIN_LEN = 5;
 export const STRAIGHT_MAX_LEN = 13;
 
-// Jokers are never part of a sequence, so there is no joker substitution here:
+// Jokers are never part of a straight, so there is no joker substitution here:
 // the face values must be exactly `totalLen` strictly consecutive integers.
-function isConsecutiveSequence(faceValues: number[], totalLen: number): boolean {
+function isConsecutiveRanks(faceValues: number[], totalLen: number): boolean {
   if (faceValues.length !== totalLen) return false;
   const sorted = [...faceValues].sort((a, b) => a - b);
   for (let i = 1; i < sorted.length; i++) {
@@ -169,7 +169,7 @@ function isStraight(cards: Card[]): boolean {
     const faceValues = cards
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (isConsecutiveSequence(faceValues, cards.length)) return true;
+    if (isConsecutiveRanks(faceValues, cards.length)) return true;
   }
   return false;
 }
@@ -181,7 +181,7 @@ function getStraightStrength(cards: Card[]): number {
     const faceValues = cards
       .map((c) => getStraightFaceValue(c.rank, aceAsHigh))
       .filter((v): v is number => v !== null);
-    if (!isConsecutiveSequence(faceValues, cards.length)) continue;
+    if (!isConsecutiveRanks(faceValues, cards.length)) continue;
 
     if (faceValues.length === 0) return 0;
     const sorted = [...faceValues].sort((a, b) => a - b);
@@ -318,11 +318,11 @@ export function sortHand(hand: Card[]): Card[] {
 }
 
 /**
- * The holder of the 3♠ opens the first hand and must include it in the play.
+ * The holder of the 3♠ opens the first round and must include it in the play.
  * At 3 and 4 players the whole deck is dealt, so the 3♠ is always in
  * somebody's hand. At 2 players it can land in the undealt pile (§ dealCards)
  * — the "lowest card held by anyone" fallback below is what actually opens
- * those hands, not just a defensive backstop.
+ * those rounds, not just a defensive backstop.
  *
  * The synthesised-3♠ fallback below it exists only so a fully empty deal can
  * never crash.
@@ -501,7 +501,7 @@ export function getAllValidPlays(
   }
 
   // ── Straights ───────────────────────────────────────────────────────────
-  // Enumerate by sequence position, not by slicing a sorted array: a duplicate
+  // Enumerate by straight position, not by slicing a sorted array: a duplicate
   // rank in the span would poison every window containing it, hiding legal
   // straights such as 3-4-5-6-7 within 3,4,5,5,6,7.
   //
@@ -570,7 +570,7 @@ function* enumerateStraightWindows(cards: Card[]): Generator<Card[][]> {
 }
 
 /**
- * Picks one card per sequence position. `requireCard` (the forced 3♠ opening)
+ * Picks one card per straight position. `requireCard` (the forced 3♠ opening)
  * wins its position outright. Otherwise a mixed-suit selection is preferred so
  * the play is a plain straight; the all-one-suit variants are produced by the
  * per-suit royal pass instead.
@@ -601,10 +601,10 @@ function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
 // ─── Game state processing ────────────────────────────────────────────────────
 
 /**
- * Places the one seat still holding cards when the hand ends
+ * Places the one seat still holding cards when the round ends
  * (docs/GAME-RULES.md §9) as last. Every seat must end up in `finishingOrder`: the
  * scoreboard awards from it and the stats writer records from it, so a missing
- * seat is a player who silently played no game. Mutates `state` — callers hold
+ * seat is a player who silently played no round. Mutates `state` — callers hold
  * a clone.
  */
 function placeLastSeat(state: GameState): void {
@@ -625,7 +625,7 @@ function placeLastSeat(state: GameState): void {
  * against. What it can check is that the seat on move holds what it is
  * playing, that the shape it claims is the shape its own cards actually form,
  * that the play beats the table, and — on the very first play of the match —
- * that it is the 3♠ (docs/GAME-RULES.md §4). Leading a fresh round otherwise
+ * that it is the 3♠ (docs/GAME-RULES.md §4). Leading a fresh trick otherwise
  * passes — there is nothing to beat, and `canPlay` says so.
  *
  * `combination.type`/`.strength` are re-derived from `.cards` rather than
@@ -712,7 +712,7 @@ export function processPlay(state: GameState, combination: Combination): GameSta
 }
 
 /**
- * Consecutive passes that close a round: every OTHER player still holding
+ * Consecutive passes that close a trick: every OTHER player still holding
  * cards. A last player who has gone out is no longer among them, so every
  * remaining active player must be given a chance to answer — hence no −1
  * there. `lib/game/replay.ts` reads the same threshold to fold a stored log back
@@ -723,7 +723,7 @@ export function passesToCloseTrick(activeCount: number, lastPlayerStillActive: b
 }
 
 export function processPass(state: GameState): GameState {
-  // A player leading a new round must play something — passing is not a legal
+  // A player leading a new trick must play something — passing is not a legal
   // move for them. The engine is the server-authoritative path, so it refuses
   // here rather than relying on the UI. State is returned untouched.
   if (state.exchangePhase?.active) return state;
@@ -973,8 +973,8 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
  * deal of a match starts it false; a round dealt after a lost round carries
  * it already true. What every deal empties and every play writes is the rank
  * tally, so an empty one is the state's own word for "nobody has played this
- * round yet". A hand persisted before the tally existed has none, and reads as
- * past its opening: a missing announcement costs less than one over a live hand.
+ * round yet". A round persisted before the tally existed has none, and reads as
+ * past its opening: a missing announcement costs less than one over a live round.
  *
  * True during the round-winner's exchange choice only by accident of index —
  * `currentTurnIndex` still names the exchange's actor there, which for
@@ -1012,9 +1012,9 @@ export const TEAMS_PLAYER_COUNT = 4;
 
 /**
  * The team a seat plays for. Partners sit opposite each other, so the teams
- * alternate around the table. Undefined for every game that is not a teams
- * game of exactly `TEAMS_PLAYER_COUNT` seats — an odd table has no 2-v-2 to
- * split into, and `resolveTeamMatch` would race a pair against a single seat.
+ * alternate around the table. Undefined for every match that is not a teams
+ * match of exactly `TEAMS_PLAYER_COUNT` seats — an odd table has no 2-v-2 to
+ * split into, and `resolveTeamMatch` would race a team against a single seat.
  */
 export function teamForSeat(
   seat: number,
@@ -1057,7 +1057,7 @@ export function initializeGame(
   firstSeat = 0,
   /**
    * The deal, when the caller already has one. `shuffleDeck` draws from
-   * `crypto`, so a hand that has already been played can only be rebuilt by
+   * `crypto`, so a round that has already been played can only be rebuilt by
    * handing the cards back in — which is what replaying a soak log is
    * (`tests/integration/soakLogReplays.test.ts`). Everything downstream of the
    * deal, the opening seat included, is derived here either way.
@@ -1111,12 +1111,12 @@ export function initializeGame(
 
 // ─── Match scoring ────────────────────────────────────────────────────────────
 // Pure, side-effect-free primitives. The server owns the cumulative totals and
-// the persistence; this module only says what a hand is worth and whether the
+// the persistence; this module only says what a round is worth and whether the
 // match is over.
 
 /**
  * Match point targets, in escalation order. The match is won by the first
- * player to reach the current target; if two or more reach it in the same hand
+ * player to reach the current target; if two or more reach it in the same round
  * the target escalates to the next entry. 51 is the last one — a tie there is
  * a draw.
  */
@@ -1148,7 +1148,7 @@ export interface MatchResolution {
 }
 
 /**
- * Points awarded for one hand. 4 players: 1st = 3, 2nd = 2, 3rd = 1, last = 0.
+ * Points awarded for one round. 4 players: 1st = 3, 2nd = 2, 3rd = 1, last = 0.
  * Generalised to N players as N-1 down to 0.
  *
  * `finishingOrder` is the finishing order (GameState.finishingOrder), best first. Players
@@ -1165,13 +1165,13 @@ export function scoreRound(
   return scores;
 }
 
-/** Adds a hand's points onto the running totals. Returns a new object. */
-export function addRoundScores(
+/** Adds a round's points onto the running totals. Returns a new object. */
+export function addPlacementPoints(
   cumulative: Record<string, number>,
-  roundScores: Record<string, number>
+  placementPoints: Record<string, number>
 ): Record<string, number> {
   const merged: Record<string, number> = { ...cumulative };
-  for (const [id, points] of Object.entries(roundScores)) {
+  for (const [id, points] of Object.entries(placementPoints)) {
     merged[id] = (merged[id] ?? 0) + points;
   }
   return merged;
@@ -1183,7 +1183,7 @@ export function nextMatchTarget(target: number, playerCount = 4): number | null 
 }
 
 /**
- * Decides the state of the match after a hand has been scored.
+ * Decides the state of the match after a round has been scored.
  *
  * - Nobody at the target yet          → null (keep playing to the same target)
  * - Exactly one player at the target  → { winners: [id], newTarget: null }
@@ -1220,7 +1220,7 @@ export function resolveMatch(
  *
  * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
  * it are ignored entirely — that is how vacated/bot seats stay out of a team
- * total, mirroring `FoldRoundInput.accumulates` on the per-hand path.
+ * total, mirroring `FoldRoundInput.accumulates` on the per-round path.
  */
 export function aggregateTeamScores(
   cumulative: Record<string, number>,
@@ -1235,7 +1235,7 @@ export function aggregateTeamScores(
 
 /**
  * Teams-mode match resolution. GAME-RULES.md §11: the partners' placement points are
- * **summed** and the pair races to the target — never decided per seat.
+ * **summed** and the team races to the target — never decided per seat.
  * Escalation and the draw rule apply to team totals, and winners expand back to
  * every member key so both partners are reported.
  */
@@ -1245,12 +1245,12 @@ export function resolveTeamMatch(
   target: number,
   playerCount = 4,
   /** Keys that may be named among the winners; a departed partner's points
-   *  still count for the pair (docs/GAME-RULES.md § Decisions) but the seat is never
+   *  still count for the team (docs/GAME-RULES.md § Decisions) but the seat is never
    *  crowned. */
   nameable: (key: string) => boolean = () => true
 ): MatchResolution | null {
   const totals = aggregateTeamScores(cumulative, teamOfKey);
-  // The ladder is the seated table's, not the two teams' — a pair races to the
+  // The ladder is the seated table's, not the two teams' — a team races to the
   // four-seat target on the six points a four-seat round pays out.
   const resolution = resolveMatch(totals, target, playerCount);
   if (!resolution) return null;
@@ -1306,7 +1306,7 @@ export interface FoldRoundInput {
    * `single` length, or of the match in `match` length. Defaults to
    * `accumulates`. The server splits the two: a vacated seat's points join
    * the running total (docs/GAME-RULES.md § Decisions, the disconnect policy) so the
-   * standings sum to the hands played, but the seat itself must still never
+   * standings sum to the rounds played, but the seat itself must still never
    * be crowned — the departed human left nobody behind to claim it.
    */
   winEligible?: (key: string) => boolean;
@@ -1314,7 +1314,7 @@ export interface FoldRoundInput {
   teamOf?: Record<string, string>;
   /**
    * Keys holding points a seat won before its player left. They still count
-   * for that player's pair (docs/GAME-RULES.md § Decisions) and can never be named a
+   * for that player's team (docs/GAME-RULES.md § Decisions) and can never be named a
    * winner — the person behind them is gone. Defaults to none.
    */
   frozenKeysOf?: (engineId: string) => string[];
@@ -1359,9 +1359,9 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
   for (const [key, points] of Object.entries(roundByKey)) {
     if (accumulates(key)) scorable[key] = points;
   }
-  const cumulative = addRoundScores(input.cumulative, scorable);
+  const cumulative = addPlacementPoints(input.cumulative, scorable);
 
-  // Every key with a team, a departed partner's frozen row included: the pair
+  // Every key with a team, a departed partner's frozen row included: the team
   // keeps the points they won (docs/GAME-RULES.md § Decisions). Who may be *named* is
   // `nameable` below, and never a key nobody is sitting behind.
   const frozenKeysOf = input.frozenKeysOf ?? (() => []);
@@ -1408,14 +1408,14 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
 
   // Winner/target-crossing is decided on the win-eligible subset only — a
   // vacated seat's points still land in `cumulative` above (so the standings
-  // sum to the hands played), but they must never let it cross the target or
+  // sum to the rounds played), but they must never let it cross the target or
   // escalate the match on its own.
   const winEligibleCumulative: Record<string, number> = {};
   for (const [key, points] of Object.entries(cumulative)) {
     if (winEligible(key)) winEligibleCumulative[key] = points;
   }
 
-  // A pair races on both partners' points, one of whom may have walked out;
+  // A team races on both partners' points, one of whom may have walked out;
   // a single seat races on its own, and a vacated one must not cross alone.
   const teams = gameMode === "teams" && Object.keys(teamOfKey).length > 0;
   const resolution = resolveMatchFor({
@@ -1452,7 +1452,7 @@ export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
 // ─── Match length ─────────────────────────────────────────────────────────────
 
 /**
- * How long a game runs.
+ * How long a match runs.
  *
  * - `match` — the canonical Murlan match (docs/GAME-RULES.md §12): first to
  *   `targetsFor(playerCount)[0]`, escalating on a tie at the target.

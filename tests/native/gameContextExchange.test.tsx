@@ -17,7 +17,7 @@ import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import type { GameState } from "@/lib/game/gameEngine";
 
 /**
- * A hand parked mid-exchange: the human (seat 0) won the round and owes seat
+ * A round parked mid-exchange: the human (seat 0) won the round and owes seat
  * 1 a giveback. `4_clubs` is the only card in the winner's hand that the
  * exchange rules (docs/GAME-RULES.md §10) allow to be handed back.
  */
