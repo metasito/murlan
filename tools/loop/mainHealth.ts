@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { gh } from "./cli.mjs";
 import { decideVerdict, failedLogArgs, failingTestIds, markTimedOut, stripLogPrefix, type JobRow, type RunRow } from "./ciVerdict.ts";
 
 /**
@@ -150,7 +150,7 @@ export function bodyFor(health: Extract<MainHealth, { state: "file" }>, headSha?
 /** Runs `gh` and returns its stdout. A non-zero exit throws. */
 export type Gh = (args: string[]) => string;
 
-const ghCli: Gh = (args) => execFileSync("gh", args, { encoding: "utf8", maxBuffer: 1 << 24 });
+const ghCli: Gh = (args) => gh(args);
 
 const parse = <T,>(text: string, fallback: T): T => (text.trim() ? JSON.parse(text) : fallback);
 

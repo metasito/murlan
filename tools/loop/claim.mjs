@@ -6,7 +6,7 @@
  * Usage: node tools/loop/claim.mjs <n> "<title>"
  *        exit 0 - claimed, worktree standing; exit 1 - lost the race, or could not
  */
-import { execFileSync } from "node:child_process";
+import { gh, git } from "./cli.mjs";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -83,7 +83,7 @@ export function baseOf(branch, run) {
   throw new Error(`${branch} has diverged from origin/${branch}: resetting either side would lose commits`);
 }
 
-export function claim(number, title, run = (file, args) => execFileSync(file, args, { encoding: "utf8" })) {
+export function claim(number, title, run = (file, args) => (file === "gh" ? gh(args) : git()(args))) {
   const branch = branchOf(number, title);
   const cwd = `${WORKTREE_DIR}/agent-${number}`;
   const noteFile = join(mkdtempSync(join(tmpdir(), "claim-")), "claim.md");

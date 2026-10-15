@@ -16,12 +16,12 @@ import { execFileSync, spawn } from "node:child_process";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
 import {
   ciRedPosted,
   ciRedRounds,
   derive,
   parityRed,
-  REPO,
   reviewRounds,
   trustedComments,
   WORKTREE_DIR,
@@ -411,16 +411,11 @@ export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_a
 // anything a ticket or the tracker supplies.
 const SHIMMED = new Set(["npm", "npx"]);
 
-/**
- * `sh` reads a whole `gh` payload, and one of them carries four hundred lines of CI log — over
- * node's 1 MB default that is an ENOBUFS throw, which `settle` catches and turns into a parked
- * ticket. `ciVerdict.ts` sets a large buffer for exactly this; its caller has to as well.
- */
-const SH_MAX_BUFFER = 64 * 1024 * 1024;
-
-const sh = (file, args, opts) => {
+const sh = (file, args, opts = {}) => {
+  if (file === "git") return gitAt(opts.cwd)(args, opts);
+  if (file === "gh") return ghCli(args, opts);
   const shell = SHIMMED.has(file) && process.platform === "win32";
-  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: SH_MAX_BUFFER, ...opts };
+  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts };
   // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and
   // passing both is DEP0190. The quoting is this file's own, and one argument is a worktree path,
   // which carries whatever spaces the checkout's location has.
@@ -674,13 +669,11 @@ const REFRESH_TIMEOUT_MS = 2 * 60_000;
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
-export function ticketFacts(number, exec = execFileSync) {
+export function ticketFacts(number, run = sh) {
   try {
     const issue = JSON.parse(
-      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        maxBuffer: SH_MAX_BUFFER,
+      run("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
+        stderr: "ignore",
         timeout: 30_000,
       }),
     );
@@ -1002,7 +995,7 @@ export function runTicket(
   });
 }
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+const git = (...args) => gitAt()(args);
 
 /**
  * One report file per run, named for when the run started — not per calendar day: two runs on one
@@ -1310,8 +1303,6 @@ function fileFlakes(red, gh, log, write) {
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
-
-const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 function streamFacts(ticket) {
   const file = streamLog(ticket);

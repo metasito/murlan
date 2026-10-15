@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { gh } from "./cli.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { readIssue } from "./brief.mjs";
 import { BRANCH, REPO, ticketOf, TRUSTED_AUTHORS, worktrees } from "./loop-derive.mjs";
@@ -9,8 +9,6 @@ export const LAUNCH_MILESTONE = "Launch";
 function trusted(issueOrComment) {
   return TRUSTED_AUTHORS.includes(issueOrComment.author_association);
 }
-
-const gh = (args) => execFileSync("gh", args, { encoding: "utf8" });
 
 function ghJson(args) {
   return JSON.parse(gh(args));

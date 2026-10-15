@@ -5,7 +5,7 @@
  *
  * Usage: node tools/loop/brief.mjs <kind> <n> <worktree> [base]
  */
-import { spawnSync } from "node:child_process";
+import { git as gitAt, statusOf } from "./cli.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { dodCheckFor, ticketComments, TRUSTED_AUTHORS, WORKTREE_DIR } from "./loop-derive.mjs";
 
@@ -22,12 +22,18 @@ const HEADER_RE = /^BRIEF (\w+) #(\d+) (\S+) (\S+)$/;
  * guard-agent-model.mjs's rebuild of a brief matches the CLI's only while HEAD has not moved between the two.
  */
 function laterDelta(wt, base) {
-  const git = (...args) => spawnSync("git", ["-C", wt, ...args], { encoding: "utf8" });
-  const newest = git("rev-list", "--first-parent", "--merges", "-n", "1", `${base}..HEAD`).stdout?.trim();
+  const git = (...args) => {
+    try {
+      return gitAt(wt)(args).trim();
+    } catch {
+      return null;
+    }
+  };
+  const newest = git("rev-list", "--first-parent", "--merges", "-n", "1", `${base}..HEAD`);
   if (!newest) return `\`git -C ${wt} diff ${base}..HEAD\``;
-  const main = git("rev-parse", "--verify", "-q", `${newest}^2`).stdout?.trim();
+  const main = git("rev-parse", "--verify", "-q", `${newest}^2`);
   const merged = main ? git("merge-tree", "--write-tree", base, main) : null;
-  if (merged?.status === 0) return `\`git -C ${wt} diff ${merged.stdout.split("\n")[0]} HEAD\``;
+  if (merged) return `\`git -C ${wt} diff ${merged.split("\n")[0]} HEAD\``;
   return (
     `\`git -C ${wt} diff ${base}..HEAD\`, with ` +
     `\`git -C ${wt} log -p --first-parent --diff-merges=remerge --merges ${base}..HEAD\` for a merge's own ` +
@@ -90,8 +96,7 @@ function unreadable(n, worktree, base) {
     return `the worktree must be ${WORKTREE_DIR}/agent-${n}, not ${worktree}`;
   }
   if (base && base !== "origin/main") {
-    const ancestor = spawnSync("git", ["-C", worktree, "merge-base", "--is-ancestor", base, "HEAD"], { stdio: "ignore" });
-    if (ancestor.status !== 0) {
+    if (statusOf(() => gitAt(worktree)(["merge-base", "--is-ancestor", base, "HEAD"])) !== 0) {
       return `${base} is not an ancestor of HEAD in ${worktree}: a rebase moved the branch, so the delta would carry the whole ticket and main`;
     }
   }
@@ -102,7 +107,10 @@ function unreadable(n, worktree, base) {
 function naBoxes(n, worktree) {
   const comments = ticketComments(n, worktree);
   if (!comments) return `cannot read #${n}'s DOD-CHECK from the tracker`;
-  const head = spawnSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).stdout?.trim();
+  let head = null;
+  try {
+    head = gitAt(worktree)(["rev-parse", "HEAD"]).trim();
+  } catch {}
   if (!head) return `cannot read HEAD in ${worktree}`;
   const na = dodCheckFor(comments, head, () => false)?.na ?? [];
   return { text: `\nDefinition-of-done boxes ticked n/a at ${head.slice(0, 7)}:\n${na.join("\n") || "none"}\n` };

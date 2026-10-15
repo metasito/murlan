@@ -5,20 +5,19 @@
  * The branch name is the binding. `agent/<n>-<slug>` says which ticket this work belongs to, and
  * git will not let you be on two at once.
  */
-import { execFileSync, spawnSync } from "node:child_process";
 import { basename, dirname } from "node:path";
+import { gh as ghCli, git as gitAt, REPO, statusOf } from "./cli.mjs";
+
+export { REPO };
 
 export const BRANCH = /^agent\/(\d+)-/;
-
-/** The repository every `gh` call in the loop names, so no two of them can name different ones. */
-export const REPO = "metasito/murlan";
 
 export const WORKTREE_DIR = ".worktrees";
 
 /** A ticket worktree's own directory name, under `WORKTREE_DIR` — never its branch. */
 export const AGENT_DIR = /^agent-\d+$/;
 
-const run = (file, args, cwd) => execFileSync(file, args, { encoding: "utf8", cwd }).trim();
+const run = (args, cwd) => gitAt(cwd)(args).trim();
 
 /** The one shape `verdictFor` and `reviewRounds` both look for, so they cannot drift apart. */
 const VERDICT_RE = /^VERDICT:\s*(LAND|HOLD)\b[^\n]*?\b([0-9a-f]{7,40})\b/m;
@@ -85,7 +84,7 @@ export function ciRedPosted(comments, sha) {
 /** @returns {string|null} */
 export function currentBranch(cwd) {
   try {
-    return run("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+    return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   } catch {
     return null;
   }
@@ -100,7 +99,7 @@ export function ticketOf(branch) {
  * @param {string} [cwd]
  */
 export function worktrees(cwd) {
-  const out = run("git", ["worktree", "list", "--porcelain"], cwd);
+  const out = run(["worktree", "list", "--porcelain"], cwd);
   return out.split(/\n\s*\n/).filter(Boolean).map((block) => {
     const dir = /^worktree (.+)$/m.exec(block)?.[1] ?? null;
     const branch = /^branch refs\/heads\/(.+)$/m.exec(block)?.[1] ?? null;
@@ -326,24 +325,7 @@ export function fixHolds(comments) {
   return countedVerdicts(comments).filter((v) => v.fix && v.decision === "HOLD").length;
 }
 
-/**
- * `LOOP_GH_SCRIPT` names a node script to run instead of `gh`, so the tests can drive the verdict
- * branches through the real binary. It cannot be a `gh` shim on PATH: since the fix for
- * CVE-2024-27980, node will not resolve a `.cmd` from `execFileSync`, so on Windows a stub is
- * unreachable and the only testable review state is "tracker unreadable".
- */
-function gh(args, cwd, timeout) {
-  const file = process.env.LOOP_GH_SCRIPT;
-  // stderr captured, never printed: an unreachable tracker is reported as "cannot read the review",
-  // and `gh`'s own GraphQL complaint printed mid-brief reads as the brief having failed.
-  return execFileSync(file ? process.execPath : "gh", file ? [file, ...args] : args, {
-    encoding: "utf8",
-    cwd,
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 64 * 1024 * 1024,
-    timeout,
-  }).trim();
-}
+const gh = (args, cwd, timeout) => ghCli(args, { cwd, timeout }).trim();
 
 export const TRUSTED_AUTHORS = ["OWNER", "MEMBER", "COLLABORATOR"];
 
@@ -389,7 +371,7 @@ const HANDED = /^[A-G]$/;
 function under(cwd, head, remote, branch, until, failed) {
   if (remote === head) return true;
   const git = (args) =>
-    spawnSync("git", args, { cwd, stdio: "ignore", timeout: Math.max(1, until - Date.now()) }).status;
+    statusOf(() => gitAt(cwd)(args, { stderr: "ignore", timeout: until - Date.now() }));
   const ancestor = () => git(["merge-base", "--is-ancestor", head, remote]);
   const first = ancestor();
   if (first === 0 || first === 1) return first === 0;
@@ -482,11 +464,11 @@ export function derive({
   let dirty = false;
   let headSubject = "";
   try {
-    head = run("git", ["rev-parse", "HEAD"], cwd);
-    headSubject = run("git", ["log", "-1", "--format=%s"], cwd);
-    commits = Number(run("git", ["rev-list", "--count", `${base}..HEAD`], cwd));
-    changed = run("git", ["diff", "--name-only", `${base}...HEAD`], cwd).split("\n").filter(Boolean);
-    dirty = run("git", ["status", "--porcelain"], cwd).length > 0;
+    head = run(["rev-parse", "HEAD"], cwd);
+    headSubject = run(["log", "-1", "--format=%s"], cwd);
+    commits = Number(run(["rev-list", "--count", `${base}..HEAD`], cwd));
+    changed = run(["diff", "--name-only", `${base}...HEAD`], cwd).split("\n").filter(Boolean);
+    dirty = run(["status", "--porcelain"], cwd).length > 0;
   } catch {
     return { onTicket: true, ticket, branch, cwd, phase: "?", why: `cannot read history against ${base}` };
   }

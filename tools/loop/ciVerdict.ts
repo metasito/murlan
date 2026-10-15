@@ -1,4 +1,4 @@
-import { execFileSync, type ExecFileSyncOptionsWithStringEncoding } from "node:child_process";
+import { gh, MAX_BUFFER } from "./cli.mjs";
 import { UNREAD_STEP } from "../ci/budget-gate.mjs";
 import type { PrState } from "./land.ts";
 
@@ -185,12 +185,6 @@ export function decideVerdict(run: RunRow | undefined, jobs: JobRow[] = []): Ver
 }
 
 /**
- * `gh run view --log-failed` for a browser-test job runs to several megabytes, and
- * `execFileSync`'s default 1MB buffer turns that into an ENOBUFS throw rather than a short read.
- */
-const GH_MAX_BUFFER = 64 * 1024 * 1024;
-
-/**
  * How much of it reaches the fix agent. A Playwright failure ends with a run summary, and the
  * `Error:` line that names the defect can sit over a hundred lines above it.
  */
@@ -236,20 +230,13 @@ export function failingTestIds(fullLog: string): string[] {
 const READ_DEADLINE_MS = 45 * 60_000;
 
 /** Whatever is left of the read's budget, so sixteen calls cannot each take the whole of it. */
-export function ghExecOptions(until = Date.now() + READ_DEADLINE_MS): ExecFileSyncOptionsWithStringEncoding {
-  return {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: GH_MAX_BUFFER,
-    // Never zero or negative: `execFileSync` reads those as "no timeout", which is the opposite of
-    // what an exhausted budget means.
-    timeout: Math.max(1_000, until - Date.now()),
-  };
+export function ghExecOptions(until = Date.now() + READ_DEADLINE_MS) {
+  return { maxBuffer: MAX_BUFFER, timeout: Math.max(1_000, until - Date.now()) };
 }
 
 export type GhExec = (args: string[], until: number) => string;
 
-const realGh: GhExec = (args, until) => execFileSync("gh", args, ghExecOptions(until));
+const realGh: GhExec = (args, until) => gh(args, ghExecOptions(until));
 
 function ghJson<T>(gh: GhExec, args: string[], fallback: T, until: number): T {
   try {
