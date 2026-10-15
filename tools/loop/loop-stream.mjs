@@ -261,10 +261,10 @@ export function sessionStart(at, now) {
     phase: at,
     phaseAt: now,
     phases: {},
-    result: null,
+    result: /** @type {any} */ (null),
     /** Each message's billed tokens by id, for a session that dies before it reports a cost. */
     usage: new Map(),
-    declared: null,
+    declared: /** @type {any} */ (null),
     version: null,
     model: null,
     lastFact: null,

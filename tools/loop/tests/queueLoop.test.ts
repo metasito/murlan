@@ -538,7 +538,7 @@ describe("runTicket", () => {
     const lines = [message("m1", "claude-opus-5-5"), message("m1", "claude-opus-5-5"), message("m2", "claude-opus-5-5")];
     const run = await runTicket(replay(lines, 1), opts());
     assert.equal(run.result, null);
-    assert.ok(Math.abs(run.estimatedCost - 2 * (0.5 + 0.25 + 0.5 + 0.3125)) < 1e-9, String(run.estimatedCost));
+    assert.ok(Math.abs(Number(run.estimatedCost) - 2 * (0.5 + 0.25 + 0.5 + 0.3125)) < 1e-9, String(run.estimatedCost));
     const done = await runTicket(replay([...lines, RESULT], 0), opts());
     assert.equal(done.estimatedCost, null, "a reported cost is never second-guessed");
   });
@@ -899,7 +899,7 @@ describe("screenEvents", () => {
     events.step({ label: "parity", detail: "", note: "  " });
     assert.deepEqual(told, [
       ["say", stepRow({ label: "claim", detail: "won · agent/953-x", ms: null }, theme)],
-      ["say", `${stepRow({ label: "drift", detail: "reinstalled", ms: 2000 }, theme)}\n${note("npm ci\n  added 3", theme)}`],
+      ["say", `${stepRow({ label: "drift", detail: "reinstalled", ms: 2000 as never }, theme)}\n${note("npm ci\n  added 3", theme)}`],
       ["say", stepRow({ label: "parity", detail: "" }, theme)],
     ]);
   });
@@ -967,7 +967,7 @@ describe("sessionView", () => {
 
   test("the running subagents are said as one detail; none running says nothing", () => {
     const { told, draw } = view();
-    const tasks = [{ id: "a", what: "Review #962" }];
+    const tasks = [{ id: "a", what: "Review #962", tool: null }];
     draw({}, [{ kind: "tasks", tasks }, { kind: "tasks", tasks: [] }]);
     assert.deepEqual(told, [["said", tasksDetail(tasks)]]);
   });
