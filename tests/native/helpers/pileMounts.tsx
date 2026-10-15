@@ -123,7 +123,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
           plays.push(comboKey(state.lastPlayedCombination, state.lastPlayedBy));
           round.push(...state.lastPlayedCombination.cards.map((c) => c.id));
         }
-        if (state.lastPlayedCombination === null && state.roundWinner !== null && round.length > 0 && closedAt === null) {
+        if (state.lastPlayedCombination === null && state.trickWinner !== null && round.length > 0 && closedAt === null) {
           closed += 1;
           closedAt = performance.now();
           continue;

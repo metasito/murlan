@@ -204,7 +204,7 @@ const raised = (standing: Float | null, kind: Float["kind"], text: string, live 
 });
 
 const NO_DISMISS = () => {};
-const roundStart = () => event([{ kind: "roundStart" }]);
+const trickStart = () => event([{ kind: "trickStart" }]);
 
 const lockLandscape = () => {
   ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(() => {});
@@ -224,7 +224,7 @@ export interface TurnTimerConfig {
    * The viewer's own chip counts down while leading a new round too (seat rings
    * always do). False offline, no deadline; true online, armed every turn.
    */
-  includeNewRound?: boolean;
+  includeNewTrick?: boolean;
   /**
    * Called when the countdown reaches zero. Offline this auto-passes locally;
    * online it is omitted, because the server owns the timeout and the client
@@ -466,7 +466,7 @@ export function GameTable({
   const isFinished = viewer?.finishPosition !== undefined;
   // The manche's end places the last player too, still holding cards: they keep their hand, untold.
   const wentOut = viewer?.finishPosition !== undefined && handCountOf(viewer) === 0;
-  const isNewRound = gameState.lastPlayedCombination === null;
+  const isNewTrick = gameState.lastPlayedCombination === null;
   const exchange = readExchange(gameState, viewerSeat, spectating);
 
   // A spectator receives every hand blanked, so the bottom seat's cards come
@@ -547,8 +547,8 @@ export function GameTable({
   // A memo so the compiler sees `isMyTurn` frozen before an object carries it into a call: bare,
   // every later memo on `isMyTurn` fails to preserve and GameTable goes uncompiled.
   const canPass = React.useMemo(
-    () => canPassNowOf({ isMyTurn, isFinished, isNewRound }),
-    [isMyTurn, isFinished, isNewRound]
+    () => canPassNowOf({ isMyTurn, isFinished, isNewTrick }),
+    [isMyTurn, isFinished, isNewTrick]
   );
   const passIsOnlyMove = React.useMemo(
     () =>
@@ -558,7 +558,7 @@ export function GameTable({
         lastPlayedCombination: gameState.lastPlayedCombination,
         startCard: gameState.startCard,
         firstPlayMade: gameState.firstPlayMade,
-        isNewRound,
+        isNewTrick,
         isMyTurn,
         isFinished,
       }),
@@ -568,7 +568,7 @@ export function GameTable({
       gameState.lastPlayedCombination,
       gameState.startCard,
       gameState.firstPlayMade,
-      isNewRound,
+      isNewTrick,
       isMyTurn,
       isFinished,
     ]
@@ -811,7 +811,7 @@ export function GameTable({
     canPass,
     passCount: gameState.passCount,
     lastPlayedCombination: gameState.lastPlayedCombination,
-    roundWinner: gameState.roundWinner,
+    trickWinner: gameState.trickWinner,
     gameOver: gameState.gameOver,
     rankings: gameState.rankings,
     players,
@@ -839,7 +839,7 @@ export function GameTable({
     trick,
     endSweep,
     flights,
-    roundWinnerTag,
+    trickWinnerTag,
     onFlightStart,
     onFlightContact,
     onFlightDone,
@@ -849,14 +849,14 @@ export function GameTable({
   } = usePileFlight({
     lastPlayedCombination: gameState.lastPlayedCombination,
     lastPlayedBy: gameState.lastPlayedBy,
-    roundWinner: gameState.roundWinner,
+    trickWinner: gameState.trickWinner,
     gameOver: gameState.gameOver,
     matchOver,
     viewerWon: (matchOver ? partitaOutcome : outcome) === "won",
     ...seatGeometry,
     timeline,
     celebrateFlush,
-    playRoundStart: roundStart,
+    playTrickStart: trickStart,
     handOrigins,
     roomW: frame.fieldRoomW,
     catchUp,
@@ -1022,13 +1022,13 @@ export function GameTable({
   // dependency, `react-hooks/preserve-manual-memoization` refuses this memo and
   // React Compiler skips the whole component.
   const handlePass = useCallback(() => {
-    if (!canPassNowOf({ isMyTurn, isFinished, isNewRound })) return;
+    if (!canPassNowOf({ isMyTurn, isFinished, isNewTrick })) return;
     // Haptic only: the pass sound follows the committed state, so firing it
     // here as well would double the viewer's own pass.
     uiFeedback("light");
     selection.set({ ...settle(selection.get(), heldIds, selectionMode), ids: [] });
     onPass();
-  }, [isMyTurn, isFinished, isNewRound, onPass, selection, heldIds, selectionMode]);
+  }, [isMyTurn, isFinished, isNewTrick, onPass, selection, heldIds, selectionMode]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -1038,10 +1038,10 @@ export function GameTable({
     turnTimerActive({
       isMyTurn,
       isFinished,
-      isNewRound,
+      isNewTrick,
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
-      includeNewRound: turnTimer.includeNewRound ?? false,
+      includeNewTrick: turnTimer.includeNewTrick ?? false,
       announcementHolds,
     });
 
@@ -1097,10 +1097,10 @@ export function GameTable({
       // an empty hand rather than landing on it.
       isMyTurn: true,
       isFinished: false,
-      isNewRound,
+      isNewTrick,
       gameOver: gameState.gameOver,
       exchangeActive: exchange.active,
-      includeNewRound: true,
+      includeNewTrick: true,
       announcementHolds,
     })
       ? { seconds: turnTimer.seconds, resetKey: `${turnToken}|${turnTimer.resetKey ?? ""}`, held: clockHeld }
@@ -1474,7 +1474,7 @@ export function GameTable({
                   onFlightClock={onFlightClock}
                   onSweepEnd={endSweep}
                   comboLabel={timeline.inFlight ? null : onTop}
-                  roundWinner={roundWinnerTag === null ? null : players[roundWinnerTag.seat]?.name ?? ""}
+                  trickWinner={trickWinnerTag === null ? null : players[trickWinnerTag.seat]?.name ?? ""}
                   roomW={frame.fieldRoomW}
                   scale={scale}
                   note={pileNote}
@@ -1626,7 +1626,7 @@ export function GameTable({
                   lastPlayedCombination={gameState.lastPlayedCombination}
                   startCard={gameState.startCard}
                   firstPlayMade={gameState.firstPlayMade}
-                  isNewRound={isNewRound}
+                  isNewTrick={isNewTrick}
                   isMyTurn={isMyTurn}
                   isFinished={isFinished}
                   giveTo={exchangeIsMine ? exchangeLoserName : null}

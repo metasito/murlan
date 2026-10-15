@@ -250,7 +250,7 @@ function playAction(
     return { ok: false, code: "INVALID_COMBINATION" };
   }
 
-  const isNewRound = gameState.lastPlayedCombination === null;
+  const isNewTrick = gameState.lastPlayedCombination === null;
   // Read before the engine sets it, so the transition is observable once
   // rather than on every play after it.
   const wasFirstPlay = !gameState.firstPlayMade;
@@ -268,7 +268,7 @@ function playAction(
     }
   }
 
-  if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination)) {
+  if (!canPlay(combo, isNewTrick ? null : gameState.lastPlayedCombination)) {
     gameError(io, userId, payload("INVALID_MOVE"));
     return { ok: false, code: "INVALID_MOVE" };
   }

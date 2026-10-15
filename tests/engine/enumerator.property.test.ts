@@ -102,10 +102,10 @@ describe("enumerator property tests", () => {
       for (let run = 0; run < runs; run++) {
         const hand = sample(deck, Number(size), rand);
         const lastPlayed = run % 2 === 0 ? null : randomLastPlayed(rand, deck);
-        const isNewRound = lastPlayed === null;
+        const isNewTrick = lastPlayed === null;
 
-        const expected = bruteForceLegalPlays(hand, isNewRound ? null : lastPlayed);
-        const actual = getAllValidPlays(hand, lastPlayed, isNewRound);
+        const expected = bruteForceLegalPlays(hand, isNewTrick ? null : lastPlayed);
+        const actual = getAllValidPlays(hand, lastPlayed, isNewTrick);
         const actualShapes = new Set(actual.map(shapeOf));
 
         for (const play of expected) {
@@ -135,16 +135,16 @@ describe("enumerator property tests", () => {
       for (let run = 0; run < runs; run++) {
         const hand = sample(deck, Number(size), rand);
         const lastPlayed = run % 2 === 0 ? null : randomLastPlayed(rand, deck);
-        const isNewRound = lastPlayed === null;
+        const isNewTrick = lastPlayed === null;
 
         const expected = boundedLegalPlays(
           hand,
-          isNewRound ? null : lastPlayed,
+          isNewTrick ? null : lastPlayed,
           BOUNDED_LEN
         );
         assert.ok(expected.length > 0, `${size} cards, run ${run}: the oracle found nothing`);
         const actualShapes = new Set(
-          getAllValidPlays(hand, lastPlayed, isNewRound).map(shapeOf)
+          getAllValidPlays(hand, lastPlayed, isNewTrick).map(shapeOf)
         );
 
         for (const play of expected) {
@@ -165,16 +165,16 @@ describe("enumerator property tests", () => {
       for (let run = 0; run < 120; run++) {
         const hand = sample(deck, size, rand);
         const lastPlayed = run % 2 === 0 ? null : randomLastPlayed(rand, deck);
-        const isNewRound = lastPlayed === null;
+        const isNewTrick = lastPlayed === null;
         const handIds = new Set(hand.map((card) => card.id));
 
-        for (const play of getAllValidPlays(hand, lastPlayed, isNewRound)) {
+        for (const play of getAllValidPlays(hand, lastPlayed, isNewTrick)) {
           const rebuilt = buildCombination(play.cards);
           assert.ok(rebuilt, `${size} cards, run ${run}: ${cardKey(play.cards)} is not a valid combination`);
           assert.equal(rebuilt!.type, play.type);
           assert.equal(rebuilt!.strength, play.strength);
           assert.ok(
-            canPlay(play, isNewRound ? null : lastPlayed),
+            canPlay(play, isNewTrick ? null : lastPlayed),
             `${size} cards, run ${run}: ${cardKey(play.cards)} cannot legally be played`
           );
           assert.equal(
@@ -248,8 +248,8 @@ describe("enumerator property tests", () => {
       for (let run = 0; run < 120; run++) {
         const hand = sample(deck, size, rand);
         const lastPlayed = run % 2 === 0 ? null : randomLastPlayed(rand, deck);
-        const isNewRound = lastPlayed === null;
-        const plays = getAllValidPlays(hand, lastPlayed, isNewRound);
+        const isNewTrick = lastPlayed === null;
+        const plays = getAllValidPlays(hand, lastPlayed, isNewTrick);
 
         const byShape = new Map<string, Combination[]>();
         for (const play of plays) {

@@ -54,7 +54,7 @@ const gameState: GameState = {
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -80,7 +80,7 @@ const withdrawn = (props: Record<string, unknown>) =>
 const tree = (tableCovered: boolean, turnTimer?: { seconds: number; resetKey: string }) => (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
-        turnTimer={turnTimer && { ...turnTimer, includeNewRound: true, onExpire: noop }}
+        turnTimer={turnTimer && { ...turnTimer, includeNewTrick: true, onExpire: noop }}
         banners={<A11yStatus label={BANNER} />}
         gameState={gameState}
         viewerSeat={0}

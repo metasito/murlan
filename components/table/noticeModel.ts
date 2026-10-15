@@ -57,7 +57,7 @@ export const NOTICES = {
   reconnecting: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   vacated: { shape: "chip", selector: ".passo", tones: ["neutral"] },
   combo: { shape: "chip", selector: ".cchip", tones: ["lit"] },
-  roundWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
+  trickWinner: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   pileLabel: { shape: "chip", selector: ".cchip", tones: ["lit"] },
   passFloat: { shape: "float", selector: ".floatchip", tones: ["neutral"] },
   rejectFloat: { shape: "float", selector: "#n-reject", tones: ["bad"] },

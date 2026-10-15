@@ -20,7 +20,7 @@ const state = (scale: number) => ({
   canPass: false,
   passCount: 0,
   lastPlayedCombination: null,
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   players: [],

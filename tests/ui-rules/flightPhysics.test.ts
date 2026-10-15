@@ -40,7 +40,7 @@ import {
   flightOrigin,
   comboKey,
   seatPoint,
-  roundClosedWithWinner,
+  trickClosedWithWinner,
   readExchange,
   INACTIVE_EXCHANGE,
   landWobble,
@@ -167,41 +167,41 @@ describe("comboKey", () => {
   });
 });
 
-describe("roundClosedWithWinner", () => {
+describe("trickClosedWithWinner", () => {
   test("the closing pass — the table is empty and a seat took it", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 2 }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 2 }),
       true
     );
   });
 
   test("seat 0 counts, which a truthiness check would miss", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: 0 }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: 0 }),
       true
     );
   });
 
   test("a round in progress has not closed, whoever won the last one", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: 1 }),
+      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: 1 }),
       false
     );
   });
 
   test("a pass that does not close the round leaves nobody credited", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: combo(["a"]), roundWinner: null }),
+      trickClosedWithWinner({ lastPlayedCombination: combo(["a"]), trickWinner: null }),
       false
     );
   });
 
   test("a freshly dealt hand is empty but nothing has been won", () => {
     assert.equal(
-      roundClosedWithWinner({ lastPlayedCombination: null, roundWinner: null }),
+      trickClosedWithWinner({ lastPlayedCombination: null, trickWinner: null }),
       false
     );
-    assert.equal(roundClosedWithWinner({ lastPlayedCombination: null }), false);
+    assert.equal(trickClosedWithWinner({ lastPlayedCombination: null }), false);
   });
 });
 
@@ -534,7 +534,7 @@ describe("the table's own trauma escalation (#763)", () => {
   });
 
   // The manche rung is `GameState.gameOver` (processPlay: "the hand is
-  // decided"), never `roundWinner` — that is a trick, closing many times a
+  // decided"), never `trickWinner` — that is a trick, closing many times a
   // hand (docs/GAME-RULES.md §9). The partita rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
@@ -1471,7 +1471,7 @@ describe("seatsJustPassed", () => {
     currentTurnIndex: s.currentTurnIndex,
     lastPlayedBy: s.lastPlayedBy,
     lastPlayedCombination: s.lastPlayedCombination,
-    roundWinner: s.roundWinner,
+    trickWinner: s.trickWinner,
     outOfCards: s.players.map((p) => p.hand.length === 0),
   });
 

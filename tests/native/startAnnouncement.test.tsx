@@ -61,7 +61,7 @@ function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: 'free_for_all',
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
@@ -208,7 +208,7 @@ describe('the manche-opening announcement', () => {
   // charged is the one the deadline's owner keeps, so the client stops its own
   // and leaves a server's alone.
   it('stops a clock this client owns while it holds, and starts it on the way out', async () => {
-    const clock: TurnTimerConfig = { seconds: 20, includeNewRound: true, pausable: true };
+    const clock: TurnTimerConfig = { seconds: 20, includeNewTrick: true, pausable: true };
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: clock }));
 
     // Hidden elements included both times: while the gate holds, the chip
@@ -228,7 +228,7 @@ describe('the manche-opening announcement', () => {
   // is one the player has to be able to see. It is the one thing the hold
   // takes neither from the eye nor from the reader.
   it('leaves a clock it cannot pause running, and in plain sight', async () => {
-    const serverClock: TurnTimerConfig = { seconds: 20, includeNewRound: true };
+    const serverClock: TurnTimerConfig = { seconds: 20, includeNewTrick: true };
     const view = await render(table(state(OPENER), { viewerSeat: OPENER, turnTimer: serverClock }));
 
     expect(screen.getByTestId('start-reason-gate', { includeHiddenElements: true })).toBeTruthy();

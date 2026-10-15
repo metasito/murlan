@@ -102,7 +102,7 @@ function finishedState(overrides: Partial<GameState> = {}): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: true,
     rankings: ["player_0", "player_1"],
     firstPlayMade: true,

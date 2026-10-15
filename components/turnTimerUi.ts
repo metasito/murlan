@@ -9,12 +9,12 @@ import type { Combination } from "@/lib/game/gameEngine";
 export interface TurnFacts {
   isMyTurn: boolean;
   isFinished: boolean;
-  isNewRound: boolean;
+  isNewTrick: boolean;
 }
 
 /** Leading a round is compulsory: you may only pass in answer to a combination. */
 export function canPassNow(facts: TurnFacts): boolean {
-  return !facts.isNewRound && facts.isMyTurn && !facts.isFinished;
+  return !facts.isNewTrick && facts.isMyTurn && !facts.isFinished;
 }
 
 /**
@@ -106,15 +106,15 @@ export function urgentThresholdSeconds(clockSeconds: number): number {
 /**
  * Whether the turn countdown should run. Offline it only answers a played
  * combination (leading has no deadline); online it mirrors the server's AFK
- * window, which is armed on every turn — hence `includeNewRound`.
+ * window, which is armed on every turn — hence `includeNewTrick`.
  */
 export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
-  isNewRound: boolean;
+  isNewTrick: boolean;
   gameOver: boolean;
   exchangeActive: boolean;
-  includeNewRound: boolean;
+  includeNewTrick: boolean;
   /**
    * An announcement is holding the table, and this client owns the deadline it
    * would be holding. A pause a server is not keeping would draw a clock with
@@ -126,6 +126,6 @@ export function turnTimerActive(opts: {
   if (!opts.isMyTurn || opts.isFinished) return false;
   if (opts.gameOver || opts.exchangeActive) return false;
   if (opts.announcementHolds) return false;
-  if (opts.isNewRound && !opts.includeNewRound) return false;
+  if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;
 }

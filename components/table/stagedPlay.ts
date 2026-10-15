@@ -32,14 +32,14 @@ type TableFacts = {
   lastPlayedCombination: Combination | null;
   startCard: GameState["startCard"];
   firstPlayMade: boolean;
-  isNewRound: boolean;
+  isNewTrick: boolean;
   isMyTurn: boolean;
   isFinished: boolean;
 };
 
 function whatMustBeMet(input: TableFacts) {
   return {
-    toBeat: input.isNewRound ? null : input.lastPlayedCombination,
+    toBeat: input.isNewTrick ? null : input.lastPlayedCombination,
     requiredCard: !input.firstPlayMade && input.startCard ? input.startCard : undefined,
   };
 }
@@ -48,7 +48,7 @@ function whatMustBeMet(input: TableFacts) {
 export function canBeatPileOf(input: TableFacts): boolean {
   if (!input.isMyTurn || input.isFinished) return false;
   const { toBeat, requiredCard } = whatMustBeMet(input);
-  return getAllValidPlays(input.hand, toBeat, input.isNewRound, requiredCard).length > 0;
+  return getAllValidPlays(input.hand, toBeat, input.isNewTrick, requiredCard).length > 0;
 }
 
 export function readStagedPlay(input: TableFacts & { selectedIds: string[] }): StagedPlay {

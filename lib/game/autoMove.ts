@@ -90,7 +90,7 @@ export function autoMoveForSeat(
   const player = state.players[seat];
   if (!player || player.hand.length === 0) return null;
 
-  const isNewRound = state.lastPlayedCombination === null;
+  const isNewTrick = state.lastPlayedCombination === null;
   // The start card is only mandatory for the very first play of the hand, and
   // only for the seat actually holding it.
   const startCard = !state.firstPlayMade ? state.startCard : undefined;
@@ -107,8 +107,8 @@ export function autoMoveForSeat(
     const opponents = opponentsOf(state, seat);
     const combo = aiChoosePlay(
       player,
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
+      isNewTrick ? null : state.lastPlayedCombination,
+      isNewTrick,
       opponents.handCounts,
       requireCard,
       ctx.rng,
@@ -120,11 +120,11 @@ export function autoMoveForSeat(
       if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
       return logged(combo, processPlay(state, combo));
     }
-    if (!isNewRound) return logged(null, processPass(state));
+    if (!isNewTrick) return logged(null, processPass(state));
     // A new round cannot be passed — fall through to the forced minimum play.
   }
 
-  if (isNewRound) {
+  if (isNewTrick) {
     // Read the mandatory opening card from the state instead of assuming 3♣:
     // with the full deal it is always present, but it is not always a club 3.
     const card = requireCard ?? sortHand([...player.hand])[0];

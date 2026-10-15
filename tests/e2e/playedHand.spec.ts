@@ -94,7 +94,7 @@ function save(gameState: Record<string, unknown>) {
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       // Past the opening, so the table renders a hand in progress rather than a

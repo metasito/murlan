@@ -224,14 +224,14 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
   while (!state.gameOver && turns < 2000) {
     turns++;
     const seat = state.currentTurnIndex;
-    const isNewRound = state.lastPlayedCombination === null;
+    const isNewTrick = state.lastPlayedCombination === null;
     const view = opponentsOf(state, seat);
     const requireCard = !state.firstPlayMade ? state.startCard : undefined;
 
     const play = aiChoosePlay(
       state.players[seat],
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
+      isNewTrick ? null : state.lastPlayedCombination,
+      isNewTrick,
       view.handCounts,
       requireCard,
       rng,
@@ -239,7 +239,7 @@ test("a full teams hand played through opponentsOf still reaches game over", () 
     );
 
     assert.ok(
-      play !== null || !isNewRound,
+      play !== null || !isNewTrick,
       `turn ${turns}: seat ${seat} declined to lead, which no caller can recover from`
     );
     state = play ? processPlay(state, play) : processPass(state);

@@ -62,7 +62,7 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -71,10 +71,10 @@ const state = (over: Partial<GameState>): GameState => ({
 
 const noop = () => {};
 
-/** Offline: leading a round has no deadline, so `includeNewRound` is false. */
-const OFFLINE_TIMER = { seconds: 30, includeNewRound: false };
+/** Offline: leading a round has no deadline, so `includeNewTrick` is false. */
+const OFFLINE_TIMER = { seconds: 30, includeNewTrick: false };
 /** Online: the server arms its window on every turn, leads included. */
-const ONLINE_TIMER = { seconds: 30, includeNewRound: true };
+const ONLINE_TIMER = { seconds: 30, includeNewTrick: true };
 
 const table = (gameState: GameState, turnTimer: TurnTimerConfig, ownLink: OwnLink = 'up', catchUp = false) => (
   <SafeAreaProvider initialMetrics={METRICS}>

@@ -329,10 +329,10 @@ function handFingerprint(state: GameState): string {
  * cannot tell "weakest" from "strongest legal beating combination" apart. */
 export function weakestBeatingPlay(state: GameState, seat: number): Combination | null {
   const player = state.players[seat];
-  const isNewRound = state.lastPlayedCombination === null;
+  const isNewTrick = state.lastPlayedCombination === null;
   const startCard = !state.firstPlayMade ? state.startCard : undefined;
   const requireCard = startCard ? player.hand.find((c) => c.id === startCard.id) : undefined;
-  const plays = getAllValidPlays(player.hand, isNewRound ? null : state.lastPlayedCombination, isNewRound, requireCard);
+  const plays = getAllValidPlays(player.hand, isNewTrick ? null : state.lastPlayedCombination, isNewTrick, requireCard);
   if (plays.length === 0) return null;
   return [...plays].sort((a, b) => a.cards.length - b.cards.length || a.strength - b.strength)[0];
 }
@@ -504,7 +504,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
           if (!next.gameOver) {
             const hands = next.players.map((p) => p.hand);
             const expected =
-              playedCombo === null && next.roundWinner !== null
+              playedCombo === null && next.trickWinner !== null
                 ? (next.players[next.lastPlayedBy]?.hand.length ?? 0) > 0
                   ? next.lastPlayedBy
                   : expectedNextActive(next.lastPlayedBy, hands)

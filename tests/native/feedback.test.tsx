@@ -18,9 +18,9 @@ describe('feedback', () => {
 
   it('moments raised in one commit are one event, and it sounds its highest moment', async () => {
     event([{ kind: 'turn' }]);
-    event([{ kind: 'pass' }, { kind: 'roundWon' }]);
+    event([{ kind: 'pass' }, { kind: 'trickWon' }]);
     await settle();
-    expect(sounds()).toEqual(['round_win']);
+    expect(sounds()).toEqual(['trick_win']);
     expect(haptics()).toEqual(['impactLight']);
   });
 

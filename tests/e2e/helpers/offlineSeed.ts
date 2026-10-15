@@ -83,7 +83,7 @@ export function offlineGameSave(
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       // Past the opening, so nothing is waiting on the 3 of spades and the

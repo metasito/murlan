@@ -138,7 +138,7 @@ const LED: GameState = {
   lastPlayedBy: 1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -193,7 +193,7 @@ describe('the table puts up the viewer’s own pass', () => {
       currentTurnIndex: 0,
       passCount: 2,
     };
-    const closedByAna = { ...drinPlayedTwoPassed, lastPlayedCombination: null, roundWinner: 3, currentTurnIndex: 3, passCount: 0 };
+    const closedByAna = { ...drinPlayedTwoPassed, lastPlayedCombination: null, trickWinner: 3, currentTurnIndex: 3, passCount: 0 };
     const r = await render(table(LED, 0));
     await r.rerender(table(passed, 0));
     expect(await said()).toBe(1);
@@ -206,7 +206,7 @@ describe('the table puts up the viewer’s own pass', () => {
 
   it('when the viewer’s pass is the one that closes the round', async () => {
     const lastToAnswer = { ...LED, currentTurnIndex: 2, passCount: 2 };
-    const closed = { ...LED, currentTurnIndex: 1, passCount: 0, lastPlayedCombination: null, roundWinner: 1 };
+    const closed = { ...LED, currentTurnIndex: 1, passCount: 0, lastPlayedCombination: null, trickWinner: 1 };
     const r = await render(table(lastToAnswer, 2));
     await r.rerender(table(closed, 2));
     expect(floats()).toBe(1);
