@@ -72,13 +72,14 @@ export function useDeal({
     return { ...timing, legs: dealLegs(geometry, timing) };
   };
   const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
+  const [clockOf, setClockOf] = useState(() => ({ key: deal?.key ?? 0, clock: makeMutable(-1) }));
   const [dealtFresh, setDealtFresh] = useState(fresh);
   if (fresh !== dealtFresh) {
     setDealtFresh(fresh);
-    if (fresh) setDeal(newDeal((deal?.key ?? 0) + 1, 0));
+    // From the clock's key, which outlives a landed deal: a key repeated would hand the new deal a clock already past its end.
+    if (fresh) setDeal(newDeal(clockOf.key + 1, 0));
   }
   if (deal && reduceMotion) setDeal(null);
-  const [clockOf, setClockOf] = useState(() => ({ key: deal?.key ?? 0, clock: makeMutable(-1) }));
   if (deal && clockOf.key !== deal.key) setClockOf({ key: deal.key, clock: makeMutable(-1) });
   const arrivals = useMemo(
     () =>
