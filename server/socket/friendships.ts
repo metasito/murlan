@@ -32,6 +32,9 @@ export interface FriendshipDeps {
 
 type Refused<C extends string> = { ok: false; code: C };
 
+/** An ack the client branches on and never renders, so it has no server.* key. */
+type InviteOutcome = "INVITE_SHOWN" | "INVITE_WAITING";
+
 /**
  * What each refusal is called to a player. The same three answers whether the
  * store's own checks refused or the constraint did, so a request losing a race
@@ -136,9 +139,7 @@ export function createFriendships(deps: FriendshipDeps) {
       fromId: string,
       friendUserId: string,
       roomCode: string
-    ): Promise<
-      { ok: true; code: "INVITE_SHOWN" | "INVITE_WAITING" } | Refused<"NOT_FRIENDS" | "ROOM_NOT_FOUND" | "NOT_IN_ROOM">
-    > {
+    ): Promise<{ ok: true; code: InviteOutcome } | Refused<"NOT_FRIENDS" | "ROOM_NOT_FOUND" | "NOT_IN_ROOM">> {
       // Only accepted friends may invite each other — an invite is otherwise
       // an unauthenticated broadcast primitive that would let any user spam
       // any userId.

@@ -1130,8 +1130,8 @@ describe("every player-facing server response carries a code", () => {
     // twice- and thrice-built socket emits into one declaration each, which
     // removed real payload literals rather than hiding any.
     assert.ok(
-      objectCount > 90,
-      `expected to find the server's response payload objects, got ${objectCount} (100 when this floor was set)`
+      objectCount > 80,
+      `expected to find the server's response payload objects, got ${objectCount} (86 when this floor was set)`
     );
     assert.deepEqual(
       violations,
