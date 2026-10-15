@@ -5,12 +5,8 @@
 // the ceremony that reads it is on screen.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import {
-  markExchangeSettled,
-  packPersistedState,
-  unpackPersistedState,
-  visibleExchangePhase,
-} from "../../server/game/onlineGameLogic.ts";
+import { markExchangeSettled, visibleExchangePhase } from "../../server/game/onlineGameLogic.ts";
+import { packPersistedState, unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 import { stateAckTimeoutMs } from "../../server/game/gameTimers.ts";
 import { readFileSync } from "node:fs";

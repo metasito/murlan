@@ -12,8 +12,6 @@ import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
 
 import type { RoundFlags } from "../../shared/persistedEnvelope.ts";
 
-export * from "../../shared/persistedEnvelope.ts";
-
 /** The seat a given user occupies, or null if they are not seated at all. */
 export function seatOfUser(
   playerMap: Record<number, string>,

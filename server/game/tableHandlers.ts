@@ -48,7 +48,7 @@ import { logger } from "../http/logger.ts";
 import { trackEvent } from "../socket/events.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
-import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
+import { activeGames, isShuttingDown, seatName, userRoom, voterCount } from "./gameRoom.ts";
 import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
@@ -74,10 +74,12 @@ import {
   botSeatsFromPersonality,
   buildSeatRoster,
   restoredMatchOver,
+  scoreKeyForSeat,
   seatAssignmentsFromRoster,
+  seatOfUser,
   teamKeyMap,
-  unpackPersistedState,
 } from "./onlineGameLogic.ts";
+import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
 import {
   announceRejoin,
   armLobbyGrace,
@@ -333,7 +335,7 @@ function exchangeAction(
   const { userId, cardId } = action;
   if (!game.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
 
-  const seat = seatOfUser(game, userId);
+  const seat = seatOfUser(game.playerMap, userId);
   if (seat === null || seat !== game.gameState.exchangePhase.winnerIdx) {
     return { ok: false, code: "NOT_YOUR_EXCHANGE" };
   }
@@ -449,7 +451,7 @@ async function rematchVoteAction(
 ): Promise<EventOutcome> {
   const { roomId, userId } = action;
   if (!game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   // Nobody gets to restart it from the results screen after that.
   if (rematchRefused(game)) {
@@ -476,7 +478,7 @@ async function endMatchVoteAction(
   action: Extract<TableAction, { kind: "endMatchVote" }>
 ): Promise<EventOutcome> {
   const { roomId, userId, wants } = action;
-  if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
+  if (seatOfUser(game.playerMap, userId) === null) return { ok: false, code: "NOT_SEATED" };
   if (game.vacatedSeats.size === 0) return { ok: false, code: "NO_VACANCY_TO_END" };
 
   if (wants) game.endMatchVotes.add(userId);
@@ -527,7 +529,7 @@ function reclaimableSeat(game: OnlineGameState, userId: string): number | null {
 
 /** Restores a vacated seat to the account that left it. */
 function reclaimSeat(game: OnlineGameState, seat: number, userId: string): void {
-  const botKey = scoreKeyForSeat(game, seat);
+  const botKey = scoreKeyForSeat(game.playerMap, seat);
   game.playerMap[seat] = userId;
   const carried = game.cumulativeScores[botKey] ?? 0;
   if (carried !== 0) {
@@ -547,7 +549,7 @@ async function rejoinAction(
   action: Extract<TableAction, { kind: "rejoin" }>
 ): Promise<EventOutcome> {
   const { roomId, userId } = action;
-  let seat = seatOfUser(game, userId);
+  let seat = seatOfUser(game.playerMap, userId);
   if (seat === null) {
     const reclaim = reclaimableSeat(game, userId);
     if (reclaim === null) {
@@ -649,7 +651,7 @@ async function startMatchAction(
     // Same ready set as game:rematch_vote, and the same abstention — a seat
     // with no playerMap entry (a bot, or a human who left) has nobody who can
     // answer and is not counted.
-    if (seatOfUser(previous, userId) !== null) previous.rematchVotes.add(userId);
+    if (seatOfUser(previous.playerMap, userId) !== null) previous.rematchVotes.add(userId);
     const seatedIds = Object.values(previous.playerMap);
     emitVoteState(io, roomId, previous);
     if (!seatedIds.every((uid) => previous.rematchVotes.has(uid))) {
@@ -818,7 +820,7 @@ async function seatLostAction(
     ? await isUserAtTable(userId, roomId)
     : await isUserOnline(userId);
   if (back) return OK;
-  const seat = seatOfUser(game, userId);
+  const seat = seatOfUser(game.playerMap, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
   if (!game.gameState.roundOver) {
@@ -914,7 +916,7 @@ async function applyTableAction(
     case "exchange":
       return exchangeAction(io, game, action);
     case "reaction": {
-      const seat = seatOfUser(game, action.userId);
+      const seat = seatOfUser(game.playerMap, action.userId);
       if (seat === null) return { ok: false, code: "NOT_SEATED" };
       io.to(action.roomId).emit("game:reaction", {
         emoji: action.emoji,
@@ -933,7 +935,7 @@ async function applyTableAction(
       if (game.gameState.roundOver) return { ok: false, code: "GAME_NOT_FOUND" };
       // A seated player watching their own table would be handed the seatless
       // view and lose sight of their own hand.
-      if (seatOfUser(game, action.userId) !== null) {
+      if (seatOfUser(game.playerMap, action.userId) !== null) {
         return { ok: false, code: "ALREADY_IN_ROOM" };
       }
       game.spectators.add(action.userId);

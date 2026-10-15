@@ -29,9 +29,8 @@ import {
   seatOfUser,
   visibleExchangePhase,
   markExchangeSettled,
-  packPersistedState,
-  type PersistedEnvelope,
 } from "./onlineGameLogic.ts";
+import { packPersistedState, type PersistedEnvelope } from "../../shared/persistedEnvelope.ts";
 import type { GameState, Card } from "../../lib/game/gameEngine.ts";
 import type { WireGameState } from "../../shared/protocol.ts";
 

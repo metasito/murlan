@@ -3,7 +3,8 @@ import { roomStore } from "../store/roomStore.ts";
 import { emitVoteState } from "../socket/emit.ts";
 import { logger } from "../http/logger.ts";
 import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
-import { activeGames, seatName, seatOfUser } from "./gameRoom.ts";
+import { activeGames, seatName } from "./gameRoom.ts";
+import { seatOfUser } from "./onlineGameLogic.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -331,7 +332,7 @@ export async function vacateSeat(
   if (!game) return;
 
   game.rematchVotes.delete(userId);
-  const seat = seatOfUser(game, userId);
+  const seat = seatOfUser(game.playerMap, userId);
   if (seat === null) return;
   const username = seatName(game, seat);
 
