@@ -181,7 +181,7 @@
             "isJoker": true
           }
         ],
-        "type": "bot",
+        "type": "ai",
         "personality": "luan"
       },
       {
@@ -267,7 +267,7 @@
             "isJoker": false
           }
         ],
-        "type": "bot"
+        "type": "ai"
       },
       {
         "id": "player_3",
@@ -352,7 +352,7 @@
             "isJoker": false
           }
         ],
-        "type": "bot"
+        "type": "ai"
       }
     ],
     "currentTurnIndex": 1,
@@ -377,9 +377,9 @@
     ],
     "passCount": 0,
     "gameMode": "free_for_all",
-    "trickWinner": null,
-    "roundOver": false,
-    "finishingOrder": [],
+    "roundWinner": null,
+    "gameOver": false,
+    "rankings": [],
     "firstPlayMade": false,
     "startCard": {
       "id": "3_spades",
@@ -414,16 +414,16 @@
     },
     {
       "name": "Luan",
-      "type": "bot",
+      "type": "ai",
       "personality": "luan"
     },
     {
       "name": "Drita",
-      "type": "bot"
+      "type": "ai"
     },
     {
       "name": "Besa",
-      "type": "bot"
+      "type": "ai"
     }
   ],
   "gameMode": "free_for_all",

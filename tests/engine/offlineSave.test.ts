@@ -33,7 +33,7 @@ const save = (over = false) => ({
     finishingOrder: [],
     firstPlayMade: false,
   },
-  match: { length: "match", target: 21, scores: { player_0: 3 }, hands: [], over, winners: [], isDraw: false },
+  match: { length: "match", target: 21, scores: { player_0: 3 }, rounds: [], over, winners: [], isDraw: false },
   players: [
     { name: "Ana", type: "human" },
     { name: "Luan", type: "bot", personality: "luan" },
@@ -78,7 +78,7 @@ test("nothing stored, or nothing parseable, is simply nothing", () => {
 });
 
 test("the golden save of this version still decodes and plays a legal move", () => {
-  const raw = readFileSync(new URL("../fixtures/offlineSave.v2.json", import.meta.url), "utf8");
+  const raw = readFileSync(new URL("../fixtures/offlineSave.v3.json", import.meta.url), "utf8");
   assert.equal(
     JSON.parse(raw).version,
     OFFLINE_SAVE_VERSION,
@@ -105,7 +105,7 @@ test("a blob missing anything the restore path needs is refused", () => {
     ["no seats at all", (s) => { (s.gameState as Record<string, unknown>).players = []; }],
     ["no match", (s) => delete s.match],
     ["match without scores", (s) => { (s.match as Record<string, unknown>).scores = undefined; }],
-    ["match without hands", (s) => { (s.match as Record<string, unknown>).hands = "nope"; }],
+    ["match without rounds", (s) => { (s.match as Record<string, unknown>).rounds = "nope"; }],
     ["no player setup", (s) => delete s.players],
     ["setup that disagrees with the seats", (s) => { s.players = [{ name: "Ana", type: "human" }]; }],
     ["an unknown game mode", (s) => { s.gameMode = "battle_royale"; }],

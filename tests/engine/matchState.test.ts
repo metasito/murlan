@@ -261,7 +261,7 @@ describe("offlineBotMove", () => {
 
 test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/bot.ts", () => {
   const importers = appSources().filter((rel) =>
-    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)ai(?:\.ts)?["']/.test(
+    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)bot(?:\.ts)?["']/.test(
       readFileSync(path.join(repoRoot, rel), "utf8")
     )
   );
