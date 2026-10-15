@@ -3,39 +3,39 @@ import assert from "node:assert/strict";
 import {
   MATCH_TARGETS,
   targetsFor,
-  addHandScores,
-  foldHandIntoMatch,
+  addRoundScores,
+  foldRoundIntoMatch,
   nextMatchTarget,
   resolveMatch,
   resolveTeamMatch,
-  scoreHand,
+  scoreRound,
 } from "./helpers.ts";
 
-describe("scoreHand", () => {
+describe("scoreRound", () => {
   test("4 players award 3/2/1/0", () => {
-    assert.deepEqual(scoreHand(["a", "b", "c", "d"], 4), { a: 3, b: 2, c: 1, d: 0 });
+    assert.deepEqual(scoreRound(["a", "b", "c", "d"], 4), { a: 3, b: 2, c: 1, d: 0 });
   });
 
   test("generalises to 3 and 2 players", () => {
-    assert.deepEqual(scoreHand(["a", "b", "c"], 3), { a: 2, b: 1, c: 0 });
-    assert.deepEqual(scoreHand(["a", "b"], 2), { a: 1, b: 0 });
+    assert.deepEqual(scoreRound(["a", "b", "c"], 3), { a: 2, b: 1, c: 0 });
+    assert.deepEqual(scoreRound(["a", "b"], 2), { a: 1, b: 0 });
   });
 
-  test("never awards negative points if the rankings run long", () => {
-    const scores = scoreHand(["a", "b", "c", "d", "e"], 4);
+  test("never awards negative points if the finishingOrder run long", () => {
+    const scores = scoreRound(["a", "b", "c", "d", "e"], 4);
     assert.equal(scores.e, 0);
     assert.ok(Object.values(scores).every((v) => v >= 0));
   });
 
   test("an empty ranking scores nobody", () => {
-    assert.deepEqual(scoreHand([], 4), {});
+    assert.deepEqual(scoreRound([], 4), {});
   });
 });
 
-describe("addHandScores", () => {
+describe("addRoundScores", () => {
   test("accumulates without mutating the input", () => {
     const cumulative = { a: 5, b: 2 };
-    const merged = addHandScores(cumulative, { a: 3, c: 1 });
+    const merged = addRoundScores(cumulative, { a: 3, c: 1 });
     assert.deepEqual(merged, { a: 8, b: 2, c: 1 });
     assert.deepEqual(cumulative, { a: 5, b: 2 });
   });
@@ -153,7 +153,7 @@ describe("resolveMatch", () => {
       while (rounds < 12 && !finished) {
         // One seat wins every round: the shortest possible match, and the
         // one that has to fit inside the band.
-        cumulative = addHandScores(cumulative, scoreHand(players, playerCount));
+        cumulative = addRoundScores(cumulative, scoreRound(players, playerCount));
         rounds++;
         const result = resolveMatch(cumulative, target, playerCount);
         if (!result) continue;
@@ -179,8 +179,8 @@ describe("resolveMatch", () => {
 
     for (let hand = 0; hand < 40 && !winner; hand++) {
       // Rotate the finishing order so "a" wins slightly more often.
-      const rankings = hand % 3 === 0 ? players : [...players.slice(1), players[0]];
-      cumulative = addHandScores(cumulative, scoreHand(rankings, players.length));
+      const finishingOrder = hand % 3 === 0 ? players : [...players.slice(1), players[0]];
+      cumulative = addRoundScores(cumulative, scoreRound(finishingOrder, players.length));
       const result = resolveMatch(cumulative, target);
       if (!result) continue;
       if (result.newTarget !== null) {
@@ -197,10 +197,10 @@ describe("resolveMatch", () => {
   });
 });
 
-// `foldHandIntoMatch` is the one match progression both authorities run:
+// `foldRoundIntoMatch` is the one match progression both authorities run:
 // offline keys by engine player id, the server by userId or the `bot:<seat>`
 // sentinel for a seat someone left.
-describe("foldHandIntoMatch", () => {
+describe("foldRoundIntoMatch", () => {
   const base = {
     playerCount: 4,
     length: "match" as const,
@@ -210,12 +210,12 @@ describe("foldHandIntoMatch", () => {
   };
 
   test("below the target: points accumulate, the target stands, nobody wins", () => {
-    const result = foldHandIntoMatch({
+    const result = foldRoundIntoMatch({
       ...base,
-      rankings: ["a", "b", "c", "d"],
+      finishingOrder: ["a", "b", "c", "d"],
       cumulative: { a: 5, b: 2, c: 1, d: 0 },
     });
-    assert.deepEqual(result.handByKey, { a: 3, b: 2, c: 1, d: 0 });
+    assert.deepEqual(result.roundByKey, { a: 3, b: 2, c: 1, d: 0 });
     assert.deepEqual(result.cumulative, { a: 8, b: 4, c: 2, d: 0 });
     assert.equal(result.target, 21);
     assert.equal(result.over, false);
@@ -224,9 +224,9 @@ describe("foldHandIntoMatch", () => {
   });
 
   test("the sole seat reaching the target wins the match", () => {
-    const result = foldHandIntoMatch({
+    const result = foldRoundIntoMatch({
       ...base,
-      rankings: ["a", "b", "c", "d"],
+      finishingOrder: ["a", "b", "c", "d"],
       cumulative: { a: 19, b: 4, c: 2, d: 0 },
     });
     assert.equal(result.over, true);
@@ -235,9 +235,9 @@ describe("foldHandIntoMatch", () => {
   });
 
   test("two seats reaching it together escalate instead of ending it", () => {
-    const result = foldHandIntoMatch({
+    const result = foldRoundIntoMatch({
       ...base,
-      rankings: ["a", "b", "c", "d"],
+      finishingOrder: ["a", "b", "c", "d"],
       cumulative: { a: 19, b: 19, c: 2, d: 0 },
     });
     assert.equal(result.over, false);
@@ -246,10 +246,10 @@ describe("foldHandIntoMatch", () => {
   });
 
   test("a tie at the final target is a draw naming everyone on it", () => {
-    const result = foldHandIntoMatch({
+    const result = foldRoundIntoMatch({
       ...base,
       target: 51,
-      rankings: ["a", "b", "c", "d"],
+      finishingOrder: ["a", "b", "c", "d"],
       cumulative: { a: 49, b: 50, c: 2, d: 0 },
     });
     assert.equal(result.over, true);
@@ -259,7 +259,7 @@ describe("foldHandIntoMatch", () => {
 
   test("does not mutate the cumulative totals it was handed", () => {
     const cumulative = { a: 5, b: 2 };
-    foldHandIntoMatch({ ...base, rankings: ["a", "b"], cumulative });
+    foldRoundIntoMatch({ ...base, finishingOrder: ["a", "b"], cumulative });
     assert.deepEqual(cumulative, { a: 5, b: 2 });
   });
 
@@ -267,9 +267,9 @@ describe("foldHandIntoMatch", () => {
     const single = { ...base, length: "single" as const };
 
     test("ends the match on whoever took it, with no target involved", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...single,
-        rankings: ["c", "a", "d", "b"],
+        finishingOrder: ["c", "a", "d", "b"],
         cumulative: {},
       });
       assert.equal(result.over, true);
@@ -279,7 +279,7 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("a round nobody finished names no winner", () => {
-      const result = foldHandIntoMatch({ ...single, rankings: [], cumulative: {} });
+      const result = foldRoundIntoMatch({ ...single, finishingOrder: [], cumulative: {} });
       assert.equal(result.over, true);
       assert.deepEqual(result.winners, []);
     });
@@ -306,13 +306,13 @@ describe("foldHandIntoMatch", () => {
     };
 
     test("a vacated seat's points land on both the hand and the match scoreboard", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         target: 21,
-        rankings: ["p1", "p0", "p2", "p3"],
+        finishingOrder: ["p1", "p0", "p2", "p3"],
         cumulative: { u0: 4, u2: 2, u3: 1 },
       });
-      assert.deepEqual(result.handByKey, { "bot:1": 3, u0: 2, u2: 1, u3: 0 });
+      assert.deepEqual(result.roundByKey, { "bot:1": 3, u0: 2, u2: 1, u3: 0 });
       // Was `{ u0: 6, u2: 3, u3: 1 }`, `bot:1` absent: the old fixture set
       // `accumulates` to exclude a vacated seat from the running total.
       // Clause 4 of #850 folds it in like any other bot seat's points — only
@@ -321,10 +321,10 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("a vacated seat cannot cross the target or be named the winner", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         target: 21,
-        rankings: ["p1", "p0", "p2", "p3"],
+        finishingOrder: ["p1", "p0", "p2", "p3"],
         cumulative: { u0: 4, u2: 2, u3: 1, "bot:1": 20 },
       });
       assert.equal(result.over, false);
@@ -337,23 +337,23 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("a vacated seat that takes a single round names the best seat behind it", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         length: "single",
         target: 21,
-        rankings: ["p1", "p0", "p2", "p3"],
+        finishingOrder: ["p1", "p0", "p2", "p3"],
         cumulative: {},
       });
       assert.deepEqual(result.winners, ["u0"]);
     });
 
     test("a single round every seat walked out of names nobody", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         length: "single",
         target: 21,
         keyOf: (engineId: string) => `bot:${seatOf[engineId]}`,
-        rankings: ["p1", "p0", "p2", "p3"],
+        finishingOrder: ["p1", "p0", "p2", "p3"],
         cumulative: {},
       });
       assert.equal(result.over, true);
@@ -363,12 +363,12 @@ describe("foldHandIntoMatch", () => {
     test("a single round in teams names the vacated winner's partner, not the other pair", () => {
       // docs/GAME-RULES.md §11: the pair takes the round, not the seat that
       // emptied its hand — so the pair that took it still wins.
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         length: "single",
         gameMode: "teams",
         target: 21,
-        rankings: ["p1", "p3", "p0", "p2"],
+        finishingOrder: ["p1", "p3", "p0", "p2"],
         teamOf: { p0: "B", p1: "A", p2: "B", p3: "A" },
         cumulative: {},
       });
@@ -376,13 +376,13 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("an engine id belonging to no seat is dropped entirely", () => {
-      const result = foldHandIntoMatch({
+      const result = foldRoundIntoMatch({
         ...online,
         target: 21,
-        rankings: ["ghost", "p0", "p2", "p3"],
+        finishingOrder: ["ghost", "p0", "p2", "p3"],
         cumulative: {},
       });
-      assert.deepEqual(result.handByKey, { u0: 2, u2: 1, u3: 0 });
+      assert.deepEqual(result.roundByKey, { u0: 2, u2: 1, u3: 0 });
       assert.deepEqual(result.cumulative, { u0: 2, u2: 1, u3: 0 });
     });
   });
@@ -401,7 +401,7 @@ describe("foldHandIntoMatch", () => {
       Object.fromEntries(Object.entries(scores).map(([id, points]) => [userOf[id], points]));
 
     const agree = (args: {
-      rankings: string[];
+      finishingOrder: string[];
       length: "match" | "single";
       gameMode: "free_for_all" | "teams";
       target: number;
@@ -413,15 +413,15 @@ describe("foldHandIntoMatch", () => {
         length: args.length,
         gameMode: args.gameMode,
         target: args.target,
-        rankings: args.rankings,
+        finishingOrder: args.finishingOrder,
         teamOf: args.teamOf,
       };
-      const offline = foldHandIntoMatch({
+      const offline = foldRoundIntoMatch({
         ...shared,
         cumulative: args.cumulative,
         keyOf: (engineId: string) => engineId,
       });
-      const online = foldHandIntoMatch({
+      const online = foldRoundIntoMatch({
         ...shared,
         cumulative: rekey(args.cumulative),
         keyOf: (engineId: string) => userOf[engineId] ?? null,
@@ -430,7 +430,7 @@ describe("foldHandIntoMatch", () => {
       assert.deepEqual(
         {
           ...offline,
-          handByKey: rekey(offline.handByKey),
+          roundByKey: rekey(offline.roundByKey),
           cumulative: rekey(offline.cumulative),
           winners: offline.winners.map((id) => userOf[id]),
         },
@@ -439,12 +439,12 @@ describe("foldHandIntoMatch", () => {
       return online;
     };
 
-    const rankings = ["player_2", "player_0", "player_3", "player_1"];
+    const finishingOrder = ["player_2", "player_0", "player_3", "player_1"];
     const teamOf = { player_0: "A", player_1: "B", player_2: "A", player_3: "B" };
 
     test("free-for-all, below the target", () => {
       agree({
-        rankings,
+        finishingOrder,
         length: "match",
         gameMode: "free_for_all",
         target: 21,
@@ -454,7 +454,7 @@ describe("foldHandIntoMatch", () => {
 
     test("free-for-all, a seat crossing the target", () => {
       const result = agree({
-        rankings,
+        finishingOrder,
         length: "match",
         gameMode: "free_for_all",
         target: 21,
@@ -466,7 +466,7 @@ describe("foldHandIntoMatch", () => {
 
     test("free-for-all, an escalation", () => {
       const result = agree({
-        rankings,
+        finishingOrder,
         length: "match",
         gameMode: "free_for_all",
         target: 21,
@@ -477,7 +477,7 @@ describe("foldHandIntoMatch", () => {
 
     test("teams, a pair crossing the target", () => {
       const result = agree({
-        rankings,
+        finishingOrder,
         length: "match",
         gameMode: "teams",
         target: 21,
@@ -489,8 +489,8 @@ describe("foldHandIntoMatch", () => {
     });
 
     test("a single round, in both modes", () => {
-      agree({ rankings, length: "single", gameMode: "free_for_all", target: 21, cumulative: {} });
-      agree({ rankings, length: "single", gameMode: "teams", target: 21, cumulative: {}, teamOf });
+      agree({ finishingOrder, length: "single", gameMode: "free_for_all", target: 21, cumulative: {} });
+      agree({ finishingOrder, length: "single", gameMode: "teams", target: 21, cumulative: {}, teamOf });
     });
   });
 });

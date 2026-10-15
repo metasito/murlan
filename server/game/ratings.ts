@@ -3,7 +3,7 @@ import { db } from "../store/db.ts";
 import { userRatings, users } from "../../shared/schema.ts";
 import { lockUsers } from "../store/userLock.ts";
 import {
-  PROVISIONAL_GAMES,
+  PROVISIONAL_ROUNDS,
   ratedFinishers,
   ratingDeltas,
   seasonKey,
@@ -19,7 +19,7 @@ export const LEADERBOARD_SIZE = 50;
 export interface RatingView {
   season: string;
   rating: number;
-  games: number;
+  rounds: number;
   /** True until the record is long enough to list publicly. */
   provisional: boolean;
 }
@@ -33,7 +33,7 @@ export interface LeaderboardEntry {
   userId: string;
   username: string;
   rating: number;
-  games: number;
+  rounds: number;
 }
 
 /** Either the pool or an open transaction — currentRow only ever reads. */
@@ -47,13 +47,13 @@ async function currentRow(
   tx: Reader,
   userId: string,
   season: string
-): Promise<{ rating: number; games: number }> {
+): Promise<{ rating: number; rounds: number }> {
   const [existing] = await tx
     .select()
     .from(userRatings)
     .where(and(eq(userRatings.userId, userId), eq(userRatings.season, season)))
     .limit(1);
-  if (existing) return { rating: existing.rating, games: existing.games };
+  if (existing) return { rating: existing.rating, rounds: existing.rounds };
 
   // `season` sorts lexicographically because it is YYYY-MM, so "the latest
   // season before this one" is a plain descending order with no date parsing.
@@ -64,7 +64,7 @@ async function currentRow(
     .orderBy(desc(userRatings.season))
     .limit(1);
 
-  return { rating: seedRating(previous ? previous.rating : null), games: 0 };
+  return { rating: seedRating(previous ? previous.rating : null), rounds: 0 };
 }
 
 /**
@@ -110,7 +110,7 @@ async function ratedSeatsOf(
 
 /**
  * What this hand is about to do to each seat's rating, read before the write
- * and before `game:over` goes out.
+ * and before `game:round_over` goes out.
  *
  * The delta cannot be recovered afterwards: `user_ratings` keeps only the
  * current rating, while `ratingDeltas()` needs every seat's rating and game
@@ -135,7 +135,7 @@ export async function previewRatedDeltas(
   return new Map(
     seats.map((seat) => {
       const delta = deltas.get(seat.userId) ?? 0;
-      return [seat.userId, { delta, rating: seat.rating + delta, games: seat.games + 1 }];
+      return [seat.userId, { delta, rating: seat.rating + delta, rounds: seat.rounds + 1 }];
     })
   );
 }
@@ -175,13 +175,13 @@ export async function recordRatedResult(
           userId: seat.userId,
           season,
           rating: seat.rating + delta,
-          games: seat.games + 1,
+          rounds: seat.rounds + 1,
         })
         .onConflictDoUpdate({
           target: [userRatings.userId, userRatings.season],
           set: {
             rating: seat.rating + delta,
-            games: seat.games + 1,
+            rounds: seat.rounds + 1,
             updatedAt: new Date(),
           },
         });
@@ -193,8 +193,8 @@ export async function recordRatedResult(
 /** This season's standing for one player, seeded but not yet written if unplayed. */
 export async function getRating(userId: string, now: Date): Promise<RatingView> {
   const season = seasonKey(now);
-  const { rating, games } = await currentRow(db, userId, season);
-  return { season, rating, games, provisional: games < PROVISIONAL_GAMES };
+  const { rating, rounds } = await currentRow(db, userId, season);
+  return { season, rating, rounds, provisional: rounds < PROVISIONAL_ROUNDS };
 }
 
 /** The current season's ladder. Provisional records are not listed. */
@@ -205,11 +205,11 @@ export async function getLeaderboard(now: Date): Promise<LeaderboardEntry[]> {
       userId: userRatings.userId,
       username: users.username,
       rating: userRatings.rating,
-      games: userRatings.games,
+      rounds: userRatings.rounds,
     })
     .from(userRatings)
     .innerJoin(users, eq(users.id, userRatings.userId))
-    .where(and(eq(userRatings.season, season), gte(userRatings.games, PROVISIONAL_GAMES)))
+    .where(and(eq(userRatings.season, season), gte(userRatings.rounds, PROVISIONAL_ROUNDS)))
     .orderBy(desc(userRatings.rating), userRatings.updatedAt)
     .limit(LEADERBOARD_SIZE);
 
@@ -235,4 +235,4 @@ export async function getCircleLeaderboard(userIds: string[], now: Date): Promis
   return rows.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
-export { PROVISIONAL_GAMES, START_RATING };
+export { PROVISIONAL_ROUNDS, START_RATING };

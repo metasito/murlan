@@ -43,7 +43,7 @@ Verify against source before changing any.
   connect.
 - **One socket per userId**, via `lib/socket.ts`; `SocketContext` owns the lifecycle.
 - **A winner is an engine player id (`player_N`)** — the only identity every client can map at
-  every moment `game:over` can arrive, and the only one surviving a vacated seat.
+  every moment `game:round_over` can arrive, and the only one surviving a vacated seat.
 - **Every Postgres connection is opened by `server/store/pool.ts`.** `pg-pool` listens on a client
   only while it is idle, so a backend terminated under a checked-out one (the socket adapter's
   `LISTEN`, a transaction between statements) was an unhandled `error` that exited the process

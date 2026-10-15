@@ -17,21 +17,21 @@ function reach(kind: NoticeKind, scale: number) {
 /** The next-hand vote at the open pill's foot: the tally as a count, lit and spent once the viewer has voted. */
 export function RoundVote({ scale, voted, votes, total, onPress }: RoundVoteNote & { scale: number }) {
   const { t } = useTranslation();
-  const waiting = t("gameOverOverlay.waitingA11yLabel", { count: votes, total });
+  const waiting = t("roundOverOverlay.waitingA11yLabel", { count: votes, total });
   return (
     <>
       <A11yStatus label={voted ? waiting : ""} />
       <Pressable
         style={reach("roundVote", scale)}
         {...a11yState({ role: "button", disabled: voted })}
-        accessibilityLabel={voted ? waiting : t("gameOverOverlay.nextHandA11yLabel")}
+        accessibilityLabel={voted ? waiting : t("roundOverOverlay.nextRoundA11yLabel")}
         disabled={voted}
         onPress={onPress}
       >
         <View {...a11yHidden()}>
           <TableNotice kind="roundVote" tone={voted ? "lit" : "neutral"} scale={scale}>
             <NoticeGlyph name={voted ? "checkmark-circle" : "play-forward-outline"} px={12} />
-            <NoticeText>{voted ? t("gameOverOverlay.nextHandWaiting", { count: votes, total }) : t("result.nextHand")}</NoticeText>
+            <NoticeText>{voted ? t("roundOverOverlay.nextRoundWaiting", { count: votes, total }) : t("result.nextRound")}</NoticeText>
             {!voted && <NoticeBadge>{`${votes}/${total}`}</NoticeBadge>}
           </TableNotice>
         </View>

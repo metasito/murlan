@@ -10,19 +10,19 @@ import { createRoom, fillWithBotsAndStart, goToOnlineLobby, joinRoom, startRoom 
 import { driveGameToCompletion } from "./helpers/bot";
 
 const LEAVE_BUTTON = { role: "button" as const, name: "Esci dalla partita" };
-const nextHandVote = (page: Page) => page.getByRole("button", { name: "Pronto per la prossima manche", exact: true });
+const nextRoundVote = (page: Page) => page.getByRole("button", { name: "Pronto per la prossima manche", exact: true });
 const waitingVote = (page: Page) => page.getByRole("button", { name: /^In attesa degli altri/ });
 
 async function isRoundOver(page: Page): Promise<boolean> {
-  return nextHandVote(page).isVisible();
+  return nextRoundVote(page).isVisible();
 }
 
 /** The round ended on the table: no results overlay, and the vote at the pill's foot deals the next one. */
 async function voteForTheNextDeal(pages: Page[]) {
   for (const page of pages) await expect(page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toHaveCount(0);
-  for (const page of pages) await nextHandVote(page).click();
+  for (const page of pages) await nextRoundVote(page).click();
   for (const page of pages) {
-    await expect(nextHandVote(page)).toHaveCount(0);
+    await expect(nextRoundVote(page)).toHaveCount(0);
     await expect(waitingVote(page)).toHaveCount(0);
   }
 }

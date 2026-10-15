@@ -45,7 +45,7 @@ output directory and leaves the record alone.
 | `leaderboard__tablet-landscape.png` | 46% of height used |
 | `rules__phone-portrait.png` | The card-strength row ends flush at the edge with no sign it scrolls |
 | `settings-modal__phone-portrait.png` | Two of five card-back names truncate |
-| `result__phone-12.png` | The primary action sits away from where the rankings end |
+| `result__phone-12.png` | The primary action sits away from where the finishingOrder end |
 | `table-lamp-bottom__tablet.png` | 349px empty band; 148px of unused width |
 | `table-lamp-bottom__phone-12.png` | The same table at phone size, for comparison |
 | `table-long-names__phone-12.png` | Long names truncate and initials fall back to two letters — a plan, not a defect |

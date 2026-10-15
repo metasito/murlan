@@ -10,6 +10,6 @@ import { exchangeAnnounceFrom } from "./game/exchangeTimeline.ts";
  * and how long the server holds a bot back — so the table and the animation
  * cannot drift apart.
  */
-export function exchangeAnnounceMs(bothJokersException: boolean): number {
-  return exchangeAnnounceFrom(bothJokersException);
+export function exchangeAnnounceMs(twoJokerException: boolean): number {
+  return exchangeAnnounceFrom(twoJokerException);
 }

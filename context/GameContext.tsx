@@ -14,7 +14,7 @@ import {
   MatchLength,
   dealFirstSeatFor,
   firstTargetFor,
-  foldHandIntoMatch,
+  foldRoundIntoMatch,
   initializeGame,
   initializeRematch,
   processExchangeChoice,
@@ -42,7 +42,7 @@ import {
   type ExchangeAnnounceData,
   type ExchangeHold,
 } from "@/lib/game/sharedGameFlow";
-import type { HandResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
+import type { RoundResult, MatchState, PlayerSetupConfig } from "@/lib/game/matchState";
 
 // Read once at module scope, matching app/game.tsx's own E2E_FAST — inlined
 // at bundle build time, so this only ever takes the fast path in a build the
@@ -64,14 +64,14 @@ const E2E_EXCHANGE_HOLD_MARGIN_MS = 4000;
 const E2E_EXCHANGE_HOLD: ExchangeHold =
   Platform.OS === "web" ? MEASURED_TAP_RETURN_MS + E2E_EXCHANGE_HOLD_MARGIN_MS : "untilTapped";
 
-export type { PlayerSetupConfig, HandResult, MatchState };
+export type { PlayerSetupConfig, RoundResult, MatchState };
 
 function freshMatch(length: MatchLength, playerCount: number): MatchState {
   return {
     length,
     target: firstTargetFor(playerCount),
     scores: {},
-    hands: [],
+    rounds: [],
     over: false,
     winners: [],
     isDraw: false,
@@ -79,17 +79,17 @@ function freshMatch(length: MatchLength, playerCount: number): MatchState {
 }
 
 /**
- * `foldHandIntoMatch` in the offline shape: every seat scores under its own
+ * `foldRoundIntoMatch` in the offline shape: every seat scores under its own
  * engine player id, and none of them is a vacated seat, so no key is excluded.
  */
-export function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
+export function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
   const teamOf: Record<string, string> = {};
   for (const p of finished.players) {
     if (p.team) teamOf[p.id] = p.team;
   }
 
-  const folded = foldHandIntoMatch({
-    rankings: finished.rankings,
+  const folded = foldRoundIntoMatch({
+    finishingOrder: finished.finishingOrder,
     playerCount: finished.players.length,
     length: match.length,
     gameMode: finished.gameMode,
@@ -102,7 +102,7 @@ export function applyHandToMatch(match: MatchState, finished: GameState): MatchS
   return {
     ...match,
     scores: folded.cumulative,
-    hands: [...match.hands, { rankings: finished.rankings, pointsAwarded: folded.handByKey }],
+    rounds: [...match.rounds, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
     target: folded.target,
     over: folded.over,
     winners: folded.winners,
@@ -118,14 +118,14 @@ interface GameContextValue {
   /** Set only under `EXPO_PUBLIC_E2E_FAST` (#915); undefined for a real player. */
   exchangeHoldMsOverride: ExchangeHold | undefined;
   setupGame: (players: PlayerSetupConfig[], mode: GameMode, length?: MatchLength) => void;
-  startNextHand: () => void;
+  startNextRound: () => void;
   startNewMatch: () => void;
   chooseExchangeCard: (cardId: string) => void;
   acknowledgeExchange: () => void;
   playCards: (cardIds: string[]) => boolean;
   passTurn: () => void;
   resetGame: () => void;
-  runAITurn: () => void;
+  runBotTurn: () => void;
   /** Closes an exchange nobody at the table holds a legal card for. */
   releaseStuckExchange: () => void;
   /** A match the app was killed in the middle of, waiting to be picked up. */
@@ -167,8 +167,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
    */
   const commitState = useCallback((next: GameState, previous: GameState) => {
     setGameState(next);
-    if (!next.gameOver || previous.gameOver) return;
-    setMatch((prev) => applyHandToMatch(prev, next));
+    if (!next.roundOver || previous.roundOver) return;
+    setMatch((prev) => applyRoundToMatch(prev, next));
   }, []);
 
   const setupGame = useCallback(
@@ -195,13 +195,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * new match (reset to seat 0) or continues the current one (rotate).
    */
   const dealFrom = useCallback(
-    (prevRankings: string[], matchIsOver = false) => {
+    (prevFinishingOrder: string[], matchIsOver = false) => {
       const playersWithId = savedPlayerConfigs.map((p, i) => ({ ...p, id: `player_${i}` }));
       const nextFirstSeat = dealFirstSeatFor(matchIsOver, dealFirstSeat, playersWithId.length);
-      const state = initializeRematch(playersWithId, savedGameMode, prevRankings, nextFirstSeat);
+      const state = initializeRematch(playersWithId, savedGameMode, prevFinishingOrder, nextFirstSeat);
       setDealFirstSeat(nextFirstSeat);
 
-      if (state.exchangePhase?.bothJokersException) {
+      if (state.exchangePhase?.twoJokerException) {
         announce(buildExchangeAnnounce(state.players, state.exchangePhase));
       }
 
@@ -210,15 +210,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [savedPlayerConfigs, savedGameMode, dealFirstSeat, announce]
   );
 
-  const startNextHand = useCallback(() => {
+  const startNextRound = useCallback(() => {
     if (!gameState) return;
-    dealFrom(gameState.rankings);
+    dealFrom(gameState.finishingOrder);
   }, [gameState, dealFrom]);
 
   const startNewMatch = useCallback(() => {
     if (!gameState) return;
     setMatch(freshMatch(match.length, gameState.players.length));
-    dealFrom(gameState.rankings, true);
+    dealFrom(gameState.finishingOrder, true);
   }, [gameState, match.length, dealFrom]);
 
   const chooseExchangeCard = useCallback(
@@ -273,7 +273,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     commitState(newState, gameState);
   }, [gameState, commitState]);
 
-  const runAITurn = useCallback(() => {
+  const runBotTurn = useCallback(() => {
     if (!gameState) return;
     const next = offlineBotMove(gameState);
     if (next) commitState(next, gameState);
@@ -376,14 +376,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       exchangeAnnounceData,
       exchangeHoldMsOverride,
       setupGame,
-      startNextHand,
+      startNextRound,
       startNewMatch,
       chooseExchangeCard,
       acknowledgeExchange,
       playCards,
       passTurn,
       resetGame,
-      runAITurn,
+      runBotTurn,
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,
@@ -395,14 +395,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       exchangeAnnounceData,
       exchangeHoldMsOverride,
       setupGame,
-      startNextHand,
+      startNextRound,
       startNewMatch,
       chooseExchangeCard,
       acknowledgeExchange,
       playCards,
       passTurn,
       resetGame,
-      runAITurn,
+      runBotTurn,
       releaseStuckExchange,
       hasSavedGame,
       resumeGame,

@@ -22,7 +22,7 @@ jest.mock('@/context/AuthContext', () => ({
 }));
 
 const mockSeat = (id: string, name: string): Player => ({ id, name, hand: [] as Card[], type: 'human' });
-const mockMidHand: GameState = {
+const mockMidRound: GameState = {
   players: [mockSeat('player_0', 'Alice'), mockSeat('player_1', 'Carl')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -30,14 +30,14 @@ const mockMidHand: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 
 jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineTable: () => ({
-    gameState: mockState.current ?? mockMidHand,
+    gameState: mockState.current ?? mockMidRound,
     mySeatIndex: 0,
     playCards: jest.fn(),
     pass: jest.fn(),
@@ -59,17 +59,17 @@ jest.mock('@/context/onlineGameHooks', () => ({
     ownLink: mockOwnLink.current,
   }),
   useOnlineMatch: () => ({
-    matchState: { target: 21, length: 'match', over: mockMatchOver.current, winners: [], isDraw: false, continues: true, handsPlayed: 0 },
+    matchState: { target: 21, length: 'match', over: mockMatchOver.current, winners: [], isDraw: false, continues: true, roundsPlayed: 0 },
     cumulativeScores: {},
-    handScores: {},
-    handScoresCurrent: true,
+    roundScores: {},
+    roundScoresCurrent: true,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),
     voteToEndMatch: jest.fn(),
     ratingDeltas: {},
     ratingsAfter: {},
-    handRecorded: true,
+    roundRecorded: true,
   }),
   useOnlineExchange: () => ({
     exchangeAnnouncing: false,
@@ -141,8 +141,8 @@ describe("the online table on the viewer's own link", () => {
     expect(await at('back')).toBe(true);
     expect(lastTable()).toMatchObject({ ownLink: 'back', connection: { state: 'back' } });
     expect(await at('up')).toBe(true);
-    expect(await at('up', { ...mockMidHand, currentTurnIndex: 1 })).toBe(true);
-    expect(await at('up', { ...mockMidHand })).toBe(false);
+    expect(await at('up', { ...mockMidRound, currentTurnIndex: 1 })).toBe(true);
+    expect(await at('up', { ...mockMidRound })).toBe(false);
     await view.unmount();
   });
 
@@ -163,7 +163,7 @@ describe("the online table on the viewer's own link", () => {
   it('keeps the lost link and its Riprova on the table over a finished match', async () => {
     mockOwnLink.current = 'lost';
     mockMatchOver.current = true;
-    mockState.current = { ...mockMidHand, gameOver: true, rankings: ['player_0', 'player_1'] };
+    mockState.current = { ...mockMidRound, roundOver: true, finishingOrder: ['player_0', 'player_1'] };
     const view = await render(
       <SafeAreaProvider initialMetrics={METRICS}>
         <OnlineGameScreen />

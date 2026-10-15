@@ -28,7 +28,7 @@ import { sideSlotHeight, topBandHeight } from "../../components/tableFrame.ts";
 import {
   arrivingCard,
   readHandArrival,
-  readTradeSeats,
+  readExchangeSeats,
   NO_STAGES,
   JOKERS,
   readThrownPlay,
@@ -113,7 +113,7 @@ const IMPACT_FEEDBACK = [
   "burst",
   "setFlinchTier",
   "setFlinchTrigger",
-  "celebrateFlush",
+  "celebrateGoingOut",
   "setFlightLanded(true)",
 ];
 
@@ -410,11 +410,11 @@ describe("passedSeats walks the direction the engine deals turns", () => {
       currentTurnIndex: 3,
       lastPlayedBy: 3,
       firstPlayMade: true,
-      rankings: ["player_0", "player_1"],
+      finishingOrder: ["player_0", "player_1"],
     });
 
     s = processPlay(s, buildCombination([c("J", "diamonds")])!);
-    assert.equal(s.gameOver, true);
+    assert.equal(s.roundOver, true);
     assert.equal(s.currentTurnIndex, s.lastPlayedBy);
     assert.notEqual(s.lastPlayedCombination, null);
     assert.deepEqual(passedSeats(view(s)), []);
@@ -526,54 +526,54 @@ describe("the table's own trauma escalation (#763)", () => {
 
   test("a play's tier reads off the combination that just landed", () => {
     assert.equal(comboImpactTier("bomb"), "bomb");
-    assert.equal(comboImpactTier("straight"), "straightFlush");
-    assert.equal(comboImpactTier("royal_straight"), "straightFlush");
+    assert.equal(comboImpactTier("straight"), "straight");
+    assert.equal(comboImpactTier("royal_straight"), "straight");
     assert.equal(comboImpactTier("single"), "ordinary");
     assert.equal(comboImpactTier("pair"), "ordinary");
     assert.equal(comboImpactTier("triple"), "ordinary");
   });
 
-  // The round rung is `GameState.gameOver` (processPlay: "the hand is
+  // The round rung is `GameState.roundOver` (processPlay: "the hand is
   // decided"), never `trickWinner` — that is a trick, closing many times a
   // hand (docs/GAME-RULES.md §9). The match rung is a further fact about the
   // same landing (`MatchVerdict.over`), not a second, later event.
   describe("landingTier", () => {
     test("a play that closes nothing lands at its own tier", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: false, viewerWon: false }), "ordinary");
-      assert.equal(landingTier({ comboType: "bomb", handOver: false, matchOver: false, viewerWon: false }), "bomb");
+      assert.equal(landingTier({ comboType: "single", roundOver: false, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", roundOver: false, matchOver: false, viewerWon: false }), "bomb");
     });
 
     test("the hand emptying, with the match still open, is the round rung for the viewer who won it", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: true }), "roundWon");
+      assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: false, viewerWon: true }), "roundWon");
     });
 
     test("a round the viewer did not win lands at the play's own tier: no shake for lost, neutral or draw (#1469)", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: false, viewerWon: false }), "ordinary");
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: false }), "bomb");
+      assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: false, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: false, viewerWon: false }), "bomb");
     });
 
     test("the hand emptying and the match closing with it is the match rung for the viewer who won the match", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: true }), "matchWon");
+      assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: true, viewerWon: true }), "matchWon");
     });
 
     test("a match the viewer lost lands at the play's own tier: no shake (#1423)", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: true, matchOver: true, viewerWon: false }), "ordinary");
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: false }), "bomb");
+      assert.equal(landingTier({ comboType: "single", roundOver: true, matchOver: true, viewerWon: false }), "ordinary");
+      assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: true, viewerWon: false }), "bomb");
     });
 
-    test("matchOver with handOver false never fires the match rung — a match cannot close on a hand still in play", () => {
-      assert.equal(landingTier({ comboType: "single", handOver: false, matchOver: true, viewerWon: true }), "ordinary");
+    test("matchOver with roundOver false never fires the match rung — a match cannot close on a hand still in play", () => {
+      assert.equal(landingTier({ comboType: "single", roundOver: false, matchOver: true, viewerWon: true }), "ordinary");
     });
 
     test("a bomb that also closes the round is only as loud as its loudest rung", () => {
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: false, viewerWon: true }), "bomb");
-      assert.equal(landingTier({ comboType: "bomb", handOver: true, matchOver: true, viewerWon: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: false, viewerWon: true }), "bomb");
+      assert.equal(landingTier({ comboType: "bomb", roundOver: true, matchOver: true, viewerWon: true }), "bomb");
     });
   });
 
   test("the tier→trauma mapping is the one table #101 settled", () => {
     assert.equal(traumaFor("ordinary", false, false), 0);
-    assert.equal(traumaFor("straightFlush", false, false), 0);
+    assert.equal(traumaFor("straight", false, false), 0);
     assert.equal(traumaFor("bomb", false, false), Trauma.bomb);
     assert.equal(traumaFor("roundWon", false, false), Trauma.roundWon);
     assert.equal(traumaFor("matchWon", false, false), Trauma.matchWon);
@@ -599,7 +599,7 @@ describe("the table's own trauma escalation (#763)", () => {
   // at mount — so they
   // are pinned here, directly against the pure functions, the way #783 did.
   test("reduced motion produces no shake, at every tier, without a bespoke branch", () => {
-    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
+    const tiers: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
     for (const tier of tiers) {
       assert.equal(traumaFor(tier, true, false), 0, `${tier} must carry no trauma under reduced motion`);
     }
@@ -613,7 +613,7 @@ describe("the table's own trauma escalation (#763)", () => {
   });
 
   test("screen shake switched off answers exactly 0 at every tier, and on leaves the tier's trauma", () => {
-    const tiers: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
+    const tiers: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
     for (const tier of tiers) {
       assert.ok(Object.is(traumaFor(tier, false, true), 0), `${tier} must not shake with screen shake off`);
       assert.equal(traumaFor(tier, false, false), Trauma[tier as keyof typeof Trauma] ?? 0);
@@ -697,11 +697,11 @@ describe("the table's own trauma escalation (#763)", () => {
 });
 
 describe("the beaten pile's flinch (#764)", () => {
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
 
   test("the tier→displacement mapping reads the same five tiers #763's trauma table does", () => {
     assert.equal(flinchFor("ordinary", false), 0);
-    assert.equal(flinchFor("straightFlush", false), Spacing.xxs);
+    assert.equal(flinchFor("straight", false), Spacing.xxs);
     assert.equal(flinchFor("bomb", false), Spacing.slim);
     assert.equal(flinchFor("roundWon", false), Spacing.slim);
     assert.equal(flinchFor("matchWon", false), Spacing.slim);
@@ -709,7 +709,7 @@ describe("the beaten pile's flinch (#764)", () => {
 
   test("a straight or flush still displaces what it beat — only the ordinary win is silent", () => {
     assert.ok(
-      flinchFor("straightFlush", false) > flinchFor("ordinary", false),
+      flinchFor("straight", false) > flinchFor("ordinary", false),
       "the land spring's own overshoot is the whole effect for an ordinary win, but a straight or flush must visibly give ground"
     );
   });
@@ -752,7 +752,7 @@ describe("the beaten pile's flinch (#764)", () => {
 
   test("no impact the table feels waits on a timer: each starts at the flight's contact", () => {
     const src = readPile();
-    assert.deepEqual(impactFeedbackTimers(src), ["celebrateFlush: no timeout"]);
+    assert.deepEqual(impactFeedbackTimers(src), ["celebrateGoingOut: no timeout"]);
     assert.deepEqual(bareFlightTimers(src), []);
   });
 
@@ -762,7 +762,7 @@ describe("the beaten pile's flinch (#764)", () => {
         "playImpact(heavy, dir, n);",
         "impactTimerRef.current = setTimeout(() => {",
         "  shake(tier); burst(tier); setFlinchTier(tier); setFlinchTrigger((t) => t + 1);",
-        "  if (x) celebrateFlush();",
+        "  if (x) celebrateGoingOut();",
         "}, impactDelayMs(reduceMotion));",
         "const clearLanding = () => setFlightLanded(true);",
         "setFlightLanded(false);",
@@ -775,7 +775,7 @@ describe("the beaten pile's flinch (#764)", () => {
       "burst: impactDelayMs(reduceMotion)",
       "setFlinchTier: impactDelayMs(reduceMotion)",
       "setFlinchTrigger: impactDelayMs(reduceMotion)",
-      "celebrateFlush: impactDelayMs(reduceMotion)",
+      "celebrateGoingOut: impactDelayMs(reduceMotion)",
       "setFlightLanded(true): FLIGHT_MS",
     ]);
     assert.deepEqual(bareFlightTimers(planted), ["setTimeout: FLIGHT_MS"]);
@@ -835,12 +835,12 @@ describe("the beaten pile's flinch (#764)", () => {
 });
 
 describe("the lamp's flare (#765)", () => {
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
 
   test("the graduated table #101 settled: only the bomb and the match flare", () => {
     const expected: Record<ImpactTier, FlareKind> = {
       ordinary: "none",
-      straightFlush: "none",
+      straight: "none",
       bomb: "brief",
       roundWon: "none",
       matchWon: "settle",
@@ -852,8 +852,8 @@ describe("the lamp's flare (#765)", () => {
 
   test("a straight or flush lands at its own tier and gets no flare", () => {
     // The rung this ticket's own tier table names "Ordinary win, straight /
-    // flush" — the row `comboImpactTier` calls "straightFlush", never a bomb.
-    assert.equal(flareKindFor("straightFlush"), "none");
+    // flush" — the row `comboImpactTier` calls "straight", never a bomb.
+    assert.equal(flareKindFor("straight"), "none");
   });
 
 });
@@ -867,7 +867,7 @@ describe("the bomb's peak, re-tuned against #789's corrected curve (#796)", () =
   const PHONE_EDGE = 320;
   const TABLET_EDGE = 834;
 
-  const ALL_TIERS: ImpactTier[] = ["ordinary", "straightFlush", "bomb", "roundWon", "matchWon"];
+  const ALL_TIERS: ImpactTier[] = ["ordinary", "straight", "bomb", "roundWon", "matchWon"];
 
   test("only the bomb reads a different peak — every other tier shares one amplitude", () => {
     const bomb = shakeAmplitudeFor("bomb");
@@ -1118,7 +1118,7 @@ describe("arrivingCard", () => {
     loserName: "Bea",
     winnerIdx: 1,
     loserIdx: 3,
-    bothJokersException: false,
+    twoJokerException: false,
     cardGiven: GIVEN,
     cardReceived: RECEIVED,
   };
@@ -1132,7 +1132,7 @@ describe("arrivingCard", () => {
     assert.deepEqual(arrivingCard(announce, 3), GIVEN);
   });
 
-  test("a seat outside the trade receives nothing", () => {
+  test("a seat outside the announced receives nothing", () => {
     for (const seat of [0, 2]) {
       assert.equal(arrivingCard(announce, seat), undefined, `seat ${seat} was given a card`);
     }
@@ -1143,7 +1143,7 @@ describe("arrivingCard", () => {
   });
 
   test("both Jokers cancelling the exchange delivers nothing to either seat", () => {
-    const cancelled = { ...announce, bothJokersException: true };
+    const cancelled = { ...announce, twoJokerException: true };
     for (const seat of [1, 3]) {
       assert.equal(arrivingCard(cancelled, seat), undefined, `seat ${seat} was given a card`);
     }
@@ -1165,31 +1165,31 @@ describe("arrivingCard", () => {
     const choosing = { ...announce, cardGiven: undefined };
     const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
     const read = (over: Partial<Parameters<typeof readHandArrival>[0]>) =>
-      readHandArrival({ hand: [KEPT, RECEIVED] as Card[], trade: announce, stages: at("waiting"), viewerSeat: 1, ...over });
+      readHandArrival({ hand: [KEPT, RECEIVED] as Card[], announced: announce, stages: at("waiting"), viewerSeat: 1, ...over });
 
     test("nothing is held back outside an exchange", () => {
-      assert.deepEqual(read({ trade: null }), { withheldIds: [] });
+      assert.deepEqual(read({ announced: null }), { withheldIds: [] });
     });
 
     test("the winner's hand keeps the card the engine already gave it out of the row until it lands", () => {
       for (const s of ["waiting", "flying", "rest", "tuck"] as const) {
-        assert.deepEqual(read({ trade: choosing, stages: at(s) }).withheldIds, [RECEIVED.id], s);
+        assert.deepEqual(read({ announced: choosing, stages: at(s) }).withheldIds, [RECEIVED.id], s);
       }
-      assert.equal(read({ trade: choosing, stages: at("rest") }).arrivingIndex, undefined, "the row parts only for the tuck");
+      assert.equal(read({ announced: choosing, stages: at("rest") }).arrivingIndex, undefined, "the row parts only for the tuck");
     });
 
     test("the tuck parts the row at the card's own place, and the landing gives it back to glow", () => {
-      const tuck = read({ trade: choosing, stages: at("tuck") });
+      const tuck = read({ announced: choosing, stages: at("tuck") });
       assert.equal(tuck.arrivingIndex, 1);
       assert.equal(tuck.descendingId, RECEIVED.id);
-      const landed = read({ trade: choosing, stages: at("landed") });
+      const landed = read({ announced: choosing, stages: at("landed") });
       assert.deepEqual(landed.withheldIds, []);
       assert.equal(landed.receivedId, RECEIVED.id);
       assert.equal(tuck.receivedId, undefined, "no glow before it is in the hand");
     });
 
     test("a card the hand does not hold parts nothing", () => {
-      assert.equal(read({ trade: choosing, hand: [KEPT] as Card[], stages: at("tuck") }).arrivingIndex, undefined);
+      assert.equal(read({ announced: choosing, hand: [KEPT] as Card[], stages: at("tuck") }).arrivingIndex, undefined);
     });
 
     test("the card the winner gives stays in its hand until its leg lifts out of it", () => {
@@ -1217,19 +1217,19 @@ describe("arrivingCard", () => {
     });
 
     test("both Jokers leave the loser's hand only while they are in the air", () => {
-      const jokers = { ...announce, bothJokersException: true };
+      const jokers = { ...announce, twoJokerException: true };
       const hand = [KEPT, ...JOKERS] as Card[];
-      const ids = (s: LegStage) => read({ trade: jokers, hand, viewerSeat: 3, stages: at(s) }).withheldIds;
+      const ids = (s: LegStage) => read({ announced: jokers, hand, viewerSeat: 3, stages: at(s) }).withheldIds;
       assert.deepEqual(ids("waiting"), []);
       assert.deepEqual(ids("rest"), JOKERS.map((c) => c.id));
       assert.deepEqual(ids("landed"), []);
     });
   });
 
-  describe("readTradeSeats", () => {
+  describe("readExchangeSeats", () => {
     const at = (receive: LegStage, give: LegStage = "waiting") => ({ ...NO_STAGES, key: "k", receive, give });
-    const seats = (trade: Parameters<typeof readTradeSeats>[0], receive: LegStage, give?: LegStage) => {
-      const { lit, shift } = readTradeSeats(trade, at(receive, give));
+    const seats = (announced: Parameters<typeof readExchangeSeats>[0], receive: LegStage, give?: LegStage) => {
+      const { lit, shift } = readExchangeSeats(announced, at(receive, give));
       return { lit: [...lit].sort(), shift: Object.fromEntries(shift) };
     };
 
@@ -1253,12 +1253,12 @@ describe("arrivingCard", () => {
     });
 
     test("both Jokers light the loser and leave its fan while they fly", () => {
-      const jokers = { ...announce, bothJokersException: true };
+      const jokers = { ...announce, twoJokerException: true };
       assert.deepEqual(seats(jokers, "rest"), { lit: [3], shift: { 3: -2 } });
       assert.deepEqual(seats(jokers, "landed"), { lit: [], shift: {} });
     });
 
-    test("no trade marks nothing", () => {
+    test("no announced marks nothing", () => {
       assert.deepEqual(seats(null, "rest"), { lit: [], shift: {} });
     });
   });
@@ -1271,7 +1271,7 @@ describe("readThrownPlay", () => {
     ({
       id,
       name: id,
-      type: "ai",
+      type: "bot",
       hand: Array.from({ length: cards }, (_, i) => card(`${id}_${i}`)),
     }) as unknown as Player;
 
@@ -1390,19 +1390,19 @@ describe("readExchangeLegs", () => {
     ({
       id,
       name: id,
-      type: "ai",
+      type: "bot",
       hand: Array.from({ length: cards }, (_, i) => card(`${id}_${i}`)),
     }) as unknown as Player;
 
   /** Four seats, the viewer at 0: 1 is right, 2 is top, 3 is left. */
   const players = [seat("me", 5), seat("right", 6), seat("top", 7), seat("left", 8)];
 
-  const trade = (winnerIdx: number, loserIdx: number, bothJokersException = false) => ({
+  const announced = (winnerIdx: number, loserIdx: number, twoJokerException = false) => ({
     winnerName: "",
     loserName: "",
     winnerIdx,
     loserIdx,
-    bothJokersException,
+    twoJokerException,
     cardReceived: card("taken"),
     cardGiven: card("given"),
   });
@@ -1420,7 +1420,7 @@ describe("readExchangeLegs", () => {
   };
   const legs = (winnerIdx: number, loserIdx: number, table = players, origins?: Map<string, CardFrom>, jokers = false) =>
     readExchangeLegs(
-      { ...GEOMETRY, trade: trade(winnerIdx, loserIdx, jokers), players: table, opponents: arrangeOpponents(table, 0) },
+      { ...GEOMETRY, announced: announced(winnerIdx, loserIdx, jokers), players: table, opponents: arrangeOpponents(table, 0) },
       origins
     );
 

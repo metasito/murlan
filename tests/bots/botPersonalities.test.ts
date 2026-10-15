@@ -14,7 +14,7 @@ import {
   getBotPersonality,
   isBotPersonalityId,
 } from "../../lib/game/botPersonalities.ts";
-import { aiChoosePlay, applyPersonality } from "../../lib/game/ai.ts";
+import { botChoosePlay, applyPersonality } from "../../lib/game/bot.ts";
 import {
   buildCombination,
   createDeck,
@@ -45,7 +45,7 @@ function botTable(
   return initializeGame(
     Array.from({ length: seats }, (_, i) => ({
       name: `bot${i}`,
-      type: "ai" as const,
+      type: "bot" as const,
       personality,
       team: gameMode === "teams" ? ((i % 2 === 0 ? "A" : "B") as "A" | "B") : undefined,
     })),
@@ -57,7 +57,7 @@ function botTable(
  * Runs a whole hand with every seat on `personality`, asserting at each step
  * that the chosen play was one getAllValidPlays offered. Returns the turns taken.
  */
-function playOutHand(
+function playOutRound(
   personality: BotPersonalityId,
   rng: () => number,
   shape: TableShape = {}
@@ -66,7 +66,7 @@ function playOutHand(
   let turns = 0;
   const limit = 2000;
 
-  while (!state.gameOver && turns < limit) {
+  while (!state.roundOver && turns < limit) {
     turns++;
     const seat = state.currentTurnIndex;
     const player = state.players[seat];
@@ -79,7 +79,7 @@ function playOutHand(
       requireCard
     );
 
-    const choice = aiChoosePlay(
+    const choice = botChoosePlay(
       player,
       isNewTrick ? null : state.lastPlayedCombination,
       isNewTrick,
@@ -89,7 +89,7 @@ function playOutHand(
     );
 
     if (choice) {
-      // aiChoosePlay enumerates its own candidates, so compare by content:
+      // botChoosePlay enumerates its own candidates, so compare by content:
       // same combination type over the same card ids.
       const key = (c: { type: string; cards: { id: string }[] }) =>
         `${c.type}:${c.cards.map((x) => x.id).sort().join(",")}`;
@@ -105,7 +105,7 @@ function playOutHand(
     state = processPass(state);
   }
 
-  assert.ok(state.gameOver, `${personality} did not finish a hand in ${limit} turns`);
+  assert.ok(state.roundOver, `${personality} did not finish a hand in ${limit} turns`);
   return turns;
 }
 
@@ -113,7 +113,7 @@ for (const p of BOT_PERSONALITIES) {
   test(`${p.id} finishes hands and only ever plays legal combinations`, () => {
     // Three rng sequences: never fires the knobs, always fires them, and a mix.
     for (const rng of [fixedRng([0.99]), fixedRng([0]), fixedRng([0.1, 0.9, 0.5, 0.3])]) {
-      for (let round = 0; round < 5; round++) playOutHand(p.id, rng);
+      for (let round = 0; round < 5; round++) playOutRound(p.id, rng);
     }
   });
 }
@@ -184,8 +184,8 @@ test("the hard tier leads a plain play rather than dump a royal straight", () =>
   // play the shortcut can see.
   const hand = [c("3", "spades"), c("4", "spades"), c("5", "spades"),
     c("6", "spades"), c("7", "spades"), c("9", "clubs"), c("J", "diamonds")];
-  const choice = aiChoosePlay(
-    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+  const choice = botChoosePlay(
+    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.notEqual(choice?.type, "royal_straight", "the royal is defence, not a lead");
@@ -201,8 +201,8 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
   const hand = [c("3", "hearts"), c("4", "diamonds"), c("5", "clubs"),
     c("6", "spades"), c("7", "hearts"), c("8", "diamonds"),
     c("9", "clubs"), c("J", "diamonds")];
-  const choice = aiChoosePlay(
-    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+  const choice = botChoosePlay(
+    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.equal(choice?.cards.length, 7, "the longest straight goes down");
@@ -213,8 +213,8 @@ test("the hard tier's near-finish shortcut leads its longest play", () => {
 // would lead the weaker one. Four cards, so both pairs clear `myCards - 2`.
 test("the hard tier's near-finish shortcut sorts on length, not on dump value", () => {
   const hand = [c("K", "clubs"), c("K", "hearts"), c("3", "clubs"), c("3", "diamonds")];
-  const choice = aiChoosePlay(
-    makePlayer("bot", hand, { type: "ai", personality: "gent" }), null, true,
+  const choice = botChoosePlay(
+    makePlayer("bot", hand, { type: "bot", personality: "gent" }), null, true,
     [9, 9, 9], undefined, fixedRng([0.5])
   );
   assert.deepEqual(choice?.cards.map((x) => x.rank), ["K", "K"]);
@@ -228,8 +228,8 @@ test("the hard tier leads its longest plain play rather than open with a bomb", 
     c("K", "diamonds"), c("3", "clubs"), c("4", "diamonds")];
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
-      const choice = aiChoosePlay(
-        makePlayer("bot", hand, { type: "ai", personality }), null, true,
+      const choice = botChoosePlay(
+        makePlayer("bot", hand, { type: "bot", personality }), null, true,
         [9, 9, 9], undefined, fixedRng([roll])
       );
       assert.deepEqual(
@@ -249,8 +249,8 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
   const lastPlayed = buildCombination([c("Q", "spades")])!;
   for (const personality of ["gent"] as BotPersonalityId[]) {
     for (const roll of [0, 0.5, 0.99]) {
-      const choice = aiChoosePlay(
-        makePlayer("bot", hand, { type: "ai", personality }), lastPlayed, false,
+      const choice = botChoosePlay(
+        makePlayer("bot", hand, { type: "bot", personality }), lastPlayed, false,
         [9, 9, 9], undefined, fixedRng([roll])
       );
       assert.ok(
@@ -265,14 +265,14 @@ test("the hard tier answers plainly rather than spend a joker, at every roll", (
 // so that array's order decides which alt it lands on. Every tier has to hand it
 // getAllValidPlays' own order, or one personality and one rng sequence answer
 // differently depending on which difficulty tier ran.
-test("aiChoosePlay never sorts the array getAllValidPlays returned in place", () => {
+test("botChoosePlay never sorts the array getAllValidPlays returned in place", () => {
   const src = readFileSync(
-    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/game/ai.ts"),
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../lib/game/bot.ts"),
     "utf8"
   );
-  const start = src.indexOf("export function aiChoosePlay");
+  const start = src.indexOf("export function botChoosePlay");
   const end = src.indexOf("\n}\n", start);
-  assert.ok(start > 0 && end > start, "could not locate aiChoosePlay's body to scan");
+  assert.ok(start > 0 && end > start, "could not locate botChoosePlay's body to scan");
   assert.doesNotMatch(src.slice(start, end), /\bplays\.sort\(/);
 });
 
@@ -281,8 +281,8 @@ test("easy tier leads its lowest-strength play when no knob fires", () => {
     c("9", "clubs"), c("9", "hearts"), c("5", "diamonds"), c("5", "clubs"),
     c("K", "spades"), c("7", "hearts"), c("3", "clubs"), c("J", "diamonds"),
   ];
-  const choice = aiChoosePlay(
-    makePlayer("bot", hand, { type: "ai", personality: "luan" }),
+  const choice = botChoosePlay(
+    makePlayer("bot", hand, { type: "bot", personality: "luan" }),
     null,
     true,
     [8, 8, 8],
@@ -309,8 +309,8 @@ test("easy tier's unpredictability alt follows getAllValidPlays' own order", () 
   const altRng = 0.3;
   const expected = alts[Math.min(alts.length - 1, Math.floor(altRng * alts.length))];
 
-  const choice = aiChoosePlay(
-    makePlayer("bot", hand, { type: "ai", personality: "luan" }),
+  const choice = botChoosePlay(
+    makePlayer("bot", hand, { type: "bot", personality: "luan" }),
     null,
     true,
     [8, 8, 8],
@@ -340,8 +340,8 @@ test("leading a round always produces a play, for every personality and hand siz
     for (let size = 1; size <= 14; size++) {
       for (let offset = 0; offset + size <= deck.length; offset += 5) {
         const hand = deck.slice(offset, offset + size);
-        const play = aiChoosePlay(
-          makePlayer("bot", hand, { type: "ai", personality: id }),
+        const play = botChoosePlay(
+          makePlayer("bot", hand, { type: "bot", personality: id }),
           null,
           true,
           [size, size, size],
@@ -358,7 +358,7 @@ test("leading a round always produces a play, for every personality and hand siz
 // counts and, in teams mode, its partner's seat, so neither the shorter table
 // nor the paired one is the same problem.
 test("every personality finishes a hand at 2 and 3 seats, and in teams mode", () => {
-  const shapes: [string, Parameters<typeof playOutHand>[2]][] = [
+  const shapes: [string, Parameters<typeof playOutRound>[2]][] = [
     ["2 seats", { seats: 2 }],
     ["3 seats", { seats: 3 }],
     ["4 seats, teams", { seats: 4, gameMode: "teams" }],
@@ -366,7 +366,7 @@ test("every personality finishes a hand at 2 and 3 seats, and in teams mode", ()
   for (const p of BOT_PERSONALITIES) {
     for (const [label, shape] of shapes) {
       for (const rng of [fixedRng([0.99]), fixedRng([0]), fixedRng([0.1, 0.9, 0.5, 0.3])]) {
-        assert.ok(playOutHand(p.id, rng, shape) > 0, `${p.id} at ${label}`);
+        assert.ok(playOutRound(p.id, rng, shape) > 0, `${p.id} at ${label}`);
       }
     }
   }
@@ -382,8 +382,8 @@ test("a requireCard that is not the 3♠ is still honoured", () => {
   ];
   for (const required of [hand[0], hand[3], hand[7]]) {
     for (const p of BOT_PERSONALITIES) {
-      const choice = aiChoosePlay(
-        makePlayer("bot", hand, { type: "ai", personality: p.id }),
+      const choice = botChoosePlay(
+        makePlayer("bot", hand, { type: "bot", personality: p.id }),
         null,
         true,
         [8, 8, 8],

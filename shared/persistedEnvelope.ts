@@ -122,7 +122,7 @@ export const persistedMatchSchema = z.object({
   // Defaulted rather than required: a row written before the field existed
   // restores as a match with no rounds behind it, which costs the results
   // board one number and never the hand.
-  handsPlayed: z.number().int().min(0).catch(0).default(0),
+  roundsPlayed: z.number().int().min(0).catch(0).default(0),
   endedByVote: z.boolean().catch(false).default(false),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
 

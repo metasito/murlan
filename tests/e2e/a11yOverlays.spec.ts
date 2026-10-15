@@ -44,11 +44,11 @@ function midExchangeSave() {
   ];
   const loserHand = [card("5_diamonds", "5", "diamonds"), card("J_hearts", "J", "hearts")];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: winnerHand, type: "human" },
-        { id: "player_1", name: "Luan", hand: loserHand, type: "ai" },
+        { id: "player_1", name: "Luan", hand: loserHand, type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -56,29 +56,29 @@ function midExchangeSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       exchangePhase: {
         active: true,
         winnerIdx: 0,
         loserIdx: 1,
         cardFromLoser: card("2_spades", "2", "spades"),
-        bothJokersException: false,
+        twoJokerException: false,
       },
     },
     match: {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Luan", type: "ai", personality: "luan" },
+      { name: "Luan", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

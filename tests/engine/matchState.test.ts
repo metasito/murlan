@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { celebratesViewer, isDrawnHand, handOutcomeFor, matchOutcomeFor } from "../../lib/game/matchState.ts";
+import { celebratesViewer, isDrawnRound, roundOutcomeFor, matchOutcomeFor } from "../../lib/game/matchState.ts";
 import { autoMoveForSeat, offlineBotMove } from "../../lib/game/autoMove.ts";
 import { emptyRankTally, type Card, type GameState, type PlayerType } from "../../lib/game/gameEngine.ts";
 
@@ -23,7 +23,7 @@ describe("celebratesViewer", () => {
   });
 
   // A client that rejoins a table which finished while it was away never
-  // receives `game:over`, so it holds `over: true` with no winners at all.
+  // receives `game:round_over`, so it holds `over: true` with no winners at all.
   test("passes over an undefined candidate", () => {
     assert.equal(celebratesViewer(TABLE, [undefined, "player_2"], "player_2", false), true);
   });
@@ -49,7 +49,7 @@ describe("celebratesViewer", () => {
 
 // GAME-RULES.md §11: first-and-fourth (3+0) pays the same total as second-and-
 // third (2+1), so a round can end with both teams tied.
-describe("isDrawnHand", () => {
+describe("isDrawnRound", () => {
   const TEAMS_TABLE = [
     { id: "player_0", team: "A" },
     { id: "player_1", team: "B" },
@@ -58,42 +58,42 @@ describe("isDrawnHand", () => {
   ];
 
   test("first-and-fourth against second-and-third is a draw", () => {
-    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
-    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), true);
+    const roundScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), true);
   });
 
   test("a team that placed both members ahead is not a draw", () => {
-    const handScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
-    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+    const roundScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 2 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), false);
   });
 
   test("a table with no team assignment is never a draw", () => {
-    const handScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
+    const roundScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
     assert.equal(
-      isDrawnHand(
+      isDrawnRound(
         TEAMS_TABLE.map(({ id }) => ({ id })),
-        handScores
+        roundScores
       ),
       false
     );
   });
 
-  // Online, a hand's rankings reach the client before its scores do — an
+  // Online, a hand's finishingOrder reach the client before its scores do — an
   // empty or partial score set totals every team to zero, which is not the
   // same fact as every team scoring the same. "Not known yet" must read as
   // not-a-draw, or a hand whose scores just haven't arrived reports the same
   // answer as one that genuinely tied.
   test("an absent score set is not a draw", () => {
-    assert.equal(isDrawnHand(TEAMS_TABLE, {}), false);
+    assert.equal(isDrawnRound(TEAMS_TABLE, {}), false);
   });
 
   test("a partial score set — some seats not scored yet — is not a draw", () => {
-    const handScores = { player_0: 3, player_1: 2 };
-    assert.equal(isDrawnHand(TEAMS_TABLE, handScores), false);
+    const roundScores = { player_0: 3, player_1: 2 };
+    assert.equal(isDrawnRound(TEAMS_TABLE, roundScores), false);
   });
 });
 
-describe("handOutcomeFor", () => {
+describe("roundOutcomeFor", () => {
   const TEAMS_TABLE = [
     { id: "player_0", team: "A" },
     { id: "player_1", team: "B" },
@@ -101,39 +101,39 @@ describe("handOutcomeFor", () => {
     { id: "player_3", team: "A" },
   ];
   // First-and-fourth (3+0) against second-and-third (2+1): a draw.
-  const drawnRankings = ["player_0", "player_1", "player_2", "player_3"];
+  const drawnFinishingOrder = ["player_0", "player_1", "player_2", "player_3"];
   const drawnScores = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 
   test("is a draw for every seat on a drawn teams round", () => {
     for (const { id } of TEAMS_TABLE) {
-      assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, id, true), "draw");
+      assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, drawnScores, id, true), "draw");
     }
   });
 
   test("is won for the team that placed first-and-third, not just the seat that placed first", () => {
-    const rankings = ["player_0", "player_1", "player_3", "player_2"];
+    const finishingOrder = ["player_0", "player_1", "player_3", "player_2"];
     const scores = { player_0: 3, player_1: 2, player_3: 1, player_2: 0 };
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", true), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", true), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_1", true), "lost");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", true), "lost");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_0", true), "won");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_3", true), "won");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_1", true), "lost");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_2", true), "lost");
   });
 
   test("in free-for-all, only the seat that placed first or last gets an outcome", () => {
-    const rankings = ["player_2", "player_0", "player_1", "player_3"];
+    const finishingOrder = ["player_2", "player_0", "player_1", "player_3"];
     const scores = { player_2: 3, player_0: 2, player_1: 1, player_3: 0 };
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_2", false), "won");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_3", false), "lost");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_0", false), "neutral");
-    assert.equal(handOutcomeFor(TEAMS_TABLE, rankings, scores, "player_1", false), "neutral");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_2", false), "won");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_3", false), "lost");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_0", false), "neutral");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, finishingOrder, scores, "player_1", false), "neutral");
   });
 
   test("is neutral for a spectator holding no seat", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, undefined, true), "neutral");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, drawnScores, undefined, true), "neutral");
   });
 
   test("is neutral before any round has a finish order", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, [], {}, "player_0", true), "neutral");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, [], {}, "player_0", true), "neutral");
   });
 
   // `isTeamMode` is what gates the draw suppression on a table that merely
@@ -142,25 +142,25 @@ describe("handOutcomeFor", () => {
   // a non-teams table where `.team` happened to be set anyway.
   test("the isTeamMode guard actually gates the draw check", () => {
     assert.equal(
-      handOutcomeFor(TEAMS_TABLE, drawnRankings, drawnScores, "player_0", false),
+      roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, drawnScores, "player_0", false),
       "won"
     );
   });
 
-  // Online, `rankings` reaches the client (`game:state`, gameOver: true) a
-  // render ahead of `handScores` (the separate `game:over`) — the caller
+  // Online, `finishingOrder` reaches the client (`game:state`, roundOver: true) a
+  // render ahead of `roundScores` (the separate `game:round_over`) — the caller
   // (components/useTableFeedback.ts) has to be able to tell "not decided
   // yet" apart from "draw" so it knows to wait for the
   // render the scores arrive on instead of latching a decision made with
   // none.
   test("is pending in team mode when the round has a finish order but no scores yet", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", true), "pending");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", true), "pending");
   });
 
-  // Free-for-all never reads handScores at all — an absent score set must
+  // Free-for-all never reads roundScores at all — an absent score set must
   // not stall a mode that was never waiting on one.
   test("free-for-all is never pending, even with no scores at all", () => {
-    assert.equal(handOutcomeFor(TEAMS_TABLE, drawnRankings, {}, "player_0", false), "won");
+    assert.equal(roundOutcomeFor(TEAMS_TABLE, drawnFinishingOrder, {}, "player_0", false), "won");
   });
 });
 
@@ -201,7 +201,7 @@ describe("matchOutcomeFor", () => {
 // fact that distinguishes one implementation from two — a second one has to
 // call it, whatever else it does.
 test("one module chooses a bot's move", () => {
-  const CHOOSER = "aiChoosePlay";
+  const CHOOSER = "botChoosePlay";
   const HOME = "lib/game/autoMove.ts";
   const callers = appSources().filter((rel) =>
     new RegExp(String.raw`(?<!function )\b${CHOOSER}\s*\(`).test(readFileSync(path.join(repoRoot, rel), "utf8"))
@@ -240,14 +240,14 @@ describe("offlineBotMove", () => {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     playedRanks: emptyRankTally(),
   });
 
   test("plays a bot at full strength, not the floor an AFK human gets", () => {
-    const state = leading("ai");
+    const state = leading("bot");
     const floor = autoMoveForSeat(state, 0, false, {})!.lastPlayedCombination!.cards.map((c) => c.id);
     const played = offlineBotMove(state)?.lastPlayedCombination?.cards.map((c) => c.id);
     assert.equal(floor.length, 1);
@@ -259,9 +259,9 @@ describe("offlineBotMove", () => {
   });
 });
 
-test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/ai.ts", () => {
+test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/bot.ts", () => {
   const importers = appSources().filter((rel) =>
-    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)ai(?:\.ts)?["']/.test(
+    /from\s+["'](?:\.\/|@\/lib\/game\/|[./]+\/lib\/game\/)bot(?:\.ts)?["']/.test(
       readFileSync(path.join(repoRoot, rel), "utf8")
     )
   );
@@ -271,7 +271,7 @@ test("only lib/game/autoMove.ts reaches the bot heuristics in lib/game/ai.ts", (
 
 test("gameEngine.ts exports no bot heuristic", async () => {
   const engine = await import("../../lib/game/gameEngine.ts");
-  const ai = await import("../../lib/game/ai.ts");
+  const ai = await import("../../lib/game/bot.ts");
   const engineSource = readFileSync(path.join(repoRoot, "lib/game/gameEngine.ts"), "utf8");
 
   assert.ok(Object.keys(ai).length > 0);

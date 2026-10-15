@@ -2,7 +2,7 @@
 // the flag is the trigger, the build gate is what a stray flag cannot get past.
 import { test, describe, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { suspendAI, E2E_SUSPEND_AI_KEY } from "../../lib/e2eAiSuspend.ts";
+import { suspendBot, E2E_SUSPEND_BOT_KEY } from "../../lib/e2eBotSuspend.ts";
 
 type WithStorage = { localStorage?: unknown };
 
@@ -14,10 +14,10 @@ afterEach(() => {
   delete (globalThis as WithStorage).localStorage;
 });
 
-describe("suspendAI", () => {
+describe("suspendBot", () => {
   test("holds the seat when the e2e build wrote the flag", () => {
-    stubStorage((key) => (key === E2E_SUSPEND_AI_KEY ? "1" : null));
-    assert.equal(suspendAI(true), true);
+    stubStorage((key) => (key === E2E_SUSPEND_BOT_KEY ? "1" : null));
+    assert.equal(suspendBot(true), true);
   });
 
   test("dev and production never reach the flag, whatever it holds", () => {
@@ -26,15 +26,15 @@ describe("suspendAI", () => {
       reads += 1;
       return "1";
     });
-    assert.equal(suspendAI(false), false);
+    assert.equal(suspendBot(false), false);
     assert.equal(reads, 0, "the build gate must short-circuit before the flag is read");
   });
 
   test("an e2e build with no flag written, and a platform with no store, play on", () => {
     stubStorage(() => null);
-    assert.equal(suspendAI(true), false);
+    assert.equal(suspendBot(true), false);
     delete (globalThis as WithStorage).localStorage;
-    assert.equal(suspendAI(true), false);
+    assert.equal(suspendBot(true), false);
   });
 
   test("a browser that blocks site data plays on rather than throwing", () => {
@@ -44,6 +44,6 @@ describe("suspendAI", () => {
         throw new Error("SecurityError");
       },
     });
-    assert.equal(suspendAI(true), false);
+    assert.equal(suspendBot(true), false);
   });
 });

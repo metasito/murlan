@@ -10,14 +10,14 @@ import { test, expect } from "../fixtures";
 import { openApp, startOfflineGame } from "./navigation";
 import { driveGameToCompletion } from "./bot";
 
-export interface HandConfig {
+export interface RoundConfig {
   name: string;
   playerCount: 2 | 3 | 4;
   gameMode: "free_for_all" | "teams";
 }
 
 /** Registers one test per config; `offline*.spec.ts` share them out so no file outgrows a shard. */
-export function offlineHandTests(configs: HandConfig[]) {
+export function offlineRoundTests(configs: RoundConfig[]) {
   test.describe("offline vs AI — single hand, reaches a result", () => {
     for (const config of configs) {
       test(config.name, async ({ page, baseURL, consoleErrors }) => {

@@ -324,19 +324,19 @@ export const sq: Record<keyof typeof en, string> = {
   "cards.nameFormat": "{{rank}} {{suit}}",
 
   // -------------------------------------------------------- exchangeAnnouncement.*
-  "exchangeAnnouncement.a11yNoSwap": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy xholat",
+  "exchangeAnnouncement.a11yNoExchange": "Shkëmbim: pa shkëmbim, {{loserName}} tregoi të dy xholat",
   "exchangeAnnouncement.giveLine": "Nga {{from}} te {{to}}: {{card}}",
-  "exchangeAnnouncement.noSwapText": "Pa shkëmbim — xhola të dyfishtë 🃏",
+  "exchangeAnnouncement.noExchangeText": "Pa shkëmbim — xhola të dyfishtë 🃏",
 
   // ------------------------------------------------------- gameOverOverlay.*
   "result.position1": "1°",
   "result.position2": "2°",
   "result.position3": "3°",
   "result.position4": "4°",
-  "gameOverOverlay.nextHandWaiting": "{{count}}/{{total}} gati",
-  "gameOverOverlay.nextHandA11yLabel": "Gati për dorën tjetër",
-  "gameOverOverlay.waitingA11yLabel": "Në pritje të të tjerëve: {{count}} nga {{total}} gati",
-  "gameOverOverlay.newMatchA11yLabel": "Fillo një ndeshje të re",
+  "roundOverOverlay.nextRoundWaiting": "{{count}}/{{total}} gati",
+  "roundOverOverlay.nextRoundA11yLabel": "Gati për dorën tjetër",
+  "roundOverOverlay.waitingA11yLabel": "Në pritje të të tjerëve: {{count}} nga {{total}} gati",
+  "roundOverOverlay.newMatchA11yLabel": "Fillo një ndeshje të re",
   "result.modeTeams": "Çifte",
   "result.modeFreeForAll": "I lirë",
 
@@ -357,14 +357,14 @@ export const sq: Record<keyof typeof en, string> = {
   "gameShared.startReasonCard": "{{name}} fillon — ka {{rank}}{{suit}}",
   "gameShared.startReasonCardSub": "(3♠ nuk u nda)",
   "gameShared.startReasonLostRound": "{{name}} fillon — humbi raundin",
-  "gameShared.startReasonWonNoSwap": "{{name}} fillon — fitoi (pa shkëmbim)",
+  "gameShared.startReasonWonNoExchange": "{{name}} fillon — fitoi (pa shkëmbim)",
   "gameShared.startReasonDismiss": "Prek për të vazhduar",
   "gameShared.you": "Ti",
   "gameShared.emptyTable": "— Tavolinë bosh —",
   "gameShared.yourTurn": "Radha jote",
   "gameShared.dealing": "Shpërndarja",
   "gameShared.turnOf": "Radha e {{name}}",
-  "gameShared.handOver": "Dora mbaroi",
+  "gameShared.roundOver": "Dora mbaroi",
   "gameShared.matchOver": "Ndeshja mbaroi",
   "gameShared.passedLabel": "KALOI",
 
@@ -409,7 +409,7 @@ export const sq: Record<keyof typeof en, string> = {
   "gameTable.a11yYourTurn": "Është radha jote.",
   "gameTable.a11yDealing": "Letrat po shpërndahen.",
   "gameTable.a11yTurnOf": "Radha e {{name}}.",
-  "gameTable.a11yHandOver": "Dora mbaroi.",
+  "gameTable.a11yRoundOver": "Dora mbaroi.",
   "gameTable.a11yMatchOver": "Ndeshja mbaroi.",
   "gameTable.a11yEmptyTable": "Asnjë letër në tavolinë.",
   "gameTable.a11yYouPlayed": "Ke luajtur {{label}}.",
@@ -564,7 +564,7 @@ export const sq: Record<keyof typeof en, string> = {
   "ladder.cardTitle": "I klasifikuar",
   "ladder.ratingLabel": "Vlerësimi",
   "ladder.seasonLabel": "Sezoni {{season}}",
-  "ladder.gamesLabel": "{{n}} duar të klasifikuara",
+  "ladder.roundsLabel": "{{n}} duar të klasifikuara",
   "ladder.provisional": "I përkohshëm — edhe {{n}} duar për të hyrë në klasifikim",
   "ladder.open": "Shiko klasifikimin",
   "ladder.loadingA11yLabel": "Duke ngarkuar klasifikimin",
@@ -591,8 +591,8 @@ export const sq: Record<keyof typeof en, string> = {
 
   // ------------------------------------------------------------------ lobby.*
   "lobby.team": "Ekipi {{team}}",
-  "lobby.aiNameA11yLabel": "Emri i lojtarit AI",
-  "lobby.aiNameA11yHint": "Shkruaj emrin për këtë lojtar të kontrolluar nga kompjuteri",
+  "lobby.botNameA11yLabel": "Emri i lojtarit AI",
+  "lobby.botNameA11yHint": "Shkruaj emrin për këtë lojtar të kontrolluar nga kompjuteri",
   "lobby.difficultyA11yLabel": "Vështirësia e {{name}}: {{difficulty}}",
   "bot.difficultyEasy": "Lehtë",
   "bot.difficultyNormal": "Normale",
@@ -612,7 +612,7 @@ export const sq: Record<keyof typeof en, string> = {
   "lobby.formatSingleSub": "Vetëm një dorë",
   "lobby.formatA11yLabel": "{{format}}: {{detail}}",
   "lobby.playersLabel": "LOJTARËT",
-  "lobby.titleVsAI": "Luaj kundër AI",
+  "lobby.titleVsBot": "Luaj kundër AI",
   "lobby.titlePassPlay": "Kalo & Luaj",
 
   // ------------------------------------------------------------------ rules.*
@@ -687,9 +687,9 @@ export const sq: Record<keyof typeof en, string> = {
   // ----------------------------------------------------------------- result.*
   "result.matchOverTitle": "Ndeshja Mbaroi",
   "result.matchDrawTitle": "Ndeshje Barazim",
-  "result.singleHandFormat": "Një dorë",
+  "result.singleRoundFormat": "Një dorë",
   "result.home": "Kreu",
-  "result.nextHand": "Dora tjetër",
+  "result.nextRound": "Dora tjetër",
   "result.newMatch": "Ndeshje e re",
   "result.tableStops": "Tavolina ndalon këtu",
 
@@ -1020,8 +1020,8 @@ export const sq: Record<keyof typeof en, string> = {
   "profile.retryStatsA11yLabel": "Provo përsëri të ngarkosh statistikat",
   "profile.statsEmptyTitle": "Ende asnjë lojë",
   "profile.statsEmptyBody": "Luaj mancën tënde të parë për të filluar ndërtimin e statistikave.",
-  "profile.statGamesPlayed": "Duar të luajtura",
-  "profile.statGamesWon": "Duar të fituara",
+  "profile.statRoundsPlayed": "Duar të luajtura",
+  "profile.statRoundsWon": "Duar të fituara",
   "profile.statWinRate": "% fitoresh",
   "profile.statMatchesWon": "Ndeshje të fituara",
   "profile.statCurrentStreak": "Seria aktuale",

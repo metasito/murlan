@@ -9,15 +9,15 @@ import type { TranslationKey } from "../i18n.ts";
 export const START_RATING = 1000;
 
 /** Games before a rating is settled enough to list publicly. */
-export const PROVISIONAL_GAMES = 5;
+export const PROVISIONAL_ROUNDS = 5;
 
 /**
  * How much one result can move a rating. Falls as a record grows, so a new
  * account converges quickly and an established rating stops jittering.
  */
-export function kFactor(gamesPlayed: number): number {
-  if (gamesPlayed < PROVISIONAL_GAMES * 2) return 40;
-  if (gamesPlayed < 30) return 24;
+export function kFactor(roundsPlayed: number): number {
+  if (roundsPlayed < PROVISIONAL_ROUNDS * 2) return 40;
+  if (roundsPlayed < 30) return 24;
   return 16;
 }
 
@@ -100,7 +100,7 @@ export function ratedFinishers(
 export interface RatedSeat {
   userId: string;
   rating: number;
-  games: number;
+  rounds: number;
   /** 1 = won the hand. Distinct per seat; the engine never ties placements. */
   placement: number;
 }
@@ -129,7 +129,7 @@ export function ratingDeltas(seats: RatedSeat[]): Map<string, number> {
       if (other.userId === seat.userId) continue;
       expected += expectedScore(seat.rating, other.rating);
     }
-    const value = kFactor(seat.games) * (n - 1) * (actual - expected / pairs);
+    const value = kFactor(seat.rounds) * (n - 1) * (actual - expected / pairs);
     return { userId: seat.userId, value, whole: Math.floor(value), frac: value - Math.floor(value) };
   });
 

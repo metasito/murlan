@@ -31,7 +31,7 @@ const REPLAY = {
     // What a deleted account leaves behind, after the screen's fallback.
     { seatIndex: 1, userId: null, name: 'Deleted player' },
   ],
-  rankings: [],
+  finishingOrder: [],
   moves: [
     { seat: 0, combo: combo('single', [card('3', 'spades')]), handCounts: [2, 3] },
     { seat: 1, combo: null, handCounts: [2, 3] },

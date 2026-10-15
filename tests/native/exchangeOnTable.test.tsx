@@ -65,11 +65,11 @@ const state = (exchange = true): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   exchangePhase: exchange
-    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, bothJokersException: false }
+    ? { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: FROM_LOSER, twoJokerException: false }
     : undefined,
 });
 

@@ -17,7 +17,7 @@ const METRICS = {
 };
 const noop = () => {};
 const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
-const seat = (i: number): Player => ({ id: `player_${i}`, name: `P${i}`, hand: [], type: i === 0 ? 'human' : 'ai' });
+const seat = (i: number): Player => ({ id: `player_${i}`, name: `P${i}`, hand: [], type: i === 0 ? 'human' : 'bot' });
 const ENDED: GameState = {
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
@@ -26,8 +26,8 @@ const ENDED: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: true,
-  rankings: ['player_0', 'player_1', 'player_2', 'player_3'],
+  roundOver: true,
+  finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
 };
 const BEFORE = 7;
@@ -42,7 +42,7 @@ function table(onRoundLanded: (at: number) => void, gameState: GameState = ENDED
         <GameTable
           gameState={gameState}
           viewerSeat={0}
-          handScores={{ player_0: AFTER - BEFORE, player_1: 1, player_2: 0, player_3: 0 }}
+          roundScores={{ player_0: AFTER - BEFORE, player_1: 1, player_2: 0, player_3: 0 }}
           matchScore={{ scores: { player_0: AFTER, player_1: 4, player_2: 2, player_3: 1 }, target: 21 }}
           onPlay={noop}
           onPass={noop}
@@ -105,7 +105,7 @@ describe('the score pill at the end of a round', () => {
     expect(pile()).toBe(1);
     await advance(deal - pileFade + 32);
     expect(pile()).toBe(0);
-    await act(async () => view.rerender(table(noop, { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false })));
+    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false })));
     await advance(16);
     expect(pile()).toBe(1);
     await view.unmount();
@@ -114,7 +114,7 @@ describe('the score pill at the end of a round', () => {
   it('keeps the glow fading through the next deal', async () => {
     const view = await render(table(noop));
     await advance(deal);
-    await act(async () => view.rerender(table(noop, { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false })));
+    await act(async () => view.rerender(table(noop, { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false })));
     await advance(16);
     expect(glow()).toBeGreaterThan(0.5);
     await advance(1000);

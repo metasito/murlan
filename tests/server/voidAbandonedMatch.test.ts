@@ -1,17 +1,17 @@
 // #850 clause 6: a match abandoned before a single point is scored is voided
 // for every seat — nothing earned, nothing taken, rated for nobody. This is
-// gated on `game.handsPlayed === 0`, not on the walkout alone, so a table that
+// gated on `game.roundsPlayed === 0`, not on the walkout alone, so a table that
 // genuinely finished its first hand and then loses its last human is scored
 // normally rather than wiped.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat } from "../../server/game/gameTurn.ts";
-import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "void-abandoned-room";
@@ -31,7 +31,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 0,
+    roundsPlayed: 0,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -58,7 +58,7 @@ function stubIo() {
   return { io, emitted };
 }
 
-function midHandTwoSeats(): GameState {
+function midRoundTwoSeats(): GameState {
   return {
     players: [player("p0", "Alice", [{ rank: "4", suit: "spades" } as never]), player("p1", "Bob", [])],
     currentTurnIndex: 0,
@@ -67,31 +67,31 @@ function midHandTwoSeats(): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   };
 }
 
 describe("a match abandoned with no hand yet decided is voided, not scored (#850 clause 6)", () => {
-  test("the sole remaining seat leaving a still-0-hands match voids it: no rankings, no winners", async () => {
+  test("the sole remaining seat leaving a still-0-hands match voids it: no finishingOrder, no winners", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHandTwoSeats(),
+      gameState: midRoundTwoSeats(),
       playerMap: { 0: "alice", 1: "bob" },
-      handsPlayed: 0,
+      roundsPlayed: 0,
     });
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", gameOverWriters);
+      await vacateSeat(io, ROOM, "bob", roundOverWriters);
 
-      const over = emitted.find((e) => e.event === "game:over")?.payload as
-        | GameOverPayload
+      const over = emitted.find((e) => e.event === "game:round_over")?.payload as
+        | RoundOverPayload
         | undefined;
       assert.ok(over, "a voided match still tells the table it is over");
       assert.equal(over!.voided, true);
-      assert.deepEqual(over!.rankings, []);
+      assert.deepEqual(over!.finishingOrder, []);
       assert.deepEqual(over!.scores, []);
       assert.equal(over!.recorded, false);
       // The table is gone — void is terminal, not "waiting on a rematch vote".
@@ -105,18 +105,18 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
   test("the same walkout after a hand has been decided is scored normally, not voided", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHandTwoSeats(),
+      gameState: midRoundTwoSeats(),
       playerMap: { 0: "alice", 1: "bob" },
-      handsPlayed: 1, // one round already resolved for real
+      roundsPlayed: 1, // one round already resolved for real
       cumulativeScores: { alice: 3, bob: 1 },
     });
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "bob", gameOverWriters);
+      await vacateSeat(io, ROOM, "bob", roundOverWriters);
 
-      const over = emitted.find((e) => e.event === "game:over")?.payload as
-        | GameOverPayload
+      const over = emitted.find((e) => e.event === "game:round_over")?.payload as
+        | RoundOverPayload
         | undefined;
       assert.ok(over, "the concede-and-score path still ends the match");
       assert.equal(over!.voided, false, "a hand was genuinely played — nothing here is voided");

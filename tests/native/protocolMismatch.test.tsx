@@ -77,7 +77,7 @@ describe('a game:state this bundle cannot read', () => {
     expect(screen.queryByText(t('updateRequired.title'))).toBeNull();
 
     const ack = jest.fn();
-    await deliver('game:state', { currentTurnIndex: 0, gameOver: false, rankings: [] }, ack);
+    await deliver('game:state', { currentTurnIndex: 0, roundOver: false, finishingOrder: [] }, ack);
 
     await waitFor(() => expect(screen.getByText(t('updateRequired.title'))).toBeTruthy());
     await waitFor(async () => expect(await AsyncStorage.getItem(ACTIVE_ROOM_KEY)).toBeNull());

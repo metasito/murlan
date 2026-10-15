@@ -2,10 +2,10 @@ import type { SocketServer } from "../socket/socketTypes.ts";
 import { logger } from "../http/logger.ts";
 import { clearRoomTimers, clearRoomDisconnectTimers } from "./gameTimers.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import { resolveHandEnd, seatTotal } from "./onlineGameLogic.ts";
+import { resolveRoundEnd, seatTotal } from "./onlineGameLogic.ts";
 import { replaySeatsOf } from "./replayShape.ts";
 import { firstTargetFor } from "../../lib/game/gameEngine.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import type { GameMode } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import type { ReplayMove, ReplaySeat } from "../../lib/game/replay.ts";
@@ -18,7 +18,7 @@ import type { RatedPreview } from "./ratings.ts";
  * deciding who won a match can be run against a hand-built game and a stub io.
  * server/game/gamePersistence.ts holds the production set.
  */
-export interface GameOverWriters {
+export interface RoundOverWriters {
   updateRoomStatus: (
     roomId: string,
     status: "waiting" | "in_progress" | "finished"
@@ -32,7 +32,7 @@ export interface GameOverWriters {
   ) => Promise<void>;
   /**
    * What the hand is about to do to each seat's rating. Read before
-   * `game:over` goes out, because the inputs stop existing once the rated
+   * `game:round_over` goes out, because the inputs stop existing once the rated
    * write lands — see server/game/ratings.ts.
    */
   previewRatedDeltas: (
@@ -52,29 +52,29 @@ export interface GameOverWriters {
     gameMode: GameMode;
     seats: ReplaySeat[];
     moves: ReplayMove[];
-    rankings: string[];
+    finishingOrder: string[];
   }) => Promise<void>;
 }
 
-export async function handleGameOver(
+export async function handleRoundOver(
   io: SocketServer,
   roomId: string,
   game: OnlineGameState,
-  writers: GameOverWriters
+  writers: RoundOverWriters
 ) {
   // Cleared here, synchronously, before anything below can await: the caller
-  // already flipped `state.gameOver` true in this same tick, so a rejoin
-  // reading `game.lastGameOverPayload` must never be able to observe that
+  // already flipped `state.roundOver` true in this same tick, so a rejoin
+  // reading `game.lastRoundOverPayload` must never be able to observe that
   // flag alongside the previous hand's payload. The real assignment below
   // runs after a DB round trip; nothing between here and there may add one.
-  game.lastGameOverPayload = undefined;
+  game.lastRoundOverPayload = undefined;
   const state = game.gameState;
   clearRoomTimers(roomId);
   // A pending grace timer must not fire into a finished game and evict the
   // survivors from the rematch screen.
   clearRoomDisconnectTimers(game);
 
-  const result = resolveHandEnd({
+  const result = resolveRoundEnd({
     state,
     playerMap: game.playerMap,
     cumulativeScores: game.cumulativeScores,
@@ -86,11 +86,11 @@ export async function handleGameOver(
     botSeatsAtStart: game.botSeatsAtStart,
     vacatedSeats: game.vacatedSeats,
   });
-  const { handByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
+  const { roundByKey, matchWinners, isDraw, detailed, winnerEngineIds } = result;
   game.cumulativeScores = result.cumulativeScores;
   game.matchTarget = result.matchTarget;
   game.matchOver = result.matchOver;
-  game.handsPlayed += 1;
+  game.roundsPlayed += 1;
 
   game.rematchVotes = new Set();
 
@@ -114,12 +114,12 @@ export async function handleGameOver(
     : new Map<string, RatedPreview>();
   const ratingDeltasByUser = new Map([...ratedPreview].map(([userId, p]) => [userId, p.delta]));
 
-  const over: GameOverPayload = {
-    rankings: state.rankings,
+  const over: RoundOverPayload = {
+    finishingOrder: state.finishingOrder,
     scores: detailed,
     matchTarget: game.matchTarget,
     matchLength: game.matchLength,
-    handsPlayed: game.handsPlayed,
+    roundsPlayed: game.roundsPlayed,
     matchOver: game.matchOver,
     matchWinnerIds: winnerEngineIds,
     matchContinues: true,
@@ -130,17 +130,17 @@ export async function handleGameOver(
     // outcome.
     ratingDeltas: Object.fromEntries(ratingDeltasByUser),
     ratingsAfter: Object.fromEntries(
-      [...ratedPreview].map(([userId, { rating, games }]) => [userId, { rating, games }])
+      [...ratedPreview].map(([userId, { rating, rounds }]) => [userId, { rating, rounds }])
     ),
     recorded: result.recordable,
     voided: false,
   };
-  io.to(roomId).emit("game:over", over);
+  io.to(roomId).emit("game:round_over", over);
   // Kept so `announceRejoin` can hand this hand's scores to a client that
   // rejoins after everyone still in the room has already been sent them.
-  game.lastGameOverPayload = over;
+  game.lastRoundOverPayload = over;
 
-  // The one record of how a hand resolved. `match_replays` is not a substitute:
+  // The one record of how a hand resolved. `round_replays` is not a substitute:
   // it is written only for a table with a human seat and a live moveLog, and it
   // stores no scores. Ids and integers only — never hand contents.
   logger.info(
@@ -148,8 +148,8 @@ export async function handleGameOver(
       roomId,
       gameMode: game.gameMode,
       matchLength: game.matchLength,
-      rankings: state.rankings,
-      handByKey,
+      finishingOrder: state.finishingOrder,
+      roundByKey,
       cumulative: game.cumulativeScores,
       matchTarget: game.matchTarget,
       matchOver: game.matchOver,
@@ -177,11 +177,11 @@ export async function handleGameOver(
   //
   // Deliberately placed after every broadcast/persist above, not before: the
   // game-over guarantee is "a stats write must never block or fail the
-  // game", and handleGameOver is itself async with two call sites that
+  // game", and handleRoundOver is itself async with two call sites that
   // invoke it as bare `void` (runBotTurn and handleAutoPass). The
-  // shaping itself already happened, purely, in resolveHandEnd — this block
+  // shaping itself already happened, purely, in resolveRoundEnd — this block
   // is only the (fire-and-forget) writes, still guarded so a throw here
-  // cannot reject handleGameOver's own promise.
+  // cannot reject handleRoundOver's own promise.
   try {
     const { gameResults, recordable } = result;
     if (!recordable) {
@@ -191,7 +191,7 @@ export async function handleGameOver(
       );
     } else {
       // Deliberately not awaited: a stats write must never be able to block
-      // or delay whatever runs after handleGameOver at any of its call sites.
+      // or delay whatever runs after handleRoundOver at any of its call sites.
       // Chained behind the previous hand's writes, because the streak upsert
       // reads whatever the last committed hand left.
       //
@@ -214,7 +214,7 @@ export async function handleGameOver(
     }
 
     // On the same `recordable` gate as the stats above: a replay is reached
-    // through its `match_history` row, so one written without a row is
+    // through its `round_history` row, so one written without a row is
     // openable from nowhere.
     //
     // Not awaited, and the table is not required to exist: until `db:push` has
@@ -227,12 +227,12 @@ export async function handleGameOver(
         gameMode: game.gameMode,
         seats: replaySeatsOf(state.players, game.playerMap, game.vacatedSeats),
         moves: game.moveLog,
-        rankings: state.rankings,
+        finishingOrder: state.finishingOrder,
       }).catch((err) => logger.error({ err, roomId }, "Failed to save replay"));
     }
   } catch (err) {
     // Belt-and-braces: even the synchronous work above must not be able to
-    // throw back into handleGameOver's own promise (see the comment above
+    // throw back into handleRoundOver's own promise (see the comment above
     // this block).
     logger.error({ err, roomId }, "Failed to schedule stats/ratings/replay writes");
   }
@@ -240,30 +240,30 @@ export async function handleGameOver(
 
 /**
  * Ends the match without scoring whatever hand was in progress: nothing is
- * folded into `cumulativeScores`, `handsPlayed` does not advance, and no
+ * folded into `cumulativeScores`, `roundsPlayed` does not advance, and no
  * stats/rating/replay write runs — the whole point being that this hand
- * never happened. `game:over` still goes out, so the table's clients leave
+ * never happened. `game:round_over` still goes out, so the table's clients leave
  * the game screen the one way they know how, rather than being torn down.
  */
 async function closeMatchWithoutScoring(
   io: SocketServer,
   roomId: string,
   game: OnlineGameState,
-  writers: GameOverWriters,
+  writers: RoundOverWriters,
   voided: boolean
 ): Promise<void> {
-  game.lastGameOverPayload = undefined;
+  game.lastRoundOverPayload = undefined;
   clearRoomTimers(roomId);
   clearRoomDisconnectTimers(game);
-  game.gameState.gameOver = true;
+  game.gameState.roundOver = true;
   game.matchOver = true;
 
-  const over: GameOverPayload = {
-    rankings: [],
+  const over: RoundOverPayload = {
+    finishingOrder: [],
     scores: [],
     matchTarget: game.matchTarget,
     matchLength: game.matchLength,
-    handsPlayed: game.handsPlayed,
+    roundsPlayed: game.roundsPlayed,
     matchOver: true,
     matchWinnerIds: [],
     matchContinues: false,
@@ -273,8 +273,8 @@ async function closeMatchWithoutScoring(
     recorded: false,
     voided,
   };
-  io.to(roomId).emit("game:over", over);
-  game.lastGameOverPayload = over;
+  io.to(roomId).emit("game:round_over", over);
+  game.lastRoundOverPayload = over;
 
   await writers
     .updateRoomStatus(roomId, "finished")
@@ -297,7 +297,7 @@ export async function voidAbandonedMatch(
   io: SocketServer,
   roomId: string,
   game: OnlineGameState,
-  writers: GameOverWriters
+  writers: RoundOverWriters
 ): Promise<void> {
   await closeMatchWithoutScoring(io, roomId, game, writers, true);
 }
@@ -313,7 +313,7 @@ export async function endMatchByAgreement(
   io: SocketServer,
   roomId: string,
   game: OnlineGameState,
-  writers: GameOverWriters
+  writers: RoundOverWriters
 ): Promise<void> {
   game.endedByVote = true;
   await closeMatchWithoutScoring(io, roomId, game, writers, false);
@@ -325,14 +325,14 @@ export function rollMatchForward(game: OnlineGameState) {
     const target = firstTargetFor(game.gameState.players.length);
     game.cumulativeScores = {};
     game.matchTarget = target;
-    game.handsPlayed = 0;
+    game.roundsPlayed = 0;
     game.matchOver = false;
   }
 }
 
 /**
- * Cumulative match points keyed by engine player id — the identity `rankings`,
- * the match winners and the `game:over` scoreboard are all stated in. Keying
+ * Cumulative match points keyed by engine player id — the identity `finishingOrder`,
+ * the match winners and the `game:round_over` scoreboard are all stated in. Keying
  * it by display name collapsed two seats sharing one, silently.
  */
 export function scoresByEngineId(game: OnlineGameState): Record<string, number> {

@@ -42,7 +42,7 @@ export async function openApp(page: Page, baseURL: string): Promise<void> {
     .waitFor({ state: "visible", timeout: HOME_SCREEN_MS });
 }
 
-export type LobbyMode = "ai" | "local";
+export type LobbyMode = "bot" | "local";
 
 export interface OfflineSetup {
   playerCount: 2 | 3 | 4;

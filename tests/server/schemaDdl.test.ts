@@ -158,13 +158,13 @@ test("columns are added before the indexes that may target them", () => {
 });
 
 test("the replay ownership predicate has an index it can use", () => {
-  // Both readers of match_replays filter on `player_ids @> '["<uid>"]'`
+  // Both readers of round_replays filter on `player_ids @> '["<uid>"]'`
   // (server/game/replays.ts, server/http/deleteAccount.ts). Containment is not a btree
   // predicate, so the access method has to survive into the DDL — an index
   // created under the same name as a btree would be dead weight the planner
   // never touches.
-  const statement = statements.find((s) => /match_replays_player_ids_idx/.test(s));
-  assert.ok(statement, "no index on match_replays.player_ids");
+  const statement = statements.find((s) => /round_replays_player_ids_idx/.test(s));
+  assert.ok(statement, "no index on round_replays.player_ids");
   assert.match(statement, /USING "gin" \("player_ids"\)/);
 });
 
@@ -262,9 +262,9 @@ test("boot refuses a database still holding a renamed column", async () => {
 });
 
 test("every renamed column is asked about, not just the first", async () => {
-  const asked: [string, string][] = [];
+  const asked: string[][] = [];
   const current = {
-    query: async (_sql: string, params: [string, string]) => {
+    query: async (_sql: string, params: string[]) => {
       asked.push(params);
       return { rows: [] };
     },
@@ -273,8 +273,20 @@ test("every renamed column is asked about, not just the first", async () => {
 
   assert.deepEqual(asked, [
     ["active_games", "room_code"],
-    ["match_replays", "room_code"],
+    ["round_replays", "room_code"],
+    ["user_stats", "games_played"],
+    ["user_stats", "games_won"],
+    ["user_ratings", "games"],
+    ["match_history"],
+    ["match_replays"],
   ]);
+});
+
+test("boot refuses a database still holding a renamed table", async () => {
+  const legacy = {
+    query: async (sql: string) => ({ rows: /information_schema\.tables/.test(sql) ? [{ "?column?": 1 }] : [] }),
+  } as unknown as Pick<Pool, "query">;
+  await assert.rejects(assertRenamesApplied(legacy), /table "match_history" is now "round_history".*db:push/);
 });
 
 test("boot proceeds once the rename has been applied", async () => {

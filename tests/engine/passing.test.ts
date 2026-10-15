@@ -77,7 +77,7 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
-        rankings: ["p0"],
+        finishingOrder: ["p0"],
       }
     );
     state = processPass(state);
@@ -124,7 +124,7 @@ describe("§9.4 — \"If that player has just gone out (played their last card),
         currentTurnIndex: 2,
         lastPlayedBy: 0,
         lastPlayedCombination: combo(pair("5")),
-        rankings: ["p0"],
+        finishingOrder: ["p0"],
       }
     );
     let next = processPass(state);
@@ -159,8 +159,8 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
     );
     const next = processPlay(state, combo(pair("7")));
     assert.equal(next.players[0].finishPosition, 1);
-    assert.deepEqual(next.rankings, ["p0", "p1"], "the last player left is recorded too");
-    assert.equal(next.gameOver, true, "only one player still held cards — the hand ends");
+    assert.deepEqual(next.finishingOrder, ["p0", "p1"], "the last player left is recorded too");
+    assert.equal(next.roundOver, true, "only one player still held cards — the hand ends");
   });
 
   test("play continues among the rest while more than one player still holds cards", () => {
@@ -173,9 +173,9 @@ describe("§9.6 — \"Going out … Play continues among the rest. The hand ends
       { currentTurnIndex: 0 }
     );
     const next = processPlay(state, combo(pair("7")));
-    assert.equal(next.gameOver, false, "two players still hold cards — the hand is not over");
+    assert.equal(next.roundOver, false, "two players still hold cards — the hand is not over");
     assert.equal(next.players[0].finishPosition, 1);
-    assert.deepEqual(next.rankings, ["p0"]);
+    assert.deepEqual(next.finishingOrder, ["p0"]);
   });
 });
 

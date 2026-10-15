@@ -131,7 +131,7 @@ export class SearchTimeoutError extends StuckError {}
 
 // The table's own aria-label announces "your turn" purely from
 // `currentTurnIndex === viewerSeat` (components/tableA11y.ts
-// `describeTableForA11y`), with no notion of `gameOver` — so for one tick
+// `describeTableForA11y`), with no notion of `roundOver` — so for one tick
 // after an opponent's move ends the game, the description can still read as
 // "your turn" while the hand itself is already correctly disabled. A short
 // per-click timeout turns that harmless one-tick race into "this turn
@@ -598,7 +598,7 @@ export async function driveGameToCompletion(page: Page, opts: DriveOptions): Pro
       log(`${action ?? "abandoned"} (was: "${desc}") [search ${Date.now() - searchStartedAt}ms]`);
       if (action === null) {
         // The hand stopped being interactive mid-search — most often the
-        // one-tick "your turn" / gameOver race described above `playOrPass`.
+        // one-tick "your turn" / roundOver race described above `playOrPass`.
         // Let the next iteration's isFinished/description check decide what
         // actually happened, except for the count below, which is the one
         // thing that check cannot see.

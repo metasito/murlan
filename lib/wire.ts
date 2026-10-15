@@ -4,8 +4,8 @@ import type { GameMode } from "./game/gameEngine";
 
 export interface UserStatsDto {
   userId: string;
-  gamesPlayed: number;
-  gamesWon: number;
+  roundsPlayed: number;
+  roundsWon: number;
   matchesWon: number;
   currentStreak: number;
   bestStreak: number;
@@ -17,7 +17,7 @@ export interface UserStatsDto {
 export interface RatingDto {
   season: string;
   rating: number;
-  games: number;
+  rounds: number;
   provisional: boolean;
 }
 
@@ -26,7 +26,7 @@ export interface LeaderboardEntryDto {
   userId: string;
   username: string;
   rating: number;
-  games: number;
+  rounds: number;
 }
 
 export interface AchievementStatusDto {
@@ -73,7 +73,7 @@ export interface HistoryParticipantDto {
   bot: boolean;
 }
 
-export interface MatchHistoryDto {
+export interface RoundHistoryDto {
   id: string;
   userId: string;
   finishedAt: string;

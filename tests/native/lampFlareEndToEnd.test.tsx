@@ -80,8 +80,8 @@ const inPlay = (combo: Combination): GameState => ({
   passCount: 0,
   gameMode: "free_for_all",
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 
@@ -129,9 +129,9 @@ describe("the lamp's flare, read back off GameTable's own real render (#765)", (
   });
 
   it("a straight/flush landing leaves the flare dark through GameTable's own wiring, not a mock of it", async () => {
-    // `tests/ui-rules/flightPhysics.test.ts` already pins `flareKindFor("straightFlush")
+    // `tests/ui-rules/flightPhysics.test.ts` already pins `flareKindFor("straight")
     // === "none"` at the pure-function layer, and `lampFlareWiring.test.tsx`
-    // pins that `burst` is called with "straightFlush", never "bomb" — but
+    // pins that `burst` is called with "straight", never "bomb" — but
     // neither renders anything, so a `flareKindFor` that always answered
     // "brief" would still pass both while every straight/flush in the real
     // app flared like a bomb. This is the same window/timing a bomb landing

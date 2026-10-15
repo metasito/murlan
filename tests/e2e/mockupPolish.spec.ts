@@ -134,26 +134,26 @@ for (const phone of STAGES) {
 const LONGEST = ["Konstantinos", "Maximilianus"];
 const SMALLEST = STAGES[STAGES.length - 1];
 
-function tradeBetweenBots() {
+function exchangeBetweenBots() {
   const names = ["Ana", ...LONGEST];
   const hands = [[card("5", "hearts"), card("K", "spades")], [card("2", "spades"), card("6", "diamonds"), card("K", "diamonds")], [card("7", "clubs"), card("8", "clubs")]];
   return {
-    version: 2,
+    version: 3,
     gameState: {
-      players: names.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i], type: i === 0 ? "human" : "ai" })),
+      players: names.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i], type: i === 0 ? "human" : "bot" })),
       currentTurnIndex: 1,
       lastPlayedCombination: null,
       lastPlayedBy: -1,
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
-      exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: card("2", "spades"), bothJokersException: false },
+      exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: card("2", "spades"), twoJokerException: false },
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-    players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "ai" })),
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
+    players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
   };
@@ -162,9 +162,9 @@ function tradeBetweenBots() {
 test(`exchange label: two of the longest names stay whole on one line — ${SMALLEST.name}`, async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(SMALLEST);
-  await resumeSaved(page, baseURL!, tradeBetweenBots());
+  await resumeSaved(page, baseURL!, exchangeBetweenBots());
   const label = page.getByTestId("exchange-pile-label");
-  await expect(label, "the pile names the trade").toBeVisible({ timeout: 30_000 });
+  await expect(label, "the pile names the announced").toBeVisible({ timeout: 30_000 });
   const run = await label.evaluate((el) => ({ text: el.textContent ?? "", scroll: el.scrollWidth, client: el.clientWidth, wraps: getComputedStyle(el).whiteSpace }));
 
   for (const name of LONGEST) expect.soft(run.text, "both seats are named").toContain(name);
@@ -311,11 +311,11 @@ const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, sui
 function openingWithStartCard() {
   const hand = [card("5", "hearts"), card("K", "spades")];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [card("3", "clubs"), ...hand], type: "human" },
-        { id: "player_1", name: "Besnik", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "ai" },
+        { id: "player_1", name: "Besnik", hand: [card("J", "hearts"), card("Q", "diamonds")], type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -323,17 +323,17 @@ function openingWithStartCard() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: false,
       startCard: card("3", "clubs"),
       startReason: { type: "start_card", card: card("3", "clubs"), playerIdx: 0 },
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Besnik", type: "ai", personality: "luan" },
+      { name: "Besnik", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -563,7 +563,7 @@ test("waiting: a seat gone out waits on G2's gold pill, centred on the hand row"
     gameState: {
       ...save.gameState,
       players: save.gameState.players.map((p, i) => (i === 0 ? { ...p, finishPosition: 1 } : p)),
-      rankings: ["player_0"],
+      finishingOrder: ["player_0"],
     },
   });
   await expect.poll(async () => (await app.plate(WAITING))?.opacity, { message: "the line shown", timeout: 30_000 }).toBe(1);

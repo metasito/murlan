@@ -9,7 +9,7 @@ import { useTranslation } from "@/lib/i18n";
 import { relativeTime } from "@/lib/relativeTime";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import { positionLabelKey } from "@/lib/game/placement";
-import type { MatchHistoryDto } from "@/lib/wire";
+import type { RoundHistoryDto } from "@/lib/wire";
 
 
 
@@ -21,7 +21,7 @@ const PLAY_ICON = 28;
  * translators rather than calling the hook, so a row inside a list renders
  * without one lookup per row.
  */
-export function HistoryRow({ hand }: { hand: MatchHistoryDto }) {
+export function HistoryRow({ hand }: { hand: RoundHistoryDto }) {
   const { t, tn } = useTranslation();
 
   const labelKey = positionLabelKey(hand.placement);

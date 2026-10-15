@@ -47,8 +47,8 @@ const state = (currentTurnIndex: number): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 
@@ -220,7 +220,7 @@ describe('a seated player is still the player on move', () => {
 const PHASE = {
   active: true,
   cardFromLoser: card('given', '2', 'hearts'),
-  bothJokersException: false,
+  twoJokerException: false,
 } as const;
 
 /** Seat 0 owes seat 2 a card. */

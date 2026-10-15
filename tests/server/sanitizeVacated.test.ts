@@ -8,7 +8,7 @@ import { sanitizeStateForPlayer } from "../../server/game/gamePersistence.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 function player(id: string, name: string): Player {
-  return { id, name, hand: [], type: id === "p1" ? "ai" : "human" };
+  return { id, name, hand: [], type: id === "p1" ? "bot" : "human" };
 }
 
 function state(): GameState {
@@ -20,8 +20,8 @@ function state(): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   };
 }

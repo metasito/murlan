@@ -15,7 +15,7 @@ import {
 } from "@/context/gameHooks";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { pickGivebackCard, TURN_TIMEOUT_MS } from "@/lib/game/gameEngine";
-import { suspendAI } from "@/lib/e2eAiSuspend";
+import { suspendBot } from "@/lib/e2eBotSuspend";
 import { flushSync } from "@/lib/flushSync";
 import { OFFLINE_BOT_DELAY_MS } from "@/lib/game/offlineBotDelay";
 import { GameTable } from "@/components/GameTable";
@@ -32,14 +32,14 @@ const E2E_FAST = process.env.EXPO_PUBLIC_E2E_FAST === "1";
 
 /** Local response deadline. Offline there is no server, so the client enforces it. */
 export const HUMAN_TURN_SECONDS = TURN_TIMEOUT_MS / 1000;
-/** Whether a capture state has asked the loop to hold (`lib/e2eAiSuspend.ts`). */
-const AI_SUSPENDED = suspendAI(E2E_FAST);
+/** Whether a capture state has asked the loop to hold (`lib/e2eBotSuspend.ts`). */
+const BOT_SUSPENDED = suspendBot(E2E_FAST);
 
 export default function GameScreen() {
   const { t } = useTranslation();
   const [autoPassed, setAutoPassed] = useState(0);
   const [confirming, setConfirming] = useState<ConfirmRequest | null>(null);
-  const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
+  const { gameState, playCards, passTurn, runBotTurn } = useLocalTable();
   const { resetGame } = useLocalSession();
   const {
     exchangeAnnouncing,
@@ -49,32 +49,32 @@ export default function GameScreen() {
     acknowledgeExchange,
     releaseStuckExchange,
   } = useLocalExchange();
-  const { match, startNextHand, startNewMatch } = useLocalMatch();
+  const { match, startNextRound, startNewMatch } = useLocalMatch();
 
   // Timers fire outside the render that scheduled them; refs keep them from
   // calling a stale copy of the context action. Assigned after commit, never
   // during render — every reader is a timer, which cannot run before then.
-  const runAITurnRef = useRef(runAITurn);
+  const runBotTurnRef = useRef(runBotTurn);
   const passTurnRef = useRef(passTurn);
   const chooseExchangeRef = useRef(chooseExchangeCard);
   const releaseStuckRef = useRef(releaseStuckExchange);
-  const startNextHandRef = useRef(startNextHand);
+  const startNextRoundRef = useRef(startNextRound);
   useEffect(() => {
-    runAITurnRef.current = runAITurn;
+    runBotTurnRef.current = runBotTurn;
     passTurnRef.current = passTurn;
     chooseExchangeRef.current = chooseExchangeCard;
     releaseStuckRef.current = releaseStuckExchange;
-    startNextHandRef.current = startNextHand;
+    startNextRoundRef.current = startNextRound;
   });
 
   // tests/e2e/helpers/mockupParity.ts times each bot's turn to the mockup's hand-offs.
   useEffect(() => {
-    if (!AI_SUSPENDED) return;
+    if (!BOT_SUSPENDED) return;
     const e2e = globalThis as { murlanPass?: () => void; murlanBotMove?: () => void };
     // Committed before the call returns, as a click's would be: an evaluate is no discrete event, so
     // React's scheduler would run it on a real-time task the spec's virtual clock does not hold.
     e2e.murlanPass = () => flushSync(() => passTurnRef.current());
-    e2e.murlanBotMove = () => flushSync(() => runAITurnRef.current());
+    e2e.murlanBotMove = () => flushSync(() => runBotTurnRef.current());
     return () => {
       delete e2e.murlanPass;
       delete e2e.murlanBotMove;
@@ -94,11 +94,11 @@ export default function GameScreen() {
   // Every hook runs unconditionally, before the null guard below.
 
   const [roundLandedAt, setRoundLandedAt] = useState<number | null>(null);
-  const roundEnding = gameState?.gameOver === true && !match.over;
+  const roundEnding = gameState?.roundOver === true && !match.over;
   if (!roundEnding && roundLandedAt !== null) setRoundLandedAt(null);
   useEffect(() => {
     if (roundLandedAt === null) return;
-    const t = setTimeout(() => startNextHandRef.current(), roundLandedAt + RoundEnding.deal - performance.now());
+    const t = setTimeout(() => startNextRoundRef.current(), roundLandedAt + RoundEnding.deal - performance.now());
     return () => clearTimeout(t);
   }, [roundLandedAt]);
 
@@ -109,13 +109,13 @@ export default function GameScreen() {
   // false while the two cards are still crossing the table. A hand played into
   // that is a hand played over the ceremony announcing it, which is the one
   // moment every seat is watching the middle.
-  const aiTurnKey = AI_SUSPENDED
+  const botTurnKey = BOT_SUSPENDED
     ? null
     : gameState &&
-        !gameState.gameOver &&
+        !gameState.roundOver &&
         !gameState.exchangePhase?.active &&
         !exchangeAnnouncing &&
-        gameState.players[gameState.currentTurnIndex]?.type === "ai"
+        gameState.players[gameState.currentTurnIndex]?.type === "bot"
       ? `${gameState.currentTurnIndex}|${gameState.passCount}|` +
         (gameState.lastPlayedCombination
           ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
@@ -123,10 +123,10 @@ export default function GameScreen() {
       : null;
 
   useEffect(() => {
-    if (aiTurnKey === null) return;
-    const t = setTimeout(() => runAITurnRef.current(), OFFLINE_BOT_DELAY_MS);
+    if (botTurnKey === null) return;
+    const t = setTimeout(() => runBotTurnRef.current(), OFFLINE_BOT_DELAY_MS);
     return () => clearTimeout(t);
-  }, [aiTurnKey]);
+  }, [botTurnKey]);
 
   // An AI that wins a round owes the loser a card; it gives up its weakest legal
   // one. A card id rather than the card, for the same reason as above: the
@@ -138,9 +138,9 @@ export default function GameScreen() {
     if (!winner) return undefined;
     return pickGivebackCard(winner.hand, phase.cardFromLoser?.id)?.id;
   })();
-  const aiGivebackCardId =
+  const botGivebackCardId =
     gameState?.exchangePhase?.active &&
-    gameState.players[gameState.exchangePhase.winnerIdx]?.type === "ai"
+    gameState.players[gameState.exchangePhase.winnerIdx]?.type === "bot"
       ? givebackCardId
       : undefined;
 
@@ -151,7 +151,7 @@ export default function GameScreen() {
   const readyRef = useRef(() => {});
   useEffect(() => {
     readyRef.current = () => {
-      if (aiGivebackCardId) chooseExchangeRef.current(aiGivebackCardId);
+      if (botGivebackCardId) chooseExchangeRef.current(botGivebackCardId);
       else if (exchangeIsStuck) releaseStuckRef.current();
     };
   });
@@ -163,15 +163,15 @@ export default function GameScreen() {
 
   if (!gameState) return null;
 
-  const hands = match.hands ?? [];
-  const lastHandScores = hands[hands.length - 1]?.pointsAwarded ?? {};
+  const rounds = match.rounds ?? [];
+  const lastRoundScores = rounds[rounds.length - 1]?.pointsAwarded ?? {};
 
   return (
     <GameTable
       gameState={gameState}
       matchOver={match.over}
       matchWinners={match.winners}
-      handScores={lastHandScores}
+      roundScores={lastRoundScores}
       matchScore={{ scores: match.scores, target: match.target, single: match.length === "single" }}
       matchActions={{
         onHome: () => {

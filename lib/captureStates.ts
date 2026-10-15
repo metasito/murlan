@@ -231,18 +231,18 @@ export function captureGameState(state: CaptureState): GameState {
   const pile = state.pile ? takeOfARank(deck, state.pile === "bomb" ? 4 : 2) : null;
   const pileFrom = pile ? (state.turn + state.playerCount - 1) % state.playerCount : -1;
   const dealt = hands(deck, state.playerCount);
-  const rankings: string[] = [];
+  const finishingOrder: string[] = [];
 
   const players: Player[] = Array.from({ length: state.playerCount }, (_, seat) => {
     const id = `capture_${seat}`;
     const held = heldAt(state, seat);
-    if (held === "out") rankings.push(id);
+    if (held === "out") finishingOrder.push(id);
     return {
       id,
       name: seat === CAPTURE_VIEWER_SEAT ? VIEWER : BOTS[seat - 1],
       hand: held === "out" ? [] : dealt[seat].slice(0, held),
-      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "ai",
-      ...(held === "out" && { finishPosition: rankings.length }),
+      type: seat === CAPTURE_VIEWER_SEAT ? "human" : "bot",
+      ...(held === "out" && { finishPosition: finishingOrder.length }),
     };
   });
 
@@ -254,8 +254,8 @@ export function captureGameState(state: CaptureState): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings,
+    roundOver: false,
+    finishingOrder,
     // Past the opening, so nothing waits on the 3 of spades and the table draws
     // as a hand in progress rather than a first move.
     firstPlayMade: true,

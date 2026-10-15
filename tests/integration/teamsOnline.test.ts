@@ -18,7 +18,7 @@ import {
 import { connectAs, waitFor } from "../helpers/client.ts";
 import type { Socket } from "socket.io-client";
 import {
-  driveHumansToGameOver,
+  driveHumansToRoundOver,
   waitForRow,
   type RoomState,
   type SanitizedState,
@@ -63,7 +63,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       }
 
       const firstState = waitFor<TeamedState>(clients[0].socket, "game:state");
-      const over = driveHumansToGameOver(
+      const over = driveHumansToRoundOver(
         clients.map((c) => c.socket),
         () => clients[0].socket.emit("room:start"),
         120_000
@@ -85,7 +85,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       for (const { user } of clients) {
         const row = await waitForRow(async () => {
           const res = await dbPool.query(
-            "SELECT game_mode, player_count FROM match_history WHERE user_id = $1",
+            "SELECT game_mode, player_count FROM round_history WHERE user_id = $1",
             [user.id]
           );
           return res.rows[0] ?? null;
@@ -100,7 +100,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       // fire-and-forget writes are still in flight would cut them off mid-query.
       const replay = await waitForRow(async () => {
         const res = await dbPool.query(
-          "SELECT game_mode, seats FROM match_replays WHERE player_ids @> $1::jsonb",
+          "SELECT game_mode, seats FROM round_replays WHERE player_ids @> $1::jsonb",
           [JSON.stringify([clients[0].user.id])]
         );
         return res.rows[0] ?? null;
@@ -137,7 +137,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       }
 
       const firstState = waitFor<TeamedState>(clients[0].socket, "game:state");
-      const over = driveHumansToGameOver(
+      const over = driveHumansToRoundOver(
         clients.map((c) => c.socket),
         () => clients[0].socket.emit("room:start", { matchLength: "single" }),
         120_000
@@ -145,14 +145,14 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
 
       const state = await firstState;
       const payload = (await over) as {
-        rankings: string[];
+        finishingOrder: string[];
         matchOver: boolean;
         matchWinnerIds: string[];
       };
       assert.equal(payload.matchOver, true, "one round settles a single-round match");
 
       const teamPoints: Record<string, number> = {};
-      payload.rankings.forEach((id, place) => {
+      payload.finishingOrder.forEach((id, place) => {
         const team = state.players.find((p) => p.id === id)!.team!;
         teamPoints[team] = (teamPoints[team] ?? 0) + (3 - place);
       });

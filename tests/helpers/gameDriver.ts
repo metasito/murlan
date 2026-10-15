@@ -3,7 +3,7 @@
 //
 // Extracted from tests/integration/stats.test.ts once a second suite needed
 // it: stats, history, replays and ratings are all written from the same
-// `handleGameOver` block, so they all need the same "get a table to finish"
+// `handleRoundOver` block, so they all need the same "get a table to finish"
 // machinery and none of them should own a private copy of it.
 import type { Socket } from "socket.io-client";
 import { getValidGivebackCards } from "../../lib/game/gameEngine.ts";
@@ -15,7 +15,7 @@ export interface ExchangePhaseView {
   winnerIdx: number;
   loserIdx: number;
   cardFromLoser: Card;
-  bothJokersException: boolean;
+  twoJokerException: boolean;
 }
 
 export interface SanitizedPlayer {
@@ -30,7 +30,7 @@ export interface SanitizedState {
   players: SanitizedPlayer[];
   currentTurnIndex: number;
   lastPlayedCombination: unknown | null;
-  gameOver: boolean;
+  roundOver: boolean;
   firstPlayMade: boolean;
   startCard?: Card;
   exchangePhase?: ExchangePhaseView;
@@ -46,7 +46,7 @@ export interface RoomState {
  * Plays every given human seat to the end of the hand: the forced-minimum
  * grouped play on a new round, a pass otherwise, and an immediate valid
  * giveback the instant a seat is the exchange winner. Resolves with the
- * `game:over` payload.
+ * `game:round_over` payload.
  *
  * Real clients only — a bot-filled seat is left to the server's own turn
  * arbiter (armTurn/runBotTurn), which paces bot moves roughly 1.2s apart.
@@ -54,7 +54,7 @@ export interface RoomState {
  * timers, keeps the wall-clock cost down to "however many bot turns the table
  * needs" instead of "every turn at the AFK pace".
  */
-export function driveHumansToGameOver(
+export function driveHumansToRoundOver(
   clients: Socket[],
   kickoff: () => void,
   timeoutMs = 60_000
@@ -75,7 +75,7 @@ export function driveHumansToGameOver(
       clearTimeout(timer);
       for (const c of clients) {
         c.off("game:state", handlers.get(c)!);
-        c.off("game:over", onOver);
+        c.off("game:round_over", onOver);
       }
     }
 
@@ -88,7 +88,7 @@ export function driveHumansToGameOver(
 
     for (const client of clients) {
       const onState = (state: SanitizedState) => {
-        if (settled || state.gameOver) return;
+        if (settled || state.roundOver) return;
         if (!seats.has(client)) seats.set(client, state.viewerSeatIndex);
         const seat = seats.get(client)!;
 
@@ -119,7 +119,7 @@ export function driveHumansToGameOver(
       };
       handlers.set(client, onState);
       client.on("game:state", onState);
-      client.on("game:over", onOver);
+      client.on("game:round_over", onOver);
     }
 
     kickoff();
@@ -129,8 +129,8 @@ export function driveHumansToGameOver(
 /**
  * Polls until `check` returns something truthy, or gives up.
  *
- * Everything `handleGameOver` writes is deliberately fire-and-forget, so it
- * lands a beat after `game:over` itself — a straight read right after the
+ * Everything `handleRoundOver` writes is deliberately fire-and-forget, so it
+ * lands a beat after `game:round_over` itself — a straight read right after the
  * event is a race, not an assertion.
  */
 export async function waitForRow<T>(

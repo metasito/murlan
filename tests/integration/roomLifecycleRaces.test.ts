@@ -315,16 +315,16 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
     const gate = new Promise<void>((r) => (open = r));
     let held = 0;
     persistence.writeActiveGame = async function (roomId, state) {
-      if (roomId === room.roomId && state.match.handsPlayed === 101) {
+      if (roomId === room.roomId && state.match.roundsPlayed === 101) {
         held += 1;
         await gate;
       }
       return real.call(this, roomId, state);
     };
     try {
-      game.handsPlayed = 101;
+      game.roundsPlayed = 101;
       const first = persistGameState(room.roomId, game);
-      game.handsPlayed = 102;
+      game.roundsPlayed = 102;
       const second = persistGameState(room.roomId, game);
       await new Promise((r) => setTimeout(r, 200));
       open();
@@ -333,10 +333,10 @@ describe("room lifecycle races", { skip: hasDatabase() ? false : skipMessage() }
       persistence.writeActiveGame = real;
     }
     assert.equal(held, 1);
-    const { rows } = await pool.query<{ game_state: { match: { handsPlayed: number } } }>(
+    const { rows } = await pool.query<{ game_state: { match: { roundsPlayed: number } } }>(
       "SELECT game_state FROM active_games WHERE room_id = $1",
       [room.roomId]
     );
-    assert.equal(rows[0]!.game_state.match.handsPlayed, 102);
+    assert.equal(rows[0]!.game_state.match.roundsPlayed, 102);
   });
 });

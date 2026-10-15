@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PROVISIONAL_GAMES,
+  PROVISIONAL_ROUNDS,
   START_RATING,
   expectedScore,
   formatSeason,
@@ -15,10 +15,10 @@ import {
   type RatedSeat,
 } from "../../lib/game/rating.ts";
 
-const seat = (userId: string, placement: number, rating = START_RATING, games = 30): RatedSeat => ({
+const seat = (userId: string, placement: number, rating = START_RATING, rounds = 30): RatedSeat => ({
   userId,
   rating,
-  games,
+  rounds,
   placement,
 });
 
@@ -120,8 +120,8 @@ test("a fixed pair farming each other asymptotes", () => {
     const before = winner;
     for (let i = 0; i < rounds; i++) {
       const deltas = ratingDeltas([
-        { userId: "w", rating: winner, games: 100, placement: 1 },
-        { userId: "l", rating: loser, games: 100, placement: 2 },
+        { userId: "w", rating: winner, rounds: 100, placement: 1 },
+        { userId: "l", rating: loser, rounds: 100, placement: 2 },
       ]);
       winner += deltas.get("w")!;
       loser += deltas.get("l")!;
@@ -159,8 +159,8 @@ test("a new season keeps half the distance from the mean", () => {
 });
 
 test("the provisional gate is smaller than the window K treats as new", () => {
-  assert.ok(PROVISIONAL_GAMES > 0);
-  assert.equal(kFactor(PROVISIONAL_GAMES), kFactor(0), "still provisional-speed at the gate");
+  assert.ok(PROVISIONAL_ROUNDS > 0);
+  assert.equal(kFactor(PROVISIONAL_ROUNDS), kFactor(0), "still provisional-speed at the gate");
 });
 
 test("bots are dropped and the humans renumbered among themselves", () => {

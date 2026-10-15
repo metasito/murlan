@@ -112,7 +112,7 @@ export function turnTimerActive(opts: {
   isMyTurn: boolean;
   isFinished: boolean;
   isNewTrick: boolean;
-  gameOver: boolean;
+  roundOver: boolean;
   exchangeActive: boolean;
   includeNewTrick: boolean;
   /**
@@ -124,7 +124,7 @@ export function turnTimerActive(opts: {
   announcementHolds?: boolean;
 }): boolean {
   if (!opts.isMyTurn || opts.isFinished) return false;
-  if (opts.gameOver || opts.exchangeActive) return false;
+  if (opts.roundOver || opts.exchangeActive) return false;
   if (opts.announcementHolds) return false;
   if (opts.isNewTrick && !opts.includeNewTrick) return false;
   return true;

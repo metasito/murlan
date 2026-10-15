@@ -11,7 +11,7 @@ const MODULE = "components/flightPhysics.ts";
 const OWNERS: Record<string, string> = {
   readHandArrival: "components/table/hand.tsx",
   readExchangeLegs: "components/table/ExchangeLegs.tsx",
-  readTradeSeats: "components/GameTable.tsx",
+  readExchangeSeats: "components/GameTable.tsx",
   passedSeats: "components/table/seats.tsx",
 };
 

@@ -95,7 +95,7 @@ export async function shutdown(
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
     // Disconnecting the sockets above starts writes — updateLastSeen, the
-    // lobby teardown — and `handleGameOver` and `persistGameState` are
+    // lobby teardown — and `handleRoundOver` and `persistGameState` are
     // fire-and-forget, so nothing else holds a promise for any of them.
     // `pool.end()` makes every subsequent checkout fail, which would drop
     // exactly the stats, ladder and replay rows this shutdown exists to save.

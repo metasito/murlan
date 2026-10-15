@@ -10,7 +10,7 @@ export const OFFLINE_SAVE_KEY = "@murlan_offline_game";
 export const TUTORIAL_SEEN_KEY = "@murlan_tutorial_seen";
 export const TUTORIAL_PROGRESS_KEY = "@murlan_tutorial_progress";
 export const PENDING_CRASH_REPORTS_KEY = "@murlan_pending_crash_reports";
-export const E2E_SUSPEND_AI_KEY = "@murlan_e2e_suspend_ai";
+export const E2E_SUSPEND_BOT_KEY = "@murlan_e2e_suspend_ai";
 
 /** The signed-in account's keys: logout removes every one (tests/engine/storageKeys). */
 export const ACCOUNT_KEYS = [AUTH_USER_KEY, ACTIVE_ROOM_KEY, WAITING_ROOM_KEY];
@@ -23,5 +23,5 @@ export const DEVICE_KEYS = [
   TUTORIAL_SEEN_KEY,
   TUTORIAL_PROGRESS_KEY,
   PENDING_CRASH_REPORTS_KEY,
-  E2E_SUSPEND_AI_KEY,
+  E2E_SUSPEND_BOT_KEY,
 ];

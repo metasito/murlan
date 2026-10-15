@@ -18,7 +18,7 @@ function player(id: string, name: string, type: Player["type"] = "human"): Playe
   return { id, name, hand: [], type };
 }
 
-function finishedHand(players: Player[], rankings: string[]): GameState {
+function finishedHand(players: Player[], finishingOrder: string[]): GameState {
   return {
     players,
     currentTurnIndex: 0,
@@ -27,8 +27,8 @@ function finishedHand(players: Player[], rankings: string[]): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: true,
-    rankings,
+    roundOver: true,
+    finishingOrder,
     firstPlayMade: true,
   };
 }
@@ -44,7 +44,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 1,
+    roundsPlayed: 1,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -101,7 +101,7 @@ const unpackedMatch = () => ({
   matchLength: "match" as const,
   matchTarget: 21,
   maxPlayers: 2,
-  handsPlayed: 1,
+  roundsPlayed: 1,
   endedByVote: false,
 });
 const noSeats = { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] };
@@ -119,7 +119,7 @@ describe("a table restored after a restart", () => {
     t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
-    assert.equal(activeGames.get(ROOM)!.lastGameOverPayload, undefined, "nothing persisted the game:over");
+    assert.equal(activeGames.get(ROOM)!.lastRoundOverPayload, undefined, "nothing persisted the game:over");
     await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "ana" });
 
     const tally = emitted.filter((e) => e.event === "game:vote_state").pop();
@@ -139,7 +139,7 @@ describe("a table restored after a restart", () => {
 
     assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
     const game = activeGames.get(ROOM)!;
-    assert.equal(game.gameState.gameOver, true);
+    assert.equal(game.gameState.roundOver, true);
 
     await vote(io, "ana");
     assert.ok(!emitted.some((e) => e.event === "game:started"), "one vote of two deals nothing");
@@ -147,7 +147,7 @@ describe("a table restored after a restart", () => {
     await sleep(150);
     assert.equal(game.playerMap[1], undefined, "besi's seat went when the grace ran out");
     assert.ok(emitted.some((e) => e.event === "game:started"), "ana's vote now closes the gate");
-    assert.equal(game.gameState.gameOver, false);
+    assert.equal(game.gameState.roundOver, false);
   });
 });
 
@@ -168,7 +168,7 @@ describe("dealing the next round", () => {
     const outcome = await vote(io, "besi").catch((err: unknown) => err);
 
     assert.deepEqual(outcome, { ok: true });
-    assert.equal(game.gameState.gameOver, false, "the next round was dealt in memory");
+    assert.equal(game.gameState.roundOver, false, "the next round was dealt in memory");
     assert.ok(emitted.some((e) => e.event === "game:state"), "nobody was sent their hand");
     assert.ok(emitted.some((e) => e.event === "game:started"));
   });
@@ -204,7 +204,7 @@ describe("dealing the next round", () => {
 });
 
 describe("a new match at a standing bot-filled table", () => {
-  test("opens with the exchange on the last match's rankings, a bot's place among them", async (t) => {
+  test("opens with the exchange on the last match's finishingOrder, a bot's place among them", async (t) => {
     const { io, emitted } = stubIo();
     const host = "ana";
     const lobby = {
@@ -225,9 +225,9 @@ describe("a new match at a standing bot-filled table", () => {
     }));
     const seats = [
       player("player_0", "Ana"),
-      { ...player("player_1", "Bot 1", "ai"), personality: "besnik" },
-      { ...player("player_2", "Bot 2", "ai"), personality: "besnik" },
-      { ...player("player_3", "Bot 3", "ai"), personality: "besnik" },
+      { ...player("player_1", "Bot 1", "bot"), personality: "besnik" },
+      { ...player("player_2", "Bot 2", "bot"), personality: "besnik" },
+      { ...player("player_3", "Bot 3", "bot"), personality: "besnik" },
     ] as Player[];
     activeGames.set(
       ROOM,
@@ -320,7 +320,7 @@ describe("a restore with one player present and one away", () => {
     const { io } = stubIo();
     useCluster(t, [{ userId: "ana", rooms: [] }]);
     const state = finishedHand(twoHumans(), []);
-    state.gameOver = false;
+    state.roundOver = false;
     const row = packPersistedState(state, {}, 0, "AAAAAA", unpackedMatch(), noSeats);
     t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
 
@@ -348,12 +348,12 @@ describe("a restore whose presence sweep fails", () => {
 });
 
 describe("a seatLost that arrives after its player is back", () => {
-  for (const gameOver of [false, true]) {
-    test(`arms nothing ${gameOver ? "between hands" : "mid-hand"}`, async (t) => {
+  for (const roundOver of [false, true]) {
+    test(`arms nothing ${roundOver ? "between hands" : "mid-hand"}`, async (t) => {
       const { io, emitted } = stubIo();
       useCluster(t, [{ userId: "besi", rooms: [ROOM] }]);
-      const state = finishedHand(twoHumans(), gameOver ? ["player_0", "player_1"] : []);
-      state.gameOver = gameOver;
+      const state = finishedHand(twoHumans(), roundOver ? ["player_0", "player_1"] : []);
+      state.roundOver = roundOver;
       activeGames.set(ROOM, baseGame({ gameState: state, playerMap: { 0: "ana", 1: "besi" } }));
 
       await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });

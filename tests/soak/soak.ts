@@ -35,7 +35,7 @@ interface TableState {
   players: SanitizedPlayer[];
   currentTurnIndex: number;
   lastPlayedCombination: Combination | null;
-  gameOver: boolean;
+  roundOver: boolean;
   firstPlayMade: boolean;
   startCard?: Card;
   exchangePhase?: { active: boolean; winnerIdx: number; cardFromLoser?: Card };
@@ -388,7 +388,7 @@ export class Seat {
     return {
       seat,
       currentTurnIndex: s.currentTurnIndex,
-      gameOver: s.gameOver,
+      roundOver: s.roundOver,
       handCounts: s.players.map((p) => p.handCount),
       ownHand: (s.players[seat]?.hand ?? []).map((c) => c.id),
     };
@@ -407,7 +407,7 @@ export class Seat {
   act(rng: () => number): SeatAction | null {
     const s = this.state;
     const seat = s?.viewerSeatIndex;
-    if (!s || s.gameOver || typeof seat !== "number" || seat < 0) return null;
+    if (!s || s.roundOver || typeof seat !== "number" || seat < 0) return null;
 
     const phase = s.exchangePhase;
     if (phase?.active) {
@@ -572,7 +572,7 @@ export async function runSoak(opts: Options, log = console.log): Promise<SoakRes
       }
       if (violations.length > 0) break;
 
-      const over = seats.every((s) => s.state?.gameOver);
+      const over = seats.every((s) => s.state?.roundOver);
       if (over && !wasOver) {
         rounds += 1;
         log(`soak: round ${rounds} finished`);
@@ -686,7 +686,7 @@ async function playTable(
   let moves = 0;
   let unanswered = 0;
   while (Date.now() < until) {
-    if (seats.every((s) => s.state?.gameOver)) {
+    if (seats.every((s) => s.state?.roundOver)) {
       for (const seat of seats) seat.socket.emit("game:rematch_vote");
       await sleep(700);
       continue;

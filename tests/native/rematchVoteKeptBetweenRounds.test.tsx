@@ -30,7 +30,7 @@ jest.mock('@/context/NotificationContext', () => ({
   useNotification: () => ({ showNotification: jest.fn() }),
 }));
 
-const table = (gameOver: boolean): GameStateBroadcast => ({
+const table = (roundOver: boolean): GameStateBroadcast => ({
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human', handCount: 0, vacated: false },
     { id: 'player_1', name: 'Besi', hand: [], type: 'human', handCount: 0, vacated: false },
@@ -41,8 +41,8 @@ const table = (gameOver: boolean): GameStateBroadcast => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver,
-  rankings: gameOver ? ['player_0', 'player_1'] : [],
+  roundOver,
+  finishingOrder: roundOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
   viewerSeatIndex: 0,
   turnSecondsRemaining: 30,

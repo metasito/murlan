@@ -1,4 +1,4 @@
-// tests/native/handEndRefreshesRatings.test.tsx — a finished hand marks every
+// tests/native/roundEndRefreshesRatings.test.tsx — a finished hand marks every
 // cached figure it can have moved as stale, the ladder's included.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';
@@ -29,7 +29,7 @@ jest.mock('@/context/SocketContext', () => ({
   useSocket: () => ({ socket: mockSocket }),
 }));
 
-describe('game:over', () => {
+describe('game:round_over', () => {
   it('invalidates the stats and the ratings', async () => {
     const client = new QueryClient();
     const invalidated: unknown[] = [];
@@ -50,8 +50,8 @@ describe('game:over', () => {
     });
 
     await act(async () => {
-      listeners.get('game:over')?.forEach((fn) =>
-        fn({ rankings: [], scores: [], matchOver: false, matchWinnerIds: [], ratingDeltas: {} })
+      listeners.get('game:round_over')?.forEach((fn) =>
+        fn({ finishingOrder: [], scores: [], matchOver: false, matchWinnerIds: [], ratingDeltas: {} })
       );
     });
 
@@ -62,7 +62,7 @@ describe('game:over', () => {
   });
 
   it('takes the rating after the hand from game:over, not from a ladder read that can predate its write', async () => {
-    const queryFn = jest.fn(async () => ({ season: '2026-10', rating: 1000, games: 2, provisional: true }));
+    const queryFn = jest.fn(async () => ({ season: '2026-10', rating: 1000, rounds: 2, provisional: true }));
     const client = new QueryClient({ defaultOptions: { queries: { queryFn, staleTime: Infinity, retry: false } } });
 
     const { result, unmount } = await renderHook(() => useOnlineGame(), {
@@ -76,20 +76,20 @@ describe('game:over', () => {
     });
 
     await act(async () => {
-      listeners.get('game:over')?.forEach((fn) =>
+      listeners.get('game:round_over')?.forEach((fn) =>
         fn({
-          rankings: [],
+          finishingOrder: [],
           scores: [],
           matchOver: true,
           matchWinnerIds: [],
           ratingDeltas: { u1: 14 },
-          ratingsAfter: { u1: { rating: 1014, games: 3 } },
+          ratingsAfter: { u1: { rating: 1014, rounds: 3 } },
           recorded: true,
         })
       );
     });
 
-    expect(result.current.ratingsAfter).toEqual({ u1: { rating: 1014, games: 3 } });
+    expect(result.current.ratingsAfter).toEqual({ u1: { rating: 1014, rounds: 3 } });
     expect(queryFn).not.toHaveBeenCalled();
     await unmount();
   });

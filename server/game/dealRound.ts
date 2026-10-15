@@ -1,7 +1,7 @@
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { logger } from "../http/logger.ts";
-import { rollMatchForward } from "./gameOver.ts";
+import { rollMatchForward } from "./roundOver.ts";
 import { emitMatchState } from "../socket/emit.ts";
 import { broadcastGameState, persistGameState } from "./gamePersistence.ts";
 import { armTurn } from "./gameTurn.ts";
@@ -35,11 +35,11 @@ export async function dealRound(
   game.weakSeats.clear();
   game.endMatchVotes.clear();
   // Not required for correctness — announceRejoin's `else if` already makes a
-  // stale payload unreachable the instant gameState.gameOver goes false, and
-  // handleGameOver clears this itself before the next hand it plays can end.
+  // stale payload unreachable the instant gameState.roundOver goes false, and
+  // handleRoundOver clears this itself before the next hand it plays can end.
   // Cleared here anyway so the table does not hold a finished hand's payload
   // in memory for the whole of the next one.
-  game.lastGameOverPayload = undefined;
+  game.lastRoundOverPayload = undefined;
   rollMatchForward(game);
 
   await roomStore

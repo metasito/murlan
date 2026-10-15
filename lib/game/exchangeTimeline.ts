@@ -123,6 +123,6 @@ export function exchangeGiveDelayMs(counts: readonly number[]): number {
 }
 
 /** From the choice to the ceremony's close; for both Jokers, from the deal's end. */
-export function exchangeAnnounceFrom(bothJokersException: boolean): number {
-  return (bothJokersException ? X.beat : X.giveWait) + LEG.end + X.read;
+export function exchangeAnnounceFrom(twoJokerException: boolean): number {
+  return (twoJokerException ? X.beat : X.giveWait) + LEG.end + X.read;
 }

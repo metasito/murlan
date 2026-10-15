@@ -8,9 +8,9 @@ import { settle } from './feedback';
 export const STEP_MS = 1500;
 
 export function botRound(): GameState[] {
-  let state = initializeGame(['A', 'B', 'C', 'D'].map((name) => ({ name, type: 'ai' as const })), 'free_for_all');
+  let state = initializeGame(['A', 'B', 'C', 'D'].map((name) => ({ name, type: 'bot' as const })), 'free_for_all');
   const states = [state];
-  while (!state.gameOver && states.length < 300) {
+  while (!state.roundOver && states.length < 300) {
     const next = offlineBotMove(state) ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
     if (!next) break;
     state = next;

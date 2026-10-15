@@ -31,8 +31,8 @@ const DECK = 54;
 /** Two seats looking at the same four-handed table, and agreeing. */
 function agreeingPair(): SeatView[] {
   return [
-    { seat: 0, currentTurnIndex: 1, gameOver: false, handCounts: [3, 4], ownHand: ["a", "b", "c"] },
-    { seat: 1, currentTurnIndex: 1, gameOver: false, handCounts: [3, 4], ownHand: ["d", "e", "f", "g"] },
+    { seat: 0, currentTurnIndex: 1, roundOver: false, handCounts: [3, 4], ownHand: ["a", "b", "c"] },
+    { seat: 1, currentTurnIndex: 1, roundOver: false, handCounts: [3, 4], ownHand: ["d", "e", "f", "g"] },
   ];
 }
 
@@ -55,7 +55,7 @@ describe("the soak's oracle", () => {
 
   test("catches one client thinking the hand is over", () => {
     const views = agreeingPair();
-    views[1].gameOver = true;
+    views[1].roundOver = true;
     assert.equal(checkAgreement(views)[0]?.kind, "over-disagreement");
   });
 
@@ -99,7 +99,7 @@ describe("the soak's oracle", () => {
 
   /** A finished hand has nobody to act, and the server says so with -1. */
   test("allows no-one's turn once the hand is over", () => {
-    const views = agreeingPair().map((v) => ({ ...v, gameOver: true, currentTurnIndex: -1 }));
+    const views = agreeingPair().map((v) => ({ ...v, roundOver: true, currentTurnIndex: -1 }));
     assert.deepEqual(checkTurnIsSeated(views), []);
   });
 

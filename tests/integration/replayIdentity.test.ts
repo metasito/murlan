@@ -25,7 +25,7 @@ describe("what a replay seat names", { skip: hasDatabase() ? false : skipMessage
         { seatIndex: 1, userId: null, vacatedBy: leaver.id, name: leaver.username },
       ],
       moves: [],
-      rankings: [],
+      finishingOrder: [],
     });
     return { stayer, leaver, cookie, leaverCookie };
   }

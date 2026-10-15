@@ -130,7 +130,7 @@ const REPLAY = {
     { seatIndex: 0, userId: 'u1', name: 'Ana' },
     { seatIndex: 1, userId: null, name: '' },
   ],
-  rankings: [],
+  finishingOrder: [],
   moves: [
     { seat: 0, combo: { type: 'single', cards: [{ id: '3_spades', rank: '3', suit: 'spades', isJoker: false }], strength: 1 }, handCounts: [2, 3] },
     { seat: 1, combo: null, handCounts: [2, 3] },

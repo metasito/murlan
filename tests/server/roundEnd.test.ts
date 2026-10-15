@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { resolveHandEnd } from "../../server/game/onlineGameLogic.ts";
+import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 function player(id: string, name: string, handSize: number, extra: Partial<Player> = {}): Player {
@@ -13,7 +13,7 @@ function player(id: string, name: string, handSize: number, extra: Partial<Playe
   };
 }
 
-function mkState(players: Player[], rankings: string[]): GameState {
+function mkState(players: Player[], finishingOrder: string[]): GameState {
   return {
     players,
     currentTurnIndex: 0,
@@ -22,21 +22,21 @@ function mkState(players: Player[], rankings: string[]): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: true,
-    rankings,
+    roundOver: true,
+    finishingOrder,
     firstPlayMade: true,
   };
 }
 
 const HAND_FLAGS = {};
 
-describe("resolveHandEnd — free-for-all", () => {
+describe("resolveRoundEnd — free-for-all", () => {
   test("below target: keeps the same target, nobody wins yet", () => {
     const state = mkState(
       [player("p0", "Alice", 0), player("p1", "Bob", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 5, bob: 2, carl: 1, dee: 0 },
@@ -47,7 +47,7 @@ describe("resolveHandEnd — free-for-all", () => {
       abandonedSeats: new Map(),
     });
 
-    // scoreHand awards 3/2/1/0 for 4 players — alice reaches 8, still under 21.
+    // scoreRound awards 3/2/1/0 for 4 players — alice reaches 8, still under 21.
     assert.deepEqual(result.cumulativeScores, { alice: 8, bob: 4, carl: 2, dee: 0 });
     assert.equal(result.matchOver, false);
     assert.equal(result.matchTarget, 21);
@@ -59,7 +59,7 @@ describe("resolveHandEnd — free-for-all", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 18, bob: 2, carl: 1, dee: 0 },
@@ -81,7 +81,7 @@ describe("resolveHandEnd — free-for-all", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 19, bob: 19, carl: 1, dee: 0 },
@@ -102,9 +102,9 @@ describe("resolveHandEnd — free-for-all", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
-      // scoreHand awards this hand's 3/2/1/0 to p0..p3 (Alice, Bob, Carl,
+      // scoreRound awards this hand's 3/2/1/0 to p0..p3 (Alice, Bob, Carl,
       // Dee) — +3 and +2 lands both leaders on exactly the final target.
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 48, bob: 49, carl: 1, dee: 0 },
@@ -122,7 +122,7 @@ describe("resolveHandEnd — free-for-all", () => {
   });
 });
 
-describe("resolveHandEnd — teams", () => {
+describe("resolveRoundEnd — teams", () => {
   test("the pair's summed total decides the match, not either seat alone", () => {
     // Seats 0/2 are team A, 1/3 team B. Neither of A's members reaches 21
     // alone, but together they hold 22.
@@ -135,7 +135,7 @@ describe("resolveHandEnd — teams", () => {
       ],
       ["p0", "p2", "p1", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "a1", 1: "b1", 2: "a2", 3: "b2" },
       cumulativeScores: { a1: 11, b1: 5, a2: 8, b2: 4 },
@@ -151,13 +151,13 @@ describe("resolveHandEnd — teams", () => {
   });
 });
 
-describe("resolveHandEnd — gameResults shaping", () => {
+describe("resolveRoundEnd — gameResults shaping", () => {
   test("a vacated seat is scored under bot:<seat> and accumulates like any bot seat (#850 clause 4)", () => {
     const state = mkState(
       [player("p0", "Alice", 0), player("p1", "Ghost", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       // Seat 1 has no playerMap entry: it is bot-controlled this hand.
       state,
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
@@ -173,7 +173,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
     // seat's points join the running total like a born-bot seat's do, so the
     // standings sum to the hands played. It still cannot cross the target or
     // be named the winner — that is `winEligible`, not `cumulativeScores`.
-    assert.equal(result.handByKey["bot:1"], 2);
+    assert.equal(result.roundByKey["bot:1"], 2);
     assert.equal(result.cumulativeScores["bot:1"], 2);
   });
 
@@ -182,7 +182,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 3), player("p1", "Drita", 0)],
       ["p1", "p0"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       // Seat 1 has no playerMap entry too, but it was never a human's this
       // match — it must not read the same as seat 1 in the test above.
       state,
@@ -205,7 +205,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
     const outcomes = ["p0", "p0", "p1", "p1"]; // winner of each of 4 hands
     for (const winner of outcomes) {
       const loser = winner === "p0" ? "p1" : "p0";
-      const result = resolveHandEnd({
+      const result = resolveRoundEnd({
         state: mkState(players, [winner, loser]),
         playerMap: { 0: "rotonmeta" },
         cumulativeScores,
@@ -229,7 +229,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
     // both left untouched, exactly as vacateSeat leaves them between hands).
     // The AI now driving her seat wins hand 2.
     const players = [player("p0", "rotonmeta", 3), player("p1", "drita", 0)];
-    const hand1 = resolveHandEnd({
+    const hand1 = resolveRoundEnd({
       state: mkState(players, ["p0", "p1"]),
       playerMap: { 0: "rotonmeta", 1: "drita" },
       cumulativeScores: {},
@@ -240,7 +240,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set(),
     });
-    const hand2 = resolveHandEnd({
+    const hand2 = resolveRoundEnd({
       state: mkState(players, ["p1", "p0"]),
       playerMap: { 0: "rotonmeta" }, // seat 1 vacated between hands
       cumulativeScores: hand1.cumulativeScores,
@@ -253,7 +253,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
     });
 
     // The point lands on the hand's own scoreboard...
-    assert.equal(hand2.handByKey["bot:1"], 1);
+    assert.equal(hand2.roundByKey["bot:1"], 1);
     // ...and, as of #850, on the running total too: docs/GAME-RULES.md § Decisions settled
     // what #815 deferred — a vacated seat accumulates like a born-bot seat
     // from the hand it left onward. drita's own point from hand 1 (she was
@@ -270,7 +270,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 4), player("p2", "Carl", 6), player("p3", "Dee", 9)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: {},
@@ -295,7 +295,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 0), player("p2", "Carl", 0), player("p3", "Dee", 4)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: {},
@@ -317,7 +317,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 0), player("p1", "Bot1", 3), player("p2", "Bot2", 5), player("p3", "Bot3", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice" },
       cumulativeScores: {},
@@ -335,7 +335,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 0), player("p1", "Bob", 3), player("p2", "Bot1", 5), player("p3", "Bot2", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 1: "bob" },
       cumulativeScores: {},
@@ -353,7 +353,7 @@ describe("resolveHandEnd — gameResults shaping", () => {
       [player("p0", "Alice", 0), player("p1", "Left", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       cumulativeScores: {},
@@ -370,13 +370,13 @@ describe("resolveHandEnd — gameResults shaping", () => {
   });
 });
 
-describe("resolveHandEnd — a vacated seat's win eligibility and frozen points (#850 clauses 4-5)", () => {
+describe("resolveRoundEnd — a vacated seat's win eligibility and frozen points (#850 clauses 4-5)", () => {
   test("a vacated seat's total can sit past the target without ending the match or naming it the winner", () => {
     const state = mkState(
       [player("p0", "Alice", 3), player("p1", "Ghost", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p1", "p0", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
       cumulativeScores: { alice: 4, carl: 2, dee: 1, "bot:1": 20 },
@@ -401,7 +401,7 @@ describe("resolveHandEnd — a vacated seat's win eligibility and frozen points 
       [player("p0", "Alice", 3), player("p1", "Ghost", 0), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p1", "p0", "p2", "p3"]
     );
-    const result = resolveHandEnd({
+    const result = resolveRoundEnd({
       state,
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 4, carl: 2, dee: 1, "leftUser": 12, "bot:1": 20 },

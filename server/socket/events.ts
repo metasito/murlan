@@ -1,6 +1,6 @@
 // Funnel steps: where people stop.
 //
-// `rooms.status` with no matching `match_history` already gives a rough
+// `rooms.status` with no matching `round_history` already gives a rough
 // "started but never finished" (#40). It cannot say that someone bounced off
 // the lobby, or never made a move after sitting down. Those are steps, and a
 // step that is not a finished game is recorded nowhere else.

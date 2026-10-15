@@ -5,7 +5,7 @@ import { botSeatIndex, botSeatKey, isBotSeatKey } from "./botSeat.ts";
 import type { ScoreLine } from "../../lib/game/matchState.ts";
 import { botSeatNames, getBotPersonality } from "../../lib/game/botPersonalities.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
-import { foldHandIntoMatch, resolveMatchFor } from "../../lib/game/gameEngine.ts";
+import { foldRoundIntoMatch, resolveMatchFor } from "../../lib/game/gameEngine.ts";
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { GameResult } from "../../lib/achievements.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
@@ -60,7 +60,7 @@ export interface VisibleExchangePhaseInput {
   active: boolean;
   winnerIdx: number;
   loserIdx: number;
-  bothJokersException: boolean;
+  twoJokerException: boolean;
   cardFromLoser: unknown;
   cardToLoser?: unknown;
   settledAt?: number;
@@ -81,7 +81,7 @@ export interface VisibleExchangePhaseInput {
  */
 function ceremonyRunning(phase: VisibleExchangePhaseInput, now: number): boolean {
   if (phase.active || phase.settledAt === undefined) return false;
-  return now - phase.settledAt < exchangeAnnounceMs(phase.bothJokersException);
+  return now - phase.settledAt < exchangeAnnounceMs(phase.twoJokerException);
 }
 
 /**
@@ -131,7 +131,7 @@ export function visibleExchangePhase(
     active: phase.active,
     winnerIdx: phase.winnerIdx,
     loserIdx: phase.loserIdx,
-    bothJokersException: phase.bothJokersException,
+    twoJokerException: phase.twoJokerException,
   };
 
   const isParticipant =
@@ -252,7 +252,7 @@ export function botSeatsFromPersonality(players: readonly { personality?: BotPer
  * Scoring key -> team id, for every key whose points belong to a pair: the
  * seat's own key, plus the frozen row of a player who left it. A pair keeps a
  * departed partner's points (docs/GAME-RULES.md § Decisions); who may be *named* a winner
- * is `resolveHandEnd`'s `winEligible`, not this map.
+ * is `resolveRoundEnd`'s `winEligible`, not this map.
  */
 export function teamKeyMap(
   playerMap: Record<number, string>,
@@ -279,14 +279,14 @@ export function teamKeyMap(
 export function restoredMatchOver(args: {
   matchLength: MatchLength;
   gameMode: GameMode;
-  handOver: boolean;
+  roundOver: boolean;
   scores: Record<string, number>;
   target: number;
   teamOfKey: Record<string, string>;
   playerCount: number;
 }): boolean {
-  const { matchLength, gameMode, handOver, scores, target, teamOfKey, playerCount } = args;
-  if (matchLength === "single") return handOver;
+  const { matchLength, gameMode, roundOver, scores, target, teamOfKey, playerCount } = args;
+  if (matchLength === "single") return roundOver;
   const resolution = resolveMatchFor({
     gameMode,
     cumulative: scores,
@@ -297,7 +297,7 @@ export function restoredMatchOver(args: {
   return !!resolution && resolution.newTarget === null;
 }
 
-export interface ResolveHandEndInput {
+export interface ResolveRoundEndInput {
   state: GameState;
   playerMap: Record<number, string>;
   cumulativeScores: Record<string, number>;
@@ -325,15 +325,15 @@ export interface ResolveHandEndInput {
 
 export type ScoreboardRow = ScoreLine;
 
-export interface ResolveHandEndResult {
-  handByKey: Record<string, number>;
+export interface ResolveRoundEndResult {
+  roundByKey: Record<string, number>;
   cumulativeScores: Record<string, number>;
   matchOver: boolean;
   matchTarget: number;
   matchWinners: string[];
   isDraw: boolean;
   detailed: ScoreboardRow[];
-  /** The match winners as engine player ids — the space `rankings` is in. */
+  /** The match winners as engine player ids — the space `finishingOrder` is in. */
   winnerEngineIds: string[];
   gameResults: GameResult[];
   /** Whether the table was contested by enough real people to record. */
@@ -344,15 +344,15 @@ export interface ResolveHandEndResult {
  * Everything a hand's end decides: the per-hand and cumulative scoreboard,
  * whether the match is over (or escalates to a new target), who won, and the
  * per-seat results stats/ratings/replays read from. Pure — server/socket/socket.ts
- * `handleGameOver` is left owning the broadcast, persistence and the actual
+ * `handleRoundOver` is left owning the broadcast, persistence and the actual
  * (fire-and-forget) stats/ratings/replay writes.
  */
-export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult {
+export function resolveRoundEnd(input: ResolveRoundEndInput): ResolveRoundEndResult {
   const { state, playerMap, matchLength, gameMode, handFlags, abandonedSeats } = input;
   const botSeatsAtStart = input.botSeatsAtStart ?? new Set<number>();
   const vacatedSeats = input.vacatedSeats ?? new Map<number, { userId: string; username: string }>();
 
-  // rankings hold engine player ids ("player_0"); score by seat -> user so the
+  // finishingOrder hold engine player ids ("player_0"); score by seat -> user so the
   // scoreboard is keyed by a real identity instead of an engine id wearing a
   // username label.
   const seatOfEngineId = new Map<string, number>();
@@ -364,14 +364,14 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   }
 
   const {
-    handByKey,
+    roundByKey,
     cumulative: cumulativeScores,
     over: matchOver,
     target: matchTarget,
     winners: matchWinners,
     isDraw,
-  } = foldHandIntoMatch({
-    rankings: state.rankings,
+  } = foldRoundIntoMatch({
+    finishingOrder: state.finishingOrder,
     playerCount: state.players.length,
     length: matchLength,
     gameMode,
@@ -412,7 +412,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
       engineId: p.id,
       userId: vacated?.userId ?? playerMap[seat] ?? null,
       username: p.name,
-      points: handByKey[key] ?? 0,
+      points: roundByKey[key] ?? 0,
       total,
       vacated: vacated !== undefined,
     };
@@ -425,7 +425,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   // Every seat carries a placement by the time a hand ends — the engine fills
   // the remaining positions for anyone still holding cards, in both modes —
   // so every seated player is represented in `gameResults` and counted
-  // toward `gamesPlayed`, not just the ones who actually emptied their hand.
+  // toward `roundsPlayed`, not just the ones who actually emptied their hand.
   const playerCount = state.players.length;
   // How many seats actually emptied their hand this hand, read straight off
   // the final state rather than inferred from the mode: a seat that was
@@ -434,14 +434,14 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   const realFinisherCount = state.players.filter((p) => p.hand.length === 0).length;
 
   // Placements are handed out from one explicit total order, not from each
-  // seat's own index in `state.rankings`: the seats that played the hand out
+  // seat's own index in `state.finishingOrder`: the seats that played the hand out
   // in ranking order, then the abandoned ones behind them, ranking order kept
   // within each group so several walkouts fill the last slots stably. That is
   // what makes a forfeit genuinely last (docs/GAME-RULES.md § Decisions) while every
   // placement stays distinct — lib/game/rating.ts renumbers the human seats 1..n
   // by sorting on placement, so two seats sharing one would rate a quitter
   // ahead of a player who stayed to the end.
-  const rankedSeats = state.rankings
+  const rankedSeats = state.finishingOrder
     .map((engineId) => seatOfEngineId.get(engineId))
     .filter((seat): seat is number => seat !== undefined);
   const orderedSeats = [
@@ -482,7 +482,7 @@ export function resolveHandEnd(input: ResolveHandEndInput): ResolveHandEndResult
   const botSeats = Math.max(playerCount - humanSeats, 0);
 
   return {
-    handByKey,
+    roundByKey,
     cumulativeScores,
     matchOver,
     matchTarget,

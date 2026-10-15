@@ -75,7 +75,7 @@ export function tableStrings(t: TFn, tn: TnFn): TableA11yStrings {
     yourCardCount: (count) => tn("gameTable.a11yYourCards", count),
     exchangeGiveCard: (loserName) => t("gameTable.a11yExchangeGive", { name: loserName }),
     exchangeWaitForCard: (winnerName) => t("gameTable.a11yExchangeWait", { name: winnerName }),
-    handOver: t("gameTable.a11yHandOver"),
+    roundOver: t("gameTable.a11yRoundOver"),
     matchOver: t("gameTable.a11yMatchOver"),
     dealing: t("gameTable.a11yDealing"),
   };

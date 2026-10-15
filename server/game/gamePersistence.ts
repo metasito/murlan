@@ -15,7 +15,7 @@ import {
 import { activeGames, userRoom } from "./gameRoom.ts";
 import { payload } from "../socket/payload.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
-import type { GameOverWriters } from "./gameOver.ts";
+import type { RoundOverWriters } from "./roundOver.ts";
 import { releaseRoom, unclaimedRooms } from "./gameOwnership.ts";
 import {
   stateAckTimeoutMs,
@@ -168,7 +168,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
     matchLength: game.matchLength,
     matchTarget: game.matchTarget,
     maxPlayers: game.maxPlayers,
-    handsPlayed: game.handsPlayed,
+    roundsPlayed: game.roundsPlayed,
     endedByVote: !!game.endedByVote,
   }, {
     vacatedSeats: [...game.vacatedSeats],
@@ -339,7 +339,7 @@ let sweeper: ReturnType<typeof setInterval> | null = null;
  * someone to ask.
  */
 async function sweepFinishedTables(io: SocketServer): Promise<void> {
-  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.gameOver);
+  const finished = [...activeGames.entries()].filter(([, game]) => game.gameState.roundOver);
   if (finished.length === 0) return;
   const connected = new Set(
     (await io.fetchSockets())
@@ -400,7 +400,7 @@ export function startSweeper(io: SocketServer, resumeOrphans: (io: SocketServer)
   (sweeper as unknown as { unref?: () => void }).unref?.();
 }
 
-export const gameOverWriters: GameOverWriters = {
+export const roundOverWriters: RoundOverWriters = {
   updateRoomStatus: (roomId, status) => roomStore.updateRoomStatus(roomId, status),
   persistGameState,
   recordGameResult,

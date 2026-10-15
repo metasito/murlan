@@ -17,27 +17,27 @@ const a11yStrings: TableA11yStrings = {
   yourCardCount: (count) => `YOU=${count}`,
   exchangeGiveCard: (loserName) => `EXCHANGE_GIVE(${loserName})`,
   exchangeWaitForCard: (winnerName) => `EXCHANGE_WAIT(${winnerName})`,
-  handOver: "HAND_OVER",
+  roundOver: "ROUND_OVER",
   matchOver: "MATCH_OVER",
   dealing: "DEALING",
 };
 
 describe("describeTableForA11y", () => {
   test("a round that is over, still on the table, names nobody on move", () => {
-    const base = { currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [], handOver: true };
+    const base = { currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [], roundOver: true };
     for (const isMyTurn of [true, false]) {
       const text = describeTableForA11y({ ...base, isMyTurn }, a11yStrings);
-      assert.ok(text.startsWith("HAND_OVER"), text);
+      assert.ok(text.startsWith("ROUND_OVER"), text);
       assert.doesNotMatch(text, /YOUR_TURN|TURN_OF/);
     }
   });
 
   test("the match's last round names the match's end, not the round's", () => {
     const base = { isMyTurn: false, currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [] };
-    const over = describeTableForA11y({ ...base, handOver: true, matchOver: true }, a11yStrings);
+    const over = describeTableForA11y({ ...base, roundOver: true, matchOver: true }, a11yStrings);
     assert.ok(over.startsWith("MATCH_OVER"), over);
-    assert.doesNotMatch(over, /HAND_OVER/);
-    assert.ok(describeTableForA11y({ ...base, handOver: true, matchOver: false }, a11yStrings).startsWith("HAND_OVER"));
+    assert.doesNotMatch(over, /ROUND_OVER/);
+    assert.ok(describeTableForA11y({ ...base, roundOver: true, matchOver: false }, a11yStrings).startsWith("ROUND_OVER"));
   });
 
   test("a deal still in the air names nobody on move", () => {

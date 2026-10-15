@@ -17,7 +17,7 @@
 // `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
 // `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
 // that ends the hand — `lib/game/gameEngine.ts` decides which one — takes a sixth
-// file instead of `armTurn`: `gameOver.ts` `handleGameOver`; a pass never
+// file instead of `armTurn`: `roundOver.ts` `handleRoundOver`; a pass never
 // reaches it.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
@@ -25,18 +25,18 @@
 // intent → `seatLostAction` here. Mid-hand, it arms a grace timer and, on
 // expiry, calls `gameTurn.ts` `vacateSeat` and `dealIfSeatLeftGateClosed`
 // here directly — `vacateSeat` settles the departure itself, through a bot
-// takeover, `gameOver.ts` `voidAbandonedMatch`, or `gameTurn.ts`'s own
-// `concedeHand` into `gameOver.ts` `handleGameOver`. Between hands it instead
+// takeover, `roundOver.ts` `voidAbandonedMatch`, or `gameTurn.ts`'s own
+// `concedeRound` into `roundOver.ts` `handleRoundOver`. Between hands it instead
 // arms `socketTable.ts` `armLobbyGrace`, whose own expiry (`handleSeatRelease`)
 // reaches the same `vacateSeat`/`dealIfSeatLeftGateClosed` pair through a
 // `vacate` intent routed back through `applyOrForward`, landing on the
 // `"vacate"` case here rather than `seatLostAction`.
 //
-// `gameOver.ts` `handleGameOver` has more entry points than a play: an
+// `roundOver.ts` `handleRoundOver` has more entry points than a play: an
 // AFK/bot auto-move (`gameTurn.ts` `runBotTurn`, `handleAutoPass`) and
 // `vacateSeat`'s forfeit branch reach it too. Inside, it resolves the hand
-// through `onlineGameLogic.ts` `resolveHandEnd`, emits `game:over`, then
-// writes it through the `GameOverWriters` `gamePersistence.ts` implements.
+// through `onlineGameLogic.ts` `resolveRoundEnd`, emits `game:round_over`, then
+// writes it through the `RoundOverWriters` `gamePersistence.ts` implements.
 import type { ServerPayload } from "../../shared/protocol.ts";
 import type { SocketServer } from "../socket/socketTypes.ts";
 import { eq } from "drizzle-orm";
@@ -56,11 +56,11 @@ import type { OnlineGameState } from "./gameRoom.ts";
 import {
   broadcastGameState,
   disposeGame,
-  gameOverWriters,
+  roundOverWriters,
   persistGameState,
   sendGameStateTo,
 } from "./gamePersistence.ts";
-import { endMatchByAgreement, handleGameOver } from "./gameOver.ts";
+import { endMatchByAgreement, handleRoundOver } from "./roundOver.ts";
 import { armAfterMove, armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
@@ -167,7 +167,7 @@ export async function rehydrateGame(
     return "unrestorable";
   }
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, handsPlayed, endedByVote } =
+  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote } =
     restored.match;
   if (
     forUserId !== null &&
@@ -190,12 +190,12 @@ export async function rehydrateGame(
     maxPlayers,
     matchTarget,
     matchLength,
-    handsPlayed,
+    roundsPlayed,
     endedByVote,
     matchOver: endedByVote || restoredMatchOver({
       matchLength,
       gameMode,
-      handOver: restoredState.gameOver,
+      roundOver: restoredState.roundOver,
       scores,
       target: matchTarget,
       teamOfKey: teamKeyMap(playerMap, restoredPlayers, new Map(restored.seats.vacatedSeats)),
@@ -222,7 +222,7 @@ export async function rehydrateGame(
   // A between-hands grace's expiry sees only this process's sockets, so a
   // grace armed on a guess releases players seated through another instance.
   if (!presence) return "restored";
-  const back = restoredState.gameOver ? presence.atTable : presence.online;
+  const back = restoredState.roundOver ? presence.atTable : presence.online;
   for (const [seat, userId] of Object.entries(playerMap)) {
     if (userId === forUserId || back.has(userId)) continue;
     await armSeatGrace(io, game, roomId, userId, Number(seat));
@@ -236,7 +236,7 @@ function playAction(
   action: Extract<TableAction, { kind: "play" }>
 ): Promise<EventOutcome> | EventOutcome {
   const { roomId, userId, cardIds } = action;
-  if (game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
+  if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
 
   // The round winner owes a card: nobody may play until it is given, otherwise
@@ -312,8 +312,8 @@ function playAction(
     });
   }
 
-  if (newState.gameOver) {
-    return handleGameOver(io, roomId, game, gameOverWriters).then(() => OK);
+  if (newState.roundOver) {
+    return handleRoundOver(io, roomId, game, roundOverWriters).then(() => OK);
   }
   armTurn(io, roomId);
   return OK;
@@ -325,7 +325,7 @@ function passAction(
   action: Extract<TableAction, { kind: "pass" }>
 ): EventOutcome {
   const { roomId, userId } = action;
-  if (game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
+  if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
   if (gameState.exchangePhase?.active) {
     gameError(io, userId, payload("EXCHANGE_PENDING"));
@@ -424,7 +424,7 @@ async function dealVotedRound(
   const room = await roomStore.getRoomById(roomId);
   // Every gate-closer reaches the read above, so the first one back deals and
   // the rest find the votes it cleared.
-  if (!game.gameState.gameOver || !rematchAnswered(game)) return OK;
+  if (!game.gameState.roundOver || !rematchAnswered(game)) return OK;
   if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
@@ -435,8 +435,8 @@ async function dealVotedRound(
   // below its own threshold with nothing left to press.
   game.rematchVotes.clear();
 
-  const prevRankings = game.gameState.rankings;
-  // Engine ids ride across the round, so prevRankings resolves to the same
+  const prevFinishingOrder = game.gameState.finishingOrder;
+  // Engine ids ride across the round, so prevFinishingOrder resolves to the same
   // seats it named — initializeRematch never has to fall back to a guessed
   // winner, and the exchange runs between the right two players.
   const playerSetup = seats.map((p) => ({
@@ -454,8 +454,8 @@ async function dealVotedRound(
   // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
   // as the loser (docs/GAME-RULES.md § Decisions).
   const newGameState =
-    prevRankings.length === playerSetup.length
-      ? initializeRematch(playerSetup, room.gameMode, prevRankings, nextFirstSeat)
+    prevFinishingOrder.length === playerSetup.length
+      ? initializeRematch(playerSetup, room.gameMode, prevFinishingOrder, nextFirstSeat)
       : initializeGame(playerSetup, room.gameMode, nextFirstSeat);
   game.dealFirstSeat = nextFirstSeat;
 
@@ -477,7 +477,7 @@ async function rematchVoteAction(
   action: Extract<TableAction, { kind: "rematchVote" }>
 ): Promise<EventOutcome> {
   const { roomId, userId } = action;
-  if (!game.gameState.gameOver) return { ok: false, code: "NO_LIVE_GAME" };
+  if (!game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   if (seatOfUser(game, userId) === null) return { ok: false, code: "NOT_SEATED" };
 
   // Nobody gets to restart it from the results screen after that.
@@ -519,7 +519,7 @@ async function endMatchVoteAction(
     type: "info",
     ...payload("MATCH_ENDED_BY_AGREEMENT"),
   });
-  await endMatchByAgreement(io, roomId, game, gameOverWriters);
+  await endMatchByAgreement(io, roomId, game, roundOverWriters);
   return OK;
 }
 
@@ -532,7 +532,7 @@ async function dealIfSeatLeftGateClosed(
   roomId: string
 ): Promise<EventOutcome> {
   const game = activeGames.get(roomId);
-  if (!game || !game.gameState.gameOver || !rematchAnswered(game)) return OK;
+  if (!game || !game.gameState.roundOver || !rematchAnswered(game)) return OK;
   if (rematchRefused(game)) return OK;
   if (Object.keys(game.playerMap).length === 0) return OK;
   return dealVotedRound(io, game, roomId, null);
@@ -622,13 +622,13 @@ async function rejoinAction(
  * played out, a match ended by the vote, or either seat no longer at the table
  * — every one of which deals the 3♠ opening instead.
  */
-function carriedRankings(
+function carriedFinishingOrder(
   previous: OnlineGameState | undefined,
   roster: { userId: string }[]
 ): string[] {
   if (!previous || previous.endedByVote) return [];
-  const { players, rankings } = previous.gameState;
-  if (rankings.length !== players.length) return [];
+  const { players, finishingOrder } = previous.gameState;
+  if (finishingOrder.length !== players.length) return [];
 
   const seatOfEngineId = new Map(players.map((p, seat) => [p.id, seat]));
   const newSeatOf = (engineId: string | undefined): number => {
@@ -641,8 +641,8 @@ function carriedRankings(
     return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
   };
 
-  const winner = newSeatOf(rankings[0]);
-  const loser = newSeatOf(rankings[rankings.length - 1]);
+  const winner = newSeatOf(finishingOrder[0]);
+  const loser = newSeatOf(finishingOrder[finishingOrder.length - 1]);
   if (winner < 0 || loser < 0 || winner === loser) return [];
   return [`player_${winner}`, `player_${loser}`];
 }
@@ -750,12 +750,12 @@ async function startMatchAction(
 
   const playerSetup = roster.map((r, idx) => ({
     name: r.username,
-    type: (r.isBot ? "ai" : "human") as "human" | "ai",
+    type: (r.isBot ? "bot" : "human") as "human" | "bot",
     personality: r.isBot ? r.personality : undefined,
     team: teamForSeat(idx, roster.length, room.gameMode),
   }));
 
-  const carried = carriedRankings(previous, roster);
+  const carried = carriedFinishingOrder(previous, roster);
   const gameState =
     carried.length > 0
       ? initializeRematch(playerSetup, room.gameMode, carried)
@@ -775,7 +775,7 @@ async function startMatchAction(
     maxPlayers: room.maxPlayers,
     matchTarget: previous?.matchTarget ?? firstTarget,
     matchLength: matchLength ?? previous?.matchLength ?? "match",
-    handsPlayed: previous?.handsPlayed ?? 0,
+    roundsPlayed: previous?.roundsPlayed ?? 0,
     matchOver: previous?.matchOver ?? false,
     handFlags: {},
     abandonedSeats: new Map<number, string>(),
@@ -843,14 +843,14 @@ async function seatLostAction(
   // Forwarded from another instance, this can land after the player's rejoin
   // has already cleared the graces it would arm. Between hands the seat holds
   // the rematch gate, so only a socket back in this room counts.
-  const back = game.gameState.gameOver
+  const back = game.gameState.roundOver
     ? await isUserAtTable(userId, roomId)
     : await isUserOnline(userId);
   if (back) return OK;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
-  if (!game.gameState.gameOver) {
+  if (!game.gameState.roundOver) {
     // Distinct from losing: the hand was still running when they went.
     trackEvent("game.abandoned", userId, {
       playerCount: game.gameState.players.length,
@@ -871,7 +871,7 @@ function armSeatGrace(
 ): Promise<void> | void {
   const username = seatName(game, seat);
 
-  if (game.gameState.gameOver) {
+  if (game.gameState.roundOver) {
     // The lobby grace, not the disconnect one: a seat between hands counts
     // towards the rematch gate, so the table cannot wait a full minute on it.
     // Its expiry also asks the right question — back in *this* room, not
@@ -912,7 +912,7 @@ function armSeatGrace(
               "Failed to delete the room_players row after the disconnect grace expired — the seat stays counted as taken"
             )
           );
-        await vacateSeat(io, roomId, userId, gameOverWriters);
+        await vacateSeat(io, roomId, userId, roundOverWriters);
         // The hand may well have ended inside the grace, which puts this seat
         // in the rematch tally it is now leaving.
         await dealIfSeatLeftGateClosed(io, roomId);
@@ -959,7 +959,7 @@ async function applyTableAction(
     case "rejoin":
       return rejoinAction(io, game, action);
     case "spectate": {
-      if (game.gameState.gameOver) return { ok: false, code: "GAME_NOT_FOUND" };
+      if (game.gameState.roundOver) return { ok: false, code: "GAME_NOT_FOUND" };
       // A seated player watching their own table would be handed the seatless
       // view and lose sight of their own hand.
       if (seatOfUser(game, action.userId) !== null) {
@@ -983,7 +983,7 @@ async function applyTableAction(
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.
-      return vacateSeat(io, action.roomId, action.userId, gameOverWriters).then(
+      return vacateSeat(io, action.roomId, action.userId, roundOverWriters).then(
         () => dealIfSeatLeftGateClosed(io, action.roomId)
       );
     default:
@@ -1006,7 +1006,7 @@ export async function resumeOrphanedTables(io: SocketServer): Promise<void> {
   for (const row of rows) {
     if (activeGames.has(row.roomId) || isShuttingDown()) continue;
     const restored = unpackPersistedState<GameState>(row.gameState);
-    if (!restored.ok || restored.gameState.gameOver) continue;
+    if (!restored.ok || restored.gameState.roundOver) continue;
     const userId = Object.values(restored.match.playerMap).find((id) => online.has(id));
     if (userId === undefined) continue;
     await applyOrForward(io, { kind: "resume", roomId: row.roomId, userId });

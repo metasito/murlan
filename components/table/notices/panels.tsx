@@ -25,8 +25,8 @@ function whoStartsWords(t: TFunction, { reason, starterName, starterIsViewer }: 
       : t(
           reason.type === "lost_round"
             ? "gameShared.startReasonLostRound"
-            : reason.type === "won_no_swap"
-              ? "gameShared.startReasonWonNoSwap"
+            : reason.type === "won_no_exchange"
+              ? "gameShared.startReasonWonNoExchange"
               : "gameShared.startReasonCard",
           { name: NAME, rank, suit }
         );

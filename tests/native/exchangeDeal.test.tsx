@@ -30,15 +30,15 @@ const base: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
-const ended: GameState = { ...base, gameOver: true, rankings: ['player_0', 'player_2', 'player_1'] };
+const ended: GameState = { ...base, roundOver: true, finishingOrder: ['player_0', 'player_2', 'player_1'] };
 const exchange: GameState = {
   ...base,
   playedRanks: emptyRankTally(),
-  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
 };
 
 const table = (gameState: GameState) => (
@@ -58,7 +58,7 @@ describe('an exchange round', () => {
     jest.useRealTimers();
   });
 
-  it('is dealt onto the standing table before its trade opens', async () => {
+  it('is dealt onto the standing table before its announced opens', async () => {
     const view = await render(table(ended));
     await frames(64);
     expect(backs()).toHaveLength(0);
@@ -98,7 +98,7 @@ describe('an exchange round', () => {
   }, 30_000);
 
   it('deals the next hand to a viewer who ended the last one still holding cards', async () => {
-    const view = await render(table({ ...ended, rankings: ['player_1', 'player_2', 'player_0'] }));
+    const view = await render(table({ ...ended, finishingOrder: ['player_1', 'player_2', 'player_0'] }));
     await frames(64);
     await view.rerender(table(exchange));
     await frames(16);

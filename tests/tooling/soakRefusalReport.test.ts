@@ -128,7 +128,7 @@ describe("the soak does not manufacture its own refusals", () => {
       players: [{ name: "winner", hand, handCount: hand.length }],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
-      gameOver: false,
+      roundOver: false,
       firstPlayMade: true,
       exchangePhase: { active: true, winnerIdx: 0, cardFromLoser },
       viewerSeatIndex: 0,

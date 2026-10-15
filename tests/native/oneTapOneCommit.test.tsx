@@ -143,8 +143,8 @@ const state: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 const noop = () => {};
@@ -164,7 +164,7 @@ const exchange: GameState = {
   lastPlayedCombination: null,
   lastPlayedBy: -1,
   firstPlayMade: false,
-  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+  exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
 };
 
 const commits = { n: 0 };

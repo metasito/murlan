@@ -56,7 +56,7 @@ function fieldSlots(cards: Card[], cardScale: number, roomW: number) {
 /** A play still in the air: what it lands with, from `usePileFlight`. */
 export interface Flight extends TrickPlay {
   landing: LandingPayload;
-  handOver: boolean;
+  roundOver: boolean;
   /** Thrown while no frames were drawn (`inBackground`). */
   hidden: boolean;
 }
@@ -585,19 +585,19 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
   lastPlayedCombination: Combination | null;
   lastPlayedBy: number;
   trickWinner: number | null;
-  gameOver: boolean;
+  roundOver: boolean;
   /**
-   * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
+   * Online, `matchOver` arrives on its own socket packet after `roundOver` — a
    * second render the dedupe below skips, so a flight still in the air is
    * re-armed with the tier it now closes on. `viewerWon` the same: online, a
-   * teams round's outcome waits for `game:over`'s scores, and a win scored
+   * teams round's outcome waits for `game:round_over`'s scores, and a win scored
    * after the contact never shakes, the shake being the contact's.
    */
   matchOver: boolean;
   viewerWon: boolean;
   /** The table's one timeline: a throw's landing sound waits there for the flight's reported contact. */
   timeline: Pick<TableTimeline, "awaitFlight" | "moment" | "flightStarted" | "drop">;
-  celebrateFlush: () => void;
+  celebrateGoingOut: () => void;
   /** Each flight's clock, once, as it starts — the same clock the bomb's scrim is drawn from. */
   onClock?: (key: string, clock: FlightClock) => void;
   playTrickStart: () => void;
@@ -618,7 +618,7 @@ export function usePileFlight({
   lastPlayedCombination,
   lastPlayedBy,
   trickWinner,
-  gameOver,
+  roundOver,
   matchOver,
   viewerWon,
   viewerSeat,
@@ -634,7 +634,7 @@ export function usePileFlight({
   bottomPad,
   handCardH,
   timeline,
-  celebrateFlush,
+  celebrateGoingOut,
   onClock,
   playTrickStart,
   handOrigins,
@@ -676,8 +676,8 @@ export function usePileFlight({
       if (touched.current.has(f.key)) continue;
       clocks.current.get(f.key)?.arm({
         ...f.landing,
-        tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }),
-        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.handOver && matchOver }),
+        tier: landingTier({ comboType: f.combo.type, roundOver: f.roundOver, matchOver, viewerWon }),
+        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.roundOver && matchOver }),
       });
     }
   }, [matchOver, viewerWon]);
@@ -765,7 +765,7 @@ export function usePileFlight({
 
     const to = pileSlots(thrown.cards.length, CARD_W(scale * FIELD_SCALE), roomW);
     const landing: LandingPayload = {
-      tier: landingTier({ comboType: combo.type, handOver: gameOver, ...closureRef.current }),
+      tier: landingTier({ comboType: combo.type, roundOver: roundOver, ...closureRef.current }),
       cards: thrown.cards.length,
       x: thrown.pile.x,
       y: thrown.pile.y,
@@ -777,7 +777,7 @@ export function usePileFlight({
         cards: thrown.cards.length,
         bomb: thrown.heavy,
         mine: thrown.dir === "bottom",
-        closesMatch: gameOver && closureRef.current.matchOver,
+        closesMatch: roundOver && closureRef.current.matchOver,
       }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
@@ -785,12 +785,12 @@ export function usePileFlight({
     unseen.forEach((k) => clocks.current.delete(k));
     touched.current.delete(key);
     started.current.delete(key);
-    setFlights((f) => [...f.filter((x) => !unseen.has(x.key) && x.key !== key), { ...play, landing, handOver: gameOver, hidden: inBackground() }]);
+    setFlights((f) => [...f.filter((x) => !unseen.has(x.key) && x.key !== key), { ...play, landing, roundOver: roundOver, hidden: inBackground() }]);
   }, [
     lastPlayedCombination,
     lastPlayedBy,
     trickWinner,
-    gameOver,
+    roundOver,
     viewerSeat,
     players.length,
     reduceMotion,
@@ -844,9 +844,9 @@ export function usePileFlight({
     (key: string) => {
       touched.current.add(key);
       const flight = flightsRef.current.find((f) => f.key === key);
-      if (flight?.landing.flush) celebrateFlush();
+      if (flight?.landing.flush) celebrateGoingOut();
     },
-    [celebrateFlush]
+    [celebrateGoingOut]
   );
   const onFlightStart = useCallback(
     (key: string, landsAt: number, endsAt: number) => {

@@ -6,7 +6,7 @@ import { render } from '@testing-library/react-native';
 import { makeMutable } from 'react-native-reanimated';
 import { event } from '@/lib/device/feedback';
 import { DealFlights } from '@/components/table/deal';
-import { Legs, frames, trade } from './helpers/exchangeLegs';
+import { Legs, frames, announced } from './helpers/exchangeLegs';
 import { bootFeedback, settle, sounds } from './helpers/feedback';
 
 describe('a cue sent ahead', () => {
@@ -18,8 +18,8 @@ describe('a cue sent ahead', () => {
     jest.useRealTimers();
   });
 
-  it('is taken back when the trade leaves the table before its first leg shows', async () => {
-    const view = await render(<Legs trade={trade()} />);
+  it('is taken back when the announced leaves the table before its first leg shows', async () => {
+    const view = await render(<Legs announced={announced()} />);
     await frames(32);
     await settle();
     expect(sounds()).toContain('exchange');

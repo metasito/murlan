@@ -27,7 +27,7 @@ const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJo
 /** The viewer has just won a round and is about to choose what to hand back. */
 function midExchangeSave() {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         {
@@ -40,7 +40,7 @@ function midExchangeSave() {
           id: "player_1",
           name: "Bea",
           hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "ai",
+          type: "bot",
         },
       ],
       currentTurnIndex: 0,
@@ -49,29 +49,29 @@ function midExchangeSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       exchangePhase: {
         active: true,
         winnerIdx: 0,
         loserIdx: 1,
         cardFromLoser: card("2_spades", "2", "spades"),
-        bothJokersException: false,
+        twoJokerException: false,
       },
     },
     match: {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

@@ -17,11 +17,11 @@ interface Sample { leg: string; t: number; x: number; y: number; back: number }
 const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
 /** The viewer, Ana, has just won a round and is choosing what to hand back to Bea. */
 const midExchangeSave = () => ({
-  version: 2,
+  version: 3,
   gameState: {
     players: [
       { id: "player_0", name: "Ana", hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")], type: "human" },
-      { id: "player_1", name: "Bea", hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")], type: "ai" },
+      { id: "player_1", name: "Bea", hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")], type: "bot" },
     ],
     currentTurnIndex: 0,
     lastPlayedCombination: null,
@@ -29,13 +29,13 @@ const midExchangeSave = () => ({
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
-    exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2_spades", "2", "spades"), bothJokersException: false },
+    exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2_spades", "2", "spades"), twoJokerException: false },
   },
-  match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
-  players: [{ name: "Ana", type: "human" }, { name: "Bea", type: "ai", personality: "luan" }],
+  match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
+  players: [{ name: "Ana", type: "human" }, { name: "Bea", type: "bot", personality: "luan" }],
   gameMode: "free_for_all",
   dealFirstSeat: 0,
 });

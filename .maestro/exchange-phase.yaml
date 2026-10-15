@@ -13,7 +13,7 @@
 # (`app/lobby.tsx`'s `matchLength` state starts at `"match"`), so this only
 # adds the format tile's own name over offline-game.yaml's flow — not a
 # second play strategy. One hand is enough: `dealFrom` (context/GameContext.tsx,
-# called by both `startNextHand` and `startNewMatch`) builds `exchangePhase`
+# called by both `startNextRound` and `startNewMatch`) builds `exchangePhase`
 # synchronously with the deal.
 #
 # The ceremony's own overlay (`<ExchangeLegs>`, testID `exchange-announce`)

@@ -6,7 +6,7 @@ import {
   roomPlayers,
   friends,
   activeGames,
-  matchReplays,
+  roundReplays,
 } from "../../shared/schema.ts";
 
 /**
@@ -44,26 +44,26 @@ export async function deleteUser(userId: string): Promise<string[]> {
     }
 
     // Every other table that names a user carries a cascading foreign key.
-    // match_replays cannot: a replay belongs to up to four players, so it
+    // round_replays cannot: a replay belongs to up to four players, so it
     // holds their ids and display names inside jsonb instead. Deleting the
     // rows outright would take other players' replays with it, so the
     // departing player is erased from them instead — id out of the ownership
     // filter, name out of the seat — and a replay nobody is left to open is
     // then removed.
     const theirReplays = await tx
-      .select({ id: matchReplays.id, playerIds: matchReplays.playerIds, seats: matchReplays.seats })
-      .from(matchReplays)
+      .select({ id: roundReplays.id, playerIds: roundReplays.playerIds, seats: roundReplays.seats })
+      .from(roundReplays)
       // A seat left mid-match keeps the person's name without their id ever
       // reaching `player_ids`, so the ownership filter alone never finds it.
       .where(
-        sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb
-          OR ${matchReplays.seats} @> ${JSON.stringify([{ vacatedBy: userId }])}::jsonb`
+        sql`${roundReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb
+          OR ${roundReplays.seats} @> ${JSON.stringify([{ vacatedBy: userId }])}::jsonb`
       );
 
     for (const row of theirReplays) {
       const playerIds = row.playerIds.filter((id) => id !== userId);
       if (playerIds.length === 0) {
-        await tx.delete(matchReplays).where(eq(matchReplays.id, row.id));
+        await tx.delete(roundReplays).where(eq(roundReplays.id, row.id));
         continue;
       }
       // An empty name is the signal to the client to render its own
@@ -74,9 +74,9 @@ export async function deleteUser(userId: string): Promise<string[]> {
           : seat
       );
       await tx
-        .update(matchReplays)
+        .update(roundReplays)
         .set({ playerIds, seats })
-        .where(eq(matchReplays.id, row.id));
+        .where(eq(roundReplays.id, row.id));
     }
 
     await tx.execute(

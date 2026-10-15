@@ -2,7 +2,7 @@
 // strength — a raw boolean, not the engine AI — and the engine only plays the
 // seat properly from the next deal. Two things are pinned here: `vacateSeat`
 // marking the seat weak only for a mid-hand departure (server/game/gameTurn.ts's
-// own `!game.gameState.gameOver` guard), and `autoMoveForSeat`'s `useAi=false`
+// own `!game.gameState.roundOver` guard), and `autoMoveForSeat`'s `useBot=false`
 // path — what `runBotTurn` calls once it reads `weakSeats` — always resolving
 // the seat's turn, since a seat that cannot act stalls the whole table.
 //
@@ -13,13 +13,13 @@ import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat, autoMoveForSeat, armTurn } from "../../server/game/gameTurn.ts";
 import { autoMoveForSeat as chooseMove } from "../../lib/game/autoMove.ts";
-import { gameOverWriters, persistence } from "../../server/game/gamePersistence.ts";
+import { roundOverWriters, persistence } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import { emptyRankTally, sortHand } from "../../lib/game/gameEngine.ts";
 import type { Card, GameState, Player } from "../../lib/game/gameEngine.ts";
-import type { GameOverWriters } from "../../server/game/gameOver.ts";
+import type { RoundOverWriters } from "../../server/game/roundOver.ts";
 import type { RatedPreview } from "../../server/game/ratings.ts";
 
 const ROOM = "weak-seat-room";
@@ -47,7 +47,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 0,
+    roundsPlayed: 0,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -79,8 +79,8 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       playedRanks: emptyRankTally(),
     };
@@ -91,12 +91,12 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita",gameOverWriters);
+      await vacateSeat(io, ROOM, "drita",roundOverWriters);
 
       assert.ok(game.weakSeats.has(3), "the seat just vacated mid-hand must be weak");
       assert.equal(game.vacatedSeats.get(3)?.userId, "drita");
       // The table survives (three seats remain) rather than being conceded.
-      assert.equal(game.gameState.gameOver, false);
+      assert.equal(game.gameState.roundOver, false);
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
@@ -112,8 +112,8 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: true, // between hands
-      rankings: ["p0", "p1"],
+      roundOver: true, // between hands
+      finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
     };
     const game = baseGame({
@@ -123,7 +123,7 @@ describe("a mid-hand takeover is weak only for the hand it happened on (#850 cla
     activeGames.set(ROOM, game);
 
     try {
-      await vacateSeat(io, ROOM, "drita",gameOverWriters);
+      await vacateSeat(io, ROOM, "drita",roundOverWriters);
       assert.ok(!game.weakSeats.has(1));
     } finally {
       clearRoomTimers(ROOM);
@@ -150,8 +150,8 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the AI",
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       playedRanks: emptyRankTally(),
     };
@@ -195,14 +195,14 @@ describe("runBotTurn plays a weak seat at the floor and a bot seat with the AI",
 describe("vacateSeat writes the row on every exit the table survives (#1008)", () => {
   /**
    * Every writer recorded, not just the persist: `vacateSeat` hands this same
-   * set to `handleGameOver` and `voidAbandonedMatch`, so a one-key stub would
+   * set to `handleRoundOver` and `voidAbandonedMatch`, so a one-key stub would
    * throw `undefined is not a function` on a branch instead of naming it.
    */
   function persistSpy() {
     const wrote: { roomId: string; seats: string[]; vacated: number[] }[] = [];
-    const reached: (keyof GameOverWriters)[] = [];
+    const reached: (keyof RoundOverWriters)[] = [];
     const record =
-      (name: keyof GameOverWriters) =>
+      (name: keyof RoundOverWriters) =>
       async (): Promise<void> => {
         reached.push(name);
       };
@@ -232,7 +232,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
             vacated: [...game.vacatedSeats.keys()],
           });
         },
-      } satisfies GameOverWriters,
+      } satisfies RoundOverWriters,
     };
   }
 
@@ -250,8 +250,8 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       playedRanks: emptyRankTally(),
     };
@@ -283,8 +283,8 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: true,
-      rankings: ["p0", "p1"],
+      roundOver: true,
+      finishingOrder: ["p0", "p1"],
       firstPlayMade: true,
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "alice", 1: "drita" } }));
@@ -312,8 +312,8 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: true,
-      rankings: ["p0"],
+      roundOver: true,
+      finishingOrder: ["p0"],
       firstPlayMade: true,
     };
     activeGames.set(ROOM, baseGame({ gameState, playerMap: { 0: "drita" } }));
@@ -325,9 +325,9 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
       assert.equal(activeGames.has(ROOM), false, "the table is gone, not merely unwritten");
       // This branch does write — roomStore.updateRoomStatus, and disposeGame's
       // own delete of the row — but both sit outside the seam, so all this can
-      // say is that no GameOverWriters member ran. That is what rules out
-      // handleGameOver and voidAbandonedMatch, each of which persists.
-      assert.deepEqual(spy.reached, [], "no GameOverWriters member on the path that deletes the row");
+      // say is that no RoundOverWriters member ran. That is what rules out
+      // handleRoundOver and voidAbandonedMatch, each of which persists.
+      assert.deepEqual(spy.reached, [], "no RoundOverWriters member on the path that deletes the row");
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);
@@ -335,7 +335,7 @@ describe("vacateSeat writes the row on every exit the table survives (#1008)", (
   });
 });
 
-describe("autoMoveForSeat(useAi=false) — what a weak seat's turn resolves to (#850 clause 3)", () => {
+describe("autoMoveForSeat(useBot=false) — what a weak seat's turn resolves to (#850 clause 3)", () => {
   // gameTurn.ts's autoMoveForSeat — the one runBotTurn calls once it reads
   // weakSeats — takes the table's shape, not a bare GameState.
   const mkGame = (gameState: GameState) => ({ gameState, handFlags: {}, moveLog: null });
@@ -355,8 +355,8 @@ describe("autoMoveForSeat(useAi=false) — what a weak seat's turn resolves to (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
     };
 
@@ -385,8 +385,8 @@ describe("autoMoveForSeat(useAi=false) — what a weak seat's turn resolves to (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
     };
 
@@ -407,8 +407,8 @@ describe("autoMoveForSeat(useAi=false) — what a weak seat's turn resolves to (
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: false,
       startCard: { rank: "3", suit: "clubs", id: "start" } as never,
     };

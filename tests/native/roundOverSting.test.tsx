@@ -1,7 +1,7 @@
-// tests/native/gameOverSting.test.tsx — the end-of-hand sting matches the
+// tests/native/roundOverSting.test.tsx — the end-of-hand sting matches the
 // placement.
 //
-// `GameState.rankings` holds engine player ids (`player_0`), never display
+// `GameState.finishingOrder` holds engine player ids (`player_0`), never display
 // names, so the placement lookup has to be made with the seat's id. Looking up
 // the name finds nothing at all, which makes both stings unreachable and hands
 // the last-placed seat the winner's haptic.
@@ -29,7 +29,7 @@ const METRICS = {
 const seat = (id: string, name: string): Player => ({ id, name, hand: [], type: 'human' });
 
 /** Seat 0 is "Ana" and placed first; seat 1 is "Besi" and placed last. */
-const finished = (rankings: string[]): GameState => ({
+const finished = (finishingOrder: string[]): GameState => ({
   players: [seat('player_0', 'Ana'), seat('player_1', 'Besi')],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -37,24 +37,24 @@ const finished = (rankings: string[]): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: true,
-  rankings,
+  roundOver: true,
+  finishingOrder,
   firstPlayMade: true,
 });
 
 const noop = () => {};
-const scoresFor = (rankings: string[]) => Object.fromEntries(rankings.map((id, i) => [id, rankings.length - 1 - i]));
+const scoresFor = (finishingOrder: string[]) => Object.fromEntries(finishingOrder.map((id, i) => [id, finishingOrder.length - 1 - i]));
 
 const table = (
-  rankings: string[],
+  finishingOrder: string[],
   viewerSeat: number,
-  gameOver = true,
+  roundOver = true,
   { matchOver = false, matchWinners = [] as string[] } = {}
 ) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
-      gameState={{ ...finished(rankings), gameOver }}
-      handScores={scoresFor(rankings)}
+      gameState={{ ...finished(finishingOrder), roundOver }}
+      roundScores={scoresFor(finishingOrder)}
       matchOver={matchOver}
       matchWinners={matchWinners}
       viewerSeat={viewerSeat}
@@ -80,7 +80,7 @@ const teamSeat = (id: string, name: string, team: 'A' | 'B'): Player => ({
 // (GAME-RULES.md §11). player_0 (team A) and player_3 (team A) hold 1st and 4th;
 // player_1 and player_2 (team B) hold 2nd and 3rd. Scores are given
 // explicitly (not left to GameTable's empty default) so this exercises a
-// hand `isDrawnHand` actually knows is a draw, not one it has no scores for.
+// hand `isDrawnRound` actually knows is a draw, not one it has no scores for.
 const DRAWN_TEAMS_RANKINGS = ['player_0', 'player_1', 'player_2', 'player_3'];
 const DRAWN_TEAMS_SCORES = { player_0: 3, player_1: 2, player_2: 1, player_3: 0 };
 const drawnTeamsTable = (viewerSeat: number) => (
@@ -99,11 +99,11 @@ const drawnTeamsTable = (viewerSeat: number) => (
         passCount: 0,
         gameMode: 'teams',
         trickWinner: null,
-        gameOver: true,
-        rankings: DRAWN_TEAMS_RANKINGS,
+        roundOver: true,
+        finishingOrder: DRAWN_TEAMS_RANKINGS,
         firstPlayMade: true,
       }}
-      handScores={DRAWN_TEAMS_SCORES}
+      roundScores={DRAWN_TEAMS_SCORES}
       viewerSeat={viewerSeat}
       onPlay={noop}
       onPass={noop}
@@ -134,11 +134,11 @@ const wonTeamsTable = (viewerSeat: number) => (
         passCount: 0,
         gameMode: 'teams',
         trickWinner: null,
-        gameOver: true,
-        rankings: WON_TEAMS_RANKINGS,
+        roundOver: true,
+        finishingOrder: WON_TEAMS_RANKINGS,
         firstPlayMade: true,
       }}
-      handScores={WON_TEAMS_SCORES}
+      roundScores={WON_TEAMS_SCORES}
       viewerSeat={viewerSeat}
       onPlay={noop}
       onPass={noop}
@@ -219,7 +219,7 @@ describe('the end-of-hand sting', () => {
     await r.unmount();
   });
 
-  it('stays silent when rankings hold display names, which is not a placement', async () => {
+  it('stays silent when finishingOrder hold display names, which is not a placement', async () => {
     const r = await render(table(['Ana', 'Besi'], 0));
     await settle();
     expect(sounds()).not.toContain('roundWon');
@@ -266,9 +266,9 @@ describe('the end-of-hand sting', () => {
     await r.unmount();
   });
 
-  // Online, `game:state` (gameOver: true) reaches the client before the
-  // separate, unawaited `game:over` carries the scores — two renders, the
-  // first with the real rankings and no scores at all. player_3 (seat 3) is
+  // Online, `game:state` (roundOver: true) reaches the client before the
+  // separate, unawaited `game:round_over` carries the scores — two renders, the
+  // first with the real finishingOrder and no scores at all. player_3 (seat 3) is
   // on the winning team (WON_TEAMS_SCORES).
   it('waits for the real scores before firing the sting, instead of latching a decision made with none', async () => {
     const inProgress = (
@@ -287,8 +287,8 @@ describe('the end-of-hand sting', () => {
             passCount: 0,
             gameMode: 'teams',
             trickWinner: null,
-            gameOver: false,
-            rankings: [],
+            roundOver: false,
+            finishingOrder: [],
             firstPlayMade: true,
           }}
           viewerSeat={3}
@@ -299,7 +299,7 @@ describe('the end-of-hand sting', () => {
         />
       </SafeAreaProvider>
     );
-    const stateArrived = (handScores: Record<string, number>) => (
+    const stateArrived = (roundScores: Record<string, number>) => (
       <SafeAreaProvider initialMetrics={METRICS}>
         <GameTable
           gameState={{
@@ -315,11 +315,11 @@ describe('the end-of-hand sting', () => {
             passCount: 0,
             gameMode: 'teams',
             trickWinner: null,
-            gameOver: true,
-            rankings: WON_TEAMS_RANKINGS,
+            roundOver: true,
+            finishingOrder: WON_TEAMS_RANKINGS,
             firstPlayMade: true,
           }}
-          handScores={handScores}
+          roundScores={roundScores}
           viewerSeat={3}
           onPlay={noop}
           onPass={noop}
@@ -331,14 +331,14 @@ describe('the end-of-hand sting', () => {
 
     const r = await render(inProgress);
 
-    // `game:state`: gameOver flips true, rankings are the real finish order —
+    // `game:state`: roundOver flips true, finishingOrder are the real finish order —
     // but the scores that decide won/lost/drawn haven't arrived yet.
     await act(async () => r.rerender(stateArrived({})));
     await settle();
     expect(sounds()).not.toContain('roundWon');
     expect(sounds()).not.toContain('roundLost');
 
-    // `game:over`: the real scores land, same gameOver, same rankings.
+    // `game:round_over`: the real scores land, same roundOver, same finishingOrder.
     await act(async () => r.rerender(stateArrived(WON_TEAMS_SCORES)));
     await settle();
     expect(sounds()).toContain('roundWon');

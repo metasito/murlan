@@ -30,7 +30,7 @@ the last column is where it landed.
 | # | Finding | Lens | Evidence | Sev | Fix | Ratchet | Where |
 |---|---|---|---|---|---|---|---|
 | 1 | The rotating deal was asserted on the stored `dealFirstSeat`, never on who got the cards | blind spot | `tableHandlers.ts:450` passing `0` left `rematch.test.ts` green | high | assert which seats hold 14 cards | `tests/integration/rematch.test.ts` | #1297 |
-| 2 | A weak (taken-over) seat's strength was never read through `runBotTurn` | blind spot | `gameTurn.ts:164` `useAi = true`: 4 suites green | high | drive `armTurn` → `runBotTurn` on a weak seat | `tests/server/weakSeatTakeover.test.ts` | #1297 |
+| 2 | A weak (taken-over) seat's strength was never read through `runBotTurn` | blind spot | `gameTurn.ts:164` `useBot = true`: 4 suites green | high | drive `armTurn` → `runBotTurn` on a weak seat | `tests/server/weakSeatTakeover.test.ts` | #1297 |
 | 3 | Nothing checked that the server entry calls `checkBootEnv` | blind spot | `server/index.ts:10` → `void checkBootEnv`: 90 tests green | high | spawn the entry without `SESSION_SECRET` | `tests/server/dbTls.test.ts` | #1297 |
 | 4 | The offline bot's strength rode a hand-copied harness | blind spot | `GameContext.tsx:322` `true`→`false`: green; `offlineMatch.ts:6-11` "carried by hand" | high | one `offlineBotMove` in `lib/game/autoMove.ts`, called by both | wiring test in `tests/engine/matchState.test.ts` | #1297 |
 | 5 | The check that `AppModal` is the only `<Modal>` was a text match | decoy | `import { Modal as Sheet }` in `OfflineBanner.tsx`: green | high | scan react-native `Modal` imports: aliased, namespaced or destructured | self-test in `tests/ui-rules/orientation.test.ts` | #1296 |

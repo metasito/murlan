@@ -7,7 +7,7 @@ const deck = new Set(createDeck().map((c) => c.id));
 
 test("the seat asked for opens from every deal start, and every card dealt is dealt exactly once", () => {
   for (const n of [2, 3, 4]) {
-    const players = Array.from({ length: n }, (_, i) => ({ name: `p${i}`, type: i === 0 ? ("human" as const) : ("ai" as const) }));
+    const players = Array.from({ length: n }, (_, i) => ({ name: `p${i}`, type: i === 0 ? ("human" as const) : ("bot" as const) }));
     const dealt = n === 2 ? n * HEADS_UP_HAND : deck.size;
     for (let firstSeat = 0; firstSeat < n; firstSeat++) {
       for (let seat = 0; seat < n; seat++) {

@@ -17,7 +17,7 @@ import { t } from "@/lib/i18n";
 
 const SETUP = [
   { name: "Ana", type: "human" as const },
-  { name: "Luan", type: "ai" as const, personality: "luan" as const },
+  { name: "Luan", type: "bot" as const, personality: "luan" as const },
 ];
 
 /** Reports the bits of context state the persistence is supposed to carry. */
@@ -36,7 +36,7 @@ const midExchangeSave = () => {
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [card], type: "human" },
-        { id: "player_1", name: "Luan", hand: [card], type: "ai" },
+        { id: "player_1", name: "Luan", hand: [card], type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -44,21 +44,21 @@ const midExchangeSave = () => {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       exchangePhase: {
         active: true,
         winnerIdx: 1,
         loserIdx: 0,
         cardFromLoser: card,
-        bothJokersException: true,
+        twoJokerException: true,
       },
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Luan", type: "ai", personality: "luan" },
+      { name: "Luan", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 1,
@@ -85,7 +85,7 @@ function Probe() {
       <Text testID="exchange">
         {gameState?.exchangePhase?.active
           ? `${gameState.exchangePhase.winnerIdx}>${gameState.exchangePhase.loserIdx}` +
-            (gameState.exchangePhase.bothJokersException ? " jokers" : "")
+            (gameState.exchangePhase.twoJokerException ? " jokers" : "")
           : "none"}
       </Text>
       <Text testID="announcing">{String(exchangeAnnouncing)}</Text>

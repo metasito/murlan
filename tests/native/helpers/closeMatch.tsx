@@ -59,16 +59,16 @@ export const table = (c: Case, over: boolean, decided = over) => {
     passCount: 0,
     gameMode: c.teams ? 'teams' : 'free_for_all',
     trickWinner: null,
-    gameOver: over,
-    rankings: over ? RANKINGS : [],
+    roundOver: over,
+    finishingOrder: over ? RANKINGS : [],
     firstPlayMade: true,
   };
-  const handScores = decided ? Object.fromEntries(RANKINGS.map((id, i) => [id, 3 - i])) : {};
+  const roundScores = decided ? Object.fromEntries(RANKINGS.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
       <GameTable
         gameState={state}
-        handScores={handScores}
+        roundScores={roundScores}
         matchOver={decided}
         matchWinners={decided ? c.winners : []}
         viewerSeat={0}
