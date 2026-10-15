@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { makeMutable } from "react-native-reanimated";
 import { scheduleOnUI } from "react-native-worklets";
 import { SETTINGS_KEY } from "@/lib/storageKeys";
+import { LATE_SOUND_MS } from "@/lib/tokens";
 import { traceOnset } from "@/lib/e2eTrace";
 import { audioState, cut, durationMs, engineStats, music, play, ramp, setBusTrim, startAudio } from "./audioEngine";
 import { pulse, setHapticsGate, tap, type TapHaptic } from "./hapticsEngine";
@@ -27,7 +28,7 @@ let hapticsOn = true;
 let track: TrackId | null = null;
 let stingEndsAt = 0;
 let played: Played[] = [];
-let pending: { moments: Moment[]; at?: number }[] = [];
+let pending: { moments: Moment[]; at?: number; sentAt: number }[] = [];
 const generation = makeMutable(0);
 setBusTrim("music", musicVolume);
 
@@ -47,15 +48,28 @@ export function startFeedback(): Promise<void> {
 export function event(moments: Moment[], at?: number): void {
   if (moments.length === 0) return;
   if (pending.length === 0) void Promise.resolve().then(flush);
-  pending.push({ moments, at });
+  pending.push({ moments, at, sentAt: performance.now() });
 }
 
+// The rest of a cue's commit running before this flush is not the cue's lateness, and the engine drops on
+// lateness: a cue on time when sent is played now, if the stall that made it late is no longer than a late
+// sound is allowed to be. One already late when sent keeps its time, for the engine to judge.
 function flush(): void {
   const now = performance.now();
-  const batches = new Map<number | undefined, Moment[]>();
-  for (const p of pending) batches.set(p.at, [...(batches.get(p.at) ?? []), ...p.moments]);
+  const batches = new Map<number | undefined, { sentAt: number; moments: Moment[] }>();
+  for (const p of pending) {
+    const batch = batches.get(p.at) ?? { sentAt: p.sentAt, moments: [] };
+    batch.moments.push(...p.moments);
+    batches.set(p.at, batch);
+  }
   pending = [];
-  for (const [at, moments] of [...batches].sort((a, b) => (a[0] ?? now) - (b[0] ?? now))) fire(moments, at, now);
+  const sorted = [...batches].sort((a, b) => (a[0] ?? now) - (b[0] ?? now));
+  for (const [at, { sentAt, moments }] of sorted) fire(moments, excuseStall(at, sentAt, now), now);
+}
+
+function excuseStall(at: number | undefined, sentAt: number, now: number): number | undefined {
+  if (at === undefined || at > now || at < sentAt) return at;
+  return at + Math.min(now - sentAt, LATE_SOUND_MS) >= now ? now : at;
 }
 
 function trace(kind: "sound" | "haptic", name: string, at: number, now: number): void {
