@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { SocketServer } from "../../server/socket/socketTypes.ts";
 import { commitMove } from "../../server/game/gameTurn.ts";
-import { persistence } from "../../server/game/gamePersistence.ts";
+import { persistence, roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { startReplayLog } from "../../server/game/replayShape.ts";
 import { activeGames, type OnlineGameState } from "../../server/game/gameRoom.ts";
 import { botMoveDelayMs, botTimers, clearRoomTimers } from "../../server/game/gameTimers.ts";
@@ -108,6 +108,35 @@ for (const kind of ["play", "pass"] as const) {
     }
   });
 }
+
+test("a play that ends the round is logged, persisted, and handed to round over instead of arming a seat", async (t) => {
+  const writes = t.mock.method(persistence, "writeActiveGame", async () => {});
+  for (const key of ["updateRoomStatus", "recordGameResult", "recordRatedResult", "saveReplay"] as const) {
+    t.mock.method(roundOverWriters, key, async () => {});
+  }
+  t.mock.method(roundOverWriters, "previewRatedDeltas", async () => null);
+  try {
+    const dealt = initializeGame(SEATS.slice(0, 2), "free_for_all");
+    const seat = dealt.currentTurnIndex;
+    const state = structuredClone(dealt);
+    state.players[seat].hand = [state.startCard!];
+    const check = checkPlay(state, seat, [state.startCard!.id]);
+    assert.ok(check.ok);
+    const next = processPlay(state, check.combo);
+    assert.equal(next.roundOver, true, "emptying the last hand of two ends the round");
+    const game = table(state);
+    const over = commitMove(io, game, next, { seat, combo: check.combo });
+    assert.ok(over instanceof Promise, "the round-over handoff was not returned");
+    assert.equal(botTimers.has(ROOM), false, "a seat was armed on a finished round");
+    await over;
+    await writesSettle();
+    assert.ok(writes.mock.callCount() >= 1, "the final move was never persisted");
+    assert.equal(game.moveLog?.length, 1, "the final move was not logged once");
+  } finally {
+    clearRoomTimers(ROOM);
+    activeGames.delete(ROOM);
+  }
+});
 
 test("an exchange logs no replay move, persists, and holds the next seat for the ceremony", async (t) => {
   const writes = t.mock.method(persistence, "writeActiveGame", async () => {});
