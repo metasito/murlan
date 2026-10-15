@@ -278,8 +278,7 @@ export function aiChoosePlay(
 
   // Beating the partner takes the round off the team that already had it, so
   // no tier answers and no knob contests. Below the finishing branch on
-  // purpose: emptying the hand ends the manche in the team's favour, which is
-  // not contesting anything. A new round cannot be passed at all.
+  // purpose: emptying the hand is never contesting anything. A new round cannot be passed at all.
   if (partnerHoldsTop && !isNewRound) return null;
 
   const withPersonality = (choice: Combination | null) =>

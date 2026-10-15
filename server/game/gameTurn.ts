@@ -274,8 +274,7 @@ function startAfkTimer(
 /**
  * Ends a hand nobody is left to play: `winnerSeat` takes it, and every seat
  * still holding cards is placed behind them — closest to finishing first, seat
- * order as a stable tiebreak, the same ordering the engine uses when a hand
- * ends with cards still out.
+ * order as a stable tiebreak.
  *
  * Every seat must reach `rankings` — the scoreboard awards from it and the
  * stats writer reads it. Seats that already emptied their hand keep the

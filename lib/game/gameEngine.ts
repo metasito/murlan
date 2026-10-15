@@ -1336,7 +1336,8 @@ export interface FoldHandResult {
  * either escalates the target, ends the match, or leaves it running.
  *
  * A single-manche game ends here by definition, with no target involved — its
- * winner is whoever took the manche, or in teams the pair (docs/GAME-RULES.md §11).
+ * winner is whoever took the manche, or in teams the pair with more points, a
+ * 3-3 being a draw (docs/GAME-RULES.md §11, § Decisions).
  *
  * Keyed by an opaque string so offline and the server share one progression:
  * offline scores by engine player id, the server by userId.
