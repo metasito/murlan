@@ -383,7 +383,7 @@ function under(cwd, head, remote, branch, until, failed) {
 
 /**
  * The pushed head and its pull request, from one listing. A red is the supervisor's `CI-RED` for
- * that head; a head none names is still `poll`'s to settle, red or not.
+ * that head; a head none names is still `runSettle`'s to settle, red or not.
  */
 function readCi(cwd, branch, head, comments, exec) {
   const until = Date.now() + CI_BUDGET_MS;

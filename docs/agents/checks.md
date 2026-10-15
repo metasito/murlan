@@ -509,8 +509,8 @@ no other session starts them:
   the worktrees under `.worktrees/` and `.loop-logs/` stay writable; the shared checkout and every
   path outside the repo do not (rules 8, 31 and 32).
 
-No hook refuses a `VERDICT: LAND`. Before it arms auto-merge, the supervisor's `poll`
-(`tools/loop/queue-loop.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`) whether a
+No hook refuses a `VERDICT: LAND`. Before it arms auto-merge, the supervisor's `runSettle`
+(`tools/loop/settle.mjs`) asks `reviewerRan` (`tools/loop/loop-gate.mjs`) whether a
 `loop-review` or `loop-fix` agent completed for the ticket inside the process that posted the
 LAND, after that process's last commit, read from the ticket's stream, and leaves a head no
 reviewer cleared to the owner (rule 29). There is no LAND at the round cap: the ticket goes to the

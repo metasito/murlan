@@ -3,7 +3,8 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { readLine } from "../loop-stream.mjs";
-import { allowedTools, ciRedBody, queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
+import { allowedTools, queueLoopArgs, CHECK_BASH_TIMEOUT_MS, BASH_DEFAULT_TIMEOUT_MS } from "../queue-loop.mjs";
+import { ciRedBody } from "../settle.mjs";
 import { ciLogPath } from "../loop-logs.mjs";
 
 /**
