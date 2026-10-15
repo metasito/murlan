@@ -1,6 +1,6 @@
 // Reaching a rendered table without playing to one.
 //
-// The lobby route — Offline, player count, mode, Inizia Partita, then the deal
+// The lobby route — Offline, player count, mode, "Inizia Partita", then the deal
 // — is four clicks and an animation before a spec can measure anything, and on
 // a loaded runner it is where the whole test budget goes (#152). A spec that
 // only needs a table on screen should not be paying for it.
