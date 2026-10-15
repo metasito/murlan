@@ -73,7 +73,7 @@ function readParam(res: Response, raw: unknown): string | null {
 
 function sendFriendshipResult(res: Response, result: { ok: true } | { ok: false; code: "FRIEND_REQUEST_NOT_FOUND" }) {
   if (result.ok) res.json(result);
-  else res.status(404).json({ ...payload(result.code) });
+  else res.status(404).json({ ...payload("FRIEND_REQUEST_NOT_FOUND") });
 }
 
 /**
@@ -257,6 +257,15 @@ const FRIEND_REQUEST_REFUSAL_STATUS = {
   FRIEND_REQUEST_ALREADY_SENT: 409,
   FRIEND_REQUEST_INCOMING_PENDING: 409,
 } as const satisfies Record<FriendRequestRefusal, number>;
+
+/** Spelled out because tests/tooling/refusalCodesTested.test.ts reads a refusal's code only as a literal. */
+const FRIEND_REQUEST_REFUSAL_CODE = {
+  USER_NOT_FOUND: "USER_NOT_FOUND",
+  CANNOT_ADD_SELF: "CANNOT_ADD_SELF",
+  ALREADY_FRIENDS: "ALREADY_FRIENDS",
+  FRIEND_REQUEST_ALREADY_SENT: "FRIEND_REQUEST_ALREADY_SENT",
+  FRIEND_REQUEST_INCOMING_PENDING: "FRIEND_REQUEST_INCOMING_PENDING",
+} as const satisfies { [C in FriendRequestRefusal]: C };
 
 const friendLimiter = routeLimiter({
   windowMs: 60 * 1000,
@@ -853,7 +862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     const result = await friendships.request(req.session.userId!, username);
     if (!result.ok) {
-      res.status(FRIEND_REQUEST_REFUSAL_STATUS[result.code]).json({ ...payload(result.code) });
+      res.status(FRIEND_REQUEST_REFUSAL_STATUS[result.code]).json({ ...payload(FRIEND_REQUEST_REFUSAL_CODE[result.code]) });
       return;
     }
     res.json(result);

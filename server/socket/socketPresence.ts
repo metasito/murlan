@@ -13,7 +13,7 @@ import { friendStore } from "../store/friendStore.ts";
 import { roomStore } from "../store/roomStore.ts";
 import { userStore } from "../store/userStore.ts";
 import { logger } from "../http/logger.ts";
-import { friendships } from "./friendships.ts";
+import { friendships, type InviteRefusal } from "./friendships.ts";
 import { trackEvent } from "./events.ts";
 import { onEvent } from "./socketSafety.ts";
 import {
@@ -32,6 +32,13 @@ import { NoPayloadSchema, FriendInviteSchema } from "../../shared/socketSchemas.
 import { isUserOnline, onlineUserIds } from "./socketRegistry.ts";
 import { payload } from "./payload.ts";
 
+/** Spelled out because tests/tooling/refusalCodesTested.test.ts reads a refusal's code only as a literal. */
+const INVITE_REFUSAL_CODE = {
+  NOT_FRIENDS: "NOT_FRIENDS",
+  ROOM_NOT_FOUND: "ROOM_NOT_FOUND",
+  NOT_IN_ROOM: "NOT_IN_ROOM",
+} as const satisfies { [C in InviteRefusal]: C };
+
 export interface PresenceContext {
   io: SocketServer;
   socket: Socket;
@@ -46,7 +53,7 @@ export function registerFriendHandlers({ socket, userId }: PresenceContext) {
       FriendInviteSchema,
       async ({ friendUserId, roomCode }) => {
         const result = await friendships.invite(userId, friendUserId, roomCode);
-        if (!result.ok) socket.emit("friend:error", payload(result.code));
+        if (!result.ok) socket.emit("friend:error", payload(INVITE_REFUSAL_CODE[result.code]));
         return result;
       },
       // An invite is a broadcast to another account: only a few per minute.
