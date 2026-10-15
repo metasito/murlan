@@ -2,7 +2,7 @@
 // and its clock stops at the deal's end (#1259).
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, renderHook, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getAnimatedStyle, makeMutable, type FrameCallback } from 'react-native-reanimated';
 
@@ -25,7 +25,7 @@ jest.mock('@/components/table/dealSlots', () => {
 });
 
 import { GameTable } from '@/components/GameTable';
-import { DealFlights } from '@/components/table/deal';
+import { DealFlights, useDeal } from '@/components/table/deal';
 import { dealPose } from '@/components/table/dealPose';
 import { dealLegs, dealSlots, legAt } from '@/components/table/dealSlots';
 import { dealCards, type GameState, type Player } from '@/lib/game/gameEngine';
@@ -92,6 +92,23 @@ describe('the deal flies on a pool of backs', () => {
     expect(slotted().results.at(-1)!.value).toBe(pooled);
     expect(backs().length).toBeGreaterThan(0);
     await view.unmount();
+  });
+
+  it('gives the next manche’s deal a clock of its own, never the landed one', async () => {
+    const hook = await renderHook(({ fresh }: { fresh: boolean }) => useDeal({ geometry: GEOMETRY, fresh, entryMs: 600, reduceMotion: false }), {
+      initialProps: { fresh: true },
+    });
+    const first = hook.result.current.clock;
+    first.value = hook.result.current.endMs;
+    await act(() => hook.result.current.onLanded());
+    await hook.rerender({ fresh: false });
+    expect(hook.result.current.dealing).toBe(false);
+
+    await hook.rerender({ fresh: true });
+    expect(hook.result.current.dealing).toBe(true);
+    expect(hook.result.current.clock).not.toBe(first);
+    expect(hook.result.current.clock.value).toBe(-1);
+    await hook.unmount();
   });
 
   it('poses every leg in the air, each back one leg at a time, and stops its clock at the end', async () => {
