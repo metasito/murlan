@@ -45,6 +45,7 @@ const table = (gameOver: boolean): GameStateBroadcast => ({
   rankings: gameOver ? ['player_0', 'player_1'] : [],
   firstPlayMade: true,
   viewerSeatIndex: 0,
+  turnSecondsRemaining: 30,
 });
 
 const deliver = (event: string, payload: unknown) =>
