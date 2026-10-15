@@ -94,28 +94,48 @@ afterEach(() => {
   activeGames.delete(ROOM);
 });
 
+const finishedRow = () =>
+  packPersistedState(
+    finishedHand(twoHumans(), ["player_0", "player_1"]),
+    {},
+    0,
+    "AAAAAA",
+    {
+      playerMap: { 0: "ana", 1: "besi" },
+      scores: { ana: 3, besi: 0 },
+      gameMode: "free_for_all",
+      matchLength: "match",
+      matchTarget: 21,
+      maxPlayers: 2,
+      handsPlayed: 1,
+      endedByVote: false,
+    },
+    { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] }
+  );
+
 describe("a table restored after a restart", () => {
+  test("a rejoin at the results screen is told the tally, which the restart emptied", async (t) => {
+    const { io, emitted } = stubIo();
+    const row = finishedRow();
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+    t.mock.method(roomStore, "getRoomById", async () => room);
+    t.mock.method(roomStore, "getRoomPlayers", async () => []);
+    t.mock.method(roomStore, "upsertRoomPlayer", async () => {});
+
+    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.equal(activeGames.get(ROOM)!.lastGameOverPayload, undefined, "nothing persisted the game:over");
+    await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "ana" });
+
+    const tally = emitted.filter((e) => e.event === "game:vote_state").pop();
+    assert.ok(tally, "a client still showing its pre-restart vote is never corrected");
+    assert.deepEqual(tally.payload, { votes: [], total: 2 });
+  });
+
   test("a between-hands seat nobody came back to is released, so the vote it held up deals", async (t) => {
     process.env.MURLAN_LOBBY_GRACE_MS = "30";
     t.after(() => delete process.env.MURLAN_LOBBY_GRACE_MS);
     const { io, emitted } = stubIo();
-    const row = packPersistedState(
-      finishedHand(twoHumans(), ["player_0", "player_1"]),
-      {},
-      0,
-      "AAAAAA",
-      {
-        playerMap: { 0: "ana", 1: "besi" },
-        scores: { ana: 3, besi: 0 },
-        gameMode: "free_for_all",
-        matchLength: "match",
-        matchTarget: 21,
-        maxPlayers: 2,
-        handsPlayed: 1,
-        endedByVote: false,
-      },
-      { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] }
-    );
+    const row = finishedRow();
     t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
     t.mock.method(roomStore, "getRoomById", async () => room);
     t.mock.method(roomStore, "updateRoomStatus", async () => {});
