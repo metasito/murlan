@@ -112,6 +112,7 @@ export const MOMENTS = {
 
 type AnySpec = { priority: number; input?: true; cue(m: Moment): Cue };
 const specOf = (m: Moment) => MOMENTS[m.kind] as unknown as AnySpec;
+export const isInput = (m: Moment): boolean => specOf(m).input === true;
 
 export function cueFor(m: Moment): Cue {
   return specOf(m).cue(m);
