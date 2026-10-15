@@ -26,8 +26,8 @@ we do not push turn reminders or game results. We store the token, your platform
 Android), and your app's language, and nothing else about your device.
 
 **Games you are playing.** While you are at a table we store which room you are seated in, the
-room itself, and the state of the hand being played there — cards included — so the game survives
-a disconnection or a server restart. The hand is deleted when the table breaks up, and in any
+room itself, and the state of the round being played there — cards included — so the game survives
+a disconnection or a server restart. The round is deleted when the table breaks up, and in any
 case by a sweep 24 hours on, which also catches a game a restart left with nobody to end it. The
 room and your seat in it go the same way, so they outlive the game by up to a day.
 
@@ -37,7 +37,7 @@ has them, and are then discarded automatically.
 
 **Social and finished-game data.** Your friends list, pending game invites, match history,
 ratings, stats, and achievements are stored against your account so the game works and you can
-see your own progress. Each finished hand is also kept as a replay for 14 days so the players in
+see your own progress. Each finished round is also kept as a replay for 14 days so the players in
 it can review it — a match of several hands leaves several replays — after which it is deleted
 automatically.
 
@@ -50,7 +50,7 @@ you type plus the screen you were on, your app version, platform, and language �
 and no stack trace. Both are kept for 90 days, then deleted automatically.
 
 **Usage events.** The server records a small, fixed set of events — entering the lobby, joining a
-room, starting the tutorial, the first move of a game, a game being abandoned, a connection
+room, starting the tutorial, the first move of a match, a match being abandoned, a connection
 closing, an email failing to send — to understand how the app is used. These are written by the
 server, not by your device, are linked to your account while you're signed in, and are deleted
 after 90 days. We use no third-party analytics or tracking — no Google Analytics, no Sentry, no
@@ -107,14 +107,14 @@ neither exists in the app.
 
 You can delete your account at any time from Settings. It is permanent and immediate, with no
 recovery period: your account, friends list, invites, seat in any room, any room you host along
-with the hand being played in it, match history, stats, ratings, achievements, crash and bug
+with the round being played in it, match history, stats, ratings, achievements, crash and bug
 reports, usage events, push tokens, outstanding email codes, and sessions are all deleted. Server
 logs are the exception, to the limited extent described above.
 
 One thing is anonymised rather than deleted. A replay belongs to everyone who played that hand,
 so deleting yours would take the other players' copy with it. Instead your account id and your
 name are erased from the replay — other players see an unnamed seat — and the play itself remains
-until the replay expires 14 days after the hand. A replay with no remaining players is deleted
+until the replay expires 14 days after the round. A replay with no remaining players is deleted
 outright.
 
 There is no self-service data export today. Write to us at the address below and we will send you
@@ -125,10 +125,10 @@ a copy of your data.
 | Data | Kept for |
 |---|---|
 | Account, friends, match history, ratings, stats, achievements | Until you delete your account |
-| In-progress hand | Until the game ends, and in any case 24 hours |
+| In-progress round | Until the match ends, and in any case 24 hours |
 | Room and your seat in it | Swept once the room is more than 24 hours old |
 | Oversized game messages in transit | Seconds, then discarded automatically |
-| Replays | 14 days after the hand |
+| Replays | 14 days after the round |
 | Crash reports, server error records, bug reports, usage events | 90 days |
 | Email confirmation and password-reset codes | Until they expire, minutes after being sent |
 | Push token | Until you sign out, register a sixth device (we keep your five most recent), give the device to someone who signs in on it, delete your account, or a later notification finds the device gone |

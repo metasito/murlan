@@ -141,7 +141,7 @@ interface Measurement {
 /**
  * A table's numbers, with `wide` narrowed to what overflows *steadily*.
  *
- * The moment overlays a played hand raises — the flush's own light pass is
+ * The moment overlays a played hand raises — the going-out light pass is
  * 2.2x the table's width by construction (`Sweep`, components/table/moments.tsx)
  * — are drawn wider than the screen on purpose and are gone again inside two
  * seconds. Reading twice and keeping only what both readings hold measures the

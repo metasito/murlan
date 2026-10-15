@@ -26,7 +26,7 @@ import { connectAs, waitFor } from "../helpers/client.ts";
 // a large value here is paid again as a stall at teardown.
 process.env.MURLAN_AFK_TIMEOUT_MS = "2500";
 process.env.MURLAN_DISCONNECT_GRACE_MS = "500";
-// When the suite ends and its sockets close, the AI takes over every abandoned
+// When the suite ends and its sockets close, the bot takes over every abandoned
 // table and plays it out. At the production pace that is minutes of teardown
 // for tests that finished in seconds.
 process.env.MURLAN_BOT_MOVE_DELAY_MS = "1";
@@ -60,8 +60,8 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
   });
   after(async () => {
     // Leave each table rather than just dropping the sockets. A match runs to
-    // 21 points, so an abandoned one is handed to the AI and plays hand after
-    // hand — every exchange resolved by an AFK timeout — long after the tests
+    // 21 points, so an abandoned one is handed to the bot and plays round after
+    // round — every exchange resolved by an AFK timeout — long after the tests
     // that created it have finished, holding the event loop open.
     for (const seats of tables) for (const s of seats) s.emit("room:leave");
     await new Promise((r) => setTimeout(r, 200));
@@ -101,7 +101,7 @@ describe("spectator mode", { skip: hasDatabase() ? false : skipMessage() }, () =
     const idx = states.findIndex((st) => st.viewerSeatIndex === turn);
     assert.ok(idx >= 0, "neither client holds the seat on turn");
     const start = states[idx].startCard;
-    assert.ok(start, "the opening hand must name a start card");
+    assert.ok(start, "the opening round must name a start card");
     seats[idx].socket.emit("game:play", { cardIds: [start!.id] });
   }
 

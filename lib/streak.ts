@@ -29,7 +29,7 @@ function dayBefore(day: UtcDay): UtcDay {
  *
  * A streak survives until a whole day is missed: playing yesterday but not yet
  * today still counts, otherwise every streak would appear broken every morning
- * until the first game. Playing neither today nor yesterday is a streak of 0.
+ * until the first round. Playing neither today nor yesterday is a streak of 0.
  */
 export function dailyStreak(playedOn: Iterable<Date | string>, today: UtcDay): number {
   const days = new Set<UtcDay>();

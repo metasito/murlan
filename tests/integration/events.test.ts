@@ -1,7 +1,7 @@
 // tests/integration/events.test.ts — the funnel steps, and the promise that
 // they can never cost a game.
 //
-// This table is diagnostic. Nothing in a hand depends on it, so a write that
+// This table is diagnostic. Nothing in a round depends on it, so a write that
 // fails must cost a log line and nothing else — never a rejected move, never a
 // dropped socket. That is asserted here with an insert that genuinely fails,
 // not with a mock that pretends to.

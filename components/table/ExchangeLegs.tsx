@@ -37,7 +37,7 @@ interface Run { origin: number; stage: number[]; ready: boolean; done: boolean }
 interface Report { cue: (at: number) => void; stage: (leg: number, stage: number) => void; ready: () => void; done: () => void }
 
 /**
- * One clock for the trade: the receive (or both Jokers) shows `beat` after the go, the give
+ * One clock for the exchange: the receive (or both Jokers) shows `beat` after the go, the give
  * `giveWait` after the choice and never before the receive has landed and been read.
  */
 function stepper(
@@ -152,7 +152,7 @@ function LegCard({ card, leg, show, points, clock, shows, reduced, drawn, scale,
 }
 
 /**
- * The trade on the table, giver → pile → receiver (tests/e2e/fixtures/exchange-legs, "Through the
+ * The exchange on the table, giver → pile → receiver (tests/e2e/fixtures/exchange-legs, "Through the
  * pile"). Mounted from the phase opening; `go` is the deal having landed. It reports each leg's
  * stage, the choice opening (`onReady`) and the ceremony's end, all off its own frame clock.
  */

@@ -17,7 +17,7 @@ import { encodeOfflineSave, OFFLINE_SAVE_KEY } from "@/lib/offlineSave";
 import type { GameState } from "@/lib/game/gameEngine";
 
 /**
- * A hand parked mid-exchange: the human (seat 0) won the round and owes seat
+ * A round parked mid-exchange: the human (seat 0) won the round and owes seat
  * 1 a giveback. `4_clubs` is the only card in the winner's hand that the
  * exchange rules (docs/GAME-RULES.md §10) allow to be handed back.
  */
@@ -156,7 +156,7 @@ test("choosing an exchange card moves the card and announces it through the real
 // #533, reopened 2026-09-02: a residue outliving the exchange. The ceremony's
 // own clock is deliberately long (`Motion.exchange.read` past the give landing),
 // so a table that starts over while it is still counting down — a fresh
-// match dealt here, a room rejoin online — must not carry the old trade's
+// match dealt here, a room rejoin online — must not carry the old exchange's
 // announcement onto a felt with no record of it left. Turning `phasePresent`
 // off (`useExchangeAnnouncement`, lib/game/sharedGameFlow.ts) into a no-op — read
 // but never acted on — is the one-line change that reds this: `announcing`

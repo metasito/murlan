@@ -53,10 +53,10 @@ const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean)
     finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
   };
-  const roundScores = over ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
+  const placementPoints = over ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} roundScores={roundScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={state} placementPoints={placementPoints} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
 };

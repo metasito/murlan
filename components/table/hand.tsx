@@ -58,7 +58,7 @@ import { useCardRect, useCardTable, type CardTable } from "./useCardRects";
 import { handCardZ, handPaintOrder } from "./cardShadows";
 
 /**
- * The viewer's hand as the table draws it while a traded card is on its way in or out.
+ * The viewer's hand as the table draws it while a exchanged card is on its way in or out.
  *
  * Held back at display rather than by deferring the state: online the state is
  * the server's, and freezing a whole snapshot for the length of a phase would
@@ -771,7 +771,7 @@ export const StraightHand = React.memo(function StraightHand({
   );
 
   // Armed while the hand is empty, so the render on which a hand appears —
-  // the start of a game, or of the next one after a rematch — is the render
+  // the start of a match, or of the next one after a rematch — is the render
   // whose cards mount staggered. A single card arriving later (the exchange
   // give-back) mounts with the deal disarmed and simply appears in place.
   const [dealArmed, setDealArmed] = useState(true);

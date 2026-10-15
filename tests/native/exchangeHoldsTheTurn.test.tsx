@@ -1,4 +1,4 @@
-// tests/native/exchangeHoldsTheTurn.test.tsx — the table waits for the trade.
+// tests/native/exchangeHoldsTheTurn.test.tsx — the table waits for the exchange.
 //
 // The exchange closes its own phase the moment the card is chosen, so
 // `exchangePhase.active` is already false while the two cards are still
@@ -37,7 +37,7 @@ const STATE: GameState = {
   firstPlayMade: true,
 };
 
-/** A bot won the last hand and owes the human a card back. */
+/** A bot won the last round and owes the human a card back. */
 const CHOOSING: GameState = {
   ...STATE,
   players: [

@@ -28,7 +28,7 @@ const state = (isMyTurn: boolean, currentTurnIndex = 0) => ({
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: "viewer",
   scale: 1,
   landing,

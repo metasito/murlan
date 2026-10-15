@@ -69,8 +69,8 @@ export default function OnlineGameScreen() {
   const {
     matchState,
     cumulativeScores,
-    roundScores,
-    roundScoresCurrent,
+    placementPoints,
+    placementPointsCurrent,
     ratingDeltas,
     roundRecorded,
     ratingsAfter,
@@ -104,7 +104,7 @@ export default function OnlineGameScreen() {
     else router.replace("/(online)");
   }, [entrySource]);
 
-  // Another player abandoned the table — there is no game left to play, so
+  // Another player abandoned the table — there is no match left to play, so
   // this one has no way out but the acknowledgement.
   // Seeded empty: the notice can already be standing when this screen mounts.
   const [announcedLeave, setAnnouncedLeave] = useState(false);
@@ -200,7 +200,7 @@ export default function OnlineGameScreen() {
         });
 
   const viewerSeat = isSpectator ? 0 : mySeatIndex;
-  const roundOnTable = gameState.roundOver && roundScoresCurrent && !matchState.over;
+  const roundOnTable = gameState.roundOver && placementPointsCurrent && !matchState.over;
   const myDelta = isSpectator ? undefined : ratingDeltas[myUserId];
   const myRating = ratingsAfter[myUserId];
   // `continues` is false for a match the server closed unscored, which is unrecorded for a
@@ -227,11 +227,11 @@ export default function OnlineGameScreen() {
       gameState={gameState}
       matchOver={matchState.over}
       matchWinners={matchState.winners}
-      // Until `game:round_over` lands, `roundScores` still holds the last round's, and the table decides this one's outcome on them.
-      roundScores={roundScoresCurrent ? roundScores : undefined}
+      // Until `game:round_over` lands, `placementPoints` still holds the last round's, and the table decides this one's outcome on them.
+      placementPoints={placementPointsCurrent ? placementPoints : undefined}
       matchScore={{ scores: cumulativeScores, target: matchState.target, single: matchState.length === "single" }}
       matchActions={
-        roundScoresCurrent
+        placementPointsCurrent
           ? {
               onHome: requestLeave,
               again: matchState.continues

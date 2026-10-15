@@ -54,7 +54,7 @@ const E2E_OPENER = E2E_FAST && Platform.OS === "ios" && String(Settings.get(E2E_
  * How long the offline exchange overlay holds in an e2e build. Under Maestro it
  * holds until `.maestro/exchange-phase.yaml` taps it: no fixed hold covers how
  * long a device can keep Maestro from reading the screen. One view-hierarchy
- * read on the Android emulator took 22 s while the hand ended, and a Passa tap
+ * read on the Android emulator took 22 s while the round ended, and a Passa tap
  * returned 37.5 s later, past the whole ceremony (#1560).
  * The web build keeps a timed hold, because Playwright specs play through the
  * exchange without ever tapping it.
@@ -191,7 +191,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   /**
    * Deals the next round, seeded by the last one's order. `matchIsOver`
-   * tells `dealFirstSeatFor` (`lib/game/gameEngine.ts`) whether this deal starts a
+   * tells `dealFirstSeatFor` (`lib/game/gameEngine.ts`) whether this round starts a
    * new match (reset to seat 0) or continues the current one (rotate).
    */
   const dealFrom = useCallback(
@@ -339,7 +339,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * Not debounced: the online path persists to Postgres on every move, and this
    * is a few kilobytes to local storage. A write that loses a race with the
    * next one costs a move; a debounce that loses the last write before a kill
-   * costs the hand, which is the thing this exists to prevent.
+   * costs the round, which is the thing this exists to prevent.
    */
   // The flag reports the stored row, so the match ending retires both — this
   // half here because the row's removal belongs to the effect below and a flag

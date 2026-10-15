@@ -45,7 +45,7 @@ function seeded(seed: number) {
 }
 
 // Exact, not approximate: deltas are integers, and rounding each on its own
-// would let a hand leak a point into or out of the ladder through arithmetic.
+// would let a round leak a point into or out of the ladder through arithmetic.
 test("a table on one K conserves rating exactly, whatever the field", () => {
   const next = seeded(12345);
   for (let trial = 0; trial < 500; trial++) {
@@ -59,7 +59,7 @@ test("a table on one K conserves rating exactly, whatever the field", () => {
 
 // Mixed records cannot conserve exactly — paying a provisional account faster
 // than its opponents lose is what a provisional period *is*. What must hold is
-// that the leak stays bounded per hand rather than compounding, and the bound
+// that the leak stays bounded per round rather than compounding, and the bound
 // falls straight out of the formula: the spread between the fastest and
 // slowest K, once per pairing a seat takes part in.
 test("mixed records leak no more than the K spread allows", () => {
@@ -99,7 +99,7 @@ test("beating a much stronger field pays more than beating a weaker one", () => 
   assert.ok(vsStrong.get("me")! > vsWeak.get("me")!);
 });
 
-test("a hand with fewer than two rated seats is not a contest", () => {
+test("a round with fewer than two rated seats is not a contest", () => {
   assert.equal(ratingDeltas([]).size, 0);
   assert.equal(ratingDeltas([seat("a", 1)]).size, 0);
 });

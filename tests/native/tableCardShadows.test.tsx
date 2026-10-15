@@ -127,7 +127,7 @@ describe('a card view on the table', () => {
     await view.unmount();
   }, 120_000);
 
-  it('carries none on a traded card in the air', async () => {
+  it('carries none on a exchanged card in the air', async () => {
     const state: GameState = {
       ...base([seat(0, [card('5', 'hearts'), card('K', 'diamonds'), card('2', 'spades')]), seat(1, [card('4', 'clubs')]), seat(2, [card('6', 'hearts')])]),
       exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },

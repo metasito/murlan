@@ -1,4 +1,4 @@
-// The score pill's standings (#1265): one row per seat, or per pair in teams mode.
+// The score pill's standings (#1265): one row per seat, or per team in teams mode.
 //
 // Free of runtime `@/` imports, so `node --test` can load it — docs/agents/checks.md,
 // "Node's TypeScript loader".
@@ -34,14 +34,14 @@ export function scorePillStandings({
   players,
   teams,
   scores,
-  roundScores,
+  placementPoints,
   finishingOrder,
   viewerId,
 }: {
   players: readonly { id: string; name: string; team?: string }[];
   teams: boolean;
   scores: Record<string, number>;
-  roundScores: Record<string, number>;
+  placementPoints: Record<string, number>;
   finishingOrder: readonly string[];
   viewerId: string | undefined;
 }): PillStandings {
@@ -55,7 +55,7 @@ export function scorePillStandings({
   if (teams) {
     const teamOf = Object.fromEntries(players.map((p) => [p.id, p.team ?? ""]));
     const totals = aggregateTeamScores(scores, teamOf);
-    const gains = aggregateTeamScores(roundScores, teamOf);
+    const gains = aggregateTeamScores(placementPoints, teamOf);
     entries = Object.keys(totals).map((team) => ({
       key: team,
       name: team,
@@ -71,7 +71,7 @@ export function scorePillStandings({
       name: p.name,
       initial: p.name.slice(0, 1).toUpperCase(),
       total: scores[p.id] ?? 0,
-      gain: roundScores[p.id] ?? 0,
+      gain: placementPoints[p.id] ?? 0,
       mine: p.id === viewerId,
       finishedAt: finishedAt(p.id),
     }));

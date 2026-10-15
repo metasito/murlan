@@ -104,7 +104,7 @@ const table = (opts: {
   visible: boolean;
   twoJokerException?: boolean;
   spectating?: boolean;
-  /** Build the winner's hand without the traded card, as a size control. */
+  /** Build the winner's hand without the exchanged card, as a size control. */
   shortOne?: boolean;
   /** The phase still open, rather than one tick after the choice. */
   choosing?: boolean;

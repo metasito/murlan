@@ -1,4 +1,4 @@
-// tests/native/exchangeReceivedNeverMissing.test.tsx — a traded card is drawn exactly once on every
+// tests/native/exchangeReceivedNeverMissing.test.tsx — a exchanged card is drawn exactly once on every
 // frame: by the hand until its flier shows, by the flier until the hand has drawn it back.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';

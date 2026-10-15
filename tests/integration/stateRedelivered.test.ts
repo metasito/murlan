@@ -1,4 +1,4 @@
-// tests/integration/stateRedelivered.test.ts — the last broadcast of a hand.
+// tests/integration/stateRedelivered.test.ts — the last broadcast of a round.
 //
 // `sanitizeStateForPlayer` sends a whole snapshot every time, so a `game:state`
 // that goes missing is healed by the next one — except for the last. A player
@@ -97,7 +97,7 @@ describe("a state broadcast is delivered", { skip: hasDatabase() ? false : skipM
 
   /**
    * The re-send is bounded. A genuinely gone client must not be shouted at for
-   * the rest of the hand — the socket's own reconnect and `game:rejoin` are what
+   * the rest of the round — the socket's own reconnect and `game:rejoin` are what
    * recovers that case.
    */
   test("the re-send does not repeat forever", async () => {

@@ -92,7 +92,7 @@ const spoken = (c: Card) => `${c.rank} di ${SPOKEN_SUIT[c.suit!]}`;
  */
 const BOMB = (["hearts", "diamonds", "clubs", "spades"] as const).map((s) => card("7", s));
 const VIEWER_HAND = [...BOMB, card("4", "hearts"), card("5", "diamonds"), card("6", "clubs")];
-/** Nothing here can beat a bomb, and with the AI held it never gets to try. */
+/** Nothing here can beat a bomb, and with the bot held it never gets to try. */
 const BOT_HAND = (["4", "6", "8", "10", "Q"] as const).map((r) => card(r, "spades"));
 /** A single the bomb beats — a bomb beats anything but a higher bomb (`canBeat`). */
 const PILE_CARD = card("3", "clubs");
@@ -251,9 +251,9 @@ const named = (page: Page, name: string) =>
 /**
  * A table with the bomb selected and GIOCA armed, one tap from the landing.
  *
- * The AI is held for the life of the page (`lib/e2eBotSuspend.ts`). It is not a
+ * The bot is held for the life of the page (`lib/e2eBotSuspend.ts`). It is not a
  * convenience: `EXPO_PUBLIC_E2E_FAST` answers for the seat in ~0ms, and a pass
- * closes the round heads-up, which takes `GameTable`'s own pile effect down the
+ * closes the trick heads-up, which takes `GameTable`'s own pile effect down the
  * `combo === null` branch and **clears the pending impact timer** — so the
  * bomb's whole landing, kick and flare included, is cancelled ~300ms before it
  * was due to fire and every measurement below reads a table at rest.

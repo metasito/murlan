@@ -104,7 +104,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
   );
 }
 
-/** Full match first: it is the canonical Murlan game (docs/GAME-RULES.md §12). */
+/** Full match first: it is the canonical Murlan match (docs/GAME-RULES.md §12). */
 const FORMAT_OPTIONS: readonly MatchLength[] = ["match", "single"];
 const START_BAR_CLEARANCE = 120;
 const MODE_ICON = 16;
@@ -133,7 +133,7 @@ export default function LobbyScreen() {
       ? { title: t("lobby.formatMatch"), detail: t("lobby.formatMatchSub", { target: firstTargetFor(playerCount) }) }
       : { title: t("lobby.formatSingle"), detail: t("lobby.formatSingleSub") };
 
-  /** An AI seat is called after its personality; humans keep the name they were given. */
+  /** A bot seat is called after its personality; humans keep the name they were given. */
   const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
     const botSeats = configs.flatMap((p, i) => (p.type === "bot" ? [i] : []));
     const names = botSeatNames(botSeats.map((i) => getBotPersonality(configs[i].personality).id));

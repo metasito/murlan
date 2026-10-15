@@ -35,7 +35,7 @@ describe("visibleExchangePhase", () => {
   });
 
   // #602: the card has to be on the felt for every seat, not just the two
-  // trading. Watching a trade you cannot see is the defect that ticket names.
+  // exchanging. Watching an exchange you cannot see is the defect that ticket names.
   test("the seats watching see it too", () => {
     for (const seat of [0, 2]) {
       assert.deepEqual(
@@ -106,7 +106,7 @@ describe("visibleExchangePhase", () => {
     });
 
     // With only one leg, the watching seats animate a delivery rather than a
-    // trade.
+    // exchange.
     test("the watching seats see the announced cross once it is settled", () => {
       for (const seat of [0, 2]) {
         assert.deepEqual(
@@ -123,7 +123,7 @@ describe("visibleExchangePhase", () => {
 
     // `exchangePhase` is never cleared, so the flag alone would keep the card
     // public for the rest of the round — and hand it to anyone connecting long
-    // after the trade, having never watched it cross.
+    // after the exchange, having never watched it cross.
     describe("is bounded to the ceremony that reads it", () => {
       const OVER = SETTLED_AT + exchangeAnnounceMs(false);
 
@@ -131,7 +131,7 @@ describe("visibleExchangePhase", () => {
        * `sendGameStateTo` owes one resend to a client that never acknowledged
        * the settle, and that resend re-derives from live state when it fires.
        * If the ack timeout ever outgrew the window it would be answered with
-       * half a trade, and `OnlineGameContext`'s `cardReceived || cardGiven`
+       * half an exchange, and `OnlineGameContext`'s `cardReceived || cardGiven`
        * guard raises that as a one-legged ceremony rather than refusing it.
        *
        * Asserted here rather than added to the window in `onlineGameLogic.ts`:
@@ -142,7 +142,7 @@ describe("visibleExchangePhase", () => {
        * its 60s default and hung `sessionReplaced.test.ts`.
        *
        * The two-Joker window is shorter than the ack timeout and does not need
-       * to be: that exception cancels the trade, so no card is ever chosen and
+       * to be: that exception cancels the exchange, so no card is ever chosen and
        * `cardToLoser` stays absent.
        */
       test("the resend a client is owed lands inside the window", () => {

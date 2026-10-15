@@ -20,13 +20,13 @@ Written 2026-09-02 against `origin/main` at `d5f234d`, after #815 landed.
 Two rows of the Decisions table touch abandonment. Quoted whole, because the surrounding
 discussion routinely credits it with more than it decided:
 
-> **Abandoning a hand** — **A seat abandoned mid-hand is recorded as a last-place finish.**
+> **Abandoning a round** — **A seat abandoned mid-round is recorded as a last-place finish.**
 > The player loses rating and loses their streak. No penalty beyond that, and no achievement
 > is awarded for an abandoned seat.
 >
-> *Rationale:* Leaving before the hand ended used to produce no record at all, which made
+> *Rationale:* Leaving before the round ended used to produce no record at all, which made
 > closing the browser tab a complete defence against ever losing rating. A genuine network
-> drop is punished identically to a rage-quit: there is no reliable signal separating them,
+> drop is punished identically to a deliberate exit: there is no reliable signal separating them,
 > and guessing would be a new class of unfairness rather than a fix.
 
 > **Naming the winner of a single round** — **An abandoned seat can never be announced as
@@ -45,26 +45,26 @@ One further row is adjacent and load-bearing:
 > ready among the connected seated humans,** not the host alone. Vacated and bot seats abstain
 > rather than voting no.
 
-**So the Decisions table decides exactly three things about a player who leaves:** the hand they left is a
+**So the Decisions table decides exactly three things about a player who leaves:** the round they left is a
 last-place finish that costs rating and streak; their seat can never be announced as the
 winner of a single round; and their vacated seat abstains from the rematch gate.
 
 **The Decisions table decides none of these**, though they are often attributed to it:
 
 - how long the grace is, or what the table shows during it;
-- whether the AI takes the seat over at all, or under what name;
-- what happens to points the AI wins in that seat afterwards;
+- whether the bot takes the seat over at all, or under what name;
+- what happens to points the bot wins in that seat afterwards;
 - what happens to points the player had already won before leaving;
 - whether the seat can be reclaimed;
 - what the other players are told, or may do;
-- whether the *match* (as against the hand) is rated or voided;
+- whether the *match* (as against the round) is rated or voided;
 - what the standings render.
 
 In particular, **"scoring already excluded abandoned seats from the running total" appears
 in the Decisions table only as a rationale aside**, describing what the code happened to do at the time. It
 is not a decision, it was never argued, and #815 showed it was not even doing what the aside
 claimed — the same exclusion was silently swallowing the wins of bots that had been at the
-table from the first deal.
+table from the first round.
 
 ---
 
@@ -74,21 +74,21 @@ The behaviour is an escalation ladder assembled from four independently-made cho
 
 | Stage | Trigger | What happens | Where |
 |---|---|---|---|
-| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a round cannot be passed. Never the AI: *"an AFK human should not be played well on their behalf."* | `afkTimeoutMs` (`server/game/gameTimers.ts`), `handleAutoPass` (`server/game/gameTurn.ts`), `autoMoveForSeat` (`lib/game/autoMove.ts`) |
-| Disconnect grace | socket lost mid-hand, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the hand **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `seatLostAction` (`server/game/tableHandlers.ts`) |
-| Between hands | socket lost while `roundOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `lobbyGraceMs` (`server/game/gameTimers.ts`), `armLobbyGrace`/`handleSeatRelease` (`server/socket/socketTable.ts`) |
+| Turn timer | 30 s on the acting seat (`MURLAN_AFK_TIMEOUT_MS`) | The seat is made to play the **minimum legal move** — a pass, or the lowest single when a trick cannot be passed. Never the bot: *"an AFK human should not be played well on their behalf."* | `afkTimeoutMs` (`server/game/gameTimers.ts`), `handleAutoPass` (`server/game/gameTurn.ts`), `autoMoveForSeat` (`lib/game/autoMove.ts`) |
+| Disconnect grace | socket lost mid-round, 60 s (`MURLAN_DISCONNECT_GRACE_MS`) | `game:player_disconnected` broadcasts one sentence naming the seconds; the round **continues**, the seat is still the player's, and the 30 s turn timer keeps auto-passing it. So roughly two forced minimum moves fit inside the grace. | `seatLostAction` (`server/game/tableHandlers.ts`) |
+| Between rounds | socket lost while `roundOver` | The shorter 20 s lobby grace, because the seat is counted in the rematch gate. | `lobbyGraceMs` (`server/game/gameTimers.ts`), `armLobbyGrace`/`handleSeatRelease` (`server/socket/socketTable.ts`) |
 | Vacate | grace expired **and** the cluster says the user is offline, or an explicit `room:leave` (no grace at all) | `playerMap[seat]` deleted, `players[seat].type = "bot"`, `releasedSeats.add(userId)`, the seat recorded in `abandonedSeats` if it still held cards. The **name on the seat never changes**. Announced as `game:seat_bot_takeover`. | `vacateSeat` (`server/game/gameTurn.ts`) |
-| After takeover | every turn | The real engine AI plays the seat, paced at 1.2 s a move. | `runBotTurn` (`server/game/gameTurn.ts`) |
+| After takeover | every turn | The real engine bot plays the seat, paced at 1.2 s a move. | `runBotTurn` (`server/game/gameTurn.ts`) |
 | Rejoin | any later attempt | Refused with `SEAT_RELEASED`, permanently, for the life of that table. | `REJOIN_FAILURE` (`server/socket/socketGameplay.ts`), `rejoinAction` (`server/game/tableHandlers.ts`) |
 
-And at the hand's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
+And at the round's end (`resolveRoundEnd`, `server/game/onlineGameLogic.ts`):
 
 - The seat's score key becomes `bot:<seat>` the moment `playerMap[seat]` is deleted.
 - Since #815, `accumulates` excludes a `bot:<seat>` key **only when that seat was not a bot
   when the roster was built** — a straight-duel bot scores, a seat a human left does not.
-- The abandoned seat is ordered **behind every seat that played the hand out**, so a walkout
+- The abandoned seat is ordered **behind every seat that played the round out**, so a walkout
   is genuinely last, and that placement is what `recordRatedResult` rates (`server/game/ratings.ts`).
-- `gameResults` for that one hand is keyed by the **departed userId**, not by `bot:<seat>` —
+- `gameResults` for that one round is keyed by the **departed userId**, not by `bot:<seat>` —
   which is how the last-place finish reaches their rating and history at all.
 
 Three consequences of that arrangement are worth stating plainly, because two of them are
@@ -152,9 +152,9 @@ mechanic, that is said rather than filled in.
   a wiki, but it describes the mechanic precisely and I found no Yostar page that does.)
   **The important detail is that the automaton is deliberately terrible.** It plays the
   minimum legal move, exactly as this codebase's `autoMove` does for an AFK human, and the
-  absent player eats the resulting last place. Neither server hands the seat to a *good* AI.
-- **Catan Universe** does the opposite and replaces a dropped player with a full AI. Its own
-  forums are largely complaints that the AI then stalls or trades forever; I found no
+  absent player eats the resulting last place. Neither server hands the seat to a *good* bot.
+- **Catan Universe** does the opposite and replaces a dropped player with a full-strength bot. Its own
+  forums are largely complaints that the bot then stalls or trades forever; I found no
   official Catan page documenting the behaviour, only player reports.
   ([Catan Universe discussions](https://steamcommunity.com/app/544730/discussions/0/6462188749583468037/))
 - **Online poker** refuses the idea outright: a disconnected player is folded or sat out,
@@ -219,8 +219,8 @@ mechanic, that is said rather than filled in.
 
 1. **The good ones never let an absent seat be played *well*.** Mahjong's tsumogiri bot,
    poker's auto-fold and this codebase's own minimum-legal move are the same design decision;
-   Catan Universe's full AI takeover is the one that generates complaints.
-2. **The good ones keep the arithmetic honest.** Nobody discards a hand's points. BGA hands
+   Catan Universe's full-strength bot takeover is the one that generates complaints.
+2. **The good ones keep the arithmetic honest.** Nobody discards a round's points. BGA hands
    the quitter a last place and pays the survivors pro rata; rummy hands the absent seat a
    fixed penalty score. The books always balance.
 3. **The good ones escalate on the record, not on the incident.** One drop is treated
@@ -236,14 +236,14 @@ is derived from them, and where two principles pull against each other the tie i
 this order.
 
 1. **One identity, one ledger.** A point belongs to the person who won it. A disconnect
-   destroys no points and creates none, and the standings always sum to the hands played.
+   destroys no points and creates none, and the standings always sum to the rounds played.
 2. **Absence is never profitable.** Every outcome of leaving must be weakly worse for the
    leaver than staying, whether they are ahead or behind. This is the anti-cheat principle
    and it outranks convenience.
 3. **The people who stayed are held harmless.** They keep what they earned, they are never
    trapped in a match that has stopped being the one they joined, and they are never made to
    pay for someone else's connection.
-4. **A drop and a rage-quit are not distinguished** (Decisions table, and Lichess). Therefore the
+4. **A drop and a deliberate exit are not distinguished** (Decisions table, and Lichess). Therefore the
    penalty for one incident is bounded and forgiving, and escalation lives on the record.
 5. **An absent seat is played badly, visibly, and never for keeps.** The table must not stall
    (BRIEF W3), but the substitute must not be an upgrade, and nobody may mistake it for the
@@ -253,16 +253,16 @@ this order.
 
 ## 5. The eight questions
 
-### Q1 — A player disconnects mid-hand: how long, what is shown, does the hand pause?
+### Q1 — A player disconnects mid-round: how long, what is shown, does the round pause?
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Pause the hand** for the grace | Fairest to the dropped player | **The hostage exploit.** Anyone losing a round pulls their network and freezes three other people for a minute. Every source rejects pausing for this reason. |
-| **Continue, auto-pass** (today, 30 s a turn inside a 60 s grace) | Table never stalls; the absent seat plays badly, which is correct | Very small: the absent seat can still be *forced* to open a round with its lowest card, which leaks information. Same leak an AFK human already has. |
-| Continue, **AI plays immediately** | Strongest play continuity | **The upgrade exploit.** If the AI plays better than you, dropping is a move. Catan Universe's failure mode. |
-| Longer grace (3-5 min) | Kinder to mobile networks | The other three wait; and the longer the window, the more the frozen seat's forced minimum moves distort the hand anyway. |
+| **Pause the round** for the grace | Fairest to the dropped player | **The hostage exploit.** Anyone losing a round pulls their network and freezes three other people for a minute. Every source rejects pausing for this reason. |
+| **Continue, auto-pass** (today, 30 s a turn inside a 60 s grace) | Table never stalls; the absent seat plays badly, which is correct | Very small: the absent seat can still be *forced* to open a trick with its lowest card, which leaks information. Same leak an AFK human already has. |
+| Continue, **Bot plays immediately** | Strongest play continuity | **The upgrade exploit.** If the bot plays better than you, dropping is a move. Catan Universe's failure mode. |
+| Longer grace (3-5 min) | Kinder to mobile networks | The other three wait; and the longer the window, the more the frozen seat's forced minimum moves distort the round anyway. |
 
-**Recommend: keep the shape, fix the display.** 60 s grace, hand continues, minimum legal
+**Recommend: keep the shape, fix the display.** 60 s grace, round continues, minimum legal
 move only. Chess.com's scaling (10% of base time, floor 30 s, ceiling 3 min) is the better
 idea in principle, but this game has no per-match clock to scale from, so a flat 60 s
 between a 30 s turn timer and a 20 s lobby grace is already the right order of magnitude.
@@ -273,11 +273,11 @@ seat marked as reconnecting. The server already emits `seconds` in `params` and 
 the `game:turn_deadline` precedent for a live countdown, so this is client work over an
 existing payload.
 
-### Q2 — The AI takes over: when, announced how, and under what name?
+### Q2 — The bot takes over: when, announced how, and under what name?
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Never** — hand ends, seat forfeits | Simplest ledger | In a 3-4 seat match, one person's phone ends everyone's match. Violates P3. |
+| **Never** — round ends, seat is abandoned | Simplest ledger | In a 3-4 seat match, one person's phone ends everyone's match. Violates P3. |
 | **Immediately on disconnect** | No dead turns at all | The upgrade exploit again, and it punishes a 5-second mobile hiccup as hard as a walkout. |
 | **After the grace** (today) | Table survives, absence is cheap for everyone else | None, *provided the seat is not an upgrade* — see below. |
 | Seat keeps the player's name (today) | No work | **Reputational forgery, and it is live today.** The name of someone who left plays badly, or brilliantly, in front of people who think it is them. the Decisions table already had to write a special rule to stop the announcement crediting a walkout by name; the seat itself was never fixed. |
@@ -302,28 +302,28 @@ untouched. So the buildable form of the label is:
 That is one server flag, one locale key in three files, and two render sites. Nothing has to
 reverse a `bot:<seat>` key back to a human.
 
-**On how well the AI plays it.** This is the one place the recommendation contradicts current
+**On how well the bot plays it.** This is the one place the recommendation contradicts current
 behaviour on purpose. Today `handleAutoPass` uses `useBot: false` for a seat still held and
 `runBotTurn` uses `useBot: true` once it is vacated — so crossing the grace boundary *upgrades*
-the seat from a minimum-legal-move player to the full engine AI. Every well-regarded
+the seat from a minimum-legal-move player to the full engine bot. Every well-regarded
 implementation in §3 does the opposite or refuses the seat entirely. **Recommend the takeover
-AI stays weak** — the same minimum legal move — until the hand in progress ends, and only
-plays properly from the next deal, by which point the seat is honestly a bot seat and its
+Bot stays weak** — the same minimum legal move — until the round in progress ends, and only
+plays properly from the next round, by which point the seat is honestly a bot seat and its
 points are honestly the bot's (Q3). This costs one boolean at one call site and removes the
 entire class of "my opponent left and then started playing better" complaint.
 
-### Q3 — Points the AI wins in that seat
+### Q3 — Points the bot wins in that seat
 
 | Option | Consequence | Exploit it opens |
 |---|---|---|
-| **Discard them** (today) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every round the bot wins is a round whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the hands played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
-| **Credit the absent player** | Standings sum | **Rewards quitting while ahead**, and lets a decent AI farm rating and match wins for someone who is asleep. Squarely against P2. Poker's withdrawn disconnect protection is this option's history. |
+| **Discard them** (today) | The leaver gains nothing | **The spoiler exploit, and an arithmetic hole.** Every round the bot wins is a round whose points leave the game: the survivors' race to the target lengthens, and the standings stop summing to the rounds played — with nothing on screen to say why. That is exactly the shape of #815, which was one instance of it. It also *rewards quitting when behind*: your seat becomes a permanent spoiler that can take points away from the leader without giving them to anyone. |
+| **Credit the absent player** | Standings sum | **Rewards quitting while ahead**, and lets a decent bot farm rating and match wins for someone who is asleep. Squarely against P2. Poker's withdrawn disconnect protection is this option's history. |
 | **Credit a visibly non-human seat** | Standings sum, leaver gains nothing, the row explains itself | None found. It is also *already* what the code does for a bot that was dealt in from the start, since #815. |
 | **Void the match** | Nobody is cheated | **The escape hatch.** Losing a match becomes a reason to disconnect. Dota 2 refuses exactly this, for exactly this reason. |
 
 **Recommend: the seat keeps scoring, under the bot identity, from the moment of takeover.**
 The strongest argument is consistency rather than novelty: after #815, a seat that was a bot
-from the first deal scores normally and can be an opponent worth beating. **A seat that
+from the start scores normally and can be an opponent worth beating. **A seat that
 becomes a bot mid-match should behave exactly like one that was a bot from the start.** The
 special case is what generated the hole, and the special case is not needed — the existing
 pin (`tests/engine/scoring.test.ts`, test "a vacated seat cannot cross the target or be named the
@@ -344,7 +344,7 @@ is no escape hatch because there is nothing to escape from yet.
 **Recommend: kept, shown, and frozen.** They already survive in `cumulativeScores` under the
 userId key; nothing needs to be stored, only rendered. Combined with Q3, a vacated seat's row
 carries a total that is *the person's frozen points plus the bot's points since takeover*,
-with the seat labelled as vacated — one row per seat, and the board sums to the hands played
+with the seat labelled as vacated — one row per seat, and the board sums to the rounds played
 again.
 
 ### Q5 — Coming back
@@ -353,7 +353,7 @@ again.
 |---|---|---|
 | **Never** (today) | Simple; the seat is settled once | Punishes a tunnel or a lift. A 61-second outage ends a 40-minute match for a paying-attention player, and there is no recourse. |
 | **Longer grace only** | Cheap | Moves the cliff without removing it. |
-| **Seat reclaimable for the rest of the match** | The kind thing, and nearly free here | **The rough-hand exploit** — leave when your cards are bad, let the bot eat the last place, come back for the next deal. Neutralised by the rules above: the abandonment is already recorded against the hand you left (Decisions table), and the points the bot earned in the meantime belong to the bot, not to you. There is nothing to farm. |
+| **Seat reclaimable for the rest of the match** | The kind thing, and nearly free here | **The rough-hand exploit** — leave when your cards are bad, let the bot eat the last place, come back for the next round. Neutralised by the rules above: the abandonment is already recorded against the round you left (Decisions table), and the points the bot earned in the meantime belong to the bot, not to you. There is nothing to farm. |
 | Reclaimable by anyone | Fills seats | Identity theft of a scoreboard row. Never. |
 
 **Recommend: reclaimable, by the same account, into the same seat, for as long as the match
@@ -389,9 +389,9 @@ one more caller of machinery that exists rather than a new mechanism.
 
 | Option | Consequence | Exploit |
 |---|---|---|
-| Abandoned hand rates as last place (today, Decisions table) | Quitting costs what losing costs | It costs *exactly* what losing costs, so quitting a hand you were losing anyway is free. BGA's answer to this is the extra −10. |
+| Abandoned round rates as last place (today, Decisions table) | Quitting costs what losing costs | It costs *exactly* what losing costs, so quitting a round you were losing anyway is free. BGA's answer to this is the extra −10. |
 | Nothing counts for anyone | Nobody is cheated by someone else's router | Every rated loss becomes escapable. The single worst option, and the one every source rejects. |
-| Survivors keep their rating for the hands they played (today) | Correct by P3 | None. |
+| Survivors keep their rating for the rounds they played (today) | Correct by P3 | None. |
 | ~~Add an escalating penalty on the record~~ **Rejected on #898** | Repeat quitters are handled where the problem actually is | Needs storage, and a false positive punishes someone's commute. Keep it a matchmaking cooldown, never a bigger rating hit. |
 
 ~~**Recommend: keep the Decisions table's rule unchanged, add nothing to the single incident, and put the
@@ -406,16 +406,16 @@ habit of them, is forgiven.
 
 The honest cost note that made this the safely-deferred item is now moot: `round_history` did
 gain the `abandoned` column (`shared/schema.ts`, written by `server/game/stats.ts`) — it feeds
-`GET /api/stats/history`'s own record of a hand, which #898 keeps — but no rolling count and
+`GET /api/stats/history`'s own record of a round, which #898 keeps — but no rolling count and
 no gate was ever built on it, and none will be.
 
 ### Q8 — What the standings should show
 
-The premise of the question — "the totals legitimately no longer sum to the hands played" —
+The premise of the question — "the totals legitimately no longer sum to the rounds played" —
 **stops being true if Q3 and Q4 are accepted.** That is the main reason to accept them: the
 alternative is building a persistent explanation for an anomaly that does not need to exist.
 
-**Recommend: one row per seat, always; totals always sum to the hands played; a vacated seat's
+**Recommend: one row per seat, always; totals always sum to the rounds played; a vacated seat's
 row carries the person's name marked as departed, and a total that is their frozen points plus
 the bot's points since takeover.** The winner is still stated as an engine player id, exactly
 as `CLAUDE.md` requires, and no client ever has to name `bot:<seat>` — the row it renders
@@ -431,16 +431,16 @@ match with a departed seat — because a scoreboard that silently fails to add u
 ## 6. The recommended policy, in one page
 
 1. **30 s a turn**, unchanged: the seat plays the minimum legal move, never well.
-2. **60 s disconnect grace**, unchanged in length. The hand continues. The *seat* shows the
+2. **60 s disconnect grace**, unchanged in length. The round continues. The *seat* shows the
    countdown for the whole window, not a banner for ten seconds of it.
 3. **After the grace the seat is vacated and labelled as vacated** — the person's name, marked
    as departed, rendered by each client in its own locale from a `vacated` flag.
-4. **The takeover plays the current hand out at minimum legal strength**, and only plays
-   properly from the next deal.
+4. **The takeover plays the current round out at minimum legal strength**, and only plays
+   properly from the next round.
 5. **The seat keeps scoring after takeover, as a bot seat** — exactly as a seat that was a bot
-   from the first deal does. It can never cross the target and can never be named the winner.
+   from the first round does. It can never cross the target and can never be named the winner.
 6. **Points won before leaving are kept, shown and frozen.**
-7. **The standings always sum to the hands played.** No explanatory footnote is needed, because
+7. **The standings always sum to the rounds played.** No explanatory footnote is needed, because
    there is no longer an anomaly to explain.
 8. **The seat is reclaimable by the same account for the life of the match.** `SEAT_RELEASED`
    answers only for a table that is finished or gone.
@@ -467,12 +467,12 @@ Sizes are the ticket scale used in the tracker.
 |---|---|---|---|---|
 | A | Seat shows the reconnect state for the whole grace | 10 s banner → persistent seat state + countdown | **S**, client only; server already sends `seconds`, `game:turn_deadline` is the precedent | Low |
 | B | Vacated seat is labelled as vacated | name unchanged → `vacated` flag on the sanitized player and `ScoreLine`, `t()` in three locales | **S** | Low; touches the sanitizer and two render sites |
-| C | Takeover plays the current hand at minimum strength | `useBot: true` at takeover → `false` until the hand ends | **S**, one boolean in `runBotTurn` (`server/game/gameTurn.ts`) | Low; needs a test that the seat still always resolves |
+| C | Takeover plays the current round at minimum strength | `useBot: true` at takeover → `false` until the round ends | **S**, one boolean in `runBotTurn` (`server/game/gameTurn.ts`) | Low; needs a test that the seat still always resolves |
 | D | Vacated seat scores as a bot seat | `accumulates` excludes it → excludes nothing | **S** in code (delete the exception added by #815's `botSeatsAtStart` for the vacate case), **M** in tests: the describe block "keys the table does not accumulate (vacated seats)" (`tests/engine/scoring.test.ts`) is written around the opposite rule and its intent has to be re-pinned, not just re-baselined | Medium — this is the row of the Decisions table's rationale that everyone has been reading as a decision |
 | E | Frozen pre-departure points are shown | seat row reads `bot:<seat>` total → row sums the person's frozen total and the seat's bot total | **S**, inside `resolveRoundEnd`'s `detailed` builder | Low |
 | F | Seat reclaimable for the life of the match | `releasedSeats` permanent → consulted only for a finished/disposed table | **M**; the rejoin path, the announcement both ways, and the AFK-rearm guard | Medium — this is the reconnection mechanics #820 explicitly deferred, so it is the one that most needs its own design pass |
 | G | Unanimous end-the-match vote after a vacancy | none → new vote, reusing the rematch gate's unanimity and abstention rules | **M**, server + one screen + locale keys | Medium |
-| H | Void a match abandoned before the first point | none → new branch at hand end | **S** | Low |
+| H | Void a match abandoned before the first point | none → new branch at round end | **S** | Low |
 | I | ~~Repeat-abandonment cooldown~~ | ~~none → new `abandoned` column on `round_history`, a rolling count, a matchmaking gate~~ | ~~**L**, and design-first: real accounts, `pg_dump` first~~ | **Rejected, 2026-09-03 (#898).** The `abandoned` column was built (it serves `GET /api/stats/history`), but no count and no gate. |
 
 **Unchanged by this recommendation:** the 30 s turn timer; the 60 s and 20 s grace lengths;
@@ -500,8 +500,8 @@ worked.
    with a persistent seat state and countdown driven by the existing `params.seconds`. (A)
 2. **Mark a vacated seat as vacated, in the player's own language** — a `vacated` flag on the
    sanitized player and `ScoreLine`, rendered via `t()` in all three locales. (B)
-3. **A taken-over seat finishes the hand at minimum legal strength** — the engine AI starts at
-   the next deal, not at the moment of takeover. (C)
+3. **A taken-over seat finishes the round at minimum legal strength** — the engine's bot starts at
+   the next round, not at the moment of takeover. (C)
 4. **A seat that becomes a bot scores like a seat that was born one** — remove the vacate
    exception from `accumulates`, and re-pin `tests/engine/scoring.test.ts` on the new rule. (D)
 5. **Show the points a departed player had already won** — the seat's row sums their frozen
@@ -531,7 +531,7 @@ worked.
 - [League of Legends Wiki — Surrendering (Remake)](https://leagueoflegends.fandom.com/wiki/Surrendering)
 - [Riot Games Support — Remake FAQ](https://support.riotgames.com/league-of-legends/gameplay/remake-faq)
 - [Steam community — Dota 2 abandon rules](https://steamcommunity.com/app/570/discussions/0/563660559683167393/)
-- [Steam community — Catan Universe, AI replacing a dropped player](https://steamcommunity.com/app/544730/discussions/0/6462188749583468037/)
+- [Steam community — Catan Universe, bot replacing a dropped player](https://steamcommunity.com/app/544730/discussions/0/6462188749583468037/)
 - [PokerNews glossary — Disconnect protection](https://www.pokernews.com/pokerterms/disconnect-protection.htm)
 
 **Claims I could not source, and am not asserting:** that online poker rooms withdrew

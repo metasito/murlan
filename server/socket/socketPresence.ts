@@ -126,7 +126,7 @@ export function registerFriendHandlers({ io, socket, userId }: PresenceContext) 
 }
 
 /**
- * The connect notice: a hand still held under the disconnect grace is resumed,
+ * The connect notice: a round still held under the disconnect grace is resumed,
  * and the account's friends learn it is here.
  *
  * Deliberately after every listener is registered — these awaits are exactly
@@ -235,7 +235,7 @@ export function registerDisconnect({ io, socket, userId }: PresenceContext) {
             return;
           }
 
-          // Whether this is a hand in progress, a finished table or a waiting
+          // Whether this is a round in progress, a finished table or a waiting
           // lobby is a question about the game, which lives in one instance's
           // memory — and not necessarily this one. Reading `activeGames` here
           // read every table held elsewhere as a lobby and released the seat.

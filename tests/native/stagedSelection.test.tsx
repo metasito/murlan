@@ -1,7 +1,7 @@
 // tests/native/stagedSelection.test.tsx — a play can be staged while somebody
 // else is thinking.
 //
-// With three opponents the viewer spends three-odd seconds a round holding a
+// With three opponents the viewer spends three-odd seconds a trick holding a
 // hand they were not allowed to touch, and then starts the turn clock from a blank
 // selection. Selection is now open at all times; only the submission is gated
 // on the turn, which GIOCA's staged play (`readStagedPlay`) already does.
@@ -223,7 +223,7 @@ function OfflineTable() {
   );
 }
 
-describe('an AI taking its turn offline', () => {
+describe('a bot taking its turn offline', () => {
   it('leaves the staged selection alone', async () => {
     const r = await render(
       <SafeAreaProvider initialMetrics={METRICS}>

@@ -1,4 +1,4 @@
-// A finished hand, stored as what was played and folded back into the state
+// A finished round, stored as what was played and folded back into the state
 // the table renders.
 //
 // Hand-free by construction: a replay shows what left each hand, never what
@@ -33,11 +33,11 @@ export interface ReplayDto {
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
-  /** Engine player ids in finishing order, as the hand ended. */
+  /** Engine player ids in finishing order, as the round ended. */
   finishingOrder: string[];
 }
 
-/** What the profile lists: enough to name a hand, without its move log. */
+/** What the profile lists: enough to name a round, without its move log. */
 export interface ReplaySummary {
   id: string;
   finishedAt: string;
@@ -48,7 +48,7 @@ export interface ReplaySummary {
 }
 
 /**
- * How long a finished hand stays replayable.
+ * How long a finished round stays replayable.
  *
  * Age, not "each player's newest N": a row belongs to up to four players, so a
  * per-player cap could not delete one without checking the other three. Lives
@@ -58,8 +58,8 @@ export interface ReplaySummary {
 export const REPLAY_RETENTION_DAYS = 14;
 
 /**
- * A hand cannot legally run this long — 54 cards, and a round of passes ends
- * the round. The cap is a server-memory bound against a hand that loops, not a
+ * A round cannot legally run this long — 54 cards, and enough passes end the
+ * trick. The cap is a server-memory bound against a round that loops, not a
  * game rule: past it the log is dropped and no replay is written.
  */
 export const MAX_REPLAY_MOVES = 1000;
@@ -108,7 +108,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
   const at = Math.max(-1, Math.min(index, last));
   const counts = at < 0 ? openingCounts(replay) : replay.moves[at].handCounts;
 
-  // The newest play at or before `at`, cleared once the round closed under it
+  // The newest play at or before `at`, cleared once the trick closed under it
   // — otherwise the next lead is drawn on top of a dead play.
   let pile: GameState["lastPlayedCombination"] = null;
   let pileSeat = -1;

@@ -197,14 +197,14 @@ export const roundHistory = pgTable("round_history", {
    *
    * Kept here rather than derived later because it cannot be: `user_ratings`
    * holds only the current rating, and `ratingDeltas()` needs every seat's
-   * rating and game count as they were *before* the match. Once the match is
+   * rating and match count as they were *before* the match. Once the match is
    * written those inputs are gone.
    */
   ratingDelta: integer("rating_delta"),
   /**
-   * This row is the seat the player walked out on, scored as a forfeit
+   * This row is the seat the player walked out on, scored as an abandonment
    * (`GameResult.abandoned`, lib/achievements.ts) rather than played to its
-   * placement — docs/GAME-RULES.md § Decisions "Abandoning a hand". Defaulted rather than
+   * placement — docs/GAME-RULES.md § Decisions "Abandoning a round". Defaulted rather than
    * nullable: every row written before this column existed was not one, and
    * `false` says that outright instead of leaving it to a reader's `?? false`.
    * The matchmaking cooldown (docs/DISCONNECT-POLICY.md §6.12) counts

@@ -32,7 +32,7 @@ function timeoutFromEnv(name: string, defaultMs: number): number {
 export const afkTimeoutMs = () => timeoutFromEnv("MURLAN_AFK_TIMEOUT_MS", TURN_TIMEOUT_MS);
 export const disconnectGraceMs = () => timeoutFromEnv("MURLAN_DISCONNECT_GRACE_MS", 60_000);
 /**
- * Shorter than the in-game grace on purpose. A player who drops mid-hand is
+ * Shorter than the in-game grace on purpose. A player who drops mid-round is
  * one everyone is already waiting for, and a minute is worth it. A seat in a
  * lobby is one nobody has arrived for yet, so holding it that long blocks the
  * room from filling — this only has to outlast a network hiccup.
@@ -56,14 +56,14 @@ export const seatHoldMs = () => timeoutFromEnv("MURLAN_SEAT_HOLD_MS", 120_000);
 export const stateAckTimeoutMs = () => timeoutFromEnv("MURLAN_STATE_ACK_TIMEOUT_MS", 5_000);
 // Paced so a bot seat reads as thinking rather than as an instant reflex.
 // Tunable for tests, which otherwise pay it on every move of every table a
-// disconnect hands over to the AI.
+// disconnect hands over to the bot.
 export const botMoveDelayMs = () => timeoutFromEnv("MURLAN_BOT_MOVE_DELAY_MS", 1_200);
 export const sweepIntervalMs = () => timeoutFromEnv("MURLAN_SWEEP_INTERVAL_MS", 5 * 60_000);
 /**
  * How long a matchmade table waits, once full, before dealing itself.
  *
  * Long enough that the last arrival sees the table they joined rather than a
- * hand already in flight, short enough that nobody reads it as a stall.
+ * round already in flight, short enough that nobody reads it as a stall.
  */
 export const autoStartDelayMs = () => timeoutFromEnv("MURLAN_AUTOSTART_DELAY_MS", 4_000);
 /** One entry per room, deleted when it fires or the room stops being full. */

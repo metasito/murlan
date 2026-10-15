@@ -48,8 +48,8 @@ export interface OfflineSetup {
   playerCount: 2 | 3 | 4;
   gameMode: "free_for_all" | "teams";
   /**
-   * "match" (first to the target score, several hands with an exchange
-   * between each — the lobby's default) or "single" (one hand, quick). Only
+   * "match" (first to the target score, several rounds with an exchange
+   * between each — the lobby's default) or "single" (one round, quick). Only
    * "single" needs a click; "match" is the pre-selected default.
    */
   format?: "match" | "single";

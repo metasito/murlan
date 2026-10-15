@@ -24,8 +24,8 @@ export function readPersistedPlayerMap(storedMap: unknown): Record<number, strin
  * pairs, Sets as plain arrays. Its four fields are the live collections of the
  * same names on `OnlineGameState`, and the instance taking a table over reads
  * them from here and nowhere else — they are what make a vacated seat
- * reclaimable, the end-match vote reachable, the walkout a forfeit and the
- * takeover weak for the rest of the hand (docs/GAME-RULES.md § Decisions).
+ * reclaimable, the end-match vote reachable, the walkout an abandonment and the
+ * takeover weak for the rest of the round (docs/GAME-RULES.md § Decisions).
  */
 export interface PersistedSeats {
   vacatedSeats: [number, { userId: string; username: string }][];
@@ -84,12 +84,12 @@ export function readPersistedSeats(stored: unknown): PersistedSeats {
  * current rules — rehydrating it deals a silently corrupt game instead of
  * crashing, so it must be rejected, not restored.
  */
-export const GAME_SCHEMA_VERSION = 2;
+export const GAME_SCHEMA_VERSION = 3;
 
-export type HandFlags = Record<number, { bomb: boolean; joker: boolean }>;
+export type RoundFlags = Record<number, { bomb: boolean; joker: boolean }>;
 
 /**
- * The match bookkeeping that outlives the hand on the table, declared once:
+ * The match bookkeeping that outlives the round on the table, declared once:
  * this schema is what a stored row is parsed with on restore, and
  * `PersistedMatch` is the shape the write side is held to. A new field is
  * added here and nowhere else.
@@ -121,7 +121,7 @@ export const persistedMatchSchema = z.object({
     .min(1, "max players missing"),
   // Defaulted rather than required: a row written before the field existed
   // restores as a match with no rounds behind it, which costs the results
-  // board one number and never the hand.
+  // board one number and never the round.
   roundsPlayed: z.number().int().min(0).catch(0).default(0),
   endedByVote: z.boolean().catch(false).default(false),
 }, { required_error: "no match state", invalid_type_error: "no match state" });
@@ -141,7 +141,7 @@ export type PersistedMatch = z.infer<typeof persistedMatchSchema>;
 export interface PersistedEnvelope<S> {
   schemaVersion: number;
   gameState: S;
-  handFlags: HandFlags;
+  roundFlags: RoundFlags;
   dealFirstSeat: number;
   /**
    * The room's six-character join code. Stored here as well as in `rooms.code`
@@ -156,13 +156,13 @@ export interface PersistedEnvelope<S> {
 
 export function packPersistedState<S extends object>(
   gameState: S,
-  handFlags: HandFlags,
+  roundFlags: RoundFlags,
   dealFirstSeat: number,
   joinCode: string,
   match: PersistedMatch,
   seats: PersistedSeats
 ): PersistedEnvelope<S> {
-  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, handFlags, dealFirstSeat, joinCode, match, seats };
+  return { schemaVersion: GAME_SCHEMA_VERSION, gameState, roundFlags, dealFirstSeat, joinCode, match, seats };
 }
 
 export type PersistedRestore<S> =
@@ -183,9 +183,9 @@ export const persistedEnvelopeSchema = z.object({
     required_error: "no game state",
     invalid_type_error: "no game state",
   }),
-  handFlags: z.record(z.unknown(), {
-    required_error: "no hand flags",
-    invalid_type_error: "no hand flags",
+  roundFlags: z.record(z.unknown(), {
+    required_error: "no round flags",
+    invalid_type_error: "no round flags",
   }),
   dealFirstSeat: z
     .number({ required_error: "no deal rotation", invalid_type_error: "no deal rotation" })
@@ -205,7 +205,7 @@ export const persistedEnvelopeSchema = z.object({
  * Reads a stored blob back, or says why it cannot be. The version stamp is
  * checked before the parse — it answers "may this row be restored at all",
  * which a field schema cannot — and the schema's first complaint becomes the
- * reason. `gameState` and `handFlags` are only checked for being objects and
+ * reason. `gameState` and `roundFlags` are only checked for being objects and
  * then cast, and `match.playerMap` and `seats` are filtered entry by entry
  * rather than refused: a wholly malformed map reads back as an empty one, which
  * the caller's seat check turns into UNAUTHORIZED.
@@ -225,7 +225,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
   }
   const d = parsed.data as {
     gameState: S;
-    handFlags: HandFlags;
+    roundFlags: RoundFlags;
     dealFirstSeat: number;
     joinCode: string;
     match: PersistedMatch;
@@ -234,7 +234,7 @@ export function unpackPersistedState<S>(persisted: unknown): PersistedRestore<S>
   return {
     ok: true,
     gameState: d.gameState,
-    handFlags: d.handFlags,
+    roundFlags: d.roundFlags,
     dealFirstSeat: d.dealFirstSeat,
     joinCode: d.joinCode,
     match: d.match,

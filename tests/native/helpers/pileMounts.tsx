@@ -73,7 +73,7 @@ export function fourTricks(name: string, preference: 'on' | 'off') {
 
   const table = (s: GameState) => (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} roundScores={{}} />
+      <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} placementPoints={{}} />
     </SafeAreaProvider>
   );
 

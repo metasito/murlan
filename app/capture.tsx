@@ -8,7 +8,7 @@
 // `lib/captureStates.ts` names them; this reaches them.
 //
 // It renders <GameTable> from a state built in memory rather than seeding a
-// save and navigating to `/game`, because `/game` runs the AI turn loop: a save
+// save and navigating to `/game`, because `/game` runs the bot turn loop: a save
 // with the turn on a bot is a bot's turn for about a second — long enough to
 // navigate to and not to photograph. Nothing here advances the turn unless the
 // swing knob is pressed.

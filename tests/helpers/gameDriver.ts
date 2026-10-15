@@ -43,8 +43,8 @@ export interface RoomState {
 }
 
 /**
- * Plays every given human seat to the end of the hand: the forced-minimum
- * grouped play on a new round, a pass otherwise, and an immediate valid
+ * Plays every given human seat to the end of the round: the forced-minimum
+ * grouped play on a new trick, a pass otherwise, and an immediate valid
  * giveback the instant a seat is the exchange winner. Resolves with the
  * `game:round_over` payload.
  *

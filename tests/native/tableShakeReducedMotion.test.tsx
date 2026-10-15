@@ -67,7 +67,7 @@ import { fireLanding, useFeedbackOnTimeline } from './helpers/landing';
 const SENTINEL = 0.918273645;
 
 // `roundOver` stays false for the whole probe, so `roundOutcomeFor` (which
-// reads `players`/`isTeamMode`/`roundScores`) is never reached — these are
+// reads `players`/`isTeamMode`/`placementPoints`) is never reached — these are
 // here only to satisfy `TableFeedbackState`, empty and neutral.
 const idleState = () => ({
   isMyTurn: false,
@@ -82,7 +82,7 @@ const idleState = () => ({
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: undefined,
   scale: 1,
 });

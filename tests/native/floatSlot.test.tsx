@@ -204,7 +204,7 @@ describe('the table puts up the viewer’s own pass', () => {
     await r.unmount();
   });
 
-  it('when the viewer’s pass is the one that closes the round', async () => {
+  it('when the viewer’s pass is the one that closes the trick', async () => {
     const lastToAnswer = { ...LED, currentTurnIndex: 2, passCount: 2 };
     const closed = { ...LED, currentTurnIndex: 1, passCount: 0, lastPlayedCombination: null, trickWinner: 1 };
     const r = await render(table(lastToAnswer, 2));

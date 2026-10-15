@@ -107,7 +107,7 @@ describe("playButtonLabel", () => {
     );
   });
 
-  test("the opening play without the start card is told exactly that", () => {
+  test("the opening play without the opening card is told exactly that", () => {
     // The empty table used to report "too low" here, contradicting the banner
     // in the middle of the same screen.
     assert.equal(

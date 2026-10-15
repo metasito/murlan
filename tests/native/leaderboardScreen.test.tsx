@@ -1,5 +1,5 @@
 // tests/native/leaderboardScreen.test.tsx — the viewer's own rating on the
-// ladder says when it is loading or failed, and a finished hand refreshes it.
+// ladder says when it is loading or failed, and a finished round refreshes it.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';

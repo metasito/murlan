@@ -57,10 +57,10 @@ const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean,
     finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
   };
-  const roundScores = scored ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
+  const placementPoints = scored ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} roundScores={roundScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={state} placementPoints={placementPoints} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
 };
@@ -107,7 +107,7 @@ describe("a round's outcome on the felt", () => {
   // Seat 3 closes every case: the viewer's partner in teams, an opponent otherwise.
   it.each(CASES)(
     '$outcome (teams: $teams): once the last card lands, $motes motes at the winner, a shake only for a win, the closing seat off move, ' +
-      'the closing card lit only for a win the winning side closed, the lamp turned to the winner for a loss or a neutral finish and dimmed only for a loss; ' +
+      'the closing card lit only for a win the winning team closed, the lamp turned to the winner for a loss or a neutral finish and dimmed only for a loss; ' +
       'the next deal puts out the card and gives the lamp back',
     async (c) => {
       const { r, motes, trauma, target, level, aimBefore, motesBeforeLanding, litBeforeLanding, seatsBeforeLanding } = await closeRound(c);

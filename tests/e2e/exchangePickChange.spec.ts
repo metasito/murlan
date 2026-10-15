@@ -19,7 +19,7 @@ const FIVE_SPOKEN = "5 di Cuori";
 const NINE_SPOKEN = "9 di Fiori";
 
 /**
- * A hand mid-exchange, with the viewer as the winner choosing a giveback —
+ * A round mid-exchange, with the viewer as the winner choosing a giveback —
  * seeded rather than played, the same way tests/e2e/a11yOverlays.spec.ts
  * reaches this phase. `lib/offlineSave.ts` is the app's own restore path, so
  * this arrives at the exchange through the same code an interrupted match does.

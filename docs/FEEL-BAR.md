@@ -396,7 +396,7 @@ a live table does between rounds while waiting for the next one to start.
   product decision publicly stated in seconds and rounds-per-hour, not an implementation
   afterthought.
 - Frame check: at any point sampled during an idle wait between hands, the elapsed time
-  since the last hand ended is under the table's own between-round cadence (translated to
+  since the last round ended is under the table's own between-round cadence (translated to
   our own pace, comfortably under Evolution's fastest published 25s) — an idle wait longer
   than a real product's own full round-to-round cycle has drifted from "a lull" into
   "stalled."

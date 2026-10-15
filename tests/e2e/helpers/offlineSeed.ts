@@ -1,6 +1,6 @@
 // Reaching a rendered table without playing to one.
 //
-// The lobby route — Offline, player count, mode, Inizia Partita, then the deal
+// The lobby route — Offline, player count, mode, "Inizia Partita", then the deal
 // — is four clicks and an animation before a spec can measure anything, and on
 // a loaded runner it is where the whole test budget goes (#152). A spec that
 // only needs a table on screen should not be paying for it.
@@ -87,7 +87,7 @@ export function offlineGameSave(
       roundOver: false,
       finishingOrder: [],
       // Past the opening, so nothing is waiting on the 3 of spades and the
-      // table renders as a hand in progress rather than a first move.
+      // table renders as a round in progress rather than a first move.
       firstPlayMade: true,
     },
     match: {

@@ -4,7 +4,7 @@
 // rounds keep completing and the match itself never ends, so the only
 // symptom on record was a bare 300s Playwright timeout.
 //
-// This harness plays real offline matches — the real engine, the real bot AI
+// This harness plays real offline matches — the real engine, the real bot
 // on every seat, no browser — over many seeds and asserts every one reaches
 // `match.over`. It is the missing guard rotonmeta's comment on #770 asked
 // for, run standalone rather than folded into `driveGameToCompletion`: that
@@ -34,7 +34,7 @@
 //     stalling seed, not just the first.
 //   - `BotTurnKeyCollision` — two different engine states hashing to the same
 //     `app/game.tsx` `botTurnKey`, so a real render would never reschedule
-//     the second AI decision; collected the same way as stalls.
+//     the second bot decision; collected the same way as stalls.
 //   - a round past `ROUND_MOVES_CEILING` — not a stall (it still reaches
 //     `roundOver`), but a round that takes an order of magnitude more moves
 //     than any this file has measured is the shape that costs real-world
@@ -53,11 +53,11 @@ import {
 
 const SOAK_START = Number(process.env.MURLAN_MATCH_SOAK_START ?? 1);
 
-/** One AI opponent per seat past the first — this repo's "bot" lobby default
+/** One bot opponent per seat past the first — this repo's "bot" lobby default
  * (`app/lobby.tsx`'s `buildDefaultPlayers`), and the shape #770's second
  * review named: a human seat exists specifically so the key can go null
  * when it holds the turn, and every remaining seat is `"bot"` so the key
- * chase actually has AI-owned turns to compare. */
+ * chase actually has bot-owned turns to compare. */
 function tableOf(playerCount: number): OfflinePlayerSetup[] {
   return Array.from({ length: playerCount }, (_, i) => ({
     name: i === 0 ? "You" : `Bot${i}`,
@@ -72,7 +72,7 @@ function tableOf(playerCount: number): OfflinePlayerSetup[] {
  * merely *slow* rather than stuck still terminates, so `MatchStallError`
  * never fires for it, and the only trace it leaves is real-world wall clock —
  * exactly what a headless run cannot see for itself. Measured directly
- * (2-player, free_for_all, AI-vs-AI / contesting-human-vs-AI /
+ * (2-player, free_for_all, bot-vs-bot / contesting-human-vs-bot /
  * contesting-both, 8,000 seeds each): the worst round across all three
  * needed 39 moves. 150 is four times that ceiling with zero seeds this file
  * has ever produced coming within shouting distance of it, so a seed that
@@ -168,7 +168,7 @@ test("an offline 2-player match reaches its target over many shuffles", () => {
 // the AFK floor `useBot:false` gives — #770's own recorded stall
 // (resultActions.spec.ts, run 33556887782) was driven by
 // tests/e2e/helpers/bot.ts's always-contesting bot, not an AFK one, and
-// nothing in this file's default AI-vs-AI seeds plays that shape either.
+// nothing in this file's default bot-vs-bot seeds plays that shape either.
 test("an offline 2-player match reaches its target when the human seat contests every round", () => {
   soakMatches(2, Number(process.env.MURLAN_MATCH_SOAK_SEEDS ?? 200), [true, false]);
 });

@@ -141,7 +141,7 @@ export function teamsSizeRefusal(
  * Re-sends `room:state` to one rejoining player. The client's only route back
  * into the game screen is `room` -> `/(online)/room` -> `gameState` ->
  * `/(online)/game`, so replying with `game:state` alone strands the player on
- * the lobby holding a live hand. A failed roster read must cost the roster and
+ * the lobby holding a live round. A failed roster read must cost the roster and
  * not the reply.
  */
 export async function emitRoomStateTo(
@@ -188,7 +188,7 @@ export async function announceRejoin(
   const seatIndex = seatOfUser(game, userId);
   const username = seatName(game, seatIndex);
   // Caught, not propagated: the handler's blanket catch would turn a failed
-  // roster refresh into a SERVER_ERROR that forfeits a live game.
+  // roster refresh into a SERVER_ERROR that costs a live game.
   await emitRoomStateTo(io, userId, roomId, game).catch((err: unknown) =>
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
@@ -200,9 +200,9 @@ export async function announceRejoin(
     emitMatchState(io, userRoom(userId), game);
   } else {
     // A rejoin at the results screen: everyone still in the room got
-    // `game:round_over` when the hand ended, but this socket was not one of them.
+    // `game:round_over` when the round ended, but this socket was not one of them.
     // Re-sent to this account only, so a client that never left is not told
-    // its own hand twice.
+    // its own round twice.
     if (game.lastRoundOverPayload) io.to(userRoom(userId)).emit("game:round_over", game.lastRoundOverPayload);
     // Even without one: a restart restores no votes, and the client keeps its
     // tally across a finished table re-sent.

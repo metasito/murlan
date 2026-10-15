@@ -31,7 +31,7 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
 
   const gameMode: GameMode = "free_for_all";
 
-  /** Writes one recorded hand for `userId`, `abandoned` as given. */
+  /** Writes one recorded round for `userId`, `abandoned` as given. */
   async function recordRound(userId: string, abandoned: boolean, finishedAt: Date) {
     const { recordGameResult } = await import("../../server/game/stats.ts");
     const result: GameResult = {
@@ -47,7 +47,7 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
     await recordGameResult([result], gameMode, finishedAt);
   }
 
-  test("an abandoned hand is recorded as such on its own row", async () => {
+  test("an abandoned round is recorded as such on its own row", async () => {
     const { user } = await register(server, "abandonrecord_flag_user");
     await recordRound(user.id, true, new Date());
 
@@ -59,7 +59,7 @@ describe("the abandonment record", { skip: hasDatabase() ? false : skipMessage()
     assert.equal(res.rows[0]!.abandoned, true);
   });
 
-  test("a played-out hand is recorded as not abandoned", async () => {
+  test("a played-out round is recorded as not abandoned", async () => {
     const { user } = await register(server, "abandonrecord_played_user");
     await recordRound(user.id, false, new Date());
 

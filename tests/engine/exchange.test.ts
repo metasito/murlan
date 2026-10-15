@@ -76,7 +76,7 @@ describe("processExchangeChoice", () => {
     assert.deepEqual(next.players[0].hand.map((card) => card.id), ["K_spades"]);
     assert.ok(next.players[1].hand.some((card) => card.id === "4_hearts"));
     assert.equal(next.exchangePhase?.active, false);
-    assert.equal(next.currentTurnIndex, 1, "the loser leads the new hand");
+    assert.equal(next.currentTurnIndex, 1, "the loser leads the new round");
     assert.equal(next.lastPlayedBy, 1);
   });
 
@@ -228,7 +228,7 @@ describe("REGRESSION (#784): exchangePhase.active clears after exactly one giveb
   });
 });
 
-describe("hand-to-hand exchange setup", () => {
+describe("round-to-round exchange setup", () => {
   const setup = [0, 1, 2, 3].map((i) => ({
     name: `p${i}`,
     type: "human" as const,
@@ -242,7 +242,7 @@ describe("hand-to-hand exchange setup", () => {
       ]);
       const phase = state.exchangePhase!;
       if (phase.twoJokerException) {
-        assert.equal(phase.active, false, "no swap happens on the two-joker exception");
+        assert.equal(phase.active, false, "no exchange happens on the two-joker exception");
         assert.equal(getStartingPlayerAfterExchange(state), phase.winnerIdx);
         continue;
       }

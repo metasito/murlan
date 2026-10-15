@@ -137,9 +137,9 @@ export interface SimulateMatchOptions {
   /** Moves (plays + passes + exchange choices) in one round before that round is a stall. */
   maxMovesPerRound?: number;
   /**
-   * Per-seat AI choice for a seat that is not `"bot"` (a bot seat always plays
+   * Per-seat bot choice for a seat that is not `"bot"` (a bot seat always plays
    * through `offlineBotMove`), indexed like `players`. Defaults to the real
-   * AI (`botChoosePlay`). `false` plays the forced-minimum move
+   * Bot (`botChoosePlay`). `false` plays the forced-minimum move
    * instead — the floor `autoMoveForSeat` gives an AFK human, which always
    * passes once it is not leading a round (`lib/game/autoMove.ts`). That is not
    * what an engaged human or `tests/e2e/helpers/bot.ts`'s own bot look like:
@@ -162,7 +162,7 @@ export interface SimulateMatchOptions {
    */
   collectBotTurnKeyCollisions?: BotTurnKeyCollision[];
   /**
-   * Forwarded to every AI seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
+   * Forwarded to every bot seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
    * `AutoMoveContext.rng`). Absent means that function's own default —
    * `Math.random`, unseeded. A caller measuring outcomes across many seeds
    * (rather than only checking that a match terminates) wants this seeded
@@ -298,7 +298,7 @@ export class HandNotShrunkError extends Error {
 }
 
 /**
- * `app/game.tsx`'s own key for "does the AI turn effect need to reschedule",
+ * `app/game.tsx`'s own key for "does the bot turn effect need to reschedule",
  * reproduced exactly: seat, pass count, and the table's last combination —
  * gated on `!roundOver`, `!exchangePhase.active` and the acting seat being
  * `"bot"`, matching that file's `botTurnKey`. `exchangeAnnouncing` is not
@@ -318,7 +318,7 @@ function computeBotTurnKey(state: GameState): string | null {
 }
 
 /** Everything the key leaves out — if this differs while the key doesn't,
- * a real render would skip the reschedule a new AI decision needs. */
+ * a real render would skip the reschedule a new bot decision needs. */
 function handFingerprint(state: GameState): string {
   return state.players.map((p) => p.hand.map((c) => c.id).join(",")).join("|");
 }
@@ -347,7 +347,7 @@ export interface BotTurnKeyCollision {
 
 /**
  * Plays one full offline match — every round it takes to reach
- * `match.over` — against the real engine and the real bot AI on both seats,
+ * `match.over` — against the real engine and the real bot on both seats,
  * with no browser and no timers. Throws `MatchStallError` the moment either
  * bound is crossed, carrying the rounds already played so the caller can
  * turn the seed into a fixture.

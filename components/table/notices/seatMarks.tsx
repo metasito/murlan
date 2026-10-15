@@ -9,7 +9,7 @@ const MARK_SLOT = 120;
 
 /**
  * A pass leaves no trace on the felt, so this mark is the only thing that says a seat is out of the
- * current round. It stands until somebody plays, which is when `passedSeats` (flightPhysics.ts)
+ * current trick. It stands until somebody plays, which is when `passedSeats` (flightPhysics.ts)
  * stops returning that seat. `disc` is the box it is placed against.
  */
 export function PassedMark({ side, disc, scale }: { side: "top" | "side"; disc: number; scale: number }) {

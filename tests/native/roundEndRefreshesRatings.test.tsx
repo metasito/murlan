@@ -1,4 +1,4 @@
-// tests/native/roundEndRefreshesRatings.test.tsx — a finished hand marks every
+// tests/native/roundEndRefreshesRatings.test.tsx — a finished round marks every
 // cached figure it can have moved as stale, the ladder's included.
 import { describe, it, expect, jest } from '@jest/globals';
 import React from 'react';

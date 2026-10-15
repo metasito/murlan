@@ -24,7 +24,7 @@ const state = {
   finishingOrder: [],
   players: [],
   isTeamMode: false,
-  roundScores: {},
+  placementPoints: {},
   viewerId: "viewer",
   scale: 1,
 };

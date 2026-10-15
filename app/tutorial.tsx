@@ -191,7 +191,7 @@ function buildExchangeState(t: TFn): GameState {
 
 // Built with the current `t` on every render (via useMemo in the screen
 // component) rather than frozen at import time, so every string — including
-// the AI's reported moves and the success narratives — follows a live
+// the bot's reported moves and the success narratives — follows a live
 // language change with no app restart.
 function buildBeats(t: TFn): Beat[] {
   return [
@@ -774,7 +774,7 @@ export default function TutorialScreen() {
 
         {!beatDone ? (
           <MenuButton
-            label={t("tutorial.returnCard")}
+            label={t("tutorial.giveback")}
             onPress={() => submitExchange(beat)}
             disabled={selectedIds.size === 0}
             icon={<Ionicons name="swap-horizontal" size={18} color={Colors.bg} />}

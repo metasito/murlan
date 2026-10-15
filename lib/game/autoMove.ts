@@ -19,16 +19,16 @@ import type { GameState, Combination } from "./gameEngine.ts";
 
 /**
  * Achievement bookkeeping: the engine has no notion of "did this seat play a
- * bomb/joker this hand", so every path that actually plays a combination has
+ * bomb/joker this round", so every path that actually plays a combination has
  * to update it here, or a forced move (most commonly an AFK-forced lone joker)
  * silently under-counts the purist / iron_will / wild_card achievements.
  */
 export function recordPlayFlags(
-  handFlags: Record<number, { bomb: boolean; joker: boolean }>,
+  roundFlags: Record<number, { bomb: boolean; joker: boolean }>,
   seat: number,
   combo: Combination
 ) {
-  const flags = (handFlags[seat] ??= { bomb: false, joker: false });
+  const flags = (roundFlags[seat] ??= { bomb: false, joker: false });
   if (combo.type === "bomb") flags.bomb = true;
   if (combo.cards.some((c) => c.isJoker)) flags.joker = true;
 }
@@ -36,7 +36,7 @@ export function recordPlayFlags(
 /**
  * Safety valve: the exchange winner holds no card they are allowed to give
  * back. Nobody — human or bot — can satisfy the phase, so it is closed and the
- * hand continues. Without this the whole table sits behind the exchange
+ * round continues. Without this the whole table sits behind the exchange
  * overlay forever.
  */
 export function resolveStuckExchange(state: GameState): GameState {
@@ -50,9 +50,9 @@ export function resolveStuckExchange(state: GameState): GameState {
 export interface AutoMoveContext {
   /**
    * Mutated in place, as the achievement counters are read off it after the
-   * hand. Absent offline, which awards none.
+   * round. Absent offline, which awards none.
    */
-  handFlags?: Record<number, { bomb: boolean; joker: boolean }>;
+  roundFlags?: Record<number, { bomb: boolean; joker: boolean }>;
   /** Records the move for a replay log. Absent offline, which keeps none. */
   onMove?: (seat: number, combo: Combination | null, next: GameState) => void;
   /**
@@ -67,7 +67,7 @@ export interface AutoMoveContext {
 /**
  * One automated action for a seat, or null when the seat cannot act at all.
  *
- * `useBot` picks the real engine AI (a seat with nobody behind it), otherwise
+ * `useBot` picks the real engine bot (a seat with nobody behind it), otherwise
  * the minimum legal move — an AFK human should not be played *well* on their
  * behalf.
  */
@@ -91,7 +91,7 @@ export function autoMoveForSeat(
   if (!player || player.hand.length === 0) return null;
 
   const isNewTrick = state.lastPlayedCombination === null;
-  // The start card is only mandatory for the very first play of the hand, and
+  // The opening is only mandatory for the very first play of the round, and
   // only for the seat actually holding it.
   const startCard = !state.firstPlayMade ? state.startCard : undefined;
   const requireCard = startCard
@@ -117,11 +117,11 @@ export function autoMoveForSeat(
       knownOpponentExchangeCard(state.exchangePhase, seat)
     );
     if (combo) {
-      if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
+      if (ctx.roundFlags) recordPlayFlags(ctx.roundFlags, seat, combo);
       return logged(combo, processPlay(state, combo));
     }
     if (!isNewTrick) return logged(null, processPass(state));
-    // A new round cannot be passed — fall through to the forced minimum play.
+    // A new trick cannot be passed — fall through to the forced minimum play.
   }
 
   if (isNewTrick) {
@@ -131,7 +131,7 @@ export function autoMoveForSeat(
     if (!card) return null;
     const combo = buildCombination([card]);
     if (!combo) return null;
-    if (ctx.handFlags) recordPlayFlags(ctx.handFlags, seat, combo);
+    if (ctx.roundFlags) recordPlayFlags(ctx.roundFlags, seat, combo);
     return logged(combo, processPlay(state, combo));
   }
 

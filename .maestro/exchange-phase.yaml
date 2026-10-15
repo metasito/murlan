@@ -12,21 +12,21 @@
 # first round. The match format is the lobby's own default match length
 # (`app/lobby.tsx`'s `matchLength` state starts at `"match"`), so this only
 # adds the format tile's own name over offline-game.yaml's flow — not a
-# second play strategy. One hand is enough: `dealFrom` (context/GameContext.tsx,
+# second play strategy. One round is enough: `dealFrom` (context/GameContext.tsx,
 # called by both `startNextRound` and `startNewMatch`) builds `exchangePhase`
 # synchronously with the deal.
 #
 # The ceremony's own overlay (`<ExchangeLegs>`, testID `exchange-announce`)
-# is what ends hand 1's pass loop below: the table deals hand 2 on its own
+# is what ends round 1's pass loop below: the table deals round 2 on its own
 # clock, so no command marks the moment it fires.
 # `context/GameContext.tsx`'s `E2E_EXCHANGE_HOLD` is the authority on how
 # long that hold lasts and why; not repeated here. What the exchange
 # *decides* is asserted by the unit tests, which can see it — this flow only
 # proves the overlay itself paints on a real device.
 #
-# This flow does not play the second hand out: a dealt hand with `btn-passa`
+# This flow does not play the second round out: a dealt round with `btn-passa`
 # live is what proves the match moved on rather than ending, and that is the
-# whole claim. Costing this flow only one hand over offline-game.yaml's own
+# whole claim. Costing this flow only one round over offline-game.yaml's own
 # budget is deliberate — #823 is open on
 # wall-clock already too slow to gate a PR.
 #
@@ -50,7 +50,7 @@ appId: "${MAESTRO_APP_ID}"
           notVisible: "Salta il tutorial"
           timeout: 30000
 
-# --- Lobby: offline vs AI, 2 players, match format ("Match") ---
+# --- Lobby: offline vs bots, 2 players, match format ("Match") ---
 - assertVisible: "Offline"
 - tapOn: "Offline"
 - assertVisible: "Partita.*"
@@ -71,7 +71,7 @@ appId: "${MAESTRO_APP_ID}"
       id: "game-table"
     timeout: 90000
 
-# --- Hand 1: opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
+# --- Round 1: opening move, always on iOS, and on Android only if this seat was dealt the forced opener ---
 - extendedWaitUntil:
     visible:
       id: "btn-passa"
@@ -96,8 +96,8 @@ appId: "${MAESTRO_APP_ID}"
           id: "btn-gioca"
           waitToSettleTimeoutMs: 500
 
-# --- Hand 1: pass whenever legal, until the table deals hand 2 and its exchange shows ---
-# `btn-passa` stays drawn, disabled, through the table's ending, so it cannot mark the hand's end.
+# --- Round 1: pass whenever legal, until the table deals round 2 and its exchange shows ---
+# `btn-passa` stays drawn, disabled, through the table's ending, so it cannot mark the round's end.
 - repeat:
     times: 45
     while:
@@ -109,7 +109,7 @@ appId: "${MAESTRO_APP_ID}"
           optional: true
           waitToSettleTimeoutMs: 500
 
-# --- Hand 2: a "Match" is not over after one hand, so the table deals the next one itself ---
+# --- Round 2: a "Match" is not over after one round, so the table deals the next one itself ---
 - extendedWaitUntil:
     visible:
       id: "exchange-announce"
@@ -131,7 +131,7 @@ appId: "${MAESTRO_APP_ID}"
       id: "exchange-announce"
     timeout: 30000
 
-# --- Confirm the match moved on rather than ending: a fresh, playable hand ---
+# --- Confirm the match moved on rather than ending: a fresh, playable round ---
 - extendedWaitUntil:
     visible:
       id: "btn-passa"

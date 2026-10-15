@@ -34,10 +34,10 @@ import {
  * new socket here.
  */
 process.env.MURLAN_AFK_TIMEOUT_MS = "400";
-// Long enough that driving a whole hand to game:over on the AFK path (used by
+// Long enough that driving a whole round to game:over on the AFK path (used by
 // the #808 test below, where the disconnected seat is forced through every
 // one of its own turns) never races the seat's own disconnect-grace vacate —
-// `handleRoundOver` cancels that timer once the hand actually ends.
+// `handleRoundOver` cancels that timer once the round actually ends.
 process.env.MURLAN_DISCONNECT_GRACE_MS = "20000";
 // The reconnect loops below buy a ticket every few hundred milliseconds.
 process.env.MURLAN_TICKET_RATE_LIMIT = "1000";
@@ -412,9 +412,9 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       await startGame(table);
       // Stop the room's clock before reading the row back. The read imports
       // the database module for the first time, which takes several AFK
-      // windows at 400ms — long enough for the hand to auto-pass its way into
+      // windows at 400ms — long enough for the round to auto-pass its way into
       // vacating a seat, and a vacated seat plays at BOT_MOVE_DELAY_MS. What
-      // gets rehydrated below is then a hand that is already over, and the
+      // gets rehydrated below is then a round that is already over, and the
       // table is disposed before the assertions can look at it.
       const { clearRoomTimers } = await import("../../server/game/gameTimers.ts");
       clearRoomTimers(room.roomId);
@@ -448,7 +448,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
     }
   });
 
-  // ── RES-03: a cosmetic DB failure must not forfeit a live seat ──────────
+  // ── RES-03: a cosmetic DB failure must not cost a live seat ──────────
 
   /**
    * `emitRoomStateTo` re-sends the roster, which costs two DB reads the rejoin
@@ -613,7 +613,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   /**
-   * The window between two rounds — the hand is over, the next has not been
+   * The window between two rounds — the round is over, the next has not been
    * dealt — is the one where a drop used to cost the seat outright, with none
    * of the grace every other drop gets. The seat left `playerMap`, and from
    * then on every `game:rejoin` was answered `UNAUTHORIZED`: the account was
@@ -672,16 +672,16 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
   });
 
   /**
-   * #808: a client away for `game:round_over` — the only message carrying a hand's
+   * #808: a client away for `game:round_over` — the only message carrying a round's
    * scores — used to rejoin holding an empty scoreboard for it forever,
    * because `announceRejoin` skips `emitMatchState` once the game is over and
-   * never sent anything in its place. Bob is offline for the whole hand, so
+   * never sent anything in its place. Bob is offline for the whole round, so
    * the AFK path (armed by the same `MURLAN_AFK_TIMEOUT_MS` this file already
    * sets) forces his seat's minimum legal moves in his place — the same
    * forced-minimum play `driveRoundToExchangeOrOver` does for a connected
    * client — and alice alone drives her own side to `game:round_over`.
    */
-  test("a client that missed game:over is sent the finished hand's scores on rejoin", async () => {
+  test("a client that missed game:over is sent the finished round's scores on rejoin", async () => {
     const alice = await connectAs(server, "missed_over_alice");
     const bob = await connectAs(server, "missed_over_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -696,7 +696,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       const aliceOver = roundOverOf(
         await driveRoundToExchangeOrOver([alice], () => {}, { stopOnExchange: false })
       );
-      assert.ok(aliceOver.scores.length > 0, "the hand must have banked real scores");
+      assert.ok(aliceOver.scores.length > 0, "the round must have banked real scores");
 
       const back = await reconnectAs(server, bob);
       table[1] = { ...bob, socket: back };
@@ -713,11 +713,11 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
       // The wire shape the client keys its display off (context/OnlineGameContext.tsx):
       // engineId -> points, never userId or seat index.
-      const roundScores = Object.fromEntries(payload.scores.map((r) => [r.engineId, r.points]));
+      const placementPoints = Object.fromEntries(payload.scores.map((r) => [r.engineId, r.points]));
       for (const id of payload.finishingOrder) {
         assert.ok(
-          id in roundScores,
-          `${id} is missing from the rejoining client's scores — a teams overlay would read this as an incomplete hand and fall back to naming finishingOrder[0] the winner`
+          id in placementPoints,
+          `${id} is missing from the rejoining client's scores — a teams overlay would read this as an incomplete round and fall back to naming finishingOrder[0] the winner`
         );
       }
     } finally {
@@ -748,15 +748,15 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
 
   /**
    * #808 review: the regression test above only exercises a rejoin *before*
-   * the next hand deals. `announceRejoin`'s branch that re-sends `game:round_over`
-   * is gated on `gameState.roundOver` — while hand 2 is live that is false, so
+   * the next round deals. `announceRejoin`'s branch that re-sends `game:round_over`
+   * is gated on `gameState.roundOver` — while round 2 is live that is false, so
    * `lastRoundOverPayload` (still holding hand 1's payload, dealt away by
-   * `dealRound`) must never reach a rejoining client. A rejoin mid-hand-2
+   * `dealRound`) must never reach a rejoining client. A rejoin mid-round-2
    * gets `game:state` and `game:match_state` — the running framing — and
    * nothing else. `game:state` is what proves the handler actually ran
    * before the negative assertion is trusted.
    */
-  test("a rejoin during a second hand is not handed the first hand's game:over", async () => {
+  test("a rejoin during a second round is not handed the first round's game:over", async () => {
     const alice = await connectAs(server, "hand2_alice");
     const bob = await connectAs(server, "hand2_bob");
     const room = await setUpRoom([alice, bob], 2);
@@ -767,7 +767,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           stopOnExchange: false,
         })
       );
-      assert.ok(hand1Over.scores.length > 0, "hand 1 must have banked real scores");
+      assert.ok(hand1Over.scores.length > 0, "round 1 must have banked real scores");
 
       const dealt = waitForDeal(alice.socket);
       alice.socket.emit("game:rematch_vote");
@@ -783,7 +783,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       );
       bob.socket.emit("game:rejoin", { roomId: room.roomId });
       const [rejoinedState] = await Promise.all([state, framing]);
-      assert.equal(rejoinedState.roundOver, false, "hand 2 must still be the live hand");
+      assert.equal(rejoinedState.roundOver, false, "round 2 must still be the live round");
       await noStaleOver;
     } finally {
       await closeTable(table);
@@ -796,12 +796,12 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * `handleRoundOver`, which then awaits a real DB round trip
    * (`previewRatedDeltas`) before broadcasting `game:round_over` and updating
    * `lastRoundOverPayload`. A rejoin landing inside that window used to read
-   * `roundOver: true` next to the *previous* hand's payload — #808's own
+   * `roundOver: true` next to the *previous* round's payload — #808's own
    * symptom, through a different door. Widens the real window into one this
    * test controls, so the race is deterministic rather than a matter of
    * scheduler luck.
    */
-  test("a rejoin inside handleRoundOver's own write is not handed the previous hand's game:over", async () => {
+  test("a rejoin inside handleRoundOver's own write is not handed the previous round's game:over", async () => {
     const { roundOverWriters } = await import("../../server/game/gamePersistence.ts");
     const realPreview = roundOverWriters.previewRatedDeltas;
     const alice = await connectAs(server, "race_alice");
@@ -814,7 +814,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
           stopOnExchange: false,
         })
       );
-      assert.ok(hand1Over.scores.length > 0, "hand 1 must have banked real scores");
+      assert.ok(hand1Over.scores.length > 0, "round 1 must have banked real scores");
 
       const dealt = waitForDeal(alice.socket);
       alice.socket.emit("game:rematch_vote");
@@ -844,11 +844,11 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       try {
         await waitUntil(
           () => gateReached,
-          "handleRoundOver never reached the gated rating-delta read — hand 2 did not finish",
+          "handleRoundOver never reached the gated rating-delta read — round 2 did not finish",
           10_000
         );
 
-        // gameState.roundOver is already true for hand 2 here (flipped
+        // gameState.roundOver is already true for round 2 here (flipped
         // synchronously before handleRoundOver ran); lastRoundOverPayload has
         // not been reassigned yet, because the gated write above is still
         // pending.
@@ -856,7 +856,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
         const state = waitFor<SanitizedState>(bob.socket, "game:state", 5_000);
         bob.socket.emit("game:rejoin", { roomId: room.roomId });
         const rejoinedState = await state;
-        assert.equal(rejoinedState.roundOver, true, "hand 2 must already be over in this window");
+        assert.equal(rejoinedState.roundOver, true, "round 2 must already be over in this window");
         await noStaleOver;
       } finally {
         releaseGate();
@@ -866,7 +866,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
       assert.notDeepEqual(
         hand2Over.scores,
         hand1Over.scores,
-        "the gate must not have swallowed hand 2's own game:over"
+        "the gate must not have swallowed round 2's own game:over"
       );
     } finally {
       roundOverWriters.previewRatedDeltas = realPreview;
@@ -1063,7 +1063,7 @@ describe("reconnect", { skip: hasDatabase() ? false : skipMessage() }, () => {
    * The client's only route into the game screen is `room` (non-null) ->
    * `/(online)/room` -> `gameState` (non-null) -> `/(online)/game`, so a
    * rejoin that cannot answer with `room:state` strands a player holding a
-   * live hand. The roster half already fell back to the live game; the row
+   * live round. The roster half already fell back to the live game; the row
    * itself did not, because the six-character join code lived only in
    * `rooms.code` and inventing one would put an unjoinable code on screen.
    */

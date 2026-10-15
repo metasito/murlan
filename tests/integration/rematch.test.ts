@@ -40,7 +40,7 @@ process.env.MURLAN_LOBBY_GRACE_MS = "800";
  * roster, never from `room_players`: that table holds humans only, so a roster
  * rebuilt from it drops every bot seat and renumbers the survivors — which
  * moves seats under `playerMap`, the one thing deciding whose cards a viewer
- * is sent and which seats the turn arbiter drives with the AI.
+ * is sent and which seats the turn arbiter drives with the bot.
  */
 describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -96,7 +96,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(next.players.filter((p) => p.type === "bot").length, 3);
     assertHandSecrecy(next, "solo rematch deal");
     // A seat with no playerMap entry is exactly what armTurn drives with the
-    // AI, so this is the assertion that the three bot seats are still bots and
+    // Bot, so this is the assertion that the three bot seats are still bots and
     // that the human's seat did not move under him.
     assert.deepEqual(
       seatedUsers(room.roomId),
@@ -195,7 +195,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
    * only at the end of a match, so the room row alone cannot tell a running
    * match from an ended one. Accepting room:start on that status is a second
    * deal path: it deals with `initializeGame` (no exchange phase, so the
-   * loser never forfeits their strongest card) and takes `matchLength`
+   * loser never gives up their strongest card) and takes `matchLength`
    * straight from the payload while the running match's scores and target
    * carry on.
    */
@@ -213,14 +213,14 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     assert.equal(before?.matchOver, false, "one round of a 21-point match settles nothing");
 
     const refused = waitFor<{ code: string }>(mira.socket, "room:error", 5_000);
-    // The payload a losing host would send: convert the match into a one-hand
+    // The payload a losing host would send: convert the match into a one-round
     // shootout and re-deal it without the exchange.
     mira.socket.emit("room:start", { fillWithBots: true, matchLength: "single" });
     assert.equal((await refused).code, "MATCH_IN_PROGRESS");
     assert.deepEqual(
       matchSnapshot(room.roomId),
       before,
-      "a refused room:start must leave the format, target, scores and hand exactly as they were"
+      "a refused room:start must leave the format, target, scores and round exactly as they were"
     );
 
     // The one path that may deal it, still dealing it properly.
@@ -240,7 +240,7 @@ describe("rematch roster", { skip: hasDatabase() ? false : skipMessage() }, () =
     const room = await setUpRoom([nadia, omar], 2);
 
     // `matchLength: "single"` ends the match with the first round, so what
-    // follows is a genuinely new match rather than the next hand of this one.
+    // follows is a genuinely new match rather than the next round of this one.
     roundOverOf(
       await driveRoundToExchangeOrOver([nadia, omar], () => {
         nadia.socket.emit("room:start", { matchLength: "single" });

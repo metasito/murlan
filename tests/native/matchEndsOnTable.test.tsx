@@ -87,8 +87,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { ...MOCK_MATCH, length: 'match' },
     cumulativeScores: MOCK_SCORES,
-    roundScores: MOCK_ROUND,
-    roundScoresCurrent: mockScoresCurrent,
+    placementPoints: MOCK_ROUND,
+    placementPointsCurrent: mockScoresCurrent,
     ratingDeltas: mockRatingDeltas,
     roundRecorded: mockRecorded,
     ratingsAfter: mockRatingsAfter,
@@ -196,7 +196,7 @@ describe('New match on the board', () => {
     await view.unmount();
   });
 
-  it('holds the online board until the round scores arrive', async () => {
+  it('holds the online board until the placement points arrive', async () => {
     mockScoresCurrent = false;
     const view = await render(wrap(OnlineGameScreen));
     await advance(settled + 100);

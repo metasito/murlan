@@ -721,7 +721,7 @@ export const it: Record<keyof typeof en, string> = {
   "tutorial.justReceived": "appena ricevuta",
   "tutorial.playCombination": "Gioca la combinazione",
   "tutorial.continue": "Continua",
-  "tutorial.returnCard": "Restituisci carta",
+  "tutorial.giveback": "Restituisci carta",
   "tutorial.rereadRules": "Rileggi le Regole & FAQ",
   "tutorial.backToHome": "Torna alla Home",
 

@@ -725,7 +725,7 @@ export const en = {
   "tutorial.justReceived": "just received",
   "tutorial.playCombination": "Play the combination",
   "tutorial.continue": "Continue",
-  "tutorial.returnCard": "Give back a card",
+  "tutorial.giveback": "Give back a card",
   "tutorial.rereadRules": "Re-read the Rules & FAQ",
   "tutorial.backToHome": "Back to Home",
 

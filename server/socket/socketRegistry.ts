@@ -143,7 +143,7 @@ export async function revokeAccountSockets(
  * may be on another instance, where this process cannot read its room.
  *
  * Call only after the delete has committed — releasing the seat can end the
- * hand, and the hand's writes must not race the transaction. Never throws.
+ * round, and the round's writes must not race the transaction. Never throws.
  */
 export async function evictUser(userId: string, seatedRoomIds: readonly string[]): Promise<void> {
   const io = _io;
@@ -167,7 +167,7 @@ export async function evictUser(userId: string, seatedRoomIds: readonly string[]
     try {
       // Not handleSeatRelease when a game is live: deleting an account also
       // deletes the rooms rows it hosted, and that path reads the room back and
-      // returns when it is gone — leaving the seat live in a hand still being
+      // returns when it is gone — leaving the seat live in a round still being
       // played. Routed, because the game may be held by another instance.
       const vacated = await applyOrForward(io, { kind: "vacate", roomId, userId });
       if (!vacated.ok) {

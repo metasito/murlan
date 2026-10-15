@@ -31,7 +31,7 @@ stored rows.
 | `GameState` | `gameOver` | `roundOver` | it is set when the round ends, not the match |
 | `ExchangePhase` | `bothJokersException` | `twoJokerException` | the glossary's name |
 | `StartReason.type` | `won_no_swap` | `won_no_exchange` | _Avoid_: swap |
-| `Player.type` | `"ai"` | `"bot"` | _Avoid_: AI |
+| `Player.type` | `"ai"` | `"bot"` | the glossary's name |
 | event | `game:over` | `game:round_over` | it fires once per round |
 | `game:match_state` | `handsPlayed` | `roundsPlayed` | a hand is the cards a seat holds |
 | table | `match_history` | `round_history` | one row per round |
@@ -45,6 +45,6 @@ round.
 
 ## Not changed
 
-Translation keys follow their code (`partitaBoard.*` becomes `matchBoard.*` in every locale);
+Translation keys follow their code (the match board's keys become `matchBoard.*` in every locale);
 the strings players read stay as each language says them. Sound asset files are renamed with
 their cue names.

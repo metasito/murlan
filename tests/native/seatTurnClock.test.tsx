@@ -8,7 +8,7 @@
 //
 // This is a tree question, not a layout one, so it belongs here rather than in
 // tests/e2e/: whether the clock is rendered at all is visible to
-// react-test-renderer, and the offline lead-a-round state lasts about a second
+// react-test-renderer, and the offline lead-a-trick state lasts about a second
 // on a real table.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
@@ -71,7 +71,7 @@ const state = (over: Partial<GameState>): GameState => ({
 
 const noop = () => {};
 
-/** Offline: leading a round has no deadline, so `includeNewTrick` is false. */
+/** Offline: leading a trick has no deadline, so `includeNewTrick` is false. */
 const OFFLINE_TIMER = { seconds: 30, includeNewTrick: false };
 /** Online: the server arms its window on every turn, leads included. */
 const ONLINE_TIMER = { seconds: 30, includeNewTrick: true };

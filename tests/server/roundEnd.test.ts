@@ -28,7 +28,7 @@ function mkState(players: Player[], finishingOrder: string[]): GameState {
   };
 }
 
-const HAND_FLAGS = {};
+const ROUND_FLAGS = {};
 
 describe("resolveRoundEnd — free-for-all", () => {
   test("below target: keeps the same target, nobody wins yet", () => {
@@ -43,7 +43,7 @@ describe("resolveRoundEnd — free-for-all", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -66,7 +66,7 @@ describe("resolveRoundEnd — free-for-all", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -88,7 +88,7 @@ describe("resolveRoundEnd — free-for-all", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -104,14 +104,14 @@ describe("resolveRoundEnd — free-for-all", () => {
     );
     const result = resolveRoundEnd({
       state,
-      // scoreRound awards this hand's 3/2/1/0 to p0..p3 (Alice, Bob, Carl,
+      // scoreRound awards this round's 3/2/1/0 to p0..p3 (Alice, Bob, Carl,
       // Dee) — +3 and +2 lands both leaders on exactly the final target.
       playerMap: { 0: "alice", 1: "bob", 2: "carl", 3: "dee" },
       cumulativeScores: { alice: 48, bob: 49, carl: 1, dee: 0 },
       matchTarget: 51,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -142,7 +142,7 @@ describe("resolveRoundEnd — teams", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "teams",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -158,20 +158,20 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       ["p0", "p1", "p2", "p3"]
     );
     const result = resolveRoundEnd({
-      // Seat 1 has no playerMap entry: it is bot-controlled this hand.
+      // Seat 1 has no playerMap entry: it is bot-controlled this round.
       state,
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       cumulativeScores: {},
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
     // Was pinned at `undefined`/absent: docs/GAME-RULES.md § Decisions has a vacated
     // seat's points join the running total like a born-bot seat's do, so the
-    // standings sum to the hands played. It still cannot cross the target or
+    // standings sum to the rounds played. It still cannot cross the target or
     // be named the winner — that is `winEligible`, not `cumulativeScores`.
     assert.equal(result.roundByKey["bot:1"], 2);
     assert.equal(result.cumulativeScores["bot:1"], 2);
@@ -191,7 +191,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 7,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set([1]),
     });
@@ -199,10 +199,10 @@ describe("resolveRoundEnd — gameResults shaping", () => {
     assert.equal(result.cumulativeScores["bot:1"], 1);
   });
 
-  test("#815: a straight duel's totals sum to hands played across a run", () => {
+  test("#815: a straight duel's totals sum to rounds played across a run", () => {
     const players = [player("p0", "rotonmeta", 0), player("p1", "Drita", 3)];
     let cumulativeScores: Record<string, number> = {};
-    const outcomes = ["p0", "p0", "p1", "p1"]; // winner of each of 4 hands
+    const outcomes = ["p0", "p0", "p1", "p1"]; // winner of each of 4 rounds
     for (const winner of outcomes) {
       const loser = winner === "p0" ? "p1" : "p0";
       const result = resolveRoundEnd({
@@ -212,7 +212,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
         matchTarget: 7,
         matchLength: "match",
         gameMode: "free_for_all",
-        handFlags: HAND_FLAGS,
+        roundFlags: ROUND_FLAGS,
         abandonedSeats: new Map(),
         botSeatsAtStart: new Set([1]),
       });
@@ -223,48 +223,48 @@ describe("resolveRoundEnd — gameResults shaping", () => {
     assert.equal(total, outcomes.length);
   });
 
-  test("a seat vacated between hands accumulates from the hand it left, not before (#850 clause 4)", () => {
-    // Two humans; rotonmeta wins hand 1. drita then leaves (vacateSeat: her
+  test("a seat vacated between rounds accumulates from the round it left, not before (#850 clause 4)", () => {
+    // Two humans; rotonmeta wins round 1. drita then leaves (vacateSeat: her
     // seat drops out of playerMap; abandonedSeats and botSeatsAtStart are
-    // both left untouched, exactly as vacateSeat leaves them between hands).
-    // The AI now driving her seat wins hand 2.
+    // both left untouched, exactly as vacateSeat leaves them between rounds).
+    // The bot now driving her seat wins round 2.
     const players = [player("p0", "rotonmeta", 3), player("p1", "drita", 0)];
-    const hand1 = resolveRoundEnd({
+    const round1 = resolveRoundEnd({
       state: mkState(players, ["p0", "p1"]),
       playerMap: { 0: "rotonmeta", 1: "drita" },
       cumulativeScores: {},
       matchTarget: 7,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set(),
     });
-    const hand2 = resolveRoundEnd({
+    const round2 = resolveRoundEnd({
       state: mkState(players, ["p1", "p0"]),
-      playerMap: { 0: "rotonmeta" }, // seat 1 vacated between hands
-      cumulativeScores: hand1.cumulativeScores,
+      playerMap: { 0: "rotonmeta" }, // seat 1 vacated between rounds
+      cumulativeScores: round1.cumulativeScores,
       matchTarget: 7,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set(),
     });
 
-    // The point lands on the hand's own scoreboard...
-    assert.equal(hand2.roundByKey["bot:1"], 1);
+    // The point lands on the round's own scoreboard...
+    assert.equal(round2.roundByKey["bot:1"], 1);
     // ...and, as of #850, on the running total too: docs/GAME-RULES.md § Decisions settled
     // what #815 deferred — a vacated seat accumulates like a born-bot seat
-    // from the hand it left onward. drita's own point from hand 1 (she was
-    // still seated then) is not retroactively added; only bot:1's hand-2
+    // from the round it left onward. drita's own point from round 1 (she was
+    // still seated then) is not retroactively added; only bot:1's round-2
     // point is. Was pinned at 1 (bot:1 excluded entirely); now 2.
-    const total = Object.values(hand2.cumulativeScores).reduce((a, b) => a + b, 0);
+    const total = Object.values(round2.cumulativeScores).reduce((a, b) => a + b, 0);
     assert.equal(total, 2);
   });
 
   test("opponentsFinished counts real finishers only, not auto-assigned placements", () => {
-    // Only seat 0 actually emptied its hand; the hand ended there and the
+    // Only seat 0 actually emptied its hand; the round ended there and the
     // other three are auto-ranked still holding cards.
     const state = mkState(
       [player("p0", "Alice", 0), player("p1", "Bob", 4), player("p2", "Carl", 6), player("p3", "Dee", 9)],
@@ -277,7 +277,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
 
@@ -302,7 +302,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
     const bySeat = new Map(result.gameResults.map((r, idx) => [idx, r]));
@@ -324,7 +324,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
     assert.equal(result.recordable, false);
@@ -342,13 +342,13 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
     });
     assert.equal(result.recordable, true);
   });
 
-  test("a seat abandoned mid-hand is keyed by the userId who left, not bot:<seat>", () => {
+  test("a seat abandoned mid-round is keyed by the userId who left, not bot:<seat>", () => {
     const state = mkState(
       [player("p0", "Alice", 0), player("p1", "Left", 3), player("p2", "Carl", 5), player("p3", "Dee", 8)],
       ["p0", "p1", "p2", "p3"]
@@ -360,7 +360,7 @@ describe("resolveRoundEnd — gameResults shaping", () => {
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map([[1, "walkedOutUser"]]),
     });
 
@@ -383,12 +383,12 @@ describe("resolveRoundEnd — a vacated seat's win eligibility and frozen points
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set(), // never a human's — vacated, not born-bot
     });
 
-    // The seat took the hand and its total now sits at 23, past the 21
+    // The seat took the round and its total now sits at 23, past the 21
     // target — but a vacated seat is never win-eligible, so the match keeps
     // running rather than crowning it or the table it beat.
     assert.equal(result.cumulativeScores["bot:1"], 23);
@@ -408,7 +408,7 @@ describe("resolveRoundEnd — a vacated seat's win eligibility and frozen points
       matchTarget: 21,
       matchLength: "match",
       gameMode: "free_for_all",
-      handFlags: HAND_FLAGS,
+      roundFlags: ROUND_FLAGS,
       abandonedSeats: new Map(),
       botSeatsAtStart: new Set(),
       vacatedSeats: new Map([[1, { userId: "leftUser", username: "Ghost" }]]),
@@ -417,7 +417,7 @@ describe("resolveRoundEnd — a vacated seat's win eligibility and frozen points
     const seat1 = result.detailed.find((r) => r.seatIndex === 1)!;
     assert.equal(seat1.vacated, true);
     assert.equal(seat1.userId, "leftUser");
-    // 12 (leftUser's frozen pre-departure total) + 23 (bot:1's total this hand).
+    // 12 (leftUser's frozen pre-departure total) + 23 (bot:1's total this round).
     assert.equal(seat1.total, 35);
     // Nobody else reads as vacated.
     assert.ok(result.detailed.filter((r) => r.vacated).every((r) => r.seatIndex === 1));

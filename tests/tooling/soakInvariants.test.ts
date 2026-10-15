@@ -53,7 +53,7 @@ describe("the soak's oracle", () => {
     assert.equal(found[0].kind, "turn-disagreement");
   });
 
-  test("catches one client thinking the hand is over", () => {
+  test("catches one client thinking the round is over", () => {
     const views = agreeingPair();
     views[1].roundOver = true;
     assert.equal(checkAgreement(views)[0]?.kind, "over-disagreement");
@@ -98,7 +98,7 @@ describe("the soak's oracle", () => {
   });
 
   /** A finished hand has nobody to act, and the server says so with -1. */
-  test("allows no-one's turn once the hand is over", () => {
+  test("allows no-one's turn once the round is over", () => {
     const views = agreeingPair().map((v) => ({ ...v, roundOver: true, currentTurnIndex: -1 }));
     assert.deepEqual(checkTurnIsSeated(views), []);
   });

@@ -16,7 +16,7 @@ here because the work deserves it.
 | Verified | The pack's own `_LICENSE.txt`: *"has waived all copyright and related or neighboring rights"* |
 
 Commercial use and modification are permitted. The creator asks that these are
-not used in NFT, AI/ML, or resale-of-unmodified-assets projects — none of which
+not used in NFT, machine-learning, or resale-of-unmodified-assets projects — none of which
 applies here.
 
 ## What they are
@@ -29,7 +29,7 @@ is a change of arrangement, not a change of music.
 | File | Source | Plays on |
 |---|---|---|
 | `menu.webm` | `Week 1 - Retro Lounge BASE.ogg` | every menu screen |
-| `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a hand is live |
+| `hand.webm` | `Week 1 - Retro Lounge MELODY.ogg` | the table, while a round is live |
 
 Chosen by the owner on #113 from the twelve candidates auditioned in #163.
 

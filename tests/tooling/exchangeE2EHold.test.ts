@@ -76,7 +76,7 @@ describe("the offline exchange overlay's E2E hold", () => {
         ".github/workflows/maestro.yml",
         "scripts/e2e-server.mjs",
       ],
-      `EXPO_PUBLIC_E2E_FAST zeroes every AI/result delay app/game.tsx has, not only the ` +
+      `EXPO_PUBLIC_E2E_FAST zeroes every bot/result delay app/game.tsx has, not only the ` +
         `exchange hold — setting it anywhere a player's build is made ships that: ${setters.join(", ")}`
     );
   });

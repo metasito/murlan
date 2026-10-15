@@ -1,4 +1,4 @@
-// tests/server/replayShape.test.ts — how a hand's move log is built and who it belongs to.
+// tests/server/replayShape.test.ts — how a round's move log is built and who it belongs to.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {

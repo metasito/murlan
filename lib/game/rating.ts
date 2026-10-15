@@ -8,7 +8,7 @@ import type { TranslationKey } from "../i18n.ts";
 /** Where an unrated player starts, and the centre a season's soft reset pulls toward. */
 export const START_RATING = 1000;
 
-/** Games before a rating is settled enough to list publicly. */
+/** Rounds before a rating is settled enough to list publicly. */
 export const PROVISIONAL_ROUNDS = 5;
 
 /**
@@ -24,7 +24,7 @@ export function kFactor(roundsPlayed: number): number {
 /**
  * Half the distance from the mean carries into the next season.
  *
- * A hard reset throws away every game of signal each month; no reset at all
+ * A hard reset throws away every round of signal each month; no reset at all
  * ossifies the ladder around whoever played first. Halving is a convention
  * rather than a measurement, which is exactly why it is named.
  */
@@ -80,7 +80,7 @@ export function expectedScore(a: number, b: number): number {
 const BOT_ID_PREFIX = "bot:";
 
 /**
- * The human seats of a finished hand, renumbered 1..n among themselves.
+ * The human seats of a finished round, renumbered 1..n among themselves.
  *
  * Renumbering is the part that is easy to get wrong: with a bot finishing
  * second of four, the humans placed 1st, 3rd and 4th, and rating them on those
@@ -101,7 +101,7 @@ export interface RatedSeat {
   userId: string;
   rating: number;
   rounds: number;
-  /** 1 = won the hand. Distinct per seat; the engine never ties placements. */
+  /** 1 = won the round. Distinct per seat; the engine never ties placements. */
   placement: number;
 }
 
@@ -133,7 +133,7 @@ export function ratingDeltas(seats: RatedSeat[]): Map<string, number> {
     return { userId: seat.userId, value, whole: Math.floor(value), frac: value - Math.floor(value) };
   });
 
-  // Rounding each delta on its own would move the table's total, so a hand
+  // Rounding each delta on its own would move the table's total, so a round
   // could leak a point into or out of the ladder through arithmetic alone.
   // Largest remainder makes the rounded total match the exact one — which is
   // zero whenever every seat shares a K. Ties break on id, so the result never

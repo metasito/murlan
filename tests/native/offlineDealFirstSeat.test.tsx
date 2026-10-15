@@ -3,7 +3,7 @@
 // level anywhere in the repo — only a source scan stood over it, and the
 // critic defeated that scan with a hand-rolled rotation and a decoy comment.
 // This drives the real `GameContext` callbacks a results screen calls
-// (`startNextRound`, `startNewMatch`) against a hand that has already ended,
+// (`startNextRound`, `startNewMatch`) against a round that has already ended,
 // with the deal already rotated once, so a further rotation and a reset land
 // on different seats and neither result can be a coincidence.
 import { test, expect, beforeEach } from "@jest/globals";
@@ -107,7 +107,7 @@ beforeEach(async () => {
   await AsyncStorage.clear();
 });
 
-test("the next hand of a running match rotates the deal one seat further (#803)", async () => {
+test("the next round of a running match rotates the deal one seat further (#803)", async () => {
   await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
   const r = await mount();
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));

@@ -14,7 +14,7 @@ describe("scorePillStandings, solo", () => {
     players: four,
     teams: false,
     scores: { player_0: 8, player_1: 12, player_2: 8, player_3: 3 },
-    roundScores: { player_0: 2, player_1: 3, player_2: 1, player_3: 0 },
+    placementPoints: { player_0: 2, player_1: 3, player_2: 1, player_3: 0 },
     finishingOrder: ["player_1", "player_0", "player_2", "player_3"],
     viewerId: "player_0",
   });
@@ -81,7 +81,7 @@ describe("scorePillStandings, teams", () => {
     players,
     teams: true,
     scores: { player_0: 4, player_1: 9, player_2: 3, player_3: 1 },
-    roundScores: { player_0: 3, player_1: 0, player_2: 2, player_3: 1 },
+    placementPoints: { player_0: 3, player_1: 0, player_2: 2, player_3: 1 },
     finishingOrder: ["player_0", "player_2", "player_3", "player_1"],
     viewerId: "player_2",
   });
@@ -119,7 +119,7 @@ describe("scorePillStandings, teams", () => {
       players,
       teams: true,
       scores: { player_0: 5, player_1: 5, player_2: 0, player_3: 0 },
-      roundScores: {},
+      placementPoints: {},
       finishingOrder: ["player_3", "player_0", "player_2", "player_1"],
       viewerId: "player_0",
     });
@@ -134,7 +134,7 @@ describe("scorePillStandings, teams", () => {
 });
 
 test("a spectator sees the standings and no row of their own", () => {
-  const s = scorePillStandings({ players: four, teams: false, scores: {}, roundScores: {}, finishingOrder: [], viewerId: undefined });
+  const s = scorePillStandings({ players: four, teams: false, scores: {}, placementPoints: {}, finishingOrder: [], viewerId: undefined });
   assert.equal(s.mine, null);
   assert.equal(s.rows.length, 4);
   assert.ok(s.rows.every((r) => r.place === 1 && r.total === 0 && !r.mine));

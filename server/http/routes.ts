@@ -756,7 +756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // now. A rename is one column, with no backfill behind it. `round_replays.seats.name` is the
   // one stored copy, and `server/game/replays.ts` resolves it against the account on every read.
   //
-  // Seated players keep the name the room was joined under — rewriting live room state mid-hand
+  // Seated players keep the name the room was joined under — rewriting live room state mid-round
   // would change an opponent's name under the other players for no benefit. The table catches up
   // when the player next sits down.
   // Validation before the limiter: a body that fails the rule never renamed anything, and the
@@ -805,7 +805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.destroy(() => {});
       // After the delete has committed, never before: the account's live
       // socket outlives its session, and a seat still held by an id no `users`
-      // row answers to fails every write the hand's end makes for the whole
+      // row answers to fails every write the round's end makes for the whole
       // table.
       await evictUser(userId, seatedRoomIds);
       logger.info({ userId }, "User account deleted");
@@ -975,7 +975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   //
   // The season is derived from the clock on every read, so a month boundary
   // needs no job to cross: `getRating` seeds the new season from the previous
-  // one and only writes when a rated hand actually finishes.
+  // one and only writes when a rated round actually finishes.
   app.get("/api/ratings/me", requireAuth, async (req, res) => {
     res.json(await getRating(req.session.userId!, new Date()));
   });

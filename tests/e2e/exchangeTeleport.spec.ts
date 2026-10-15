@@ -1,4 +1,4 @@
-// tests/e2e/exchangeTeleport.spec.ts — each traded card is drawn on every frame of its leg, one
+// tests/e2e/exchangeTeleport.spec.ts — each exchanged card is drawn on every frame of its leg, one
 // frame's travel from the last, and face up from the lift until it leaves the pile (#1259).
 import { test, expect } from "./fixtures";
 import { resumeSaved } from "./helpers/offlineSeed";
@@ -40,7 +40,7 @@ const midExchangeSave = () => ({
   dealFirstSeat: 0,
 });
 
-test("the traded cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {
+test("the exchanged cards fly through the pile, never jumping, face up from the lift to the tuck", async ({ page, baseURL }) => {
   test.setTimeout(120_000);
   await resumeSaved(page, baseURL!, midExchangeSave());
 

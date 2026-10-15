@@ -7,7 +7,7 @@
 //
 // Written here, from the server, on the server's clock. A client-emitted event
 // is telemetry the player can forge or block, and CLAUDE.md's server-authority
-// rule is about what gets recorded as much as about who wins a hand.
+// rule is about what gets recorded as much as about who wins a round.
 import { desc, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
 import { events } from "../../shared/schema.ts";

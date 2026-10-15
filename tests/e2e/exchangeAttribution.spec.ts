@@ -79,7 +79,7 @@ async function open(page: Page, baseURL: string, seed: object) {
 const table = (page: Page) =>
   stepUntil(page, () => page.locator('[data-testid="game-table"]').isVisible(), "the table");
 
-/** Room for a deal the table may run before the trade goes. */
+/** Room for a deal the table may run before the exchange goes. */
 const SLACK = 3000;
 
 /** React commits on a MessageChannel task after the frame, so the DOM is read after one. */
@@ -105,7 +105,7 @@ async function frame(page: Page): Promise<Frame> {
       if (el && seen(el) > 0) out[id] = { ...centre(el), face: seen(el.firstElementChild) > 0.5 };
     }
     const pile = document.querySelector('[data-testid="pile-area"]');
-    const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-no-swap"]');
+    const label = document.querySelector('[data-testid="exchange-pile-label"], [data-testid="exchange-none"]');
     const seats = [...document.querySelectorAll('[data-testid="top-seat"], [data-testid^="side-seat-"]')].map((s) => ({
       name: s.querySelector('[data-testid="seat-name"]')?.textContent ?? "",
       lit: s.querySelector('[data-testid="seat-ring"]')?.getAttribute("data-seat-lit") === "true",
@@ -263,7 +263,7 @@ test("both Jokers rest side by side on the pile under their notice, and go back"
       expect(near(f.fliers[id], { x: f.pile!.x + dx, y: f.pile!.y }, 4), `${id} beside the pile centre`).toBe(true);
       expect(f.fliers[id].face).toBe(true);
     }
-    expect(f.label?.text, "the notice names no swap").toBe("Nessuno scambio — Jolly doppio 🃏");
+    expect(f.label?.text, "the notice names no exchange").toBe("Nessuno scambio — Jolly doppio 🃏");
     expect(Math.abs(f.label!.x - f.pile!.x), "the notice is centred on the pile").toBeLessThanOrEqual(4);
     expect(f.label!.y, "and sits under it").toBeGreaterThan(f.pile!.y);
   }

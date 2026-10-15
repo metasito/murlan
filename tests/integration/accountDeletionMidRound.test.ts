@@ -11,10 +11,10 @@ import { connectAs, waitFor } from "../helpers/client.ts";
 import { driveHumansToRoundOver, waitForRow, type RoomState } from "../helpers/gameDriver.ts";
 
 /**
- * SEC-03: deleting an account mid-hand must not take the whole table's results
+ * SEC-03: deleting an account mid-round must not take the whole table's results
  * with it. A socket authenticates once at the handshake and is never
  * re-checked, so nothing but the eviction stops a deleted account from holding
- * its seat to the end of the hand — and its stats insert has no `users` row to
+ * its seat to the end of the round — and its stats insert has no `users` row to
  * point at, so the failure has to stay inside that one seat's transaction.
  *
  * Its own file: `/api/auth/register` is limited per process and the suites
@@ -31,7 +31,7 @@ interface BotTakeover {
 }
 
 describe(
-  "an account deleted mid-hand",
+  "an account deleted mid-round",
   { skip: hasDatabase() ? false : skipMessage() },
   () => {
     let server: TestServer;
@@ -111,7 +111,7 @@ describe(
           assert.equal(
             Number(stats.rounds_played),
             1,
-            `${user.username} played the hand out and must be credited with it`
+            `${user.username} played the round out and must be credited with it`
           );
 
           const history = await waitForRow(async () => {
@@ -123,7 +123,7 @@ describe(
           }, 10_000);
           assert.ok(
             Number(history.placement) >= 1,
-            `${user.username} must have a round_history row for the hand`
+            `${user.username} must have a round_history row for the round`
           );
 
           // The ladder is one transaction for the whole table by design, so

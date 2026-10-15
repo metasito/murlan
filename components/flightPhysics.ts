@@ -97,10 +97,10 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * round. A match closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
  * `context/GameContext.tsx` `applyRoundToMatch`, the online
- * `game:round_over`/`matchOver` payload): the hand that empties a seat's hand is
- * also the hand that happens to close the match, never a second, later
+ * `game:round_over`/`matchOver` payload): the play that empties a seat's hand is
+ * also the play that happens to close the match, never a second, later
  * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
- * calls that a *trick*, and it closes many times a hand.
+ * calls that a *trick*, and it closes many times a round.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes
  * the round or the match is still only as loud as its loudest rung —
@@ -327,14 +327,14 @@ export function flightOrigin(input: TableGeometry & { dir: FlyDirection }): { dx
 /**
  * Identity of a played combination. Two different players playing the same
  * card ids is impossible, but the same player replaying an identical-looking
- * combination in a later round is not — hence the seat in the key.
+ * combination in a later trick is not — hence the seat in the key.
  */
 export function comboKey(combo: Combination, playedBy: number): string {
   return combo.cards.map((c) => c.id).join(",") + "_" + playedBy;
 }
 
 /**
- * The pass that just closed a round, seen from one state. `processPass`
+ * The pass that just closed a trick, seen from one state. `processPass`
  * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`
  * in the same transition, so the table gets both on a single commit — and the
  * winning cards must stay on the felt under the tag that announces them
@@ -352,14 +352,14 @@ export function trickClosedWithWinner(state: {
 }
 
 /**
- * The seats that have passed in the round on the table, in pass order.
+ * The seats that have passed in the trick on the table, in pass order.
  *
  * A pass changes nothing visible, so this derives it from what did: turns run
  * from `lastPlayedBy` in *descending* seat order and the pile only moves on a
  * play, so every seat in between has passed. Seats holding no cards are
  * stepped over — a false marker is worse than none.
  *
- * Empty between rounds, and empty when the seat on move is the one that
+ * Empty between tricks, and empty when the seat on move is the one that
  * played: that span is a full circle. `outOfCards` carries the seat count.
  */
 export function passedSeats(state: {
@@ -389,7 +389,7 @@ type PassView = Parameters<typeof passedSeats>[0] & { trickWinner?: number | nul
 
 /**
  * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
- * when a pass closed the round, which `passedSeats` never names because the round is gone with it.
+ * when a pass closed the trick, which `passedSeats` never names because the trick is gone with it.
  */
 export function seatsJustPassed(before: PassView, after: PassView): number[] {
   const was = passedSeats(before);
@@ -439,7 +439,7 @@ export function readExchange(
   };
 }
 
-/** Each leg's stage, as `ExchangeLegs` reports it, for the trade `key` names. */
+/** Each leg's stage, as `ExchangeLegs` reports it, for the exchange `key` names. */
 export interface ExchangeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
 
 export const exchangeKey = (announced: ExchangeAnnounceData): string =>
@@ -450,7 +450,7 @@ export const NO_STAGES: Omit<ExchangeStages, "key"> = { receive: "waiting", give
 const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
 
 /**
- * The seats a trade marks, and how far each opponent's drawn count is from its state's. The engine
+ * The seats an exchange marks, and how far each opponent's drawn count is from its state's. The engine
  * moves a card when the phase opens or the choice lands, so the giver shows one more until its card
  * leaves and the receiver one fewer until it lands (the fixture's `S.counts`).
  */
@@ -481,7 +481,7 @@ export function readExchangeSeats(announced: ExchangeAnnounceData | null, stages
 }
 
 interface HandArrival {
-  /** Drawn although the state has already moved it: the viewer's traded card, until its leg leaves the hand. */
+  /** Drawn although the state has already moved it: the viewer's exchanged card, until its leg leaves the hand. */
   lent?: Card;
   /** Kept out of the fan, because a flier is drawing them. */
   withheldIds: string[];
@@ -494,7 +494,7 @@ interface HandArrival {
 }
 
 /**
- * The viewer's traded cards, each drawn in exactly one place: in the hand until its leg's first
+ * The viewer's exchanged cards, each drawn in exactly one place: in the hand until its leg's first
  * visible frame, as its flier until it lands, and in the hand again from then on (#650).
  */
 export function readHandArrival(input: {
@@ -544,7 +544,7 @@ interface ThrownPlay {
   pile: { x: number; y: number };
   /** Impact reads heavier for these. */
   heavy: boolean;
-  /** The throw emptied the hand it came from, so the flush is owed. */
+  /** The throw emptied the hand it came from, so the going-out catch is owed. */
   emptiedHand: boolean;
 }
 
@@ -606,7 +606,7 @@ export function readThrownPlay(input: ThrownPlayInput, handOrigins?: ReadonlyMap
   };
 }
 
-/** A seat's own point from the pile, nothing leaving its hand: where a closed round is swept, and where a dealt card lands. */
+/** A seat's own point from the pile, nothing leaving its hand: where a closed trick is swept, and where a dealt card lands. */
 export function seatPoint(place: SeatPlace, dir: FlyDirection): { dx: number; dy: number } {
   return flightOrigin({ ...tableGeometry(place), dir });
 }
@@ -618,7 +618,7 @@ export const JOKERS: Card[] = [
 ];
 const JOKER_SPREAD = 18;
 
-/** The trade's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
+/** The exchange's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
 export function readExchangeLegs(
   input: SeatGeometry & { announced: ExchangeAnnounceData },
   handOrigins?: ReadonlyMap<string, CardFrom>

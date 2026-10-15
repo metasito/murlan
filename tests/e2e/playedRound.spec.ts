@@ -1,4 +1,4 @@
-// tests/e2e/playedHand.spec.ts — one hand, played through every interaction the
+// tests/e2e/playedRound.spec.ts — one round, played through every interaction the
 // table gives the viewer: select, deselect, arrange, play, pass, exchange.
 //
 // Every press is a real one — down, a finger's worth of time, up — because
@@ -67,7 +67,7 @@ const PILE_CARD = card("3_clubs", "3", "clubs");
 
 /**
  * Thirteen cards: one short of the fourteen two seats are dealt (`dealCards`),
- * so a hand one play into a round, and enough of them that the fan overlaps —
+ * so a hand one play into a trick, and enough of them that the fan overlaps —
  * which is what the presses below are aimed at.
  *
  * Every viewer card beats the pile and loses to every bot card, against Murlan's
@@ -97,7 +97,7 @@ function save(gameState: Record<string, unknown>) {
       trickWinner: null,
       roundOver: false,
       finishingOrder: [],
-      // Past the opening, so the table renders a hand in progress rather than a
+      // Past the opening, so the table renders a round in progress rather than a
       // first move waiting on the 3 of spades.
       firstPlayMade: true,
       ...gameState,
@@ -207,7 +207,7 @@ const tableState = async (page: Page) => (await page.locator(TABLE).getAttribute
 
 test.use({ viewport: { width: PHONE.width, height: PHONE.height } });
 
-test("one hand, played through every interaction the table has", async ({ page, baseURL }) => {
+test("one round, played through every interaction the table has", async ({ page, baseURL }) => {
   test.setTimeout(5 * 60_000);
 
   await resumeSaved(page, baseURL!, midRoundSave());

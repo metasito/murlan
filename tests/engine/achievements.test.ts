@@ -4,7 +4,7 @@ import { evaluateAchievements, ACHIEVEMENTS } from "../../lib/achievements.ts";
 
 const base = { userId: "u1", placement: 1, playerCount: 4, playedBomb: false, playedJoker: false, matchWon: false, opponentsFinished: 3 };
 
-test("winning a hand unlocks first_win", () => {
+test("winning a round unlocks first_win", () => {
   assert.ok(evaluateAchievements(base).includes("first_win"));
 });
 
@@ -17,7 +17,7 @@ test("losing unlocks nothing", () => {
   assert.deepEqual(evaluateAchievements({ ...base, placement: 4 }), []);
 });
 
-test("a forfeited hand unlocks nothing, whatever it would otherwise have earned", () => {
+test("an abandoned round unlocks nothing, whatever it would otherwise have earned", () => {
   // The placement on an abandoned seat is assigned when the player walks out,
   // so nothing about it was played for. Built from a result that earns half
   // the catalogue, so this cannot pass by accident.

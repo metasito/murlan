@@ -71,7 +71,7 @@ export type TableActionDraft = TableAction extends infer T
 /**
  * What an instance may do with an action for a room no instance holds.
  *
- * `create` — deal a new hand. `startMatch` alone, because it is the only
+ * `create` — deal a new round. `startMatch` alone, because it is the only
  * action that brings a table into being.
  *
  * `restore` — take the room over: claim it, put the persisted game back in
@@ -79,7 +79,7 @@ export type TableActionDraft = TableAction extends infer T
  * non-event, and it is limited to the actions a player is waiting on, so a
  * finished table is never woken up by a stray message.
  *
- * `forward` — do nothing. Reviving a stranded hand to hand one seat to a bot
+ * `forward` — do nothing. Reviving a stranded round to hand one seat to a bot
  * would set the whole table playing itself with nobody watching.
  */
 export function takeoverMode(kind: TableActionKind): "create" | "restore" | "forward" {

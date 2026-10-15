@@ -223,7 +223,7 @@ describe("restoredMatchOver (rehydrating a match after a restart)", () => {
     );
   });
 
-  test("a single-round game is over exactly when its hand is", () => {
+  test("a single-round match is over exactly when its round is", () => {
     const single = (roundOver: boolean) =>
       restoredMatchOver({
         matchLength: "single",

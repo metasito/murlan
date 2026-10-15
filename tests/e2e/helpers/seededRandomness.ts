@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 /**
  * Every deal and every bot choice in the page from one `mulberry32(seed)` stream, so a spec that
- * plays a hand plays the same hand on every run. `withSeededDeals` (tests/helpers/offlineMatch.ts)
+ * plays a round plays the same round on every run. `withSeededDeals` (tests/helpers/offlineMatch.ts)
  * is the same swap for a match simulated in Node. Must run before the first navigation.
  */
 export async function seedRandomness(page: Page, seed: number): Promise<void> {

@@ -82,7 +82,7 @@ process.env.MURLAN_SWEEP_INTERVAL_MS ??= String(24 * 60 * 60 * 1000);
 
 /**
  * Production pauses 1.2s before a bot moves, which is about twenty pauses per
- * hand played out. A suite wanting a different pace sets its own before
+ * round played out. A suite wanting a different pace sets its own before
  * importing this — tests/integration/spectator.test.ts does.
  */
 process.env.MURLAN_BOT_MOVE_DELAY_MS ??= "20";

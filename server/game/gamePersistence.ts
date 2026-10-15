@@ -160,8 +160,8 @@ function inRoomOrder(roomId: string, write: () => Promise<unknown>): Promise<unk
  */
 export function persistGameState(roomId: string, game: OnlineGameState): Promise<unknown> {
   // Stamped so a restart can tell a current-shape row from a stale one (see
-  // GAME_SCHEMA_VERSION) rather than restoring a corrupt hand silently.
-  const gameState = packPersistedState(game.gameState, game.handFlags, game.dealFirstSeat, game.joinCode, {
+  // GAME_SCHEMA_VERSION) rather than restoring a corrupt round silently.
+  const gameState = packPersistedState(game.gameState, game.roundFlags, game.dealFirstSeat, game.joinCode, {
     playerMap: game.playerMap,
     scores: game.cumulativeScores,
     gameMode: game.gameMode,
@@ -188,7 +188,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
  * if they do not say it arrived.
  *
  * `sanitizeStateForPlayer` ships a whole snapshot, so a dropped `game:state` is
- * corrected by the next one — except for the last of a hand, and for the one
+ * corrected by the next one — except for the last of a round, and for the one
  * answering a rejoin. Those have nothing coming after them, and a player who
  * misses one is left looking at a table that will never right itself.
  *
@@ -198,7 +198,7 @@ export function persistGameState(roomId: string, game: OnlineGameState): Promise
  *
  * The retry re-derives from whatever is live now rather than replaying the
  * snapshot it was called with. That is what makes it safe: by the time it fires
- * the hand may have moved on, and re-sending the older state would rewind the
+ * the round may have moved on, and re-sending the older state would rewind the
  * player's table rather than repair it.
  */
 export function sendGameStateTo(io: SocketServer, uid: string, game: OnlineGameState) {

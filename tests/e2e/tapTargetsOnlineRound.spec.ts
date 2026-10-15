@@ -17,7 +17,7 @@ test("no control is undersized after an online hand — phone landscape", async 
   await registerNewAccount(page, uniqueUsername("tapover"));
   await goToOnlineLobby(page);
   await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
-  await page.getByRole("radio", { name: /Manche secca/ }).first().click();
+  await page.getByRole("radio", { name: "Manche secca" }).first().click();
   await fillWithBotsAndStart(page);
   await driveGameToCompletion(page, {
     isFinished: (p) => p.getByTestId("btn-home").isVisible(),
@@ -29,7 +29,7 @@ test("no control is undersized after an online hand — phone landscape", async 
   const replayRow = page.getByRole("button", { name: /^Guarda:/ }).first();
   await expect(replayRow).toBeVisible({ timeout: 15_000 });
   await settled(page, 2500);
-  await sweepSizes(page, "profile, after a hand");
+  await sweepSizes(page, "profile, after a round");
 
   await replayRow.click();
   await page.waitForURL(/replay/, { timeout: 15_000 });

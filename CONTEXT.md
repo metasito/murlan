@@ -13,12 +13,12 @@ The rules themselves are `docs/GAME-RULES.md`; these are the words for them. The
 ### Scoring
 
 **Round**:
-One deal played until a single seat still holds cards.
-_Avoid_: manche, hand (that is the cards a seat holds), game, deal (that is the dealing)
+Dealt once and played until a single seat still holds cards.
+_Avoid_: manche, hand (that is the cards a seat holds), game (that is the app), deal (that is the dealing)
 
 **Match**:
 The rounds a table plays until a seat or team reaches the target; the unit that is won, drawn, rated and rematched.
-_Avoid_: partita, game
+_Avoid_: partita, partite, game (that is the app)
 
 **Finishing order**:
 The order seats went out in one round, first to last; a seat's place in it is its **placement**.
@@ -39,7 +39,7 @@ _Avoid_: leaderboard (that is the rated ladder across matches)
 
 **Trick**:
 The plays that follow a lead until every other active seat passes in a row; the last player wins it and leads the next.
-_Avoid_: round (that is the whole deal), pile (that is the cards lying on the table)
+_Avoid_: round (that is every trick of one deal), pile (that is the cards lying on the table)
 
 **Lead**:
 The play that opens a trick, with any combination.
@@ -53,15 +53,15 @@ The shape of a play: single, pair, triple, straight, bomb or royal straight.
 
 **Straight**:
 Five or more cards of consecutive rank, suits ignored.
-_Avoid_: scale, shkallë, sequence
+_Avoid_: shkallë, scale (that is a size), sequence (that is any ordering)
 
 **Bomb**:
 Four cards of one rank; beats any combination but a higher bomb or a royal straight.
-_Avoid_: quadruple, poker, quad
+_Avoid_: quadruple, poker (that is another card game), quad (that is an easing curve)
 
 **Royal straight**:
 A straight of one suit; beats any bomb.
-_Avoid_: flush
+_Avoid_: flush (that is emptying a buffer)
 
 **Pass**:
 Declining to beat the play on the table; it does not lock the seat out of the trick.
@@ -72,8 +72,8 @@ Playing one's last card, which fixes the seat's placement and takes it out of th
 ### Between rounds
 
 **Exchange**:
-The swap before a round whose table has a complete finishing order to take it from: the previous round's last seat gives its highest card to the first seat, who gives back a card of their choice.
-_Avoid_: swap, trade
+Before a round whose table has a complete finishing order to take it from, the previous round's last seat gives its highest card to the first seat, who gives back a card of their choice.
+_Avoid_: swap (that is any exchange of two things), trade (that is a cost weighed against a gain)
 
 **Giveback**:
 The card the first seat returns in an exchange: ranked 3 to 10, never the card just received.
@@ -85,7 +85,7 @@ A last seat holding both Jokers shows them and no exchange happens; the first se
 ### The table
 
 **Table**:
-The seats that stay together across matches; its lifetime is what `docs/GAME-RULES.md` §4 calls a session.
+The seats that stay together across matches; how long one lasts is `docs/GAME-RULES.md` §4.
 _Avoid_: session (that is a login)
 
 **Free-for-all** / **Teams**:
@@ -93,11 +93,11 @@ The two modes: every seat for itself, or two teams of two sitting opposite.
 
 **Team**:
 Two seats sitting opposite, scored on their combined placement points.
-_Avoid_: pair (that is a combination), side
+_Avoid_: pair (that is a combination), side (that is a direction)
 
 **Bot**:
-A seat played by the computer, whether born one or taken over.
-_Avoid_: AI, CPU, computer
+A seat the program plays, whether born one or taken over.
+_Avoid_: AI, CPU (that is the processor), computer (that is the device)
 
 **Vacated seat**:
 A human's seat whose player did not return within the grace period; a bot plays it on, and it is never named the winner.
@@ -162,6 +162,9 @@ _Avoid_: forfeit, rage-quit
 
 - **Name a domain concept with the repo's own word** — in an issue title, a test name, a
   hypothesis. A synonym for something the code already names starts a second vocabulary.
+- **An _Avoid_ word with no note in brackets is retired**: `tests/tooling/glossaryWords.test.ts`
+  fails on it anywhere but `locales/`, vendored sources and verbatim quotes. A word with a note
+  has a meaning elsewhere, so only review can guard it.
 - **This file grows one term at a time**, as each is resolved; a term it does not carry yet is
   not a gap to fill upfront.
 - **Say so when a change contradicts an ADR**, rather than quietly overriding it:

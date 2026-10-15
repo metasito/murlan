@@ -1,5 +1,5 @@
 // tests/native/onlineRoundEndsOnTable.test.tsx — online, a round ends on the table: no results
-// overlay, the score pill holds open with the next-hand vote at its foot, and the next deal closes it.
+// overlay, the score pill holds open with the next-round vote at its foot, and the next deal closes it.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
@@ -28,7 +28,7 @@ const ENDED: GameState = {
 const DEALT: GameState = { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false };
 let mockGameState: GameState = ENDED;
 let mockScoresCurrent = true;
-let mockRoundScores: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
+let mockPlacementPoints: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
 let mockVotes: { votes: string[]; total: number } | null = null;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
@@ -59,8 +59,8 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, roundsPlayed: 1 },
     cumulativeScores: { player_0: 10, player_1: 4, player_2: 2, player_3: 1 },
-    roundScores: mockRoundScores,
-    roundScoresCurrent: mockScoresCurrent,
+    placementPoints: mockPlacementPoints,
+    placementPointsCurrent: mockScoresCurrent,
     ratingDeltas: {},
     ratingsAfter: {},
     roundRecorded: true,
@@ -96,7 +96,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   mockGameState = ENDED;
   mockScoresCurrent = true;
-  mockRoundScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
+  mockPlacementPoints = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
   mockVotes = null;
   mockVoteRematch.mockClear();
 });
@@ -144,7 +144,7 @@ describe('a round ending online', () => {
     await view.unmount();
   });
 
-  it("waits for this round's scores before the pill opens", async () => {
+  it("waits for this round's placement points before the pill opens", async () => {
     mockScoresCurrent = false;
     const view = await render(screenNow());
     await advance(close + settled);
@@ -158,7 +158,7 @@ describe('a round ending online', () => {
     await view.unmount();
   });
 
-  it("decides a teams round's outcome on its own scores, never the last round's", async () => {
+  it("decides a teams round's outcome on its own placement points, never the last round's", async () => {
     const teamOf = (i: number) => (i === 0 || i === 3 ? 'A' : 'B');
     mockGameState = {
       ...ENDED,
@@ -166,14 +166,14 @@ describe('a round ending online', () => {
       players: [0, 1, 2, 3].map((i) => ({ ...seat(i), team: teamOf(i) })),
       finishingOrder: ['player_0', 'player_3', 'player_1', 'player_2'],
     };
-    mockRoundScores = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
+    mockPlacementPoints = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
     mockScoresCurrent = false;
     const motes = jest.spyOn(particles, 'roundMotes');
     const view = await render(screenNow());
     await advance(close + settled);
     expect(motes).not.toHaveBeenCalled();
 
-    mockRoundScores = { player_0: 3, player_3: 2, player_1: 1, player_2: 0 };
+    mockPlacementPoints = { player_0: 3, player_3: 2, player_1: 1, player_2: 0 };
     mockScoresCurrent = true;
     await act(async () => view.rerender(screenNow()));
     await advance(close + settled);

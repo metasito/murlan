@@ -36,7 +36,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     matchLength: "match",
     roundsPlayed: 2,
     matchOver: false,
-    handFlags: {},
+    roundFlags: {},
     abandonedSeats: new Map(),
     botSeatsAtStart: new Set(),
     releasedSeats: new Set(),

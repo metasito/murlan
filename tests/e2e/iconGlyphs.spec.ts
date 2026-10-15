@@ -32,7 +32,7 @@ test("menu screens render every icon glyph, across the states reachable with no 
   // all four avatar icons are already on screen with no further click. #904
   // replaced the per-seat personality button (an Ionicons chevron-down) with
   // DifficultyLadder's own bar glyph, which draws Views rather than an icon
-  // font glyph, so the AI seats no longer add to this count.
+  // font glyph, so the bot seats no longer add to this count.
   await page.getByRole("radio", { name: "4 giocatori" }).click();
   await assertAllGlyphsRender(page, "offline lobby — 4 players", 8);
   await page.goBack();
@@ -116,14 +116,14 @@ test("the replay screen renders the correct transport icon in both its paused an
   await goToOnlineLobby(page);
   await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
 
-  // "Manche secca" (single hand) so the first hand ending is the match
-  // ending — roundOver.ts writes a replay after any hand with a human seat,
+  // "Manche secca" (single round) so the first round ending is the match
+  // ending — roundOver.ts writes a replay after any round with a human seat,
   // and this is the cheapest way to reach one. Not load-bearing for
   // correctness (a multi-hand "Match" would also eventually reach
   // the board's home button and still produce a replay) — only for speed — so a
   // generous budget below covers either outcome rather than trusting this
   // click took effect.
-  await page.getByRole("radio", { name: /Manche secca/ }).first().click();
+  await page.getByRole("radio", { name: "Manche secca" }).first().click();
   await fillWithBotsAndStart(page);
 
   await driveGameToCompletion(page, {
@@ -132,7 +132,7 @@ test("the replay screen renders the correct transport icon in both its paused an
   await expect(page.getByTestId("btn-home")).toBeVisible({ timeout: 15_000 });
 
   // A hard navigation, not the in-app "leave" button then a click through the
-  // home screen: roundOver.ts already wrote the replay the moment the hand
+  // home screen: roundOver.ts already wrote the replay the moment the round
   // ended, so nothing about reaching it depends on the leave flow, and a
   // fresh load bypasses whatever client-side navigation state that flow
   // leaves behind.

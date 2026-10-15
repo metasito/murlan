@@ -170,8 +170,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     const [alice, bob] = await makeClients(["exchange_alice", "exchange_bob"]);
     const room = await setUpRoom([alice, bob], 2);
 
-    // The very first hand never carries an exchange phase — only a rematch,
-    // seeded from the previous hand's winner/loser, does. Play it out with
+    // The very first round never carries an exchange phase — only a rematch,
+    // seeded from the previous round's winner/loser, does. Play it out with
     // forced-minimum moves to reach game:over.
     const opening = await driveRoundToExchangeOrOver([alice, bob], () => {
       alice.socket.emit("room:start");
@@ -179,8 +179,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.equal(opening.stoppedOn, "roundOver");
 
     // Reaching an exchange is probabilistic: when the loser holds both jokers
-    // (docs/GAME-RULES.md §10) no card is owed back and the hand runs straight to
-    // game:over. Heads-up that is (14/54)·(13/53) = 6.4% per hand, so the cap
+    // (docs/GAME-RULES.md §10) no card is owed back and the round runs straight to
+    // game:over. Heads-up that is (14/54)·(13/53) = 6.4% per round, so the cap
     // below only bites in the tail: the odds of twenty straight hands all
     // skipping the exchange are 6.4%^20, which is not a number this suite will
     // meet.
@@ -289,7 +289,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     // Past the shortened grace period the seat must be handed to a bot
     // instead of stalling the table: the seat must be removed from
-    // playerMap AND marked AI-controlled together, or play deadlocks the
+    // playerMap AND marked bot-controlled together, or play deadlocks the
     // moment the turn comes back around to it.
     const takeover = await waitFor<{ seatIndex: number }>(
       alice.socket,
@@ -303,8 +303,8 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // AFK/bot timers. Collect state broadcasts until the vacated seat's own
     // turn has come up and gone: proof the table kept advancing instead of
     // freezing on the empty seat. #850 clause 3 plays this seat at minimum
-    // legal strength until the hand ends, which passes far more often than
-    // the old full-AI takeover did — a pass resolves the turn exactly as
+    // legal strength until the round ends, which passes far more often than
+    // the old full-bot takeover did — a pass resolves the turn exactly as
     // well as a play, so it is the turn moving on that proves no deadlock,
     // not which of the two the seat chose.
     let sawVacatedSeatsTurn = false;
@@ -397,7 +397,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
    * the same run: the outcome line has to be there exactly once, and nothing
    * logged at any level — the per-play debug line included — may name a card.
    */
-  test("a finished hand logs its outcome once, and no log line carries a card", async () => {
+  test("a finished round logs its outcome once, and no log line carries a card", async () => {
     const [alice, bob] = await makeClients(["outcome_log_alice", "outcome_log_bob"]);
     const room = await setUpRoom([alice, bob], 2);
 
@@ -507,7 +507,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.fail(message);
   }
 
-  /** Plays the opening hand of a fresh room out to `game:round_over`. */
+  /** Plays the opening round of a fresh room out to `game:round_over`. */
   async function playOpeningRound(clients: Client[]): Promise<void> {
     const result = await driveRoundToExchangeOrOver(clients, () => {
       clients[0].socket.emit("room:start");
@@ -555,7 +555,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.deepEqual(
       [...bobTeardowns, ...carolTeardowns],
       [],
-      "a between-hands leave must not fire the client's game-interrupted teardown"
+      "a between-rounds leave must not fire the client's game-interrupted teardown"
     );
 
     const started = [bob, carol].map((c) =>

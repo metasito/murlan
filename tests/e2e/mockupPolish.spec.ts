@@ -130,7 +130,7 @@ for (const phone of STAGES) {
   });
 }
 
-/** The lobby's cap on a seat's name (`app/lobby.tsx`): a trade between two bots names both. */
+/** The lobby's cap on a seat's name (`app/lobby.tsx`): an exchange between two bots names both. */
 const LONGEST = ["Konstantinos", "Maximilianus"];
 const SMALLEST = STAGES[STAGES.length - 1];
 

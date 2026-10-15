@@ -24,12 +24,12 @@ const GIVEABLE_SPOKEN = ["4 di Cuori", "9 di Fiori"];
 const UNGIVEABLE_SPOKEN = "Re di Picche";
 
 /**
- * A hand mid-exchange, with the viewer as the winner who owes a card back.
+ * A round mid-exchange, with the viewer as the winner who owes a card back.
  *
  * Two cards in the 3-10 range and a King that is not, so "every card" and "the
  * ones the rules allow" are different answers.
  *
- * Seeded rather than played: driving an offline hand to its end takes minutes
+ * Seeded rather than played: driving an offline round to its end takes minutes
  * and repeatedly did not finish at all, and none of that is what this test is
  * about. `lib/offlineSave.ts` is the app's own restore path — AsyncStorage is
  * plain localStorage on web — so this arrives at the exchange through the same

@@ -6,7 +6,7 @@ export type ShownOutcome = Exclude<RoundOutcome, "pending">;
 
 /**
  * The round's outcome from the landing of the play that ended it, once decided, until the next
- * deal. Call it after `usePileFlight`: `pending()` is read at call time, so this effect sees the
+ * round. Call it after `usePileFlight`: `pending()` is read at call time, so this effect sees the
  * throw that ended the round.
  */
 export function useRoundOutcome({

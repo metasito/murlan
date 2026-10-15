@@ -1,9 +1,9 @@
 // Offline game screen — a thin adapter over the shared <GameTable>.
 //
 // Everything visual lives in components/GameTable.tsx. What is left here is
-// exactly what is true offline and nowhere else: the AI turn loop, the AI's
+// exactly what is true offline and nowhere else: the bot turn loop, the bot's
 // side of the exchange phase, a local response timer that auto-passes,
-// the next deal after a round, and the end-of-match board's actions.
+// the next round, and the end-of-match board's actions.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
@@ -102,12 +102,12 @@ export default function GameScreen() {
     return () => clearTimeout(t);
   }, [roundLandedAt]);
 
-  // AI turn loop. The key identifies one AI turn — seat, pass count and the
-  // combination on the table — and is null whenever no AI is on move, so an
+  // Bot turn loop. The key identifies one bot turn — seat, pass count and the
+  // combination on the table — and is null whenever no bot is on move, so an
   // update that changes neither cannot restart the "thinking" timer.
   // The exchange ends the phase the moment the card is chosen, so `active` is
-  // false while the two cards are still crossing the table. A hand played into
-  // that is a hand played over the ceremony announcing it, which is the one
+  // false while the two cards are still crossing the table. A play made into
+  // that is a play made over the ceremony announcing it, which is the one
   // moment every seat is watching the middle.
   const botTurnKey = BOT_SUSPENDED
     ? null
@@ -128,7 +128,7 @@ export default function GameScreen() {
     return () => clearTimeout(t);
   }, [botTurnKey]);
 
-  // An AI that wins a round owes the loser a card; it gives up its weakest legal
+  // A bot that wins a round owes the loser a card; it gives up its weakest legal
   // one. A card id rather than the card, for the same reason as above: the
   // giveback timer must not be rescheduled by an unrelated update.
   const givebackCardId = (() => {
@@ -164,14 +164,14 @@ export default function GameScreen() {
   if (!gameState) return null;
 
   const rounds = match.rounds ?? [];
-  const lastRoundScores = rounds[rounds.length - 1]?.pointsAwarded ?? {};
+  const lastPlacementPoints = rounds[rounds.length - 1]?.pointsAwarded ?? {};
 
   return (
     <GameTable
       gameState={gameState}
       matchOver={match.over}
       matchWinners={match.winners}
-      roundScores={lastRoundScores}
+      placementPoints={lastPlacementPoints}
       matchScore={{ scores: match.scores, target: match.target, single: match.length === "single" }}
       matchActions={{
         onHome: () => {
@@ -208,7 +208,7 @@ export default function GameScreen() {
       }
       turnTimer={{
         seconds: HUMAN_TURN_SECONDS,
-        // Leading a round has no deadline offline.
+        // Leading a trick has no deadline offline.
         includeNewTrick: false,
         // Nothing else is keeping this clock, so it can be stopped while an
         // announcement holds the table.

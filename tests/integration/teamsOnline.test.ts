@@ -71,7 +71,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
 
       // docs/GAME-RULES.md §11: partners sit across from each other, so the teams
       // alternate around the table. Seating them adjacently would make the
-      // pair's turn order consecutive and change the game entirely.
+      // team's turn order consecutive and change the game entirely.
       const state = await firstState;
       assert.deepEqual(
         state.players.map((p) => p.team),
@@ -94,7 +94,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
         assert.equal(Number(row.player_count), 4);
       }
 
-      // A teams hand is still worth watching back, so the replay write does run
+      // A teams round is still worth watching back, so the replay write does run
       // here. Waiting for it is also what keeps this test honest: it finishes in
       // under a second, and tearing the server down while game-over's
       // fire-and-forget writes are still in flight would cut them off mid-query.
@@ -120,7 +120,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       for (const c of clients) c.socket.close();
     }
   });
-  test("a one-round teams game is won by the pair, not by the seat that went out", async () => {
+  test("a one-round teams match is won by the team, not by the seat that went out", async () => {
     const clients: { socket: Socket; user: { id: string }; cookie: string }[] = [];
     for (const name of ["single_a1", "single_b1", "single_a2", "single_b2"]) {
       clients.push(await connectAs(server, name));
@@ -182,7 +182,7 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
     }
   });
 
-  test("three seated humans cannot start a teams game — 2-v-1 is not a teams game", async () => {
+  test("three seated humans cannot start a teams match — 2-v-1 is not a teams match", async () => {
     const clients: { socket: Socket }[] = [];
     for (const name of ["teams_odd1", "teams_odd2", "teams_odd3"]) {
       clients.push(await connectAs(server, name));

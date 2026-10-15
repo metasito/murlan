@@ -22,7 +22,7 @@ function player(id: string, name: string): Player {
 /** A stub io that records nothing — vacateSeat's emits are not under test here. */
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 
-test("vacateSeat never sets personality on the seat it hands to the AI", async () => {
+test("vacateSeat never sets personality on the seat it hands to the bot", async () => {
   const gameState: GameState = {
     players: [player("p0", "rotonmeta"), player("p1", "drita")],
     currentTurnIndex: 0,
@@ -31,7 +31,7 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    // Between hands: vacateSeat's simplest branch, no board- or DB-affecting
+    // Between rounds: vacateSeat's simplest branch, no board- or DB-affecting
     // side effect once `remaining` stays above zero.
     roundOver: true,
     finishingOrder: ["p0", "p1"],

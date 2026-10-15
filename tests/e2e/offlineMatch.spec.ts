@@ -1,4 +1,4 @@
-// Plays a real offline match against AI, end to end, through the rendered UI:
+// Plays a real offline match against bots, end to end, through the rendered UI:
 // several hands, each ending on the table into the next deal, and the card
 // exchange that runs between them.
 //
@@ -12,7 +12,7 @@ import { driveGameToCompletion, untilNextDeal } from "./helpers/bot";
 
 const GAME_URL = /\/game/;
 
-test("offline vs AI — a match plays multiple hands on the table and exercises the card exchange between them", async ({
+test("offline vs bots — a match plays multiple rounds on the table and exercises the card exchange between them", async ({
   page,
   baseURL,
   consoleErrors,
@@ -22,24 +22,24 @@ test("offline vs AI — a match plays multiple hands on the table and exercises 
   await startOfflineGame(page, {
     playerCount: 2,
     gameMode: "free_for_all",
-    format: "match", // the lobby's default: first to the target score, hands separated by a card exchange
+    format: "match", // the lobby's default: first to the target score, rounds separated by a card exchange
   });
   const visited: string[] = [];
   page.on("framenavigated", (frame) => {
     if (frame === page.mainFrame()) visited.push(frame.url());
   });
 
-  // A 2-player match awards the hand winner 1 point (lib/game/gameEngine.ts
+  // A 2-player match awards the round's winner 1 point (lib/game/gameEngine.ts
   // `scoreRound`) against a target of 7 (`targetsFor(2)`), so reaching
-  // match.over takes at least seven hands. This suite only needs to prove the
-  // between-hands transition works, so it plays a small fixed number of hands
+  // match.over takes at least seven rounds. This suite only needs to prove the
+  // between-rounds transition works, so it plays a small fixed number of rounds
   // and then leaves deliberately.
   const ROUNDS_TO_PLAY = 2;
-  for (let hand = 1; hand <= ROUNDS_TO_PLAY; hand++) {
+  for (let round = 1; round <= ROUNDS_TO_PLAY; round++) {
     await driveGameToCompletion(page, {
       isFinished: untilNextDeal(),
       log: (line) =>
-        test.info().annotations.push({ type: "move", description: `hand ${hand}: ${line}` }),
+        test.info().annotations.push({ type: "move", description: `round ${round}: ${line}` }),
     });
     await expect(page).toHaveURL(GAME_URL);
   }
