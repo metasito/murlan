@@ -23,7 +23,6 @@ import {
   CombinationType,
   GameState,
   buildCombination,
-  canPlay,
   getCardDisplayRank,
   getSuitSymbol,
   getValidGivebackCards,
@@ -33,8 +32,9 @@ import { useTranslation, type TFn, type TranslationKey } from "@/lib/i18n";
 import { IconButton } from "@/components/IconButton";
 import { a11yHidden } from "@/lib/a11y";
 import { TurnChip } from "@/components/table/notices/hud";
-import { readStagedPlay } from "@/components/table/stagedPlay";
+import { readStagedPlay, type StagedPlay } from "@/components/table/stagedPlay";
 import { playRefusalLabel } from "@/components/table/spokenLabels";
+import { TUTORIAL_REFUSAL_KEYS } from "@/components/tutorialRefusal";
 
 
 // ─── Storage keys ──────────────────────────────────────────────────────────
@@ -376,17 +376,40 @@ function buildBeats(t: TFn): Beat[] {
 // Every legality check below goes through lib/game/gameEngine.ts — the tutorial can
 // never accept (or reject) a move the real game engine wouldn't.
 
-function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; message: string } {
-  if (selected.length === 0) {
+function stageBeat(beat: PlayBeat, selectedIds: Set<string>): StagedPlay {
+  return readStagedPlay({
+    hand: beat.handCards,
+    selectedIds: [...selectedIds],
+    lastPlayedCombination: beat.lastPlayed,
+    startCard: undefined,
+    firstPlayMade: true,
+    isNewTrick: beat.isNewTrick,
+    isMyTurn: true,
+    isFinished: false,
+  });
+}
+
+function refusalMessage(staged: StagedPlay, t: TFn): string {
+  const key = TUTORIAL_REFUSAL_KEYS[staged.refusal];
+  return key
+    ? t(key)
+    : playRefusalLabel(
+        { refusal: staged.refusal, isMyTurn: true, isFinished: false, startCard: undefined },
+        t
+      );
+}
+
+function evaluatePlay(selectedIds: Set<string>, beat: PlayBeat, t: TFn): { ok: boolean; message: string } {
+  if (selectedIds.size === 0) {
     return { ok: false, message: t("tutorial.errSelectAtLeastOne") };
   }
 
-  const combo = buildCombination(selected);
-  if (!combo) {
-    return { ok: false, message: t("tutorial.errNotAValidCombo") };
+  const staged = stageBeat(beat, selectedIds);
+  if (!staged.playable && staged.refusal === "notACombination") {
+    return { ok: false, message: refusalMessage(staged, t) };
   }
 
-  if (beat.requireCard && !selected.some((c) => c.id === beat.requireCard!.id)) {
+  if (beat.requireCard && !selectedIds.has(beat.requireCard.id)) {
     return {
       ok: false,
       message: t("tutorial.errMustIncludeCard", {
@@ -396,24 +419,11 @@ function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; 
     };
   }
 
-  const legal = canPlay(combo, beat.isNewTrick ? null : beat.lastPlayed);
-  if (!legal) {
-    const lp = beat.lastPlayed;
-    if (lp?.type === "royal_straight") {
-      return { ok: false, message: t("tutorial.errRoyalBeatsAll") };
-    }
-    if (lp?.type === "bomb" && combo.type !== "bomb") {
-      return { ok: false, message: t("tutorial.errOnlyHigherBomb") };
-    }
-    if (lp && combo.type !== lp.type) {
-      return { ok: false, message: t("tutorial.errSameType") };
-    }
-    if (lp && combo.cards.length !== lp.cards.length) {
-      return { ok: false, message: t("tutorial.errSameLength") };
-    }
-    return { ok: false, message: t("tutorial.errTooWeak") };
+  if (!staged.playable) {
+    return { ok: false, message: refusalMessage(staged, t) };
   }
 
+  const combo = buildCombination(staged.cards)!;
   if (combo.type !== beat.expectedType) {
     return {
       ok: false,
@@ -539,8 +549,7 @@ export default function TutorialScreen() {
   }
 
   function submitPlay(b: PlayBeat) {
-    const selected = b.handCards.filter((c) => selectedIds.has(c.id));
-    const result = evaluatePlay(selected, b, t);
+    const result = evaluatePlay(selectedIds, b, t);
     setFeedback({ ok: result.ok, text: result.message });
     if (result.ok) {
       uiFeedback("success");
@@ -624,16 +633,7 @@ export default function TutorialScreen() {
     }
 
     if (beat.kind === "play") {
-      const staged = readStagedPlay({
-        hand: beat.handCards,
-        selectedIds: [...selectedIds],
-        lastPlayedCombination: beat.lastPlayed,
-        startCard: undefined,
-        firstPlayMade: true,
-        isNewTrick: beat.isNewTrick,
-        isMyTurn: true,
-        isFinished: false,
-      });
+      const staged = stageBeat(beat, selectedIds);
       const stagedLine =
         beat.staged && !beatDone && selectedIds.size > 0
           ? staged.playable

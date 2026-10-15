@@ -2,7 +2,7 @@
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
 
-import type { Combination } from "@/lib/game/gameEngine";
+import type { Combination, PlayRefusal } from "@/lib/game/gameEngine";
 
 // ─── Play / pass affordances ──────────────────────────────────────────────────
 
@@ -20,17 +20,10 @@ export function canPassNow(facts: TurnFacts): boolean {
 /**
  * Why a selection cannot be played. Identifiers, not copy: GameTable.tsx maps
  * each to a short button label and to the longer sentence a screen reader (and
- * the rejection toast) speaks.
+ * the rejection toast) speaks. Only the refusals a selection itself earns: one
+ * drawn from the hand is always held.
  */
-export type PlayButtonLabel =
-  | "play"
-  | "notACombination"
-  | "needsStartCard"
-  | "royalUnbeatable"
-  | "bombOnly"
-  | "wrongType"
-  | "wrongLength"
-  | "tooLow";
+export type PlayButtonLabel = "play" | Exclude<PlayRefusal, "exchangeOpen" | "notHeld">;
 
 /** As much of a combination as the rejection ladder needs. */
 export interface ComboShape {
@@ -39,14 +32,15 @@ export interface ComboShape {
 }
 
 /**
- * Why the GIOCA button is dim, in the same reason order `canPlay`
+ * Why the GIOCA button is dim, in the same reason order `checkPlay`
  * (lib/game/gameEngine.ts) refuses in — so a pair offered against a single is told
  * it is the wrong shape, and the opening play is told it needs the 3♠, rather
- * than both being called too low.
+ * than both being called too low. `tests/ui-rules/playRefusalParity.test.ts`
+ * holds the two to the same answer.
  *
  * Answers "why would this be refused"; the caller decides whether to show it,
- * because only the caller can run `canPlay` — this takes a `ComboShape`, and
- * `canPlay` wants the two whole `Combination`s.
+ * because only the caller can run the engine — this takes a `ComboShape`, and
+ * `checkPlay` wants the whole cards.
  */
 export function playButtonLabel(opts: {
   isMyTurn: boolean;
