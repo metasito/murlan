@@ -66,7 +66,7 @@ export function redealExactly(io: SocketServer, roomId: string, hands: string[][
   );
   // Everything `dealRound` resets, because the hand this replaces is gone: its
   // flags would credit its bombs and jokers to this one, and its `moveLog`
-  // would be written to `match_replays` as this hand's replay.
+  // would be written to `round_replays` as this hand's replay.
   game.handFlags = {};
   game.moveLog = startReplayLog();
   game.abandonedSeats.clear();
@@ -104,7 +104,7 @@ export function matchSnapshot(roomId: string) {
     matchTarget: game.matchTarget,
     matchOver: game.matchOver,
     cumulativeScores: { ...game.cumulativeScores },
-    rankings: [...game.gameState.rankings],
+    finishingOrder: [...game.gameState.finishingOrder],
     dealFirstSeat: game.dealFirstSeat,
   };
 }
@@ -112,7 +112,7 @@ export function matchSnapshot(roomId: string) {
 /**
  * Rewrites a room's own match target and running scores, so the round about
  * to be played is guaranteed to end the match without a test having to shape
- * real play toward a particular score. `handleGameOver` only adds this hand's
+ * real play toward a particular score. `handleRoundOver` only adds this hand's
  * own points on top of what is set here, so one seat set far below the target
  * and the other far above it cannot trade places no matter what the round
  * itself awards.

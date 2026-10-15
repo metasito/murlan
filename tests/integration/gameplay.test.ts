@@ -15,7 +15,7 @@ import {
 import { lobbyGraceMs } from "../../server/game/gameTimers.ts";
 import {
   assertHandSecrecy,
-  driveHandToExchangeOrOver,
+  driveRoundToExchangeOrOver,
   makeClients as makeClientsOn,
   setUpRoom,
   startGame,
@@ -173,10 +173,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // The very first hand never carries an exchange phase — only a rematch,
     // seeded from the previous hand's winner/loser, does. Play it out with
     // forced-minimum moves to reach game:over.
-    const opening = await driveHandToExchangeOrOver([alice, bob], () => {
+    const opening = await driveRoundToExchangeOrOver([alice, bob], () => {
       alice.socket.emit("room:start");
     });
-    assert.equal(opening.stoppedOn, "gameOver");
+    assert.equal(opening.stoppedOn, "roundOver");
 
     // Reaching an exchange is probabilistic: when the loser holds both jokers
     // (docs/GAME-RULES.md §10) no card is owed back and the hand runs straight to
@@ -191,7 +191,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // is worth putting that seam within reach of production.
     let exchange: Map<Client, SanitizedState> | null = null;
     for (let attempt = 0; attempt < 20 && !exchange; attempt++) {
-      const result = await driveHandToExchangeOrOver([alice, bob], () => {
+      const result = await driveRoundToExchangeOrOver([alice, bob], () => {
         alice.socket.emit("game:rematch_vote");
         bob.socket.emit("game:rematch_vote");
       });
@@ -311,7 +311,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     let sawTurnPastVacatedSeat = false;
     for (let i = 0; i < 10 && !(sawVacatedSeatsTurn && sawTurnPastVacatedSeat); i++) {
       const state = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
-      if (state.gameOver) break;
+      if (state.roundOver) break;
       if (state.currentTurnIndex === vacatedSeat) sawVacatedSeatsTurn = true;
       if (sawVacatedSeatsTurn && state.currentTurnIndex !== vacatedSeat) {
         sawTurnPastVacatedSeat = true;
@@ -335,7 +335,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     // tested in isolation by tests/bots/botFill.test.ts, now exercised through
     // the real room:start handler.
     assert.equal(state.players.length, 3);
-    assert.equal(state.players.filter((p) => p.type === "ai").length, 2);
+    assert.equal(state.players.filter((p) => p.type === "bot").length, 2);
     assert.equal(state.players.filter((p) => p.type === "human").length, 1);
 
     // Bots must be driven by the same turn arbiter the disconnect-takeover
@@ -347,9 +347,9 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     let actedBotSeat = -1;
     for (let i = 0; i < 15 && !(sawBotAct && sawTurnPastBot); i++) {
       const s = await waitFor<SanitizedState>(alice.socket, "game:state", 8_000);
-      if (s.gameOver) break;
+      if (s.roundOver) break;
       const actor = s.players[s.lastPlayedBy];
-      if (actor?.type === "ai") {
+      if (actor?.type === "bot") {
         sawBotAct = true;
         actedBotSeat = s.lastPlayedBy;
       }
@@ -414,12 +414,12 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     }
 
     try {
-      const result = await driveHandToExchangeOrOver([alice, bob], () => {
+      const result = await driveRoundToExchangeOrOver([alice, bob], () => {
         alice.socket.emit("room:start");
       });
-      assert.equal(result.stoppedOn, "gameOver");
-      // No wait: handleGameOver logs the outcome in the same synchronous block
-      // as the `game:over` emit, and the client's callback cannot run before
+      assert.equal(result.stoppedOn, "roundOver");
+      // No wait: handleRoundOver logs the outcome in the same synchronous block
+      // as the `game:round_over` emit, and the client's callback cannot run before
       // that block returns.
     } finally {
       mock.restoreAll();
@@ -432,7 +432,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
 
     const outcomes = ours.filter((l) => {
       const payload = l.args[0] as Record<string, unknown>;
-      return "rankings" in payload && "matchWinners" in payload;
+      return "finishingOrder" in payload && "matchWinners" in payload;
     });
     assert.equal(
       outcomes.length,
@@ -441,7 +441,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     );
     const outcome = outcomes[0].args[0] as Record<string, unknown>;
     assert.equal(outcomes[0].level, "info");
-    assert.ok(Array.isArray(outcome.rankings) && outcome.rankings.length === 2);
+    assert.ok(Array.isArray(outcome.finishingOrder) && outcome.finishingOrder.length === 2);
     assert.ok(isRecord(outcome.cumulative), "the running scoreboard must be logged");
     assert.equal(outcome.matchLength, "match");
 
@@ -507,12 +507,12 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     assert.fail(message);
   }
 
-  /** Plays the opening hand of a fresh room out to `game:over`. */
-  async function playOpeningHand(clients: Client[]): Promise<void> {
-    const result = await driveHandToExchangeOrOver(clients, () => {
+  /** Plays the opening hand of a fresh room out to `game:round_over`. */
+  async function playOpeningRound(clients: Client[]): Promise<void> {
+    const result = await driveRoundToExchangeOrOver(clients, () => {
       clients[0].socket.emit("room:start");
     });
-    assert.equal(result.stoppedOn, "gameOver");
+    assert.equal(result.stoppedOn, "roundOver");
   }
 
   /**
@@ -529,7 +529,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       "results_leave_carol",
     ]);
     await setUpRoom([alice, bob, carol], 3);
-    await playOpeningHand([alice, bob, carol]);
+    await playOpeningRound([alice, bob, carol]);
 
     // The hazard this fix has to avoid: `game:player_left` drives the client's
     // blocking "Match interrupted" teardown, which would eject both survivors
@@ -591,7 +591,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       "results_drop_frank",
     ]);
     const room = await setUpRoom([dave, erin, frank], 3);
-    await playOpeningHand([dave, erin, frank]);
+    await playOpeningRound([dave, erin, frank]);
 
     const erinTeardowns = collect(erin, "game:player_left");
     const frankTeardowns = collect(frank, "game:player_left");
@@ -642,7 +642,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       "expired_quinn",
     ]);
     const room = await setUpRoom([nina, otto, pia], 3);
-    await playOpeningHand([nina, otto, pia]);
+    await playOpeningRound([nina, otto, pia]);
 
     const takeover = waitFor(otto.socket, "game:seat_bot_takeover", 5_000);
     nina.socket.disconnect();
@@ -678,7 +678,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
       "results_dispose_hugo",
     ]);
     const room = await setUpRoom([gina, hugo], 2);
-    await playOpeningHand([gina, hugo]);
+    await playOpeningRound([gina, hugo]);
 
     assert.equal(hasActiveGame(room.roomId), true);
 
@@ -818,10 +818,10 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await joined;
     assert.equal((await refusal(guest, "room:start")).code, "NOT_THE_HOST");
 
-    const single = await driveHandToExchangeOrOver([host, guest], () => {
+    const single = await driveRoundToExchangeOrOver([host, guest], () => {
       host.socket.emit("room:start", { matchLength: "single" });
     });
-    assert.equal(single.stoppedOn, "gameOver");
+    assert.equal(single.stoppedOn, "roundOver");
     // After a match, the guest's start would count as a vote before `closeForStart` checks the host.
     assert.equal((await refusal(guest, "room:start")).code, "NOT_THE_HOST");
 

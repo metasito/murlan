@@ -60,7 +60,7 @@ none sits at the top of `tests/` (`tests/tooling/repoLayout.test.ts`).
 - **Integration** creates an empty Postgres schema and nothing else; every table comes from the
   app's own `ensureSchema()`, so each run also tests that boot-time schema creation works on a
   database that has never seen it. `tests/helpers/gameDriver.ts` is the shared "play a real hand
-  to completion" machinery every suite needing `handleGameOver`'s writes rides.
+  to completion" machinery every suite needing `handleRoundOver`'s writes rides.
   ```sh
   node scripts/dev-stack.mjs up
   DATABASE_URL=$(node scripts/dev-stack.mjs env | sed -n 's/^DATABASE_URL=//p')
@@ -303,7 +303,7 @@ one that doesn't needs a device capture (above).
 - **`EXPO_PUBLIC_E2E_FAST=1`** (set by `scripts/e2e-server.mjs`) zeroes every AI delay, so **no
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
-  (`lib/e2eAiSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
+  (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. Play real
   hands (`tests/e2e/helpers/bot.ts`) and sample *through* a turn handover — one frame is not a
   state.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`** — flipping the env var

@@ -30,7 +30,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
                                                         │                  that owns the room
                                                         ▼
                                                 server/game/tableHandlers.ts (applyTableAction)
-                                                  + gameTurn.ts / gameOver.ts / dealRound.ts
+                                                  + gameTurn.ts / roundOver.ts / dealRound.ts
                                                         │
                                                         ▼
                                                 lib/game/gameEngine.ts (same engine, server side)
@@ -42,7 +42,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
 - **`lib/game/gameEngine.ts`** is the single rules engine, imported by both the client (offline
   mode) and the server (online mode, authoritative). Deck of 54 (52 + 2 distinguishable
   Jokers) is dealt in full every game — see `docs/GAME-RULES.md` §3. There is no reduced-deck
-  mode. The bot heuristics live apart from the rules, in `lib/game/ai.ts`, reached only through
+  mode. The bot heuristics live apart from the rules, in `lib/game/bot.ts`, reached only through
   `lib/game/autoMove.ts`.
 - **The client sends an intent** (`game:play`, `game:pass`, `game:exchange_give_card`) and renders
   whatever the server broadcasts back — server/CLAUDE.md's server-authority rule covers why.
@@ -52,7 +52,7 @@ lib/game/gameEngine.ts (offline: called directly)   server/socket/socket.ts (onl
   mutator is `applyTableAction` in `server/game/tableHandlers.ts`**, which dispatches to
   `playAction` / `passAction` / `exchangeAction` / `rejoinAction` / `startMatchAction` /
   `seatLostAction`; those in turn use `gameTurn.ts` (`armTurn`, the AFK timer and bot turns),
-  `gameOver.ts` (`handleGameOver`) and `dealRound.ts` (the shared fresh-round reset used by
+  `roundOver.ts` (`handleRoundOver`) and `dealRound.ts` (the shared fresh-round reset used by
   both the first deal and a rematch). See §3 for how `applyOrForward` reaches the process that
   owns the room.
 - **`components/GameTable.tsx`** + the table's pure model (`seatLayout.ts`,
@@ -87,7 +87,7 @@ so a kill mid-hand is resumable from the home screen. A save from another versio
 discarded rather than migrated, the same call `active_games` makes.
 
 **Online:** `OnlineGameContext` holds a `GameState` it only ever receives from the server
-via socket events (`game:state`, `game:over`, …). User actions call context methods
+via socket events (`game:state`, `game:round_over`, …). User actions call context methods
 that `emit` an intent to the server. The server is the only writer of `GameState`
 (server/CLAUDE.md's authority rule) — it runs the intent through `lib/game/gameEngine.ts`,
 mutates state, persists it (`active_games` table), and emits a copy to every seat with each
@@ -166,7 +166,7 @@ single round.
 - If the same `userId` reconnects and emits `game:rejoin` before the timer fires, the timer
   is cleared and the seat is unaffected.
 - If the grace period expires, `vacateSeat()` runs: the seat's player row is removed, the
-  seat's `type` flips to `"ai"` so the engine's own AI plays it, and the room is told via
+  seat's `type` flips to `"bot"` so the engine's own AI plays it, and the room is told via
   `game:seat_bot_takeover` — **not** `game:player_left`, which is reserved for genuine
   game-over/abandonment so it doesn't eject the remaining humans from a game the server is
   actively keeping alive. If the vacancy leaves ≤1 human seated, the game really is
@@ -210,7 +210,7 @@ later turns.
 - **`session`** (via `connect-pg-simple`): `server/store/schemaDdl.ts` creates it at boot with
   the same DDL the library ships (server/CLAUDE.md's session-table rule covers its config and
   lifecycle). Never dropped or recreated by app code — see `docs/DEPLOY-RUNBOOK.md`.
-- **`match_replays`**: one row per finished round — `seats`, `moves` and `rankings` as
+- **`round_replays`**: one row per finished round — `seats`, `moves` and `finishingOrder` as
   jsonb, plus `playerIds` for the containment filter both reads go through, so a player
   can only ever fetch a hand they sat at. **No hand is stored**: a move carries what was
   played and the counts that followed, never what anyone held. The live log is memory
@@ -296,7 +296,7 @@ they *decide*, so a rule cannot hold in one mode and not the other:
 - **`lib/game/autoMove.ts`** — called by `server/` and by `context/GameContext.tsx`
   (CLAUDE.md's bot-move invariant: one chooser, both callers). It also owns
   `resolveStuckExchange`, the valve for an exchange no seat can satisfy.
-- **`lib/game/matchState.ts`** — the `game:over` wire shape (`GameOverPayload`, `ScoreLine`,
+- **`lib/game/matchState.ts`** — the `game:round_over` wire shape (`RoundOverPayload`, `ScoreLine`,
   `MatchVerdict`) and `celebratesViewer()`, which decides whether a win cue is the viewer's. A
   winner travels as an **engine player id** (`player_N`), never a username or a seat index
   (server/CLAUDE.md's rule). `matchWinnerIds` may be empty on a match that

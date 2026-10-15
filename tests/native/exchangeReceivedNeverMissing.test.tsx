@@ -6,13 +6,13 @@ import { render } from '@testing-library/react-native';
 import { getAnimatedStyle, makeMutable } from 'react-native-reanimated';
 import { LEG } from '@/lib/game/exchangeTimeline';
 import { Motion } from '@/lib/tokens';
-import { Legs, frames, trade } from './helpers/exchangeLegs';
+import { Legs, frames, announced } from './helpers/exchangeLegs';
 
 const LANDS = Motion.exchange.beat + LEG.end;
 
-async function legs(props: Omit<React.ComponentProps<typeof Legs>, 'trade' | 'onStage'>) {
+async function legs(props: Omit<React.ComponentProps<typeof Legs>, 'announced' | 'onStage'>) {
   const onStage = jest.fn();
-  const view = await render(<Legs trade={trade()} onStage={onStage} {...props} />);
+  const view = await render(<Legs announced={announced()} onStage={onStage} {...props} />);
   const opacity = () => (getAnimatedStyle(view.getByTestId('exchange-flier-to-winner', { includeHiddenElements: true })) as { opacity: number }).opacity;
   const landed = () => onStage.mock.calls.some(([leg, s]) => leg === 'receive' && s === 'landed');
   return { view, opacity, landed };
@@ -51,7 +51,7 @@ describe('the given card, seen by the loser', () => {
     await frames(LANDS + 160, (t) => {
       if (landed()) return;
       if (opacity() === 1) shown++;
-      expect([t, lifted.value]).toEqual([t, opacity() === 1 ? [trade().cardReceived!.id] : []]);
+      expect([t, lifted.value]).toEqual([t, opacity() === 1 ? [announced().cardReceived!.id] : []]);
     });
     expect(shown).toBeGreaterThan(0);
     await view.unmount();

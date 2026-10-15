@@ -47,9 +47,9 @@ import {
 } from "./authTokens.ts";
 import { sendMail } from "./mail.ts";
 import { getUserStats, getUserAchievements } from "../game/stats.ts";
-import { getMatchHistoryView } from "./matchHistoryView.ts";
+import { getRoundHistoryView } from "./roundHistoryView.ts";
 import { getReplayForUser, listReplaysForUser } from "../game/replays.ts";
-import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_GAMES } from "../game/ratings.ts";
+import { getCircleLeaderboard, getLeaderboard, getRating, PROVISIONAL_ROUNDS } from "../game/ratings.ts";
 import { recordClientError } from "./clientErrors.ts";
 import { recordBugReport } from "./bugReports.ts";
 import { adminSnapshot } from "./admin.ts";
@@ -751,9 +751,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── User ─────────────────────────────────────────────────────────────────
 
-  // Nothing stores a username as history: `matchHistory.userId`, `replays.playerIds` and every
+  // Nothing stores a username as history: `roundHistory.userId`, `replays.playerIds` and every
   // stats, rating and friends table key on the id, so each read projects whatever the name is
-  // now. A rename is one column, with no backfill behind it. `match_replays.seats.name` is the
+  // now. A rename is one column, with no backfill behind it. `round_replays.seats.name` is the
   // one stored copy, and `server/game/replays.ts` resolves it against the account on every read.
   //
   // Seated players keep the name the room was joined under — rewriting live room state mid-hand
@@ -967,7 +967,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/stats/history", requireAuth, async (req, res) => {
-    const history = await getMatchHistoryView(req.session.userId!);
+    const history = await getRoundHistoryView(req.session.userId!);
     res.json(history);
   });
 
@@ -986,7 +986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // admin code reaches a player's browser (#103).
   app.get("/admin", requireAdmin, async (_req, res) => {
     try {
-      const snapshot = await adminSnapshot(PROVISIONAL_GAMES);
+      const snapshot = await adminSnapshot(PROVISIONAL_ROUNDS);
       res.type("html").send(renderAdminPage(snapshot));
     } catch (err) {
       logger.error({ err }, "Failed to build the admin snapshot");

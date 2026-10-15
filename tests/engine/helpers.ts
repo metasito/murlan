@@ -62,8 +62,8 @@ export function makeState(
     passCount: 0,
     gameMode: "free_for_all" as GameMode,
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: false,
   };
   return { ...base, ...overrides };

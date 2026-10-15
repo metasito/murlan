@@ -21,7 +21,7 @@ const mockReplay = {
     { seatIndex: 0, userId: 'u1', name: 'Ana' },
     { seatIndex: 1, userId: 'u2', name: 'Besi' },
   ],
-  rankings: [],
+  finishingOrder: [],
   moves: [
     { seat: 0, combo: combo('single', [card('3', 'spades')]), handCounts: [2, 3] },
     { seat: 1, combo: null, handCounts: [2, 3] },

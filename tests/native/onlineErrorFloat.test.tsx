@@ -24,8 +24,8 @@ const mockState: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 
@@ -48,10 +48,10 @@ jest.mock('@/context/onlineGameHooks', () => ({
   useOnlineMatch: () => ({
     matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: false },
     cumulativeScores: {},
-    handScores: {},
+    roundScores: {},
     ratingDeltas: {},
     ratingsAfter: {},
-    handRecorded: false,
+    roundRecorded: false,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),

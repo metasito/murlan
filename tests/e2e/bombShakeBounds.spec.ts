@@ -22,7 +22,7 @@
 import { expect, test } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { resumeSaved } from "./helpers/offlineSeed";
-import { E2E_SUSPEND_AI_KEY } from "../../lib/e2eAiSuspend";
+import { E2E_SUSPEND_BOT_KEY } from "../../lib/e2eBotSuspend";
 import { buildCombination, type Card, type Rank, type Suit } from "../../lib/game/gameEngine";
 import { GIOCA_VALID_LABEL } from "./helpers/labels.ts";
 import { HAND_ZONE, TABLE } from "./helpers/selectors.ts";
@@ -103,7 +103,7 @@ function bombSave() {
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: VIEWER_HAND, type: "human" },
-        { id: "player_1", name: "Bea", hand: BOT_HAND, type: "ai" },
+        { id: "player_1", name: "Bea", hand: BOT_HAND, type: "bot" },
       ],
       currentTurnIndex: 0,
       lastPlayedCombination: buildCombination([PILE_CARD]),
@@ -111,8 +111,8 @@ function bombSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
     },
     match: {
@@ -126,7 +126,7 @@ function bombSave() {
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -251,7 +251,7 @@ const named = (page: Page, name: string) =>
 /**
  * A table with the bomb selected and GIOCA armed, one tap from the landing.
  *
- * The AI is held for the life of the page (`lib/e2eAiSuspend.ts`). It is not a
+ * The AI is held for the life of the page (`lib/e2eBotSuspend.ts`). It is not a
  * convenience: `EXPO_PUBLIC_E2E_FAST` answers for the seat in ~0ms, and a pass
  * closes the round heads-up, which takes `GameTable`'s own pile effect down the
  * `combo === null` branch and **clears the pending impact timer** — so the
@@ -265,7 +265,7 @@ async function armedBomb(page: Page, baseURL: string): Promise<void> {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.addInitScript((key: string) => {
     window.localStorage.setItem(key, "1");
-  }, E2E_SUSPEND_AI_KEY);
+  }, E2E_SUSPEND_BOT_KEY);
 
   await resumeSaved(page, baseURL, bombSave());
   await page.locator(TABLE).waitFor({ timeout: 30_000 });

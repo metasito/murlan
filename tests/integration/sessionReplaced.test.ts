@@ -13,7 +13,7 @@ import { disconnectGraceMs } from "../../server/game/gameTimers.ts";
 import {
   setUpRoom,
   startGame,
-  driveHandToExchangeOrOver,
+  driveRoundToExchangeOrOver,
   assertHandSecrecy,
   type Client,
   type RoomState,
@@ -146,13 +146,13 @@ describe(
 
         // Plays the hand out from the new socket: broadcasts reach it, its
         // moves are accepted, and the seat is still its own.
-        const result = await driveHandToExchangeOrOver([secondClient, bob], () => {
+        const result = await driveRoundToExchangeOrOver([secondClient, bob], () => {
           for (const client of [secondClient, bob]) {
             client.socket.emit("game:rejoin", { roomId: room.roomId });
           }
         });
         assert.ok(
-          result.stoppedOn === "exchange" || result.stoppedOn === "gameOver",
+          result.stoppedOn === "exchange" || result.stoppedOn === "roundOver",
           "the replacement socket has to be able to play the hand out"
         );
         assert.deepEqual(announced, [], "and still nothing was announced about the seat");
@@ -271,7 +271,7 @@ describe(
 ` +
               `  activeGames ${held && activeGames.has(held) ? `has a game for ${held}` : "has no game for that room"}` +
               `${held && !activeGames.has(held) ? " -> the 'Seat released without a grace period' exit" : ""}` +
-              `${held && activeGames.get(held)?.gameState.gameOver ? " (the game is over)" : ""}`
+              `${held && activeGames.get(held)?.gameState.roundOver ? " (the game is over)" : ""}`
           );
         });
         assert.equal(

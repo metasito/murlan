@@ -21,7 +21,7 @@ const activePhase = {
   active: true,
   winnerIdx: 1,
   loserIdx: 3,
-  bothJokersException: false,
+  twoJokerException: false,
   cardFromLoser: CARD,
 };
 
@@ -69,7 +69,7 @@ describe("visibleExchangePhase", () => {
           active: true,
           winnerIdx: 1,
           loserIdx: 3,
-          bothJokersException: false,
+          twoJokerException: false,
           cardFromLoser: undefined,
         }
       );
@@ -107,12 +107,12 @@ describe("visibleExchangePhase", () => {
 
     // With only one leg, the watching seats animate a delivery rather than a
     // trade.
-    test("the watching seats see the trade cross once it is settled", () => {
+    test("the watching seats see the announced cross once it is settled", () => {
       for (const seat of [0, 2]) {
         assert.deepEqual(
           visibleExchangePhase(settled, seat, DURING)?.cardToLoser,
           RETURNED,
-          `seat ${seat} saw only half the trade`
+          `seat ${seat} saw only half the announced`
         );
       }
     });
@@ -150,7 +150,7 @@ describe("visibleExchangePhase", () => {
           stateAckTimeoutMs() < exchangeAnnounceMs(false),
           `the state-ack resend (${stateAckTimeoutMs()}ms) now fires after the ceremony ` +
             `(${exchangeAnnounceMs(false)}ms), so a client that missed the settle is re-sent ` +
-            `half a trade`
+            `half a announced`
         );
       });
 
@@ -181,7 +181,7 @@ describe("visibleExchangePhase", () => {
           assert.deepEqual(
             visibleExchangePhase(settled, seat, OVER + 60 * 60_000)?.cardToLoser,
             RETURNED,
-            `seat ${seat} lost the card out of its own trade`
+            `seat ${seat} lost the card out of its own announced`
           );
         }
       });
@@ -189,7 +189,7 @@ describe("visibleExchangePhase", () => {
       // Both Jokers cancel the flight, so the ceremony is shorter — the window
       // is the ceremony's own clock rather than a number of its own.
       test("the two-joker ceremony closes on its own shorter clock", () => {
-        const cancelled = { ...settled, bothJokersException: true };
+        const cancelled = { ...settled, twoJokerException: true };
         const shorter = SETTLED_AT + exchangeAnnounceMs(true);
         assert.deepEqual(visibleExchangePhase(cancelled, 0, shorter - 1)?.cardToLoser, RETURNED);
         assert.equal("cardToLoser" in visibleExchangePhase(cancelled, 0, shorter)!, false);
@@ -217,7 +217,7 @@ describe("visibleExchangePhase", () => {
           endedByVote: false,
           gameMode: "free_for_all",
           matchLength: "match",
-          handsPlayed: 0,
+          roundsPlayed: 0,
           matchTarget: 1,
           maxPlayers: 4,
         }, { vacatedSeats: [], releasedSeats: [], weakSeats: [], abandonedSeats: [] });
@@ -260,8 +260,8 @@ describe("visibleExchangePhase", () => {
   });
 
   test("the two-joker exception is visible to the table", () => {
-    const both = { ...activePhase, active: false, bothJokersException: true };
-    assert.equal(visibleExchangePhase(both, 0)?.bothJokersException, true);
+    const both = { ...activePhase, active: false, twoJokerException: true };
+    assert.equal(visibleExchangePhase(both, 0)?.twoJokerException, true);
   });
 });
 

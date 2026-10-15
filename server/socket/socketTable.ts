@@ -195,15 +195,15 @@ export async function announceRejoin(
   sendGameStateTo(io, userId, game);
   // The client reads this as the framing of a round that has just begun and
   // zeroes the match verdict along with it, so it is only right while one is
-  // running — at the results screen `game:over` owns that.
-  if (!game.gameState.gameOver) {
+  // running — at the results screen `game:round_over` owns that.
+  if (!game.gameState.roundOver) {
     emitMatchState(io, userRoom(userId), game);
   } else {
     // A rejoin at the results screen: everyone still in the room got
-    // `game:over` when the hand ended, but this socket was not one of them.
+    // `game:round_over` when the hand ended, but this socket was not one of them.
     // Re-sent to this account only, so a client that never left is not told
     // its own hand twice.
-    if (game.lastGameOverPayload) io.to(userRoom(userId)).emit("game:over", game.lastGameOverPayload);
+    if (game.lastRoundOverPayload) io.to(userRoom(userId)).emit("game:round_over", game.lastRoundOverPayload);
     // Even without one: a restart restores no votes, and the client keeps its
     // tally across a finished table re-sent.
     emitVoteState(io, userRoom(userId), game);

@@ -13,7 +13,7 @@ import type { Page } from "@playwright/test";
 import { openApp } from "./navigation";
 import { createDeck, dealCards } from "../../../lib/game/gameEngine";
 import { captureGameState, type CaptureState } from "../../../lib/captureStates";
-import { E2E_SUSPEND_AI_KEY, OFFLINE_SAVE_KEY } from "../../../lib/storageKeys";
+import { E2E_SUSPEND_BOT_KEY, OFFLINE_SAVE_KEY } from "../../../lib/storageKeys";
 
 /** Bot names and personalities as app/lobby.tsx fills empty seats. */
 const BOTS = [
@@ -71,7 +71,7 @@ export function offlineGameSave(
     id: `player_${i}`,
     name: i === 0 ? "Ana" : BOTS[i - 1].name,
     hand: dealt[i],
-    type: i === 0 ? "human" : "ai",
+    type: i === 0 ? "human" : "bot",
   }));
 
   return {
@@ -84,8 +84,8 @@ export function offlineGameSave(
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       // Past the opening, so nothing is waiting on the 3 of spades and the
       // table renders as a hand in progress rather than a first move.
       firstPlayMade: true,
@@ -104,7 +104,7 @@ export function offlineGameSave(
     players: Array.from({ length: playerCount }, (_, i) =>
       i === 0
         ? { name: "Ana", type: "human" }
-        : { name: BOTS[i - 1].name, type: "ai", personality: BOTS[i - 1].personality }
+        : { name: BOTS[i - 1].name, type: "bot", personality: BOTS[i - 1].personality }
     ),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -115,12 +115,12 @@ export function offlineGameSave(
  * Holds whichever seat the save is on, before the bundle evaluates.
  *
  * `EXPO_PUBLIC_E2E_FAST` takes the offline bot's own delay to zero, so a seeded
- * bot turn is over before a spec can measure it (`lib/e2eAiSuspend.ts`).
+ * bot turn is over before a spec can measure it (`lib/e2eBotSuspend.ts`).
  */
 export async function holdSeededTurn(page: Page): Promise<void> {
   await page.addInitScript(
     ({ key }) => window.localStorage.setItem(key, "1"),
-    { key: E2E_SUSPEND_AI_KEY }
+    { key: E2E_SUSPEND_BOT_KEY }
   );
 }
 
@@ -152,7 +152,7 @@ export async function openSeededGame(
  * comparable: a state that carries a pile carries it on both, instead of the
  * web run quietly checking an empty felt under the same name.
  *
- * It also holds the seeded turn still (`lib/e2eAiSuspend.ts`).
+ * It also holds the seeded turn still (`lib/e2eBotSuspend.ts`).
  */
 export async function openCaptureState(
   page: Page,

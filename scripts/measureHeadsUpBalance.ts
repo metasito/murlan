@@ -7,23 +7,23 @@
 //
 // Calls the real engine and the real bot AI through
 // tests/helpers/offlineMatch.ts's `simulateOfflineMatch` — no copy of
-// either, per the ticket's own constraint. `aiRng` (added to that harness
+// either, per the ticket's own constraint. `botRng` (added to that harness
 // for this ticket) makes a whole match, deal and personality knobs both,
-// reproducible from one seed, per `aiChoosePlay`'s own injectable `rng`.
+// reproducible from one seed, per `botChoosePlay`'s own injectable `rng`.
 //
 // Run: node --experimental-strip-types scripts/measureHeadsUpBalance.ts
 // Flags (all optional, see `parseArgs`): --seed --dealN --matchN2p
 // --matchN4p --personalityN
 import { pathToFileURL } from "node:url";
 import {
-  aiChoosePlay,
+  botChoosePlay,
   bombPossible,
   isExchangeCardStillOut,
   knownOpponentExchangeCard,
   losesLeadToExchangeCard,
   opponentsOf,
   outstandingAbove,
-} from "../lib/game/ai.ts";
+} from "../lib/game/bot.ts";
 import {
   cardStrength,
   dealCards,
@@ -144,7 +144,7 @@ function measureDealConcentration(playerCount: number, n: number, seed: number) 
 function tableOf(playerCount: number, personalities?: (BotPersonalityId | undefined)[]): OfflinePlayerSetup[] {
   return Array.from({ length: playerCount }, (_, i) => ({
     name: `Bot${i}`,
-    type: "ai" as const,
+    type: "bot" as const,
     personality: personalities?.[i],
   }));
 }
@@ -164,7 +164,7 @@ function runMatches(
         length: "match",
         // See the file banner: this is what makes the AI's aggression/
         // unpredictability knobs, not just the deal, reproducible from `seed`.
-        aiRng: (s) => mulberry32(s + 1),
+        botRng: (s) => mulberry32(s + 1),
       })
     );
   }
@@ -200,7 +200,7 @@ function measureCompoundingAndStreak(results: SimulateMatchResult[], playerCount
       if (i === 0) {
         round0TopCards.push(m.topCardCounts);
       } else if (playerCount === 2) {
-        const prevWinnerSeat = seatOfWinner(r.rounds[i - 1].rankings[0]);
+        const prevWinnerSeat = seatOfWinner(r.rounds[i - 1].finishingOrder[0]);
         const otherSeat = prevWinnerSeat === 0 ? 1 : 0;
         const delta = m.topCardCounts[prevWinnerSeat] - m.topCardCounts[otherSeat];
         const bucket = deltaByRoundIndex.get(i) ?? [];
@@ -210,7 +210,7 @@ function measureCompoundingAndStreak(results: SimulateMatchResult[], playerCount
 
       if (i > 0) {
         streakTransitions++;
-        if (seatOfWinner(m.rankings[0]) === seatOfWinner(r.rounds[i - 1].rankings[0])) {
+        if (seatOfWinner(m.finishingOrder[0]) === seatOfWinner(r.rounds[i - 1].finishingOrder[0])) {
           streakRepeats++;
         }
       }
@@ -257,7 +257,7 @@ function measurePersonalityVsDefault(n: number, seed: number): PersonalityRow[] 
 // mechanism directly: deals a round and drives it with today's engine
 // (exchange included), and at every new-round lead the loser makes while its
 // tribute is still verifiably live (`isExchangeCardStillOut` — the same gate
-// `aiChoosePlay` applies internally, applied here too so a fact the fix
+// `botChoosePlay` applies internally, applied here too so a fact the fix
 // itself has already retired is not scored as a defect), asks whether a
 // legal lead exists that does not lose outright to the known card. Only
 // those "avoidable" decision points are asked twice — once passing the
@@ -292,7 +292,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
     let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
     const rng = mulberry32(dealSeed + 1);
 
-    for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
+    for (let turn = 0; turn < 300 && !state.roundOver; turn++) {
       const seat = state.currentTurnIndex;
       const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
 
@@ -308,10 +308,10 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
           } else {
             avoidableLeadsChecked++;
             const opponents = opponentsOf(state, seat);
-            const before = aiChoosePlay(
+            const before = botChoosePlay(
               leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, undefined
             );
-            const after = aiChoosePlay(
+            const after = botChoosePlay(
               leader, null, true, opponents.handCounts, undefined, mulberry32(dealSeed + turn), false, state.playedRanks, known
             );
             if (isKnownCardBlunder(before, known)) wouldHaveBlundered++;
@@ -331,15 +331,15 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
 // ─── Measurement 6 helpers: royal-straight blind spot (#943) ──────────────
 //
-// takesTheTrick (lib/game/ai.ts, module-private inside aiChoosePlay) names
+// takesTheTrick (lib/game/bot.ts, module-private inside botChoosePlay) names
 // one residual risk a rank tally cannot see: a royal straight, which needs
 // suits the tally deliberately does not hold. isCertainLead mirrors that
 // predicate exactly — same three conditions, same order — because the
 // original is not exported and this measurement needs to ask the identical
-// question about every legal play, not just the one aiChoosePlay ends up
+// question about every legal play, not just the one botChoosePlay ends up
 // picking.
 
-/** Mirrors `takesTheTrick` inside `lib/game/ai.ts`'s `aiChoosePlay`. */
+/** Mirrors `takesTheTrick` inside `lib/game/bot.ts`'s `botChoosePlay`. */
 export function isCertainLead(
   play: Combination,
   playedRanks: number[] | undefined,
@@ -421,7 +421,7 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
       let state = withSeededDeals(dealSeed, () => initializeRematch(players, "free_for_all", []));
       const rng = mulberry32(dealSeed + 1);
 
-      for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
+      for (let turn = 0; turn < 300 && !state.roundOver; turn++) {
         const seat = state.currentTurnIndex;
         const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
 

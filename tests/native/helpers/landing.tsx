@@ -63,8 +63,8 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     passCount,
     gameMode: 'free_for_all',
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   };
   return (
@@ -87,7 +87,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
 export function flightOf(key: string, cards: Card[], from: CardFrom[], reduced = false): Flight {
   const combo = { type: 'single', cards, strength: 0 } as Combination;
   const spec = flightSpec(key, from, pileSlots(cards.length, 60, 400), false, reduced);
-  return { key, combo, playedBy: 0, spec, landing: { ...NO_LANDING, cards: cards.length }, handOver: false, hidden: false };
+  return { key, combo, playedBy: 0, spec, landing: { ...NO_LANDING, cards: cards.length }, roundOver: false, hidden: false };
 }
 
 /** `PileLayer` alone, holding `plays` in order, the last on top. */

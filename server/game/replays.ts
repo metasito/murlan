@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "../store/db.ts";
-import { matchReplays } from "../../shared/schema.ts";
+import { roundReplays } from "../../shared/schema.ts";
 import { replayPlayerIdsOf } from "./replayShape.ts";
 import { namesOf } from "./userNames.ts";
 import type { ReplayDto, ReplayMove, ReplaySeat, ReplaySummary } from "../../lib/game/replay.ts";
@@ -11,7 +11,7 @@ export const MAX_REPLAYS_LISTED = 20;
 
 /** Rows whose player_ids contain this user — the only ones they may read. */
 const ownedBy = (userId: string) =>
-  sql`${matchReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
+  sql`${roundReplays.playerIds} @> ${JSON.stringify([userId])}::jsonb`;
 
 /**
  * `seats[].name` is a copy taken when the hand ended, so a rename never reaches
@@ -37,38 +37,38 @@ export async function saveReplay(input: {
   gameMode: GameMode;
   seats: ReplaySeat[];
   moves: ReplayMove[];
-  rankings: string[];
+  finishingOrder: string[];
 }): Promise<void> {
   const playerIds = replayPlayerIdsOf(input.seats);
   // An all-bot table produces a replay nobody could ever open.
   if (playerIds.length === 0) return;
 
-  await db.insert(matchReplays).values({
+  await db.insert(roundReplays).values({
     roomId: input.roomId,
     finishedAt: input.finishedAt,
     gameMode: input.gameMode,
     playerIds,
     seats: input.seats,
     moves: input.moves,
-    rankings: input.rankings,
+    finishingOrder: input.finishingOrder,
   });
 }
 
 export async function listReplaysForUser(userId: string): Promise<ReplaySummary[]> {
   const rows = await db
     .select({
-      id: matchReplays.id,
-      finishedAt: matchReplays.finishedAt,
-      gameMode: matchReplays.gameMode,
-      seats: matchReplays.seats,
+      id: roundReplays.id,
+      finishedAt: roundReplays.finishedAt,
+      gameMode: roundReplays.gameMode,
+      seats: roundReplays.seats,
       // The list shows how long the hand was, not what was played: one round
       // is ~9 KB of jsonb, so twenty of them are most of this response and all
       // of it is discarded. Postgres counts them instead.
-      moveCount: sql<number>`jsonb_array_length(${matchReplays.moves})`,
+      moveCount: sql<number>`jsonb_array_length(${roundReplays.moves})`,
     })
-    .from(matchReplays)
+    .from(roundReplays)
     .where(ownedBy(userId))
-    .orderBy(desc(matchReplays.finishedAt))
+    .orderBy(desc(roundReplays.finishedAt))
     .limit(MAX_REPLAYS_LISTED);
 
   await withLiveNames(rows);
@@ -89,8 +89,8 @@ export async function getReplayForUser(
 ): Promise<ReplayDto | null> {
   const [row] = await db
     .select()
-    .from(matchReplays)
-    .where(and(eq(matchReplays.id, id), ownedBy(userId)))
+    .from(roundReplays)
+    .where(and(eq(roundReplays.id, id), ownedBy(userId)))
     .limit(1);
   if (!row) return null;
   await withLiveNames([row]);
@@ -100,6 +100,6 @@ export async function getReplayForUser(
     gameMode: row.gameMode as GameMode,
     seats: row.seats,
     moves: row.moves,
-    rankings: row.rankings,
+    finishingOrder: row.finishingOrder,
   };
 }

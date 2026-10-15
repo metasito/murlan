@@ -37,8 +37,8 @@ const mockFinished: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: 0,
-  gameOver: true,
-  rankings: ['player_0', 'player_1'],
+  roundOver: true,
+  finishingOrder: ['player_0', 'player_1'],
   firstPlayMade: true,
 };
 
@@ -77,18 +77,18 @@ jest.mock('@/context/onlineGameHooks', () => ({
       winners: mockMatchOver ? ['player_0'] : [],
       isDraw: false,
       continues: !mockMatchOver,
-      handsPlayed: 1,
+      roundsPlayed: 1,
     },
     cumulativeScores: {},
-    handScores: {},
-    handScoresCurrent: true,
+    roundScores: {},
+    roundScoresCurrent: true,
     rematchVoteState: null,
     endMatchVoteState: null,
     voteRematch: jest.fn(),
     voteToEndMatch: jest.fn(),
     ratingDeltas: {},
     ratingsAfter: {},
-    handRecorded: true,
+    roundRecorded: true,
   }),
   useOnlineExchange: () => ({
     exchangeAnnouncing: false,
@@ -105,7 +105,7 @@ jest.mock('@/components/GameTable', () => {
     GameTable: (props: {
       onQuit: () => void;
       matchActions?: { onHome: () => void };
-      gameState: { gameOver: boolean };
+      gameState: { roundOver: boolean };
       matchOver: boolean;
       overlays?: (v: object) => React.ReactNode;
     }) =>
@@ -113,7 +113,7 @@ jest.mock('@/components/GameTable', () => {
         rn.View,
         null,
         react.createElement(rn.Pressable, { testID: 'table-quit', onPress: props.onQuit }),
-        props.matchActions && props.gameState.gameOver && props.matchOver
+        props.matchActions && props.gameState.roundOver && props.matchOver
           ? react.createElement(rn.Pressable, { testID: 'btn-home', onPress: props.matchActions.onHome })
           : null,
         props.overlays ? props.overlays({}) : null

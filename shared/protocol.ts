@@ -3,13 +3,13 @@
 // holds that. Raise MIN_PROTOCOL_VERSION to turn away the bundles a change breaks.
 import { z } from "zod";
 import type { GameState, MatchLength, Player } from "../lib/game/gameEngine.ts";
-import type { GameOverPayload } from "../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../lib/game/matchState.ts";
 import type { FriendRequestAccepted, FriendRequestIncoming } from "../lib/wire.ts";
 import type * as Inbound from "./socketSchemas.ts";
 import type { TranslationParams } from "./i18n.ts";
 
-export const PROTOCOL_VERSION = 5;
-export const MIN_PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 6;
+export const MIN_PROTOCOL_VERSION = 6;
 
 /** The handshake's refusal for a bundle older than MIN_PROTOCOL_VERSION. */
 export const CLIENT_OUTDATED = "CLIENT_OUTDATED";
@@ -64,10 +64,10 @@ interface VoteState {
 
 export interface ServerToClientEvents {
   "game:state": (state: WireGameState, ack: () => void) => void;
-  "game:over": (payload: GameOverPayload) => void;
+  "game:round_over": (payload: RoundOverPayload) => void;
   "room:state": (room: WireRoomState) => void;
   "game:started": () => void;
-  "game:match_state": (match: { target: number; length: MatchLength; handsPlayed: number; scores: Record<string, number> }) => void;
+  "game:match_state": (match: { target: number; length: MatchLength; roundsPlayed: number; scores: Record<string, number> }) => void;
   "game:vote_state": (votes: VoteState) => void;
   "game:end_match_vote_state": (votes: VoteState) => void;
   "game:turn_deadline": (deadline: { turnDeadlineMs?: number; turnSecondsRemaining: number }) => void;
@@ -152,19 +152,19 @@ export const gameStateSchema = z
   .object({
     players: z.array(wirePlayer).min(1),
     currentTurnIndex: z.number(),
-    gameOver: z.boolean(),
-    rankings: z.array(z.string()).default([]),
+    roundOver: z.boolean(),
+    finishingOrder: z.array(z.string()).default([]),
   })
   .passthrough();
 
-export const gameOverSchema = z
+export const roundOverSchema = z
   .object({
-    rankings: z.array(z.string()),
+    finishingOrder: z.array(z.string()),
     scores: z.array(z.object({ engineId: z.string(), points: z.number(), total: z.number() }).passthrough()),
     matchOver: z.boolean(),
     matchWinnerIds: z.array(z.string()),
     ratingDeltas: z.record(z.number()),
-    ratingsAfter: z.record(z.object({ rating: z.number(), games: z.number() })).optional(),
+    ratingsAfter: z.record(z.object({ rating: z.number(), rounds: z.number() })).optional(),
   })
   .passthrough();
 

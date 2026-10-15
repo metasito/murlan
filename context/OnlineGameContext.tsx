@@ -18,7 +18,7 @@ import { Reading } from "@/lib/theme";
 import { send, undelivered, type IntentEvent } from "@/lib/sendIntent";
 import { MATCH_TARGETS } from "@/lib/game/gameEngine";
 import {
-  gameOverSchema,
+  roundOverSchema,
   gameStateSchema,
   type IntentPayload,
   roomStateSchema,
@@ -30,7 +30,7 @@ import { reportError } from "@/lib/errorReporting";
 import { clearReactions, pushReaction } from "@/lib/reactions";
 import { ACTIVE_ROOM_KEY, WAITING_ROOM_KEY } from "@/lib/storageKeys";
 import type { GameState, MatchLength } from "@/lib/game/gameEngine";
-import type { GameOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
+import type { RoundOverPayload, MatchVerdict, RatingAfter } from "@/lib/game/matchState";
 import {
   buildExchangeAnnounce,
   useExchangeAnnouncement,
@@ -51,7 +51,7 @@ export interface RematchVoteState {
 /** The running match, as the server reports it. */
 export interface OnlineMatchState extends MatchVerdict {
   /** Rounds decided on this match so far. */
-  handsPlayed: number;
+  roundsPlayed: number;
   /** Once the match is over, whether a rematch may follow: false when it closed unscored, by vote or voided. */
   continues: boolean;
 }
@@ -62,7 +62,7 @@ if (initialTarget === undefined) throw new Error("MATCH_TARGETS must not be empt
 const INITIAL_MATCH: OnlineMatchState = {
   target: initialTarget,
   length: "match",
-  handsPlayed: 0,
+  roundsPlayed: 0,
   over: false,
   winners: [],
   isDraw: false,
@@ -98,13 +98,13 @@ interface OnlineGameContextValue {
   autoPassed: number;
   cumulativeScores: Record<string, number>;
   /** What the round just played awarded, by engine player id. */
-  handScores: Record<string, number>;
-  /** Whether `game:over` has scored the round `gameState` shows: its `game:state` arrives first. */
-  handScoresCurrent: boolean;
+  roundScores: Record<string, number>;
+  /** Whether `game:round_over` has scored the round `gameState` shows: its `game:state` arrives first. */
+  roundScoresCurrent: boolean;
   /** What the hand just played did to each seat's rating, by user id. Empty when the hand rated nobody. */
   ratingDeltas: Record<string, number>;
   /** Whether the hand just played wrote a `/api/stats/history` row — a bot-majority table writes none. */
-  handRecorded: boolean;
+  roundRecorded: boolean;
   /** Each rated seat's standing after the hand just played, by user id; empty when it rated nobody. */
   ratingsAfter: Record<string, RatingAfter>;
   matchState: OnlineMatchState;
@@ -196,10 +196,10 @@ type MatchSlice = Pick<
   OnlineGameContextValue,
   | "matchState"
   | "cumulativeScores"
-  | "handScores"
-  | "handScoresCurrent"
+  | "roundScores"
+  | "roundScoresCurrent"
   | "ratingDeltas"
-  | "handRecorded"
+  | "roundRecorded"
   | "ratingsAfter"
   | "rematchVoteState"
   | "endMatchVoteState"
@@ -290,11 +290,11 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
   >({});
   const [autoPassed, setAutoPassed] = useState(0);
   const [cumulativeScores, setCumulativeScores] = useState<Record<string, number>>({});
-  const [handScores, setHandScores] = useState<Record<string, number>>({});
-  const [handScoresCurrent, setHandScoresCurrent] = useState(false);
+  const [roundScores, setRoundScores] = useState<Record<string, number>>({});
+  const [roundScoresCurrent, setRoundScoresCurrent] = useState(false);
   /** What the hand just played did to each seat's ladder rating, by user id. */
   const [ratingDeltas, setRatingDeltas] = useState<Record<string, number>>({});
-  const [handRecorded, setHandRecorded] = useState(false);
+  const [roundRecorded, setRoundRecorded] = useState(false);
   const [ratingsAfter, setRatingsAfter] = useState<Record<string, RatingAfter>>({});
   const [matchState, setMatchState] = useState<OnlineMatchState>(INITIAL_MATCH);
   const [rejoinFailed, setRejoinFailed] = useState(false);
@@ -404,7 +404,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     // the only route into the table: miss it, and the room screen asks for a
     // seat in a lobby that is already playing, forever.
     const playing = currentRoom?.status === "in_progress";
-    if (currentRoom && ((currentGame && !currentGame.gameOver) || playing)) {
+    if (currentRoom && ((currentGame && !currentGame.roundOver) || playing)) {
       requestedRoomIdRef.current = currentRoom.roomId;
       void send(socket, "game:rejoin", { roomId: currentRoom.roomId }, { retry: false });
       return true;
@@ -466,7 +466,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       setEndMatchVoteState(null);
       setDisconnectedSeats({});
       setCumulativeScores({});
-      setHandScoresCurrent(false);
+      setRoundScoresCurrent(false);
       prevExchangeActiveRef.current = false;
       prevBothJokersExceptionRef.current = false;
       setReconnectNotice(null);
@@ -589,7 +589,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       }
 
       const prevBothJolly = prevBothJokersExceptionRef.current;
-      const currBothJolly = state.exchangePhase?.bothJokersException ?? false;
+      const currBothJolly = state.exchangePhase?.twoJokerException ?? false;
       prevBothJokersExceptionRef.current = currBothJolly;
 
       if (!isActive && currBothJolly && !prevBothJolly) {
@@ -598,16 +598,16 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
 
       // A finished table re-sent (a reclaimed seat, say) comes without the
       // tally, which the server still holds.
-      const sameResults = state.gameOver && prevGameStateRef.current?.gameOver === true;
+      const sameResults = state.roundOver && prevGameStateRef.current?.roundOver === true;
       prevGameStateRef.current = state;
       gameStateRef.current = state;
       setGameState(state);
       if (!sameResults) setRematchVoteState(null);
-      if (!state.gameOver) setHandScoresCurrent(false);
+      if (!state.roundOver) setRoundScoresCurrent(false);
 
       // The game genuinely ending is the only reason to forget the room while
       // still seated; a rematch re-arms it on the next non-final state.
-      if (state.gameOver) {
+      if (state.roundOver) {
         persistActiveRoom(null);
       } else if (roomRef.current) {
         persistActiveRoom(roomRef.current.roomId);
@@ -651,33 +651,33 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     const onMatchState = ({
       target,
       length,
-      handsPlayed,
+      roundsPlayed,
       scores,
     }: {
       target: number;
       length: MatchLength;
-      handsPlayed?: number;
+      roundsPlayed?: number;
       scores: Record<string, number>;
     }) => {
-      setMatchState({ ...INITIAL_MATCH, target, length, handsPlayed: handsPlayed ?? 0 });
+      setMatchState({ ...INITIAL_MATCH, target, length, roundsPlayed: roundsPlayed ?? 0 });
       setCumulativeScores(scores);
       // No round has been played on this match yet, so nothing has been
       // awarded — carrying the last match's deltas over would print them
       // beside a fresh scoreboard.
-      setHandScores({});
+      setRoundScores({});
       setRatingDeltas({});
       setRatingsAfter({});
-      setHandRecorded(false);
+      setRoundRecorded(false);
     };
 
-    const onGameOver = (raw: unknown) => {
-      const parsed = gameOverSchema.safeParse(raw);
-      if (!parsed.success) return unreadable("game:over", parsed.error);
+    const onRoundOver = (raw: unknown) => {
+      const parsed = roundOverSchema.safeParse(raw);
+      if (!parsed.success) return unreadable("game:round_over", parsed.error);
       const {
         scores,
         matchTarget,
         matchLength,
-        handsPlayed,
+        roundsPlayed,
         matchOver,
         matchWinnerIds,
         matchContinues,
@@ -685,22 +685,22 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
         ratingDeltas,
         ratingsAfter,
         recorded,
-      } = parsed.data as unknown as GameOverPayload;
+      } = parsed.data as unknown as RoundOverPayload;
       // Kept whole and keyed by user id: this context has no identity of its
       // own, and the overlay that shows the number already knows whose it is.
       // Undefined and empty are the same answer — the hand rated nobody.
       setRatingDeltas(ratingDeltas ?? {});
       setRatingsAfter(ratingsAfter ?? {});
-      setHandRecorded(recorded);
-      setHandScoresCurrent(true);
+      setRoundRecorded(recorded);
+      setRoundScoresCurrent(true);
       if (scores) {
         setCumulativeScores(Object.fromEntries(scores.map((r) => [r.engineId, r.total])));
-        setHandScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
+        setRoundScores(Object.fromEntries(scores.map((r) => [r.engineId, r.points])));
       }
       setMatchState((prev) => ({
         target: matchTarget ?? prev.target,
         length: matchLength ?? prev.length,
-        handsPlayed: handsPlayed ?? prev.handsPlayed,
+        roundsPlayed: roundsPlayed ?? prev.roundsPlayed,
         over: matchOver ?? false,
         winners: matchWinnerIds ?? [],
         isDraw: isDraw ?? false,
@@ -840,7 +840,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     socket?.on("game:turn_deadline", setTurnDeadline);
     socket?.on("game:error", onGameError);
     socket?.on("game:notification", onGameNotification);
-    socket?.on("game:over", onGameOver);
+    socket?.on("game:round_over", onRoundOver);
     socket?.on("game:match_state", onMatchState);
     socket?.on("game:vote_state", onVoteState);
     socket?.on("game:end_match_vote_state", onEndMatchVoteState);
@@ -860,7 +860,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
       socket?.off("game:turn_deadline", setTurnDeadline);
       socket?.off("game:error", onGameError);
       socket?.off("game:notification", onGameNotification);
-      socket?.off("game:over", onGameOver);
+      socket?.off("game:round_over", onRoundOver);
       socket?.off("game:match_state", onMatchState);
       socket?.off("game:vote_state", onVoteState);
       socket?.off("game:end_match_vote_state", onEndMatchVoteState);
@@ -968,7 +968,7 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     setEndMatchVoteState(null);
     setDisconnectedSeats({});
     setCumulativeScores({});
-    setHandScoresCurrent(false);
+    setRoundScoresCurrent(false);
     setPlayerLeft(false);
     setRejoinFailed(false);
     // The lobby stays mounted under the table: a refusal about it would greet the player there.
@@ -1084,17 +1084,17 @@ export function OnlineGameProvider({ userId, children }: { userId: string; child
     () => ({
       matchState,
       cumulativeScores,
-      handScores,
-      handScoresCurrent,
+      roundScores,
+      roundScoresCurrent,
       ratingDeltas,
-      handRecorded,
+      roundRecorded,
       ratingsAfter,
       rematchVoteState,
       endMatchVoteState,
       voteRematch,
       voteToEndMatch,
     }),
-    [matchState, cumulativeScores, handScores, handScoresCurrent, ratingDeltas, handRecorded, ratingsAfter, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
+    [matchState, cumulativeScores, roundScores, roundScoresCurrent, ratingDeltas, roundRecorded, ratingsAfter, rematchVoteState, endMatchVoteState, voteRematch, voteToEndMatch]
   );
 
   const exchangeValue = useMemo(

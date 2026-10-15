@@ -5,7 +5,7 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { uiFeedback } from "@/lib/device/feedback";
 import { BOT_PERSONALITIES, BotPersonalityId, difficultyLabelKey, getBotPersonality } from "@/lib/game/botPersonalities";
-import type { AIDifficulty } from "@/lib/game/gameEngine";
+import type { BotDifficulty } from "@/lib/game/gameEngine";
 import { Colors, Spacing, Radius, FontSize, TOUCH_TARGET_MIN } from "@/lib/theme";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, a11yState } from "@/lib/a11y";
@@ -20,7 +20,7 @@ const LADDER_BAR_RADIUS = 1;
  * (ladderBarSelected), so height is the only cue left standing once a tier
  * is picked.
  */
-const TIER_BARS: Record<AIDifficulty, { height: number; dim?: boolean }[]> = {
+const TIER_BARS: Record<BotDifficulty, { height: number; dim?: boolean }[]> = {
   easy: [{ height: 4 }, { height: 4, dim: true }, { height: 4, dim: true }],
   medium: [{ height: 5 }, { height: 7 }, { height: 7, dim: true }],
   hard: [{ height: 5 }, { height: 7 }, { height: 10 }],

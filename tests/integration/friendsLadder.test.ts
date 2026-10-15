@@ -6,7 +6,7 @@ import { register } from "../helpers/client.ts";
 import { START_RATING, seasonKey } from "../../lib/game/rating.ts";
 
 type Account = Awaited<ReturnType<typeof register>>;
-type Row = { rank: number; userId: string; username: string; rating: number; games: number };
+type Row = { rank: number; userId: string; username: string; rating: number; rounds: number };
 
 describe("the friends ladder ranks the viewer among accepted friends only", { skip: hasDatabase() ? false : skipMessage() }, () => {
   let server: TestServer;
@@ -35,12 +35,12 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     assert.equal((await call(to, "POST", `/api/friends/accept/${row.id}`)).status, 200);
   }
 
-  const rate = (who: Account, rating: number, games: number) =>
-    dbPool.query("INSERT INTO user_ratings (user_id, season, rating, games) VALUES ($1, $2, $3, $4)", [
+  const rate = (who: Account, rating: number, rounds: number) =>
+    dbPool.query("INSERT INTO user_ratings (user_id, season, rating, rounds) VALUES ($1, $2, $3, $4)", [
       who.user.id,
       seasonKey(new Date()),
       rating,
-      games,
+      rounds,
     ]);
 
   const friendsLadder = async (who: Account): Promise<Row[]> => {
@@ -64,10 +64,10 @@ describe("the friends ladder ranks the viewer among accepted friends only", { sk
     await server?.stop();
   });
 
-  test("a viewer with no friends and no games still sees themself", async () => {
+  test("a viewer with no friends and no rounds still sees themself", async () => {
     const rows = await friendsLadder(viewer);
     assert.deepEqual(
-      rows.map((r) => [r.rank, r.userId, r.rating, r.games]),
+      rows.map((r) => [r.rank, r.userId, r.rating, r.rounds]),
       [[1, viewer.user.id, START_RATING, 0]],
     );
   });

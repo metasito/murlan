@@ -11,7 +11,7 @@ export interface ExchangeAnnounceData {
    */
   winnerIdx: number;
   loserIdx: number;
-  bothJokersException: boolean;
+  twoJokerException: boolean;
   cardGiven?: Card;
   cardReceived?: Card;
 }
@@ -29,7 +29,7 @@ export type ExchangeHold = number | "untilTapped";
  */
 export function buildExchangeAnnounce(
   players: readonly { name: string }[],
-  phase: { winnerIdx: number; loserIdx: number; bothJokersException?: boolean },
+  phase: { winnerIdx: number; loserIdx: number; twoJokerException?: boolean },
   cards: { given?: Card; received?: Card } = {}
 ): ExchangeAnnounceData {
   return {
@@ -37,7 +37,7 @@ export function buildExchangeAnnounce(
     loserName: players[phase.loserIdx]?.name ?? "",
     winnerIdx: phase.winnerIdx,
     loserIdx: phase.loserIdx,
-    bothJokersException: phase.bothJokersException === true,
+    twoJokerException: phase.twoJokerException === true,
     cardGiven: cards.given,
     cardReceived: cards.received,
   };

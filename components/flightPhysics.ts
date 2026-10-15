@@ -42,7 +42,7 @@ export function arrivingCard(
   announce: ExchangeAnnounceData | null | undefined,
   viewerSeat: number | null
 ): Card | undefined {
-  if (!announce || announce.bothJokersException || viewerSeat === null) return undefined;
+  if (!announce || announce.twoJokerException || viewerSeat === null) return undefined;
   if (viewerSeat === announce.winnerIdx) return announce.cardReceived;
   if (viewerSeat === announce.loserIdx) return announce.cardGiven;
   return undefined;
@@ -71,11 +71,11 @@ export function landWobble(k: number): { scale: number; rotate: number } {
 // their own magnitudes off, by the same five tiers, rather than inventing a
 // second classification that could disagree with this one.
 
-export type ImpactTier = "ordinary" | "straightFlush" | "bomb" | "roundWon" | "matchWon";
+export type ImpactTier = "ordinary" | "straight" | "bomb" | "roundWon" | "matchWon";
 
 const TRAUMA_BY_TIER: Record<ImpactTier, number> = {
   ordinary: 0,
-  straightFlush: 0,
+  straight: 0,
   bomb: Trauma.bomb,
   roundWon: Trauma.roundWon,
   matchWon: Trauma.matchWon,
@@ -84,20 +84,20 @@ const TRAUMA_BY_TIER: Record<ImpactTier, number> = {
 /** The tier a played combination's own shape lands at, on its own. */
 export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
   if (comboType === "bomb") return "bomb";
-  if (comboType === "straight" || comboType === "royal_straight") return "straightFlush";
+  if (comboType === "straight" || comboType === "royal_straight") return "straight";
   return "ordinary";
 }
 
 /**
  * The tier one landing falls at, once whatever it closed is folded in.
  *
- * A round closes when `GameState.gameOver` turns true — `processPlay`
+ * A round closes when `GameState.roundOver` turns true — `processPlay`
  * (lib/game/gameEngine.ts) sets it the moment a hand empties, its own comment
  * calling that "the hand is decided", which `docs/GAME-RULES.md` names the
  * round. A match closing is a *further* fact about that same landing,
  * carried by the match verdict (`lib/game/matchState.ts` `MatchVerdict.over`,
- * `context/GameContext.tsx` `applyHandToMatch`, the online
- * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
+ * `context/GameContext.tsx` `applyRoundToMatch`, the online
+ * `game:round_over`/`matchOver` payload): the hand that empties a seat's hand is
  * also the hand that happens to close the match, never a second, later
  * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
  * calls that a *trick*, and it closes many times a hand.
@@ -109,13 +109,13 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  */
 export function landingTier(input: {
   comboType: Combination["type"];
-  handOver: boolean;
+  roundOver: boolean;
   matchOver: boolean;
   /** The viewer won what this landing closes: the match when `matchOver`, else the round. A pending outcome is not a win. */
   viewerWon: boolean;
 }): ImpactTier {
   const playTier = comboImpactTier(input.comboType);
-  if (!input.handOver || !input.viewerWon) return playTier;
+  if (!input.roundOver || !input.viewerWon) return playTier;
   const closureTier: ImpactTier = input.matchOver ? "matchWon" : "roundWon";
   return TRAUMA_BY_TIER[playTier] >= TRAUMA_BY_TIER[closureTier] ? playTier : closureTier;
 }
@@ -129,7 +129,7 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boo
 /**
  * How far the beaten combination (`components/table/trick.ts`, `beatenPlay`) is knocked as the new
  * one lands on it, scaled by the table like `shakeOffset` — colocated with
- * `TRAUMA_BY_TIER` so #764 and #765 read the same five tiers. `straightFlush`
+ * `TRAUMA_BY_TIER` so #764 and #765 read the same five tiers. `straight`
  * is not silent, unlike trauma: #101's own table keeps it the smallest
  * non-zero step on purpose, reserving the escalation's headroom for the
  * bomb. Widen `Spacing.xxs` here — not `TRAUMA_BY_TIER` — if that reads too
@@ -137,7 +137,7 @@ export function traumaFor(tier: ImpactTier, reduceMotion: boolean, shakeOff: boo
  */
 const FLINCH_BY_TIER: Record<ImpactTier, number> = {
   ordinary: 0,
-  straightFlush: Spacing.xxs,
+  straight: Spacing.xxs,
   bomb: Spacing.slim,
   roundWon: Spacing.slim,
   matchWon: Spacing.slim,
@@ -440,12 +440,12 @@ export function readExchange(
 }
 
 /** Each leg's stage, as `ExchangeLegs` reports it, for the trade `key` names. */
-export interface TradeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
+export interface ExchangeStages { key: string; receive: LegStage; give: LegStage; ready: boolean }
 
-export const tradeKey = (trade: ExchangeAnnounceData): string =>
-  trade.bothJokersException ? `jokers:${trade.loserIdx}` : `${trade.loserIdx}>${trade.winnerIdx}:${trade.cardReceived?.id ?? ""}`;
+export const exchangeKey = (announced: ExchangeAnnounceData): string =>
+  announced.twoJokerException ? `jokers:${announced.loserIdx}` : `${announced.loserIdx}>${announced.winnerIdx}:${announced.cardReceived?.id ?? ""}`;
 
-export const NO_STAGES: Omit<TradeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
+export const NO_STAGES: Omit<ExchangeStages, "key"> = { receive: "waiting", give: "waiting", ready: false };
 
 const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck";
 
@@ -454,21 +454,21 @@ const airborne = (s: LegStage) => s === "flying" || s === "rest" || s === "tuck"
  * moves a card when the phase opens or the choice lands, so the giver shows one more until its card
  * leaves and the receiver one fewer until it lands (the fixture's `S.counts`).
  */
-export function readTradeSeats(trade: ExchangeAnnounceData | null, stages: TradeStages): { lit: number[]; shift: Map<number, number> } {
+export function readExchangeSeats(announced: ExchangeAnnounceData | null, stages: ExchangeStages): { lit: number[]; shift: Map<number, number> } {
   const lit = new Set<number>();
   const shift = new Map<number, number>();
   const add = (seat: number, n: number) => shift.set(seat, (shift.get(seat) ?? 0) + n);
-  if (!trade) return { lit: [], shift };
-  if (trade.bothJokersException) {
+  if (!announced) return { lit: [], shift };
+  if (announced.twoJokerException) {
     if (airborne(stages.receive)) {
-      lit.add(trade.loserIdx);
-      add(trade.loserIdx, -JOKERS.length);
+      lit.add(announced.loserIdx);
+      add(announced.loserIdx, -JOKERS.length);
     }
     return { lit: [...lit], shift };
   }
   const legs = [
-    { giver: trade.loserIdx, receiver: trade.winnerIdx, card: trade.cardReceived, stage: stages.receive },
-    { giver: trade.winnerIdx, receiver: trade.loserIdx, card: trade.cardGiven, stage: stages.give },
+    { giver: announced.loserIdx, receiver: announced.winnerIdx, card: announced.cardReceived, stage: stages.receive },
+    { giver: announced.winnerIdx, receiver: announced.loserIdx, card: announced.cardGiven, stage: stages.give },
   ];
   for (const { giver, receiver, card, stage } of legs) {
     if (!card) continue;
@@ -500,22 +500,22 @@ interface HandArrival {
 export function readHandArrival(input: {
   /** The hand as arranged, which is where the card takes its place. */
   hand: Card[];
-  trade: ExchangeAnnounceData | null;
-  stages: TradeStages;
+  announced: ExchangeAnnounceData | null;
+  stages: ExchangeStages;
   /** Null for a spectator: a synthetic hand has nothing to hold back. */
   viewerSeat: number | null;
 }): HandArrival {
-  const { hand, trade, stages, viewerSeat } = input;
-  if (!trade || viewerSeat === null) return { withheldIds: [] };
+  const { hand, announced, stages, viewerSeat } = input;
+  if (!announced || viewerSeat === null) return { withheldIds: [] };
   const holds = (card: Card | undefined) => !!card && hand.some((c) => c.id === card.id);
-  if (trade.bothJokersException) {
-    const shown = viewerSeat === trade.loserIdx && airborne(stages.receive);
+  if (announced.twoJokerException) {
+    const shown = viewerSeat === announced.loserIdx && airborne(stages.receive);
     return { withheldIds: shown ? hand.filter((c) => c.isJoker).map((c) => c.id) : [] };
   }
-  const winner = viewerSeat === trade.winnerIdx;
-  if (!winner && viewerSeat !== trade.loserIdx) return { withheldIds: [] };
-  const incoming = arrivingCard(trade, viewerSeat);
-  const outgoing = winner ? trade.cardGiven : trade.cardReceived;
+  const winner = viewerSeat === announced.winnerIdx;
+  if (!winner && viewerSeat !== announced.loserIdx) return { withheldIds: [] };
+  const incoming = arrivingCard(announced, viewerSeat);
+  const outgoing = winner ? announced.cardGiven : announced.cardReceived;
   const inStage = winner ? stages.receive : stages.give;
   const outStage = winner ? stages.give : stages.receive;
   const withheldIds: string[] = [];
@@ -620,10 +620,10 @@ const JOKER_SPREAD = 18;
 
 /** The trade's legs, in the pile-relative points a throw flies in: from a fan or the card's own hand slot, through the pile. */
 export function readExchangeLegs(
-  input: SeatGeometry & { trade: ExchangeAnnounceData },
+  input: SeatGeometry & { announced: ExchangeAnnounceData },
   handOrigins?: ReadonlyMap<string, CardFrom>
 ): { receive: LegPoints; give: LegPoints; jokers: LegPoints[] } {
-  const { trade } = input;
+  const { announced } = input;
   const end = (seat: number, card?: Card) => {
     const dir = seatDirection(seat, input.viewerSeat, input.players.length);
     const origin = seatPoint(input, dir);
@@ -641,10 +641,10 @@ export function readExchangeLegs(
     const to = end(receiver, receiver === giver ? card : undefined);
     return { from: from.at, fromFace: from.face, rest, to: to.at, toFace: to.face };
   };
-  const loser = trade.loserIdx;
+  const loser = announced.loserIdx;
   return {
-    receive: leg(loser, trade.winnerIdx, trade.cardReceived),
-    give: leg(trade.winnerIdx, loser, trade.cardGiven),
+    receive: leg(loser, announced.winnerIdx, announced.cardReceived),
+    give: leg(announced.winnerIdx, loser, announced.cardGiven),
     jokers: JOKERS.map((card, i) => leg(loser, loser, card, restPoint(i === 0 ? -JOKER_SPREAD : JOKER_SPREAD))),
   };
 }

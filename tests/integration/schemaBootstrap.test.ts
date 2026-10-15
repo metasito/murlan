@@ -125,8 +125,8 @@ test("a fresh database is usable on the first boot", async (t) => {
 
       // The one index that is useless in the wrong access method: the replay
       // list filters `player_ids @> '[...]'`, which btree cannot answer.
-      const ownership = byName.get("match_replays_player_ids_idx");
-      assert.ok(ownership, "no index on match_replays.player_ids");
+      const ownership = byName.get("round_replays_player_ids_idx");
+      assert.ok(ownership, "no index on round_replays.player_ids");
       assert.match(ownership, /USING gin /);
     });
 

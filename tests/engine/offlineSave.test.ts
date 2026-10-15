@@ -21,7 +21,7 @@ const save = (over = false) => ({
   gameState: {
     players: [
       { id: "player_0", name: "Ana", hand: [], type: "human" },
-      { id: "player_1", name: "Luan", hand: [], type: "ai" },
+      { id: "player_1", name: "Luan", hand: [], type: "bot" },
     ],
     currentTurnIndex: 0,
     lastPlayedCombination: null,
@@ -29,14 +29,14 @@ const save = (over = false) => ({
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: false,
   },
   match: { length: "match", target: 21, scores: { player_0: 3 }, hands: [], over, winners: [], isDraw: false },
   players: [
     { name: "Ana", type: "human" },
-    { name: "Luan", type: "ai", personality: "luan" },
+    { name: "Luan", type: "bot", personality: "luan" },
   ],
   gameMode: "free_for_all",
   dealFirstSeat: 1,
@@ -128,6 +128,6 @@ test("a match still running is resumable; a finished one is not", () => {
 // likely to put the phone down.
 test("a finished hand inside a running match is still resumable", () => {
   const blob = JSON.parse(encodeOfflineSave(save(false)));
-  blob.gameState.gameOver = true;
+  blob.gameState.roundOver = true;
   assert.equal(isResumable(decodeOfflineSave(JSON.stringify(blob))), true);
 });

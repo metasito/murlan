@@ -18,11 +18,11 @@ import {
 import {
   broadcastGameState,
   disposeGame,
-  gameOverWriters,
+  roundOverWriters,
   persistGameState,
   safeTimer,
 } from "./gamePersistence.ts";
-import { handleGameOver, voidAbandonedMatch, type GameOverWriters } from "./gameOver.ts";
+import { handleRoundOver, voidAbandonedMatch, type RoundOverWriters } from "./roundOver.ts";
 import { appendReplayMove } from "./replayShape.ts";
 import {
   autoMoveForSeat as sharedAutoMove,
@@ -56,9 +56,9 @@ export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combinat
 export function autoMoveForSeat(
   game: AutoMovable,
   seat: number,
-  useAi: boolean
+  useBot: boolean
 ): GameState | null {
-  return sharedAutoMove(game.gameState, seat, useAi, {
+  return sharedAutoMove(game.gameState, seat, useBot, {
     handFlags: game.handFlags,
     onMove: (movedSeat, combo, next) => appendReplayMove(game, movedSeat, combo, next),
   });
@@ -92,7 +92,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   if (!game) return;
 
   clearRoomTimers(roomId);
-  if (game.gameState.gameOver) {
+  if (game.gameState.roundOver) {
     game.turnDeadlineMs = undefined;
     return;
   }
@@ -103,8 +103,8 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
-    const tradeOnTable = phase?.active || (phase?.bothJokersException && roundUnplayed(game.gameState));
-    const delayMs = tradeOnTable
+    const exchangeOnTable = phase?.active || (phase?.twoJokerException && roundUnplayed(game.gameState));
+    const delayMs = exchangeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
       : botDelayMs;
     botTimers.set(
@@ -135,7 +135,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
 /** Every move re-arms here, so an exchange's ceremony holds the next seat on each path that closes it. */
 export function armAfterMove(io: SocketServer, roomId: string, prev: GameState) {
   const phase = prev.exchangePhase;
-  armTurn(io, roomId, phase?.active ? exchangeAnnounceMs(phase.bothJokersException === true) : botMoveDelayMs());
+  armTurn(io, roomId, phase?.active ? exchangeAnnounceMs(phase.twoJokerException === true) : botMoveDelayMs());
 }
 
 /**
@@ -162,7 +162,7 @@ export function armTurnIfIdle(io: SocketServer, roomId: string) {
 
 function runBotTurn(io: SocketServer, roomId: string) {
   const game = activeGames.get(roomId);
-  if (!game || game.gameState.gameOver) return;
+  if (!game || game.gameState.roundOver) return;
 
   const seat = actingSeat(game.gameState);
   if (game.playerMap[seat] !== undefined) {
@@ -175,8 +175,8 @@ function runBotTurn(io: SocketServer, roomId: string) {
   // (docs/GAME-RULES.md § Decisions) — the same "an AFK human should not be played well"
   // rule the turn timer already applies, kept until `dealRound` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
-  const useAi = !game.weakSeats.has(seat);
-  const next = autoMoveForSeat(game, seat, useAi);
+  const useBot = !game.weakSeats.has(seat);
+  const next = autoMoveForSeat(game, seat, useBot);
   if (!next) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     io.to(roomId).emit("game:notification", {
@@ -200,8 +200,8 @@ function runBotTurn(io: SocketServer, roomId: string) {
   broadcastGameState(io, game);
   persistGameState(roomId, game);
 
-  if (next.gameOver) {
-    void handleGameOver(io, roomId, game, gameOverWriters);
+  if (next.roundOver) {
+    void handleRoundOver(io, roomId, game, roundOverWriters);
   } else {
     armAfterMove(io, roomId, prevState);
   }
@@ -214,7 +214,7 @@ function handleAutoPass(
   userId: string
 ): "exchange" | "move" | null {
   const game = activeGames.get(roomId);
-  if (!game || game.gameState.gameOver) return null;
+  if (!game || game.gameState.roundOver) return null;
 
   const seat = actingSeat(game.gameState);
   if (game.playerMap[seat] !== userId) return null;
@@ -228,8 +228,8 @@ function handleAutoPass(
   broadcastGameState(io, game);
   persistGameState(roomId, game);
 
-  if (next.gameOver) {
-    void handleGameOver(io, roomId, game, gameOverWriters);
+  if (next.roundOver) {
+    void handleRoundOver(io, roomId, game, roundOverWriters);
   } else {
     armAfterMove(io, roomId, prevState);
   }
@@ -276,17 +276,17 @@ function startAfkTimer(
  * still holding cards is placed behind them — closest to finishing first, seat
  * order as a stable tiebreak.
  *
- * Every seat must reach `rankings` — the scoreboard awards from it and the
+ * Every seat must reach `finishingOrder` — the scoreboard awards from it and the
  * stats writer reads it. Seats that already emptied their hand keep the
  * position they earned.
  */
-function concedeHand(game: OnlineGameState, winnerSeat: number | undefined) {
+function concedeRound(game: OnlineGameState, winnerSeat: number | undefined) {
   const state = game.gameState;
   const place = (seat: number) => {
     const player = state.players[seat];
     if (!player || player.finishPosition !== undefined) return;
-    player.finishPosition = state.rankings.length + 1;
-    state.rankings.push(player.id);
+    player.finishPosition = state.finishingOrder.length + 1;
+    state.finishingOrder.push(player.id);
   };
 
   if (winnerSeat !== undefined) place(winnerSeat);
@@ -296,7 +296,7 @@ function concedeHand(game: OnlineGameState, winnerSeat: number | undefined) {
     .sort((a, b) => a.player.hand.length - b.player.hand.length || a.seat - b.seat)
     .forEach(({ seat }) => place(seat));
 
-  state.gameOver = true;
+  state.roundOver = true;
 }
 
 /**
@@ -310,10 +310,10 @@ export async function vacateSeat(
   io: SocketServer,
   roomId: string,
   userId: string,
-  // Required rather than defaulting to `gameOverWriters`: the production
+  // Required rather than defaulting to `roundOverWriters`: the production
   // persist swallows its own failure, so a caller handed it by default writes
   // nothing a test can see.
-  writers: GameOverWriters
+  writers: RoundOverWriters
 ) {
   const game = activeGames.get(roomId);
   if (!game) return;
@@ -328,12 +328,12 @@ export async function vacateSeat(
   clearAfkTimer(roomId, userId);
 
   const seatPlayer = game.gameState.players[seat];
-  if (seatPlayer) seatPlayer.type = "ai";
+  if (seatPlayer) seatPlayer.type = "bot";
 
   // The seat is reclaimable by this account for the life of the match
   // (docs/GAME-RULES.md § Decisions) — every vacate is recorded here, whether it happened
   // mid-hand or between them, so the rejoin path can find it, the sanitizer
-  // can label the seat, and `resolveHandEnd` can find the person's frozen
+  // can label the seat, and `resolveRoundEnd` can find the person's frozen
   // total once `playerMap` has forgotten them.
   game.vacatedSeats.set(seat, { userId, username });
   // A vote to end the match answers "is the table still the one everyone
@@ -343,7 +343,7 @@ export async function vacateSeat(
   // Walking out on a hand still holding cards is a forfeit, and is recorded as
   // one at game over. A seat between hands has no hand to forfeit, and a seat
   // that already emptied its hand has finished the one it was playing.
-  if (!game.gameState.gameOver && seatPlayer?.finishPosition === undefined) {
+  if (!game.gameState.roundOver && seatPlayer?.finishPosition === undefined) {
     game.abandonedSeats.set(seat, userId);
     // The takeover plays this hand at minimum strength only — `dealRound`
     // clears this at the next deal, by which point the seat is honestly a
@@ -353,7 +353,7 @@ export async function vacateSeat(
 
   const remaining = Object.keys(game.playerMap).length;
 
-  if (game.gameState.gameOver) {
+  if (game.gameState.roundOver) {
     // Between hands the table is not interrupted — it is waiting to deal
     // again — so the leaver simply stops counting towards the rematch vote.
     // This must NOT be `game:player_left`: that event drives the client's
@@ -398,7 +398,7 @@ export async function vacateSeat(
       params: { username },
     });
 
-    if (game.handsPlayed === 0) {
+    if (game.roundsPlayed === 0) {
       // Nothing has been earned yet — no completed hand behind this match —
       // so nothing is taken away: voided and rated for nobody, the walkout
       // included (docs/GAME-RULES.md § Decisions). A conceded hand's forced placements
@@ -410,16 +410,16 @@ export async function vacateSeat(
     }
 
     // The hand is scored rather than discarded. The win goes to the last seat
-    // still held by a person; concedeHand places every seat still holding
+    // still held by a person; concedeRound places every seat still holding
     // cards behind them, the walkout included as the last-place finish a
     // forfeit is. `survivorSeat` is undefined when the departing seat was the
     // only human — the remaining bots then place among themselves, and
     // isContestedTable drops every write for such a table anyway.
     const survivorSeat = Object.keys(game.playerMap).map(Number)[0];
-    concedeHand(game, survivorSeat);
+    concedeRound(game, survivorSeat);
     // Sets rooms.status = "finished" and writes the row itself; the write is
     // awaited so the disposal below deletes a row that already exists.
-    await handleGameOver(io, roomId, game, writers);
+    await handleRoundOver(io, roomId, game, writers);
     disposeGame(roomId);
     return;
   }

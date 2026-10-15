@@ -14,7 +14,7 @@ import { io as ioClient, type Socket } from "socket.io-client";
 import { PROTOCOL_AUTH, waitFor } from "../helpers/client.ts";
 import { dropSchema, hasDatabase, scopedDatabaseUrl, skipMessage } from "../helpers/testServer.ts";
 import { boot, type Instance } from "../helpers/instance.ts";
-import { driveHumansToGameOver } from "../helpers/gameDriver.ts";
+import { driveHumansToRoundOver } from "../helpers/gameDriver.ts";
 
 const PORTS = [5561, 5562] as const;
 /** Short, so the "was it re-sent?" window below is seconds rather than tens. */
@@ -357,7 +357,7 @@ describe("broadcasts cross server instances", {
     // was playable by exactly the half of it that happened to land on the
     // instance that dealt.
     await openTable();
-    const over = await driveHumansToGameOver(
+    const over = await driveHumansToRoundOver(
       [aSocket, bSocket],
       () => aSocket.emit("room:start"),
       45_000

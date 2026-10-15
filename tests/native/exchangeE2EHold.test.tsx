@@ -35,8 +35,8 @@ const state = (): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 
@@ -58,7 +58,7 @@ const tableWith = (holdMsOverride: ExchangeHold | undefined, onDismiss: () => vo
           loserName: 'Bea',
           winnerIdx: 0,
           loserIdx: 1,
-          bothJokersException: false,
+          twoJokerException: false,
           cardGiven: CARD_GIVEN,
           cardReceived: CARD_RECEIVED,
         },

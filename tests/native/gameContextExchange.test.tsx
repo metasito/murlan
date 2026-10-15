@@ -33,7 +33,7 @@ function exchangeState(): GameState {
       {
         id: "player_1",
         name: "Gent",
-        type: "ai",
+        type: "bot",
         hand: [{ id: "3_spades", suit: "spades", rank: "3", isJoker: false }],
       },
     ],
@@ -43,15 +43,15 @@ function exchangeState(): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     exchangePhase: {
       active: true,
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: { id: "3_spades", suit: "spades", rank: "3", isJoker: false },
-      bothJokersException: false,
+      twoJokerException: false,
     },
   };
 }
@@ -80,7 +80,7 @@ function Probe() {
           setupGame(
             [
               { name: "Ana", type: "human" },
-              { name: "Gent", type: "ai" },
+              { name: "Gent", type: "bot" },
             ],
             "free_for_all"
           )
@@ -127,7 +127,7 @@ test("choosing an exchange card moves the card and announces it through the real
       match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
       players: [
         { name: "Ana", type: "human" },
-        { name: "Gent", type: "ai" },
+        { name: "Gent", type: "bot" },
       ],
       gameMode: "free_for_all",
       dealFirstSeat: 0,
@@ -170,7 +170,7 @@ test("a fresh match clears the announcement outright, not on the old ceremony's 
       match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
       players: [
         { name: "Ana", type: "human" },
-        { name: "Gent", type: "ai" },
+        { name: "Gent", type: "bot" },
       ],
       gameMode: "free_for_all",
       dealFirstSeat: 0,

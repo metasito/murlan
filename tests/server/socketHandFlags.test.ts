@@ -16,9 +16,9 @@ import type { AutoMovable } from "../../server/game/gameTurn.ts";
  * The flags an automated move leaves behind, which the returned GameState
  * cannot carry: recordPlayFlags writes them onto the game, not the state.
  */
-function autoMoveWithFlags(state: GameState, seat: number, useAi: boolean) {
+function autoMoveWithFlags(state: GameState, seat: number, useBot: boolean) {
   const game: AutoMovable = { gameState: state, handFlags: {}, moveLog: null };
-  const next = autoMoveForSeat(game, seat, useAi);
+  const next = autoMoveForSeat(game, seat, useBot);
   return { state: next, handFlags: game.handFlags };
 }
 
@@ -39,8 +39,8 @@ function baseState(overrides: Partial<GameState> = {}): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     ...overrides,
   };
@@ -60,7 +60,7 @@ test("an AFK-forced lone-joker play sets handFlags.joker (regression: used to be
     ],
   });
 
-  // useAi = false is exactly the AFK-forced-human path (see autoMoveForSeat's
+  // useBot = false is exactly the AFK-forced-human path (see autoMoveForSeat's
   // own doc comment): a new round with only a joker in hand forces it out as
   // the minimum legal play.
   const { state: next, handFlags } = autoMoveWithFlags(state, 0, false);

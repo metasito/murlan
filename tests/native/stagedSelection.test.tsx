@@ -53,8 +53,8 @@ const state = (currentTurnIndex: number, over: Partial<GameState> = {}): GameSta
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -189,7 +189,7 @@ describe('passing', () => {
 });
 
 function OfflineTable() {
-  const { gameState, playCards, passTurn, runAITurn } = useLocalTable();
+  const { gameState, playCards, passTurn, runBotTurn } = useLocalTable();
   const { setupGame } = useLocalSession();
   const start = gameState?.startCard;
   return (
@@ -200,7 +200,7 @@ function OfflineTable() {
           setupGame(
             [
               { name: 'Ana', type: 'human' },
-              { name: 'Luan', type: 'ai', personality: 'luan' },
+              { name: 'Luan', type: 'bot', personality: 'luan' },
             ],
             'free_for_all'
           )
@@ -211,7 +211,7 @@ function OfflineTable() {
       <Pressable testID="open" onPress={() => start && gameState?.currentTurnIndex === 0 && playCards([start.id])}>
         <Text>open</Text>
       </Pressable>
-      <Pressable testID="ai" onPress={runAITurn}>
+      <Pressable testID="bot" onPress={runBotTurn}>
         <Text>ai</Text>
       </Pressable>
       <Text testID="turn">{gameState ? String(gameState.currentTurnIndex) : '-'}</Text>
@@ -249,7 +249,7 @@ describe('an AI taking its turn offline', () => {
       await activate(heldNode());
     });
 
-    await tapTestId('ai');
+    await tapTestId('bot');
     expect(screen.getByTestId('turn').props.children).toBe('0');
     expect(heldNode().props.accessibilityState?.selected).toBe(true);
 

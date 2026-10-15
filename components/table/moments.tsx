@@ -1,6 +1,6 @@
 // The bomb's burst (flare + two waves) and flash, and the flush's sweep —
 // one-shot celebrations. The burst reacts to the landing signal on its contact
-// frame; the sweep plays again when `flushTrigger`
+// frame; the sweep plays again when `goingOutTrigger`
 // (components/useTableFeedback.ts) changes. Each piece decides for itself,
 // against `usePrefersReducedMotion`, whether to animate.
 //

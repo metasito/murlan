@@ -8,7 +8,7 @@
 // Two steps a funnel would normally want are deliberately absent because they
 // are already derivable, and a second source of truth drifts from the first:
 // account creation is `users.created_at`, and a finished game is a
-// `match_history` row.
+// `round_history` row.
 
 export const EVENT_NAMES = [
   /** The tutorial was offered and opened — see the note in server/socket/events.ts. */

@@ -47,7 +47,7 @@ describe("seat count states", () => {
         if (count === "out") {
           assert.equal(p.hand.length, 0, `${state.id}: the ${dir} seat still holds cards`);
           assert.notEqual(p.finishPosition, undefined, `${state.id}: the ${dir} seat has no place`);
-          assert.ok(game.rankings.includes(p.id), `${state.id}: the ${dir} seat is not ranked`);
+          assert.ok(game.finishingOrder.includes(p.id), `${state.id}: the ${dir} seat is not ranked`);
         } else if (count !== undefined) {
           assert.equal(p.hand.length, count, `${state.id}: the ${dir} seat`);
           assert.equal(p.finishPosition, undefined, `${state.id}: the ${dir} seat`);
@@ -190,7 +190,7 @@ describe("the state a capture renders", () => {
     for (const state of CAPTURE_STATES) {
       const game = captureGameState(state);
       assert.equal(game.firstPlayMade, true, state.id);
-      assert.equal(game.gameOver, false, state.id);
+      assert.equal(game.roundOver, false, state.id);
       assert.equal(game.startCard, undefined, state.id);
     }
   });

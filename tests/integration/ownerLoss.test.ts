@@ -65,7 +65,7 @@ describe("a table outlives losing its owner", { skip: hasDatabase() ? false : sk
     const { host, guest, room } = await openTable("bot", 3);
     const onBot = new Promise<void>((resolve) => {
       guest.socket.on("game:state", (s: SanitizedState) => {
-        if (s.players[s.currentTurnIndex]?.type === "ai" && !s.gameOver) resolve();
+        if (s.players[s.currentTurnIndex]?.type === "bot" && !s.roundOver) resolve();
       });
     });
     host.socket.emit("room:start", { fillWithBots: true });

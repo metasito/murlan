@@ -26,7 +26,7 @@ import { ChoiceChips } from "@/components/ChoiceChips";
 import { useTranslation } from "@/lib/i18n";
 import { a11yHidden, useA11yHint } from "@/lib/a11y";
 
-type LobbyMode = "ai" | "local";
+type LobbyMode = "bot" | "local";
 
 interface PlayerRowProps {
   index: number;
@@ -38,8 +38,8 @@ interface PlayerRowProps {
 
 function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowProps) {
   const { t } = useTranslation();
-  const aiNameHint = useA11yHint(t("lobby.aiNameA11yHint"));
-  const isAI = config.type === "ai";
+  const botNameHint = useA11yHint(t("lobby.botNameA11yHint"));
+  const isBot = config.type === "bot";
 
   const teamLabel = config.team ? t("lobby.team", { team: config.team }) : null;
 
@@ -72,10 +72,10 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
                 style={styles.nameInput}
                 placeholderTextColor={Colors.textMuted}
                 maxLength={12}
-                accessibilityLabel={t("lobby.aiNameA11yLabel")}
-                {...aiNameHint.props}
+                accessibilityLabel={t("lobby.botNameA11yLabel")}
+                {...botNameHint.props}
               />
-              {aiNameHint.node}
+              {botNameHint.node}
             </>
           ) : (
             <Text style={styles.playerName}>{config.name}</Text>
@@ -93,7 +93,7 @@ function PlayerRow({ index, config, onChange, isHuman, lobbyMode }: PlayerRowPro
         </View>
       </View>
 
-      {isAI && (
+      {isBot && (
         <DifficultyLadder
           personality={config.personality}
           onChange={(id) => onChange({ ...config, personality: id })}
@@ -122,7 +122,7 @@ export default function LobbyScreen() {
   const { user } = useAuth();
   const myName = user?.username ?? t("lobby.defaultPlayerName1");
 
-  const isAI = mode === "ai";
+  const isBot = mode === "bot";
 
   const [playerCount, setPlayerCount] = useState(2);
   const [gameMode, setGameMode] = useState<GameMode>("free_for_all");
@@ -135,10 +135,10 @@ export default function LobbyScreen() {
 
   /** An AI seat is called after its personality; humans keep the name they were given. */
   const withBotNames = (configs: PlayerSetupConfig[]): PlayerSetupConfig[] => {
-    const aiSeats = configs.flatMap((p, i) => (p.type === "ai" ? [i] : []));
-    const names = botSeatNames(aiSeats.map((i) => getBotPersonality(configs[i].personality).id));
+    const botSeats = configs.flatMap((p, i) => (p.type === "bot" ? [i] : []));
+    const names = botSeatNames(botSeats.map((i) => getBotPersonality(configs[i].personality).id));
     const updated = [...configs];
-    aiSeats.forEach((seat, n) => (updated[seat] = { ...updated[seat], name: names[n] }));
+    botSeats.forEach((seat, n) => (updated[seat] = { ...updated[seat], name: names[n] }));
     return updated;
   };
 
@@ -146,9 +146,9 @@ export default function LobbyScreen() {
     withBotNames(
       Array.from({ length: count }, (_, i) => ({
         name: i === 0 ? myName : t("lobby.playerName", { n: i + 1 }),
-        type: i === 0 || !isAI ? "human" : "ai",
+        type: i === 0 || !isBot ? "human" : "bot",
         // Distinct opponents by default: a full table faces four different personalities.
-        personality: i > 0 && isAI ? BOT_PERSONALITIES[(i - 1) % BOT_PERSONALITIES.length].id : undefined,
+        personality: i > 0 && isBot ? BOT_PERSONALITIES[(i - 1) % BOT_PERSONALITIES.length].id : undefined,
         team: teamForSeat(i, count, gm),
       }))
     );
@@ -268,7 +268,7 @@ export default function LobbyScreen() {
       <Text style={styles.sectionLabel}>{t("lobby.playersLabel")}</Text>
       <View style={styles.playerList}>
         {players.map((p, i) => (
-          <PlayerRow key={i} index={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} lobbyMode={mode ?? "ai"} />
+          <PlayerRow key={i} index={i} config={p} isHuman={p.type === "human"} onChange={(c) => handlePlayerChange(i, c)} lobbyMode={mode ?? "bot"} />
         ))}
       </View>
     </View>
@@ -276,7 +276,7 @@ export default function LobbyScreen() {
 
   return (
     <MenuLayout scrollable={false} centered={false} maxWidth={isLandscape ? null : undefined} style={{ paddingBottom: 0 }}>
-      <ScreenHeader title={isAI ? t("lobby.titleVsAI") : t("lobby.titlePassPlay")} />
+      <ScreenHeader title={isBot ? t("lobby.titleVsBot") : t("lobby.titlePassPlay")} />
 
       {isLandscape ? (
         <View style={styles.landscapeBody}>

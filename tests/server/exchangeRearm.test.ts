@@ -15,7 +15,7 @@ const ROOM = "exchange-rearm-room";
 const io = { to: () => ({ emit: () => {} }) } as unknown as SocketServer;
 
 function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
-  const seats = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "ai" as const, id: `player_${i}` }));
+  const seats = [0, 1, 2, 3].map((i) => ({ name: `B${i}`, type: "bot" as const, id: `player_${i}` }));
   const deck = createDeck();
   const jokers = deck.filter((c) => c.isJoker);
   const rest = loserHoldsBothJokers ? deck.filter((c) => !c.isJoker) : deck;
@@ -33,7 +33,7 @@ function exchangeTable(loserHoldsBothJokers = false): OnlineGameState {
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 1,
+    roundsPlayed: 1,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -69,7 +69,7 @@ test("a bot winner gives no earlier than the receive has landed and been read, a
     t.mock.timers.tick(1);
     assert.equal(game.gameState.exchangePhase?.active ?? false, false, "the bot winner gave");
     const after = structuredClone(game.gameState);
-    t.mock.timers.tick(Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.bothJokersException)) - 1);
+    t.mock.timers.tick(Math.max(botMoveDelayMs(), exchangeAnnounceMs(phase.twoJokerException)) - 1);
     assert.deepEqual(game.gameState, after, "the next seat moved during the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, after, "the next seat never moved");
@@ -92,7 +92,7 @@ test("a bot opening a both-Jokers round waits out the deal and the ceremony it o
     assert.deepEqual(game.gameState, dealt, "the opener played over the deal or the ceremony");
     t.mock.timers.tick(1);
     assert.notDeepEqual(game.gameState, dealt, "the opener never played");
-    assert.equal(game.gameState.exchangePhase?.bothJokersException, true);
+    assert.equal(game.gameState.exchangePhase?.twoJokerException, true);
     const opened = structuredClone(game.gameState);
     t.mock.timers.tick(botMoveDelayMs() - 1);
     assert.deepEqual(game.gameState, opened, "the next seat moved early");

@@ -1,6 +1,6 @@
 // #839 needed two things from tests/helpers/offlineMatch.ts that did not
 // exist before: a match reproducible end to end (deal *and* the AI's
-// aggression/unpredictability knobs) from one seed, via `aiRng`, and each
+// aggression/unpredictability knobs) from one seed, via `botRng`, and each
 // round's top-card counts, via `SimulatedRound.topCardCounts`. Pinned here
 // rather than only exercised by the measurement script
 // (scripts/measureHeadsUpBalance.ts) so a regression in either shows up as a
@@ -10,12 +10,12 @@ import assert from "node:assert/strict";
 import { simulateOfflineMatch, type OfflinePlayerSetup } from "../helpers/offlineMatch.ts";
 import { mulberry32 } from "./helpers.ts";
 
-const seededAi = (s: number) => mulberry32(s + 1);
+const seededBot = (s: number) => mulberry32(s + 1);
 
-test("aiRng makes a whole match — deal and AI knobs both — reproducible from one seed", () => {
+test("botRng makes a whole match — deal and AI knobs both — reproducible from one seed", () => {
   const players: OfflinePlayerSetup[] = [
-    { name: "A", type: "ai", personality: "besnik" },
-    { name: "B", type: "ai", personality: "gent" },
+    { name: "A", type: "bot", personality: "besnik" },
+    { name: "B", type: "bot", personality: "gent" },
   ];
   const run = () =>
     simulateOfflineMatch({
@@ -23,22 +23,22 @@ test("aiRng makes a whole match — deal and AI knobs both — reproducible from
       players,
       gameMode: "free_for_all",
       length: "match",
-      aiRng: seededAi,
+      botRng: seededBot,
     });
   const a = run();
   const b = run();
-  assert.deepEqual(a.rounds.map((m) => m.rankings), b.rounds.map((m) => m.rankings));
+  assert.deepEqual(a.rounds.map((m) => m.finishingOrder), b.rounds.map((m) => m.finishingOrder));
   assert.deepEqual(a.winners, b.winners);
 });
 
-test("a seat's personality reaches aiChoosePlay through the offline harness", () => {
+test("a seat's personality reaches botChoosePlay through the offline harness", () => {
   // luan is the "easy" tier (lib/game/botPersonalities.ts) and gent is "hard" —
   // if OfflinePlayerSetup.personality stopped reaching initializeGame /
   // initializeRematch, both seats would fall back to DEFAULT_BOT_PERSONALITY
   // and this would flatten toward 50%.
   const players: OfflinePlayerSetup[] = [
-    { name: "Luan", type: "ai", personality: "luan" },
-    { name: "Gent", type: "ai", personality: "gent" },
+    { name: "Luan", type: "bot", personality: "luan" },
+    { name: "Gent", type: "bot", personality: "gent" },
   ];
   let gentWins = 0;
   const n = 40;
@@ -48,7 +48,7 @@ test("a seat's personality reaches aiChoosePlay through the offline harness", ()
       players,
       gameMode: "free_for_all",
       length: "match",
-      aiRng: seededAi,
+      botRng: seededBot,
     });
     if (r.winners.includes("player_1")) gentWins++;
   }
@@ -61,14 +61,14 @@ test("a seat's personality reaches aiChoosePlay through the offline harness", ()
 test("topCardCounts sums to all six top cards every round at 4 seats (nothing excluded from the deal)", () => {
   const players: OfflinePlayerSetup[] = Array.from({ length: 4 }, (_, i) => ({
     name: `Bot${i}`,
-    type: "ai" as const,
+    type: "bot" as const,
   }));
   const r = simulateOfflineMatch({
     seed: 7,
     players,
     gameMode: "free_for_all",
     length: "match",
-    aiRng: seededAi,
+    botRng: seededBot,
   });
   assert.ok(r.rounds.length > 0);
   for (const [i, m] of r.rounds.entries()) {
@@ -79,15 +79,15 @@ test("topCardCounts sums to all six top cards every round at 4 seats (nothing ex
 
 test("topCardCounts stays within [0, 6] per seat at 2 seats, where 26 of 54 cards are never dealt", () => {
   const players: OfflinePlayerSetup[] = [
-    { name: "A", type: "ai" },
-    { name: "B", type: "ai" },
+    { name: "A", type: "bot" },
+    { name: "B", type: "bot" },
   ];
   const r = simulateOfflineMatch({
     seed: 13,
     players,
     gameMode: "free_for_all",
     length: "match",
-    aiRng: seededAi,
+    botRng: seededBot,
   });
   assert.ok(r.rounds.length > 0);
   for (const [i, m] of r.rounds.entries()) {

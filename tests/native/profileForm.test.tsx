@@ -79,8 +79,8 @@ function show(history: unknown[]) {
   mockData['/api/stats/history'] = history;
   mockData['/api/stats/me'] = {
     userId: 'u1',
-    gamesPlayed: history.length,
-    gamesWon: 1,
+    roundsPlayed: history.length,
+    roundsWon: 1,
     matchesWon: 1,
     currentStreak: 1,
     bestStreak: 2,
@@ -88,7 +88,7 @@ function show(history: unknown[]) {
     bombsPlayed: 0,
     updatedAt: new Date().toISOString(),
   };
-  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, games: history.length, provisional: true };
+  mockData['/api/ratings/me'] = { season: '2026-08', rating: 1000, rounds: history.length, provisional: true };
   mockData['/api/stats/achievements'] = [];
   mockData['/api/replays'] = [];
   return render(

@@ -13,7 +13,7 @@ import { it as itLocale } from "../../locales/it.ts";
 import { sq } from "../../locales/sq.ts";
 
 const LOCALES = { en, it: itLocale, sq } as const;
-const KEYS = ["result.nextHand", "result.newMatch", "result.home"] as const;
+const KEYS = ["result.nextRound", "result.newMatch", "result.home"] as const;
 
 /** The locale `tests/e2e/resultActions.spec.ts` runs at. */
 const MEASURED = "it";

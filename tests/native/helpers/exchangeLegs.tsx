@@ -3,7 +3,7 @@ import React, { useRef, useState } from 'react';
 import { act } from '@testing-library/react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { ExchangeLegs, type RingFlash } from '@/components/table/ExchangeLegs';
-import { NO_STAGES, tradeKey, type SeatGeometry, type TradeStages } from '@/components/flightPhysics';
+import { NO_STAGES, exchangeKey, type SeatGeometry, type ExchangeStages } from '@/components/flightPhysics';
 import { arrangeOpponents } from '@/components/seatLayout';
 import type { CardFrom } from '@/components/flightPose';
 import type { ExchangeAnnounceData } from '@/lib/game/sharedGameFlow';
@@ -11,7 +11,7 @@ import type { Card, Player } from '@/lib/game/gameEngine';
 
 export const card = (id: string, rank: Card['rank']): Card => ({ id, suit: 'clubs', rank, isJoker: false });
 
-const players = ['Ana', 'Bea', 'Cai', 'Dua'].map((name, i) => ({ id: `p${i}`, name, type: 'ai', hand: [card(`h${i}`, '9')] }) as Player);
+const players = ['Ana', 'Bea', 'Cai', 'Dua'].map((name, i) => ({ id: `p${i}`, name, type: 'bot', hand: [card(`h${i}`, '9')] }) as Player);
 
 export const GEOMETRY: SeatGeometry = {
   viewerSeat: 0,
@@ -28,19 +28,19 @@ export const GEOMETRY: SeatGeometry = {
   handCardH: 90,
 };
 
-export const trade = (over: Partial<ExchangeAnnounceData> = {}): ExchangeAnnounceData => ({
+export const announced = (over: Partial<ExchangeAnnounceData> = {}): ExchangeAnnounceData => ({
   winnerName: 'Ana',
   loserName: 'Bea',
   winnerIdx: 0,
   loserIdx: 1,
-  bothJokersException: false,
+  twoJokerException: false,
   cardReceived: card('2_clubs', '2'),
   ...over,
 });
 
 /** The legs as GameTable holds them: the stages they report fed back in, as the table's state. */
 export function Legs(props: {
-  trade: ExchangeAnnounceData;
+  announced: ExchangeAnnounceData;
   viewerSeat?: number | null;
   go?: boolean;
   onStage?: (leg: string, stage: string) => void;
@@ -52,13 +52,13 @@ export function Legs(props: {
   /** False: the hand never draws a landed card, so its stage is not fed back. */
   handCommits?: boolean;
 }) {
-  const [stages, setStages] = useState<TradeStages>({ key: tradeKey(props.trade), ...NO_STAGES });
+  const [stages, setStages] = useState<ExchangeStages>({ key: exchangeKey(props.announced), ...NO_STAGES });
   const flash = useSharedValue<RingFlash>({ seq: 0, seat: -1 });
   const ownLifted = useSharedValue<string[]>([]);
   const handOrigins = useRef(new Map<string, CardFrom>());
   return (
     <ExchangeLegs
-      trade={props.trade}
+      announced={props.announced}
       stages={stages}
       geometry={props.geometry ?? GEOMETRY}
       handOrigins={handOrigins}

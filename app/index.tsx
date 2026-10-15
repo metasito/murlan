@@ -741,7 +741,7 @@ export default function HomeScreen() {
     resume: () => {
       if (resumeGame()) router.push("/game");
     },
-    offline: () => router.push({ pathname: "/lobby", params: { mode: "ai" } }),
+    offline: () => router.push({ pathname: "/lobby", params: { mode: "bot" } }),
     friends: () => router.push("/(online)"),
     online: () => router.push("/(online)/quickmatch"),
     passAndPlay: () => router.push({ pathname: "/lobby", params: { mode: "local" } }),

@@ -95,8 +95,8 @@ function save(gameState: Record<string, unknown>) {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       // Past the opening, so the table renders a hand in progress rather than a
       // first move waiting on the 3 of spades.
       firstPlayMade: true,
@@ -116,7 +116,7 @@ function save(gameState: Record<string, unknown>) {
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -125,7 +125,7 @@ function save(gameState: Record<string, unknown>) {
 
 const seats = (viewer: Card[], bot: Card[]) => [
   { id: "player_0", name: "Ana", hand: viewer, type: "human" },
-  { id: "player_1", name: "Bea", hand: bot, type: "ai" },
+  { id: "player_1", name: "Bea", hand: bot, type: "bot" },
 ];
 
 /**
@@ -135,7 +135,7 @@ const seats = (viewer: Card[], bot: Card[]) => [
  * a strength the rules derive, and a hand-written one is a number this file
  * would have to keep in step with `getCombinationStrength`.
  */
-const midHandSave = () =>
+const midRoundSave = () =>
   save({
     players: seats(VIEWER_HAND, BOT_HAND),
     lastPlayedCombination: buildCombination([PILE_CARD]),
@@ -151,7 +151,7 @@ const exchangeSave = () =>
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: card("2_spades", "2", "spades"),
-      bothJokersException: false,
+      twoJokerException: false,
     },
   });
 
@@ -210,7 +210,7 @@ test.use({ viewport: { width: PHONE.width, height: PHONE.height } });
 test("one hand, played through every interaction the table has", async ({ page, baseURL }) => {
   test.setTimeout(5 * 60_000);
 
-  await resumeSaved(page, baseURL!, midHandSave());
+  await resumeSaved(page, baseURL!, midRoundSave());
   await settled(page, SETTLE_MS, TABLE);
 
   // --- arrange ---

@@ -3,7 +3,7 @@
 // server, and everything it drags in behind it.
 import type { GameState, GameMode, MatchLength } from "../../lib/game/gameEngine.ts";
 import type { ReplayMove } from "../../lib/game/replay.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import {
   scoreKeyForSeat as scoreKeyForMapSeat,
   seatOfUser as seatOfUserInMap,
@@ -27,12 +27,12 @@ export interface OnlineGameState {
   matchTarget: number;
   matchLength: MatchLength;
   /** Rounds decided on this match so far. Zero on the one being dealt. */
-  handsPlayed: number;
+  roundsPlayed: number;
   matchOver: boolean;
   /**
    * The match was ended by the unanimous vote, not played out. There is no
    * rematch from one (docs/GAME-RULES.md § Decisions) — the table goes back to the lobby,
-   * and its rankings are partial anyway.
+   * and its finishingOrder are partial anyway.
    */
   endedByVote?: boolean;
   /**
@@ -57,7 +57,7 @@ export interface OnlineGameState {
   /**
    * Seats dealt to a bot when this match's roster was built — a straight duel
    * or a bot-filled table from the start, never a human's seat this match.
-   * `foldHandIntoMatch` reads this to tell that seat apart from one a human
+   * `foldRoundIntoMatch` reads this to tell that seat apart from one a human
    * later walked out of: both score under the same `bot:<seat>` key, but only
    * the latter must be kept from accumulating under a name nobody left behind
    * to claim it. Not in `playerMap`'s own shape (a `Record` can't say "was
@@ -83,7 +83,7 @@ export interface OnlineGameState {
    * while the table is still live. This is the seat's half of
    * `releasedSeats`: that set answers "has this account given a seat up here",
    * this map answers "which seat, and who". Cleared on reclaim, and read by
-   * the sanitizer (the `vacated` flag), `resolveHandEnd` (a departed
+   * the sanitizer (the `vacated` flag), `resolveRoundEnd` (a departed
    * player's frozen total) and the rejoin path (reclaiming the seat).
    *
    * Persisted in the `seats` block, like `abandonedSeats` and `releasedSeats`.
@@ -129,7 +129,7 @@ export interface OnlineGameState {
    */
   spectators: Set<string>;
   /**
-   * This hand's move log, written once to `match_replays` at game over.
+   * This hand's move log, written once to `round_replays` at game over.
    *
    * Memory only, unlike handFlags: the envelope is rewritten after every move,
    * and carrying a few hundred combinations through each would buy nothing.
@@ -138,13 +138,13 @@ export interface OnlineGameState {
    */
   moveLog: ReplayMove[] | null;
   /**
-   * The `game:over` this hand's `handleGameOver` broadcast to the room, kept
+   * The `game:round_over` this hand's `handleRoundOver` broadcast to the room, kept
    * so a client that was away for it can be sent the same payload on rejoin
    * instead of being left with an empty score map. Cleared wherever
    * `dealRound` starts the next hand; undefined for a table rehydrated after
    * a restart, like the other memory-only fields above.
    */
-  lastGameOverPayload?: GameOverPayload;
+  lastRoundOverPayload?: RoundOverPayload;
 }
 
 export const activeGames = new Map<string, OnlineGameState>();

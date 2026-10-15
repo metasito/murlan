@@ -11,7 +11,7 @@ import {
   teamForSeat,
 } from "./gameEngine.ts";
 import type {
-  AIDifficulty,
+  BotDifficulty,
   Card,
   Combination,
   ExchangePhase,
@@ -104,7 +104,7 @@ export function applyPersonality(
   choice: Combination | null,
   plays: Combination[],
   isNewTrick: boolean,
-  traits: { aggression: number; unpredictability: number; difficulty: AIDifficulty },
+  traits: { aggression: number; unpredictability: number; difficulty: BotDifficulty },
   rng: () => number
 ): Combination | null {
   let result = choice;
@@ -193,7 +193,7 @@ export function knownOpponentExchangeCard(
   exchangePhase: ExchangePhase | undefined,
   seat: number
 ): Card | undefined {
-  if (!exchangePhase || exchangePhase.bothJokersException) return undefined;
+  if (!exchangePhase || exchangePhase.twoJokerException) return undefined;
   if (seat !== exchangePhase.loserIdx) return undefined;
   return exchangePhase.cardFromLoser;
 }
@@ -219,7 +219,7 @@ export function isExchangeCardStillOut(
  * personalities can vary their play without making the engine untestable —
  * tests inject a fixed sequence and stay deterministic.
  */
-export function aiChoosePlay(
+export function botChoosePlay(
   player: Player,
   lastPlayed: Combination | null,
   isNewTrick: boolean,

@@ -117,7 +117,7 @@ test("the replay screen renders the correct transport icon in both its paused an
   await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
 
   // "Manche secca" (single hand) so the first hand ending is the match
-  // ending — gameOver.ts writes a replay after any hand with a human seat,
+  // ending — roundOver.ts writes a replay after any hand with a human seat,
   // and this is the cheapest way to reach one. Not load-bearing for
   // correctness (a multi-hand "Match" would also eventually reach
   // the board's home button and still produce a replay) — only for speed — so a
@@ -132,7 +132,7 @@ test("the replay screen renders the correct transport icon in both its paused an
   await expect(page.getByTestId("btn-home")).toBeVisible({ timeout: 15_000 });
 
   // A hard navigation, not the in-app "leave" button then a click through the
-  // home screen: gameOver.ts already wrote the replay the moment the hand
+  // home screen: roundOver.ts already wrote the replay the moment the hand
   // ended, so nothing about reaching it depends on the leave flow, and a
   // fresh load bypasses whatever client-side navigation state that flow
   // leaves behind.

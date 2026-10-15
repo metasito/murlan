@@ -121,7 +121,7 @@ test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () 
   const players = [
     { personality: undefined }, // human seat 0
     { personality: "gent" as const }, // born-bot seat 1
-    // A seat that started human and was later vacated: type flips to "ai",
+    // A seat that started human and was later vacated: type flips to "bot",
     // personality is never set (vacateSeat doesn't touch it).
     { personality: undefined },
   ];

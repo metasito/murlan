@@ -11,8 +11,8 @@ import { installTableHandlers, applyOrForward } from "../../server/game/tableHan
 import { armTurn } from "../../server/game/gameTurn.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
-import { resolveHandEnd } from "../../server/game/onlineGameLogic.ts";
-import { scoresByEngineId } from "../../server/game/gameOver.ts";
+import { resolveRoundEnd } from "../../server/game/onlineGameLogic.ts";
+import { scoresByEngineId } from "../../server/game/roundOver.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
@@ -33,7 +33,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 1,
+    roundsPlayed: 1,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -49,11 +49,11 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   } as OnlineGameState;
 }
 
-function midHand(): GameState {
+function midRound(): GameState {
   return {
     players: [
       player("p0", "Alice"),
-      player("p1", "Drita", "ai"),
+      player("p1", "Drita", "bot"),
       player("p2", "Carl"),
       player("p3", "Dee"),
     ],
@@ -63,8 +63,8 @@ function midHand(): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   };
 }
@@ -89,7 +89,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   test("reclaim restores the seat, and both the departure and the return are announced", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 already vacated
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
       releasedSeats: new Set(["drita"]),
@@ -121,7 +121,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   test("SEAT_RELEASED still answers once the seat itself is not reclaimable", async () => {
     const { io } = stubIo();
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map(), // nothing of drita's left open to reclaim
       releasedSeats: new Set(["drita"]),
@@ -143,7 +143,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   test("a stranger who never sat here is unauthorized, not seat-released", async () => {
     const { io } = stubIo();
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
     });
     activeGames.set(ROOM, game);
@@ -162,7 +162,7 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
 
   test("a reclaim ahead of a pending bot timer re-arms instead of playing the reclaimed seat's turn", async () => {
     const { io } = stubIo();
-    const state = midHand();
+    const state = midRound();
     state.currentTurnIndex = 1; // the vacated seat's own turn is up next
     const game = baseGame({
       gameState: state,
@@ -205,11 +205,11 @@ describe("a vacated seat is reclaimable by the account that left it (#850 clause
   });
 });
 
-function finishedHand(rankings: string[]): GameState {
+function finishedRound(finishingOrder: string[]): GameState {
   return {
     players: [
       player("p0", "Alice"),
-      player("p1", "Drita", "ai"),
+      player("p1", "Drita", "bot"),
       player("p2", "Carl"),
       player("p3", "Dee"),
     ],
@@ -219,8 +219,8 @@ function finishedHand(rankings: string[]): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: true,
-    rankings,
+    roundOver: true,
+    finishingOrder,
     firstPlayMade: true,
   };
 }
@@ -229,12 +229,12 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
   test("cumulativeScores, both readers, and endMatchVotes all agree after the reclaim", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
       releasedSeats: new Set(["drita"]),
       cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
-      handsPlayed: 2,
+      roundsPlayed: 2,
       endMatchVotes: new Set(["alice", "carl"]),
     });
     activeGames.set(ROOM, game);
@@ -242,8 +242,8 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     try {
       // Fold one hand while the seat is still vacated — the bot seat (seat 1)
       // finishes first and scores under "bot:1", not under "drita".
-      const result = resolveHandEnd({
-        state: finishedHand(["p1", "p0", "p2", "p3"]),
+      const result = resolveRoundEnd({
+        state: finishedRound(["p1", "p0", "p2", "p3"]),
         playerMap: game.playerMap,
         cumulativeScores: game.cumulativeScores,
         matchTarget: 21,
@@ -254,7 +254,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         vacatedSeats: game.vacatedSeats,
       });
       game.cumulativeScores = result.cumulativeScores;
-      game.handsPlayed += 1;
+      game.roundsPlayed += 1;
 
       assert.ok(
         (game.cumulativeScores["bot:1"] ?? 0) > 0,
@@ -279,7 +279,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       const sum = Object.values(game.cumulativeScores).reduce((a, b) => a + b, 0);
       assert.equal(
         sum,
-        6 * game.handsPlayed,
+        6 * game.roundsPlayed,
         "the standings must sum to the hands played, asserted as arithmetic"
       );
       assert.equal(game.endMatchVotes.size, 0, "a roster change makes the vote new again");
@@ -296,16 +296,16 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
     }
   });
 
-  test("the carried points can be the difference in crossing the match target (finding 2: foldHandIntoMatch)", async () => {
+  test("the carried points can be the difference in crossing the match target (finding 2: foldRoundIntoMatch)", async () => {
     const { io } = stubIo();
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
       releasedSeats: new Set(["drita"]),
       cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
       matchTarget: 12,
-      handsPlayed: 1,
+      roundsPlayed: 1,
     });
     activeGames.set(ROOM, game);
 
@@ -313,8 +313,8 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       // Hand 1, still vacated: the bot seat (seat 1) finishes first and
       // carries 3 points under "bot:1" — cumulativeScores.drita stays frozen
       // at 8, below the 12 target either way.
-      const first = resolveHandEnd({
-        state: finishedHand(["p1", "p0", "p2", "p3"]),
+      const first = resolveRoundEnd({
+        state: finishedRound(["p1", "p0", "p2", "p3"]),
         playerMap: game.playerMap,
         cumulativeScores: game.cumulativeScores,
         matchTarget: game.matchTarget,
@@ -325,7 +325,7 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
         vacatedSeats: game.vacatedSeats,
       });
       game.cumulativeScores = first.cumulativeScores;
-      game.handsPlayed += 1;
+      game.roundsPlayed += 1;
       assert.equal(first.matchOver, false, "8 and 3 apart do not yet reach 12 either way");
 
       await applyOrForward(io, { kind: "rejoin", roomId: ROOM, userId: "drita" });
@@ -336,8 +336,8 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
       // and name her the winner. A reader that resolved the target from the
       // orphaned "bot:1" bucket instead of the merged "drita" key would see
       // only 8 + 3 = 11 here and wrongly call the match still running.
-      const second = resolveHandEnd({
-        state: finishedHand(["p1", "p0", "p2", "p3"]),
+      const second = resolveRoundEnd({
+        state: finishedRound(["p1", "p0", "p2", "p3"]),
         playerMap: game.playerMap,
         cumulativeScores: game.cumulativeScores,
         matchTarget: game.matchTarget,
@@ -359,16 +359,16 @@ describe("a reclaim merges the vacated seat's carried points into the returning 
 
   test("scoresByEngineId already merges a still-vacated seat's frozen total with the bot's (finding 1)", () => {
     const game = baseGame({
-      gameState: midHand(),
+      gameState: midRound(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" }, // seat 1 vacated
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
       releasedSeats: new Set(["drita"]),
       cumulativeScores: { alice: 2, drita: 8, carl: 1, dee: 1 },
-      handsPlayed: 2,
+      roundsPlayed: 2,
     });
 
-    const result = resolveHandEnd({
-      state: finishedHand(["p1", "p0", "p2", "p3"]),
+    const result = resolveRoundEnd({
+      state: finishedRound(["p1", "p0", "p2", "p3"]),
       playerMap: game.playerMap,
       cumulativeScores: game.cumulativeScores,
       matchTarget: 21,

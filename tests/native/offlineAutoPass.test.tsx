@@ -24,7 +24,7 @@ const mockShowNotification = jest.fn();
 const STATE: GameState = {
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
-    { id: 'player_1', name: 'Luan', hand: [], type: 'ai' },
+    { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
   ],
   currentTurnIndex: 0,
   lastPlayedCombination: null,
@@ -32,8 +32,8 @@ const STATE: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 
@@ -43,7 +43,7 @@ jest.mock('@/context/GameContext', () => ({
     playCards: () => {},
     passTurn: mockPassTurn,
     resetGame: () => {},
-    runAITurn: () => {},
+    runBotTurn: () => {},
     chooseExchangeCard: () => {},
     exchangeAnnouncing: false,
     exchangeAnnounceData: null,

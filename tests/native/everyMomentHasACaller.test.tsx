@@ -21,7 +21,7 @@ const SEVEN_H: Card = { id: '7_hearts', rank: '7', suit: 'hearts', isJoker: fals
 const FIVE_H: Card = { id: '5_hearts', rank: '5', suit: 'hearts', isJoker: false };
 const TWO_S: Card = { id: '2_spades', rank: '2', suit: 'spades', isJoker: false };
 const seat = (id: string, hand: Card[]): Player => ({ id, name: id, hand, type: 'human' });
-type Extra = { handScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; ownLink?: OwnLink };
+type Extra = { roundScores?: Record<string, number>; matchOver?: boolean; matchWinners?: string[]; ownLink?: OwnLink };
 
 const human = (turn: number, exchange = false): GameState => ({
   players: [seat('player_0', [SEVEN_H, FIVE_H]), seat('player_1', [TWO_S])],
@@ -31,15 +31,15 @@ const human = (turn: number, exchange = false): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
-  ...(exchange ? { exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S, bothJokersException: false } } : {}),
+  ...(exchange ? { exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: TWO_S, twoJokerException: false } } : {}),
 });
 
 const table = (s: GameState, x: Extra = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
-    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} handScores={{}} {...x} />
+    <GameTable gameState={s} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} roundScores={{}} {...x} />
   </SafeAreaProvider>
 );
 
@@ -71,9 +71,9 @@ async function botRoundSounds(): Promise<string[]> {
 async function roundEnd(x: (last: GameState) => Extra): Promise<string[]> {
   const states = botRound();
   const last = states[states.length - 1];
-  const scores = Object.fromEntries(last.rankings.map((id, i) => [id, i]));
+  const scores = Object.fromEntries(last.finishingOrder.map((id, i) => [id, i]));
   return heard(table(states[states.length - 2]), async (r) => {
-    await act(async () => r.rerender(table(last, { handScores: scores, ...x(last) })));
+    await act(async () => r.rerender(table(last, { roundScores: scores, ...x(last) })));
   });
 }
 
@@ -93,7 +93,7 @@ const PROBES: Record<MomentKind, { sounds: string[]; run: () => Promise<string[]
   give: { sounds: ['play'], run: () => heard(table(human(0, true)), async () => { await settle(choiceOpensAt(false)); await pick(seven()); await press(screen.getByTestId('btn-gioca')); }) },
   exchange: { sounds: ['exchange'], run: () => heard(table(human(0)), async (r) => { await act(async () => r.rerender(table(human(0, true)))); }) },
   roundOver: { sounds: ['roundWon', 'roundLost', 'roundNeutral'], run: () => roundEnd(() => ({})) },
-  matchOver: { sounds: ['matchWon', 'matchLost'], run: () => roundEnd((last) => ({ matchOver: true, matchWinners: [last.rankings[0]] })) },
+  matchOver: { sounds: ['matchWon', 'matchLost'], run: () => roundEnd((last) => ({ matchOver: true, matchWinners: [last.finishingOrder[0]] })) },
   reconnected: {
     sounds: ['reconnected'],
     run: () => heard(table(human(1), { ownLink: 'reconnecting' }), async (r) => { await act(async () => r.rerender(table(human(1), { ownLink: 'back' }))); }),

@@ -14,7 +14,7 @@ import {
   pickGivebackCard,
   getStartingPlayerAfterExchange,
 } from "./gameEngine.ts";
-import { aiChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./ai.ts";
+import { botChoosePlay, knownOpponentExchangeCard, opponentsOf } from "./bot.ts";
 import type { GameState, Combination } from "./gameEngine.ts";
 
 /**
@@ -56,7 +56,7 @@ export interface AutoMoveContext {
   /** Records the move for a replay log. Absent offline, which keeps none. */
   onMove?: (seat: number, combo: Combination | null, next: GameState) => void;
   /**
-   * Forwarded to `aiChoosePlay`'s own `rng` parameter. Absent means that
+   * Forwarded to `botChoosePlay`'s own `rng` parameter. Absent means that
    * function's own default (`Math.random`) — a simulation that needs a match
    * reproducible end to end from one seed passes a seeded generator here
    * instead of only faking the deal's `crypto` source.
@@ -67,14 +67,14 @@ export interface AutoMoveContext {
 /**
  * One automated action for a seat, or null when the seat cannot act at all.
  *
- * `useAi` picks the real engine AI (a seat with nobody behind it), otherwise
+ * `useBot` picks the real engine AI (a seat with nobody behind it), otherwise
  * the minimum legal move — an AFK human should not be played *well* on their
  * behalf.
  */
 export function autoMoveForSeat(
   state: GameState,
   seat: number,
-  useAi: boolean,
+  useBot: boolean,
   ctx: AutoMoveContext
 ): GameState | null {
   if (state.exchangePhase?.active) {
@@ -103,9 +103,9 @@ export function autoMoveForSeat(
     return next;
   };
 
-  if (useAi) {
+  if (useBot) {
     const opponents = opponentsOf(state, seat);
-    const combo = aiChoosePlay(
+    const combo = botChoosePlay(
       player,
       isNewTrick ? null : state.lastPlayedCombination,
       isNewTrick,
@@ -141,7 +141,7 @@ export function autoMoveForSeat(
 /** The offline table's bot turn: null unless a bot holds the turn, which it plays at full strength. */
 export function offlineBotMove(state: GameState, ctx: AutoMoveContext = {}): GameState | null {
   const seat = state.currentTurnIndex;
-  if (state.players[seat]?.type !== "ai") return null;
+  if (state.players[seat]?.type !== "bot") return null;
   return autoMoveForSeat(state, seat, true, ctx);
 }
 

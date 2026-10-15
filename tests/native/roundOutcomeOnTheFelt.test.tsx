@@ -28,12 +28,12 @@ const noop = () => {};
 const LAST: Combination = { type: 'pair', cards: [card('k1', 'K', 'clubs'), card('k2', 'K', 'diamonds')], strength: 13 };
 
 type Outcome = 'won' | 'lost' | 'neutral' | 'draw';
-const CASES: { outcome: Outcome; teams: boolean; rankings: string[]; motes: number }[] = [
-  { outcome: 'won', teams: false, rankings: ['player_0', 'player_1', 'player_2', 'player_3'], motes: RoundMoment.motes.won },
-  { outcome: 'won', teams: true, rankings: ['player_0', 'player_3', 'player_1', 'player_2'], motes: RoundMoment.motes.won },
-  { outcome: 'lost', teams: false, rankings: ['player_1', 'player_2', 'player_3', 'player_0'], motes: RoundMoment.motes.lost },
-  { outcome: 'neutral', teams: false, rankings: ['player_1', 'player_0', 'player_2', 'player_3'], motes: RoundMoment.motes.lost },
-  { outcome: 'draw', teams: true, rankings: ['player_0', 'player_1', 'player_2', 'player_3'], motes: 0 },
+const CASES: { outcome: Outcome; teams: boolean; finishingOrder: string[]; motes: number }[] = [
+  { outcome: 'won', teams: false, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'], motes: RoundMoment.motes.won },
+  { outcome: 'won', teams: true, finishingOrder: ['player_0', 'player_3', 'player_1', 'player_2'], motes: RoundMoment.motes.won },
+  { outcome: 'lost', teams: false, finishingOrder: ['player_1', 'player_2', 'player_3', 'player_0'], motes: RoundMoment.motes.lost },
+  { outcome: 'neutral', teams: false, finishingOrder: ['player_1', 'player_0', 'player_2', 'player_3'], motes: RoundMoment.motes.lost },
+  { outcome: 'draw', teams: true, finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'], motes: 0 },
 ];
 
 const seat = (i: number, teams: boolean): Player => ({
@@ -44,7 +44,7 @@ const seat = (i: number, teams: boolean): Player => ({
   ...(teams ? { team: i === 0 || i === 3 ? 'A' : 'B' } : {}),
 });
 
-const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean, scored = over) => {
+const table = ({ teams, finishingOrder }: (typeof CASES)[number], over: boolean, scored = over) => {
   const state: GameState = {
     players: [0, 1, 2, 3].map((i) => seat(i, teams)),
     currentTurnIndex: 3,
@@ -53,14 +53,14 @@ const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean, score
     passCount: 0,
     gameMode: teams ? 'teams' : 'free_for_all',
     trickWinner: null,
-    gameOver: over,
-    rankings: over ? rankings : [],
+    roundOver: over,
+    finishingOrder: over ? finishingOrder : [],
     firstPlayMade: true,
   };
-  const handScores = scored ? Object.fromEntries(rankings.map((id, i) => [id, 3 - i])) : {};
+  const roundScores = scored ? Object.fromEntries(finishingOrder.map((id, i) => [id, 3 - i])) : {};
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
-      <GameTable gameState={state} handScores={handScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
+      <GameTable gameState={state} roundScores={roundScores} viewerSeat={0} onPlay={noop} onPass={noop} onQuit={noop} onExchangeGive={noop} />
     </SafeAreaProvider>
   );
 };
@@ -145,9 +145,9 @@ describe("a round's outcome on the felt", () => {
     }
   );
 
-  // Online, a teams round's scores (`game:over`) trail the state that ends it: the outcome is pending until they come.
+  // Online, a teams round's scores (`game:round_over`) trail the state that ends it: the outcome is pending until they come.
   describe('a teams win scored after the throw', () => {
-    const TEAMS_WON = { outcome: 'won' as const, teams: true, rankings: ['player_0', 'player_3', 'player_1', 'player_2'], motes: RoundMoment.motes.won };
+    const TEAMS_WON = { outcome: 'won' as const, teams: true, finishingOrder: ['player_0', 'player_3', 'player_1', 'player_2'], motes: RoundMoment.motes.won };
 
     async function scoredAfter(ms: number) {
       const r = await render(table(TEAMS_WON, false));

@@ -50,8 +50,8 @@ const base = (players: Player[]): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 const seat = (i: number, hand: Card[]): Player => ({ id: `p${i}`, name: `P${i}`, hand, type: 'human' });
@@ -107,7 +107,7 @@ describe('the table card registry', () => {
   it('holds a traded card from the leg that lifts it to the leg that lands it', async () => {
     const state: GameState = {
       ...base([seat(0, [card('5', 'hearts'), card('K', 'diamonds'), card('2', 'spades')]), seat(1, [card('4', 'clubs')]), seat(2, [card('6', 'hearts')])]),
-      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
     };
     const view = await render(table(state));
     let flew = 0;

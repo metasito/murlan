@@ -6,16 +6,16 @@ export function benchTable(): GameState {
   return initializeGame(
     [
       { name: "You", type: "human" },
-      { name: "A", type: "ai" },
-      { name: "B", type: "ai" },
-      { name: "C", type: "ai" },
+      { name: "A", type: "bot" },
+      { name: "B", type: "bot" },
+      { name: "C", type: "bot" },
     ],
     "free_for_all"
   );
 }
 
 export function botTable(): GameState {
-  return initializeGame(["A", "B", "C", "D"].map((name) => ({ name, type: "ai" as const })), "free_for_all");
+  return initializeGame(["A", "B", "C", "D"].map((name) => ({ name, type: "bot" as const })), "free_for_all");
 }
 
 export async function driveBots(
@@ -26,7 +26,7 @@ export async function driveBots(
   stop: () => boolean = () => false
 ): Promise<GameState> {
   await ctx.showTable(state);
-  while (!state.gameOver && !stop()) {
+  while (!state.roundOver && !stop()) {
     const next = offlineBotMove(state) ?? (state.exchangePhase?.active ? resolveStuckExchange(state) : null);
     if (!next) break;
     state = next;

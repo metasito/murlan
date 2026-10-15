@@ -15,7 +15,7 @@ import {
 
 const gameState = {
   currentTurnIndex: 2,
-  gameOver: false,
+  roundOver: false,
   gameMode: "teams",
   players: [{ id: "player_0" }],
 };
@@ -27,7 +27,7 @@ const match: PersistedMatch = {
   matchLength: "match",
   matchTarget: 21,
   maxPlayers: 4,
-  handsPlayed: 2,
+  roundsPlayed: 2,
   endedByVote: true,
 };
 

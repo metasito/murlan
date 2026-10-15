@@ -19,11 +19,11 @@ test("the next-hand vote is a full touch target — phone landscape", async ({ p
   await goToOnlineLobby(page);
   await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
   await fillWithBotsAndStart(page);
-  const vote = page.getByRole("button", { name: copy["gameOverOverlay.nextHandA11yLabel"], exact: true });
+  const vote = page.getByRole("button", { name: copy["roundOverOverlay.nextRoundA11yLabel"], exact: true });
   await driveGameToCompletion(page, { isFinished: () => vote.isVisible() });
   await settled(page, 2500);
   await sweepSizes(page, "next-hand vote", UNDERSIZED_BY_DESIGN, [
-    copy["gameOverOverlay.nextHandA11yLabel"],
+    copy["roundOverOverlay.nextRoundA11yLabel"],
     copy["reactionLayer.triggerA11yLabel"],
   ]);
 });

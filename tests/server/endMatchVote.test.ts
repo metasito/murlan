@@ -14,7 +14,7 @@ import { db } from "../../server/store/db.ts";
 import { clearRoomTimers } from "../../server/game/gameTimers.ts";
 import { GameEndMatchVoteSchema } from "../../shared/socketSchemas.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
-import type { GameOverPayload } from "../../lib/game/matchState.ts";
+import type { RoundOverPayload } from "../../lib/game/matchState.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
 
 const ROOM = "end-match-vote-room";
@@ -34,7 +34,7 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
     maxPlayers: 4,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 2,
+    roundsPlayed: 2,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -50,11 +50,11 @@ function baseGame(overrides: Partial<OnlineGameState>): OnlineGameState {
   } as OnlineGameState;
 }
 
-function midHandOneVacated(): GameState {
+function midRoundOneVacated(): GameState {
   return {
     players: [
       player("p0", "Alice"),
-      player("p1", "Drita", "ai"), // vacated
+      player("p1", "Drita", "bot"), // vacated
       player("p2", "Carl"),
       player("p3", "Dee"),
     ],
@@ -64,8 +64,8 @@ function midHandOneVacated(): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
   };
 }
@@ -105,8 +105,8 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
         passCount: 0,
         gameMode: "free_for_all",
         trickWinner: null,
-        gameOver: false,
-        rankings: [],
+        roundOver: false,
+        finishingOrder: [],
         firstPlayMade: true,
       },
       playerMap: { 0: "alice", 1: "bob" },
@@ -124,7 +124,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   test("a seatless caller cannot vote", async () => {
     const { io } = stubIo();
     const game = baseGame({
-      gameState: midHandOneVacated(),
+      gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
     });
@@ -141,7 +141,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   test("counts against the three seated humans, not the four seats at the table", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHandOneVacated(),
+      gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
     });
@@ -153,18 +153,18 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
       // Two of three: not unanimous yet, and the vacated seat contributes
       // nothing to either side of the count.
       assert.equal(game.matchOver, false);
-      assert.ok(!emitted.some((e) => e.event === "game:over"));
+      assert.ok(!emitted.some((e) => e.event === "game:round_over"));
 
       await vote(io, "dee");
       // The third and last seated human closes it — 3 of 3, not 3 of 4.
       assert.equal(game.matchOver, true);
 
-      const over = emitted.find((e) => e.event === "game:over")?.payload as
-        | GameOverPayload
+      const over = emitted.find((e) => e.event === "game:round_over")?.payload as
+        | RoundOverPayload
         | undefined;
       assert.ok(over, "unanimity ends the match");
       assert.equal(over!.voided, false, "an agreed end is not the same as an abandoned one");
-      assert.deepEqual(over!.rankings, []);
+      assert.deepEqual(over!.finishingOrder, []);
       assert.equal(over!.recorded, false);
 
       assert.ok(
@@ -184,7 +184,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   test("a repeat vote from the same seat does not double-count toward unanimity", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHandOneVacated(),
+      gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
     });
@@ -195,7 +195,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
       await vote(io, "alice");
       await vote(io, "alice");
       assert.equal(game.matchOver, false);
-      assert.ok(!emitted.some((e) => e.event === "game:over"));
+      assert.ok(!emitted.some((e) => e.event === "game:round_over"));
     } finally {
       activeGames.delete(ROOM);
     }
@@ -204,7 +204,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   test("withdrawing a vote leaves the tally empty and cannot end the match", async () => {
     const { io, emitted } = stubIo();
     const game = baseGame({
-      gameState: midHandOneVacated(),
+      gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
     });
@@ -215,7 +215,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
       await vote(io, "alice", false);
       assert.equal(game.endMatchVotes.size, 0);
       assert.equal(game.matchOver, false);
-      assert.ok(!emitted.some((e) => e.event === "game:over"));
+      assert.ok(!emitted.some((e) => e.event === "game:round_over"));
     } finally {
       activeGames.delete(ROOM);
     }
@@ -224,7 +224,7 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
   test("withdrawing a vote from a seat that never voted is a no-op", async () => {
     const { io } = stubIo();
     const game = baseGame({
-      gameState: midHandOneVacated(),
+      gameState: midRoundOneVacated(),
       playerMap: { 0: "alice", 2: "carl", 3: "dee" },
       vacatedSeats: new Map([[1, { userId: "drita", username: "Drita" }]]),
     });
@@ -242,9 +242,9 @@ describe("the end-match vote, offered only after a vacancy, decided by unanimity
 
 describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § Decisions)", () => {
   function partlyRanked(): GameState {
-    const state = midHandOneVacated();
+    const state = midRoundOneVacated();
     // Two of the four seats finished before the table agreed to stop.
-    return { ...state, rankings: ["p0", "p2"] };
+    return { ...state, finishingOrder: ["p0", "p2"] };
   }
 
   async function endByVote(game: OnlineGameState, io: SocketServer) {
@@ -256,7 +256,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
 
   const vacated = new Map([[1, { userId: "drita", username: "Drita" }]]);
 
-  test("the rematch vote is refused, so no deal reads the partial rankings", async () => {
+  test("the rematch vote is refused, so no deal reads the partial finishingOrder", async () => {
     const { io } = stubIo();
     const game = baseGame({
       gameState: partlyRanked(),
@@ -275,7 +275,7 @@ describe("a match ended by the vote is never rematched (docs/GAME-RULES.md § De
       });
       assert.deepEqual(outcome, { ok: false, code: "REMATCH_DECLINED" });
       assert.equal(game.gameState.exchangePhase, undefined, "nothing was dealt");
-      assert.deepEqual(game.gameState.rankings, ["p0", "p2"]);
+      assert.deepEqual(game.gameState.finishingOrder, ["p0", "p2"]);
     } finally {
       clearRoomTimers(ROOM);
       activeGames.delete(ROOM);

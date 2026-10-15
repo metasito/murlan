@@ -62,8 +62,8 @@ const state: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 const noop = () => {};
@@ -273,7 +273,7 @@ describe('a tap on the hand', () => {
     const exchange: GameState = {
       ...state,
       currentTurnIndex: 0,
-      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), bothJokersException: false },
+      exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card('2', 'spades'), twoJokerException: false },
     };
     const view = await mountTable(exchange, choiceOpensAt(false) - 400);
     const rest = lift(SEVEN).y;

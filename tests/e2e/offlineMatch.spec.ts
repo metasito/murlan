@@ -30,12 +30,12 @@ test("offline vs AI — a match plays multiple hands on the table and exercises 
   });
 
   // A 2-player match awards the hand winner 1 point (lib/game/gameEngine.ts
-  // `scoreHand`) against a target of 7 (`targetsFor(2)`), so reaching
+  // `scoreRound`) against a target of 7 (`targetsFor(2)`), so reaching
   // match.over takes at least seven hands. This suite only needs to prove the
   // between-hands transition works, so it plays a small fixed number of hands
   // and then leaves deliberately.
-  const HANDS_TO_PLAY = 2;
-  for (let hand = 1; hand <= HANDS_TO_PLAY; hand++) {
+  const ROUNDS_TO_PLAY = 2;
+  for (let hand = 1; hand <= ROUNDS_TO_PLAY; hand++) {
     await driveGameToCompletion(page, {
       isFinished: untilNextDeal(),
       log: (line) =>

@@ -33,8 +33,8 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
       passCount: 0,
       gameMode: "free_for_all",
       roundWinner: null,
-      gameOver: true,
-      rankings: ["player_0", "player_1"],
+      roundOver: true,
+      finishingOrder: ["player_0", "player_1"],
       firstPlayMade: true,
     },
     playerMap: { 0: "ana", 1: "besi" },
@@ -44,7 +44,7 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
     maxPlayers: 2,
     matchTarget: 21,
     matchLength: "match",
-    handsPlayed: 1,
+    roundsPlayed: 1,
     matchOver: false,
     handFlags: {},
     abandonedSeats: new Map(),
@@ -65,7 +65,7 @@ test("a shutdown keeps a between-hands seat, so the vote it held cannot deal wit
     await new Promise((r) => setTimeout(r, 20));
 
     assert.deepEqual(game.playerMap, { 0: "ana", 1: "besi" });
-    assert.equal(game.gameState.gameOver, true);
+    assert.equal(game.gameState.roundOver, true);
     assert.ok(!emitted.includes("game:started"), "a round was dealt without besi's vote");
   } finally {
     clearRoomTimers(ROOM);

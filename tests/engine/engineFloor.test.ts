@@ -131,7 +131,7 @@ describe("a play that cannot happen", () => {
     winnerIdx: 0,
     loserIdx: 1,
     cardFromLoser: c("K", "hearts"),
-    bothJokersException: false,
+    twoJokerException: false,
   };
 
   test("refuses a combination that names the same card twice", () => {

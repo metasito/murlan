@@ -39,7 +39,7 @@ function openingSave() {
           id: "player_1",
           name: "Bea",
           hand: [card("J_hearts", "J", "hearts"), card("Q_diamonds", "Q", "diamonds")],
-          type: "ai",
+          type: "bot",
         },
       ],
       currentTurnIndex: 0,
@@ -48,8 +48,8 @@ function openingSave() {
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
       startReason: { type: "lost_round", playerIdx: 0 },
       // Nothing played yet — the round the `startReason` describes is still at
@@ -67,7 +67,7 @@ function openingSave() {
     },
     players: [
       { name: "Ana", type: "human" },
-      { name: "Bea", type: "ai", personality: "luan" },
+      { name: "Bea", type: "bot", personality: "luan" },
     ],
     gameMode: "free_for_all",
     dealFirstSeat: 0,

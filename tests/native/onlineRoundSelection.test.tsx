@@ -41,8 +41,8 @@ const stateWith = (hand: Card[], over: Partial<GameState> = {}): GameState => ({
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
   ...over,
 });
@@ -71,7 +71,7 @@ jest.mock('@/context/OnlineGameContext', () =>
       entrySource: 'lobby',
       rematchVoteState: null,
       cumulativeScores: {},
-      handScores: {},
+      roundScores: {},
       matchState: { target: 21, length: 'match', over: false, winners: [] },
       exchangeAnnouncing: false,
       exchangeAnnounceData: null,
@@ -120,7 +120,7 @@ describe('the online table selection', () => {
     await tap(KING);
     expect(selected(KING)).toBe(true);
 
-    await serverSends(r, stateWith([KING, NINE], { gameOver: true, rankings: ['player_1'] }));
+    await serverSends(r, stateWith([KING, NINE], { roundOver: true, finishingOrder: ['player_1'] }));
     expect(selected(KING)).toBe(true);
 
     await serverSends(r, stateWith([KING, NINE, FOUR], { firstPlayMade: false }));

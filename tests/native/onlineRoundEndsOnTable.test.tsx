@@ -12,7 +12,7 @@ import { roundEndingOnsets } from '@/lib/game/roundEnding';
 import { t } from '@/lib/i18n';
 
 const mockVoteRematch = jest.fn();
-const seat = (i: number): Player => ({ id: `player_${i}`, name: `P${i}`, hand: [], type: i === 0 ? 'human' : 'ai' });
+const seat = (i: number): Player => ({ id: `player_${i}`, name: `P${i}`, hand: [], type: i === 0 ? 'human' : 'bot' });
 const ENDED: GameState = {
   players: [0, 1, 2, 3].map(seat),
   currentTurnIndex: 0,
@@ -21,14 +21,14 @@ const ENDED: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: true,
-  rankings: ['player_0', 'player_1', 'player_2', 'player_3'],
+  roundOver: true,
+  finishingOrder: ['player_0', 'player_1', 'player_2', 'player_3'],
   firstPlayMade: true,
 };
-const DEALT: GameState = { ...ENDED, gameOver: false, rankings: [], firstPlayMade: false };
+const DEALT: GameState = { ...ENDED, roundOver: false, finishingOrder: [], firstPlayMade: false };
 let mockGameState: GameState = ENDED;
 let mockScoresCurrent = true;
-let mockHandScores: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
+let mockRoundScores: Record<string, number> = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
 let mockVotes: { votes: string[]; total: number } | null = null;
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() } }));
@@ -57,13 +57,13 @@ jest.mock('@/context/onlineGameHooks', () => ({
     ownLink: 'up',
   }),
   useOnlineMatch: () => ({
-    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, handsPlayed: 1 },
+    matchState: { target: 21, length: 'match', over: false, winners: [], isDraw: false, continues: true, roundsPlayed: 1 },
     cumulativeScores: { player_0: 10, player_1: 4, player_2: 2, player_3: 1 },
-    handScores: mockHandScores,
-    handScoresCurrent: mockScoresCurrent,
+    roundScores: mockRoundScores,
+    roundScoresCurrent: mockScoresCurrent,
     ratingDeltas: {},
     ratingsAfter: {},
-    handRecorded: true,
+    roundRecorded: true,
     rematchVoteState: mockVotes,
     endMatchVoteState: null,
     voteRematch: mockVoteRematch,
@@ -89,14 +89,14 @@ const screenNow = () => (
 const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 const pillOpen = () => getAnimatedStyle(screen.getByTestId('score-pill-panel', HIDDEN)).display === 'flex';
 const voteShown = () => getAnimatedStyle(screen.getByTestId('round-vote', HIDDEN)).display === 'flex';
-const voteButton = () => screen.queryByRole('button', { name: t('gameOverOverlay.nextHandA11yLabel'), ...HIDDEN });
+const voteButton = () => screen.queryByRole('button', { name: t('roundOverOverlay.nextRoundA11yLabel'), ...HIDDEN });
 const overlayLeave = () => screen.queryByTestId('btn-home', HIDDEN);
 
 beforeEach(() => {
   jest.useFakeTimers();
   mockGameState = ENDED;
   mockScoresCurrent = true;
-  mockHandScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
+  mockRoundScores = { player_0: 3, player_1: 1, player_2: 0, player_3: 0 };
   mockVotes = null;
   mockVoteRematch.mockClear();
 });
@@ -119,7 +119,7 @@ describe('a round ending online', () => {
 
     mockVotes = { votes: ['alice'], total: 4 };
     await act(async () => view.rerender(screenNow()));
-    expect(screen.getAllByText(t('gameOverOverlay.nextHandWaiting', { count: 1, total: 4 }), HIDDEN).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(t('roundOverOverlay.nextRoundWaiting', { count: 1, total: 4 }), HIDDEN).length).toBeGreaterThan(0);
     expect(pillOpen()).toBe(true);
 
     mockGameState = DEALT;
@@ -164,16 +164,16 @@ describe('a round ending online', () => {
       ...ENDED,
       gameMode: 'teams',
       players: [0, 1, 2, 3].map((i) => ({ ...seat(i), team: teamOf(i) })),
-      rankings: ['player_0', 'player_3', 'player_1', 'player_2'],
+      finishingOrder: ['player_0', 'player_3', 'player_1', 'player_2'],
     };
-    mockHandScores = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
+    mockRoundScores = { player_0: 2, player_3: 1, player_1: 2, player_2: 1 };
     mockScoresCurrent = false;
     const motes = jest.spyOn(particles, 'roundMotes');
     const view = await render(screenNow());
     await advance(close + settled);
     expect(motes).not.toHaveBeenCalled();
 
-    mockHandScores = { player_0: 3, player_3: 2, player_1: 1, player_2: 0 };
+    mockRoundScores = { player_0: 3, player_3: 2, player_1: 1, player_2: 0 };
     mockScoresCurrent = true;
     await act(async () => view.rerender(screenNow()));
     await advance(close + settled);

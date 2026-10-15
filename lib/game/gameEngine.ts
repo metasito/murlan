@@ -41,8 +41,8 @@ export interface Combination {
 }
 
 export type GameMode = "free_for_all" | "teams";
-export type PlayerType = "human" | "ai";
-export type AIDifficulty = "easy" | "medium" | "hard";
+export type PlayerType = "human" | "bot";
+export type BotDifficulty = "easy" | "medium" | "hard";
 
 export interface Player {
   id: string;
@@ -66,7 +66,7 @@ export interface ExchangePhase {
    * the return leg — every other seat's hand is sanitized out of the view.
    */
   cardToLoser?: Card;
-  bothJokersException: boolean;
+  twoJokerException: boolean;
   /**
    * When the phase closed, in epoch ms — how long `cardToLoser` stays public.
    * Written by the server and never sent to a client; the engine must not write
@@ -76,7 +76,7 @@ export interface ExchangePhase {
 }
 
 export interface StartReason {
-  type: "start_card" | "lost_round" | "won_no_swap";
+  type: "start_card" | "lost_round" | "won_no_exchange";
   card?: Card;
   playerIdx: number;
 }
@@ -94,8 +94,8 @@ export interface GameState {
   passCount: number;
   gameMode: GameMode;
   trickWinner: number | null;
-  gameOver: boolean;
-  rankings: string[];
+  roundOver: boolean;
+  finishingOrder: string[];
   firstPlayMade: boolean;
   startCard?: Card;
   startReason?: StartReason;
@@ -602,7 +602,7 @@ function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
 
 /**
  * Places the one seat still holding cards when the hand ends
- * (docs/GAME-RULES.md §9) as last. Every seat must end up in `rankings`: the
+ * (docs/GAME-RULES.md §9) as last. Every seat must end up in `finishingOrder`: the
  * scoreboard awards from it and the stats writer records from it, so a missing
  * seat is a player who silently played no game. Mutates `state` — callers hold
  * a clone.
@@ -610,8 +610,8 @@ function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
 function placeLastSeat(state: GameState): void {
   const last = state.players.find((p) => p.hand.length > 0 && p.finishPosition === undefined);
   if (!last) return;
-  last.finishPosition = state.rankings.length + 1;
-  state.rankings.push(last.id);
+  last.finishPosition = state.finishingOrder.length + 1;
+  state.finishingOrder.push(last.id);
 }
 
 /**
@@ -694,15 +694,15 @@ export function processPlay(state: GameState, combination: Combination): GameSta
   newState.firstPlayMade = true;
 
   if (player.hand.length === 0) {
-    const position = newState.rankings.length + 1;
+    const position = newState.finishingOrder.length + 1;
     player.finishPosition = position;
-    newState.rankings.push(player.id);
+    newState.finishingOrder.push(player.id);
 
     const activePlayers = newState.players.filter((p) => p.hand.length > 0);
 
     if (activePlayers.length <= 1) {
       placeLastSeat(newState);
-      newState.gameOver = true;
+      newState.roundOver = true;
       return newState;
     }
   }
@@ -808,7 +808,7 @@ export function initializeRematch(
     id?: string;
   }[],
   gameMode: GameMode,
-  prevRankings: string[],
+  prevFinishingOrder: string[],
   firstSeat = 0,
   dealtHands?: Card[][]
 ): GameState {
@@ -824,8 +824,8 @@ export function initializeRematch(
     finishPosition: undefined,
   }));
 
-  const winnerId = prevRankings[0];
-  const loserId = prevRankings[prevRankings.length - 1];
+  const winnerId = prevFinishingOrder[0];
+  const loserId = prevFinishingOrder[prevFinishingOrder.length - 1];
   const winnerIdx = players.findIndex((p) => p.id === winnerId);
   const loserIdx = players.findIndex((p) => p.id === loserId);
 
@@ -833,9 +833,9 @@ export function initializeRematch(
   const safeLoserIdx = loserIdx >= 0 ? loserIdx : players.length - 1;
 
   const loserHand = players[safeLoserIdx].hand;
-  const bothJokersException = loserHasBothJokers(loserHand);
+  const twoJokerException = loserHasBothJokers(loserHand);
 
-  if (bothJokersException) {
+  if (twoJokerException) {
     return {
       players,
       currentTurnIndex: safeWinnerIdx,
@@ -845,16 +845,16 @@ export function initializeRematch(
       passCount: 0,
       gameMode,
       trickWinner: null,
-      gameOver: false,
-      rankings: [],
+      roundOver: false,
+      finishingOrder: [],
       firstPlayMade: true,
-      startReason: { type: "won_no_swap", playerIdx: safeWinnerIdx },
+      startReason: { type: "won_no_exchange", playerIdx: safeWinnerIdx },
       exchangePhase: {
         active: false,
         winnerIdx: safeWinnerIdx,
         loserIdx: safeLoserIdx,
         cardFromLoser: loserHand[0],
-        bothJokersException: true,
+        twoJokerException: true,
       },
     };
   }
@@ -875,8 +875,8 @@ export function initializeRematch(
     passCount: 0,
     gameMode,
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     startReason: { type: "lost_round", playerIdx: safeLoserIdx },
     exchangePhase: {
@@ -884,7 +884,7 @@ export function initializeRematch(
       winnerIdx: safeWinnerIdx,
       loserIdx: safeLoserIdx,
       cardFromLoser,
-      bothJokersException: false,
+      twoJokerException: false,
     },
   };
 }
@@ -958,7 +958,7 @@ export function getBestCardFromHand(hand: Card[]): Card | undefined {
 
 export function getStartingPlayerAfterExchange(state: GameState): number {
   if (!state.exchangePhase) return state.currentTurnIndex;
-  return state.exchangePhase.bothJokersException
+  return state.exchangePhase.twoJokerException
     ? state.exchangePhase.winnerIdx
     : state.exchangePhase.loserIdx;
 }
@@ -978,18 +978,18 @@ export function getStartingPlayerAfterExchange(state: GameState): number {
  *
  * True during the round-winner's exchange choice only by accident of index —
  * `currentTurnIndex` still names the exchange's actor there, which for
- * `lost_round` differs from `startReason.playerIdx` and for `won_no_swap`
+ * `lost_round` differs from `startReason.playerIdx` and for `won_no_exchange`
  * (no exchange) already matches it. Shared with the server, which reads it to
  * grant the opener's first turn a longer AFK window (#830) — the same
  * condition, not a second one kept in step by hand.
  */
 export function openingIsPending(state: {
   currentTurnIndex: number;
-  gameOver: boolean;
+  roundOver: boolean;
   startReason?: { playerIdx: number };
   playedRanks?: number[];
 }): boolean {
-  if (state.gameOver || state.startReason === undefined) return false;
+  if (state.roundOver || state.startReason === undefined) return false;
   if (state.currentTurnIndex !== state.startReason.playerIdx) return false;
   return state.playedRanks?.every((played) => played === 0) ?? false;
 }
@@ -999,11 +999,11 @@ export function openingIsPending(state: {
  * An exchange round counts, though it carries `firstPlayMade` from the last one.
  */
 export function roundUnplayed(state: {
-  gameOver: boolean;
+  roundOver: boolean;
   firstPlayMade: boolean;
   playedRanks?: number[];
 }): boolean {
-  if (state.gameOver) return false;
+  if (state.roundOver) return false;
   return !state.firstPlayMade || (state.playedRanks?.every((played) => played === 0) ?? false);
 }
 
@@ -1101,8 +1101,8 @@ export function initializeGame(
     passCount: 0,
     gameMode,
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: false,
     startCard,
     startReason: { type: "start_card", card: startCard, playerIdx: startIdx },
@@ -1128,7 +1128,7 @@ export const TURN_TIMEOUT_MS = 30_000;
 /**
  * The escalation ladder for a table of `playerCount` seats.
  *
- * `scoreHand` pays N−1 down to 0, so a round is worth 6 points at four seats,
+ * `scoreRound` pays N−1 down to 0, so a round is worth 6 points at four seats,
  * 3 at three and 1 at two — a flat ladder therefore made a 1-v-1 match a
  * 27-round affair nobody finished. Scaling by (N−1)/3 keeps every count in
  * the 8-12 round band a match should land in, and leaves the four-player
@@ -1151,27 +1151,27 @@ export interface MatchResolution {
  * Points awarded for one hand. 4 players: 1st = 3, 2nd = 2, 3rd = 1, last = 0.
  * Generalised to N players as N-1 down to 0.
  *
- * `rankings` is the finishing order (GameState.rankings), best first. Players
+ * `finishingOrder` is the finishing order (GameState.finishingOrder), best first. Players
  * absent from it score 0 and are not present in the result.
  */
-export function scoreHand(
-  rankings: string[],
+export function scoreRound(
+  finishingOrder: string[],
   playerCount: number
 ): Record<string, number> {
   const scores: Record<string, number> = {};
-  for (let i = 0; i < rankings.length; i++) {
-    scores[rankings[i]] = Math.max(playerCount - 1 - i, 0);
+  for (let i = 0; i < finishingOrder.length; i++) {
+    scores[finishingOrder[i]] = Math.max(playerCount - 1 - i, 0);
   }
   return scores;
 }
 
 /** Adds a hand's points onto the running totals. Returns a new object. */
-export function addHandScores(
+export function addRoundScores(
   cumulative: Record<string, number>,
-  handScores: Record<string, number>
+  roundScores: Record<string, number>
 ): Record<string, number> {
   const merged: Record<string, number> = { ...cumulative };
-  for (const [id, points] of Object.entries(handScores)) {
+  for (const [id, points] of Object.entries(roundScores)) {
     merged[id] = (merged[id] ?? 0) + points;
   }
   return merged;
@@ -1220,7 +1220,7 @@ export function resolveMatch(
  *
  * `teamOfKey` maps a scoring key (a userId) to its team id. Keys absent from
  * it are ignored entirely — that is how vacated/bot seats stay out of a team
- * total, mirroring `FoldHandInput.accumulates` on the per-hand path.
+ * total, mirroring `FoldRoundInput.accumulates` on the per-hand path.
  */
 export function aggregateTeamScores(
   cumulative: Record<string, number>,
@@ -1282,9 +1282,9 @@ export function resolveMatchFor(args: {
     : resolveMatch(cumulative, target, playerCount);
 }
 
-export interface FoldHandInput {
+export interface FoldRoundInput {
   /** The round's finishing order, best first, in engine player ids. */
-  rankings: string[];
+  finishingOrder: string[];
   playerCount: number;
   length: MatchLength;
   gameMode: GameMode;
@@ -1320,9 +1320,9 @@ export interface FoldHandInput {
   frozenKeysOf?: (engineId: string) => string[];
 }
 
-export interface FoldHandResult {
+export interface FoldRoundResult {
   /** What the round paid, by scoring key. Non-accumulating keys included. */
-  handByKey: Record<string, number>;
+  roundByKey: Record<string, number>;
   cumulative: Record<string, number>;
   /** What to play to next — escalated if this round tied at the old target. */
   target: number;
@@ -1342,24 +1342,24 @@ export interface FoldHandResult {
  * Keyed by an opaque string so offline and the server share one progression:
  * offline scores by engine player id, the server by userId.
  */
-export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
-  const { rankings, playerCount, length, gameMode, target, keyOf } = input;
+export function foldRoundIntoMatch(input: FoldRoundInput): FoldRoundResult {
+  const { finishingOrder, playerCount, length, gameMode, target, keyOf } = input;
   const accumulates = input.accumulates ?? (() => true);
   const winEligible = input.winEligible ?? accumulates;
   const teamOf = input.teamOf ?? {};
 
-  const handByKey: Record<string, number> = {};
-  for (const [engineId, points] of Object.entries(scoreHand(rankings, playerCount))) {
+  const roundByKey: Record<string, number> = {};
+  for (const [engineId, points] of Object.entries(scoreRound(finishingOrder, playerCount))) {
     const key = keyOf(engineId);
     if (key === null) continue;
-    handByKey[key] = points;
+    roundByKey[key] = points;
   }
 
   const scorable: Record<string, number> = {};
-  for (const [key, points] of Object.entries(handByKey)) {
+  for (const [key, points] of Object.entries(roundByKey)) {
     if (accumulates(key)) scorable[key] = points;
   }
-  const cumulative = addHandScores(input.cumulative, scorable);
+  const cumulative = addRoundScores(input.cumulative, scorable);
 
   // Every key with a team, a departed partner's frozen row included: the pair
   // keeps the points they won (docs/GAME-RULES.md § Decisions). Who may be *named* is
@@ -1378,26 +1378,26 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
   const nameable = (key: string) => winEligible(key) && !frozen.has(key);
 
   if (length === "single") {
-    const championId = rankings[0];
+    const championId = finishingOrder[0];
     if (gameMode === "teams" && championId !== undefined && teamOf[championId] !== undefined) {
       // A round is taken by a team (docs/GAME-RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
-      const teamPoints = aggregateTeamScores(scoreHand(rankings, playerCount), teamOf);
+      const teamPoints = aggregateTeamScores(scoreRound(finishingOrder, playerCount), teamOf);
       const best = Math.max(...Object.values(teamPoints));
       const topTeams = new Set(Object.keys(teamPoints).filter((team) => teamPoints[team] === best));
       const winners = Object.entries(teamOfKey)
         .filter(([key, team]) => topTeams.has(team) && nameable(key))
         .map(([key]) => key);
-      return { handByKey, cumulative, target, over: true, winners, isDraw: topTeams.size > 1 };
+      return { roundByKey, cumulative, target, over: true, winners, isDraw: topTeams.size > 1 };
     }
     // The best-placed seat someone is still sitting in. The top one may have
     // been walked out of, and `vacateSeat` keeps the departed player's name —
     // announcing it credits the match to the person who left.
-    const championKey = rankings
+    const championKey = finishingOrder
       .map(keyOf)
       .find((key) => key !== null && winEligible(key));
     return {
-      handByKey,
+      roundByKey,
       cumulative,
       target,
       over: true,
@@ -1427,11 +1427,11 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     nameable,
   });
   if (!resolution) {
-    return { handByKey, cumulative, target, over: false, winners: [], isDraw: false };
+    return { roundByKey, cumulative, target, over: false, winners: [], isDraw: false };
   }
   if (resolution.newTarget !== null) {
     return {
-      handByKey,
+      roundByKey,
       cumulative,
       target: resolution.newTarget,
       over: false,
@@ -1440,7 +1440,7 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
     };
   }
   return {
-    handByKey,
+    roundByKey,
     cumulative,
     target,
     over: true,

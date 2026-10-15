@@ -77,13 +77,13 @@ const inPlay = (combo: Combination): GameState => ({
   passCount: 0,
   gameMode: "free_for_all",
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 });
 
 /** The hand-emptying play that closed it, exactly as `game:state` reports it. */
-const HAND_CLOSED: GameState = {
+const ROUND_CLOSED: GameState = {
   players,
   currentTurnIndex: 0,
   lastPlayedCombination: WINNING_PLAY,
@@ -91,15 +91,15 @@ const HAND_CLOSED: GameState = {
   passCount: 0,
   gameMode: "free_for_all",
   trickWinner: null,
-  gameOver: true,
-  rankings: ["player_1", "player_0"],
+  roundOver: true,
+  finishingOrder: ["player_1", "player_0"],
   firstPlayMade: true,
 };
 
 /** The one landing `state` writes, read on the frame it is written. */
 async function landingOf(state: GameState, matchOver = false) {
   const r = await render(table(state, false));
-  // `game:over` lands a render later: matchOver flips with the same gameState, mid-flight.
+  // `game:round_over` lands a render later: matchOver flips with the same gameState, mid-flight.
   if (matchOver) await act(async () => r.rerender(table(state, true)));
   const { frame, drawn } = await frameOfFirst(r, () => mockLanding.current!.value.seq > 0);
   expect(drawn[frame]).toBeLessThanOrEqual(1);
@@ -120,9 +120,9 @@ describe("the lamp's flare, wired off the same tier the shake reads (#765)", () 
 
   it.each<[string, GameState, boolean, string]>([
     ["a bomb", inPlay(BOMB_PLAY), false, "bomb"],
-    ["a straight or flush", inPlay(ROYAL_PLAY), false, "straightFlush"],
-    ["the round rung", HAND_CLOSED, false, "roundWon"],
-    ["the match rung, when the match closed with the hand", HAND_CLOSED, true, "matchWon"],
+    ["a straight or flush", inPlay(ROYAL_PLAY), false, "straight"],
+    ["the round rung", ROUND_CLOSED, false, "roundWon"],
+    ["the match rung, when the match closed with the hand", ROUND_CLOSED, true, "matchWon"],
   ])("%s lands once, as its own tier", async (_, state, matchOver, tier) => {
     expect(await landingOf(state, matchOver)).toEqual({ seq: 1, tier });
   });

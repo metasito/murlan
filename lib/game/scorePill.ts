@@ -34,20 +34,20 @@ export function scorePillStandings({
   players,
   teams,
   scores,
-  handScores,
-  rankings,
+  roundScores,
+  finishingOrder,
   viewerId,
 }: {
   players: readonly { id: string; name: string; team?: string }[];
   teams: boolean;
   scores: Record<string, number>;
-  handScores: Record<string, number>;
-  rankings: readonly string[];
+  roundScores: Record<string, number>;
+  finishingOrder: readonly string[];
   viewerId: string | undefined;
 }): PillStandings {
   const finishedAt = (id: string) => {
-    const at = rankings.indexOf(id);
-    return at === -1 ? rankings.length : at;
+    const at = finishingOrder.indexOf(id);
+    return at === -1 ? finishingOrder.length : at;
   };
   const viewerTeam = players.find((p) => p.id === viewerId)?.team;
 
@@ -55,7 +55,7 @@ export function scorePillStandings({
   if (teams) {
     const teamOf = Object.fromEntries(players.map((p) => [p.id, p.team ?? ""]));
     const totals = aggregateTeamScores(scores, teamOf);
-    const gains = aggregateTeamScores(handScores, teamOf);
+    const gains = aggregateTeamScores(roundScores, teamOf);
     entries = Object.keys(totals).map((team) => ({
       key: team,
       name: team,
@@ -71,7 +71,7 @@ export function scorePillStandings({
       name: p.name,
       initial: p.name.slice(0, 1).toUpperCase(),
       total: scores[p.id] ?? 0,
-      gain: handScores[p.id] ?? 0,
+      gain: roundScores[p.id] ?? 0,
       mine: p.id === viewerId,
       finishedAt: finishedAt(p.id),
     }));

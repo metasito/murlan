@@ -14,7 +14,7 @@ import { MenuButton } from "@/components/MenuButton";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { LoadingBlock, ErrorBlock, EmptyBlock } from "@/components/StateBlock";
 import { Colors, FontSize, Radius, Spacing, Type } from "@/lib/theme";
-import { PROVISIONAL_GAMES, formatSeason } from "@/lib/game/rating";
+import { PROVISIONAL_ROUNDS, formatSeason } from "@/lib/game/rating";
 import { useTranslation } from "@/lib/i18n";
 import { a11yGroup, a11yHidden } from "@/lib/a11y";
 import type { LeaderboardEntryDto, RatingDto } from "@/lib/wire";
@@ -37,8 +37,8 @@ export default function LeaderboardScreen() {
   const selfSeason = me ? t("ladder.seasonLabel", { season: formatSeason(me.season, t) }) : "";
   const selfGames = me
     ? me.provisional
-      ? t("ladder.provisional", { n: PROVISIONAL_GAMES - me.games })
-      : t("ladder.gamesLabel", { n: me.games })
+      ? t("ladder.provisional", { n: PROVISIONAL_ROUNDS - me.rounds })
+      : t("ladder.roundsLabel", { n: me.rounds })
     : "";
 
   return (
@@ -92,7 +92,7 @@ export default function LeaderboardScreen() {
           <EmptyBlock
             icon="trophy-outline"
             title={t("ladder.emptyTitle")}
-            body={t("ladder.emptyBody", { n: PROVISIONAL_GAMES })}
+            body={t("ladder.emptyBody", { n: PROVISIONAL_ROUNDS })}
           />
         )}
 

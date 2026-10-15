@@ -167,7 +167,7 @@ function buildExchangeState(t: TFn): GameState {
         id: "player_1",
         name: "Dea",
         hand: [mk("4", "spades"), mk("7", "spades")],
-        type: "ai",
+        type: "bot",
       },
     ],
     currentTurnIndex: 0,
@@ -176,15 +176,15 @@ function buildExchangeState(t: TFn): GameState {
     passCount: 0,
     gameMode: "free_for_all",
     trickWinner: null,
-    gameOver: false,
-    rankings: [],
+    roundOver: false,
+    finishingOrder: [],
     firstPlayMade: true,
     exchangePhase: {
       active: true,
       winnerIdx: 0,
       loserIdx: 1,
       cardFromLoser: JOKER_COLORED,
-      bothJokersException: false,
+      twoJokerException: false,
     },
   };
 }
@@ -519,7 +519,7 @@ export default function TutorialScreen() {
     if (isLast) {
       uiFeedback("success");
       await clearProgress();
-      router.replace({ pathname: "/lobby", params: { mode: "ai" } });
+      router.replace({ pathname: "/lobby", params: { mode: "bot" } });
       return;
     }
     uiFeedback("selection");

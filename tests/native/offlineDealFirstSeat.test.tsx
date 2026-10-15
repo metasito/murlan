@@ -3,7 +3,7 @@
 // level anywhere in the repo — only a source scan stood over it, and the
 // critic defeated that scan with a hand-rolled rotation and a decoy comment.
 // This drives the real `GameContext` callbacks a results screen calls
-// (`startNextHand`, `startNewMatch`) against a hand that has already ended,
+// (`startNextRound`, `startNewMatch`) against a hand that has already ended,
 // with the deal already rotated once, so a further rotation and a reset land
 // on different seats and neither result can be a coincidence.
 import { test, expect, beforeEach } from "@jest/globals";
@@ -17,13 +17,13 @@ import { NotificationProvider } from "@/context/NotificationContext";
 
 const FOUR_PLAYERS = [
   { name: "Ana", type: "human" as const },
-  { name: "Luan", type: "ai" as const, personality: "luan" as const },
-  { name: "Besnik", type: "ai" as const, personality: "besnik" as const },
-  { name: "Gent", type: "ai" as const, personality: "gent" as const },
+  { name: "Luan", type: "bot" as const, personality: "luan" as const },
+  { name: "Besnik", type: "bot" as const, personality: "besnik" as const },
+  { name: "Gent", type: "bot" as const, personality: "gent" as const },
 ];
 
 /** One round into a still-running match, already dealt from seat 1. */
-const handJustEndedSave = () =>
+const roundJustEndedSave = () =>
   JSON.stringify({
     version: OFFLINE_SAVE_VERSION,
     gameState: {
@@ -40,8 +40,8 @@ const handJustEndedSave = () =>
       passCount: 0,
       gameMode: "free_for_all",
       trickWinner: null,
-      gameOver: true,
-      rankings: ["player_2", "player_0", "player_3", "player_1"],
+      roundOver: true,
+      finishingOrder: ["player_2", "player_0", "player_3", "player_1"],
       firstPlayMade: true,
     },
     match: {
@@ -59,14 +59,14 @@ const handJustEndedSave = () =>
   });
 
 function Probe() {
-  const { hasSavedGame, resumeGame, startNextHand, startNewMatch } = useGame();
+  const { hasSavedGame, resumeGame, startNextRound, startNewMatch } = useGame();
   return (
     <>
       <Text testID="saved">{String(hasSavedGame)}</Text>
       <Pressable testID="resume" onPress={() => resumeGame()}>
         <Text>resume</Text>
       </Pressable>
-      <Pressable testID="next" onPress={() => startNextHand()}>
+      <Pressable testID="next" onPress={() => startNextRound()}>
         <Text>next</Text>
       </Pressable>
       <Pressable testID="newMatch" onPress={() => startNewMatch()}>
@@ -108,7 +108,7 @@ beforeEach(async () => {
 });
 
 test("the next hand of a running match rotates the deal one seat further (#803)", async () => {
-  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, handJustEndedSave());
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
   const r = await mount();
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
 
@@ -122,7 +122,7 @@ test("the next hand of a running match rotates the deal one seat further (#803)"
 });
 
 test("a rematch after the match ends resets the deal to seat 0, not a further rotation (#803)", async () => {
-  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, handJustEndedSave());
+  await AsyncStorage.setItem(OFFLINE_SAVE_KEY, roundJustEndedSave());
   const r = await mount();
   await waitFor(() => expect(textOf(r, "saved")).toBe("true"));
 

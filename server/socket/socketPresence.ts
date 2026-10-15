@@ -136,7 +136,7 @@ export async function announcePresence({ io, socket, userId }: PresenceContext) 
 
     if (clearDisconnectGrace(userId)) {
       for (const [roomId, game] of activeGames.entries()) {
-        if (seatOfUser(game, userId) === null || game.gameState.gameOver) continue;
+        if (seatOfUser(game, userId) === null || game.gameState.roundOver) continue;
         await seatSocket(io, socket, userId, roomId);
         try {
           await announceRejoin(io, userId, roomId, game);

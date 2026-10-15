@@ -5,7 +5,7 @@
 // crossing the felt. A turn loop reading only that flag starts a bot's
 // "thinking" timer over the top of the ceremony every seat is watching.
 //
-// What is under test is the gate, not the clock: `runAITurn` is the context's,
+// What is under test is the gate, not the clock: `runBotTurn` is the context's,
 // and whether the screen ever calls it is the whole question.
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
@@ -16,7 +16,7 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), back: jest.fn() },
 }));
 
-const mockRunAITurn = jest.fn();
+const mockRunBotTurn = jest.fn();
 const mockChoose = jest.fn();
 const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 
@@ -24,7 +24,7 @@ const mockTable: { props: { onExchangeReady?: () => void } } = { props: {} };
 const STATE: GameState = {
   players: [
     { id: 'player_0', name: 'Ana', hand: [], type: 'human' },
-    { id: 'player_1', name: 'Luan', hand: [], type: 'ai' },
+    { id: 'player_1', name: 'Luan', hand: [], type: 'bot' },
   ],
   currentTurnIndex: 1,
   lastPlayedCombination: null,
@@ -32,8 +32,8 @@ const STATE: GameState = {
   passCount: 0,
   gameMode: 'free_for_all',
   trickWinner: null,
-  gameOver: false,
-  rankings: [],
+  roundOver: false,
+  finishingOrder: [],
   firstPlayMade: true,
 };
 
@@ -42,9 +42,9 @@ const CHOOSING: GameState = {
   ...STATE,
   players: [
     { id: 'player_0', name: 'Ana', hand: [{ id: '4_clubs', suit: 'clubs', rank: '4', isJoker: false }], type: 'human' },
-    { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'ai' },
+    { id: 'player_1', name: 'Luan', hand: [{ id: '6_clubs', suit: 'clubs', rank: '6', isJoker: false }], type: 'bot' },
   ],
-  exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, bothJokersException: false },
+  exchangePhase: { active: true, winnerIdx: 1, loserIdx: 0, cardFromLoser: { id: '2_clubs', suit: 'clubs', rank: '2', isJoker: false }, twoJokerException: false },
 };
 
 /** Flipped between renders: prefixed so jest.mock may close over it. */
@@ -58,7 +58,7 @@ jest.mock('@/context/GameContext', () => ({
     playCards: () => {},
     passTurn: () => {},
     resetGame: () => {},
-    runAITurn: mockRunAITurn,
+    runBotTurn: mockRunBotTurn,
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
@@ -85,7 +85,7 @@ jest.mock('@/components/GameTable', () => {
 
 import GameScreen from '@/app/game';
 
-/** Comfortably past AI_DELAY, whatever it is set to (app/game.tsx). */
+/** Comfortably past BOT_DELAY, whatever it is set to (app/game.tsx). */
 const PAST_THE_THINK = 5_000;
 
 describe('a bot on move while the exchange is being announced', () => {
@@ -118,7 +118,7 @@ describe('a bot on move while the exchange is being announced', () => {
       jest.advanceTimersByTime(PAST_THE_THINK);
     });
     // A call here is a card thrown over the ceremony every seat is watching.
-    expect(mockRunAITurn).not.toHaveBeenCalled();
+    expect(mockRunBotTurn).not.toHaveBeenCalled();
 
     mockCeremony.announcing = false;
     await act(async () => {
@@ -128,7 +128,7 @@ describe('a bot on move while the exchange is being announced', () => {
       jest.advanceTimersByTime(PAST_THE_THINK);
     });
     // …and no call here is a table that never takes its turn back.
-    expect(mockRunAITurn).toHaveBeenCalled();
+    expect(mockRunBotTurn).toHaveBeenCalled();
 
     await view.unmount();
   });

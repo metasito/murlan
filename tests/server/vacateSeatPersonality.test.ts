@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Server as SocketServer } from "socket.io";
 import { vacateSeat } from "../../server/game/gameTurn.ts";
-import { gameOverWriters } from "../../server/game/gamePersistence.ts";
+import { roundOverWriters } from "../../server/game/gamePersistence.ts";
 import { activeGames } from "../../server/game/gameRoom.ts";
 import type { OnlineGameState } from "../../server/game/gameRoom.ts";
 import type { GameState, Player } from "../../lib/game/gameEngine.ts";
@@ -33,8 +33,8 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
     trickWinner: null,
     // Between hands: vacateSeat's simplest branch, no board- or DB-affecting
     // side effect once `remaining` stays above zero.
-    gameOver: true,
-    rankings: ["p0", "p1"],
+    roundOver: true,
+    finishingOrder: ["p0", "p1"],
     firstPlayMade: true,
   };
   const game = {
@@ -50,10 +50,10 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
   } as unknown as OnlineGameState;
   activeGames.set(ROOM, game);
 
-  await vacateSeat(io, ROOM, "u_drita", gameOverWriters);
+  await vacateSeat(io, ROOM, "u_drita", roundOverWriters);
 
   const vacated = game.gameState.players[1];
-  assert.equal(vacated?.type, "ai");
+  assert.equal(vacated?.type, "bot");
   assert.equal(
     vacated?.personality,
     undefined,

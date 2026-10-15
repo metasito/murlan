@@ -10,7 +10,7 @@
 // Each slice hook destructures only its own fields, so one wide value answers
 // all seven. The rating fields are filled in because the real provider never
 // leaves them undefined, and the screen indexes them by user id.
-const RATING_DEFAULTS = { ratingDeltas: {}, ratingsAfter: {}, handRecorded: true };
+const RATING_DEFAULTS = { ratingDeltas: {}, ratingsAfter: {}, roundRecorded: true };
 
 export function onlineContextMock(value: () => unknown) {
   const wide = () => ({ ...RATING_DEFAULTS, ...(value() as object) });

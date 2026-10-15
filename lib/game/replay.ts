@@ -34,7 +34,7 @@ export interface ReplayDto {
   seats: ReplaySeat[];
   moves: ReplayMove[];
   /** Engine player ids in finishing order, as the hand ended. */
-  rankings: string[];
+  finishingOrder: string[];
 }
 
 /** What the profile lists: enough to name a hand, without its move log. */
@@ -149,8 +149,8 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     passCount: 0,
     gameMode: replay.gameMode,
     trickWinner: null,
-    gameOver: finished,
-    rankings: finished ? replay.rankings : [],
+    roundOver: finished,
+    finishingOrder: finished ? replay.finishingOrder : [],
     firstPlayMade: at >= 0,
   };
 }

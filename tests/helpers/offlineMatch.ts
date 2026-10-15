@@ -5,11 +5,11 @@
 //
 // A bot seat's turn is `offlineBotMove`, the function GameContext.tsx calls
 // (tests/engine/matchState.test.ts pins both callers). The round->match
-// wiring (`applyHandToMatch`, `dealFrom`) is mirrored rather than imported:
+// wiring (`applyRoundToMatch`, `dealFrom`) is mirrored rather than imported:
 // that file pulls in `react` and AsyncStorage, which `node --test` cannot
 // load, so a change to either copy has to be carried to the other by hand.
 import {
-  foldHandIntoMatch,
+  foldRoundIntoMatch,
   initializeGame,
   initializeRematch,
   nextDealFirstSeat,
@@ -28,8 +28,8 @@ import { comboKey } from "../../components/flightPhysics.ts";
 import { mulberry32 } from "../engine/helpers.ts";
 import type { BotPersonalityId } from "../../lib/game/botPersonalities.ts";
 
-interface HandResult {
-  rankings: string[];
+interface RoundResult {
+  finishingOrder: string[];
   pointsAwarded: Record<string, number>;
 }
 
@@ -37,7 +37,7 @@ interface MatchState {
   length: MatchLength;
   target: number;
   scores: Record<string, number>;
-  hands: HandResult[];
+  hands: RoundResult[];
   over: boolean;
   winners: string[];
   isDraw: boolean;
@@ -55,16 +55,16 @@ function freshMatch(length: MatchLength, playerCount: number): MatchState {
   };
 }
 
-/** Verbatim copy of context/GameContext.tsx's `applyHandToMatch` — see the
+/** Verbatim copy of context/GameContext.tsx's `applyRoundToMatch` — see the
  * file banner for why this cannot just import it. */
-function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
+function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
   const teamOf: Record<string, string> = {};
   for (const p of finished.players) {
     if (p.team) teamOf[p.id] = p.team;
   }
 
-  const folded = foldHandIntoMatch({
-    rankings: finished.rankings,
+  const folded = foldRoundIntoMatch({
+    finishingOrder: finished.finishingOrder,
     playerCount: finished.players.length,
     length: match.length,
     gameMode: finished.gameMode,
@@ -77,7 +77,7 @@ function applyHandToMatch(match: MatchState, finished: GameState): MatchState {
   return {
     ...match,
     scores: folded.cumulative,
-    hands: [...match.hands, { rankings: finished.rankings, pointsAwarded: folded.handByKey }],
+    hands: [...match.hands, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
     target: folded.target,
     over: folded.over,
     winners: folded.winners,
@@ -137,46 +137,46 @@ export interface SimulateMatchOptions {
   /** Moves (plays + passes + exchange choices) in one round before that round is a stall. */
   maxMovesPerRound?: number;
   /**
-   * Per-seat AI choice for a seat that is not `"ai"` (a bot seat always plays
+   * Per-seat AI choice for a seat that is not `"bot"` (a bot seat always plays
    * through `offlineBotMove`), indexed like `players`. Defaults to the real
-   * AI (`aiChoosePlay`). `false` plays the forced-minimum move
+   * AI (`botChoosePlay`). `false` plays the forced-minimum move
    * instead — the floor `autoMoveForSeat` gives an AFK human, which always
    * passes once it is not leading a round (`lib/game/autoMove.ts`). That is not
    * what an engaged human or `tests/e2e/helpers/bot.ts`'s own bot look like:
    * both actively try to beat the table before passing. `contest` below is
    * that shape instead.
    */
-  useAi?: boolean[];
+  useBot?: boolean[];
   /**
    * Per-seat, indexed like `players`. `true` plays the weakest legal
    * combination that beats the table (singles before bigger shapes, lowest
    * strength first), falling back to a pass only when nothing beats it —
    * `tests/e2e/helpers/bot.ts`'s `playOrPass` search order, without the DOM.
-   * Takes priority over `useAi` for that seat; unset seats keep using `useAi`.
+   * Takes priority over `useBot` for that seat; unset seats keep using `useBot`.
    */
   contest?: boolean[];
   /**
-   * Collects every `computeAiTurnKey` collision found while playing, instead
+   * Collects every `computeBotTurnKey` collision found while playing, instead
    * of stopping at the first one — so a soak run can report how many turned
    * up across the whole search rather than only the first.
    */
-  collectAiTurnKeyCollisions?: AiTurnKeyCollision[];
+  collectBotTurnKeyCollisions?: BotTurnKeyCollision[];
   /**
-   * Forwarded to every AI seat's `aiChoosePlay` call (`lib/game/autoMove.ts`'s
+   * Forwarded to every AI seat's `botChoosePlay` call (`lib/game/autoMove.ts`'s
    * `AutoMoveContext.rng`). Absent means that function's own default —
    * `Math.random`, unseeded. A caller measuring outcomes across many seeds
    * (rather than only checking that a match terminates) wants this seeded
    * too, so the whole match — deal and personality knobs both — replays from
    * `seed` alone.
    */
-  aiRng?: (seed: number) => () => number;
+  botRng?: (seed: number) => () => number;
 }
 
 export interface SimulatedRound {
-  rankings: string[];
+  finishingOrder: string[];
   cumulativeAfter: Record<string, number>;
   target: number;
-  /** Plays + passes + exchange choices this round took to reach `gameOver`. */
+  /** Plays + passes + exchange choices this round took to reach `roundOver`. */
   moves: number;
   /**
    * How many of the six top cards (the four 2s and two Jokers) each seat held
@@ -195,8 +195,8 @@ export interface SimulateMatchResult {
   target: number;
   winners: string[];
   isDraw: boolean;
-  /** How many non-null `aiTurnKey` states this match's run checked for a collision. */
-  aiTurnKeyChecks: number;
+  /** How many non-null `botTurnKey` states this match's run checked for a collision. */
+  botTurnKeyChecks: number;
 }
 
 export class MatchStallError extends Error {
@@ -300,17 +300,17 @@ export class HandNotShrunkError extends Error {
 /**
  * `app/game.tsx`'s own key for "does the AI turn effect need to reschedule",
  * reproduced exactly: seat, pass count, and the table's last combination —
- * gated on `!gameOver`, `!exchangePhase.active` and the acting seat being
- * `"ai"`, matching that file's `aiTurnKey`. `exchangeAnnouncing` is not
+ * gated on `!roundOver`, `!exchangePhase.active` and the acting seat being
+ * `"bot"`, matching that file's `botTurnKey`. `exchangeAnnouncing` is not
  * modelled (this harness never renders a ceremony) — treating it as always
  * false only *adds* candidate collisions the real app's extra null would
  * break, so it cannot hide one that exists.
  */
-function computeAiTurnKey(state: GameState): string | null {
-  if (state.gameOver) return null;
+function computeBotTurnKey(state: GameState): string | null {
+  if (state.roundOver) return null;
   if (state.exchangePhase?.active) return null;
   const player = state.players[state.currentTurnIndex];
-  if (!player || player.type !== "ai") return null;
+  if (!player || player.type !== "bot") return null;
   const combo = state.lastPlayedCombination
     ? comboKey(state.lastPlayedCombination, state.lastPlayedBy)
     : "-";
@@ -337,7 +337,7 @@ export function weakestBeatingPlay(state: GameState, seat: number): Combination 
   return [...plays].sort((a, b) => a.cards.length - b.cards.length || a.strength - b.strength)[0];
 }
 
-export interface AiTurnKeyCollision {
+export interface BotTurnKeyCollision {
   seed: number;
   roundIndex: number;
   key: string;
@@ -359,10 +359,10 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
   return withSeededDeals(opts.seed, () => {
     let match = freshMatch(opts.length, opts.players.length);
     let dealFirstSeat = 0;
-    let prevRankings: string[] = [];
+    let prevFinishingOrder: string[] = [];
     const rounds: SimulatedRound[] = [];
-    let aiTurnKeyChecks = 0;
-    const aiRng = opts.aiRng?.(opts.seed);
+    let botTurnKeyChecks = 0;
+    const botRng = opts.botRng?.(opts.seed);
     const topCardCount = (hand: { rank: string }[]) =>
       hand.filter((c) => c.rank === "2" || c.rank === "joker_bw" || c.rank === "joker_colored").length;
 
@@ -388,7 +388,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         state = initializeRematch(
           opts.players.map((p, i) => ({ ...p, id: `player_${i}` })),
           opts.gameMode,
-          prevRankings,
+          prevFinishingOrder,
           dealFirstSeat
         );
       }
@@ -396,9 +396,9 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       const topCardCounts = state.players.map((p) => topCardCount(p.hand));
 
       // Every seat dealt cards must be given at least one turn before this
-      // round's `gameOver` — a turn-advance that silently keeps re-picking
+      // round's `roundOver` — a turn-advance that silently keeps re-picking
       // the same seat still reaches `activePlayers.length <= 1` and looks
-      // like a normal finish (a winner, a plausible rankings array) with the
+      // like a normal finish (a winner, a plausible finishingOrder array) with the
       // other seat never once having acted.
       const dealtSeats = state.players
         .map((p, i) => ({ i, dealt: p.hand.length > 0 }))
@@ -406,19 +406,19 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         .map((s) => s.i);
       const actedSeats = new Set<number>();
 
-      // `app/game.tsx`'s `aiTurnKey`, reset per round because that screen
+      // `app/game.tsx`'s `botTurnKey`, reset per round because that screen
       // remounts on every navigation to /game (a fresh component instance
       // has no previous effect value to compare against) — see
-      // `computeAiTurnKey`'s own comment for what this is chasing.
-      let lastAiTurnKey: string | null = null;
-      let lastAiTurnFingerprint: string | null = null;
-      let lastAiTurnState: GameState | null = null;
+      // `computeBotTurnKey`'s own comment for what this is chasing.
+      let lastBotTurnKey: string | null = null;
+      let lastBotTurnFingerprint: string | null = null;
+      let lastBotTurnState: GameState | null = null;
 
       let moves = 0;
-      while (!state.gameOver) {
+      while (!state.roundOver) {
         if (moves >= maxMovesPerRound) {
           throw new MatchStallError(
-            `round ${rounds.length} did not reach gameOver after ${moves} moves ` +
+            `round ${rounds.length} did not reach roundOver after ${moves} moves ` +
               `(seats holding cards: ${state.players.map((p) => p.hand.length).join(",")})`,
             opts.seed,
             rounds
@@ -426,26 +426,26 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         }
         moves++;
 
-        const key = computeAiTurnKey(state);
+        const key = computeBotTurnKey(state);
         if (key !== null) {
-          aiTurnKeyChecks++;
+          botTurnKeyChecks++;
           const fingerprint = handFingerprint(state);
-          if (key === lastAiTurnKey && fingerprint !== lastAiTurnFingerprint && lastAiTurnState) {
-            opts.collectAiTurnKeyCollisions?.push({
+          if (key === lastBotTurnKey && fingerprint !== lastBotTurnFingerprint && lastBotTurnState) {
+            opts.collectBotTurnKeyCollisions?.push({
               seed: opts.seed,
               roundIndex: rounds.length,
               key,
-              before: { fingerprint: lastAiTurnFingerprint!, state: lastAiTurnState },
+              before: { fingerprint: lastBotTurnFingerprint!, state: lastBotTurnState },
               after: { fingerprint, state },
             });
           }
-          lastAiTurnKey = key;
-          lastAiTurnFingerprint = fingerprint;
-          lastAiTurnState = state;
+          lastBotTurnKey = key;
+          lastBotTurnFingerprint = fingerprint;
+          lastBotTurnState = state;
         } else {
-          lastAiTurnKey = null;
-          lastAiTurnFingerprint = null;
-          lastAiTurnState = null;
+          lastBotTurnKey = null;
+          lastBotTurnFingerprint = null;
+          lastBotTurnState = null;
         }
 
         const isExchangeTurn = !!state.exchangePhase?.active;
@@ -465,12 +465,12 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
               comboSeen = true;
               playedCombo = combo;
             },
-            rng: aiRng,
+            rng: botRng,
           };
           next =
-            !isExchangeTurn && state.players[seat]?.type === "ai"
+            !isExchangeTurn && state.players[seat]?.type === "bot"
               ? offlineBotMove(state, ctx)
-              : autoMoveForSeat(state, seat, opts.useAi?.[seat] ?? true, ctx);
+              : autoMoveForSeat(state, seat, opts.useBot?.[seat] ?? true, ctx);
         }
         if (!next) {
           throw new MatchStallError(
@@ -501,7 +501,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
             }
           }
 
-          if (!next.gameOver) {
+          if (!next.roundOver) {
             const hands = next.players.map((p) => p.hand);
             const expected =
               playedCombo === null && next.trickWinner !== null
@@ -531,7 +531,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         if (!actedSeats.has(seat)) {
           throw new SilentSeatError(
             `round ${rounds.length} ended with seat ${seat} never given a turn ` +
-              `(acted: [${[...actedSeats].join(",")}], rankings: ${JSON.stringify(state.rankings)})`,
+              `(acted: [${[...actedSeats].join(",")}], finishingOrder: ${JSON.stringify(state.finishingOrder)})`,
             opts.seed,
             rounds.length,
             seat
@@ -539,10 +539,10 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
         }
       }
 
-      prevRankings = state.rankings;
-      match = applyHandToMatch(match, state);
+      prevFinishingOrder = state.finishingOrder;
+      match = applyRoundToMatch(match, state);
       rounds.push({
-        rankings: state.rankings,
+        finishingOrder: state.finishingOrder,
         cumulativeAfter: match.scores,
         target: match.target,
         moves,
@@ -556,7 +556,7 @@ export function simulateOfflineMatch(opts: SimulateMatchOptions): SimulateMatchR
       target: match.target,
       winners: match.winners,
       isDraw: match.isDraw,
-      aiTurnKeyChecks,
+      botTurnKeyChecks,
     };
   });
 }

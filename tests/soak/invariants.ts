@@ -12,7 +12,7 @@ export interface SeatView {
   /** Which seat this client occupies. */
   seat: number;
   currentTurnIndex: number;
-  gameOver: boolean;
+  roundOver: boolean;
   /** Cards in each seat's hand, indexed by seat, as this client sees it. */
   handCounts: number[];
   /** This client's own cards. Only the viewer's hand is ever sent in full. */
@@ -53,12 +53,12 @@ export function checkAgreement(views: SeatView[]): Violation[] {
           `seat ${view.seat} thinks it is seat ${view.currentTurnIndex}'s`,
       });
     }
-    if (view.gameOver !== first.gameOver) {
+    if (view.roundOver !== first.roundOver) {
       found.push({
         kind: "over-disagreement",
         detail:
-          `seat ${first.seat} has gameOver=${first.gameOver}, ` +
-          `seat ${view.seat} has ${view.gameOver}`,
+          `seat ${first.seat} has roundOver=${first.roundOver}, ` +
+          `seat ${view.seat} has ${view.roundOver}`,
       });
     }
     if (view.handCounts.join(",") !== first.handCounts.join(",")) {
@@ -125,7 +125,7 @@ export function checkTurnIsSeated(views: SeatView[]): Violation[] {
   const found: Violation[] = [];
   for (const view of views) {
     const seats = view.handCounts.length;
-    if (view.gameOver) continue;
+    if (view.roundOver) continue;
     if (view.currentTurnIndex < 0 || view.currentTurnIndex >= seats) {
       found.push({
         kind: "turn-off-the-table",
