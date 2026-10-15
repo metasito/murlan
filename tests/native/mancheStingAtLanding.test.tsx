@@ -48,7 +48,7 @@ const table = ({ teams, rankings }: (typeof CASES)[number], over: boolean) => {
     lastPlayedBy: over ? 3 : 2,
     passCount: 0,
     gameMode: teams ? 'teams' : 'free_for_all',
-    roundWinner: null,
+    trickWinner: null,
     gameOver: over,
     rankings: over ? rankings : [],
     firstPlayMade: true,

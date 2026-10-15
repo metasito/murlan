@@ -7,7 +7,7 @@ import { EmptyHandLine, WaitingLine } from "./tableLines";
 import { HudComboPill, OfflinePill, TurnChip } from "./hud";
 import { EndMatchVote, MancheVote } from "./netNotes";
 import { WhoStartsCard } from "./panels";
-import { ComboMark, PileLabelMark, RoundWinnerMark } from "./pileNotices";
+import { ComboMark, PileLabelMark, TrickWinnerMark } from "./pileNotices";
 import { PassedMark, ReconnectingMark, VacatedMark } from "./seatMarks";
 
 const underDisc = (scale: number) => {
@@ -110,7 +110,7 @@ export const NOTICE_GALLERY = {
     { name: "a pair", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Coppia" /> },
     { name: "a bomb, the same mark", tone: "lit", render: (scale) => <ComboMark scale={scale} label="Bomba ×4" /> },
   ],
-  roundWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <RoundWinnerMark scale={scale} name="Besnik" /> }],
+  trickWinner: [{ name: "a seat took the round", tone: "lit", render: (scale) => <TrickWinnerMark scale={scale} name="Besnik" /> }],
   pileLabel: [
     {
       name: "the exchange's card on the pile",

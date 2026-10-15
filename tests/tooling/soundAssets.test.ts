@@ -156,8 +156,8 @@ const EXPECTED: Record<string, { seconds: number; lufs: number }> = {
   "play.mp3": { seconds: 0.235, lufs: -26.9 },
   "reject.mp3": { seconds: 0.209, lufs: -19.3 },
   "room_full.mp3": { seconds: 0.287, lufs: -18.6 },
-  "round_start.mp3": { seconds: 0.81, lufs: -22.7 },
-  "round_win.mp3": { seconds: 0.392, lufs: -23.2 },
+  "trick_start.mp3": { seconds: 0.81, lufs: -22.7 },
+  "trick_win.mp3": { seconds: 0.392, lufs: -23.2 },
   "seat_fill.mp3": { seconds: 0.261, lufs: -24.2 },
   "select.mp3": { seconds: 0.262, lufs: -29.8 },
   "turn.mp3": { seconds: 0.694, lufs: -22.9 },
@@ -231,11 +231,11 @@ describe("sound assets", () => {
   });
 
   test("a trick won sits under the manche won", async () => {
-    const trick = await readMp3("round_win.mp3");
+    const trick = await readMp3("trick_win.mp3");
     const manche = await readMp3("manche_won.mp3");
     assert.ok(
       trick.lufs < manche.lufs,
-      `round_win at ${trick.lufs.toFixed(1)} LUFS is not under manche_won at ${manche.lufs.toFixed(1)}`
+      `trick_win at ${trick.lufs.toFixed(1)} LUFS is not under manche_won at ${manche.lufs.toFixed(1)}`
     );
   });
 

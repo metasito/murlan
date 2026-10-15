@@ -6,7 +6,108 @@ Domain glossary and pointers to where a concept's design lives, sharpened over t
 specific change to *that term* was researched and rejected — narrow enough that it is part of the
 term's meaning, and useless anywhere the term is not.
 
-## Terms
+## The game
+
+The rules themselves are `docs/GAME-RULES.md`; these are the words for them. The canonical word is English everywhere — code, docs, tickets — and each locale translates it for players.
+
+### Scoring
+
+**Round**:
+One deal played until a single seat still holds cards.
+_Avoid_: manche, hand (that is the cards a seat holds), game, deal (that is the dealing)
+
+**Match**:
+The rounds a table plays until a seat or team reaches the target; the unit that is won, drawn, rated and rematched.
+_Avoid_: partita, game
+
+**Finishing order**:
+The order seats went out in one round, first to last; a seat's place in it is its **placement**.
+_Avoid_: rankings (a card has a rank)
+
+**Placement points**:
+What a placement earns: N−1 for first down to 0 for last.
+_Avoid_: hand score, round score
+
+**Target**:
+The match total that ends the match; a tie on it **escalates** the target one rung up its ladder, and a tie on the last rung is a draw.
+
+**Standings**:
+Every seat's or team's running match total, best first.
+_Avoid_: leaderboard (that is the rated ladder across matches)
+
+### Play
+
+**Trick**:
+The plays that follow a lead until every other active seat passes in a row; the last player wins it and leads the next.
+_Avoid_: round (that is the whole deal), pile (that is the cards lying on the table)
+
+**Lead**:
+The play that opens a trick, with any combination.
+
+**Opening**:
+The lead of a round with no exchange before it, which must contain the 3♠ (or, at two seats, the lowest dealt card).
+_Avoid_: start card (that is the card, not the play)
+
+**Combination**:
+The shape of a play: single, pair, triple, straight, bomb or royal straight.
+
+**Straight**:
+Five or more cards of consecutive rank, suits ignored.
+_Avoid_: scale, shkallë, sequence
+
+**Bomb**:
+Four cards of one rank; beats any combination but a higher bomb or a royal straight.
+_Avoid_: quadruple, poker, quad
+
+**Royal straight**:
+A straight of one suit; beats any bomb.
+_Avoid_: flush
+
+**Pass**:
+Declining to beat the play on the table; it does not lock the seat out of the trick.
+
+**Going out**:
+Playing one's last card, which fixes the seat's placement and takes it out of the round.
+
+### Between rounds
+
+**Exchange**:
+The swap before a round whose table has a complete finishing order to take it from: the previous round's last seat gives its highest card to the first seat, who gives back a card of their choice.
+_Avoid_: swap, trade
+
+**Giveback**:
+The card the first seat returns in an exchange: ranked 3 to 10, never the card just received.
+_Avoid_: return card
+
+**Two-Joker exception**:
+A last seat holding both Jokers shows them and no exchange happens; the first seat leads instead.
+
+### The table
+
+**Table**:
+The seats that stay together across matches; its lifetime is what `docs/GAME-RULES.md` §4 calls a session.
+_Avoid_: session (that is a login)
+
+**Free-for-all** / **Teams**:
+The two modes: every seat for itself, or two teams of two sitting opposite.
+
+**Team**:
+Two seats sitting opposite, scored on their combined placement points.
+_Avoid_: pair (that is a combination), side
+
+**Bot**:
+A seat played by the computer, whether born one or taken over.
+_Avoid_: AI, CPU, computer
+
+**Vacated seat**:
+A human's seat whose player did not return within the grace period; a bot plays it on, and it is never named the winner.
+_Avoid_: dropped seat
+
+**Abandonment**:
+The last-place finish recorded against a player who left a round before it ended.
+_Avoid_: forfeit, rage-quit
+
+## Design pointers
 
 - **Account recovery** — the register / verify-email / add-email / resend-verification /
   request-password-reset / reset-password state machine. Its authoritative shape (states,
@@ -49,7 +150,7 @@ term's meaning, and useless anywhere the term is not.
   mockup's mark), `float`, `panel` — and a *tone* (`neutral`, `lit`, `urgent`, `ok`, `bad`, `solid`, `gold`)
   its shape must be able to paint. A notice is painted by `components/table/TableNotice.tsx` from
   `NoticePalette` in `lib/tokens.ts` once it has moved there: the HUD combination pill, the turn
-  pill, who starts, the seat marks and the pile's marks (the combination, the round winner, the
+  pill, who starts, the seat marks and the pile's marks (the combination, the trick winner, the
   exchange label), the table's one float (the viewer's own pass, a refused play, a server error)
   and the hand row's lines (waiting for the others, an empty hand) have; the rest move in #1259
   plan 5's later tasks. Its kinds, their geometry in mockup pixels and their timings

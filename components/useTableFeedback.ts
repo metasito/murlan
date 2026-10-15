@@ -18,7 +18,7 @@ import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { useScreenShakeEnabled } from "@/lib/screenShake";
 import { scheduleOnRN } from "react-native-worklets";
 import {
-  roundClosedWithWinner,
+  trickClosedWithWinner,
   traumaFor,
   shakeOffset,
   shakeAmplitudeFor,
@@ -70,7 +70,7 @@ interface TableFeedbackState {
   canPass: boolean;
   passCount: number;
   lastPlayedCombination: Combination | null;
-  roundWinner: number | null;
+  trickWinner: number | null;
   gameOver: boolean;
   rankings: string[];
   /** Only `id` and `team` are read — enough to resolve `handOutcomeFor`. */
@@ -259,7 +259,7 @@ export function useTableFeedback({
   canPass,
   passCount,
   lastPlayedCombination,
-  roundWinner,
+  trickWinner,
   gameOver,
   rankings,
   players,
@@ -279,8 +279,8 @@ export function useTableFeedback({
   // Seeded from the state the table mounts on, so rejoining mid-round does not
   // replay the passes that happened before the viewer arrived.
   const prevPassCountRef = useRef(passCount);
-  const prevRoundClosedRef = useRef(
-    roundClosedWithWinner({ lastPlayedCombination, roundWinner })
+  const prevTrickClosedRef = useRef(
+    trickClosedWithWinner({ lastPlayedCombination, trickWinner })
   );
   // Steady-state emphasis is opacity and glow, never scale: a fractional scale
   // on a view containing text makes React Native resample the already-rasterised
@@ -313,13 +313,13 @@ export function useTableFeedback({
   useEffect(() => {
     const prevCount = prevPassCountRef.current;
     prevPassCountRef.current = passCount;
-    const closed = roundClosedWithWinner({ lastPlayedCombination, roundWinner });
-    const wasClosed = prevRoundClosedRef.current;
-    prevRoundClosedRef.current = closed;
+    const closed = trickClosedWithWinner({ lastPlayedCombination, trickWinner });
+    const wasClosed = prevTrickClosedRef.current;
+    prevTrickClosedRef.current = closed;
     const closedNow = closed && !wasClosed;
     if (passCount > prevCount || closedNow) moment({ kind: "pass" });
-    if (closedNow) moment({ kind: "roundWon" });
-  }, [passCount, lastPlayedCombination, roundWinner, moment]);
+    if (closedNow) moment({ kind: "trickWon" });
+  }, [passCount, lastPlayedCombination, trickWinner, moment]);
 
   useEffect(() => {
     // Reset on the way back down so a rematch — which never unmounts the

@@ -93,7 +93,7 @@ export interface GameState {
   lastPlayedBy: number;
   passCount: number;
   gameMode: GameMode;
-  roundWinner: number | null;
+  trickWinner: number | null;
   gameOver: boolean;
   rankings: string[];
   firstPlayMade: boolean;
@@ -451,7 +451,7 @@ export function canPlay(
 export function getAllValidPlays(
   hand: Card[],
   lastPlayed: Combination | null,
-  isNewRound: boolean,
+  isNewTrick: boolean,
   requireCard?: Card
 ): Combination[] {
   const plays: Combination[] = [];
@@ -465,7 +465,7 @@ export function getAllValidPlays(
     if (!selected.length) return;
     if (requireCard && !selected.some((c) => c.id === requireCard.id)) return;
     const combo = buildCombination(selected);
-    if (!combo || !canPlay(combo, isNewRound ? null : lastPlayed)) return;
+    if (!combo || !canPlay(combo, isNewTrick ? null : lastPlayed)) return;
     const key = `${combo.type}:${combo.cards.length}:${combo.strength}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -718,7 +718,7 @@ export function processPlay(state: GameState, combination: Combination): GameSta
  * there. `lib/game/replay.ts` reads the same threshold to fold a stored log back
  * into a pile, which is why it is exported rather than inline.
  */
-export function passesToCloseRound(activeCount: number, lastPlayerStillActive: boolean): number {
+export function passesToCloseTrick(activeCount: number, lastPlayerStillActive: boolean): number {
   return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
 }
 
@@ -734,7 +734,7 @@ export function processPass(state: GameState): GameState {
 
   const activeCount = newState.players.filter((p) => p.hand.length > 0).length;
   const lastPlayer = newState.players[newState.lastPlayedBy];
-  const passesNeeded = passesToCloseRound(
+  const passesNeeded = passesToCloseTrick(
     activeCount,
     !!lastPlayer && lastPlayer.hand.length > 0
   );
@@ -742,7 +742,7 @@ export function processPass(state: GameState): GameState {
   if (newState.passCount >= passesNeeded) {
     newState.lastPlayedCombination = null;
     newState.passCount = 0;
-    newState.roundWinner = newState.lastPlayedBy;
+    newState.trickWinner = newState.lastPlayedBy;
 
     const lastWinner = newState.players[newState.lastPlayedBy];
     if (lastWinner && lastWinner.hand.length > 0) {
@@ -754,7 +754,7 @@ export function processPass(state: GameState): GameState {
       });
     }
   } else {
-    newState.roundWinner = null;
+    newState.trickWinner = null;
     newState.currentTurnIndex = getNextActivePlayer(newState);
   }
 
@@ -775,9 +775,9 @@ function getNextActivePlayer(state: GameState): number {
 export function canPlayerPlay(
   hand: Card[],
   lastPlayed: Combination | null,
-  isNewRound: boolean
+  isNewTrick: boolean
 ): boolean {
-  return getAllValidPlays(hand, lastPlayed, isNewRound).length > 0;
+  return getAllValidPlays(hand, lastPlayed, isNewTrick).length > 0;
 }
 
 export function getCardDisplayRank(rank: Rank): string {
@@ -844,7 +844,7 @@ export function initializeRematch(
       playedRanks: emptyRankTally(),
       passCount: 0,
       gameMode,
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
@@ -874,7 +874,7 @@ export function initializeRematch(
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
@@ -1100,7 +1100,7 @@ export function initializeGame(
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: false,

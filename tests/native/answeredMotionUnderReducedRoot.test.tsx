@@ -39,8 +39,8 @@ describe("under the app's reduced motion, an animation that answers it plays its
   });
 
   it("the round winner's tag keeps its fade out rather than vanishing", async () => {
-    const view = await render(underReducedRoot(pileOf({ comboLabel: null, roundWinner: "Ana" })));
-    let host: TestInstance | null = screen.getByTestId("notice-roundWinner");
+    const view = await render(underReducedRoot(pileOf({ comboLabel: null, trickWinner: "Ana" })));
+    let host: TestInstance | null = screen.getByTestId("notice-trickWinner");
     while (host && !host.props.exiting) host = host.parent;
     expect(host).not.toBeNull();
     expect(getReducedMotionFromConfig(host!.props.exiting)).toBe(false);

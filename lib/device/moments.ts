@@ -3,7 +3,7 @@ import type { PulseStrength, TapHaptic } from "./hapticsEngine";
 import type { SoundId } from "./soundAssets";
 
 type Outcome = "won" | "lost" | "neutral" | "draw";
-type Plain ="roundWon" | "roundStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
+type Plain ="trickWon" | "trickStart" | "select" | "deselect" | "reject" | "give" | "pass" | "deal" | "exchange" | "turn" | "clockRunningOut" | "reconnected";
 
 export type Moment =
   | { kind: "landing"; cards: number; bomb: boolean; mine: boolean }
@@ -89,7 +89,7 @@ export const MOMENTS = {
           ? { sound: "mancheLost", bus: "sting", haptics: tap("warn") }
           : { sound: "mancheNeutral", bus: "sting", haptics: [] },
   },
-  roundWon: { priority: 80, cue: () => sfx("round_win") },
+  trickWon: { priority: 80, cue: () => sfx("trick_win") },
   landing: {
     priority: 70,
     cue: (m) =>
@@ -101,7 +101,7 @@ export const MOMENTS = {
   exchange: { priority: 55, cue: () => sfx("exchange") },
   reconnected: { priority: 52, cue: () => sfx("reconnected") },
   deal: { priority: 50, cue: () => sfx("deal") },
-  roundStart: { priority: 45, cue: () => sfx("round_start") },
+  trickStart: { priority: 45, cue: () => sfx("trick_start") },
   turn: { priority: 40, cue: () => sfx("turn", tap("light")) },
   clockRunningOut: { priority: 35, cue: () => sfx("clockRunningOut") },
   give: { priority: 30, input: true, cue: () => sfx("play", tap("medium")) },

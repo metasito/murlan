@@ -34,7 +34,7 @@ are regenerated from these prompts on a paid plan and re-listened before the gam
 
 ## The built effects
 
-`round_start`, `round_win`, `reject`, `seat_fill`, `room_full` and `manche_neutral`, each a recipe in
+`trick_start`, `trick_win`, `reject`, `seat_fill`, `room_full` and `manche_neutral`, each a recipe in
 `scripts/build-sounds.mjs`: one or more source clips, each with a gain, a start offset and a playback
 rate. All are CC0 1.0; no attribution is required, and it is given here because the work deserves it.
 
@@ -61,8 +61,8 @@ Every built output is then:
    floor is absolute rather than a proportion of total energy, because a proportional measure is not
    idempotent — trimming the quiet tail shrinks the total it is a proportion of, so each rebuild eats
    further into the sound.
-2. **Normalised** to a sample peak of 0.89, except `round_start` (0.79, which keeps its true peak
-   under −1 dBTP once encoded), `round_win` (0.3, which puts a trick won under the manche won) and
+2. **Normalised** to a sample peak of 0.89, except `trick_start` (0.79, which keeps its true peak
+   under −1 dBTP once encoded), `trick_win` (0.3, which puts a trick won under the manche won) and
    `manche_neutral` (0.25, under both verdicts).
 3. **Encoded to MP3** at 96 kbps mono with `lamejs`.
 
@@ -70,7 +70,7 @@ Every built output is then:
 
 `tests/tooling/soundAssets.test.ts` decodes every file `soundAssets.ts` requires through
 `mpg123-decoder`: that each is real mono 44.1 kHz audio of its pinned length and pinned integrated
-loudness, free of a trailing silent tail, never above −1 dBFS, and that `round_win` sits under
+loudness, free of a trailing silent tail, never above −1 dBFS, and that `trick_win` sits under
 `manche_won`.
 
 `lib/device/audioEngine.ts` varies the pitch and gain of the effects that repeat through a hand — select, play,

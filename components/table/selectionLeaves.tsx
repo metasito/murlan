@@ -64,7 +64,7 @@ export function GiocaControl({
   lastPlayedCombination,
   startCard,
   firstPlayMade,
-  isNewRound,
+  isNewTrick,
   isMyTurn,
   isFinished,
   giveTo,
@@ -82,7 +82,7 @@ export function GiocaControl({
   lastPlayedCombination: Combination | null;
   startCard: GameState["startCard"];
   firstPlayMade: boolean;
-  isNewRound: boolean;
+  isNewTrick: boolean;
   isMyTurn: boolean;
   isFinished: boolean;
   /** Who the exchange's card goes to, while the exchange has borrowed the key; null for a play. */
@@ -108,11 +108,11 @@ export function GiocaControl({
         lastPlayedCombination,
         startCard,
         firstPlayMade,
-        isNewRound,
+        isNewTrick,
         isMyTurn,
         isFinished,
       }),
-    [hand, selectedIds, lastPlayedCombination, startCard, firstPlayMade, isNewRound, isMyTurn, isFinished]
+    [hand, selectedIds, lastPlayedCombination, startCard, firstPlayMade, isNewTrick, isMyTurn, isFinished]
   );
   const reason = playRefusalLabel({ refusal: staged.refusal, isMyTurn, isFinished, startCard }, t);
   const pick = giving ? (ids[0] ?? null) : null;

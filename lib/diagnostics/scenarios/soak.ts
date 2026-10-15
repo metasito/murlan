@@ -13,7 +13,7 @@ const CYCLE: Moment[][] = [
   [{ kind: "landing", cards: 2, bomb: false, mine: false }],
   [{ kind: "select" }],
   [{ kind: "landing", cards: 4, bomb: true, mine: false }],
-  [{ kind: "pass" }, { kind: "roundWon" }],
+  [{ kind: "pass" }, { kind: "trickWon" }],
   [{ kind: "deal" }],
 ];
 const TRACKS: TrackId[] = ["menu", "hand"];

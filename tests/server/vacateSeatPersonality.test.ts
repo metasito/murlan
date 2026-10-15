@@ -30,7 +30,7 @@ test("vacateSeat never sets personality on the seat it hands to the AI", async (
     lastPlayedBy: -1,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     // Between hands: vacateSeat's simplest branch, no board- or DB-affecting
     // side effect once `remaining` stays above zero.
     gameOver: true,

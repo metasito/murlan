@@ -427,9 +427,9 @@ export class Seat {
     const hand = s.players[seat]?.hand ?? [];
     if (hand.length === 0) return null;
 
-    const isNewRound = s.lastPlayedCombination === null;
+    const isNewTrick = s.lastPlayedCombination === null;
     const mustPlay = !s.firstPlayMade ? s.startCard : undefined;
-    const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewRound, mustPlay);
+    const plays = getAllValidPlays(hand, s.lastPlayedCombination, isNewTrick, mustPlay);
 
     if (plays.length === 0) {
       this.socket.emit("game:pass");

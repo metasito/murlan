@@ -82,8 +82,8 @@ Record the result next to each line: ✅, or what happened.
 - [ ] Turn the volume up. Do you hear every table effect: selecting a card
       (`select`), playing one (`play`) and several (`combo`), passing (`pass`), a
       bomb (`bomb`), the deal (`deal`), your turn arriving (`turn`), the clock
-      running out (`clock_running_out`), a trick starting (`round_start`) and won
-      (`round_win`), the exchange (`exchange`), and the manche won (`manche_won`)
+      running out (`clock_running_out`), a trick starting (`trick_start`) and won
+      (`trick_win`), the exchange (`exchange`), and the manche won (`manche_won`)
       or lost (`manche_lost`)?
 
 ## What broke

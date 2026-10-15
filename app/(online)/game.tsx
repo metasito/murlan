@@ -264,7 +264,7 @@ export default function OnlineGameScreen() {
         seconds: turnSeconds,
         resetKey: String(turnDeadlineMs ?? ""),
         // The server arms its AFK timer on every turn, leading included.
-        includeNewRound: true,
+        includeNewTrick: true,
         // No onExpire: the server auto-passes, the client only shows the clock.
       }}
       exchangeAnnouncement={{

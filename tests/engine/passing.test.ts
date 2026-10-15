@@ -82,13 +82,13 @@ describe("§9.2 — \"Passing does not lock a player out of the round … three 
     );
     state = processPass(state);
     assert.equal(
-      state.roundWinner,
+      state.trickWinner,
       null,
       "one pass must not close the round while another active player can still answer"
     );
     state = processPass(state);
     assert.equal(
-      state.roundWinner,
+      state.trickWinner,
       0,
       "the second pass closes it once every remaining active player has passed"
     );
@@ -106,7 +106,7 @@ describe("§9.3 — \"The player who made the last (unbeaten) play leads the nex
       }
     );
     const next = processPass(state);
-    assert.equal(next.roundWinner, 0);
+    assert.equal(next.trickWinner, 0);
     assert.equal(next.currentTurnIndex, 0, "the unbeaten play's owner leads the next trick");
     assert.equal(next.lastPlayedCombination, null, "the table is cleared for the new lead");
   });
@@ -129,7 +129,7 @@ describe("§9.4 — \"If that player has just gone out (played their last card),
     );
     let next = processPass(state);
     next = processPass(next);
-    assert.equal(next.roundWinner, 0, "p0's play is still the one nobody beat");
+    assert.equal(next.trickWinner, 0, "p0's play is still the one nobody beat");
     assert.notEqual(next.currentTurnIndex, 0, "p0 has gone out and cannot lead");
     assert.ok(
       next.players[next.currentTurnIndex].hand.length > 0,

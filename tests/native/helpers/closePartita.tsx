@@ -58,7 +58,7 @@ export const table = (c: Case, over: boolean, decided = over) => {
     lastPlayedBy: over ? c.closer : (c.closer + 3) % 4,
     passCount: 0,
     gameMode: c.teams ? 'teams' : 'free_for_all',
-    roundWinner: null,
+    trickWinner: null,
     gameOver: over,
     rankings: over ? RANKINGS : [],
     firstPlayMade: true,

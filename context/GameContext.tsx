@@ -250,8 +250,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const combo = buildCombination(cards);
     if (!combo) return false;
 
-    const isNewRound = gameState.lastPlayedCombination === null;
-    if (!canPlay(combo, isNewRound ? null : gameState.lastPlayedCombination))
+    const isNewTrick = gameState.lastPlayedCombination === null;
+    if (!canPlay(combo, isNewTrick ? null : gameState.lastPlayedCombination))
       return false;
 
     if (!gameState.firstPlayMade && gameState.startCard) {

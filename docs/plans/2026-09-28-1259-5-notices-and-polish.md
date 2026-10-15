@@ -269,7 +269,7 @@ green; "turn fits its band"). Run `tests/e2e/mockupParity.spec.ts`,
 **Scope:** *components/table/notices/pileNotices.tsx*, `components/table/pile.tsx`,
 *components/table/noticeModel.ts*, *components/table/notices/gallery.tsx*,
 `tests/ui-rules/contrast.test.ts`, `tests/native/comboChipEntrance.test.tsx`,
-`tests/native/comboChipTiming.test.tsx`, `tests/native/roundWinnerBanner.test.tsx`,
+`tests/native/comboChipTiming.test.tsx`, `tests/native/trickWinnerBanner.test.tsx`,
 *tests/e2e/mockupPolish.spec.ts*.
 
 **Depends on:** task 3; plan 4, task 4 (`PileLayer`, with the combination chip and the winner tag
@@ -289,7 +289,7 @@ Old task 4's `ExchangeTag` migration is void: plan 2 deleted the tag.
 
 **Tests:** new "combination mark" case in *tests/e2e/mockupPolish.spec.ts*; edited
 `tests/native/comboChipEntrance.test.tsx`, `tests/native/comboChipTiming.test.tsx` and
-`tests/native/roundWinnerBanner.test.tsx` (queries by `notice-<kind>`; the sheen case becomes "a
+`tests/native/trickWinnerBanner.test.tsx` (queries by `notice-<kind>`; the sheen case becomes "a
 power combination paints the same mark"; any expected duration a literal cited to Q1, never read
 from `Motion`). Run
 `tests/e2e/exchangeAttribution.spec.ts`, `tests/native/exchangeOnTable.test.tsx`,
@@ -308,7 +308,7 @@ from `Motion`). Run
 **Acceptance:**
 - When the viewer passes, a PASSO float appears at the mockup's `.floatchip` box (centred on
   457, its top at 300), rises and fades in over 100 ms, holds 1000 ms and fades out over 100 ms. `GameTable` derives it from the state it
-  already reads (`passedSeats`, and `roundClosedWithWinner` for the pass that closes a round, which
+  already reads (`passedSeats`, and `trickClosedWithWinner` for the pass that closes a round, which
   `passedSeats` never names), so both game screens get it with no new screen state.
 - The slot holds one float. A new float replaces the one standing and restarts its life; there is
   never a stacked or half-faded leftover.

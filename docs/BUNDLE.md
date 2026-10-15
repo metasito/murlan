@@ -47,7 +47,7 @@ Total: **7.30 MB** across 83 files.
 | assets/images/cards/back_smeraldo@3x.webp | 10.7 KB |
 | assets/images/cards/back_rubino@3x.webp | 10.5 KB |
 | assets/images/cards/back_oro@3x.webp | 9.7 KB |
-| assets/sounds/round_start.mp3 | 9.5 KB |
+| assets/sounds/trick_start.mp3 | 9.5 KB |
 | assets/images/cards/gloss_spot.webp | 8.9 KB |
 | assets/images/cards/back_zaffiro@2x.webp | 7.3 KB |
 | assets/images/cards/back_rubino@2x.webp | 6.6 KB |
@@ -64,7 +64,7 @@ Total: **7.30 MB** across 83 files.
 | assets/images/cards/foil_rubino@3x.webp | 5.3 KB |
 | assets/images/cards/foil_smeraldo@3x.webp | 5.3 KB |
 | assets/images/cards/back_inchiostro@3x.webp | 5.0 KB |
-| assets/sounds/round_win.mp3 | 4.6 KB |
+| assets/sounds/trick_win.mp3 | 4.6 KB |
 | assets/images/cards/foil_zaffiro@2x.webp | 4.4 KB |
 | assets/sounds/manche_neutral.mp3 | 4.0 KB |
 | assets/fonts/Feather.subset.ttf | 3.7 KB |

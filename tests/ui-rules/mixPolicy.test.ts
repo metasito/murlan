@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { LANDING_PULSES, MOMENTS, cueFor, isCombo, landingPulsesFor, mix, type Moment, type MomentKind } from "../../lib/device/moments.ts";
 
 const KINDS: MomentKind[] = [
-  "landing", "mancheOver", "partitaOver", "roundWon", "roundStart", "select", "deselect",
+  "landing", "mancheOver", "partitaOver", "trickWon", "trickStart", "select", "deselect",
   "reject", "give", "pass", "deal", "exchange", "turn", "clockRunningOut", "reconnected",
 ];
 const tapAt = (tap: string, atMs = 0) => ({ tap, atMs });
@@ -78,7 +78,7 @@ describe("every moment maps", () => {
     assert.deepEqual(cueFor({ kind: "reject" }), { sound: "reject", bus: "sfx", haptics: [tapAt("rigid")] });
     assert.deepEqual(cueFor({ kind: "give" }), { sound: "play", bus: "sfx", haptics: [tapAt("medium")] });
     assert.deepEqual(cueFor({ kind: "turn" }), { sound: "turn", bus: "sfx", haptics: [tapAt("light")] });
-    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", roundWon: "round_win", roundStart: "round_start", reconnected: "reconnected" } as const;
+    const soundOnly = { pass: "pass", deal: "deal", exchange: "exchange", clockRunningOut: "clockRunningOut", trickWon: "trick_win", trickStart: "trick_start", reconnected: "reconnected" } as const;
     for (const [kind, id] of Object.entries(soundOnly)) {
       assert.deepEqual(cueFor({ kind } as Moment), { sound: id, bus: "sfx", haptics: [] });
     }
@@ -88,7 +88,7 @@ describe("every moment maps", () => {
 describe("one event sounds one thing", () => {
   test("the research's pile-ups, each as one event", () => {
     assert.equal(sound([{ kind: "turn" }, { kind: "pass" }]), "pass");
-    assert.equal(sound([{ kind: "pass" }, { kind: "roundWon" }]), "round_win");
+    assert.equal(sound([{ kind: "pass" }, { kind: "trickWon" }]), "trick_win");
     assert.equal(sound([land(1, false, false), { kind: "turn" }]), "play");
   });
 
@@ -123,8 +123,8 @@ describe("one event sounds one thing", () => {
   });
 
   test("the haptic comes from the highest moment that has one, even when a higher one is silent to the hand", () => {
-    const out = mix([{ kind: "pass" }, { kind: "roundWon" }, { kind: "turn" }], 0, []);
-    assert.equal(out.sound?.id, "round_win");
+    const out = mix([{ kind: "pass" }, { kind: "trickWon" }, { kind: "turn" }], 0, []);
+    assert.equal(out.sound?.id, "trick_win");
     assert.deepEqual(out.haptics, [tapAt("light")]);
   });
 

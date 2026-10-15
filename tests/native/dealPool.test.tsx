@@ -43,7 +43,7 @@ const freshDeal = (seats: number): GameState => ({
   lastPlayedBy: 0,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: false,

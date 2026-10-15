@@ -253,7 +253,7 @@ export function captureGameState(state: CaptureState): GameState {
     lastPlayedBy: pile ? pileFrom : -1,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings,
     // Past the opening, so nothing waits on the 3 of spades and the table draws
