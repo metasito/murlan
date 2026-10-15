@@ -80,6 +80,34 @@ describe('an exchange manche', () => {
     await view.unmount();
   }, 20_000);
 
+  it('is dealt and opens its trade on every manche at a standing table, not only the first', async () => {
+    const view = await render(table(exchange));
+    for (let manche = 0; manche < 3; manche++) {
+      if (manche > 0) {
+        await view.rerender(table(ended));
+        await frames(64);
+        await view.rerender(table({ ...exchange }));
+      }
+      let dealt = false;
+      await frames(dealEndMs(COUNTS, manche === 0 ? 600 : 0) + choiceOpensAt(false) + 200, () => {
+        if (backs().length > 0) dealt = true;
+      });
+      expect({ manche, dealt, prompt: prompt() !== null }).toEqual({ manche, dealt: true, prompt: true });
+    }
+    await view.unmount();
+  }, 30_000);
+
+  it('deals the next hand to a viewer who ended the last one still holding cards', async () => {
+    const view = await render(table({ ...ended, rankings: ['player_1', 'player_2', 'player_0'] }));
+    await frames(64);
+    await view.rerender(table(exchange));
+    await frames(16);
+    expect(getAnimatedStyle(screen.getByTestId('hand-card-A_spades')).opacity).toBe(0);
+    await frames(dealEndMs(COUNTS, 0) + 200);
+    expect(getAnimatedStyle(screen.getByTestId('hand-card-A_spades')).opacity).toBe(1);
+    await view.unmount();
+  }, 20_000);
+
   it('is not dealt again once a card has been played into it', async () => {
     const tally = emptyRankTally();
     tally[0] = 1;
