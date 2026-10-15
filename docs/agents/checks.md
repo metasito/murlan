@@ -304,9 +304,10 @@ one that doesn't needs a device capture (above).
   screenshot is ever taken on a bot's turn** — turn it off to look at turn-handover. Exception:
   `openCaptureState` (`tests/e2e/helpers/offlineSeed.ts`) writes the suspend flag
   (`lib/e2eBotSuspend.ts`) so a seeded capture-state spec holds its turn regardless. The same build
-  holds the offline exchange open on a timer, and the `consoleErrors` fixture reduces motion: only
-  `tests/e2e/helpers/motionPath.ts` drops both (`lib/e2eRealExchange.ts`), so only its specs
-  (`motionMatch`, `motionThirdDeal`) play a deal and an exchange the way a player's build does. Play real
+  holds the offline exchange open on a timer, and the `consoleErrors` fixture reduces motion. A
+  few specs turn motion back on; only `tests/e2e/helpers/motionPath.ts` also drops the hold
+  (`lib/e2eRealExchange.ts`), so only its specs (`motionMatch`, `motionThirdDeal`) deal and
+  exchange round after round the way a player's build does. Play real
   hands (`tests/e2e/helpers/bot.ts`) and sample *through* a turn handover — one frame is not a
   state.
 - **Metro caches the transform that inlines `process.env.EXPO_PUBLIC_*`** — flipping the env var
