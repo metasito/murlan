@@ -49,19 +49,49 @@ export function recordPlayFlags(game: AutoMovable, seat: number, combo: Combinat
   recordFlags(game.roundFlags, seat, combo);
 }
 
+/** A move for the replay log: `combo` null is a pass. */
+export interface CommittedMove {
+  seat: number;
+  combo: Combination | null;
+}
+
 /**
- * One automated action for a seat — the shared rule, given this table's flags
- * and its replay log.
+ * One automated action for a seat — the shared rule, given this table's flags.
+ * `move` is null when the action was an exchange, which the replay does not log.
  */
 export function autoMoveForSeat(
   game: AutoMovable,
   seat: number,
   useBot: boolean
-): GameState | null {
-  return sharedAutoMove(game.gameState, seat, useBot, {
+): { next: GameState; move: CommittedMove | null } | null {
+  let move: CommittedMove | null = null;
+  const next = sharedAutoMove(game.gameState, seat, useBot, {
     roundFlags: game.roundFlags,
-    onMove: (movedSeat, combo, next) => appendReplayMove(game, movedSeat, combo, next),
+    onMove: (movedSeat, combo) => {
+      move = { seat: movedSeat, combo };
+    },
   });
+  return next && { next, move };
+}
+
+/**
+ * The one way a move lands on a live table: logged for the replay, sent,
+ * persisted, then the next seat armed — or, when it ended the round, the
+ * round-over handoff, whose promise is returned.
+ */
+export function commitMove(
+  io: SocketServer,
+  game: OnlineGameState,
+  next: GameState,
+  move: CommittedMove | null
+): Promise<void> | undefined {
+  if (move) appendReplayMove(game, move.seat, move.combo, next);
+  const prev = game.gameState;
+  game.gameState = next;
+  broadcastGameState(io, game);
+  persistGameState(game.roomId, game);
+  if (next.roundOver) return handleRoundOver(io, game.roomId, game, roundOverWriters);
+  armAfterMove(io, game.roomId, prev);
 }
 
 /**
@@ -176,8 +206,8 @@ function runBotTurn(io: SocketServer, roomId: string) {
   // rule the turn timer already applies, kept until `dealRound` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
   const useBot = !game.weakSeats.has(seat);
-  const next = autoMoveForSeat(game, seat, useBot);
-  if (!next) {
+  const auto = autoMoveForSeat(game, seat, useBot);
+  if (!auto) {
     logger.error({ roomId, seat }, "Vacant seat could not act — closing table");
     io.to(roomId).emit("game:notification", {
       type: "abandoned",
@@ -195,16 +225,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
     return;
   }
 
-  const prevState = game.gameState;
-  game.gameState = next;
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-
-  if (next.roundOver) {
-    void handleRoundOver(io, roomId, game, roundOverWriters);
-  } else {
-    armAfterMove(io, roomId, prevState);
-  }
+  void commitMove(io, game, auto.next, auto.move);
 }
 
 /** What the seat was made to do, or null when nothing was played. */
@@ -220,19 +241,10 @@ function handleAutoPass(
   if (game.playerMap[seat] !== userId) return null;
 
   const wasExchange = !!game.gameState.exchangePhase?.active;
-  const next = autoMoveForSeat(game, seat, false);
-  if (!next) return null;
+  const auto = autoMoveForSeat(game, seat, false);
+  if (!auto) return null;
 
-  const prevState = game.gameState;
-  game.gameState = next;
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-
-  if (next.roundOver) {
-    void handleRoundOver(io, roomId, game, roundOverWriters);
-  } else {
-    armAfterMove(io, roomId, prevState);
-  }
+  void commitMove(io, game, auto.next, auto.move);
   return wasExchange ? "exchange" : "move";
 }
 

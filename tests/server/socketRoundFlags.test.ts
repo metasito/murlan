@@ -18,7 +18,7 @@ import type { AutoMovable } from "../../server/game/gameTurn.ts";
  */
 function autoMoveWithFlags(state: GameState, seat: number, useBot: boolean) {
   const game: AutoMovable = { gameState: state, roundFlags: {}, moveLog: null };
-  const next = autoMoveForSeat(game, seat, useBot);
+  const next = autoMoveForSeat(game, seat, useBot)?.next ?? null;
   return { state: next, roundFlags: game.roundFlags };
 }
 

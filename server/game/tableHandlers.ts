@@ -14,11 +14,10 @@
 // `registerGameplayHandlers` → `tableRouter.ts` `applyOrForward` (reaching
 // here through a module-local `apply` set by `setTableHandlers`, to dodge a
 // circular import) → `playAction`/`passAction` here (`gameTurn.ts`
-// `recordPlayFlags` runs first, play only) → `gamePersistence.ts`
-// `broadcastGameState`/`persistGameState` → `gameTurn.ts` `armTurn`. The play
-// that ends the round — `lib/game/gameEngine.ts` decides which one — takes a sixth
-// file instead of `armTurn`: `roundOver.ts` `handleRoundOver`; a pass never
-// reaches it.
+// `recordPlayFlags` runs first, play only) → `gameTurn.ts` `commitMove`, which
+// sends and persists through `gamePersistence.ts` and arms the next seat. The
+// play that ends the round — `lib/game/gameEngine.ts` decides which one — takes
+// a sixth file instead of the arming: `roundOver.ts` `handleRoundOver`.
 //
 // A disconnect runs a different chain: `socketPresence.ts`
 // `registerDisconnect` → `tableRouter.ts` `applyOrForward` with a `seatLost`
@@ -61,7 +60,7 @@ import {
   sendGameStateTo,
 } from "./gamePersistence.ts";
 import { endMatchByAgreement, handleRoundOver } from "./roundOver.ts";
-import { armAfterMove, armTurn, armTurnIfIdle, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
+import { armTurn, armTurnIfIdle, commitMove, recordPlayFlags, vacateSeat } from "./gameTurn.ts";
 import {
   disconnectGraceMs,
   clearRoomTimers,
@@ -100,7 +99,7 @@ import {
   teamForSeat,
 } from "../../lib/game/gameEngine.ts";
 import type { GameState, PlayRefusal } from "../../lib/game/gameEngine.ts";
-import { appendReplayMove, startReplayLog } from "./replayShape.ts";
+import { startReplayLog } from "./replayShape.ts";
 import { dealRound } from "./dealRound.ts";
 import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
@@ -282,8 +281,6 @@ function playAction(
   recordPlayFlags(game, currentIdx, combo);
 
   const newState = processPlay(gameState, combo);
-  appendReplayMove(game, currentIdx, combo, newState);
-  game.gameState = newState;
 
   // A count and a type, never card identities: enabling debug in production
   // must not be able to expose a hand.
@@ -292,9 +289,6 @@ function playAction(
     "Play accepted"
   );
 
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-
   if (wasFirstPlay && newState.firstPlayMade) {
     trackEvent("game.firstMoveMade", userId, {
       playerCount: newState.players.length,
@@ -302,11 +296,7 @@ function playAction(
     });
   }
 
-  if (newState.roundOver) {
-    return handleRoundOver(io, roomId, game, roundOverWriters).then(() => OK);
-  }
-  armTurn(io, roomId);
-  return OK;
+  return commitMove(io, game, newState, { seat: currentIdx, combo })?.then(() => OK) ?? OK;
 }
 
 function passAction(
@@ -314,7 +304,7 @@ function passAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "pass" }>
 ): EventOutcome {
-  const { roomId, userId } = action;
+  const { userId } = action;
   if (game.gameState.roundOver) return { ok: false, code: "NO_LIVE_GAME" };
   const { gameState, playerMap } = game;
   if (gameState.exchangePhase?.active) {
@@ -331,13 +321,7 @@ function passAction(
     return { ok: false, code };
   }
 
-  const newState = processPass(gameState);
-  appendReplayMove(game, currentIdx, null, newState);
-  game.gameState = newState;
-
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-  armTurn(io, roomId);
+  commitMove(io, game, processPass(gameState), { seat: currentIdx, combo: null });
   return OK;
 }
 
@@ -346,7 +330,7 @@ function exchangeAction(
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "exchange" }>
 ): EventOutcome {
-  const { roomId, userId, cardId } = action;
+  const { userId, cardId } = action;
   if (!game.gameState.exchangePhase?.active) return { ok: false, code: "NO_EXCHANGE" };
 
   const seat = seatOfUser(game, userId);
@@ -354,17 +338,12 @@ function exchangeAction(
     return { ok: false, code: "NOT_YOUR_EXCHANGE" };
   }
 
-  const prevState = game.gameState;
   const next = processExchangeChoice(game.gameState, cardId);
   if (next === game.gameState) {
     gameError(io, userId, payload("INVALID_CARD"));
     return { ok: false, code: "INVALID_CARD" };
   }
-  game.gameState = next;
-
-  broadcastGameState(io, game);
-  persistGameState(roomId, game);
-  armAfterMove(io, roomId, prevState);
+  commitMove(io, game, next, null);
   return OK;
 }
 
