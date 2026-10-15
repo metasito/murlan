@@ -27,7 +27,7 @@ const finished = (gameMode: GameState['gameMode'], finishingOrder: string[]): Ga
   firstPlayMade: true,
 });
 
-const single = { length: 'single' as const, target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false };
+const single = { length: 'single' as const, target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false };
 
 describe('a single-round match', () => {
   it('credits both partners in teams mode', () => {

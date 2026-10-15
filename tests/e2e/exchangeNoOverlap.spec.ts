@@ -27,7 +27,7 @@ const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJo
 /** The viewer has just won a round and is about to choose what to hand back. */
 function midExchangeSave() {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         {
@@ -64,7 +64,7 @@ function midExchangeSave() {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

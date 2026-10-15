@@ -87,7 +87,7 @@ const GIVEBACK = TO_SELECT;
 
 function save(gameState: Record<string, unknown>) {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       currentTurnIndex: 0,
       lastPlayedCombination: null,
@@ -109,7 +109,7 @@ function save(gameState: Record<string, unknown>) {
       length: "single",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

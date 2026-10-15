@@ -62,7 +62,7 @@ jest.mock('@/context/GameContext', () => ({
     exchangeAnnouncing: mockCeremony.announcing,
     exchangeAnnounceData: null,
     acknowledgeExchange: () => {},
-    match: { length: 'single', target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: 'single', target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
   }),
 }));
 

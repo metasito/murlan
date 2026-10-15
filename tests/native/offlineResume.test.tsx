@@ -55,7 +55,7 @@ const midExchangeSave = () => {
         twoJokerException: true,
       },
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
       { name: "Luan", type: "bot", personality: "luan" },

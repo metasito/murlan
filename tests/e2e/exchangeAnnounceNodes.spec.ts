@@ -35,7 +35,7 @@ interface AxNode {
 function midExchangeSave() {
   const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         {
@@ -72,7 +72,7 @@ function midExchangeSave() {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

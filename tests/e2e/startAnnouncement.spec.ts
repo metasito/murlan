@@ -26,7 +26,7 @@ const NEAREST_PT = 0.5;
 function openingSave() {
   const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         {
@@ -60,7 +60,7 @@ function openingSave() {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

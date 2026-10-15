@@ -37,7 +37,7 @@ interface MatchState {
   length: MatchLength;
   target: number;
   scores: Record<string, number>;
-  hands: RoundResult[];
+  rounds: RoundResult[];
   over: boolean;
   winners: string[];
   isDraw: boolean;
@@ -48,7 +48,7 @@ function freshMatch(length: MatchLength, playerCount: number): MatchState {
     length,
     target: firstTargetFor(playerCount),
     scores: {},
-    hands: [],
+    rounds: [],
     over: false,
     winners: [],
     isDraw: false,
@@ -77,7 +77,7 @@ function applyRoundToMatch(match: MatchState, finished: GameState): MatchState {
   return {
     ...match,
     scores: folded.cumulative,
-    hands: [...match.hands, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
+    rounds: [...match.rounds, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
     target: folded.target,
     over: folded.over,
     winners: folded.winners,

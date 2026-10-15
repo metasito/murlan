@@ -99,7 +99,7 @@ const PILE_CARD = card("3", "clubs");
 
 function bombSave() {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: VIEWER_HAND, type: "human" },
@@ -119,7 +119,7 @@ function bombSave() {
       length: "single",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

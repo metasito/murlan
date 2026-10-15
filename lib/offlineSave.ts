@@ -18,7 +18,7 @@ import type { MatchState, PlayerSetupConfig } from "./game/matchState.ts";
  * shape the engine no longer expects corrupts a game silently, while losing one
  * abandoned match costs nothing.
  */
-export const OFFLINE_SAVE_VERSION = 2;
+export const OFFLINE_SAVE_VERSION = 3;
 
 export { OFFLINE_SAVE_KEY } from "./storageKeys.ts";
 
@@ -74,7 +74,7 @@ export function decodeOfflineSave(raw: string | null): OfflineDecode {
   const { gameState, match, players, gameMode, dealFirstSeat } = parsed;
   if (!isObject(gameState) || !Array.isArray(gameState.players)) return INCOMPATIBLE;
   if (gameState.players.length === 0) return INCOMPATIBLE;
-  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.hands)) return INCOMPATIBLE;
+  if (!isObject(match) || !isObject(match.scores) || !Array.isArray(match.rounds)) return INCOMPATIBLE;
   if (!Array.isArray(players) || players.length !== gameState.players.length) return INCOMPATIBLE;
   if (gameMode !== "free_for_all" && gameMode !== "teams") return INCOMPATIBLE;
   if (!Number.isInteger(dealFirstSeat)) return INCOMPATIBLE;

@@ -36,7 +36,7 @@ export interface RoundResult {
 export interface MatchState extends MatchVerdict {
   /** Engine player id -> cumulative match points. */
   scores: Record<string, number>;
-  hands: RoundResult[];
+  rounds: RoundResult[];
 }
 
 /**

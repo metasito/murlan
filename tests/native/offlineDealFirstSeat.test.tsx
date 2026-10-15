@@ -48,7 +48,7 @@ const roundJustEndedSave = () =>
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

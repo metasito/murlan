@@ -75,7 +75,7 @@ export function offlineGameSave(
   }));
 
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players,
       currentTurnIndex: turn,
@@ -94,7 +94,7 @@ export function offlineGameSave(
       length: "match",
       target: 21,
       scores,
-      hands: [],
+      rounds: [],
       // isResumable() refuses a finished match, and a refused save silently
       // leaves the home screen with no Resume button at all.
       over: false,

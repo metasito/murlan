@@ -124,7 +124,7 @@ test("choosing an exchange card moves the card and announces it through the real
     OFFLINE_SAVE_KEY,
     encodeOfflineSave({
       gameState: exchangeState(),
-      match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+      match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
       players: [
         { name: "Ana", type: "human" },
         { name: "Gent", type: "bot" },
@@ -167,7 +167,7 @@ test("a fresh match clears the announcement outright, not on the old ceremony's 
     OFFLINE_SAVE_KEY,
     encodeOfflineSave({
       gameState: exchangeState(),
-      match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+      match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
       players: [
         { name: "Ana", type: "human" },
         { name: "Gent", type: "bot" },

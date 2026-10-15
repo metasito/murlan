@@ -139,7 +139,7 @@ const BEATER_LABEL = "8 di Cuori";
 
 function flightSave(): object {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [BEATER, SPARE], type: "human" },
@@ -155,7 +155,7 @@ function flightSave(): object {
       finishingOrder: [],
       firstPlayMade: true,
     },
-    match: { length: "single", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "single", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
       { name: "Bea", type: "bot", personality: "luan" },

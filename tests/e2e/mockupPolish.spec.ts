@@ -138,7 +138,7 @@ function exchangeBetweenBots() {
   const names = ["Ana", ...LONGEST];
   const hands = [[card("5", "hearts"), card("K", "spades")], [card("2", "spades"), card("6", "diamonds"), card("K", "diamonds")], [card("7", "clubs"), card("8", "clubs")]];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: names.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i], type: i === 0 ? "human" : "bot" })),
       currentTurnIndex: 1,
@@ -152,7 +152,7 @@ function exchangeBetweenBots() {
       firstPlayMade: true,
       exchangePhase: { active: true, winnerIdx: 1, loserIdx: 2, cardFromLoser: card("2", "spades"), twoJokerException: false },
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: names.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,
@@ -311,7 +311,7 @@ const card = (rank: string, suit: string) => ({ id: `${rank}_${suit}`, rank, sui
 function openingWithStartCard() {
   const hand = [card("5", "hearts"), card("K", "spades")];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: [card("3", "clubs"), ...hand], type: "human" },
@@ -330,7 +330,7 @@ function openingWithStartCard() {
       startReason: { type: "start_card", card: card("3", "clubs"), playerIdx: 0 },
       playedRanks: Array.from({ length: RANK_SLOTS }, () => 0),
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: [
       { name: "Ana", type: "human" },
       { name: "Besnik", type: "bot", personality: "luan" },

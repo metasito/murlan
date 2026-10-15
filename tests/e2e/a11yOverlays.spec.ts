@@ -44,7 +44,7 @@ function midExchangeSave() {
   ];
   const loserHand = [card("5_diamonds", "5", "diamonds"), card("J_hearts", "J", "hearts")];
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: [
         { id: "player_0", name: "Ana", hand: winnerHand, type: "human" },
@@ -71,7 +71,7 @@ function midExchangeSave() {
       length: "match",
       target: 21,
       scores: {},
-      hands: [],
+      rounds: [],
       over: false,
       winners: [],
       isDraw: false,

@@ -17,7 +17,7 @@ interface Sample { leg: string; t: number; x: number; y: number; back: number }
 const card = (id: string, rank: string, suit: string) => ({ id, rank, suit, isJoker: false });
 /** The viewer, Ana, has just won a round and is choosing what to hand back to Bea. */
 const midExchangeSave = () => ({
-  version: 2,
+  version: 3,
   gameState: {
     players: [
       { id: "player_0", name: "Ana", hand: [card("5_hearts", "5", "hearts"), card("K_spades", "K", "spades")], type: "human" },
@@ -34,7 +34,7 @@ const midExchangeSave = () => ({
     firstPlayMade: true,
     exchangePhase: { active: true, winnerIdx: 0, loserIdx: 1, cardFromLoser: card("2_spades", "2", "spades"), twoJokerException: false },
   },
-  match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+  match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
   players: [{ name: "Ana", type: "human" }, { name: "Bea", type: "bot", personality: "luan" }],
   gameMode: "free_for_all",
   dealFirstSeat: 0,

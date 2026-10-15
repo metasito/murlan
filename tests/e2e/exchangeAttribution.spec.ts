@@ -35,7 +35,7 @@ const card = (id: string) => {
 
 function save(winnerIdx: number, loserIdx: number, hands: string[][], over: object = {}) {
   return {
-    version: 2,
+    version: 3,
     gameState: {
       players: NAMES.map((name, i) => ({ id: `player_${i}`, name, hand: hands[i].map(card), type: i === 0 ? "human" : "bot" })),
       currentTurnIndex: winnerIdx,
@@ -50,7 +50,7 @@ function save(winnerIdx: number, loserIdx: number, hands: string[][], over: obje
       exchangePhase: { active: true, winnerIdx, loserIdx, cardFromLoser: card("2_spades"), twoJokerException: false },
       ...over,
     },
-    match: { length: "match", target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false },
+    match: { length: "match", target: 21, scores: {}, rounds: [], over: false, winners: [], isDraw: false },
     players: NAMES.map((name, i) => ({ name, type: i === 0 ? "human" : "bot" })),
     gameMode: "free_for_all",
     dealFirstSeat: 0,

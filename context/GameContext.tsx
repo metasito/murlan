@@ -71,7 +71,7 @@ function freshMatch(length: MatchLength, playerCount: number): MatchState {
     length,
     target: firstTargetFor(playerCount),
     scores: {},
-    hands: [],
+    rounds: [],
     over: false,
     winners: [],
     isDraw: false,
@@ -102,7 +102,7 @@ export function applyRoundToMatch(match: MatchState, finished: GameState): Match
   return {
     ...match,
     scores: folded.cumulative,
-    hands: [...match.hands, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
+    rounds: [...match.rounds, { finishingOrder: finished.finishingOrder, pointsAwarded: folded.roundByKey }],
     target: folded.target,
     over: folded.over,
     winners: folded.winners,

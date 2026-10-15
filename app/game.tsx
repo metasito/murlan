@@ -163,8 +163,8 @@ export default function GameScreen() {
 
   if (!gameState) return null;
 
-  const hands = match.hands ?? [];
-  const lastRoundScores = hands[hands.length - 1]?.pointsAwarded ?? {};
+  const rounds = match.rounds ?? [];
+  const lastRoundScores = rounds[rounds.length - 1]?.pointsAwarded ?? {};
 
   return (
     <GameTable
