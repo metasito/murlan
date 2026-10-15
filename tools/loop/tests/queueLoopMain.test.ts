@@ -9,8 +9,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { runSettle } from "../settle.mjs";
 import {
-  runOnce,
-  main,
+  runOnce as realRunOnce,
+  main as realMain,
   settle,
   nextRoute,
   park,
@@ -43,54 +43,97 @@ const rowOf = (x: any) => ({
   flake: x.flake ?? null,
 });
 
-const io = (over: Record<string, unknown> = {}, ledger: any[] = []) => ({
-  stopFile: () => false,
-  syncCheckout: () => true,
-  housekeeping: () => ({ verdict: "ok", rows: [] }),
-  pick: () => ({
-    skill: "implement",
-    number: 42,
-    title: "t",
-    size: "size:S",
-    queue: { implement: 1, triage: 0, wayfinder: 0 },
-  }),
-  spawn: async () => ({
-    status: 0,
-    blocked: false,
-    result: { cost: 1, turns: 9 },
-    ms: 1000,
-    log: "l",
-    phase: "F",
-    declared: { ticket: 42, branch: "agent/42-x", pr: 984, phase: "F", stoodDown: false, why: null },
-  }),
-  standing: () => ({
-    ticket: 42,
-    branch: "agent/42-x",
-    cwd: ".worktrees/agent-42",
-    head: "a",
-    commits: 1,
-    changed: [],
-    dirty: false,
-    phase: "E",
-  }),
-  pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
-  settle: async () => ({ action: "already-merged", reason: "merged" }),
-  park: () => {},
-  teardown: () => {},
-  bell: () => {},
-  record: (x: unknown) => ledger.push(rowOf(x)),
-  tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
-  sharedCheckoutDirty: () => "",
-  log: () => {},
-  buildPassed: () => true,
-  publish: () => {},
-  announce: () => {},
-  issueState: () => ({ state: "OPEN", stateReason: null }),
-  facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
-  ledgerRows: () => ledger,
-  repark: () => ({ failed: [], why: null }),
-  ...over,
-});
+type Fake = { ports: Record<"tracker" | "workspace" | "session" | "ledger", Record<string, any>>; events: Record<string, any> };
+
+/** The members a port carries only when a test gives it one. */
+const OPTIONAL: Record<string, "tracker" | "workspace" | "ledger"> = {
+  queue: "tracker",
+  loopMoved: "workspace",
+  refreshWorktree: "workspace",
+  parity: "workspace",
+  killed: "ledger",
+  journal: "ledger",
+};
+
+/** A copy of `fake` with each override, a member by name, on the port that carries it. */
+const place = (fake: Fake, over: Record<string, unknown>): Fake => {
+  const ports = Object.fromEntries(Object.entries(fake.ports).map(([name, port]) => [name, { ...port }])) as Fake["ports"];
+  const events = { ...fake.events };
+  for (const [member, value] of Object.entries(over)) {
+    const home = member in events ? events : (Object.values(ports).find((p) => member in p) ?? ports[OPTIONAL[member]]);
+    if (!home) throw new Error(`no port carries ${member}`);
+    home[member] = value;
+  }
+  return { ports, events };
+};
+
+/** `runOnce`'s ports and events, quiet and landing ticket 42. */
+const io = (over: Record<string, unknown> = {}, ledger: any[] = []): Fake => {
+  const fake: Fake = {
+    ports: {
+      tracker: {
+        pick: () => ({
+          skill: "implement",
+          number: 42,
+          title: "t",
+          size: "size:S",
+          queue: { implement: 1, triage: 0, wayfinder: 0 },
+        }),
+        facts: () => ({ title: "t", size: "size:S", reviewRounds: null }),
+        issueState: () => ({ state: "OPEN", stateReason: null }),
+        publish: () => {},
+        pushedPr: () => ({ number: 984, state: "OPEN", head: "agent/42-x" }),
+        settle: async () => ({ action: "already-merged", reason: "merged" }),
+        park: () => {},
+        repark: () => ({ failed: [], why: null }),
+        release: () => {},
+      },
+      workspace: {
+        stopFile: () => false,
+        syncCheckout: () => true,
+        housekeeping: () => ({ verdict: "ok", rows: [] }),
+        standing: () => ({
+          ticket: 42,
+          branch: "agent/42-x",
+          cwd: ".worktrees/agent-42",
+          head: "a",
+          commits: 1,
+          changed: [],
+          dirty: false,
+          phase: "E",
+        }),
+        buildPassed: () => true,
+        sharedCheckoutDirty: () => "",
+        remove: () => {},
+      },
+      session: {
+        spawn: async () => ({
+          status: 0,
+          blocked: false,
+          result: { cost: 1, turns: 9 },
+          ms: 1000,
+          log: "l",
+          phase: "F",
+          declared: { ticket: 42, branch: "agent/42-x", pr: 984, phase: "F", stoodDown: false, why: null },
+        }),
+      },
+      ledger: {
+        tally: (n: number) => ({ ...ticketTally(n, ledger), ciRounds: 0 }),
+        rows: () => ledger,
+        record: (x: unknown) => ledger.push(rowOf(x)),
+      },
+    },
+    events: { announce: () => {}, log: () => {}, bell: () => {} },
+  };
+  return place(fake, over);
+};
+// A fake spread into a literal beside more members, `{ ...io(), stopFile }`, has those placed too.
+const runOnce = ({ ports, events, ...more }: any, ...rest: any[]) => {
+  const fake = place({ ports, events }, more);
+  return realRunOnce(fake.ports, fake.events, ...rest);
+};
+/** `main` given the fake's ports and events in place of its own. */
+const main = ({ io: { ports, events, ...more }, ...deps }: any) => realMain({ ...deps, ...place({ ports, events }, more) });
 
 describe("runOnce", () => {
   test("a ticket that pushes and merges is landed, in one pass", async () => {
@@ -171,7 +214,7 @@ describe("runOnce", () => {
         settle: async () => ({ action: "hold", reason: "CI-RED could not be posted", head: "abc" }),
         park: (n: number) => parked.push(n),
         record: (x: unknown) => rows.push(x),
-        teardown: (cwd: unknown) => torn.push(cwd),
+        remove: (cwd: unknown) => torn.push(cwd),
       }),
     );
     assert.equal(r.outcome, "hold");
@@ -261,7 +304,7 @@ describe("runOnce", () => {
     const r = await runOnce(
       io({
         pushedPr: () => ({ number: 984, state: "MERGED", head: "agent/42-x" }),
-        teardown: (_cwd: string | null, n: number) => released.push(n),
+        release: (n: number) => released.push(n),
         settle: async () => settled.push(1) as never,
       }),
     );
@@ -278,8 +321,8 @@ describe("runOnce", () => {
       { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const torn: unknown[][] = [];
-      await runOnce(io({ ...over, teardown: (...args: unknown[]) => torn.push(args) }));
-      assert.deepEqual(torn, [[".worktrees/agent-42", 42]], JSON.stringify(Object.keys(over)));
+      await runOnce(io({ ...over, release: (n: number) => torn.push(["release", n]), remove: (...args: unknown[]) => torn.push(["remove", ...args]) }));
+      assert.deepEqual(torn, [["release", 42], ["remove", ".worktrees/agent-42", 42]], JSON.stringify(Object.keys(over)));
     }
   });
 
@@ -292,7 +335,7 @@ describe("runOnce", () => {
       { settle: async () => ({ action: "already-merged", reason: "merged" }) },
     ]) {
       const gone: (string | null)[] = [];
-      await runOnce(io({ ...over, teardown: (cwd: string | null) => gone.push(cwd) }));
+      await runOnce(io({ ...over, remove: (cwd: string | null) => gone.push(cwd) }));
       assert.deepEqual(gone, [".worktrees/agent-42"], JSON.stringify(Object.keys(over)));
     }
 
@@ -312,7 +355,7 @@ describe("runOnce", () => {
     const r = await runOnce(
       io({
         settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
-        teardown: (cwd: string | null) => gone.push(cwd),
+        remove: (cwd: string | null) => gone.push(cwd),
       }),
     );
     assert.equal(r.outcome, "retry");
@@ -444,8 +487,7 @@ describe("runOnce", () => {
         spawn: async () => ({ status: 1, blocked: true, blockedUntil: 1789000000000, result: {}, ms: 1, log: "l", declared: null }),
         pushedPr: () => null,
         standing: () => ({ ticket: 42, branch: "agent/42-x", cwd: ".worktrees/agent-42", head: "a", commits: 1, changed: ["a.ts"], dirty: true, phase: "C" }),
-        snapshotWip: () => touched.push("snapshot"),
-        teardown: () => touched.push("teardown"),
+        remove: () => touched.push("teardown"),
         park: () => touched.push("park"),
       }),
     );
@@ -502,7 +544,7 @@ describe("runOnce", () => {
         pushedPr: (_b: unknown, _n: unknown, _d: unknown, since: number) =>
           since === 0 ? { number: 984, state: "OPEN", head: "agent/42-x" } : null,
         record: (x: unknown) => rows.push(x),
-        teardown: (cwd: string | null) => torn.push(cwd),
+        remove: (cwd: string | null) => torn.push(cwd),
       }),
     );
     assert.equal(spawns, 0);
@@ -519,11 +561,12 @@ describe("runOnce", () => {
     await runOnce(
       io({
         pick: () => ({ skill: "implement", number: 42, title: "t", size: null, queue: null, resuming: true, phase: "G" }),
-        announce: (r: { number: number; phase: string }) => order.push(`announce ${r.number} ${r.phase}`),
+        facts: () => ({ title: "Rate limiter factory", size: "size:S", reviewRounds: null }),
+        announce: (t: { number: number; title: string }, spentMs: number) => order.push(`announce #${t.number} ${t.title} ${spentMs}`),
         settle: async () => (order.push("settle"), { action: "already-merged", reason: "merged" }),
       }),
     );
-    assert.deepEqual(order, ["announce 42 G", "settle"]);
+    assert.deepEqual(order, ["announce #42 Rate limiter factory 0", "settle"]);
   });
 
   const handingOff = (from: string, to: string) => async () => ({
@@ -686,7 +729,7 @@ describe("runOnce", () => {
     const red = await runOnce(
       io({
         settle: async () => ({ action: "hand-back", reason: "CI failed at Lint" }),
-        teardown: (cwd: string | null) => torn.push(cwd),
+        remove: (cwd: string | null) => torn.push(cwd),
         park: (n: number) => parked.push(n),
       }),
     );
@@ -744,13 +787,13 @@ describe("runOnce", () => {
 
   test("a row names the route's title and size and the review rounds read after the session, with no tracker read of its own", async () => {
     const rows: any[] = [];
-    await runOnce(io({ standing: () => ({ ...(io() as any).standing(), reviewRounds: 2 }), record: (x: unknown) => rows.push(x) }));
+    await runOnce(io({ standing: () => ({ ...io().ports.workspace.standing(), reviewRounds: 2 }), record: (x: unknown) => rows.push(x) }));
     assert.deepEqual(rows.map((x) => [x.outcome, x.title, x.size, x.reviewRounds]), [["pushed", "t", "size:S", 2], ["landed", "t", "size:S", 2]]);
   });
 
   test("a derive off the ticket, or with no count, is not the ticket's review rounds; the tracker's are", async () => {
     const facts = (n: number) => ({ title: "t", size: "size:S", reviewRounds: n === 42 ? 1 : 7 });
-    for (const standing of [() => ({ ...(io() as any).standing(), ticket: 99, reviewRounds: 5 }), () => null, () => (io() as any).standing()]) {
+    for (const standing of [() => ({ ...io().ports.workspace.standing(), ticket: 99, reviewRounds: 5 }), () => null, () => io().ports.workspace.standing()]) {
       const rows: any[] = [];
       await runOnce(io({ standing, facts, record: (x: unknown) => rows.push(x) }));
       assert.ok(rows.length);
@@ -769,7 +812,7 @@ describe("runOnce", () => {
       io: io({
         facts,
         record: (x: unknown) => rows.push(x),
-        ledgerRows: () => (picks ? [] : [{ n: 41, outcome: "parked", park_failed: ["label"] }]),
+        rows: () => (picks ? [] : [{ n: 41, outcome: "parked", park_failed: ["label"] }]),
         pick: () => (picks++ === 0 ? { skill: "implement", number: 43, title: "issue 43", size: "size:M", queue: null } : empty),
         standing: () => {
           throw new Error("git worktree list failed");
@@ -860,12 +903,12 @@ describe("runOnce", () => {
       io({
         pick: (p: unknown, at: unknown) => {
           picks.push([p, at]);
-          return routes.shift() ?? io().pick();
+          return routes.shift() ?? io().ports.tracker.pick();
         },
-        teardown: (cwd: string | null, n: number) => torn.push([cwd, n]),
+        remove: (cwd: string | null, n: number) => torn.push([cwd, n]),
         spawn: async (s: { number: number }) => {
           spawned.push(s.number);
-          return io().spawn();
+          return io().ports.session.spawn();
         },
       }),
       7,
@@ -881,9 +924,9 @@ describe("runOnce", () => {
       io({
         pick: (p: unknown, at: unknown) => {
           picks.push([p, at]);
-          return routes.shift() ?? io().pick();
+          return routes.shift() ?? io().ports.tracker.pick();
         },
-        teardown: () => {},
+        remove: () => {},
       }),
       99,
       "D",
@@ -1774,7 +1817,7 @@ describe("the run recap", () => {
       spawn: async () => {
         t.mock.timers.setTime(Date.now() + 2 * 3_600_000 + TICK);
         await new Promise((r) => setTimeout(r, 5 * TICK));
-        return (io() as any).spawn();
+        return io().ports.session.spawn();
       },
     };
     const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
@@ -1792,7 +1835,7 @@ describe("the run recap", () => {
         record: () => {},
         close: (_id: string, _line: string, t: string) => void (text = t),
       };
-      const pick = () => ({ ...(io() as any).pick(), queue: { implement: 1, triage: 0, wayfinder: 0, launch } });
+      const pick = () => ({ ...io().ports.tracker.pick(), queue: { implement: 1, triage: 0, wayfinder: 0, launch } });
       const spy = { ...(io() as any), stopFile: () => passes++ > 0, pick };
       const screen = { say: () => {}, warn: () => {}, notice: () => {}, stop: () => {} };
       await main({ io: spy, book, screen: screen as never, install: () => {}, runId: "t" } as never);
@@ -1944,7 +1987,7 @@ describe("a park asked from the board", () => {
     try {
       process.chdir(dir);
       writeFileSync(".loop-park", "42\n");
-      await main({ io: io({ pick: () => (picks++ ? null : (io() as any).pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
+      await main({ io: io({ pick: () => (picks++ ? null : io().ports.tracker.pick()) }), book: book(), screen: board, install: () => {}, runId: "t" });
       assert.ok(said.some((m) => /^park: #42 landed before the park could act/.test(m)), JSON.stringify(said));
       assert.equal(existsSync(".loop-park"), false);
     } finally {
@@ -2268,7 +2311,7 @@ describe("a park that never reached the tracker", () => {
       main({
         io: io(
           {
-            pick: () => (picks++ === 0 ? (io() as any).pick() : { skill: "handoff", number: 0, title: "queue empty" }),
+            pick: () => (picks++ === 0 ? io().ports.tracker.pick() : { skill: "handoff", number: 0, title: "queue empty" }),
             spawn: died,
             pushedPr: () => null,
             park: labelDown,

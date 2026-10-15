@@ -1,7 +1,7 @@
 // tools/loop/tests/loopStream.test.ts
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { COMMITTING, readLine, scopeEnds, usageOf } from "../loop-stream.mjs";
+import { closePhase, COMMITTING, readLine, reduceSession, scopeEnds, sessionStart, usageOf } from "../loop-stream.mjs";
 
 test("a scratch write is not the build", () => {
   for (const file of [
@@ -611,5 +611,122 @@ describe("usageOf", () => {
     assert.equal(usageOf(line({ id: "m2", model: "<synthetic>", usage })), null);
     assert.equal(usageOf(JSON.stringify({ type: "result", usage })), null);
     assert.equal(usageOf(line({ id: "m3", content: [] })), null);
+  });
+});
+
+describe("reduceSession", () => {
+  const assistant = (content: object[], over: object = {}) => JSON.stringify({ type: "assistant", message: { content }, ...over });
+  const phase = (letter: string) => assistant([{ type: "text", text: `PHASE ${letter}` }]);
+  const result = (over: object = {}) =>
+    JSON.stringify({ type: "result", subtype: "success", is_error: false, total_cost_usd: 1.82, num_turns: 41, ...over });
+  const meter = (status: string) =>
+    JSON.stringify({ type: "rate_limit_event", rate_limit_info: { status, resetsAt: 1789134000, rateLimitType: "five_hour" } });
+  const init = (model: string) => JSON.stringify({ type: "system", subtype: "init", session_id: "s1", model });
+
+  /** Each line a second after the last, from a session spawned into `at`. */
+  const fold = (lines: string[], { at = null as string | null, planned = "opus" } = {}) => {
+    let state = sessionStart(at, 0);
+    const effects: any[] = [];
+    lines.forEach((line, i) => {
+      const next = reduceSession(state, line, { now: (i + 1) * 1000, at, planned });
+      state = next.state;
+      effects.push(...next.effects);
+    });
+    return { state, effects };
+  };
+  const kinds = (effects: any[]) => effects.map((e) => e.kind);
+
+  test("folds without touching the state it was handed", () => {
+    const before = sessionStart(null, 0);
+    const copy = structuredClone(before);
+    reduceSession(before, phase("C"), { now: 5000, planned: "opus" });
+    reduceSession(before, assistant([{ type: "text", text: "x" }], { message: { id: "m1", model: "claude-opus-5", usage: { input_tokens: 1 }, content: [] } }), { now: 5000, planned: "opus" });
+    assert.deepEqual(before, copy);
+  });
+
+  test("times each phase from the clock it is handed, the first from the spawn", () => {
+    const { state } = fold([phase("A"), phase("C"), phase("C"), phase("F")]);
+    assert.deepEqual(closePhase(state, 10_000).phases, { A: 2, C: 2, F: 6 });
+  });
+
+  test("a phase said twice running opens one row", () => {
+    const { effects } = fold([phase("C"), phase("C"), phase("C")]);
+    assert.deepEqual(effects.filter((e) => e.kind === "start"), [{ kind: "start", letter: "C" }]);
+  });
+
+  test("a resumed phase's own marker opens nothing", () => {
+    assert.deepEqual(kinds(fold([phase("D")], { at: "D" }).effects), ["said"]);
+  });
+
+  test("a build that never says PHASE C is C from its first edit, not from a read", () => {
+    const scout = assistant([{ type: "text", text: "PHASE B" }, { type: "tool_use", name: "Agent", input: {} }]);
+    const read = assistant([{ type: "tool_use", name: "Bash", input: { command: "gh issue view 1" } }]);
+    assert.equal(fold([scout, read]).state.phase, "B");
+    const edit = assistant([{ type: "tool_use", name: "Edit", input: {} }]);
+    assert.equal(fold([scout, read, edit]).state.phase, "C");
+  });
+
+  test("a message says its text, then its calls, in order", () => {
+    const line = assistant([{ type: "text", text: "PHASE C\nreading" }, { type: "tool_use", name: "Read", input: { file_path: "a.ts" } }]);
+    assert.deepEqual(kinds(fold([line]).effects), ["start", "said", "call"]);
+    assert.equal(fold([line]).effects[1].text, "PHASE C\nreading");
+  });
+
+  test("bills a message once, however many lines repeat its usage", () => {
+    const billed = (id: string) =>
+      JSON.stringify({ type: "assistant", message: { id, model: "claude-opus-5-5", content: [{ type: "text", text: "w" }], usage: { input_tokens: 1 } } });
+    assert.deepEqual([...fold([billed("m1"), billed("m1"), billed("m2")]).state.usage.keys()], ["m1", "m2"]);
+  });
+
+  test("the session's own result and declaration are kept; a background task's wake-up is not", () => {
+    const declared = result({ structured_output: { ticket: 953, phase: "C", handoff: "C", why: "two tests left" } });
+    const wake = result({ num_turns: 1, total_cost_usd: 0, origin: { kind: "task-notification" } });
+    const { state } = fold([declared, wake]);
+    assert.equal(state.result.turns, 41);
+    assert.equal(state.declared.why, "two tests left");
+  });
+
+  test("a refusal is held in milliseconds and said once; a recovery clears it", () => {
+    const refused = fold([meter("rejected"), meter("rejected")]);
+    assert.deepEqual([refused.state.blocked, refused.state.blockedUntil], [true, 1789134000000]);
+    assert.deepEqual(refused.effects, [{ kind: "refused", window: "five_hour", resetsAt: 1789134000 }]);
+    const recovered = fold([meter("rejected"), meter("allowed")]).state;
+    assert.deepEqual([recovered.blocked, recovered.blockedUntil], [false, 0]);
+  });
+
+  test("a healthy or warning meter is nothing at all", () => {
+    const { state, effects } = fold([meter("allowed"), meter("allowed_warning")]);
+    assert.deepEqual([state.blocked, effects], [false, []]);
+  });
+
+  test("the init line names the session and its model; another family than planned asks for a kill", () => {
+    const fine = fold([init("claude-sonnet-5")], { at: "E", planned: "sonnet" });
+    assert.deepEqual(fine.effects, [{ kind: "session", id: "s1" }]);
+    assert.deepEqual([fine.state.model, fine.state.wrongModel], ["claude-sonnet-5", null]);
+    const wrong = fold([init("claude-opus-5"), init("claude-opus-5")], { at: "E", planned: "sonnet" });
+    assert.equal(kinds(wrong.effects).filter((k) => k === "kill").length, 1);
+    assert.match(String(wrong.state.wrongModel), /claude-opus-5, but phase E runs on sonnet/);
+    assert.deepEqual(kinds(fold([init("some-future-model")], { planned: "sonnet" }).effects), ["session"]);
+  });
+
+  test("an api_error is said; only an account code is an account error, and the first one stays", () => {
+    const error = (code: string, text: string) => JSON.stringify({ type: "assistant", error: code, message: { content: [{ type: "text", text }] } });
+    const { state, effects } = fold([error("authentication_failed", "login"), error("billing_error", "card"), error("overloaded", "busy")]);
+    assert.deepEqual([state.accountError, state.apiErrorCode], ["authentication_failed: login", "overloaded"]);
+    assert.deepEqual(effects.map((e) => e.text), ["login", "card", "busy"]);
+    assert.equal(fold([error("server_error", "x")]).state.accountError, null);
+  });
+
+  test("a task fact says the subagents still running, least recently heard first", () => {
+    const task = (subtype: string, id: string, over: object = {}) =>
+      JSON.stringify({ type: "system", subtype, task_id: id, description: id, ...over });
+    const { state, effects } = fold([task("task_started", "a"), task("task_started", "b"), task("task_progress", "a"), task("task_notification", "b")]);
+    assert.deepEqual([...state.tasks.keys()], ["a"]);
+    assert.deepEqual(effects.at(-2).tasks.map((t: any) => t.id), ["b", "a"]);
+    assert.deepEqual(effects.at(-1).tasks.map((t: any) => t.id), ["a"]);
+  });
+
+  test("records the kind of the last fact, which tells a retry stall from a silent one", () => {
+    assert.equal(fold([phase("C"), JSON.stringify({ type: "system", subtype: "api_retry", attempt: 1 })]).state.lastFact, "api_retry");
   });
 });
