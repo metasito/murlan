@@ -37,6 +37,9 @@ interface Deal {
   offsetMs: number;
   counts: number[];
   legs: DealLeg[];
+  /** Minted with the deal and kept once it lands, for whatever still reads where it ended. */
+  clock: SharedValue<number>;
+  landed: boolean;
 }
 
 /**
@@ -59,6 +62,8 @@ export function useDeal({
   arrivalsFor: (seat: number) => DealArrivals | undefined;
   hand: Omit<HandDeal, "onDealt"> | undefined;
   dealing: boolean;
+  /** The latest deal, kept once it lands: a view keyed by it mounts afresh on each deal, whatever it already held. */
+  key: number;
   /** The deal's own clock, ms since its first frame; -1 before it. `DealFlights` steps it. */
   clock: SharedValue<number>;
   startMs: number;
@@ -68,36 +73,37 @@ export function useDeal({
   const { players, viewerSeat } = geometry;
   const newDeal = (key: number, offsetMs: number): Deal => {
     const timing = { key, offsetMs, counts: players.map(handCountOf) };
-    return { ...timing, legs: dealLegs(geometry, timing) };
+    return { ...timing, legs: dealLegs(geometry, timing), clock: makeMutable(-1), landed: false };
   };
-  const [deal, setDeal] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
-  const [clockOf, setClockOf] = useState(() => ({ key: deal?.key ?? 0, clock: makeMutable(-1) }));
+  const [last, setLast] = useState<Deal | null>(() => (fresh ? newDeal(1, entryMs) : null));
+  const [idleClock] = useState(() => makeMutable(-1));
   const [dealtFresh, setDealtFresh] = useState(fresh);
   if (fresh !== dealtFresh) {
     setDealtFresh(fresh);
-    // From the clock's key, which outlives a landed deal: a key repeated would hand the new deal a clock already past its end.
-    if (fresh) setDeal(newDeal(clockOf.key + 1, 0));
+    if (fresh) setLast(newDeal((last?.key ?? 0) + 1, 0));
   }
-  if (deal && reduceMotion) setDeal(null);
-  if (deal && clockOf.key !== deal.key) setClockOf({ key: deal.key, clock: makeMutable(-1) });
+  const deal = last && !last.landed ? last : null;
+  if (deal && reduceMotion) setLast({ ...deal, landed: true });
+  const clock = last?.clock ?? idleClock;
   const arrivals = useMemo(
     () =>
       deal && !reduceMotion
         ? deal.counts.map((count, seat) => ({
             at: dealArrivalsMs(count, deal.offsetMs, dealSlotOf(seat, viewerSeat, deal.counts.length)),
-            clock: clockOf.clock,
+            clock: deal.clock,
           }))
         : null,
-    [deal, reduceMotion, clockOf, viewerSeat]
+    [deal, reduceMotion, viewerSeat]
   );
-  const onLanded = useCallback(() => setDeal(null), []);
+  const onLanded = useCallback(() => setLast((d) => d && { ...d, landed: true }), []);
   const cards = deal && arrivals ? deal.legs : [];
   return {
     cards,
     arrivalsFor: (seat) => arrivals?.[seat],
-    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: clockOf.clock, pile: pileFromHand(geometry) } : undefined,
+    hand: deal && arrivals ? { offsetMs: deal.offsetMs, clock: deal.clock, pile: pileFromHand(geometry) } : undefined,
     dealing: deal !== null,
-    clock: clockOf.clock,
+    key: last?.key ?? 0,
+    clock,
     startMs: deal?.offsetMs ?? 0,
     endMs: deal ? dealEndMs(deal.counts, deal.offsetMs) : 0,
     onLanded,

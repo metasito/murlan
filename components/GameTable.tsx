@@ -1584,6 +1584,7 @@ export function GameTable({
                 <HandStatus store={shownSelection} cardCount={handOnTable.length}>
                   {arrangedA11yLabel !== null && <A11yStatus label={arrangedA11yLabel} />}
                   <StraightHand
+                    key={deal.key}
                     faceDown={spectating}
                     cards={handOnTable}
                     store={shownSelection}
