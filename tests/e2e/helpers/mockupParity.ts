@@ -13,7 +13,6 @@ import { DEPART_SCRIPT, expectDeparted } from "./lanternDepartures";
 import { offlineGameSave } from "./offlineSeed";
 import { buildCombination, createDeck } from "../../../lib/game/gameEngine";
 import { BombFx, Motion } from "../../../lib/tokens";
-import { MOTES } from "../../../components/table/air";
 import { seatAnchor, settledLight, skiaOnSoftware } from "./tableTrace";
 import { installVirtualClock, takeOver, step, stepThen, stepUntil } from "./virtualClock";
 import {
@@ -197,12 +196,17 @@ const pileTable = async (page: Page, baseURL: string, save: ReturnType<typeof of
   const deck = new Map(createDeck().map((c) => [c.id, c]));
   Object.assign(save.gameState, { lastPlayedCombination: buildCombination(pile.map((id) => deck.get(id)!)), lastPlayedBy: by });
   await seatTable(page, baseURL, save);
-  // A restored offline pile is thrown in again, dust and all; the mockup's `setPile` lays it still.
-  await stepUntil(page, async () => {
-    const frames = await recorded(page);
-    const landed = frames.findIndex((f) => f.onsets.includes("moment:landing"));
-    return landed >= 0 && frames.slice(landed + 1).some((f) => f.live <= MOTES);
-  }, "the restored sevens' dust settling");
+  await stepUntil(
+    page,
+    () =>
+      page.evaluate(
+        (n) =>
+          document.querySelectorAll('[data-testid="pile-area"] [data-testid="pile-card"]').length === n &&
+          document.querySelector('[data-testid="flying-cards"]') === null,
+        pile.length
+      ),
+    "the restored pile at rest"
+  );
   await page.evaluate(() => (window as unknown as { murlanTrace: { start(): void } }).murlanTrace.start());
 };
 

@@ -82,7 +82,7 @@ const table = (open: boolean) => (
   </SafeAreaProvider>
 );
 
-const cues = () => jest.mocked(event).mock.calls.filter(([moments]) => moments.some((m) => m.kind === 'exchange')).length;
+const cues = () => jest.mocked(event).mock.calls.filter(([moments]) => moments.some((m) => m.kind === 'exchange')).map(([, at]) => at);
 const frames = async (ms: number) => {
   for (let at = 0; at < ms; at += 16) await act(async () => jest.advanceTimersByTime(16));
 };
@@ -102,14 +102,16 @@ describe('an announcement taking over from the open phase', () => {
     const view = await render(table(true));
     await frames(choiceOpensAt(false) + 160);
     expect(mockMounts.n).toBe(1);
-    expect(cues()).toBe(1);
+    expect(cues()).toEqual([expect.any(Number)]);
     expect(onReady).toHaveBeenCalledTimes(1);
+    const [received] = cues();
 
     await act(async () => view.rerender(table(false)));
     await frames(choiceOpensAt(false) + 160);
     expect(mockMounts.n).toBe(1);
     // One per leg: the receive's, then the give's once the choice lands.
-    expect(cues()).toBe(2);
+    expect(cues()).toEqual([received, expect.any(Number)]);
+    expect(cues()[1]).toBeGreaterThan(received);
     expect(onReady).toHaveBeenCalledTimes(1);
     await view.unmount();
   });
