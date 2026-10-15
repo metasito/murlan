@@ -87,6 +87,22 @@ describe('a cue meant for now, its commit stalling before the flush', () => {
     await unmount();
   });
 
+  it('still sounds a cue that was still ahead when sent', async () => {
+    await act(async () => feedback.event([{ kind: 'turn' }], performance.now() + 2));
+    expect(startsOf('turn')).toHaveLength(1);
+  });
+
+  it('sounds a tap and a cue that land in the same flush, each', async () => {
+    const { result, unmount } = await renderHook(() => useTableTimeline());
+    await act(async () => {
+      result.current.moment({ kind: 'turn' });
+      result.current.flush();
+      feedback.event([{ kind: 'give' }]);
+    });
+    expect({ turn: startsOf('turn').length, give: startsOf('play').length }).toEqual({ turn: 1, give: 1 });
+    await unmount();
+  });
+
   it('drops a contact-timed cue given a time already past', async () => {
     await act(async () => feedback.event([{ kind: 'exchange' }], performance.now() - LATE_SOUND_MS));
     expect(startsOf('exchange')).toEqual([]);
