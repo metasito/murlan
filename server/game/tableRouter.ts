@@ -66,7 +66,11 @@ type Applier = (io: SocketServer, action: TableAction) => Promise<EventOutcome>;
  * into this instance's memory at all.
  */
 export type RehydrateOutcome = "restored" | "missing" | "unrestorable" | "newer" | "not_seated";
-type Rehydrator = (roomId: string, forUserId: string | null) => Promise<RehydrateOutcome>;
+type Rehydrator = (
+  roomId: string,
+  forUserId: string | null,
+  io: SocketServer
+) => Promise<RehydrateOutcome>;
 
 let apply: Applier = async () => UNOWNED;
 let rehydrate: Rehydrator = async () => "missing";
@@ -201,7 +205,7 @@ async function takeOverAndApply(
   mayCreate: boolean
 ): Promise<EventOutcome> {
   const { roomId } = action;
-  const restored = await rehydrate(roomId, mayCreate ? null : action.userId);
+  const restored = await rehydrate(roomId, mayCreate ? null : action.userId, io);
   if (restored === "newer") {
     await releaseRoom(roomId);
     return UNREACHABLE;

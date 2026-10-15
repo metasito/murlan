@@ -50,7 +50,7 @@ import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
 import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
-import { isUserOnline, onlineUserIds } from "../socket/socketRegistry.ts";
+import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -102,6 +102,7 @@ import {
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
 import { dealRound } from "./dealRound.ts";
+import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
   UNKNOWN_ACTION,
@@ -143,7 +144,8 @@ function roomError(io: SocketServer, userId: string, payload: ServerPayload): vo
  */
 export async function rehydrateGame(
   roomId: string,
-  forUserId: string | null
+  forUserId: string | null,
+  io: SocketServer
 ): Promise<RehydrateOutcome> {
   const row = await db.query.activeGames.findFirst({
     where: eq(activeGamesTable.roomId, roomId),
@@ -177,7 +179,7 @@ export async function rehydrateGame(
   const restoredState = restored.gameState;
   const restoredPlayers = restoredState.players;
   const botSeatsAtStart = botSeatsFromPersonality(restoredPlayers);
-  activeGames.set(roomId, {
+  const game: OnlineGameState = {
     roomId,
     joinCode: restored.joinCode,
     gameState: restoredState,
@@ -211,8 +213,20 @@ export async function rehydrateGame(
     // replay. The next hand starts a fresh one.
     moveLog: null,
     dealFirstSeat: restored.dealFirstSeat,
-  });
+  };
+  activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
+
+  // The graces their disconnects armed died with the process that held them.
+  const presence = await tablePresence(roomId);
+  // A between-hands grace's expiry sees only this process's sockets, so a
+  // grace armed on a guess releases players seated through another instance.
+  if (!presence) return "restored";
+  const back = restoredState.gameOver ? presence.atTable : presence.online;
+  for (const [seat, userId] of Object.entries(playerMap)) {
+    if (userId === forUserId || back.has(userId)) continue;
+    await armSeatGrace(io, game, roomId, userId, Number(seat));
+  }
   return "restored";
 }
 
@@ -408,6 +422,9 @@ async function dealVotedRound(
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
   const room = await roomStore.getRoomById(roomId);
+  // Every gate-closer reaches the read above, so the first one back deals and
+  // the rest find the votes it cleared.
+  if (!game.gameState.gameOver || !rematchAnswered(game)) return OK;
   if (!room) return refuse("ROOM_NOT_FOUND", "Room not found");
 
   const seats = game.gameState.players;
@@ -617,7 +634,10 @@ function carriedRankings(
   const newSeatOf = (engineId: string | undefined): number => {
     const seat = engineId === undefined ? undefined : seatOfEngineId.get(engineId);
     if (seat === undefined) return -1;
-    const userId = previous.playerMap[seat] ?? previous.vacatedSeats.get(seat)?.userId;
+    const userId =
+      previous.playerMap[seat] ??
+      previous.vacatedSeats.get(seat)?.userId ??
+      (previous.botSeatsAtStart.has(seat) ? botSeatKey(seat) : undefined);
     return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
   };
 
@@ -811,14 +831,44 @@ async function startMatchAction(
  * dropped: on the instance that held no copy of the table, the same code read
  * a hand in progress as a waiting lobby and released the seat outright.
  */
-function seatLostAction(
+async function seatLostAction(
   io: SocketServer,
   game: OnlineGameState,
   action: Extract<TableAction, { kind: "seatLost" }>
-): Promise<EventOutcome> | EventOutcome {
+): Promise<EventOutcome> {
   const { roomId, userId } = action;
+  // Every socket drops at a shutdown, and the next process restores this table
+  // from active_games and arms the graces itself.
+  if (isShuttingDown()) return OK;
+  // Forwarded from another instance, this can land after the player's rejoin
+  // has already cleared the graces it would arm. Between hands the seat holds
+  // the rematch gate, so only a socket back in this room counts.
+  const back = game.gameState.gameOver
+    ? await isUserAtTable(userId, roomId)
+    : await isUserOnline(userId);
+  if (back) return OK;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
+
+  if (!game.gameState.gameOver) {
+    // Distinct from losing: the hand was still running when they went.
+    trackEvent("game.abandoned", userId, {
+      playerCount: game.gameState.players.length,
+      gameMode: game.gameState.gameMode,
+    });
+  }
+  const releasing = armSeatGrace(io, game, roomId, userId, seat);
+  return releasing ? releasing.then(() => OK) : OK;
+}
+
+/** Holds an absent player's seat for its grace, and hands it on when that runs out. */
+function armSeatGrace(
+  io: SocketServer,
+  game: OnlineGameState,
+  roomId: string,
+  userId: string,
+  seat: number
+): Promise<void> | void {
   const username = seatName(game, seat);
 
   if (game.gameState.gameOver) {
@@ -826,15 +876,8 @@ function seatLostAction(
     // towards the rematch gate, so the table cannot wait a full minute on it.
     // Its expiry also asks the right question — back in *this* room, not
     // merely back online.
-    const releasing = armLobbyGrace(io, roomId, userId);
-    return releasing ? releasing.then(() => OK) : OK;
+    return armLobbyGrace(io, roomId, userId);
   }
-
-  // Distinct from losing: the hand was still running when they went.
-  trackEvent("game.abandoned", userId, {
-    playerCount: game.gameState.players.length,
-    gameMode: game.gameState.gameMode,
-  });
 
   const graceSeconds = Math.round(disconnectGraceMs() / 1000);
   io.to(roomId).emit("game:player_disconnected", {
@@ -881,7 +924,6 @@ function seatLostAction(
   }, disconnectGraceMs());
   disconnectTimers.set(userId, dcTimer);
   disconnectDeadlines.set(userId, Date.now() + disconnectGraceMs());
-  return OK;
 }
 
 async function applyTableAction(
