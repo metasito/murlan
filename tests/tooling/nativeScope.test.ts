@@ -11,7 +11,7 @@ const pkg = (dependencies: object, devDependencies: object = {}) => JSON.stringi
 const base = pkg({ expo: "54.0.1", "react-native-svg": "15.1.0" }, { jest: "29.0.0" });
 
 test("the native config needs the compiles", () => {
-  for (const f of ["app.json", "app.config.ts", "eas.json"]) assert.equal(needsNative([f], "", ""), true, f);
+  for (const f of ["app.json", "app.config.ts", "eas.json", "plugins/withReactNativeFromSource.js"]) assert.equal(needsNative([f], "", ""), true, f);
 });
 
 test("a library added, removed or re-versioned needs them", () => {
