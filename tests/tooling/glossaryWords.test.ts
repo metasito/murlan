@@ -57,7 +57,7 @@ function quotesLocale(line: string, at: number, locales: string): boolean {
   return false;
 }
 
-/** Code reaches prose only through comments and strings; outside them, `return card` is a statement. */
+/** Code reaches prose only through comments and strings; outside them, a two-word phrase can be a statement such as `return x`. */
 function inCodeProse(line: string, at: number): boolean {
   const before = line.slice(0, at);
   if (before.includes("//") || /^\s*(?:\/\*|\*)/.test(line)) return true;
@@ -109,8 +109,10 @@ describe("a word CONTEXT.md retires stays retired", () => {
   });
 
   test("a planted retired word in an ordinary source file is caught, with every exemption in force", () => {
-    assert.ok(retired.includes("manche"), "CONTEXT.md no longer retires the word this test plants");
-    const planted = "export function scoreRound() {\n  // the manche ends here\n  return manche;\n}";
+    // Spelled in two halves so this file does not trip the scan it tests.
+    const word = "man" + "che";
+    assert.ok(retired.includes(word), "CONTEXT.md no longer retires the word this test plants");
+    const planted = `export function scoreRound() {\n  // the ${word} ends here\n  return ${word};\n}`;
     assert.equal(findHits("lib/game/gameEngine.ts", planted, words, localeText()).length, 2);
   });
 
