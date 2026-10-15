@@ -16,7 +16,7 @@ test("the worktree is taken last, because taking it is what wins the ticket", ()
 });
 
 test("the fetch prunes, so a merged branch's tracking ref does not outlive it", () => {
-  assert.ok(claimSteps(42, "Some ticket").find((s) => s.name === "fetch")?.args.includes("--prune"));
+  assert.ok(claimSteps(42, "Some ticket").find((s) => s.name === "fetch")?.args?.includes("--prune"));
 });
 
 test("a claim labels the issue and comments the branch in the shape a peer's claim is matched on", () => {
