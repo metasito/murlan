@@ -151,16 +151,20 @@ describe("online teams mode", { skip: hasDatabase() ? false : skipMessage() }, (
       };
       assert.equal(payload.matchOver, true, "one manche settles a single-manche match");
 
-      const topSeat = state.players.findIndex((p) => p.id === payload.rankings[0]);
-      const winningTeam = state.players[topSeat].team;
+      const teamPoints: Record<string, number> = {};
+      payload.rankings.forEach((id, place) => {
+        const team = state.players.find((p) => p.id === id)!.team!;
+        teamPoints[team] = (teamPoints[team] ?? 0) + (3 - place);
+      });
+      const best = Math.max(...Object.values(teamPoints));
       const expected = state.players
-        .filter((p) => p.team === winningTeam)
+        .filter((p) => teamPoints[p.team!] === best)
         .map((p) => p.id)
         .sort();
       assert.deepEqual(
         [...payload.matchWinnerIds].sort(),
         expected,
-        "both partners take the manche, so both win the match"
+        "the pair with more points takes the manche; a 3-3 names both pairs"
       );
     } finally {
       for (const c of clients) c.socket.close();

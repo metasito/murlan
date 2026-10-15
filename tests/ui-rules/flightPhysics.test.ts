@@ -419,31 +419,6 @@ describe("passedSeats walks the direction the engine deals turns", () => {
     assert.notEqual(s.lastPlayedCombination, null);
     assert.deepEqual(passedSeats(view(s)), []);
   });
-
-  test("teams: the losing pair is not marked when the hand ends", () => {
-    // Seat 3 goes out with its partner already home, which decides the hand
-    // (GAME-RULES.md §11) while both opponents still hold cards.
-    const players = hands();
-    players[0].team = "A";
-    players[1].team = "B";
-    players[2].team = "A";
-    players[3].team = "B";
-    players[1].hand = [];
-    players[1].finishPosition = 1;
-    players[3].hand = [c("J", "diamonds")];
-    let s = makeState(players, {
-      currentTurnIndex: 3,
-      lastPlayedBy: 3,
-      firstPlayMade: true,
-      gameMode: "teams",
-      rankings: ["player_1"],
-    });
-
-    s = processPlay(s, buildCombination([c("J", "diamonds")])!);
-    assert.equal(s.gameOver, true);
-    assert.ok(s.players[0].hand.length > 0 && s.players[2].hand.length > 0);
-    assert.deepEqual(passedSeats(view(s)), []);
-  });
 });
 
 
