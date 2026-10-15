@@ -48,8 +48,15 @@ const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT
 const sha7 = (sha) => String(sha).slice(0, 7);
 
 /**
+ * @typedef {{action: string, reason?: string, head?: string|null, runId?: number|null, flake?: {runId: number, tests: string[], step: string|null}}} SettleOutcome
+ * @typedef {{do: string, [key: string]: any}} SettleEffect
+ * @typedef {Record<string, any>} SettleState
+ */
+
+/**
  * @param {{at: number, deadline: number, stuckMs?: number, pr: number, ledgered?: {head: string, runId: number, tests?: string[], step?: string|null}|null}} start
  *   `ledgered` is the flake a process that armed on a rerun's green and then stopped left in the ledger
+ * @returns {SettleState}
  */
 export function startSettle({ at, deadline, stuckMs = SETTLE.STUCK_MS, pr, ledgered = null }) {
   return {
@@ -91,7 +98,7 @@ const ownerOut = (s, reason) => ({ action: "owner", reason, runId: s.ci.runId ??
  * hand-back's carries `next`, `landing()`'s answer. An effect that fails can end the settle too: the
  * executor brings its `end` back here, with the state the step left.
  *
- * @returns {{state: object, effects: object[], outcome: object}}
+ * @returns {{state: SettleState, effects: SettleEffect[], outcome: SettleOutcome}}
  */
 export function endSettle(state, end) {
   const s = { ...state };
@@ -125,7 +132,7 @@ export function endSettle(state, end) {
  * needs to know whether review cleared the head returns `{ask: "cleared", head}` and no effects:
  * step the same state again with the answer as `read.cleared`.
  *
- * @returns {{state: object, effects: object[], outcome?: object, ask?: "cleared", head?: string|null}}
+ * @returns {{state: SettleState, effects: SettleEffect[], outcome?: SettleOutcome, ask?: "cleared", head?: string|null}}
  */
 export function stepSettle(state, read) {
   const s = { ...state };
@@ -509,6 +516,8 @@ async function perform(effect, pending, ports) {
 /**
  * The executor: reads the pull request, steps, runs the step's effects, and sleeps, until a step
  * settles. `pending` is `{ticket, pr, branch, flake?, noteArmed?}`; `io` overrides `settlePorts`'.
+ *
+ * @returns {Promise<SettleOutcome>}
  */
 export async function runSettle(pending, log, pause, deadline, io = {}) {
   const ports = settlePorts(pending, log, pause, io);

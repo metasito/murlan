@@ -164,7 +164,7 @@ const ghFailed = (stderr: string) => Object.assign(new Error(`Command failed: gh
  */
 function replay(
   reads: (ReturnType<typeof recorded> | Error)[],
-  { cleared = REVIEWED, deadline = DEADLINE, stuckMs = SETTLE.STUCK_MS, tick = 15_000, slept = [] as number[], ledgered = null as unknown } = {},
+  { cleared = REVIEWED, deadline = DEADLINE, stuckMs = SETTLE.STUCK_MS, tick = 15_000, slept = [] as number[], ledgered = null as { head: string; runId: number; tests?: string[]; step?: string | null } | null } = {},
 ) {
   let state = startSettle({ at: 0, deadline, stuckMs, pr: PENDING.pr, ledgered });
   const effects: Effect[] = [];
@@ -175,8 +175,9 @@ function replay(
     if (!overdueAt(state, at)) read[r instanceof Error ? "error" : "landing"] = r;
     let step = stepSettle(state, read);
     if (step.ask) {
-      judged.push(step.head);
-      step = stepSettle(state, { ...read, cleared: cleared(step.head) });
+      const head = String(step.head);
+      judged.push(head);
+      step = stepSettle(state, { ...read, cleared: cleared(head) });
     }
     effects.push(...step.effects);
     state = step.state;
@@ -317,7 +318,7 @@ describe("stepSettle, fed recorded landing states", () => {
       const { out, effects, did } = replay([recorded(RED), recorded(GATE_RUNNING), recorded(GREEN, { attempt: 2 }), recorded(GREEN, { attempt: 2, armed: true, merged: true })]);
       assert.equal(out.action, "already-merged");
       assert.deepEqual(did, ["rerun", "note-flake", "arm", "file-flakes"]);
-      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
+      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
       const noted = effects.find((e) => e.do === "note-flake")!;
       assert.deepEqual([noted.flake.runId, noted.flake.tests, noted.flake.head], [RED_RUN, [ID], SHA]);
       assert.deepEqual(effects.find((e) => e.do === "arm")!.flake.runId, RED_RUN, "the merge message names the run");
@@ -575,7 +576,7 @@ describe("a red is rerun once per head", () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN] });
       const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh, written));
       assert.equal(out.action, "already-merged");
-      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
+      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
       const arm = merges(asked).find((a) => a.includes("--auto"))!;
       assert.match(fileOf(written, arm), new RegExp(`${RED_RUN}[\\s\\S]*x\\.test\\.ts › breaks`));
       const [create, ...more] = creates(asked);
@@ -590,7 +591,7 @@ describe("a red is rerun once per head", () => {
       const { gh, asked } = rollupFake({ views: [RED, GATE_RUNNING, GREEN], refuse: { auto: CLEAN_STATUS, merge: "GraphQL: Base branch was modified" } });
       const out = await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));
       assert.equal(out.action, "owner");
-      assert.deepEqual([out.flake.runId, out.flake.tests], [RED_RUN, [ID]]);
+      assert.deepEqual([out.flake?.runId, out.flake?.tests], [RED_RUN, [ID]]);
       assert.equal(creates(asked).length, 0);
     });
 
