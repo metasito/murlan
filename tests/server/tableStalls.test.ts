@@ -261,15 +261,59 @@ describe("a new match at a standing bot-filled table", () => {
   });
 });
 
+/** The cluster as `fetchSockets` reports it: each socket's account and the rooms it has joined. */
+function useCluster(t: { after: (fn: () => void) => void }, sockets: { userId: string; rooms: string[] }[]) {
+  const remote = sockets.map((s) => ({
+    data: { userId: s.userId },
+    rooms: new Set([`user:${s.userId}`, ...s.rooms]),
+  }));
+  setSocketServer({
+    fetchSockets: async () => remote,
+    in: (room: string) => ({ fetchSockets: async () => remote.filter((s) => s.rooms.has(room)) }),
+  } as unknown as SocketServer);
+  t.after(() => setSocketServer(null as unknown as SocketServer));
+}
+
+function betweenHands() {
+  activeGames.set(
+    ROOM,
+    baseGame({
+      gameState: finishedHand(twoHumans(), ["player_0", "player_1"]),
+      playerMap: { 0: "ana", 1: "besi" },
+    })
+  );
+}
+
+describe("between hands, online elsewhere is not back at this table", () => {
+  test("a seatLost arms the lobby grace for an account whose socket is in another room", async (t) => {
+    const { io } = stubIo();
+    useCluster(t, [{ userId: "besi", rooms: ["another-lobby"] }]);
+    betweenHands();
+
+    await applyOrForward(io, { kind: "seatLost", roomId: ROOM, userId: "besi" });
+
+    assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"], "besi now holds the rematch gate for good");
+  });
+
+  test("a restore arms it too", async (t) => {
+    const { io } = stubIo();
+    useCluster(t, [
+      { userId: "ana", rooms: [ROOM] },
+      { userId: "besi", rooms: ["another-lobby"] },
+    ]);
+    const row = finishedRow();
+    t.mock.method(db.query.activeGames, "findFirst", async () => ({ roomId: ROOM, gameState: row }));
+
+    assert.equal(await rehydrateGame(ROOM, "ana", io), "restored");
+    assert.deepEqual(usersInLobbyGrace(ROOM), ["besi"]);
+  });
+});
+
 describe("a seatLost that arrives after its player is back", () => {
   for (const gameOver of [false, true]) {
     test(`arms nothing ${gameOver ? "between hands" : "mid-hand"}`, async (t) => {
       const { io, emitted } = stubIo();
-      const cluster = {
-        in: (room: string) => ({ fetchSockets: async () => (room === "user:besi" ? [{}] : []) }),
-      } as unknown as SocketServer;
-      setSocketServer(cluster);
-      t.after(() => setSocketServer(null as unknown as SocketServer));
+      useCluster(t, [{ userId: "besi", rooms: [ROOM] }]);
       const state = finishedHand(twoHumans(), gameOver ? ["player_0", "player_1"] : []);
       state.gameOver = gameOver;
       activeGames.set(ROOM, baseGame({ gameState: state, playerMap: { 0: "ana", 1: "besi" } }));
