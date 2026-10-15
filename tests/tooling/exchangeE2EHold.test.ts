@@ -89,9 +89,15 @@ describe("the offline exchange overlay's E2E hold", () => {
     );
     assert.match(
       gameContext,
-      /exchangeHoldMsOverride = E2E_FAST \? E2E_EXCHANGE_HOLD : undefined/,
+      /exchangeHoldMsOverride = E2E_FAST && !E2E_REAL_EXCHANGE \? E2E_EXCHANGE_HOLD : undefined/,
       "the override is no longer undefined when EXPO_PUBLIC_E2E_FAST is unset — " +
         "a real player would get a held-open overlay"
+    );
+    assert.match(
+      gameContext,
+      /const E2E_REAL_EXCHANGE = realExchange\(E2E_FAST\);/,
+      "the opt-out no longer goes through lib/e2eRealExchange.ts, whose floor test proves no " +
+        "build without EXPO_PUBLIC_E2E_FAST reads its key"
     );
   });
 
