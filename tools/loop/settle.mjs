@@ -19,7 +19,7 @@ import { readLine } from "./loop-stream.mjs";
 import { ciLine } from "./loop-render.mjs";
 import { DIR, ciLogPath, ciRedNotePath, streamLog } from "./loop-logs.mjs";
 import { landable, reviewerRan } from "./loop-gate.mjs";
-import { sleepClock } from "./limits.mjs";
+import { REFRESH_TIMEOUT_MS, sleepClock } from "./limits.mjs";
 import { decide } from "./decide.mjs";
 
 // Loaded on use: a static .ts import plus process.exit aborts node on Windows (nodejs/node#56645).
@@ -41,8 +41,6 @@ export const CI_RED_TIMEOUT_MS = 30_000;
 
 /** How many times a hand-back reads the tracker and posts a CI-RED before it holds the red. */
 const CI_RED_TRIES = 3;
-
-const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;

@@ -739,7 +739,7 @@ describe("runSettle posts CI-RED once per red head", () => {
     assert.match(String(body), new RegExp(`^CI-RED ${SHA}`));
   });
 
-  test("a CI-RED from before the newest claim is no CI-RED for this one: poll posts it again", async () => {
+  test("a CI-RED from before the newest claim is no CI-RED for this one: runSettle posts it again", async () => {
     const thread = [{ body: `CI-RED ${SHA}\nrun: x · step: y\nfailing: z` }, { body: "Claimed by `agent/1028-the-turn-chip`." }];
     const { gh, asked } = rollupFake({ views: [RED], log: LINE, attempt: 2, issueComments: thread });
     await runSettle(PENDING, () => {}, 0, DEADLINE, io(gh));

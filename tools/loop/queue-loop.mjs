@@ -83,7 +83,7 @@ import {
   USD_DEFAULT,
 } from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
+import { CHECK_BASH_TIMEOUT_MS, REFRESH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
 import { afterSession, decide, WAIT } from "./decide.mjs";
 import { CI_RED_TIMEOUT_MS, runSettle, SETTLE, UPDATES } from "./settle.mjs";
@@ -648,7 +648,6 @@ export function refreshWorktree(cwd, branch, run = sh) {
   run("git", ["-C", cwd, "fetch", "--quiet", "origin", branch], opts);
   run("git", ["-C", cwd, "merge", "--ff-only", `origin/${branch}`], opts);
 }
-const REFRESH_TIMEOUT_MS = 2 * 60_000;
 
 /**
  * One ticket's worth of the issue, for the header and the turn bound. Covers the resume path, which

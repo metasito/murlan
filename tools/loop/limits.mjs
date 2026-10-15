@@ -3,6 +3,9 @@ export const STALL_MS = 30 * 60_000;
 
 export const CHECK_BASH_TIMEOUT_MS = STALL_MS - 5 * 60_000;
 
+/** Bounds a `git fetch` or merge of one branch from origin. */
+export const REFRESH_TIMEOUT_MS = 2 * 60_000;
+
 /** How late a tick must arrive to read as the machine having slept, not as a busy event loop. */
 const suspendGapMs = (tick) => Math.max(4 * tick, 2 * 60_000);
 
