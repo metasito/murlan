@@ -579,8 +579,7 @@ jobs:
     needs: scope
     if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.native || needs.scope.outputs.native == 'true') }}
     runs-on: macos-latest
-    # React Native core compiles from source (plugins/withReactNativeFromSource.js), about 8 min more than prebuilt.
-    timeout-minutes: 50
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
