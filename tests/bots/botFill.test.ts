@@ -85,7 +85,7 @@ test("tables humans hold at least half of are recorded", () => {
   assert.equal(isContestedTable(3, 1), true); // one seat vacated mid-match
 });
 
-// seatAssignmentsFromRoster is what startMatchAction actually calls to build
+// seatAssignmentsFromRoster is what newTable actually calls to build
 // playerMap and botSeatsAtStart — driven here through the same buildSeatRoster
 // output rather than a hand-rolled roster, so a mutation that stops
 // populating either map, or populates it for every seat regardless of the
@@ -128,7 +128,7 @@ test("botSeatsFromPersonality reads a born bot, not a seat a human vacated", () 
   assert.deepEqual(botSeatsFromPersonality(players), new Set([1]));
 });
 
-// seatAssignmentsFromRoster landed with one caller (startMatchAction) and an
+// seatAssignmentsFromRoster landed with one caller (newTable) and an
 // unused-import lint warning is not the same guarantee: `void
 // seatAssignmentsFromRoster;` silences the warning without calling it, so a
 // second, inline rebuild of the same maps leaves tsc, lint and every other
@@ -145,7 +145,7 @@ test("one function builds a match's playerMap and botSeatsAtStart", () => {
 
   assert.deepEqual(
     callers.sort(),
-    [HOME, "server/game/tableHandlers.ts"].sort(),
+    [HOME, "server/game/tableState.ts"].sort(),
     `${TARGET} is how a match's roster becomes playerMap and botSeatsAtStart, ` +
       `so a caller that stops calling it, or a second inline copy, shows up ` +
       `here: ${callers.join(", ")}`

@@ -257,6 +257,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
 
   test("all four sites that decide a deal's first seat route through dealFirstSeatFor", () => {
     const serverSrc = readFileSync(path.join(repoRoot, "server", "game", "tableHandlers.ts"), "utf8");
+    const newTableSrc = readFileSync(path.join(repoRoot, "server", "game", "tableState.ts"), "utf8");
     const offlineSrc = readFileSync(path.join(repoRoot, "context", "GameContext.tsx"), "utf8");
     // The two sites that must tell a continuing match from a finished one —
     // the ones #803's blind critique found disagreeing.
@@ -265,7 +266,7 @@ describe("dealFirstSeatFor: one function decides a new match from a continuing o
     // The two sites that start a match from nothing, where `matchOver` is
     // unconditionally true — a literal `dealFirstSeat: 0` would read the same
     // today, but would stop being the one place this decision is made.
-    assert.match(serverSrc, /dealFirstSeatFor\(true, 0,/);
+    assert.match(newTableSrc, /dealFirstSeatFor\(true, 0,/);
     assert.match(offlineSrc, /dealFirstSeatFor\(true, 0,/);
   });
 

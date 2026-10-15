@@ -215,7 +215,7 @@ export function buildSeatRoster(
  * Keyed by position in `roster`, not `r.seatIndex` — that position is the
  * engine seat index (`initializeGame` assigns seats the same way), so a gap
  * in the DB's own seat numbering cannot shift either map onto the wrong
- * player. `startMatchAction` calls this rather than walking the roster
+ * player. `tableState.ts` `newTable` calls this rather than walking the roster
  * inline, so a test can drive the same function it does.
  */
 export function seatAssignmentsFromRoster(roster: SeatEntry[]): {

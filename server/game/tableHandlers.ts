@@ -70,16 +70,9 @@ import {
   disconnectDeadlines,
   usersInLobbyGrace,
 } from "./gameTimers.ts";
-import {
-  botSeatsFromPersonality,
-  buildSeatRoster,
-  restoredMatchOver,
-  scoreKeyForSeat,
-  seatAssignmentsFromRoster,
-  seatOfUser,
-  teamKeyMap,
-} from "./onlineGameLogic.ts";
+import { buildSeatRoster, scoreKeyForSeat, seatOfUser } from "./onlineGameLogic.ts";
 import { unpackPersistedState } from "../../shared/persistedEnvelope.ts";
+import { fromEnvelope, newTable } from "./tableState.ts";
 import {
   announceRejoin,
   armLobbyGrace,
@@ -97,13 +90,9 @@ import {
   processExchangeChoice,
   processPass,
   processPlay,
-  firstTargetFor,
-  teamForSeat,
 } from "../../lib/game/gameEngine.ts";
 import type { GameState, PlayRefusal } from "../../lib/game/gameEngine.ts";
-import { startReplayLog } from "./replayShape.ts";
 import { dealRound } from "./dealRound.ts";
-import { botSeatKey } from "./botSeat.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
   UNKNOWN_ACTION,
@@ -153,7 +142,7 @@ export async function rehydrateGame(
   });
   if (!row) return "missing";
 
-  const restored = unpackPersistedState<GameState>(row.gameState);
+  const restored = fromEnvelope(row);
   if (!restored.ok && restored.newer) {
     // Mid-deploy, the revision that wrote this row is still serving it.
     logger.warn({ roomId, reason: restored.reason }, "Leaving a newer revision's persisted game alone");
@@ -168,53 +157,15 @@ export async function rehydrateGame(
     return "unrestorable";
   }
 
-  const { playerMap, scores, gameMode, matchLength, matchTarget, maxPlayers, roundsPlayed, endedByVote } =
-    restored.match;
+  const { game } = restored;
+  const { playerMap } = game;
   if (
     forUserId !== null &&
     !Object.values(playerMap).includes(forUserId) &&
-    !restored.seats.vacatedSeats.some(([, who]) => who.userId === forUserId)
+    ![...game.vacatedSeats.values()].some((who) => who.userId === forUserId)
   ) {
     return "not_seated";
   }
-  const restoredState = restored.gameState;
-  const restoredPlayers = restoredState.players;
-  const botSeatsAtStart = botSeatsFromPersonality(restoredPlayers);
-  const game: OnlineGameState = {
-    roomId,
-    joinCode: restored.joinCode,
-    gameState: restoredState,
-    playerMap,
-    rematchVotes: new Set(),
-    cumulativeScores: scores,
-    gameMode,
-    maxPlayers,
-    matchTarget,
-    matchLength,
-    roundsPlayed,
-    endedByVote,
-    matchOver: endedByVote || restoredMatchOver({
-      matchLength,
-      gameMode,
-      roundOver: restoredState.roundOver,
-      scores,
-      target: matchTarget,
-      teamOfKey: teamKeyMap(playerMap, restoredPlayers, new Map(restored.seats.vacatedSeats)),
-      playerCount: restoredPlayers.length,
-    }),
-    roundFlags: restored.roundFlags,
-    abandonedSeats: new Map(restored.seats.abandonedSeats),
-    botSeatsAtStart,
-    releasedSeats: new Set(restored.seats.releasedSeats),
-    vacatedSeats: new Map(restored.seats.vacatedSeats),
-    weakSeats: new Set(restored.seats.weakSeats),
-    endMatchVotes: new Set<string>(),
-    spectators: new Set<string>(),
-    // The log is memory-only, so a round restored after a restart produces no
-    // replay. The next round starts a fresh one.
-    moveLog: null,
-    dealFirstSeat: restored.dealFirstSeat,
-  };
   activeGames.set(roomId, game);
   logger.info({ roomId }, "Took over a table from active_games");
 
@@ -223,7 +174,7 @@ export async function rehydrateGame(
   // A between-hands grace's expiry sees only this process's sockets, so a
   // grace armed on a guess releases players seated through another instance.
   if (!presence) return "restored";
-  const back = restoredState.roundOver ? presence.atTable : presence.online;
+  const back = game.gameState.roundOver ? presence.atTable : presence.online;
   for (const [seat, userId] of Object.entries(playerMap)) {
     if (userId === forUserId || back.has(userId)) continue;
     await armSeatGrace(io, game, roomId, userId, Number(seat));
@@ -587,38 +538,6 @@ async function rejoinAction(
   return OK;
 }
 
-/**
- * The previous match's winner and loser, as engine ids of the roster about to
- * be dealt. A table lasts until it breaks up (docs/GAME-RULES.md § Decisions), so
- * a new match at a standing table opens with the exchange rather than the 3♠.
- * Empty when there is nothing to carry: no previous match, a round nobody
- * played out, a match ended by the vote, or either seat no longer at the table
- * — every one of which deals the 3♠ opening instead.
- */
-function carriedFinishingOrder(
-  previous: OnlineGameState | undefined,
-  roster: { userId: string }[]
-): string[] {
-  if (!previous || previous.endedByVote) return [];
-  const { players, finishingOrder } = previous.gameState;
-  if (finishingOrder.length !== players.length) return [];
-
-  const seatOfEngineId = new Map(players.map((p, seat) => [p.id, seat]));
-  const newSeatOf = (engineId: string | undefined): number => {
-    const seat = engineId === undefined ? undefined : seatOfEngineId.get(engineId);
-    if (seat === undefined) return -1;
-    const userId =
-      previous.playerMap[seat] ??
-      previous.vacatedSeats.get(seat)?.userId ??
-      (previous.botSeatsAtStart.has(seat) ? botSeatKey(seat) : undefined);
-    return userId === undefined ? -1 : roster.findIndex((r) => r.userId === userId);
-  };
-
-  const winner = newSeatOf(finishingOrder[0]);
-  const loser = newSeatOf(finishingOrder[finishingOrder.length - 1]);
-  if (winner < 0 || loser < 0 || winner === loser) return [];
-  return [`player_${winner}`, `player_${loser}`];
-}
 
 async function startMatchAction(
   io: SocketServer,
@@ -721,48 +640,8 @@ async function startMatchAction(
 
   const roster = rosterOf(players);
 
-  const playerSetup = roster.map((r, idx) => ({
-    name: r.username,
-    type: (r.isBot ? "bot" : "human") as "human" | "bot",
-    personality: r.isBot ? r.personality : undefined,
-    team: teamForSeat(idx, roster.length, room.gameMode),
-  }));
-
-  const carried = carriedFinishingOrder(previous, roster);
-  const gameState =
-    carried.length > 0
-      ? initializeRematch(playerSetup, room.gameMode, carried)
-      : initializeGame(playerSetup, room.gameMode);
-  const { playerMap, botSeatsAtStart } = seatAssignmentsFromRoster(roster);
-
-  const firstTarget = firstTargetFor(roster.length);
-
-  const newGame: OnlineGameState = {
-    gameState,
-    playerMap,
-    roomId,
-    joinCode: room.code,
-    rematchVotes: new Set(),
-    cumulativeScores: previous?.cumulativeScores ?? {},
-    gameMode: room.gameMode,
-    maxPlayers: room.maxPlayers,
-    matchTarget: previous?.matchTarget ?? firstTarget,
-    matchLength: matchLength ?? previous?.matchLength ?? "match",
-    roundsPlayed: previous?.roundsPlayed ?? 0,
-    matchOver: previous?.matchOver ?? false,
-    roundFlags: {},
-    abandonedSeats: new Map<number, string>(),
-    botSeatsAtStart,
-    releasedSeats: new Set<string>(),
-    vacatedSeats: new Map(),
-    weakSeats: new Set<number>(),
-    endMatchVotes: new Set<string>(),
-    spectators: new Set<string>(),
-    moveLog: startReplayLog(),
-    // Reached only when a match is genuinely starting fresh (no `previous`,
-    // or `previous.matchOver`), so `matchOver` is unconditionally `true`.
-    dealFirstSeat: dealFirstSeatFor(true, 0, roster.length),
-  };
+  const newGame = newTable(room, roster, previous, matchLength);
+  const { playerMap } = newGame;
   // `closeForStart` read this roster and closed the room in one transaction
   // under the rooms row lock, which every claim and release also takes: nobody
   // can be seated or unseated between the roster and this deal.
@@ -789,7 +668,7 @@ async function startMatchAction(
     await roomStatePayload(closed.room, players)
   );
 
-  await dealRound(io, newGame, gameState);
+  await dealRound(io, newGame, newGame.gameState);
   logger.info(
     { roomId, playerCount: players.length, botCount: roster.length - players.length },
     "Game started"
