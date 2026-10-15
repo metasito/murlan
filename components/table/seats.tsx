@@ -192,7 +192,7 @@ function CardFan({
 }
 
 /**
- * The seat's place if it emptied its hand. The manche's end also places the
+ * The seat's place if it emptied its hand. The round's end also places the
  * last seat, still holding its cards: that one shows them, not a trophy.
  */
 function wentOutAt(player: Player, held: number): number | undefined {

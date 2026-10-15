@@ -1,11 +1,11 @@
 ##
 # Offline gameplay flow: starts a real offline match vs one AI opponent
-# and plays it through to the end-of-partita board using the server-validated
+# and plays it through to the end-of-match board using the server-validated
 # game engine — not a mock. Exercises real turn-taking, the AI, and the
 # board on the felt, none of which the web/native/unit suites can see
 # (see docs/agents/checks.md).
 #
-# Strategy: configure a 2-player, single-hand ("Manche secca") match so
+# Strategy: configure a 2-player, single-hand ("Round secca") match so
 # it ends after exactly one hand. Whenever it's legal to pass, this
 # flow passes — that is always a legal move except when this seat must
 # open the very first round of the hand, which in Murlan requires
@@ -13,7 +13,7 @@
 # seat is dealt 3♠ it plays it; otherwise it only ever passes. Passing
 # is not "not playing" — it drives real turn cycling through the
 # server-authoritative engine and the AI until someone empties their
-# hand, which is what actually ends the partita. This is a
+# hand, which is what actually ends the match. This is a
 # deliberate simplification, not full strategic play.
 #
 # Performance note: every tapOn that *lands on* the game table pins
@@ -81,7 +81,7 @@ appId: "${MAESTRO_APP_ID}"
 - assertVisible: "Offline"
 - tapOn: "Offline"
 # The format tiles carry a second line, and Maestro matches the *whole*
-# element: iOS exposes this one as "Manche secca: Una sola mano", so the bare
+# element: iOS exposes this one as "Round secca: Una sola mano", so the bare
 # title matches nothing. The trailing `.*` carries the subtitle and the
 # platforms that compose it differently, without pinning today's wording.
 - assertVisible: "Manche secca.*"

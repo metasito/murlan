@@ -25,7 +25,7 @@ export const Colors = {
   goldLit:      '#F3E0A6',
   goldLitEdge:  'rgba(243,224,166,0.8)', // the lit turn pill's border
   goldLitDisc:  'rgba(243,224,166,0.7)', // a lit disc's border: the seat on move, a notice's disc
-  // A loss that is not an error: the partita board's falling rating. Red would read as alarm on the felt.
+  // A loss that is not an error: the match board's falling rating. Red would read as alarm on the felt.
   copper:       '#E0A47A',
   goldDark:     '#A8832B',
   goldDim:      '#A07830',
@@ -176,8 +176,8 @@ export const CardGloss = {
   foil: { gold: '#FFEEBE', silver: '#E8F0FF', reach: 260, travel: 0.75, width: 0.42, alpha: { edge: 0.1, floor: 0.3, lit: 0.7 } },
 } as const;
 
-// A manche's outcome on the felt: the mockup's `burstMotes`, `mwin` and `mlose` (#1469).
-export const MancheMoment = {
+// A round's outcome on the felt: the mockup's `burstMotes`, `mwin` and `mlose` (#1469).
+export const RoundMoment = {
   golds: ['#FFE2A8', '#E9C46A', '#FFF6D8'],
   motes: { won: 46, lost: 20 },
   lostScale: 0.7,
@@ -186,7 +186,7 @@ export const MancheMoment = {
   lifeSec: [0.9, 1.8],
   size: [0.6, 1.8],
   glow: 5,
-  // The won manche's top card: the card-glow mockup's `.card.hi`.
+  // The won round's top card: the card-glow mockup's `.card.hi`.
   litRingPt: 2,
   litGlowPt: 22,
   lostLevel: 0.8,
@@ -194,7 +194,7 @@ export const MancheMoment = {
   releaseRate: 3,
 } as const;
 
-// A won partita's gold through the lamp's cone, in MancheMoment's golds: the mockup's `coneRain` (#1423).
+// A won match's gold through the lamp's cone, in RoundMoment's golds: the mockup's `coneRain` (#1423).
 export const ConeRain = {
   motes: 60,
   overMs: 1200,
@@ -604,8 +604,8 @@ export const Reconnect = {
   lampRate: 1,
 } as const;
 
-/** A manche ending on the table, in ms from the landing that ends it: the lantern mockup's `payoff` (#1266). */
-export const MancheEnding = {
+/** A round ending on the table, in ms from the landing that ends it: the lantern mockup's `payoff` (#1266). */
+export const RoundEnding = {
   open: 700,
   openFor: 240,
   gain: 900,
@@ -621,8 +621,8 @@ export const MancheEnding = {
   deal: 2500,
 } as const;
 
-/** A partita ending on the table, in ms from the landing that ends it: the mockup's `payoff` with `partita` (#1267). */
-export const PartitaEnding = {
+/** A match ending on the table, in ms from the landing that ends it: the mockup's `payoff` with `match` (#1267). */
+export const MatchEnding = {
   open: 600,
   openFor: 240,
   gain: 800,
@@ -686,7 +686,7 @@ export const Reading = {
 export const Hold = {
   /** From a flight's end to the hand-off — the lantern mockup's gap (index.html:612, :614). */
   land: 175,
-  /** From the landing that ends a manche to its sting (the lantern mockup's `mwin`/`mlose`). */
+  /** From the landing that ends a round to its sting (the lantern mockup's `mwin`/`mlose`). */
   sting: 300,
   /** A face shown to be read before it moves on: the exchange's rest on the pile (the fixture's PLAN.rest). */
   reveal: 1500,
@@ -702,14 +702,14 @@ export const LATE_SOUND_MS = 45;
  * trauma squared, not trauma: #772 found the talk itself hedges between
  * squaring and cubing that curve, and the owner settled this table on it —
  * raw trauma reads as the table sliding to rest rather than struck, and
- * flattens how far a bomb ought to stand above a manche closing.
+ * flattens how far a bomb ought to stand above a round closing.
  *
- * The bomb outranks the manche on purpose, confirmed by the owner on #101: a
- * bomb is a surprise, a manche ending is expected. If the bigger event always
+ * The bomb outranks the round on purpose, confirmed by the owner on #101: a
+ * bomb is a surprise, a round ending is expected. If the bigger event always
  * shook harder, the moment the game is actually about would be the quiet one.
  */
 export const Trauma = {
   bomb: 0.55,
-  mancheWon: 0.40,
-  partitaWon: 0.50,
+  roundWon: 0.40,
+  matchWon: 0.50,
 } as const;

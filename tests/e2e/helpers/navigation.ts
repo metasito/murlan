@@ -66,16 +66,16 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
   }
 
   if (setup.format === "single") {
-    await page.getByRole("radio", { name: "Manche secca" }).click();
+    await page.getByRole("radio", { name: "Round secca" }).click();
   }
 
-  await page.getByRole("button", { name: "Inizia Partita" }).click();
+  await page.getByRole("button", { name: "Inizia Match" }).click();
   await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
   await dismissStartAnnouncement(page);
 }
 
 /**
- * Clears the manche-opening announcement if one is up (#817).
+ * Clears the round-opening announcement if one is up (#817).
  *
  * It is a gate: it covers the table so the first tap is spent reading it
  * rather than playing a card, which is exactly what a spec's own first tap

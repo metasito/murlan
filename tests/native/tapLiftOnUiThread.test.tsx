@@ -255,7 +255,7 @@ describe('a tap on the hand', () => {
   });
 
   it.each([
-    ['the manche ends for this seat', (view: Awaited<ReturnType<typeof mountTable>>) =>
+    ['the round ends for this seat', (view: Awaited<ReturnType<typeof mountTable>>) =>
       view.rerender(table({ ...state, players: [{ ...state.players[0], finishPosition: 1 }, state.players[1]] }))],
     ['the seat turns spectator', (view: Awaited<ReturnType<typeof mountTable>>) => view.rerender(table(state, true))],
   ])('drops a tap still on its way to JS when %s', async (_, close) => {

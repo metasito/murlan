@@ -89,10 +89,10 @@ describe("the deal (defect 3) — the whole deck goes out at 3 and 4 players", (
     }
   });
 
-  test("four consecutive manches give every seat the bigger hand", () => {
+  test("four consecutive rounds give every seat the bigger hand", () => {
     const bigHands = new Set<number>();
     let firstSeat = 0;
-    for (let manche = 0; manche < 4; manche++) {
+    for (let round = 0; round < 4; round++) {
       dealCards(4, firstSeat).hands.forEach((h, seat) => {
         if (h.length === 14) bigHands.add(seat);
       });
@@ -206,9 +206,9 @@ describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own a
 // #803: a blind critique found a third, live call site the first pass of
 // this ticket missed. `server/game/tableHandlers.ts`'s `startMatchAction`
 // (`room:start` after a match ends) correctly reset `dealFirstSeat` to 0,
-// but `dealVotedManche` (`game:rematch_vote` — the "Rematch" button on the
+// but `dealVotedRound` (`game:rematch_vote` — the "Rematch" button on the
 // results screen) always rotated it via `nextDealFirstSeat`, never checking
-// whether the manche that just ended was ALSO the match's last one. Offline
+// whether the round that just ended was ALSO the match's last one. Offline
 // had the identical split between `setupGame` and `dealFrom`/`startNewMatch`.
 // Two different UI paths to "start a new match after the old one ended" gave
 // a different deal.
@@ -219,7 +219,7 @@ describe("docs/GAME-RULES.md's undealt-card figure agrees with dealCards's own a
 // re-derive it now calls that instead. The wiring test below pins that
 // `nextDealFirstSeat` itself is called from nowhere but `dealFirstSeatFor`'s
 // own body, so a future site cannot reintroduce a bare rotation that skips
-// the matchOver check the way `dealVotedManche` did.
+// the matchOver check the way `dealVotedRound` did.
 describe("dealFirstSeatFor: one function decides a new match from a continuing one (#803)", () => {
   test("a match that just ended resets to seat 0, whatever seat it was on", () => {
     assert.equal(dealFirstSeatFor(true, 0, 4), 0);

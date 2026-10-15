@@ -1,4 +1,4 @@
-// tests/native/teamsSingleManche.test.tsx — a one-manche teams game is won by
+// tests/native/teamsSingleRound.test.tsx — a one-round teams game is won by
 // a pair. `applyHandToMatch` lives in a .tsx context module, so it is only
 // reachable from the jest-expo suite; tests/engine/teams.test.ts covers the
 // full-match arithmetic in the node suite.
@@ -29,7 +29,7 @@ const finished = (gameMode: GameState['gameMode'], rankings: string[]): GameStat
 
 const single = { length: 'single' as const, target: 21, scores: {}, hands: [], over: false, winners: [], isDraw: false };
 
-describe('a single-manche match', () => {
+describe('a single-round match', () => {
   it('credits both partners in teams mode', () => {
     const match = applyHandToMatch(single, finished('teams', ['player_2', 'player_1', 'player_0', 'player_3']));
     expect(match.over).toBe(true);

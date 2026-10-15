@@ -115,7 +115,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 #gioca.lit{background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);border:1px solid #F3E0A6;color:#2a1f08;box-shadow:0 4px 10px rgba(0,0,0,.5),0 0 26.8px rgba(243,224,166,.35)}
 .floatchip{position:absolute;left:457px;top:300px;transform:translateX(-50%)}
 
-/* the score pill: a chip at rest, a panel when open, today's board at the end of a partita */
+/* the score pill: a chip at rest, a panel when open, today's board at the end of a match */
 #score{position:absolute;box-sizing:border-box;border-radius:12px;background:linear-gradient(180deg,rgba(18,36,26,.95),rgba(3,14,9,.93) 60%);border:1px solid rgba(201,168,76,.45);overflow:hidden;cursor:pointer;pointer-events:auto}
 #score .pc{position:absolute;left:0;top:0;right:0;height:21.7px;display:flex;align-items:center;gap:6px;padding:0 10px;white-space:nowrap}
 .pc svg{flex:none}
@@ -564,7 +564,7 @@ function giveBack(id,k){selectCard(id);later(420,()=>{sfx('exchange');const t=HE
   S.hand=S.hand.filter(c=>c!==id);S.sel=[];layHand();
   tw(460,e=>{const p=clamp((e-.25)/.45);if(p>=.5&&!back){back=true;node.innerHTML='';node.className='card bkc';node.style.background=backURL(look.back,t.w,t.h)+' center/100% 100%';node._gl=el('gl','',node);}
     set(lerp(t.x,fx,e),lerp(t.y,fy,e)-40*Math.sin(Math.PI*e),lerp(t.rot,rot,e),lerp(1,.34,e),Math.max(.02,Math.abs(Math.cos(Math.PI*p))));},{ease:easeOut,done:()=>{node.remove();S.counts[k]++;renderSeats();}});});}
-function endManche(note){const k=S.cur.by;if(k!=='you'&&!S.out.includes(k))S.out.push(k);S.turn=null;S.note=note||'Fine manche';renderSeats();renderHud();}
+function endRound(note){const k=S.cur.by;if(k!=='you'&&!S.out.includes(k))S.out.push(k);S.turn=null;S.note=note||'Fine round';renderSeats();renderHud();}
 function nextDeal(){const g=$('#pile');tw(150,e=>g.style.opacity=1-e,{done:()=>{g.innerHTML='';g.style.opacity='';}});later(160,()=>dealRun(sceneT,H13,()=>setTurn('you')));}
 function net(cls,text){S.net=cls;S.netText=text;renderTurn();}
 
@@ -578,11 +578,11 @@ for(const k of ALL){const r=el('rw'+(k==='you'?' me':''),`<span class="r"></span
   SC.rows[k]={el:r,r:r.querySelector('.r'),a:r.querySelector('.a'),g:r.querySelector('.g'),dl:r.querySelector('.dl'),t:r.querySelector('.t'),b4:0,af:0,tick:1,pos:0,pop:0};}
 const ranking=f=>ALL.slice().sort((a,b)=>SC.rows[b][f]-SC.rows[a][f]||SC.rows[a].pos-SC.rows[b].pos);
 function scoreInit(sc){for(const k of ALL){const r=SC.rows[k];r.b4=r.af=sc[k];r.tick=1;r.pop=0;}ranking('b4').forEach((k,i)=>SC.rows[k].pos=i);Object.assign(SC,{o:0,b:0,bx:0,bt:0,glow:0,user:false,win:null});$('#dim').style.opacity=0;}
-function payoff(t0,after,order,partita,winner){const rs=SC.rows;for(const k of ALL)rs[k].af=after[k];SC.user=false;
-  at(t0+(partita?600:700),()=>tw(240,e=>SC.o=e,{ease:backOut}));
-  order.forEach((k,i)=>{const r=rs[k];at(t0+(partita?800+i*100:900+i*120),()=>{r.tick=0;tw(180,e=>r.pop=e,{ease:backOut});tw(partita?450:500,e=>r.tick=e,{ease:easeOut});});});
-  at(t0+(partita?1350:1500),()=>ranking('af').forEach((k,i)=>{const r=rs[k],p0=r.pos;if(p0!==i)tw(300,e=>r.pos=lerp(p0,i,e),{ease:easeIO});}));
-  if(!partita)at(t0+2150,()=>tw(250,e=>SC.o=1-e,{ease:easeOut,done:()=>{for(const k of ALL){rs[k].b4=rs[k].af;rs[k].pop=0;}SC.glow=1;tw(900,e=>SC.glow=1-e);}}));
+function payoff(t0,after,order,match,winner){const rs=SC.rows;for(const k of ALL)rs[k].af=after[k];SC.user=false;
+  at(t0+(match?600:700),()=>tw(240,e=>SC.o=e,{ease:backOut}));
+  order.forEach((k,i)=>{const r=rs[k];at(t0+(match?800+i*100:900+i*120),()=>{r.tick=0;tw(180,e=>r.pop=e,{ease:backOut});tw(match?450:500,e=>r.tick=e,{ease:easeOut});});});
+  at(t0+(match?1350:1500),()=>ranking('af').forEach((k,i)=>{const r=rs[k],p0=r.pos;if(p0!==i)tw(300,e=>r.pos=lerp(p0,i,e),{ease:easeIO});}));
+  if(!match)at(t0+2150,()=>tw(250,e=>SC.o=1-e,{ease:easeOut,done:()=>{for(const k of ALL){rs[k].b4=rs[k].af;rs[k].pop=0;}SC.glow=1;tw(900,e=>SC.glow=1-e);}}));
   else{at(t0+1600,()=>{boardFill(winner);tw(600,e=>SC.b=e,{ease:easeIO});tw(400,e=>$('#dim').style.opacity=(.6*e).toFixed(3));});
     at(t0+2100,()=>tw(300,e=>SC.bx=e,{ease:easeOut}));at(t0+2600,()=>tw(300,e=>SC.bt=e,{ease:easeOut}));}}
 function boardFill(w){const me=w==='you';SC.win=w;scoreEl.querySelector('.bx').innerHTML=`<div class="tb"><div style="width:24px;height:24px">${TROPHY.replace('#F3E0A6','#C9A84C')}</div></div><span>${me?'Hai vinto':'Vince'}</span><b class="${me?'me':''}">${NAMES[w]}</b><span>Partita a 21${DOT}${SC.rows[w].af}</span>`;}
@@ -722,8 +722,8 @@ const DEAL_END=40+13*42+320;
 const legLen=()=>X.lift+X.fly+(VARS[VAR].key==='tavolo'?X.rest+X.tuck:0);
 const fullDur=()=>DEAL_END+X.beat+2*legLen()+2*X.read+X.think+X.giveWait+2000;
 const CH=[
- {key:'win',name:'You won the last manche',get dur(){return fullDur();},
-  line:'Luan lost the last manche, so his best card, the 2 of hearts, goes to you. Then you choose the 4 of clubs and give it back to Luan.',tags:[]},
+ {key:'win',name:'You won the last round',get dur(){return fullDur();},
+  line:'Luan lost the last round, so his best card, the 2 of hearts, goes to you. Then you choose the 4 of clubs and give it back to Luan.',tags:[]},
  {key:'lose',name:'You lost it',get dur(){return fullDur();},
   line:'You lost, so your best card, the 2 of hearts, goes to Luan. Luan chooses the 4 of spades and gives it back to you.',tags:[]},
  {key:'watch',name:'You are watching',get dur(){return fullDur();},

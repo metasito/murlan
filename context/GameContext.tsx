@@ -161,7 +161,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   } = useExchangeAnnouncement(gameState?.exchangePhase !== undefined);
 
   /**
-   * The single write path for engine output: a manche that has just ended is
+   * The single write path for engine output: a round that has just ended is
    * scored into the match here and nowhere else, so no screen has to
    * recompute totals and none can disagree about them.
    */
@@ -190,7 +190,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Deals the next manche, seeded by the last one's order. `matchIsOver`
+   * Deals the next round, seeded by the last one's order. `matchIsOver`
    * tells `dealFirstSeatFor` (`lib/game/gameEngine.ts`) whether this deal starts a
    * new match (reset to seat 0) or continues the current one (rotate).
    */

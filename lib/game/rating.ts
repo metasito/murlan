@@ -106,7 +106,7 @@ export interface RatedSeat {
 }
 
 /**
- * The rating change for every seat in one manche: `n(n-1)/2` pairwise results,
+ * The rating change for every seat in one round: `n(n-1)/2` pairwise results,
  * actual and expected share each normalised to sum to 1. At `n = 2` it reduces
  * to textbook Elo.
  *

@@ -114,7 +114,7 @@ export function markExchangeSettled(
  * hand, which no rule determines, so while the phase is open sending it would
  * leak that hand. Closing the phase lifts that, but only for as long as the
  * ceremony is on screen — `exchangePhase` is never cleared, so the phase's own
- * flag would keep the card public for the rest of the manche. The two
+ * flag would keep the card public for the rest of the round. The two
  * participants keep it either way: it came out of one's hand into the other's.
  *
  * Every seat also gets the two seat indices and the both-jokers flag — all the

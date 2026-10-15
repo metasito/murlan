@@ -1,5 +1,5 @@
 // tests/native/startAnnouncement.test.tsx — the announcement of who opens the
-// manche lives exactly as long as the moment it describes, and holds the table
+// round lives exactly as long as the moment it describes, and holds the table
 // while it does (#817).
 //
 // The owner watched "rotonmeta starts — lost the round" arrive late and still
@@ -42,12 +42,12 @@ const seat = (i: number): Player => ({
   type: 'human',
 });
 
-/** The manche opens with seat 1 to play, because seat 1 lost the last round. */
+/** The round opens with seat 1 to play, because seat 1 lost the last round. */
 const OPENER = 1;
 
 /**
- * A manche dealt after a lost round is dealt with `firstPlayMade` already true
- * — only the very first deal of a partita starts it false — so what says the
+ * A round dealt after a lost round is dealt with `firstPlayMade` already true
+ * — only the very first deal of a match starts it false — so what says the
  * opening is still to come is the rank tally, which every deal empties and
  * every play writes.
  */
@@ -70,8 +70,8 @@ function state(currentTurnIndex: number, cardsPlayed = 0): GameState {
   };
 }
 
-/** The same manche, one play further in. */
-const midManche = (currentTurnIndex: number) => state(currentTurnIndex, 1);
+/** The same round, one play further in. */
+const midRound = (currentTurnIndex: number) => state(currentTurnIndex, 1);
 
 const noop = () => {};
 
@@ -109,7 +109,7 @@ const withdrawn = (props: Record<string, unknown>) =>
   props.importantForAccessibility === 'no-hide-descendants' ||
   props['aria-hidden'] === true;
 
-describe('the manche-opening announcement', () => {
+describe('the round-opening announcement', () => {
   it('is on screen for the turn it names', async () => {
     const view = await render(table(state(OPENER)));
 
@@ -131,32 +131,32 @@ describe('the manche-opening announcement', () => {
     // One play later. Nothing about the clock has changed — this is the whole
     // claim: the announcement cannot outlive the turn it announces, however
     // much of its own reading budget is left.
-    await view.rerender(table(midManche(OPENER + 1)));
+    await view.rerender(table(midRound(OPENER + 1)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
 
     await view.unmount();
   });
 
-  it('does not come back when the same seat leads again later in the manche', async () => {
+  it('does not come back when the same seat leads again later in the round', async () => {
     const view = await render(table(state(OPENER)));
-    await view.rerender(table(midManche(OPENER + 1)));
+    await view.rerender(table(midRound(OPENER + 1)));
     // Everyone passes and the lead comes back round. The turn matching again
-    // is not the manche opening again, and the announcement is spent.
-    await view.rerender(table(midManche(OPENER)));
+    // is not the round opening again, and the announcement is spent.
+    await view.rerender(table(midRound(OPENER)));
 
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
 
     await view.unmount();
   });
 
-  // Online the table is never unmounted between manches — the result board is a
-  // modal inside its own overlays slot — so anything the last manche spent is
-  // still spent when the next one is dealt, and two manches running can carry
+  // Online the table is never unmounted between rounds — the result board is a
+  // modal inside its own overlays slot — so anything the last round spent is
+  // still spent when the next one is dealt, and two rounds running can carry
   // the same opener for the same reason.
-  it('announces the next manche, even when the same seat opens it for the same reason', async () => {
+  it('announces the next round, even when the same seat opens it for the same reason', async () => {
     const view = await render(table(state(OPENER)));
-    await view.rerender(table(midManche(OPENER + 1)));
+    await view.rerender(table(midRound(OPENER + 1)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
 
     // A fresh deal: nothing played, and the same seat opening for the same
@@ -167,15 +167,15 @@ describe('the manche-opening announcement', () => {
     await view.unmount();
   });
 
-  // `startReason` labels the whole manche and is never cleared, and the opener
+  // `startReason` labels the whole round and is never cleared, and the opener
   // takes the lead again every round they win. A table mounted after the
   // opening — an online reload, a rejoin, a resumed offline game — would
   // otherwise cover the felt mid-hand with the deal's own news.
   it('stays away on a table mounted after the opening was played', async () => {
-    const view = await render(table(midManche(OPENER + 1)));
+    const view = await render(table(midRound(OPENER + 1)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
 
-    await view.rerender(table(midManche(OPENER)));
+    await view.rerender(table(midRound(OPENER)));
     expect(screen.queryByTestId('start-reason-gate', { includeHiddenElements: true })).toBeNull();
 
     await view.unmount();
@@ -273,7 +273,7 @@ describe('the manche-opening announcement', () => {
     expect(plates()).toHaveLength(1);
     expect(screen.getAllByRole('alert')).toHaveLength(1);
 
-    await view.rerender(table({ ...midManche(OPENER + 1), firstPlayMade: true, startCard: dealt.startCard }));
+    await view.rerender(table({ ...midRound(OPENER + 1), firstPlayMade: true, startCard: dealt.startCard }));
     expect(plates()).toHaveLength(0);
 
     await view.unmount();
@@ -295,7 +295,7 @@ describe('the manche-opening announcement', () => {
       withdrawn(screen.getByTestId('control-rail', { includeHiddenElements: true }).props)
     ).toBe(true);
 
-    await view.rerender(table(midManche(OPENER + 1)));
+    await view.rerender(table(midRound(OPENER + 1)));
     expect(screen.getByTestId('game-table')).toBeTruthy();
     expect(screen.getByTestId('control-rail')).toBeTruthy();
 

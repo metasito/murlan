@@ -45,9 +45,9 @@ describe('a labelled control exposes one accessible node', () => {
 // does is what most of the app does.
 describe('MenuButton', () => {
   it('draws its own face rather than offering it as a second stop', async () => {
-    const view = await render(<MenuButton label="Inizia Partita" onPress={() => {}} />);
-    expect(view.queryAllByText('Inizia Partita', { includeHiddenElements: false })).toHaveLength(0);
-    expect(view.getByLabelText('Inizia Partita')).toBeTruthy();
+    const view = await render(<MenuButton label="Inizia Match" onPress={() => {}} />);
+    expect(view.queryAllByText('Inizia Match', { includeHiddenElements: false })).toHaveLength(0);
+    expect(view.getByLabelText('Inizia Match')).toBeTruthy();
   });
 
   it('hides an icon the caller supplied, which it cannot reach into', async () => {

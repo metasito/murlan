@@ -5,7 +5,7 @@
 // from the hand it returns without emitting anything at all, so a request built
 // from a stale selection is a lit GIOCA that does nothing and never explains
 // itself. Card ids are deterministic (`${rank}_${suit}`), so a leftover id also
-// matches a card in the next manche and renders it pre-selected.
+// matches a card in the next round and renders it pre-selected.
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import React, { Profiler } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';

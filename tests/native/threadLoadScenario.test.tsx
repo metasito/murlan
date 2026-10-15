@@ -53,7 +53,7 @@ describe('the thread-load scenarios drive and record', () => {
     delete diagnostics.benchHandles.feltOpaque;
   });
 
-  it('throwStalls records one throw per card play of one bot manche, never a pass, each with 700 ms of frames', async () => {
+  it('throwStalls records one throw per card play of one bot round, never a pass, each with 700 ms of frames', async () => {
     await scenarios.get('throwStalls')!(table);
     const plays = shown.slice(1).filter((s, i) => cardsInHand(s) < cardsInHand(shown[i])).length;
     const passes = shown.slice(1).filter((s, i) => cardsInHand(s) === cardsInHand(shown[i])).length;

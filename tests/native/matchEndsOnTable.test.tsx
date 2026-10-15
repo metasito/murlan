@@ -1,4 +1,4 @@
-// tests/native/partitaEndsOnTable.test.tsx — the last manche of a partita ends on the felt, offline
+// tests/native/matchEndsOnTable.test.tsx — the last round of a match ends on the felt, offline
 // and online: no route change and no results overlay; the score pill becomes the board with the
 // winner and both actions; a tap during the ending, or reduced motion, jumps to the settled board.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
@@ -9,7 +9,7 @@ import { ReduceMotion, ReducedMotionConfig, getAnimatedStyle } from 'react-nativ
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { setMotionPreference } from '@/lib/accessibility';
 import type { GameState, Player } from '@/lib/game/gameEngine';
-import { partitaEndingOnsets } from '@/lib/game/partitaEnding';
+import { matchEndingOnsets } from '@/lib/game/matchEnding';
 import { t } from '@/lib/i18n';
 import { Layer } from '@/lib/theme';
 import { StyleSheet } from 'react-native';
@@ -109,7 +109,7 @@ const OfflineGameScreen = (require('@/app/game') as { default: React.ComponentTy
 const OnlineGameScreen = (require('@/app/(online)/game') as { default: React.ComponentType }).default;
 const METRICS = { frame: { x: 0, y: 0, width: 844, height: 390 }, insets: { top: 0, left: 47, right: 34, bottom: 0 } };
 const HIDDEN = { includeHiddenElements: true };
-const { board, settled } = partitaEndingOnsets(4);
+const { board, settled } = matchEndingOnsets(4);
 const advance = (ms: number) => act(async () => void jest.advanceTimersByTime(ms));
 const wrap = (Screen: React.ComponentType) => (
   <SafeAreaProvider initialMetrics={METRICS}>
@@ -121,7 +121,7 @@ const pressable = (testID: string) => {
   const button = screen.queryByTestId(testID, HIDDEN);
   return button !== null && button.props.accessibilityState?.disabled !== true;
 };
-const dim = () => getAnimatedStyle(screen.getByTestId('partita-dim', HIDDEN)).opacity;
+const dim = () => getAnimatedStyle(screen.getByTestId('match-dim', HIDDEN)).opacity;
 const tap = () =>
   fireEvent(screen.getByTestId('pile-area', HIDDEN), 'startShouldSetResponderCapture', { nativeEvent: { pageX: 0, pageY: 0 } });
 
@@ -141,19 +141,19 @@ afterEach(() => {
 });
 
 describe.each<[string, React.ComponentType, string]>([
-  ['offline', OfflineGameScreen, 'btn-nuova-partita'],
+  ['offline', OfflineGameScreen, 'btn-new-match'],
   ['online', OnlineGameScreen, 'btn-rivincita'],
-])('a partita ending %s', (_where, Screen, againID) => {
+])('a match ending %s', (_where, Screen, againID) => {
   it('stays on the table and settles on the board with the winner and both actions', async () => {
     const view = await render(wrap(Screen));
     await advance(board - 100);
-    expect(screen.queryByTestId('partita-winner', HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('match-winner', HIDDEN)).toBeNull();
     expect(pressable(againID)).toBe(false);
 
     await advance(settled);
     expect(router.replace).not.toHaveBeenCalled();
-    expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
-    expect(screen.getAllByText(t('partitaBoard.wins'), HIDDEN).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
+    expect(screen.getAllByText(t('matchBoard.wins'), HIDDEN).length).toBeGreaterThan(0);
     expect(screen.getByTestId('score-pill-winner-row', HIDDEN)).toHaveTextContent('1');
     expect(dim()).toBeCloseTo(0.6);
     expect(pressable('btn-home')).toBe(true);
@@ -177,16 +177,16 @@ describe.each<[string, React.ComponentType, string]>([
     const view = await render(wrap(Screen));
     await advance(16);
     expect(pressable(againID)).toBe(true);
-    expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
+    expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
     await view.unmount();
   });
 });
 
-describe('Nuova partita on the board', () => {
-  it('starts a new partita offline, with no route change', async () => {
+describe('New match on the board', () => {
+  it('starts a new match offline, with no route change', async () => {
     const view = await render(wrap(OfflineGameScreen));
     await advance(settled + 100);
-    await fireEvent.press(screen.getByTestId('btn-nuova-partita', HIDDEN));
+    await fireEvent.press(screen.getByTestId('btn-new-match', HIDDEN));
     expect(mockStartNewMatch).toHaveBeenCalledTimes(1);
     expect(router.replace).not.toHaveBeenCalled();
 
@@ -196,7 +196,7 @@ describe('Nuova partita on the board', () => {
     await view.unmount();
   });
 
-  it('holds the online board until the manche scores arrive', async () => {
+  it('holds the online board until the round scores arrive', async () => {
     mockScoresCurrent = false;
     const view = await render(wrap(OnlineGameScreen));
     await advance(settled + 100);
@@ -239,28 +239,28 @@ describe('the viewer rating under the winner', () => {
   const settle = async (Screen: React.ComponentType) => {
     const view = await render(wrap(Screen));
     await advance(board + settled);
-    expect(screen.getByTestId('partita-winner-name', HIDDEN)).toHaveTextContent('Luan');
+    expect(screen.getByTestId('match-winner-name', HIDDEN)).toHaveTextContent('Luan');
     return view;
   };
   const spoken = () => screen.getByTestId('score-pill-panel', HIDDEN).props.accessibilityLabel as string;
 
-  it('shows the signed delta, the new rating and the provisional count for a ranked partita', async () => {
+  it('shows the signed delta, the new rating and the provisional count for a ranked match', async () => {
     mockRatingDeltas = { alice: -8, luan: 14 };
     mockRatingsAfter = { alice: { rating: 1192, games: 3 }, luan: { rating: 1214, games: 9 } };
     const view = await settle(OnlineGameScreen);
-    expect(screen.getByText(t('partitaBoard.ratingLabel'), HIDDEN)).toBeTruthy();
-    expect(screen.getByTestId('partita-rating-delta', HIDDEN)).toHaveTextContent('−8');
-    expect(screen.getByTestId('partita-rating', HIDDEN)).toHaveTextContent('1192', { exact: false });
-    expect(screen.getByText(t('partitaBoard.provisional', { n: 2 }), HIDDEN)).toBeTruthy();
-    expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
-    expect(spoken()).toContain(t('partitaBoard.ratingSpoken', { delta: '−8', rating: 1192 }));
+    expect(screen.getByText(t('matchBoard.ratingLabel'), HIDDEN)).toBeTruthy();
+    expect(screen.getByTestId('match-rating-delta', HIDDEN)).toHaveTextContent('−8');
+    expect(screen.getByTestId('match-rating', HIDDEN)).toHaveTextContent('1192', { exact: false });
+    expect(screen.getByText(t('matchBoard.provisional', { n: 2 }), HIDDEN)).toBeTruthy();
+    expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
+    expect(spoken()).toContain(t('matchBoard.ratingSpoken', { delta: '−8', rating: 1192 }));
     await view.unmount();
   });
 
   it('shows the delta alone, signed, when no rating came with it', async () => {
     mockRatingDeltas = { alice: 14 };
     const view = await settle(OnlineGameScreen);
-    expect(screen.getByTestId('partita-rating', HIDDEN)).toHaveTextContent('+14');
+    expect(screen.getByTestId('match-rating', HIDDEN)).toHaveTextContent('+14');
     expect(screen.queryByText(/provvisorio|provisional/i, HIDDEN)).toBeNull();
     await view.unmount();
   });
@@ -268,20 +268,20 @@ describe('the viewer rating under the winner', () => {
   it('says when the hand was not recorded, with no delta', async () => {
     mockRecorded = false;
     const view = await settle(OnlineGameScreen);
-    expect(screen.getByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeTruthy();
-    expect(screen.getByText(t('partitaBoard.tooManyBots'), HIDDEN)).toBeTruthy();
-    expect(screen.queryByTestId('partita-rating-delta', HIDDEN)).toBeNull();
-    expect(spoken()).toContain(t('partitaBoard.notRecordedSpoken'));
+    expect(screen.getByText(t('matchBoard.notRecorded'), HIDDEN)).toBeTruthy();
+    expect(screen.getByText(t('matchBoard.tooManyBots'), HIDDEN)).toBeTruthy();
+    expect(screen.queryByTestId('match-rating-delta', HIDDEN)).toBeNull();
+    expect(spoken()).toContain(t('matchBoard.notRecordedSpoken'));
     await view.unmount();
   });
 
-  it('says nothing about a partita the server closed unscored', async () => {
+  it('says nothing about a match the server closed unscored', async () => {
     mockRecorded = false;
     const closed = MOCK_MATCH.continues;
     MOCK_MATCH.continues = false;
     try {
       const view = await settle(OnlineGameScreen);
-      expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
+      expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
       await view.unmount();
     } finally {
       MOCK_MATCH.continues = closed;
@@ -292,8 +292,8 @@ describe('the viewer rating under the winner', () => {
     mockRatingDeltas = { alice: 14 };
     mockRecorded = false;
     const view = await settle(OfflineGameScreen);
-    expect(screen.queryByTestId('partita-rating', HIDDEN)).toBeNull();
-    expect(screen.queryByText(t('partitaBoard.notRecorded'), HIDDEN)).toBeNull();
+    expect(screen.queryByTestId('match-rating', HIDDEN)).toBeNull();
+    expect(screen.queryByText(t('matchBoard.notRecorded'), HIDDEN)).toBeNull();
     await view.unmount();
   });
 });

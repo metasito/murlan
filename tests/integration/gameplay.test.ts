@@ -516,11 +516,11 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
   }
 
   /**
-   * `rooms.status` is set to "finished" after every manche, not only at the end
+   * `rooms.status` is set to "finished" after every round, not only at the end
    * of a match, so it cannot tell a table that is waiting to deal again from
    * one that is over. Nothing else removes a seat between hands and the
    * unanimous ready gate counts seats, so the seat has to be freed here or one
-   * player tapping "Torna alla lobby" blocks the next manche for everyone else.
+   * player tapping "Torna alla lobby" blocks the next round for everyone else.
    */
   test("a player leaving at the results screen frees the seat and the table plays on", async () => {
     const [alice, bob, carol] = await makeClients([
@@ -532,7 +532,7 @@ describe("gameplay integrity", { skip: hasDatabase() ? false : skipMessage() }, 
     await playOpeningHand([alice, bob, carol]);
 
     // The hazard this fix has to avoid: `game:player_left` drives the client's
-    // blocking "Partita interrotta" teardown, which would eject both survivors
+    // blocking "Match interrupted" teardown, which would eject both survivors
     // from a table the server is about to restart.
     const bobTeardowns = collect(bob, "game:player_left");
     const carolTeardowns = collect(carol, "game:player_left");

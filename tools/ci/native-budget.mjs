@@ -27,11 +27,11 @@ export const MAX_EXCEPTION_S = 60;
 export const EXCEPTIONS = {
   "ios:tests/native/oneSoundPerMoment.test.tsx": {
     seconds: 60,
-    why: "Plays a whole bot manche, every move held as long as an offline bot thinks: its claim is about every state change of one, and a prefix would be a weaker claim.",
+    why: "Plays a whole bot round, every move held as long as an offline bot thinks: its claim is about every state change of one, and a prefix would be a weaker claim.",
   },
   "ios:tests/native/everyMomentHasACaller.test.tsx": {
     seconds: 30,
-    why: "Plays a bot manche until a trick has closed and the next one opened, which a random deal reaches in a varying number of moves: 11.4 s and 13.2 s on one tree.",
+    why: "Plays a bot round until a trick has closed and the next one opened, which a random deal reaches in a varying number of moves: 11.4 s and 13.2 s on one tree.",
   },
   "ios:tests/native/pileMountsOnceFull.test.tsx": {
     seconds: 35,

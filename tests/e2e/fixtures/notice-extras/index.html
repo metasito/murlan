@@ -419,7 +419,7 @@ const SCENES=[
    const lead=s.pick.shape==='pill'?'<i class="dot"></i>':ICO.alert(c);
    return `<div id="n-toast" class="nt s-${s.pick.shape} t-${s.pick.tone}" style="left:457px;top:300px;transform:translateX(-50%)" aria-live="polite">${lead}<span class="tx">${esc(t)}</span></div>`;}},
  {key:'waiting',id:'n-waiting',kind:'pill',title:'(c) "Waiting for the others"',
-  context:'You went out; the manche goes on without you. The line stands where your hand was, at the centre of the hand row, for the rest of the manche. The copy is <code>gameTable.waitingOthers</code>.',
+  context:'You went out; the round goes on without you. The line stands where your hand was, at the centre of the hand row, for the rest of the round. The copy is <code>gameTable.waitingOthers</code>.',
   opts:[['shape',['pill','line'],['Pill','Bare line']],['tone',['gold','muted'],['Gold','Muted']]],
   pick:{shape:'pill',tone:'gold'},aid:{},
   notes:{shape:{pill:'<b>Pill</b>: a <code>.chip</code> with the trophy, in capitals. Its own plate, so it reads wherever the lamp stands.',line:'<b>Bare line</b>: the words on the felt with the soft dark text shadow Q9 allows, no plate, sentence case at 13. Quieter, like the seat names.'},

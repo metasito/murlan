@@ -193,7 +193,7 @@ export async function announceRejoin(
     logger.warn({ err, roomId, userId }, "emitRoomStateTo failed")
   );
   sendGameStateTo(io, userId, game);
-  // The client reads this as the framing of a manche that has just begun and
+  // The client reads this as the framing of a round that has just begun and
   // zeroes the match verdict along with it, so it is only right while one is
   // running — at the results screen `game:over` owns that.
   if (!game.gameState.gameOver) {

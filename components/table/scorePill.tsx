@@ -12,24 +12,24 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import {
-  MANCHE_IDLE,
-  MANCHE_STEPS,
-  mancheGlow,
-  mancheOpen,
-  mancheRerank,
-  mancheRowCount,
-  mancheRowPop,
+  ROUND_IDLE,
+  ROUND_STEPS,
+  roundGlow,
+  roundOpen,
+  roundRerank,
+  roundRowCount,
+  roundRowPop,
   type EndingSteps,
-} from "@/lib/game/mancheEnding";
-import { PARTITA_STEPS, partitaActions, partitaBoard, partitaWinnerBox } from "@/lib/game/partitaEnding";
+} from "@/lib/game/roundEnding";
+import { MATCH_STEPS, matchActions, matchBoard, matchWinnerBox } from "@/lib/game/matchEnding";
 import {
   BOARD_ACTIONS_AT,
-  PartitaBoardButtons,
-  PartitaWinnerBox,
-  partitaWinnerSpoken,
-  type PartitaBoardActions,
-  type PartitaWinner,
-} from "./partitaBoard";
+  MatchBoardButtons,
+  MatchWinnerBox,
+  matchWinnerSpoken,
+  type MatchBoardActions,
+  type MatchWinner,
+} from "./matchBoard";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Rect } from "react-native-svg";
 import { TableText } from "./TableText";
@@ -115,7 +115,7 @@ export function ScorePill({
   onPress,
   anchor,
   ending,
-  partita = null,
+  match = null,
 }: {
   standings: PillStandings;
   target: number;
@@ -123,24 +123,24 @@ export function ScorePill({
   /** Toggles `open`. A tap elsewhere on the table closing it is the table's job. */
   onPress: () => void;
   anchor: PillAnchor;
-  /** The ending's clock (`lib/game/mancheEnding.ts`), which opens, counts in, re-ranks and closes the pill. */
+  /** The ending's clock (`lib/game/roundEnding.ts`), which opens, counts in, re-ranks and closes the pill. */
   ending?: SharedValue<number>;
-  /** The partita is over: `ending` runs `lib/game/partitaEnding.ts`, and the pill becomes the board. */
-  partita?: { winner: PartitaWinner; winnerKeys: readonly string[]; actions: PartitaBoardActions } | null;
+  /** The match is over: `ending` runs `lib/game/matchEnding.ts`, and the pill becomes the board. */
+  match?: { winner: MatchWinner; winnerKeys: readonly string[]; actions: MatchBoardActions } | null;
 }) {
   const { t, tn } = useTranslation();
   const reduce = usePrefersReducedMotion();
   const progress = useSharedValue(0);
-  const idle = useSharedValue(MANCHE_IDLE);
+  const idle = useSharedValue(ROUND_IDLE);
   const clock = ending ?? idle;
-  const steps = partita ? PARTITA_STEPS : MANCHE_STEPS;
-  const boarding = partita !== null;
-  const boardProgress = useDerivedValue(() => (boarding ? partitaBoard(clock.value) : 0));
-  const shownOpen = useDerivedValue(() => Math.max(progress.value, mancheOpen(clock.value, steps)));
+  const steps = match ? MATCH_STEPS : ROUND_STEPS;
+  const boarding = match !== null;
+  const boardProgress = useDerivedValue(() => (boarding ? matchBoard(clock.value) : 0));
+  const shownOpen = useDerivedValue(() => Math.max(progress.value, roundOpen(clock.value, steps)));
   const [boardFilled, setBoardFilled] = useState(false);
   const [actionsLive, setActionsLive] = useState(false);
   useAnimatedReaction(
-    () => [boardProgress.value > 0, boarding && partitaActions(clock.value) >= 1] as const,
+    () => [boardProgress.value > 0, boarding && matchActions(clock.value) >= 1] as const,
     ([filled, live], prev) => {
       if (filled !== prev?.[0]) scheduleOnRN(setBoardFilled, filled);
       if (live !== prev?.[1]) scheduleOnRN(setActionsLive, live);
@@ -155,9 +155,9 @@ export function ScorePill({
   useAnimatedReaction(
     () => {
       const e = clock.value;
-      const reranked = mancheRerank(e, steps) >= 0.5;
+      const reranked = roundRerank(e, steps) >= 0.5;
       return counts
-        .map((r) => `${Math.round(r.before + (r.total - r.before) * mancheRowCount(e, r.order, steps))}:${reranked ? r.place : r.beforePlace}`)
+        .map((r) => `${Math.round(r.before + (r.total - r.before) * roundRowCount(e, r.order, steps))}:${reranked ? r.place : r.beforePlace}`)
         .join(",");
     },
     (key, prev) => {
@@ -196,15 +196,15 @@ export function ScorePill({
     return { top: box.y - hit.y, width: box.w, height: box.h, borderRadius: box.radius };
   });
   const liftStyle = useAnimatedStyle(() => ({ opacity: scorePillLift(shownOpen.value, boardProgress.value) }));
-  const glowStyle = useAnimatedStyle(() => ({ opacity: mancheGlow(clock.value, glows, steps) }));
-  const winnerBoxStyle = useAnimatedStyle(() => ({ opacity: partitaWinnerBox(clock.value) }));
+  const glowStyle = useAnimatedStyle(() => ({ opacity: roundGlow(clock.value, glows, steps) }));
+  const winnerBoxStyle = useAnimatedStyle(() => ({ opacity: matchWinnerBox(clock.value) }));
   const actionsStyle = useAnimatedStyle(() => {
     const box = scorePillBox(shownOpen.value, boardProgress.value, anchor);
     const hit = scorePillHitBox(shownOpen.value, boardProgress.value, anchor, TOUCH_TARGET_MIN);
     return {
       left: box.x - hit.x + BOARD_ACTIONS_AT.x * u,
       top: box.y - hit.y + BOARD_ACTIONS_AT.y * u,
-      opacity: partitaActions(clock.value),
+      opacity: matchActions(clock.value),
     };
   });
   const shadowOf = ({ offsetY, blur }: { offsetY: number; blur: number }) => ({
@@ -228,7 +228,7 @@ export function ScorePill({
     ? tn("scorePill.a11yLabel", mine.total, { target, place: mine.place })
     : t("scorePill.standings");
   const spokenStandings = [
-    ...(partita && boardFilled ? [partitaWinnerSpoken(partita.winner, t)] : []),
+    ...(match && boardFilled ? [matchWinnerSpoken(match.winner, t)] : []),
     t("scorePill.standings"),
     ...standings.rows.map((row) => tn("scorePill.a11yRow", row.total, { place: row.place, name: nameOf(row) })),
   ].join(" ");
@@ -319,9 +319,9 @@ export function ScorePill({
           {...(open || boarding ? a11yGroup(spokenStandings) : a11yHidden())}
           style={[StyleSheet.absoluteFill, panelStyle]}
         >
-          {partita && boardFilled && (
+          {match && boardFilled && (
             <Animated.View style={[StyleSheet.absoluteFill, winnerBoxStyle]}>
-              <PartitaWinnerBox winner={partita.winner} unit={u} height={BOARD_H * u} />
+              <MatchWinnerBox winner={match.winner} unit={u} height={BOARD_H * u} />
             </Animated.View>
           )}
           <Animated.View {...a11yHidden()} style={[styles.header, { width: PILL_HEADER.w * u }, headerStyle]}>
@@ -352,16 +352,16 @@ export function ScorePill({
               board={boardProgress}
               ending={clock}
               steps={steps}
-              won={boardFilled && (partita?.winnerKeys.includes(row.key) ?? false)}
+              won={boardFilled && (match?.winnerKeys.includes(row.key) ?? false)}
               unit={u}
               target={target}
             />
           ))}
         </Animated.View>
       </Animated.View>
-      {partita && boardFilled && (
+      {match && boardFilled && (
         <Animated.View style={[styles.actions, actionsStyle]} pointerEvents="box-none">
-          <PartitaBoardButtons actions={partita.actions} unit={u} live={actionsLive} />
+          <MatchBoardButtons actions={match.actions} unit={u} live={actionsLive} />
         </Animated.View>
       )}
       <Animated.View testID="score-pill-glow" pointerEvents="none" style={[styles.shadow, styles.glow, { boxShadow: `0px 0px ${GLOW_BLUR * u}px ${GLOW}` }, pillStyle, glowStyle]} />
@@ -398,7 +398,7 @@ function StandingRowView({
   const h = PILL_ROW.h * u;
   const { before, total: after, order, beforePos } = row;
   const placed = useAnimatedStyle(() => {
-    const at = scorePillRow(beforePos + (pos - beforePos) * mancheRerank(ending.value, steps), board.value, u);
+    const at = scorePillRow(beforePos + (pos - beforePos) * roundRerank(ending.value, steps), board.value, u);
     return {
       transform: [
         { translateX: at.x + (w * (at.scale - 1)) / 2 },
@@ -408,11 +408,11 @@ function StandingRowView({
     };
   });
   const popStyle = useAnimatedStyle(() => {
-    const pop = mancheRowPop(ending.value, order, steps);
+    const pop = roundRowPop(ending.value, order, steps);
     return { opacity: Math.min(1, pop), transform: [{ scale: GAIN_FROM_SCALE + (1 - GAIN_FROM_SCALE) * pop }] };
   });
   const fillStyle = useAnimatedStyle(() => {
-    const counted = before + (after - before) * mancheRowCount(ending.value, order, steps);
+    const counted = before + (after - before) * roundRowCount(ending.value, order, steps);
     return { width: `${(Math.min(counted, target) / target) * 100}%` };
   });
   const text = tableFontSize(FontSize.xs, u);

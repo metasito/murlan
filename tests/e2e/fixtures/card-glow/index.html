@@ -113,7 +113,7 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 #gioca.lit{background:linear-gradient(160deg,#F3E0A6,#C9A84C 48%,#A8832B);border:1px solid #F3E0A6;color:#2a1f08;box-shadow:0 4px 10px rgba(0,0,0,.5),0 0 26.8px rgba(243,224,166,.35)}
 .floatchip{position:absolute;left:457px;top:300px;transform:translateX(-50%)}
 
-/* the score pill: a chip at rest, a panel when open, today's board at the end of a partita */
+/* the score pill: a chip at rest, a panel when open, today's board at the end of a match */
 #score{position:absolute;box-sizing:border-box;border-radius:12px;background:linear-gradient(180deg,rgba(18,36,26,.95),rgba(3,14,9,.93) 60%);border:1px solid rgba(201,168,76,.45);overflow:hidden;cursor:pointer;pointer-events:auto}
 #score .pc{position:absolute;left:0;top:0;right:0;height:21.7px;display:flex;align-items:center;gap:6px;padding:0 10px;white-space:nowrap}
 .pc svg{flex:none}
@@ -573,7 +573,7 @@ function giveBack(id,k){selectCard(id);later(420,()=>{sfx('exchange');const t=HE
   S.hand=S.hand.filter(c=>c!==id);S.sel=[];layHand();
   tw(460,e=>{const p=clamp((e-.25)/.45);if(p>=.5&&!back){back=true;node.innerHTML='';node.className='card bkc';node.style.background=backURL(look.back,t.w,t.h)+' center/100% 100%';node._gl=el('gl','',node);}
     set(lerp(t.x,fx,e),lerp(t.y,fy,e)-40*Math.sin(Math.PI*e),lerp(t.rot,rot,e),lerp(1,.34,e),Math.max(.02,Math.abs(Math.cos(Math.PI*p))));},{ease:easeOut,done:()=>{node.remove();S.counts[k]++;renderSeats();}});});}
-function endManche(note){const k=S.cur.by;if(k!=='you'&&!S.out.includes(k))S.out.push(k);S.turn=null;S.note=note||'Fine manche';renderSeats();renderHud();}
+function endRound(note){const k=S.cur.by;if(k!=='you'&&!S.out.includes(k))S.out.push(k);S.turn=null;S.note=note||'Fine round';renderSeats();renderHud();}
 function nextDeal(){const g=$('#pile');tw(150,e=>g.style.opacity=1-e,{done:()=>{g.innerHTML='';g.style.opacity='';}});later(160,()=>dealRun(sceneT,H13,()=>setTurn('you')));}
 function net(cls,text){S.net=cls;S.netText=text;renderTurn();}
 
@@ -587,11 +587,11 @@ for(const k of ALL){const r=el('rw'+(k==='you'?' me':''),`<span class="r"></span
   SC.rows[k]={el:r,r:r.querySelector('.r'),a:r.querySelector('.a'),g:r.querySelector('.g'),dl:r.querySelector('.dl'),t:r.querySelector('.t'),b4:0,af:0,tick:1,pos:0,pop:0};}
 const ranking=f=>ALL.slice().sort((a,b)=>SC.rows[b][f]-SC.rows[a][f]||SC.rows[a].pos-SC.rows[b].pos);
 function scoreInit(sc){for(const k of ALL){const r=SC.rows[k];r.b4=r.af=sc[k];r.tick=1;r.pop=0;}ranking('b4').forEach((k,i)=>SC.rows[k].pos=i);Object.assign(SC,{o:0,b:0,bx:0,bt:0,glow:0,user:false,win:null});$('#dim').style.opacity=0;}
-function payoff(t0,after,order,partita,winner){const rs=SC.rows;for(const k of ALL)rs[k].af=after[k];SC.user=false;
-  at(t0+(partita?600:700),()=>tw(240,e=>SC.o=e,{ease:backOut}));
-  order.forEach((k,i)=>{const r=rs[k];at(t0+(partita?800+i*100:900+i*120),()=>{r.tick=0;tw(180,e=>r.pop=e,{ease:backOut});tw(partita?450:500,e=>r.tick=e,{ease:easeOut});});});
-  at(t0+(partita?1350:1500),()=>ranking('af').forEach((k,i)=>{const r=rs[k],p0=r.pos;if(p0!==i)tw(300,e=>r.pos=lerp(p0,i,e),{ease:easeIO});}));
-  if(!partita)at(t0+2150,()=>tw(250,e=>SC.o=1-e,{ease:easeOut,done:()=>{for(const k of ALL){rs[k].b4=rs[k].af;rs[k].pop=0;}SC.glow=1;tw(900,e=>SC.glow=1-e);}}));
+function payoff(t0,after,order,match,winner){const rs=SC.rows;for(const k of ALL)rs[k].af=after[k];SC.user=false;
+  at(t0+(match?600:700),()=>tw(240,e=>SC.o=e,{ease:backOut}));
+  order.forEach((k,i)=>{const r=rs[k];at(t0+(match?800+i*100:900+i*120),()=>{r.tick=0;tw(180,e=>r.pop=e,{ease:backOut});tw(match?450:500,e=>r.tick=e,{ease:easeOut});});});
+  at(t0+(match?1350:1500),()=>ranking('af').forEach((k,i)=>{const r=rs[k],p0=r.pos;if(p0!==i)tw(300,e=>r.pos=lerp(p0,i,e),{ease:easeIO});}));
+  if(!match)at(t0+2150,()=>tw(250,e=>SC.o=1-e,{ease:easeOut,done:()=>{for(const k of ALL){rs[k].b4=rs[k].af;rs[k].pop=0;}SC.glow=1;tw(900,e=>SC.glow=1-e);}}));
   else{at(t0+1600,()=>{boardFill(winner);tw(600,e=>SC.b=e,{ease:easeIO});tw(400,e=>$('#dim').style.opacity=(.6*e).toFixed(3));});
     at(t0+2100,()=>tw(300,e=>SC.bx=e,{ease:easeOut}));at(t0+2600,()=>tw(300,e=>SC.bt=e,{ease:easeOut}));}}
 function boardFill(w){const me=w==='you';SC.win=w;scoreEl.querySelector('.bx').innerHTML=`<div class="tb"><div style="width:24px;height:24px">${TROPHY.replace('#F3E0A6','#C9A84C')}</div></div><span>${me?'Hai vinto':'Vince'}</span><b class="${me?'me':''}">${NAMES[w]}</b><span>Partita a 21${DOT}${SC.rows[w].af}</span>`;}
@@ -623,7 +623,7 @@ const BASE={you:15,besnik:16,luan:11,gent:10};
 function setup(o,sc){fresh(o);scoreInit(sc||BASE);$('#pile').innerHTML='';render();}
 const CH=[
  {key:'deal',name:'Deal and exchange',dur:5600,
-  line:'The felt breathes once and the lamp comes up from 75% as 13 cards fly 42 ms apart, each kicking up three specks. Then the exchange: Luan, last in the manche before, hands over his best card, and you hand back one from 3 to 10.',
+  line:'The felt breathes once and the lamp comes up from 75% as 13 cards fly 42 ms apart, each kicking up three specks. Then the exchange: Luan, last in the round before, hands over his best card, and you hand back one from 3 to 10.',
   tags:[['Sound','deal-now'],['Sound','exchange-1, twice'],['Sound','turn-2'],['Particles','3 specks per card'],['Lamp','75% to full']],
   run(){setup({counts:{besnik:0,gent:0,luan:0}});lamp.lvl=lamp.lvlT=.75;at(40,()=>{lamp.lvlT=1;lamp.lvlRate=2.2;});
    dealRun(0,H13);at(1250,()=>{S.note='Scambio';renderHud();receive('luan','2h');});
@@ -646,17 +646,17 @@ const CH=[
   tags:[['Sound','clock-2'],['Sound','pass-2'],['Turn pill','ember red in the last 4 s']],
   run(){setup({hand:HT.slice()});setPile('besnik',['9c','9s'],'Coppia');setTurn('you',true);S.used=24000;S.clockRate=1.5;
    S.onClock=rem=>{if(S.turn!=='you')return;if(rem<=4000&&!S.urgent){S.urgent=true;sfx('clock');renderHud();}if(rem<=0){S.onClock=null;S.urgent=false;passYou();handoff('you','luan');}};}},
- {key:'mwin',name:'Manche won',dur:5000,t0:880,settle:4260,
-  line:'You went out first and Gent second; Besnik plays his last card, so the manche is over. 46 gold motes burst from your place and the table gives a small shake. The score pill opens by itself: each seat\'s points count in, you climb to first, and it closes before the next deal starts at 2500 ms.',
+ {key:'mwin',name:'Round won',dur:5000,t0:880,settle:4260,
+  line:'You went out first and Gent second; Besnik plays his last card, so the round is over. 46 gold motes burst from your place and the table gives a small shake. The score pill opens by itself: each seat\'s points count in, you climb to first, and it closes before the next deal starts at 2500 ms.',
   tags:[['Sound','play-kenney1'],['Sound','mwin-6'],['Sound','deal-now'],['Particles','46 motes'],['Shake','trauma 0.40'],['Score pill','opens 700 ms, closes by 2400 ms']],
   run(){setup({counts:{besnik:1,gent:0,luan:5},out:['gent']},{you:15,besnik:16,luan:11,gent:10});setPile('luan',['8c'],'Singola');setTurn('besnik',true);
-   at(500,()=>play('besnik',['Kd'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endManche();trauma=.4;burstMotes(seatPt('you'),46);later(300,()=>sfx('mwin'));
+   at(500,()=>play('besnik',['Kd'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endRound();trauma=.4;burstMotes(seatPt('you'),46);later(300,()=>sfx('mwin'));
     payoff(t0,{you:18,gent:12,besnik:17,luan:11},['you','gent','besnik','luan'],false);at(t0+2500,nextDeal);}));}},
- {key:'mlose',name:'Manche lost',dur:5000,t0:880,settle:4260,
+ {key:'mlose',name:'Round lost',dur:5000,t0:880,settle:4260,
   line:'Luan went out first and Besnik second; Gent plays his last card and you are left holding four. The lamp turns to Luan and the table dims to 80%, with no flare and no shake. The pill opens, and you drop to second.',
   tags:[['Sound','play-kenney1'],['Sound','mlose-1'],['Particles','20 motes at the winner'],['Lamp','turns to the winner, 80%'],['Score pill','opens by itself']],
   run(){setup({hand:['4d','8d','10h','Qd'],counts:{besnik:0,gent:1,luan:0},out:['luan','besnik']},{you:18,besnik:17,gent:12,luan:11});setPile('you',['7c'],'Singola');setTurn('gent',true);
-   at(500,()=>play('gent',['Ac'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endManche();lampTo('luan');lamp.lvlT=.8;lamp.lvlRate=5;burstMotes(seatPt('luan'),20,.7);later(300,()=>sfx('mlose'));
+   at(500,()=>play('gent',['Ac'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endRound();lampTo('luan');lamp.lvlT=.8;lamp.lvlRate=5;burstMotes(seatPt('luan'),20,.7);later(300,()=>sfx('mlose'));
     payoff(t0,{luan:14,besnik:19,gent:13,you:18},['luan','besnik','gent','you'],false);at(t0+2500,()=>{lamp.lvlT=1;lamp.lvlRate=3;nextDeal();});}));}},
  {key:'reconnect',name:'Reconnect',dur:9600,
   line:'The connection drops while Gent is on move: the table goes grey and holds still, and the turn pill says it is reconnecting. It comes back, the colour returns in 400 ms and Gent\'s pair springs in. Then it drops again and the app gives up.',
@@ -666,20 +666,20 @@ const CH=[
    at(3400,()=>{net('ok','Di nuovo in linea');sfx('reconnect');grayTo(0,400);lamp.freeze=0;play('gent',['Jc','Jd'],'Coppia',()=>{S.clockRate=1;setTurn('you');},200);});
    at(4700,()=>net('',''));at(5600,()=>{S.clockRate=0;grayTo(.85,300);lamp.freeze=1;});at(6100,()=>net('net','Riconnessione'+ELL));
    at(7800,()=>{net('bad','Connessione persa <u>Riprova</u>');lamp.lvlT=.55;lamp.lvlRate=1;});}},
- {key:'pwin',name:'Partita won',dur:7600,t0:880,settle:3800,hold:1,
-  line:'You went out first with 19 points; Luan\'s last card ends the manche and takes you to 22. The lamp flares, gold rains through its cone and motes burst from your place. The pill opens, counts you past 21, and becomes today\'s board on the felt. It waits for a tap.',
+ {key:'pwin',name:'Match won',dur:7600,t0:880,settle:3800,hold:1,
+  line:'You went out first with 19 points; Luan\'s last card ends the round and takes you to 22. The lamp flares, gold rains through its cone and motes burst from your place. The pill opens, counts you past 21, and becomes today\'s board on the felt. It waits for a tap.',
   tags:[['Sound','play-kenney1'],['Sound','pwin-3'],['Particles','46 motes + 60 rain'],['Shake','trauma 0.50'],['Board','settled by 3000 ms']],
   run(){setup({counts:{besnik:0,gent:4,luan:1},out:['besnik']},{you:19,besnik:17,luan:14,gent:13});setPile('gent',['9h'],'Singola');setTurn('luan',true);
-   at(500,()=>play('luan',['2c'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endManche('Partita finita');trauma=.5;burstMotes(seatPt('you'),46);lamp.flare=1;coneRain(60,1200);later(300,()=>sfx('pwin'));
+   at(500,()=>play('luan',['2c'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endRound('Partita finita');trauma=.5;burstMotes(seatPt('you'),46);lamp.flare=1;coneRain(60,1200);later(300,()=>sfx('pwin'));
     payoff(t0,{you:22,besnik:19,luan:15,gent:13},['you','besnik','luan','gent'],true,'you');}));}},
- {key:'plose',name:'Partita lost',dur:7600,t0:880,settle:3800,hold:1,
+ {key:'plose',name:'Match lost',dur:7600,t0:880,settle:3800,hold:1,
   line:'Besnik went out first and reaches 22. You play your last card for third place, the lamp turns to Besnik and the table dims. The pill opens, then becomes the board naming the winner.',
   tags:[['Sound','select-2'],['Sound','play-kenney1'],['Sound','plose-1'],['Particles','20 motes at the winner'],['Lamp','turns to the winner, 80%']],
   run(){setup({hand:['Ks'],counts:{besnik:0,gent:3,luan:0},out:['besnik','luan']},{besnik:19,you:19,luan:14,gent:13});setPile('gent',['Jh'],'Singola');setTurn('you',true);
-   at(200,()=>selectCard('Ks'));at(500,()=>{press('#gioca');play('you',['Ks'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endManche('Partita finita');lampTo('besnik');lamp.lvlT=.8;lamp.lvlRate=5;burstMotes(seatPt('besnik'),20,.7);later(300,()=>sfx('plose'));
+   at(200,()=>selectCard('Ks'));at(500,()=>{press('#gioca');play('you',['Ks'],'Singola',n=>{const t0=sceneT;landDust(n,21,3);endRound('Partita finita');lampTo('besnik');lamp.lvlT=.8;lamp.lvlRate=5;burstMotes(seatPt('besnik'),20,.7);later(300,()=>sfx('plose'));
     payoff(t0,{besnik:22,luan:16,you:20,gent:13},['besnik','luan','you','gent'],true,'besnik');});});}},
  {key:'rest',name:'At rest',dur:14000,
-  line:'Most of a manche: someone thinking, nothing moving but the light. The lamp sways and its period drifts, so no two swings match; 40 motes drift in the cone, and a moth crosses every 10 to 15 seconds. The plastic cards catch the lamp as it passes.',
+  line:'Most of a round: someone thinking, nothing moving but the light. The lamp sways and its period drifts, so no two swings match; 40 motes drift in the cone, and a moth crosses every 10 to 15 seconds. The plastic cards catch the lamp as it passes.',
   tags:[['Lamp','sway, about 7 s'],['Particles','40 motes, a moth'],['Cards','the lamp reflected']],
   run(){setup({hand:HT.slice()});setPile('besnik',['9c','9s'],'Coppia');setTurn('you',true);lamp.mothAt=simT+2.5;S.onClock=rem=>{if(rem<=0)S.used=0;};}}];
 

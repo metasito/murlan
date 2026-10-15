@@ -107,7 +107,7 @@ describe("a match abandoned with no hand yet decided is voided, not scored (#850
     const game = baseGame({
       gameState: midHandTwoSeats(),
       playerMap: { 0: "alice", 1: "bob" },
-      handsPlayed: 1, // one manche already resolved for real
+      handsPlayed: 1, // one round already resolved for real
       cumulativeScores: { alice: 3, bob: 1 },
     });
     activeGames.set(ROOM, game);

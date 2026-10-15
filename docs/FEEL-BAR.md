@@ -282,7 +282,7 @@ below rather than assigned to whichever occurrence looked closest.
   highlight first, a sound cue fires 0.8s later, the chip/mult total counts up on its own
   0.5s ease, and only on the biggest win does a 2.5s beat bring in a character — four
   distinct, separately-timed reveals rather than one screen.
-- Frame check: sampling frames across the first second after a manche is won shows the
+- Frame check: sampling frames across the first second after a round is won shows the
   scoring cards highlighted before the total begins counting, and the total still counting
   (not yet at rest) at least 200ms after the highlight appears — a capture set where the
   highlight and the final total appear on the same frame has collapsed the sequence into a
@@ -298,7 +298,7 @@ auto-playing celebration may run before it needs a pause control.
 - What it does that an untimed celebration doesn't: draws a hard line between "brief enough
   to need no control" and "needs one," which our own `Reading.notice` (4000ms) already sits
   inside — worth stating as a found consistency, not a new constraint.
-- Frame check: from the manche-won banner's first visible frame to its last, no more than
+- Frame check: from the round-won banner's first visible frame to its last, no more than
   4000ms elapses (our own budget, itself under the 5000ms line) — and no auto-playing
   celebration frame sequence in this document should be authored past 5000ms without a
   pause affordance appearing in the same capture.
@@ -336,7 +336,7 @@ beat once the block runs.
 A duration floor: a loss beat should sit in Material's `long` tier — `long1` 450ms,
 `long2` 500ms, `long3` 550ms, `long4` 600ms — or beyond, into `extra-long` (up to 1000ms),
 rather than `short`/`medium`, since it is not a state registering but the end of something,
-and the tier table already treats "manche won" (120ms hold) as faster than "partita won"
+and the tier table already treats "round won" (120ms hold) as faster than "match won"
 (180ms hold) — the losing side of the same event should not be faster than the winning
 side of it.
 - Frame check: the losing seats' acknowledgment (per #101's rank-10 discussion: recommended
@@ -442,11 +442,11 @@ moments, each a checkable frame property rather than a claim of quality:
   table never shows two simultaneously "current" seats even mid-transition. The clocks go
   further, one out before the other in, so no frame has two above zero —
   `tests/native/clockCrossFade.test.tsx`.
-- **Win.** The manche-won and partita-won tiers currently share one shape (hold, then shake,
-  then lamp/flare) at different magnitudes. A frame capture at the partita tier's peak
-  should show at least one channel absent from the manche tier entirely (not merely
-  larger) — e.g. the flare (#765 is partita/bomb-only already) — so the top tier is
-  distinguishable from a "louder manche" even with the sound off and a still frame.
+- **Win.** The round-won and match-won tiers currently share one shape (hold, then shake,
+  then lamp/flare) at different magnitudes. A frame capture at the match tier's peak
+  should show at least one channel absent from the round tier entirely (not merely
+  larger) — e.g. the flare (#765 is match/bomb-only already) — so the top tier is
+  distinguishable from a "louder round" even with the sound off and a still frame.
 - **Loss.** Per #101's own rank-10 finding (a celebration tuned purely for the winner is,
   from the other seats, the game being pleased about your loss) and its recommended option
   1 (gate the escalation to the winning seat, keep the hold and squash for everyone): a

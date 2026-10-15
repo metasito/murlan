@@ -5,11 +5,11 @@ import type { TableTimeline } from "./tableTimeline";
 export type ShownOutcome = Exclude<HandOutcome, "pending">;
 
 /**
- * The manche's outcome from the landing of the play that ended it, once decided, until the next
+ * The round's outcome from the landing of the play that ended it, once decided, until the next
  * deal. Call it after `usePileFlight`: `pending()` is read at call time, so this effect sees the
- * throw that ended the manche.
+ * throw that ended the round.
  */
-export function useMancheOutcome({
+export function useRoundOutcome({
   ended,
   outcome,
   timeline,

@@ -1,8 +1,8 @@
-// A won partita's rain: `coneRain` in tests/e2e/fixtures/lantern-table/index.html, in that table's
+// A won match's rain: `coneRain` in tests/e2e/fixtures/lantern-table/index.html, in that table's
 // 874 × 402 points, run by either platform's particle layer one frame at a time.
 //
 // JSX-free, runtime imports relative — docs/agents/checks.md, "Node's TypeScript loader".
-import { ConeRain, MancheMoment } from "../../lib/tokens.ts";
+import { ConeRain, RoundMoment } from "../../lib/tokens.ts";
 import type { Lamp } from "./lampRig.ts";
 import type { ParticleSpawn, Rng } from "./particles.ts";
 
@@ -43,8 +43,8 @@ export function coneRainFrame(run: RainRun, lamp: Pick<Lamp, "lx" | "ly">, dt: n
       drag: C.drag,
       life: R(C.lifeSec[0], C.lifeSec[1]),
       size: R(C.size[0], C.size[1]),
-      col: MancheMoment.golds[run.n % 3],
-      glow: MancheMoment.glow,
+      col: RoundMoment.golds[run.n % 3],
+      glow: RoundMoment.glow,
     });
   }
   run.t = run.n < C.motes ? run.t + dt : -1;

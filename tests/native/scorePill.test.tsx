@@ -48,11 +48,11 @@ const state = (teams: boolean): GameState => ({
 const SCORES = { player_0: 7, player_1: 12, player_2: 9, player_3: 3 };
 
 const noop = () => {};
-const table = (opts: { teams?: boolean; partita?: boolean } = {}) => (
+const table = (opts: { teams?: boolean; match?: boolean } = {}) => (
   <SafeAreaProvider initialMetrics={METRICS}>
     <GameTable
       gameState={state(opts.teams ?? false)}
-      matchScore={opts.partita === false ? undefined : { scores: SCORES, target: 21 }}
+      matchScore={opts.match === false ? undefined : { scores: SCORES, target: 21 }}
       viewerSeat={0}
       onPlay={noop}
       onPass={noop}
@@ -136,8 +136,8 @@ describe('the score pill', () => {
     await r.unmount();
   });
 
-  it('is absent where there is no partita', async () => {
-    const r = await render(table({ partita: false }));
+  it('is absent where there is no match', async () => {
+    const r = await render(table({ match: false }));
     expect(screen.queryByTestId('score-pill')).toBeNull();
     await r.unmount();
   });

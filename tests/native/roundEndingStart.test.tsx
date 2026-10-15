@@ -1,15 +1,15 @@
-// tests/native/mancheEndingStart.test.tsx — the manche ending starts from the landing of the play
+// tests/native/roundEndingStart.test.tsx — the round ending starts from the landing of the play
 // that ended it, never while that play is still pending or in flight.
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
-import { useMancheEnding } from '@/components/table/useMancheEnding';
+import { useRoundEnding } from '@/components/table/useRoundEnding';
 
 interface Timeline { inFlight: boolean; landsAt: number | null; pending: () => boolean }
 
 async function mount(timeline: Timeline) {
   const landed = jest.fn<(at: number) => void>();
   const view = await renderHook(
-    (t: Timeline) => useMancheEnding({ ended: true, timeline: t, pileEmpty: false, onLanded: landed }),
+    (t: Timeline) => useRoundEnding({ ended: true, timeline: t, pileEmpty: false, onLanded: landed }),
     { initialProps: timeline }
   );
   return {
@@ -28,7 +28,7 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-describe('the start of a manche ending', () => {
+describe('the start of a round ending', () => {
   it('waits for the play in flight, and starts at its landing', async () => {
     const { landed, rerender, unmount } = await mount({ inFlight: true, landsAt: null, pending: () => false });
     jest.advanceTimersByTime(300);
@@ -52,7 +52,7 @@ describe('the start of a manche ending', () => {
     await unmount();
   });
 
-  it('holds the pill on the standings before the manche while that play flies, a tap included', async () => {
+  it('holds the pill on the standings before the round while that play flies, a tap included', async () => {
     const { clock, skip, unmount } = await mount({ inFlight: true, landsAt: null, pending: () => false });
     expect(clock()).toBe(0);
     await act(async () => skip());
@@ -64,7 +64,7 @@ describe('the start of a manche ending', () => {
   it('runs a started ending on through the deal, whatever the table does next', async () => {
     const landed = { inFlight: false, landsAt: null, pending: () => false };
     const view = await renderHook(
-      ({ ended, t }: { ended: boolean; t: Timeline }) => useMancheEnding({ ended, timeline: t, pileEmpty: false }),
+      ({ ended, t }: { ended: boolean; t: Timeline }) => useRoundEnding({ ended, timeline: t, pileEmpty: false }),
       { initialProps: { ended: true, t: landed } }
     );
     await act(async () => void jest.advanceTimersByTime(2500));

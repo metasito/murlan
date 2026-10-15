@@ -13,11 +13,11 @@ const LEAVE_BUTTON = { role: "button" as const, name: "Esci dalla partita" };
 const nextHandVote = (page: Page) => page.getByRole("button", { name: "Pronto per la prossima manche", exact: true });
 const waitingVote = (page: Page) => page.getByRole("button", { name: /^In attesa degli altri/ });
 
-async function isMancheOver(page: Page): Promise<boolean> {
+async function isRoundOver(page: Page): Promise<boolean> {
   return nextHandVote(page).isVisible();
 }
 
-/** The manche ended on the table: no results overlay, and the vote at the pill's foot deals the next one. */
+/** The round ended on the table: no results overlay, and the vote at the pill's foot deals the next one. */
 async function voteForTheNextDeal(pages: Page[]) {
   for (const page of pages) await expect(page.getByRole(LEAVE_BUTTON.role, { name: LEAVE_BUTTON.name })).toHaveCount(0);
   for (const page of pages) await nextHandVote(page).click();
@@ -40,7 +40,7 @@ test("online — host fills the room with bots and plays a real server-authorita
   await fillWithBotsAndStart(page);
 
   await driveGameToCompletion(page, {
-    isFinished: isMancheOver,
+    isFinished: isRoundOver,
     log: (line) => test.info().annotations.push({ type: "move", description: line }),
   });
   await voteForTheNextDeal([page]);
@@ -89,11 +89,11 @@ test("online — two real browsers play a live 2-player game against each other"
 
     await Promise.all([
       driveGameToCompletion(pageA, {
-        isFinished: isMancheOver,
+        isFinished: isRoundOver,
         log: (line) => test.info().annotations.push({ type: "move-A", description: line }),
       }),
       driveGameToCompletion(pageB, {
-        isFinished: isMancheOver,
+        isFinished: isRoundOver,
         log: (line) => test.info().annotations.push({ type: "move-B", description: line }),
       }),
     ]);
@@ -167,7 +167,7 @@ test("online — a room can be created on a phone in portrait", async ({ page, b
   await expect(invitePanel).toBeInViewport();
 
   // The start button stays pinned outside the scroll area regardless — still
-  // "waiting for players" with three empty seats, not yet "Inizia Partita".
+  // "waiting for players" with three empty seats, not yet "Inizia Match".
   // The room screen renders both its landscape and portrait branches at
   // once (shown/hidden by CSS), so more than one copy can match.
   await expect(

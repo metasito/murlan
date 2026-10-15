@@ -36,7 +36,7 @@ test("the server re-sorting its own array changes nothing", () => {
 });
 
 test("a card the order has never seen keeps the place the engine gave it", () => {
-  // The exchange hands back one card mid-manche. It belongs between the two
+  // The exchange hands back one card mid-round. It belongs between the two
   // cards it sorts between, and neither of them may move for it.
   const cards = hand("3", "4", "5", "6");
   const order = ["6_spades", "3_spades", "5_spades"];

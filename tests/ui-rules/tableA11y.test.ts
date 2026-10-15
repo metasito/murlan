@@ -23,7 +23,7 @@ const a11yStrings: TableA11yStrings = {
 };
 
 describe("describeTableForA11y", () => {
-  test("a manche that is over, still on the table, names nobody on move", () => {
+  test("a round that is over, still on the table, names nobody on move", () => {
     const base = { currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [], handOver: true };
     for (const isMyTurn of [true, false]) {
       const text = describeTableForA11y({ ...base, isMyTurn }, a11yStrings);
@@ -32,7 +32,7 @@ describe("describeTableForA11y", () => {
     }
   });
 
-  test("the partita's last manche names the partita's end, not the manche's", () => {
+  test("the match's last round names the match's end, not the round's", () => {
     const base = { isMyTurn: false, currentTurnName: "Ana", myCardCount: 0, lastPlay: null, opponents: [] };
     const over = describeTableForA11y({ ...base, handOver: true, matchOver: true }, a11yStrings);
     assert.ok(over.startsWith("MATCH_OVER"), over);

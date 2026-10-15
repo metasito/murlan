@@ -1,9 +1,9 @@
-// tests/e2e/resultActions.spec.ts — a partita ends on the felt (#1267): the score pill becomes the
-// board, its actions sit as a pair inside it below the rows, Home then Nuova partita, and Nuova
-// partita deals a new partita without leaving the table.
+// tests/e2e/resultActions.spec.ts — a match ends on the felt (#1267): the score pill becomes the
+// board, its actions sit as a pair inside it below the rows, Home then New match, and Nuova
+// match deals a new match without leaving the table.
 //
 // Only a browser can answer it: `react-test-renderer` never runs flexbox, so a native test cannot
-// say where the pair landed relative to the board. One single-manche partita is played, once,
+// say where the pair landed relative to the board. One single-round match is played, once,
 // and the window is then resized through the list.
 import { test, expect } from "./fixtures";
 import { openApp, startOfflineGame } from "./helpers/navigation";
@@ -11,7 +11,7 @@ import { driveGameToCompletion } from "./helpers/bot";
 import { atRest } from "./helpers/settle";
 import { seedRandomness } from "./helpers/seededRandomness";
 
-const PRIMARY = "btn-nuova-partita";
+const PRIMARY = "btn-new-match";
 const BOARD = '[data-testid="score-pill-layer"]';
 /** Nothing here reads the hand, only the board after it; a fixed deal holds its length steady. */
 const DEAL_SEED = 1;
@@ -76,9 +76,9 @@ test("the board's actions read as a pair inside it, below the rows, at every lan
       r.x + r.width <= board.x + board.width + TOLERANCE &&
       r.y + r.height <= board.y + board.height + TOLERANCE;
     expect(inside(home), `at ${vp.name} Home sits outside the board`).toBe(true);
-    expect(inside(primary), `at ${vp.name} Nuova partita sits outside the board`).toBe(true);
+    expect(inside(primary), `at ${vp.name} New match sits outside the board`).toBe(true);
     expect(Math.abs(home.y - primary.y), `at ${vp.name} the actions are not on one line`).toBeLessThanOrEqual(TOLERANCE);
-    expect(home.x + home.width, `at ${vp.name} Home does not lead Nuova partita`).toBeLessThanOrEqual(primary.x + TOLERANCE);
+    expect(home.x + home.width, `at ${vp.name} Home does not lead New match`).toBeLessThanOrEqual(primary.x + TOLERANCE);
     expect(home.y, `at ${vp.name} the actions are not below the winner's row`).toBeGreaterThan(winnerRow.y + winnerRow.height);
     expect(
       board.x >= -TOLERANCE && board.x + board.width <= vp.width + TOLERANCE && board.y + board.height <= vp.height + TOLERANCE,
@@ -87,6 +87,6 @@ test("the board's actions read as a pair inside it, below the rows, at every lan
   }
 
   await page.getByTestId(PRIMARY).click();
-  await expect(page.getByTestId("btn-home"), "Nuova partita left the board standing").toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByTestId("btn-home"), "New match left the board standing").toHaveCount(0, { timeout: 15_000 });
   await expect(page).toHaveURL(/\/game/);
 });

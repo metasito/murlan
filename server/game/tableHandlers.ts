@@ -101,7 +101,7 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import type { GameState } from "../../lib/game/gameEngine.ts";
 import { appendReplayMove, startReplayLog } from "./replayShape.ts";
-import { dealManche } from "./dealManche.ts";
+import { dealRound } from "./dealRound.ts";
 import type { TableAction } from "./tableActions.ts";
 import {
   UNKNOWN_ACTION,
@@ -382,7 +382,7 @@ function rematchRefused(game: OnlineGameState): boolean {
 }
 
 /**
- * Deals the manche the table has voted for, or says why it cannot and leaves
+ * Deals the round the table has voted for, or says why it cannot and leaves
  * every vote where it was.
  *
  * `notifyUserId` is the vote that closed the gate. It is `null` when a seat
@@ -390,7 +390,7 @@ function rematchRefused(game: OnlineGameState): boolean {
  * pressed anything, and the toast would land on whoever happened to be first
  * in `playerMap`.
  */
-async function dealVotedManche(
+async function dealVotedRound(
   io: SocketServer,
   game: OnlineGameState,
   roomId: string,
@@ -398,13 +398,13 @@ async function dealVotedManche(
 ): Promise<EventOutcome> {
   const refuse = (code: string, message: string): EventOutcome => {
     if (notifyUserId) gameError(io, notifyUserId, { message, code });
-    else logger.warn({ roomId, code }, "The next manche could not be dealt");
+    else logger.warn({ roomId, code }, "The next round could not be dealt");
     emitVoteState(io, roomId, game);
     return { ok: false, code };
   };
 
   // The database is read for the room's settings and nothing else: the next
-  // manche's seats are copied from the running game. `room_players` holds
+  // round's seats are copied from the running game. `room_players` holds
   // humans only, so a roster rebuilt from it drops every bot seat and
   // renumbers whatever is left.
   const room = await roomStore.getRoomById(roomId);
@@ -413,13 +413,13 @@ async function dealVotedManche(
   const seats = game.gameState.players;
   if (seats.length < 2) return refuse("MIN_PLAYERS_REQUIRED", "At least 2 players are required");
 
-  // Cleared only once the next manche is certain to be dealt. A vote discarded
+  // Cleared only once the next round is certain to be dealt. A vote discarded
   // on the way out of a bail-out can never be retried: the overlay would sit
   // below its own threshold with nothing left to press.
   game.rematchVotes.clear();
 
   const prevRankings = game.gameState.rankings;
-  // Engine ids ride across the manche, so prevRankings resolves to the same
+  // Engine ids ride across the round, so prevRankings resolves to the same
   // seats it named — initializeRematch never has to fall back to a guessed
   // winner, and the exchange runs between the right two players.
   const playerSetup = seats.map((p) => ({
@@ -430,10 +430,10 @@ async function dealVotedManche(
     team: room.gameMode === "teams" ? p.team : undefined,
   }));
 
-  // `game.matchOver` still holds the just-ended manche's own verdict here —
-  // `dealManche` below is what flips it back via `rollMatchForward`.
+  // `game.matchOver` still holds the just-ended round's own verdict here —
+  // `dealRound` below is what flips it back via `rollMatchForward`.
   const nextFirstSeat = dealFirstSeatFor(game.matchOver, game.dealFirstSeat, playerSetup.length);
-  // Only a manche every seat finished names a real winner and loser; a match
+  // Only a round every seat finished names a real winner and loser; a match
   // ended by the vote leaves 2 of 4 ranked, and the 2nd finisher would be read
   // as the loser (docs/GAME-RULES.md § Decisions).
   const newGameState =
@@ -450,7 +450,7 @@ async function dealVotedManche(
   game.gameMode = room.gameMode;
   game.maxPlayers = room.maxPlayers;
 
-  await dealManche(io, game, newGameState);
+  await dealRound(io, game, newGameState);
   return OK;
 }
 
@@ -472,7 +472,7 @@ async function rematchVoteAction(
   game.rematchVotes.add(userId);
   emitVoteState(io, roomId, game);
   if (!rematchAnswered(game)) return OK;
-  return dealVotedManche(io, game, roomId, userId);
+  return dealVotedRound(io, game, roomId, userId);
 }
 
 /**
@@ -518,7 +518,7 @@ async function dealIfSeatLeftGateClosed(
   if (!game || !game.gameState.gameOver || !rematchAnswered(game)) return OK;
   if (rematchRefused(game)) return OK;
   if (Object.keys(game.playerMap).length === 0) return OK;
-  return dealVotedManche(io, game, roomId, null);
+  return dealVotedRound(io, game, roomId, null);
 }
 
 /**
@@ -601,7 +601,7 @@ async function rejoinAction(
  * The previous match's winner and loser, as engine ids of the roster about to
  * be dealt. A session lasts until the table breaks up (docs/GAME-RULES.md § Decisions), so
  * a new match at a standing table opens with the exchange rather than the 3♠.
- * Empty when there is nothing to carry: no previous match, a manche nobody
+ * Empty when there is nothing to carry: no previous match, a round nobody
  * played out, a match ended by the vote, or either seat no longer at the table
  * — every one of which deals the 3♠ opening instead.
  */
@@ -637,7 +637,7 @@ async function startMatchAction(
   if (!room || room.hostUserId !== userId) return { ok: false, code: "NOT_THE_HOST" };
 
   // A live in-memory game is the authority on whether this room may deal:
-  // `rooms.status` reads "finished" between the manches of a running match as
+  // `rooms.status` reads "finished" between the rounds of a running match as
   // well as after the last one, and it is written a moment *after* game:over
   // reaches the clients, so it is stale exactly when a between-hands start
   // arrives.
@@ -645,7 +645,7 @@ async function startMatchAction(
 
   if (previous) {
     if (!previous.matchOver) {
-      // The next manche of a running match is game:rematch_vote's job. Dealing
+      // The next round of a running match is game:rematch_vote's job. Dealing
       // it here would deal without an exchange phase, and would let the
       // payload's matchLength rewrite the format of a match that is already
       // being scored.
@@ -678,7 +678,7 @@ async function startMatchAction(
   const absent = new Set(usersInLobbyGrace(roomId));
   // The finished match's tally, discarded before any seat leaves: releasing one
   // lowers the rematch gate, and a stale full count would deal that match one
-  // more manche underneath the new one being dealt here.
+  // more round underneath the new one being dealt here.
   previous?.rematchVotes.clear();
   if (absent.size > 0) {
     const seated = await roomStore.getRoomPlayers(room.id);
@@ -796,7 +796,7 @@ async function startMatchAction(
     await roomStatePayload(closed.room, players)
   );
 
-  await dealManche(io, newGame, gameState);
+  await dealRound(io, newGame, gameState);
   logger.info(
     { roomId, playerCount: players.length, botCount: roster.length - players.length },
     "Game started"
@@ -937,7 +937,7 @@ async function applyTableAction(
       armTurnIfIdle(io, action.roomId);
       return OK;
     case "vacate":
-      // `rooms.status` reads "finished" between manches too, so only the live
+      // `rooms.status` reads "finished" between rounds too, so only the live
       // game knows whether the seat is still held. Removing the DB row alone
       // leaves it live — auto-playing the leaver's hand, or blocking the
       // rematch gate.

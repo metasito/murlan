@@ -50,10 +50,10 @@ interface Screen {
 const SCREENS: Screen[] = [
   {
     name: "/lobby",
-    pinned: "Inizia Partita",
+    pinned: "Inizia Match",
     open: async (page) => {
       await page.getByRole("button", { name: "Offline" }).click();
-      await page.getByRole("button", { name: "Inizia Partita" }).waitFor();
+      await page.getByRole("button", { name: "Inizia Match" }).waitFor();
     },
   },
   {

@@ -190,7 +190,7 @@ describe("teams: the match resolves on the summed team total", () => {
 // Seats 0/2 are team A, 1/3 team B. `foldHandIntoMatch` is where the pair
 // rule meets match progression: both authorities call it, so a partner
 // crossing the line alone has to name the pair on either side of the wire.
-describe("teams: folding a manche into the match", () => {
+describe("teams: folding a round into the match", () => {
   const teamOf = { player_0: "A", player_1: "B", player_2: "A", player_3: "B" };
   const base = {
     playerCount: 4,
@@ -212,7 +212,7 @@ describe("teams: folding a manche into the match", () => {
     assert.equal(result.isDraw, false);
   });
 
-  test("a single manche is taken by the pair, not the seat that emptied first", () => {
+  test("a single round is taken by the pair, not the seat that emptied first", () => {
     const result = foldHandIntoMatch({
       ...base,
       length: "single",

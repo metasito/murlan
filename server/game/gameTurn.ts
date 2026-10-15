@@ -28,7 +28,7 @@ import {
   autoMoveForSeat as sharedAutoMove,
   recordPlayFlags as recordFlags,
 } from "../../lib/game/autoMove.ts";
-import { mancheUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
+import { roundUnplayed, openingIsPending } from "../../lib/game/gameEngine.ts";
 import type { GameState, Combination } from "../../lib/game/gameEngine.ts";
 import { Reading } from "../../lib/tokens.ts";
 import { exchangeAnnounceMs } from "../../lib/exchangeCeremony.ts";
@@ -103,7 +103,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   if (userId === undefined) {
     game.turnDeadlineMs = undefined;
     const phase = game.gameState.exchangePhase;
-    const tradeOnTable = phase?.active || (phase?.bothJokersException && mancheUnplayed(game.gameState));
+    const tradeOnTable = phase?.active || (phase?.bothJokersException && roundUnplayed(game.gameState));
     const delayMs = tradeOnTable
       ? Math.max(botDelayMs, exchangeGiveDelayMs(game.gameState.players.map(handCountOf)))
       : botDelayMs;
@@ -123,7 +123,7 @@ export function armTurn(io: SocketServer, roomId: string, botDelayMs = botMoveDe
   // for Reading.notice before it can act — an online-only cost, since the
   // client draws that gate from state the server already dealt (startReason)
   // rather than a message announcing it. Granted once, on the turn
-  // `openingIsPending` names: the opener's first play of the manche, never a
+  // `openingIsPending` names: the opener's first play of the round, never a
   // seat replaying a turn it already spent its grant on.
   const openingGraceMs = openingIsPending(game.gameState) ? Reading.notice : 0;
   const timeoutMs = afkTimeoutMs() + openingGraceMs;
@@ -173,7 +173,7 @@ function runBotTurn(io: SocketServer, roomId: string) {
 
   // The takeover plays the hand it happened on at minimum legal strength
   // (docs/GAME-RULES.md § Decisions) — the same "an AFK human should not be played well"
-  // rule the turn timer already applies, kept until `dealManche` clears
+  // rule the turn timer already applies, kept until `dealRound` clears
   // `weakSeats` at the next deal, by which point the seat is honestly a bot's.
   const useAi = !game.weakSeats.has(seat);
   const next = autoMoveForSeat(game, seat, useAi);
@@ -345,7 +345,7 @@ export async function vacateSeat(
   // that already emptied its hand has finished the one it was playing.
   if (!game.gameState.gameOver && seatPlayer?.finishPosition === undefined) {
     game.abandonedSeats.set(seat, userId);
-    // The takeover plays this hand at minimum strength only — `dealManche`
+    // The takeover plays this hand at minimum strength only — `dealRound`
     // clears this at the next deal, by which point the seat is honestly a
     // bot's (docs/GAME-RULES.md § Decisions).
     game.weakSeats.add(seat);
@@ -357,7 +357,7 @@ export async function vacateSeat(
     // Between hands the table is not interrupted — it is waiting to deal
     // again — so the leaver simply stops counting towards the rematch vote.
     // This must NOT be `game:player_left`: that event drives the client's
-    // "Partita interrotta" teardown, which would eject everyone still sitting
+    // "Match interrupted" teardown, which would eject everyone still sitting
     // at a table the server is about to restart.
     io.to(roomId).emit("game:seat_bot_takeover", {
       userId,
@@ -426,7 +426,7 @@ export async function vacateSeat(
 
   // The table survives with a bot in this seat — everyone else keeps
   // playing. This must NOT be `game:player_left`: that event drives the
-  // client's "Partita interrotta" teardown, which would eject every
+  // client's "Match interrupted" teardown, which would eject every
   // remaining human from a game the server is still keeping alive.
   io.to(roomId).emit("game:seat_bot_takeover", {
     userId,

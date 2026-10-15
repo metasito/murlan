@@ -142,19 +142,19 @@ describe("resolveMatch", () => {
 
   test("a match at any seat count finishes in a sitting", () => {
     // docs/GAME-RULES.md § Decisions: the ladder exists so a match lands in roughly 8-12
-    // manches at every count. A flat 21 made a 1-v-1 take ~27.
+    // rounds at every count. A flat 21 made a 1-v-1 take ~27.
     for (const playerCount of [2, 3, 4]) {
       const players = ["a", "b", "c", "d"].slice(0, playerCount);
       let cumulative: Record<string, number> = {};
       let target = targetsFor(playerCount)[0];
-      let manches = 0;
+      let rounds = 0;
       let finished = false;
 
-      while (manches < 12 && !finished) {
-        // One seat wins every manche: the shortest possible match, and the
+      while (rounds < 12 && !finished) {
+        // One seat wins every round: the shortest possible match, and the
         // one that has to fit inside the band.
         cumulative = addHandScores(cumulative, scoreHand(players, playerCount));
-        manches++;
+        rounds++;
         const result = resolveMatch(cumulative, target, playerCount);
         if (!result) continue;
         if (result.newTarget !== null) {
@@ -166,7 +166,7 @@ describe("resolveMatch", () => {
 
       assert.ok(
         finished,
-        `${playerCount} players: no winner after ${manches} manches`
+        `${playerCount} players: no winner after ${rounds} rounds`
       );
     }
   });
@@ -263,7 +263,7 @@ describe("foldHandIntoMatch", () => {
     assert.deepEqual(cumulative, { a: 5, b: 2 });
   });
 
-  describe("a single manche", () => {
+  describe("a single round", () => {
     const single = { ...base, length: "single" as const };
 
     test("ends the match on whoever took it, with no target involved", () => {
@@ -278,7 +278,7 @@ describe("foldHandIntoMatch", () => {
       assert.equal(result.isDraw, false);
     });
 
-    test("a manche nobody finished names no winner", () => {
+    test("a round nobody finished names no winner", () => {
       const result = foldHandIntoMatch({ ...single, rankings: [], cumulative: {} });
       assert.equal(result.over, true);
       assert.deepEqual(result.winners, []);
@@ -336,7 +336,7 @@ describe("foldHandIntoMatch", () => {
       assert.equal(result.cumulative["bot:1"], 23);
     });
 
-    test("a vacated seat that takes a single manche names the best seat behind it", () => {
+    test("a vacated seat that takes a single round names the best seat behind it", () => {
       const result = foldHandIntoMatch({
         ...online,
         length: "single",
@@ -347,7 +347,7 @@ describe("foldHandIntoMatch", () => {
       assert.deepEqual(result.winners, ["u0"]);
     });
 
-    test("a single manche every seat walked out of names nobody", () => {
+    test("a single round every seat walked out of names nobody", () => {
       const result = foldHandIntoMatch({
         ...online,
         length: "single",
@@ -360,8 +360,8 @@ describe("foldHandIntoMatch", () => {
       assert.deepEqual(result.winners, []);
     });
 
-    test("a single manche in teams names the vacated winner's partner, not the other pair", () => {
-      // docs/GAME-RULES.md §11: the pair takes the manche, not the seat that
+    test("a single round in teams names the vacated winner's partner, not the other pair", () => {
+      // docs/GAME-RULES.md §11: the pair takes the round, not the seat that
       // emptied its hand — so the pair that took it still wins.
       const result = foldHandIntoMatch({
         ...online,
@@ -488,7 +488,7 @@ describe("foldHandIntoMatch", () => {
       assert.deepEqual(result.winners.sort(), ["u0", "u2"]);
     });
 
-    test("a single manche, in both modes", () => {
+    test("a single round, in both modes", () => {
       agree({ rankings, length: "single", gameMode: "free_for_all", target: 21, cumulative: {} });
       agree({ rankings, length: "single", gameMode: "teams", target: 21, cumulative: {}, teamOf });
     });

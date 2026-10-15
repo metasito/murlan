@@ -330,8 +330,8 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
    * for the player who stayed, in the one case the gate exists to protect.
    *
    * #850 clause 11 (docs/GAME-RULES.md § Decisions) voids a match abandoned before its
-   * first point, which would swallow a first-manche walkout whole and never
-   * reach the gate this test exists to protect. Playing the first manche out
+   * first point, which would swallow a first-round walkout whole and never
+   * reach the gate this test exists to protect. Playing the first round out
    * for real, then abandoning the second, is what keeps this test honest
    * about the thing it is pinning.
    */
@@ -362,7 +362,7 @@ describe("stats persistence (Task 8)", { skip: hasDatabase() ? false : skipMessa
       // then, and the walkout is scored inside it.
       leaver.socket.emit("room:leave");
 
-      // Two manches, two rows each by now — the first hand, played out fairly,
+      // Two rounds, two rows each by now — the first hand, played out fairly,
       // already wrote one row per user before the walkout below could. Only
       // the latest row per user is the one the walkout wrote.
       // One statement, so the count and the latest row come from one snapshot: each seat commits in its own transaction.

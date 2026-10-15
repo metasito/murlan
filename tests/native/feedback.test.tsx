@@ -27,7 +27,7 @@ describe('feedback', () => {
   it('a sting ducks the music 9 dB over 60 ms at its start, and returns over 400 ms at its end', async () => {
     backgroundMusic('menu');
     const at = performance.now() + 500;
-    event([{ kind: 'mancheOver', outcome: 'won' }], at);
+    event([{ kind: 'roundOver', outcome: 'won' }], at);
     await settle();
     expect(musicBus().gain.events).toEqual([
       { kind: 'hold', value: NaN, time: expect.closeTo(ctxAt(at), 3) },
@@ -40,7 +40,7 @@ describe('feedback', () => {
   it('the music switch after a sting waits for the sting to end', async () => {
     backgroundMusic('menu');
     const at = performance.now() + 500;
-    event([{ kind: 'mancheOver', outcome: 'lost' }], at);
+    event([{ kind: 'roundOver', outcome: 'lost' }], at);
     await settle();
     backgroundMusic('hand');
     const hand = loops().find((n) => fileOf(n) === 'hand')!;
@@ -53,11 +53,11 @@ describe('feedback', () => {
     expect(effects()).toEqual([]);
   });
 
-  it('the partita haptic leads its sting by 300 ms, and the sting is in the engine at once', async () => {
+  it('the match haptic leads its sting by 300 ms, and the sting is in the engine at once', async () => {
     const at = performance.now() + 1000;
-    event([{ kind: 'partitaOver', outcome: 'won' }], at);
+    event([{ kind: 'matchOver', outcome: 'won' }], at);
     await settle();
-    expect(startsOf('partitaWon')).toEqual([expect.closeTo(ctxAt(at), 3)]);
+    expect(startsOf('matchWon')).toEqual([expect.closeTo(ctxAt(at), 3)]);
     await settle(1000);
     expect(hapticCalls()).toEqual([
       { type: 'impactMedium', at: expect.closeTo(at - 300, 0) },

@@ -16,7 +16,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { CardView, FallbackGlow } from "@/components/CardView";
-import { Beaten, BombFx, CardGlow, Colors, MancheMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
+import { Beaten, BombFx, CardGlow, Colors, RoundMoment, Motion, motionMs, Shadow, Spacing, Layer } from "@/lib/theme";
 import { usePrefersReducedMotion } from "@/lib/accessibility";
 import { traceOnset, useTraceSource } from "@/lib/e2eTrace";
 import { DIAGNOSTICS, diag } from "@/lib/diagnostics";
@@ -334,7 +334,7 @@ function PlayCard({ card, i, spec, still, elapsed, box, flying, catching, turned
     <Animated.View testID={flying ? "flying-card" : undefined} nativeID={`card-pile:${card.id}`} style={[box, { zIndex: i }, style]}>
       <Animated.View style={lift}>
         {catching && <FallbackGlow style={[pileStyles.catchGlow, { borderRadius: cardRadius(CARD_W(cardScale)) }, glow]} />}
-        {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + MancheMoment.litRingPt }]} />}
+        {lit && <View testID="pile-card-lit" pointerEvents="none" style={[pileStyles.litRing, { borderRadius: cardRadius(CARD_W(cardScale)) + RoundMoment.litRingPt }]} />}
         <View style={pileStyles.caughtCard}>
           <CardView testID="pile-card" card={card} scale={cardScale} rectKey={`pile:${card.id}`} rects={ownRects} />
         </View>
@@ -396,7 +396,7 @@ export interface PileLayerProps {
   hidden?: boolean;
   /** The whole pile's, for its fade before the next deal. */
   opacity?: SharedValue<number>;
-  /** The viewer won the manche: the top play's top card is lit. */
+  /** The viewer won the round: the top play's top card is lit. */
   lit?: boolean;
 }
 
@@ -590,7 +590,7 @@ export interface PileFlightInput extends Omit<ThrownPlayInput, "combo" | "played
    * Online, `matchOver` arrives on its own socket packet after `gameOver` — a
    * second render the dedupe below skips, so a flight still in the air is
    * re-armed with the tier it now closes on. `viewerWon` the same: online, a
-   * teams manche's outcome waits for `game:over`'s scores, and a win scored
+   * teams round's outcome waits for `game:over`'s scores, and a win scored
    * after the contact never shakes, the shake being the contact's.
    */
   matchOver: boolean;
@@ -677,7 +677,7 @@ export function usePileFlight({
       clocks.current.get(f.key)?.arm({
         ...f.landing,
         tier: landingTier({ comboType: f.combo.type, handOver: f.handOver, matchOver, viewerWon }),
-        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesPartita: f.handOver && matchOver }),
+        pulses: landingPulsesFor({ cards: f.landing.cards, bomb: f.landing.heavy, mine: f.landing.mine, closesMatch: f.handOver && matchOver }),
       });
     }
   }, [matchOver, viewerWon]);
@@ -777,7 +777,7 @@ export function usePileFlight({
         cards: thrown.cards.length,
         bomb: thrown.heavy,
         mine: thrown.dir === "bottom",
-        closesPartita: gameOver && closureRef.current.matchOver,
+        closesMatch: gameOver && closureRef.current.matchOver,
       }),
     };
     const play: TrickPlay = { key, combo, playedBy: lastPlayedBy, spec: flightSpec(key, thrown.from, to, catchUp, reduceMotion) };
@@ -910,7 +910,7 @@ const pileStyles = StyleSheet.create({
   // Behind the card for the same reason: only the ring's edge shows around it.
   litRing: {
     position: "absolute",
-    top: -MancheMoment.litRingPt, left: -MancheMoment.litRingPt, right: -MancheMoment.litRingPt, bottom: -MancheMoment.litRingPt,
+    top: -RoundMoment.litRingPt, left: -RoundMoment.litRingPt, right: -RoundMoment.litRingPt, bottom: -RoundMoment.litRingPt,
     zIndex: Layer.felt,
     backgroundColor: Colors.goldLit,
     ...Shadow.litCard,

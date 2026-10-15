@@ -1,4 +1,4 @@
-// tests/native/exchangeDeal.test.tsx — an exchange manche opens with the deal, and the trade waits for it (#1416).
+// tests/native/exchangeDeal.test.tsx — an exchange round opens with the deal, and the trade waits for it (#1416).
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
@@ -49,7 +49,7 @@ const table = (gameState: GameState) => (
 const backs = () => screen.queryAllByTestId('dealt-back');
 const prompt = () => screen.queryByTestId('exchange-prompt');
 
-describe('an exchange manche', () => {
+describe('an exchange round', () => {
   beforeEach(async () => {
     jest.useFakeTimers();
     await bootFeedback();
