@@ -50,7 +50,7 @@ import { DEFAULT_LOCALE, translate } from "../../shared/i18n.ts";
 import { activeGames as activeGamesTable } from "../../shared/schema.ts";
 import type { EventOutcome } from "../socket/socketSafety.ts";
 import { activeGames, isShuttingDown, scoreKeyForSeat, seatName, seatOfUser, userRoom, voterCount } from "./gameRoom.ts";
-import { isUserOnline, onlineUserIds } from "../socket/socketRegistry.ts";
+import { isUserAtTable, isUserOnline, onlineUserIds, tablePresence } from "../socket/socketRegistry.ts";
 import { stopSpectatingEverywhere } from "../socket/seating.ts";
 import type { OnlineGameState } from "./gameRoom.ts";
 import {
@@ -218,9 +218,10 @@ export async function rehydrateGame(
   logger.info({ roomId }, "Took over a table from active_games");
 
   // The graces their disconnects armed died with the process that held them.
-  const online = await onlineUserIds();
+  const presence = await tablePresence(roomId);
+  const back = restoredState.gameOver ? presence.atTable : presence.online;
   for (const [seat, userId] of Object.entries(playerMap)) {
-    if (userId === forUserId || online.has(userId)) continue;
+    if (userId === forUserId || back.has(userId)) continue;
     await armSeatGrace(io, game, roomId, userId, Number(seat));
   }
   return "restored";
@@ -837,8 +838,12 @@ async function seatLostAction(
   // from active_games and arms the graces itself.
   if (isShuttingDown()) return OK;
   // Forwarded from another instance, this can land after the player's rejoin
-  // has already cleared the graces it would arm.
-  if (await isUserOnline(userId)) return OK;
+  // has already cleared the graces it would arm. Between hands the seat holds
+  // the rematch gate, so only a socket back in this room counts.
+  const back = game.gameState.gameOver
+    ? await isUserAtTable(userId, roomId)
+    : await isUserOnline(userId);
+  if (back) return OK;
   const seat = seatOfUser(game, userId);
   if (seat === null) return { ok: false, code: "NOT_SEATED" };
 
