@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,7 +9,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
 const OVERRIDE = "modules/murlan-diagnostics/ios/MurlanRecycledLayout.mm";
-const MOUNTING = "node_modules/react-native/React/Fabric/Mounting/ComponentViews";
+// Resolved, never `node_modules/` under repoRoot: a worktree has no install of its own (RULES.md rule 9).
+const reactNative = path.dirname(createRequire(import.meta.url).resolve("react-native/package.json"));
+const MOUNTING = path.relative(repoRoot, path.join(reactNative, "React/Fabric/Mounting/ComponentViews")).replaceAll("\\", "/");
 const COVERED = `${MOUNTING}/View/RCTViewComponentView.mm`;
 
 /** A layout reset other than EmptyLayoutMetrics: a recycled view next laid out at exactly it is never moved (#1485). */
