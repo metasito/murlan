@@ -368,7 +368,7 @@ describe("foldHandIntoMatch", () => {
         length: "single",
         gameMode: "teams",
         target: 21,
-        rankings: ["p1", "p0", "p2", "p3"],
+        rankings: ["p1", "p3", "p0", "p2"],
         teamOf: { p0: "B", p1: "A", p2: "B", p3: "A" },
         cumulative: {},
       });
