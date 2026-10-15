@@ -247,11 +247,24 @@ describe("teams: folding a manche into the match", () => {
     const result = foldHandIntoMatch({
       ...base,
       length: "single",
+      rankings: ["player_1", "player_3", "player_0", "player_2"],
+      cumulative: {},
+    });
+    assert.equal(result.over, true);
+    assert.equal(result.isDraw, false);
+    assert.deepEqual(result.winners.sort(), ["player_1", "player_3"]);
+  });
+
+  test("a single manche paying both pairs 3 is a draw, whoever emptied first", () => {
+    const result = foldHandIntoMatch({
+      ...base,
+      length: "single",
       rankings: ["player_1", "player_0", "player_2", "player_3"],
       cumulative: {},
     });
     assert.equal(result.over, true);
-    assert.deepEqual(result.winners.sort(), ["player_1", "player_3"]);
+    assert.equal(result.isDraw, true);
+    assert.deepEqual(result.winners.sort(), ["player_0", "player_1", "player_2", "player_3"]);
   });
 
   describe("with a partner who walked out", () => {
