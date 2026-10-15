@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { LAND } from "../loop-render.mjs";
 import { readLine } from "../loop-stream.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT } from "../loop-cost.mjs";
+import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, USD_BY_SIZE } from "../loop-cost.mjs";
 import { ticker } from "../loop-screen.mjs";
 import {
   pushedPr,
@@ -24,7 +24,6 @@ import {
   holdFor,
   settle,
   runOnce,
-  USD_BY_SIZE,
   loopSha,
   CHECK_BASH_TIMEOUT_MS,
   BASH_DEFAULT_TIMEOUT_MS,

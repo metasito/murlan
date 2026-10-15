@@ -16,12 +16,12 @@ import { execFileSync, spawn } from "node:child_process";
 import fs, { createWriteStream, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { firstLine, gh as ghCli, git as gitAt, MAX_BUFFER, REPO } from "./cli.mjs";
 import {
   ciRedPosted,
   ciRedRounds,
   derive,
   parityRed,
-  REPO,
   reviewRounds,
   trustedComments,
   WORKTREE_DIR,
@@ -67,11 +67,23 @@ import {
   ticketTally,
   typicalMs,
 } from "./loop-logs.mjs";
-import { readAllowedTools } from "./loop-tools.mjs";
 import { checkLockDrift, housekeeping, listWorktreeDirNames } from "./workspace.mjs";
 import { buildReady, landable, MAX_REVIEW_ROUNDS, reviewerRan } from "./loop-gate.mjs";
 import { branchOf } from "./claim.mjs";
-import { CONTEXT_BY_SIZE, CONTEXT_DEFAULT, EFFORT_BY_PHASE, estimateCost, familyOf, MODEL_BY_PHASE, TURNS_BY_SIZE, TURNS_DEFAULT, turnHeadroom } from "./loop-cost.mjs";
+import {
+  CONTEXT_BY_SIZE,
+  CONTEXT_DEFAULT,
+  EFFORT_BY_PHASE,
+  estimateCost,
+  familyOf,
+  MODEL_BY_PHASE,
+  TICKET_BUDGET_USD,
+  TURNS_BY_SIZE,
+  TURNS_DEFAULT,
+  turnHeadroom,
+  USD_BY_SIZE,
+  USD_DEFAULT,
+} from "./loop-cost.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { CHECK_BASH_TIMEOUT_MS, STALL_MS, sleepClock } from "./limits.mjs";
 import { nextPick, OWNER_LABELS } from "./next-ticket.mjs";
@@ -177,31 +189,6 @@ export function nextRoute(
   return { ...picker(), resuming: false };
 }
 
-/**
- * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
- * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
- * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
- * backstop against one pathological turn, well above what a healthy ticket reaches.
- */
-const TICKET_BUDGET_USD = "40";
-
-/**
- * What one ticket may cost across every process it is spawned as.
- *
- * `TICKET_BUDGET_USD` bounds a single session and is unchanged; with phase handoffs a ticket is up
- * to `MAX_HANDOFFS` of them, so the per-ticket figure has to be kept here, where the supervisor is
- * the only thing that survives them all. Set above the fleet median for the size, so it catches
- * a runaway and never a healthy run.
- */
-export const USD_BY_SIZE = {
-  "size:XS": 20,
-  "size:S": 30,
-  "size:M": 45,
-  "size:L": 70,
-  "size:XL": 90,
-};
-export const USD_DEFAULT = 40;
-
 /** @param {string|null} [size] a `size:*` label, or null */
 export const turnsFor = (size) => TURNS_BY_SIZE[size ?? ""] ?? TURNS_DEFAULT;
 
@@ -210,6 +197,20 @@ export const contextFor = (size) => CONTEXT_BY_SIZE[size ?? ""] ?? CONTEXT_DEFAU
 
 /** @param {string|null} [phase] */
 const plannedModel = (phase) => MODEL_BY_PHASE[phase ?? "A"] ?? MODEL_BY_PHASE.A;
+
+/**
+ * `queue.md`'s `allowed-tools` frontmatter governs permission, not what is loaded, so a session
+ * declaring ten tools still carries every tool the build has — about 876 tokens each, measured.
+ * Passing the same list as `--tools` makes the declaration mean what it looks like it means.
+ */
+export function allowedTools(text) {
+  const m = /^allowed-tools:\s*(.+)$/m.exec(text);
+  if (!m) return [];
+  return m[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 const LOOP_SETTINGS = path.join(HERE, "loop-settings.json");
 const RESULT_SCHEMA = JSON.stringify(JSON.parse(fs.readFileSync(path.join(HERE, "result-schema.json"), "utf8")));
@@ -243,7 +244,7 @@ export function queueLoopArgs(number, size = null, phase = null) {
     "--setting-sources",
     "project",
     "--tools",
-    readAllowedTools().join(","),
+    allowedTools(fs.readFileSync(".claude/commands/queue.md", "utf8")).join(","),
     "--json-schema",
     RESULT_SCHEMA,
     "--max-turns",
@@ -411,16 +412,11 @@ export const ACCOUNT_ERRORS = new Set(["authentication_failed", "oauth_org_not_a
 // anything a ticket or the tracker supplies.
 const SHIMMED = new Set(["npm", "npx"]);
 
-/**
- * `sh` reads a whole `gh` payload, and one of them carries four hundred lines of CI log — over
- * node's 1 MB default that is an ENOBUFS throw, which `settle` catches and turns into a parked
- * ticket. `ciVerdict.ts` sets a large buffer for exactly this; its caller has to as well.
- */
-const SH_MAX_BUFFER = 64 * 1024 * 1024;
-
-const sh = (file, args, opts) => {
+const sh = (file, args, opts = {}) => {
+  if (file === "git") return gitAt(opts.cwd)(args, opts);
+  if (file === "gh") return ghCli(args, opts);
   const shell = SHIMMED.has(file) && process.platform === "win32";
-  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: SH_MAX_BUFFER, ...opts };
+  const base = { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: MAX_BUFFER, ...opts };
   // A command line, not a file plus arguments: under `shell` node concatenates them anyway, and
   // passing both is DEP0190. The quoting is this file's own, and one argument is a worktree path,
   // which carries whatever spaces the checkout's location has.
@@ -674,13 +670,11 @@ const REFRESH_TIMEOUT_MS = 2 * 60_000;
  *
  * `reviewRounds: null` on a failed read, never 0: a count nobody could take is not a count of none.
  */
-export function ticketFacts(number, exec = execFileSync) {
+export function ticketFacts(number, run = sh) {
   try {
     const issue = JSON.parse(
-      exec("gh",["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        maxBuffer: SH_MAX_BUFFER,
+      run("gh", ["issue", "view", String(number), "--json", "title,labels,url,comments,state,stateReason"], {
+        stderr: "ignore",
         timeout: 30_000,
       }),
     );
@@ -1002,7 +996,7 @@ export function runTicket(
   });
 }
 
-const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+const git = (...args) => gitAt()(args);
 
 /**
  * One report file per run, named for when the run started — not per calendar day: two runs on one
@@ -1310,8 +1304,6 @@ function fileFlakes(red, gh, log, write) {
 
 /** A `gh` failure that is the network's, not GitHub's answer: `execFileSync` puts it in `stderr` or `code`. */
 const OFFLINE = /error connecting to|ENOTFOUND|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|i\/o timeout|TLS handshake timeout/i;
-
-const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 function streamFacts(ticket) {
   const file = streamLog(ticket);

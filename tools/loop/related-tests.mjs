@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { git } from "./cli.mjs";
 import { budgetLines } from "../ci/native-budget.mjs";
 
 export const NATIVE_TEST = /^tests\/native\/.+\.test\.tsx$/;
@@ -55,7 +56,7 @@ export function listedTests(out, cwd) {
 }
 
 if (isInvokedDirectly(process.argv[1], import.meta.url)) {
-  const lines = (...a) => execFileSync("git", a, { encoding: "utf8" }).split("\n").filter(Boolean);
+  const lines = (...a) => git()(a).split("\n").filter(Boolean);
   const changed = [
     ...new Set([
       ...lines("diff", "--name-only", "origin/main...HEAD"),

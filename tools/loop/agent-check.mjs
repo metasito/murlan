@@ -5,9 +5,10 @@
  * Usage: npm run agent:check          run, or replay a cached verdict
  *        npm run agent:check -- --force   ignore the cache
  */
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { git as gitAt } from "./cli.mjs";
 import { checkLockDrift, parseWorktreeList } from "./workspace.mjs";
 import { STEPS, LOCAL, DELEGATED, cmd, BANNER } from "./check-steps.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
@@ -32,7 +33,7 @@ export function checkSubject({ toplevel, baseSha, changed }) {
 export function readSubject(cwd) {
   const read = (...args) => {
     try {
-      return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+      return gitAt(cwd)(args).trim();
     } catch {
       return null;
     }
@@ -171,7 +172,7 @@ function skipped() {
 }
 
 function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return gitAt()(args);
 }
 
 function cachePath() {

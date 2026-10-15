@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { REPO } from "../loop-derive.mjs";
+import { REPO } from "../cli.mjs";
 
 // `poll` deletes no merged branch: GitHub does, and only while this setting is on. A branch left on
 // origin with no open pull request strands its ticket (#294). GraphQL, not `gh api repos/…`: REST omits

@@ -6,24 +6,15 @@
  */
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { checkoutRoot as sharedRoot } from "../../scripts/lib/checkoutRoot.mjs";
+import { checkoutRoot } from "./cli.mjs";
 
 const ORPHAN_AGE_MS = 2 * 60 * 60 * 1000;
 const STALE_AGE_MS = 24 * 60 * 60 * 1000;
 const E2E_PORT = process.env.E2E_PORT ?? "5199";
 
-/**
- * The shared checkout every worktree hangs off, never the worktree the caller stands in — what
- * `ownedByTooling` matches a command line against, so an answer one directory out silently
- * classifies nothing as ours.
- *
- * Asked from this file's own directory rather than the caller's, so the answer does not depend on
- * where the sweep was started from.
- */
-export const checkoutRoot = (from = path.dirname(fileURLToPath(import.meta.url))) => sharedRoot(from);
+/** What `ownedByTooling` matches a command line against, so an answer one directory out silently classifies nothing as ours. */
+export { checkoutRoot } from "./cli.mjs";
 
 /**
  * Where this repo's tooling runs from. Playwright is the reason this is a list rather than the

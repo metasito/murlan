@@ -44,6 +44,31 @@ export const TURNS_BY_SIZE = {
 };
 export const TURNS_DEFAULT = 150;
 
+/**
+ * The real bound is turns. A dollar cap is checked only after a turn settles, so where it stops
+ * moves with the model and the context — measured 8x to 42x over a small cap — and with subagents
+ * in flight it stops the *subagents* and lets the session carry on. The dollar figure stays as a
+ * backstop against one pathological turn, well above what a healthy ticket reaches.
+ */
+export const TICKET_BUDGET_USD = "40";
+
+/**
+ * What one ticket may cost across every process it is spawned as.
+ *
+ * `TICKET_BUDGET_USD` bounds a single session; with phase handoffs a ticket is up to
+ * `MAX_HANDOFFS` of them, so the per-ticket figure is the supervisor's, the only thing that
+ * survives them all. Set above the fleet median for the size, so it catches a runaway and never a
+ * healthy run.
+ */
+export const USD_BY_SIZE = {
+  "size:XS": 20,
+  "size:S": 30,
+  "size:M": 45,
+  "size:L": 70,
+  "size:XL": 90,
+};
+export const USD_DEFAULT = 40;
+
 /** @param {{size?: string, turns?: number, outcome?: string}[]} rows @param {Record<string, number>} [caps] */
 export function turnHeadroom(rows, caps = TURNS_BY_SIZE) {
   const busiest = {};

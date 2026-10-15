@@ -21,8 +21,8 @@ import {
   MAX_HANDOFFS,
   RESTART,
   loopMoved,
-  USD_BY_SIZE,
 } from "../queue-loop.mjs";
+import { USD_BY_SIZE } from "../loop-cost.mjs";
 import { afterSession, WAIT } from "../decide.mjs";
 import { readLine } from "../loop-stream.mjs";
 import { parkReasonOf, ticketTally } from "../loop-logs.mjs";

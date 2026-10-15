@@ -19,8 +19,8 @@
  *                                                         and a DOD-CHECK of HEAD with every box ticked —
  *                                                         the draft file's, when one is named, else the tracker's
  */
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { git as gitAt } from "./cli.mjs";
 import { join } from "node:path";
 import { derive, dodCheckFor, locateRun, reviewFor, reviewRounds, ticketComments, verdictFor } from "./loop-derive.mjs";
 import { cleanPassFor } from "./agent-check.mjs";
@@ -29,7 +29,7 @@ import { COMMITTING } from "./loop-stream.mjs";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 
 function git(args, cwd) {
-  return execFileSync("git", args, { encoding: "utf8", cwd }).trim();
+  return gitAt(cwd)(args).trim();
 }
 
 /** A supervisor calls this in-process; the CLI below is the same read from a fresh one. */

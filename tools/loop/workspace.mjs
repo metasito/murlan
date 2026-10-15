@@ -7,19 +7,14 @@
  *        npm run worktrees:prune [-- --dry-run]               the sweep alone
  *        npm run worktrees:remove -- <path> [--force] [--dry-run]
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
-import { AGENT_DIR, REPO, WORKTREE_DIR } from "./loop-derive.mjs";
+import { firstLine, gh as ghCli, git as gitAt, REPO } from "./cli.mjs";
+import { AGENT_DIR, WORKTREE_DIR } from "./loop-derive.mjs";
 import { capabilities, note, stepRow, theme } from "./loop-render.mjs";
 import { reap as reapSweep } from "./reap.mjs";
-
-const gitAt = (cwd) => (args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-const ghCli = (args, opts = {}) =>
-  execFileSync("gh", args, { encoding: "utf8", maxBuffer: 1 << 24, stdio: ["ignore", "pipe", "pipe"], ...opts });
-const firstLine = (err) => String(err?.stderr || err?.message || err).trim().split("\n")[0];
 
 /**
  * In git's order: the first is always the primary worktree, never a linked one.

@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { decide, WAIT } from "../decide.mjs";
 import { ticketTally } from "../loop-logs.mjs";
-import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES, USD_BY_SIZE, USD_DEFAULT } from "../queue-loop.mjs";
+import { BREAKER, CI_ROUNDS, MAX_HANDOFFS, SETTLE, TICKET_HOLDS, UPDATES } from "../queue-loop.mjs";
+import { USD_BY_SIZE, USD_DEFAULT } from "../loop-cost.mjs";
 
 const LIMITS = { BREAKER, CI_ROUNDS, MAX_HANDOFFS, TICKET_HOLDS, USD_BY_SIZE, USD_DEFAULT, WAIT, UPDATES };
 const NOW = Date.parse("2026-10-12T20:00:00Z");

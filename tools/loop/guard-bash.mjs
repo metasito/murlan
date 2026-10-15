@@ -14,15 +14,13 @@
  * Exit 0 allows. Exit 2 blocks and returns the message on stderr to the agent.
  */
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
 import { apiMethod, readIssue, TRUSTED_SELECT, untrustedRead } from "./brief.mjs";
+import { firstLine, git } from "./cli.mjs";
 import { locateRun } from "./loop-derive.mjs";
 import { readLine } from "./loop-stream.mjs";
 import { commands, has, literal, literalAssignments, loopBodies, MOVES, operands, toNative, withoutQuotedBodies } from "./shell.mjs";
-
-const firstLine = (err) => String(err?.message ?? err).split("\n")[0];
 
 const HTTP_CLIENT = /^(gh|curl|wget|invoke-restmethod|invoke-webrequest|irm|iwr)$/;
 
@@ -33,7 +31,7 @@ const isRerun = (c) =>
 export function gitAt(base) {
   const quietly = (args, dir) => {
     try {
-      execFileSync("git", args, { cwd: resolve(base, dir ?? "."), stdio: "ignore", timeout: 15_000 });
+      git(resolve(base, dir ?? "."))(args, { stderr: "ignore", timeout: 15_000 });
       return true;
     } catch {
       return false;
@@ -41,7 +39,7 @@ export function gitAt(base) {
   };
   const answer = (args, dir) => {
     try {
-      return execFileSync("git", args, { cwd: resolve(base, dir ?? "."), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 }).trim();
+      return git(resolve(base, dir ?? "."))(args, { stderr: "ignore", timeout: 15_000 }).trim();
     } catch {
       return null;
     }

@@ -3,10 +3,10 @@
  * session's (RULES.md rules 8 and 31), and nothing outside the repo is scratch (rule 32). Only
  * `.worktrees/` and `.loop-logs/` are writable. Exit 0 always; stdout carries the deny, or nothing.
  */
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { isInvokedDirectly } from "../../scripts/lib/entry.mjs";
+import { checkoutRoot } from "./cli.mjs";
 
 const inside = (child, parent) => {
   const rel = path.relative(parent, child);
@@ -31,11 +31,7 @@ if (isInvokedDirectly(process.argv[1], import.meta.url)) {
     const file = payload?.tool_input?.file_path ?? payload?.tool_input?.notebook_path;
     if (file) {
       const cwd = payload.cwd ?? process.cwd();
-      const common = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-      const reason = verdict(file, path.dirname(common), cwd);
+      const reason = verdict(file, checkoutRoot(cwd), cwd);
       if (reason) {
         process.stdout.write(
           JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } }),
