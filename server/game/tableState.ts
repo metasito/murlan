@@ -25,21 +25,29 @@ import {
 } from "../../lib/game/gameEngine.ts";
 import type { GameMode, GameState, MatchLength } from "../../lib/game/gameEngine.ts";
 
-/** The fields no envelope carries: a restored table starts each one empty. */
-export const MEMORY_ONLY = [
-  "resultWrites",
-  "rematchVotes",
-  "endMatchVotes",
-  "turnDeadlineMs",
-  "spectators",
-  "moveLog",
-  "lastRoundOverPayload",
-] as const satisfies readonly (keyof OnlineGameState)[];
+/** The fields no envelope carries, each with the value a table starts it on. */
+const MEMORY_ONLY_START = {
+  resultWrites: () => undefined,
+  rematchVotes: () => new Set<string>(),
+  endMatchVotes: () => new Set<string>(),
+  turnDeadlineMs: () => undefined,
+  spectators: () => new Set<string>(),
+  moveLog: () => null,
+  lastRoundOverPayload: () => undefined,
+} satisfies { [K in keyof OnlineGameState]?: () => OnlineGameState[K] };
 
-type MemoryOnly = Pick<OnlineGameState, (typeof MEMORY_ONLY)[number]>;
+type MemoryOnlyField = keyof typeof MEMORY_ONLY_START;
+type MemoryOnly = Pick<OnlineGameState, MemoryOnlyField>;
+
+export const MEMORY_ONLY = Object.keys(MEMORY_ONLY_START) as MemoryOnlyField[];
 
 export function freshMemory(moveLog: OnlineGameState["moveLog"]): MemoryOnly {
-  return { rematchVotes: new Set(), endMatchVotes: new Set(), spectators: new Set(), moveLog };
+  const memory: Record<string, unknown> = {};
+  for (const field of MEMORY_ONLY) {
+    const value = field === "moveLog" ? moveLog : MEMORY_ONLY_START[field]();
+    if (value !== undefined) memory[field] = value;
+  }
+  return memory as MemoryOnly;
 }
 
 export interface TableRoom {
