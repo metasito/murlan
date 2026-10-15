@@ -62,7 +62,7 @@ const state = (count: number, over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -175,7 +175,7 @@ describe('the per-seat pass marker', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 0,
             currentTurnIndex: 0,
-            roundWinner: 0,
+            trickWinner: 0,
             passCount: 0,
           })
         )
@@ -318,13 +318,13 @@ describe('the pass sound', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 0,
             currentTurnIndex: 0,
-            roundWinner: 0,
+            trickWinner: 0,
             passCount: 0,
           })
         )
       );
     });
-    expect(count('round_win')).toBe(1);
+    expect(count('trick_win')).toBe(1);
     expect(count('pass')).toBe(passes);
     await r.unmount();
   });
@@ -358,14 +358,14 @@ describe('the pass sound', () => {
             lastPlayedCombination: null,
             lastPlayedBy: 1,
             currentTurnIndex: 1,
-            roundWinner: 1,
+            trickWinner: 1,
             passCount: 0,
           }),
           onPass
         )
       );
     });
-    expect(count('round_win')).toBe(1);
+    expect(count('trick_win')).toBe(1);
     await r.unmount();
   });
 });

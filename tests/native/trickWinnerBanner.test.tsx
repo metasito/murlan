@@ -1,8 +1,8 @@
-// tests/native/roundWinnerBanner.test.tsx — the round-winner tag over the pile
+// tests/native/trickWinnerBanner.test.tsx — the round-winner tag over the pile
 // is announced once per round, for every round.
 //
 // The seat that wins a round leads the next one, so the same seat winning two
-// rounds in a row is ordinary play rather than an edge case. `roundWinner`
+// rounds in a row is ordinary play rather than an edge case. `trickWinner`
 // survives the round the winner then leads — `processPlay` never touches it —
 // so with two players it goes seat → seat with nothing in between, and with
 // three it goes seat → null → seat. The tag has to arrive both times either
@@ -46,7 +46,7 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: WINNER_SEAT,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -54,11 +54,11 @@ const state = (over: Partial<GameState>): GameState => ({
 });
 
 /** The pass that closed the round in the winner's favour. */
-const closed = () => state({ roundWinner: WINNER_SEAT });
-/** The winner leading the next round; `roundWinner` still stands. */
-const leading = () => state({ lastPlayedCombination: LED, roundWinner: WINNER_SEAT });
+const closed = () => state({ trickWinner: WINNER_SEAT });
+/** The winner leading the next round; `trickWinner` still stands. */
+const leading = () => state({ lastPlayedCombination: LED, trickWinner: WINNER_SEAT });
 /** A pass that closed nothing, three-handed. */
-const between = () => state({ roundWinner: null });
+const between = () => state({ trickWinner: null });
 
 const noop = () => {};
 
@@ -77,7 +77,7 @@ const table = (gameState: GameState) => (
 
 /** The tag's scope over the pile, not the same name on its seat. */
 const pileArea = () => within(screen.getByTestId('pile-area'));
-const plate = () => pileArea().getByTestId('notice-roundWinner', { includeHiddenElements: true });
+const plate = () => pileArea().getByTestId('notice-trickWinner', { includeHiddenElements: true });
 /** #1259 Q1: a mark enters in the mockup's 100 ms. */
 const MARK_ENTER_MS = 100;
 const STAR = String.fromCodePoint(Number(Ionicons.glyphMap.star));
@@ -112,20 +112,20 @@ describe('the round-winner tag', () => {
     });
     expect(tagGone()).toBe(true);
 
-    // The pass that ends nothing: three-handed, the engine clears roundWinner.
+    // The pass that ends nothing: three-handed, the engine clears trickWinner.
     await act(async () => r.rerender(table(between())));
     expect(tagGone()).toBe(true);
 
     await act(async () => r.rerender(table(closed())));
     await tagShown();
-    expect(startsOf('round_win')).toHaveLength(1);
+    expect(startsOf('trick_win')).toHaveLength(1);
 
     await r.unmount();
   });
 
-  it('announces the second win when roundWinner never changes value', async () => {
+  it('announces the second win when trickWinner never changes value', async () => {
     // Two-handed: the winner leads the next round and takes it as well, so
-    // `roundWinner` reads the same seat from the first close to the second.
+    // `trickWinner` reads the same seat from the first close to the second.
     const r = await render(table(closed()));
     await tagShown();
 
@@ -142,7 +142,7 @@ describe('the round-winner tag', () => {
 
     await act(async () => r.rerender(table(closed())));
     await tagShown();
-    expect(startsOf('round_win')).toHaveLength(1);
+    expect(startsOf('trick_win')).toHaveLength(1);
 
     await r.unmount();
   });

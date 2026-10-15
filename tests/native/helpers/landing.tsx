@@ -62,7 +62,7 @@ export function tableAfter({ by, combo, passCount = 0, turn = 0, catchUp = false
     lastPlayedBy: by,
     passCount,
     gameMode: 'free_for_all',
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
@@ -94,7 +94,7 @@ export function flightOf(key: string, cards: Card[], from: CardFrom[], reduced =
 export function pileOf({ plays = [], ...props }: Partial<PileLayerProps> & { plays?: TrickPlay[] }) {
   return (
     <PileLayer trick={{ plays, swept: null }} flights={[]} signal={makeMutable(NO_LANDING)} onFlightEnd={noop} onSweepEnd={noop}
-      comboLabel={null} roundWinner={null} roomW={400} scale={1} {...props} />
+      comboLabel={null} trickWinner={null} roomW={400} scale={1} {...props} />
   );
 }
 

@@ -7,7 +7,7 @@
 //
 // Loads under `node --test`, and under the server — docs/agents/checks.md,
 // "Node's TypeScript loader".
-import { passesToCloseRound } from "./gameEngine.ts";
+import { passesToCloseTrick } from "./gameEngine.ts";
 import type { Combination, GameMode, GameState, Player } from "./gameEngine.ts";
 
 export interface ReplaySeat {
@@ -124,7 +124,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     passes += 1;
     const active = move.handCounts.filter((n) => n > 0).length;
     const lastPlayerStillActive = pileSeat >= 0 && (move.handCounts[pileSeat] ?? 0) > 0;
-    if (pile && passes >= passesToCloseRound(active, lastPlayerStillActive)) {
+    if (pile && passes >= passesToCloseTrick(active, lastPlayerStillActive)) {
       pile = null;
       pileSeat = -1;
       passes = 0;
@@ -148,7 +148,7 @@ export function replayStateAt(replay: ReplayDto, index: number): GameState {
     lastPlayedBy: pileSeat,
     passCount: 0,
     gameMode: replay.gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: finished,
     rankings: finished ? replay.rankings : [],
     firstPlayMade: at >= 0,

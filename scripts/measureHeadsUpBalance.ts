@@ -294,9 +294,9 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
     for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
       const seat = state.currentTurnIndex;
-      const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+      const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
 
-      if (isNewRound) {
+      if (isNewTrick) {
         const leader = state.players[seat];
         const known = knownOpponentExchangeCard(state.exchangePhase, seat);
         if (known && isExchangeCardStillOut(known, state.playedRanks, leader.hand)) {
@@ -331,7 +331,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 
 // ─── Measurement 6 helpers: royal-straight blind spot (#943) ──────────────
 //
-// takesTheRound (lib/game/ai.ts, module-private inside aiChoosePlay) names
+// takesTheTrick (lib/game/ai.ts, module-private inside aiChoosePlay) names
 // one residual risk a rank tally cannot see: a royal straight, which needs
 // suits the tally deliberately does not hold. isCertainLead mirrors that
 // predicate exactly — same three conditions, same order — because the
@@ -339,7 +339,7 @@ function measureExchangeBlunderAvoidance(n: number, seed: number): BlunderCounts
 // question about every legal play, not just the one aiChoosePlay ends up
 // picking.
 
-/** Mirrors `takesTheRound` inside `lib/game/ai.ts`'s `aiChoosePlay`. */
+/** Mirrors `takesTheTrick` inside `lib/game/ai.ts`'s `aiChoosePlay`. */
 export function isCertainLead(
   play: Combination,
   playedRanks: number[] | undefined,
@@ -402,11 +402,11 @@ interface RoyalStraightBlindSpot {
 /**
  * At every new-round lead a medium- or hard-tier bot makes where today's
  * `certain` filter (isCertainLead, mirroring the module-private
- * `takesTheRound`) calls a candidate a sure thing, checks the actual, full
+ * `takesTheTrick`) calls a candidate a sure thing, checks the actual, full
  * opponent hand — not sanitized, nothing here reads a sanitized view — for a
  * legal royal straight that would answer it. 2-seat matches only, both
  * personalities that reach this code path (`besnik`=medium, `gent`=hard;
- * `easy` never reaches the `isNewRound` certain-filter branch at all,
+ * `easy` never reaches the `isNewTrick` certain-filter branch at all,
  * lib/game/gameEngine.ts:878-880).
  */
 function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBlindSpot {
@@ -423,9 +423,9 @@ function measureRoyalStraightBlindSpot(n: number, seed: number): RoyalStraightBl
 
       for (let turn = 0; turn < 300 && !state.gameOver; turn++) {
         const seat = state.currentTurnIndex;
-        const isNewRound = !state.exchangePhase?.active && state.lastPlayedCombination === null;
+        const isNewTrick = !state.exchangePhase?.active && state.lastPlayedCombination === null;
 
-        if (isNewRound) {
+        if (isNewTrick) {
           const leader = state.players[seat];
           const legalPlays = getAllValidPlays(leader.hand, null, true, undefined);
           const certain = legalPlays.filter((p) => isCertainLead(p, state.playedRanks, leader.hand));

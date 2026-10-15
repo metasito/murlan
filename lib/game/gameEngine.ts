@@ -93,7 +93,7 @@ export interface GameState {
   lastPlayedBy: number;
   passCount: number;
   gameMode: GameMode;
-  roundWinner: number | null;
+  trickWinner: number | null;
   gameOver: boolean;
   rankings: string[];
   firstPlayMade: boolean;
@@ -451,7 +451,7 @@ export function canPlay(
 export function getAllValidPlays(
   hand: Card[],
   lastPlayed: Combination | null,
-  isNewRound: boolean,
+  isNewTrick: boolean,
   requireCard?: Card
 ): Combination[] {
   const plays: Combination[] = [];
@@ -465,7 +465,7 @@ export function getAllValidPlays(
     if (!selected.length) return;
     if (requireCard && !selected.some((c) => c.id === requireCard.id)) return;
     const combo = buildCombination(selected);
-    if (!combo || !canPlay(combo, isNewRound ? null : lastPlayed)) return;
+    if (!combo || !canPlay(combo, isNewTrick ? null : lastPlayed)) return;
     const key = `${combo.type}:${combo.cards.length}:${combo.strength}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -601,24 +601,17 @@ function selectStraightCards(groups: Card[][], requireCard?: Card): Card[] {
 // ─── Game state processing ────────────────────────────────────────────────────
 
 /**
- * Fills the remaining placements when a hand ends with players still holding
- * cards. Every seat must end up in `rankings`: the scoreboard awards from it
- * and the stats writer records from it, so a missing seat is a player who
- * silently played no game.
- *
- * No source specifies the order among unfinished seats, so fewest cards left
- * wins, seat order breaking ties. Mutates `state` — callers hold a clone.
+ * Places the one seat still holding cards when the hand ends
+ * (docs/GAME-RULES.md §9) as last. Every seat must end up in `rankings`: the
+ * scoreboard awards from it and the stats writer records from it, so a missing
+ * seat is a player who silently played no game. Mutates `state` — callers hold
+ * a clone.
  */
-function assignRemainingPlacements(state: GameState): void {
-  const remaining = state.players
-    .map((p, seat) => ({ p, seat }))
-    .filter(({ p }) => p.hand.length > 0 && p.finishPosition === undefined)
-    .sort((a, b) => a.p.hand.length - b.p.hand.length || a.seat - b.seat);
-
-  for (const { p } of remaining) {
-    p.finishPosition = state.rankings.length + 1;
-    state.rankings.push(p.id);
-  }
+function placeLastSeat(state: GameState): void {
+  const last = state.players.find((p) => p.hand.length > 0 && p.finishPosition === undefined);
+  if (!last) return;
+  last.finishPosition = state.rankings.length + 1;
+  state.rankings.push(last.id);
 }
 
 /**
@@ -707,32 +700,8 @@ export function processPlay(state: GameState, combination: Combination): GameSta
 
     const activePlayers = newState.players.filter((p) => p.hand.length > 0);
 
-    if (newState.gameMode === "teams") {
-      const winnerTeam = player.team;
-      const teammateDone = newState.players.some(
-        (p) =>
-          p.team === winnerTeam &&
-          p.finishPosition !== undefined &&
-          p.id !== player.id
-      );
-      if (
-        teammateDone ||
-        newState.players.filter(
-          (p) => p.hand.length > 0 && p.team !== winnerTeam
-        ).length === 0
-      ) {
-        // The hand is decided, but the losing pair is still owed its placement
-        // points (GAME-RULES.md §11/§12: both partners' finishing positions count).
-        // Every seat must reach `rankings` — the stats writer skips anyone
-        // absent from it.
-        assignRemainingPlacements(newState);
-        newState.gameOver = true;
-        return newState;
-      }
-    }
-
     if (activePlayers.length <= 1) {
-      assignRemainingPlacements(newState);
+      placeLastSeat(newState);
       newState.gameOver = true;
       return newState;
     }
@@ -749,7 +718,7 @@ export function processPlay(state: GameState, combination: Combination): GameSta
  * there. `lib/game/replay.ts` reads the same threshold to fold a stored log back
  * into a pile, which is why it is exported rather than inline.
  */
-export function passesToCloseRound(activeCount: number, lastPlayerStillActive: boolean): number {
+export function passesToCloseTrick(activeCount: number, lastPlayerStillActive: boolean): number {
   return Math.max(1, lastPlayerStillActive ? activeCount - 1 : activeCount);
 }
 
@@ -765,7 +734,7 @@ export function processPass(state: GameState): GameState {
 
   const activeCount = newState.players.filter((p) => p.hand.length > 0).length;
   const lastPlayer = newState.players[newState.lastPlayedBy];
-  const passesNeeded = passesToCloseRound(
+  const passesNeeded = passesToCloseTrick(
     activeCount,
     !!lastPlayer && lastPlayer.hand.length > 0
   );
@@ -773,7 +742,7 @@ export function processPass(state: GameState): GameState {
   if (newState.passCount >= passesNeeded) {
     newState.lastPlayedCombination = null;
     newState.passCount = 0;
-    newState.roundWinner = newState.lastPlayedBy;
+    newState.trickWinner = newState.lastPlayedBy;
 
     const lastWinner = newState.players[newState.lastPlayedBy];
     if (lastWinner && lastWinner.hand.length > 0) {
@@ -785,7 +754,7 @@ export function processPass(state: GameState): GameState {
       });
     }
   } else {
-    newState.roundWinner = null;
+    newState.trickWinner = null;
     newState.currentTurnIndex = getNextActivePlayer(newState);
   }
 
@@ -806,9 +775,9 @@ function getNextActivePlayer(state: GameState): number {
 export function canPlayerPlay(
   hand: Card[],
   lastPlayed: Combination | null,
-  isNewRound: boolean
+  isNewTrick: boolean
 ): boolean {
-  return getAllValidPlays(hand, lastPlayed, isNewRound).length > 0;
+  return getAllValidPlays(hand, lastPlayed, isNewTrick).length > 0;
 }
 
 export function getCardDisplayRank(rank: Rank): string {
@@ -875,7 +844,7 @@ export function initializeRematch(
       playedRanks: emptyRankTally(),
       passCount: 0,
       gameMode,
-      roundWinner: null,
+      trickWinner: null,
       gameOver: false,
       rankings: [],
       firstPlayMade: true,
@@ -905,7 +874,7 @@ export function initializeRematch(
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
@@ -1131,7 +1100,7 @@ export function initializeGame(
     playedRanks: emptyRankTally(),
     passCount: 0,
     gameMode,
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: false,
@@ -1367,7 +1336,8 @@ export interface FoldHandResult {
  * either escalates the target, ends the match, or leaves it running.
  *
  * A single-manche game ends here by definition, with no target involved — its
- * winner is whoever took the manche, or in teams the pair (docs/GAME-RULES.md §11).
+ * winner is whoever took the manche, or in teams the pair with more points, a
+ * 3-3 being a draw (docs/GAME-RULES.md §11, § Decisions).
  *
  * Keyed by an opaque string so offline and the server share one progression:
  * offline scores by engine player id, the server by userId.
@@ -1409,14 +1379,16 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
 
   if (length === "single") {
     const championId = rankings[0];
-    const championTeam = championId === undefined ? undefined : teamOf[championId];
-    if (gameMode === "teams" && championTeam !== undefined) {
+    if (gameMode === "teams" && championId !== undefined && teamOf[championId] !== undefined) {
       // A manche is taken by a pair (docs/GAME-RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
+      const teamPoints = aggregateTeamScores(scoreHand(rankings, playerCount), teamOf);
+      const best = Math.max(...Object.values(teamPoints));
+      const topTeams = new Set(Object.keys(teamPoints).filter((team) => teamPoints[team] === best));
       const winners = Object.entries(teamOfKey)
-        .filter(([key, team]) => team === championTeam && nameable(key))
+        .filter(([key, team]) => topTeams.has(team) && nameable(key))
         .map(([key]) => key);
-      return { handByKey, cumulative, target, over: true, winners, isDraw: false };
+      return { handByKey, cumulative, target, over: true, winners, isDraw: topTeams.size > 1 };
     }
     // The best-placed seat someone is still sitting in. The top one may have
     // been walked out of, and `vacateSeat` keeps the departed player's name —

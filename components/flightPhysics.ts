@@ -99,7 +99,7 @@ export function comboImpactTier(comboType: Combination["type"]): ImpactTier {
  * `context/GameContext.tsx` `applyHandToMatch`, the online
  * `game:over`/`matchOver` payload): the hand that empties a seat's hand is
  * also the hand that happens to close the match, never a second, later
- * event. `GameState.roundWinner` is not read here — `docs/GAME-RULES.md` §9
+ * event. `GameState.trickWinner` is not read here — `docs/GAME-RULES.md` §9
  * calls that a *trick*, and it closes many times a hand.
  *
  * One landing fires one tier: a play that is itself a bomb and also closes
@@ -335,19 +335,19 @@ export function comboKey(combo: Combination, playedBy: number): string {
 
 /**
  * The pass that just closed a round, seen from one state. `processPass`
- * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `roundWinner`
+ * (lib/game/gameEngine.ts) clears `lastPlayedCombination` and credits `trickWinner`
  * in the same transition, so the table gets both on a single commit — and the
  * winning cards must stay on the felt under the tag that announces them
  * instead of being wiped by the empty-table branch.
  */
-export function roundClosedWithWinner(state: {
+export function trickClosedWithWinner(state: {
   lastPlayedCombination: Combination | null;
-  roundWinner?: number | null;
+  trickWinner?: number | null;
 }): boolean {
   return (
     state.lastPlayedCombination === null &&
-    state.roundWinner !== null &&
-    state.roundWinner !== undefined
+    state.trickWinner !== null &&
+    state.trickWinner !== undefined
   );
 }
 
@@ -385,7 +385,7 @@ export function passedSeats(state: {
   return passed;
 }
 
-type PassView = Parameters<typeof passedSeats>[0] & { roundWinner?: number | null };
+type PassView = Parameters<typeof passedSeats>[0] & { trickWinner?: number | null };
 
 /**
  * The seats one change of state shows passing: each `passedSeats` names anew, and the seat on move
@@ -395,7 +395,7 @@ export function seatsJustPassed(before: PassView, after: PassView): number[] {
   const was = passedSeats(before);
   const now = passedSeats(after).filter((seat) => !was.includes(seat));
   const closedByPass =
-    before.lastPlayedCombination !== null && roundClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
+    before.lastPlayedCombination !== null && trickClosedWithWinner(after) && after.lastPlayedBy === before.lastPlayedBy;
   return closedByPass ? [...now, before.currentTurnIndex] : now;
 }
 

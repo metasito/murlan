@@ -98,7 +98,7 @@ interface PlayBeat {
   tip?: string;
   handCards: Card[];
   lastPlayed: Combination | null;
-  isNewRound: boolean;
+  isNewTrick: boolean;
   requireCard?: Card;
   expectedType: CombinationType;
   highlightIds: string[];
@@ -175,7 +175,7 @@ function buildExchangeState(t: TFn): GameState {
     lastPlayedBy: 0,
     passCount: 0,
     gameMode: "free_for_all",
-    roundWinner: null,
+    trickWinner: null,
     gameOver: false,
     rankings: [],
     firstPlayMade: true,
@@ -213,7 +213,7 @@ function buildBeats(t: TFn): Beat[] {
       instruction: t("tutorial.beat.open.instruction"),
       handCards: [threeSpades, mk("4", "diamonds"), mk("7", "hearts")],
       lastPlayed: null,
-      isNewRound: true,
+      isNewTrick: true,
       requireCard: threeSpades,
       expectedType: "single",
       highlightIds: [threeSpades.id],
@@ -227,7 +227,7 @@ function buildBeats(t: TFn): Beat[] {
       tip: t("tutorial.beat.respond.tip"),
       handCards: [mk("5", "hearts"), mk("6", "hearts"), mk("9", "clubs"), mk("2", "diamonds")],
       lastPlayed: respondLastPlayed,
-      isNewRound: false,
+      isNewTrick: false,
       expectedType: "single",
       highlightIds: [],
       opponentLabel: t("tutorial.beat.respond.opponentLabel"),
@@ -241,7 +241,7 @@ function buildBeats(t: TFn): Beat[] {
       tip: t("tutorial.beat.pass.tip"),
       handCards: [mk("4", "diamonds"), mk("8", "clubs"), mk("J", "hearts"), mk("A", "clubs")],
       lastPlayed: passLastPlayed,
-      isNewRound: false,
+      isNewTrick: false,
       expectedType: "single",
       highlightIds: [],
       opponentLabel: t("tutorial.beat.pass.opponentLabel"),
@@ -263,7 +263,7 @@ function buildBeats(t: TFn): Beat[] {
       instruction: t("tutorial.beat.pair.instruction"),
       handCards: [mk("8", "hearts"), mk("8", "diamonds"), mk("5", "clubs"), mk("4", "clubs")],
       lastPlayed: null,
-      isNewRound: true,
+      isNewTrick: true,
       expectedType: "pair",
       highlightIds: [],
       successNarrative: t("tutorial.beat.pair.successNarrative"),
@@ -276,7 +276,7 @@ function buildBeats(t: TFn): Beat[] {
       tip: t("tutorial.beat.stage.tip"),
       handCards: [mk("6", "hearts"), mk("6", "clubs"), mk("9", "diamonds"), mk("9", "spades"), mk("4", "clubs")],
       lastPlayed: stageLastPlayed,
-      isNewRound: false,
+      isNewTrick: false,
       expectedType: "pair",
       highlightIds: [],
       opponentLabel: t("tutorial.beat.stage.opponentLabel"),
@@ -290,7 +290,7 @@ function buildBeats(t: TFn): Beat[] {
       instruction: t("tutorial.beat.triple.instruction"),
       handCards: [mk("J", "clubs"), mk("J", "diamonds"), mk("J", "hearts"), mk("3", "diamonds"), mk("6", "clubs")],
       lastPlayed: null,
-      isNewRound: true,
+      isNewTrick: true,
       expectedType: "triple",
       highlightIds: [],
       successNarrative: t("tutorial.beat.triple.successNarrative"),
@@ -309,7 +309,7 @@ function buildBeats(t: TFn): Beat[] {
         mk("2", "clubs"),
       ],
       lastPlayed: null,
-      isNewRound: true,
+      isNewTrick: true,
       expectedType: "straight",
       highlightIds: [],
       successNarrative: t("tutorial.beat.straight.successNarrative"),
@@ -322,7 +322,7 @@ function buildBeats(t: TFn): Beat[] {
       tip: t("tutorial.beat.bomb.tip"),
       handCards: [mk("K", "spades"), mk("K", "hearts"), mk("K", "diamonds"), mk("K", "clubs"), mk("A", "clubs")],
       lastPlayed: bombLastPlayed,
-      isNewRound: false,
+      isNewTrick: false,
       expectedType: "bomb",
       highlightIds: [],
       opponentLabel: t("tutorial.beat.bomb.opponentLabel"),
@@ -343,7 +343,7 @@ function buildBeats(t: TFn): Beat[] {
         mk("Q", "hearts"),
       ],
       lastPlayed: royalLastPlayed,
-      isNewRound: false,
+      isNewTrick: false,
       expectedType: "royal_straight",
       highlightIds: [],
       opponentLabel: t("tutorial.beat.royal.opponentLabel"),
@@ -396,7 +396,7 @@ function evaluatePlay(selected: Card[], beat: PlayBeat, t: TFn): { ok: boolean; 
     };
   }
 
-  const legal = canPlay(combo, beat.isNewRound ? null : beat.lastPlayed);
+  const legal = canPlay(combo, beat.isNewTrick ? null : beat.lastPlayed);
   if (!legal) {
     const lp = beat.lastPlayed;
     if (lp?.type === "royal_straight") {
@@ -630,7 +630,7 @@ export default function TutorialScreen() {
         lastPlayedCombination: beat.lastPlayed,
         startCard: undefined,
         firstPlayMade: true,
-        isNewRound: beat.isNewRound,
+        isNewTrick: beat.isNewTrick,
         isMyTurn: true,
         isFinished: false,
       });

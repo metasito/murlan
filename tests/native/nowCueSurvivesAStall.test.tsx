@@ -43,13 +43,13 @@ describe('a cue meant for now, its commit stalling before the flush', () => {
     jest.useRealTimers();
   });
 
-  it.each(['pass', 'roundWon', 'turn'] as const)('still sounds a %s sent with no flight to wait for', async (kind) => {
+  it.each(['pass', 'trickWon', 'turn'] as const)('still sounds a %s sent with no flight to wait for', async (kind) => {
     const { result, unmount } = await renderHook(() => useTableTimeline());
     await act(async () => {
       result.current.moment({ kind });
       result.current.flush();
     });
-    expect(startsOf(kind === 'roundWon' ? 'round_win' : kind)).toHaveLength(1);
+    expect(startsOf(kind === 'trickWon' ? 'trick_win' : kind)).toHaveLength(1);
     await unmount();
   });
 

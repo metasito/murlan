@@ -1,7 +1,7 @@
-// tests/native/roundClose.test.tsx — winning a round pays off on the cards
+// tests/native/trickClose.test.tsx — winning a round pays off on the cards
 // that won it.
 //
-// `processPass` clears `lastPlayedCombination` and credits `roundWinner` in the
+// `processPass` clears `lastPlayedCombination` and credits `trickWinner` in the
 // same transition, so the table sees both on one commit. Taken naively that
 // wipes the felt at the exact moment the winner tag goes up, and plays the
 // new-round sting ahead of the round-win sting.
@@ -32,7 +32,7 @@ const METRICS = {
   insets: { top: 0, left: 47, right: 34, bottom: 0 },
 };
 
-/** How long the winning cards are held. Mirrors ROUND_WINNER_MS. */
+/** How long the winning cards are held. Mirrors TRICK_WINNER_MS. */
 const HOLD_MS = 1800;
 /** `botMoveDelayMs()`'s default — a bot round winner leads inside the hold. */
 const BOT_DELAY_MS = 1200;
@@ -55,7 +55,7 @@ const state = (over: Partial<GameState>): GameState => ({
   lastPlayedBy: -1,
   passCount: 0,
   gameMode: 'free_for_all',
-  roundWinner: null,
+  trickWinner: null,
   gameOver: false,
   rankings: [],
   firstPlayMade: true,
@@ -83,7 +83,7 @@ const onFelt = (card: Card) =>
 
 /** Seat 1 leads the King; seat 0's pass closes the round in seat 1's favour. */
 const LED = state({ lastPlayedCombination: single(KING), lastPlayedBy: 1, currentTurnIndex: 0 });
-const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, roundWinner: 1 });
+const CLOSED = state({ lastPlayedCombination: null, lastPlayedBy: 1, trickWinner: 1 });
 
 describe('the pass that closes a round', () => {
   beforeEach(async () => {
@@ -127,14 +127,14 @@ describe('the pass that closes a round', () => {
     newEpoch();
 
     await act(async () => r.rerender(table(CLOSED)));
-    expect(startsOf('round_win')).toHaveLength(1);
-    expect(startsOf('round_start')).toEqual([]);
+    expect(startsOf('trick_win')).toHaveLength(1);
+    expect(startsOf('trick_start')).toEqual([]);
 
     await act(async () => {
       jest.advanceTimersByTime(HOLD_MS + 1);
     });
-    expect(startsOf('round_start')).toHaveLength(1);
-    expect(startsOf('round_win')[0]).toBeLessThan(startsOf('round_start')[0]);
+    expect(startsOf('trick_start')).toHaveLength(1);
+    expect(startsOf('trick_win')[0]).toBeLessThan(startsOf('trick_start')[0]);
 
     await r.unmount();
   });
@@ -150,7 +150,7 @@ describe('the pass that closes a round', () => {
     await act(async () => {
       jest.advanceTimersByTime(200);
       r.rerender(
-        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, roundWinner: 1 }))
+        table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1 }))
       );
     });
     await act(async () => {
@@ -197,7 +197,7 @@ describe('the pass that closes a round', () => {
       await act(async () => {
         jest.advanceTimersByTime(BOT_DELAY_MS);
         r.rerender(
-          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, roundWinner: 1 }))
+          table(state({ lastPlayedCombination: single(ACE), lastPlayedBy: 1, trickWinner: 1 }))
         );
       });
       expect(swept(KING)).toBeTruthy();

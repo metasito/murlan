@@ -1,7 +1,7 @@
 # Murlan
 
 Traditional Albanian card game (Big Two family): an Expo app, served as web by an Express +
-Socket.io server. A *manche* is one hand; a *partita* is the match they add up to.
+Socket.io server. A *round* is one deal; a *match* is the rounds played to a target.
 
 This file holds only what reading the code cannot tell you. Stack, layout and game rules live in
 `package.json`, the tree and `docs/GAME-RULES.md`.

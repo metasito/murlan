@@ -85,11 +85,11 @@ function isPremiumPlay(play: Combination): boolean {
  * lead, answering as cheaply as possible otherwise. `null` when every legal
  * play is premium.
  */
-function cheapestPlain(plays: Combination[], isNewRound: boolean): Combination | null {
+function cheapestPlain(plays: Combination[], isNewTrick: boolean): Combination | null {
   const plain = plays.filter((p) => !isPremiumPlay(p));
   if (plain.length === 0) return null;
   return [...plain].sort(
-    isNewRound
+    isNewTrick
       ? (a, b) => b.cards.length - a.cards.length || a.strength - b.strength
       : (a, b) => a.strength - b.strength
   )[0];
@@ -103,7 +103,7 @@ function cheapestPlain(plays: Combination[], isNewRound: boolean): Combination |
 export function applyPersonality(
   choice: Combination | null,
   plays: Combination[],
-  isNewRound: boolean,
+  isNewTrick: boolean,
   traits: { aggression: number; unpredictability: number; difficulty: AIDifficulty },
   rng: () => number
 ): Combination | null {
@@ -112,7 +112,7 @@ export function applyPersonality(
   if (result === null) {
     // The tier would pass. An aggressive personality contests the round instead.
     // Leading a round is never a pass, so this only ever runs when responding.
-    if (!isNewRound && rng() < traits.aggression) {
+    if (!isNewTrick && rng() < traits.aggression) {
       // Strength only compares within a shape, so answer in kind before
       // reaching for a bomb — the tier's emergency branch owns those.
       const inKind = plays.filter((p) => p.type !== "bomb" && p.type !== "royal_straight");
@@ -121,7 +121,7 @@ export function applyPersonality(
       result = [...(plain.length > 0 ? plain : pool)].sort((a, b) => a.strength - b.strength)[0] ?? null;
     }
   } else if (isPremiumPlay(result) && rng() >= traits.aggression) {
-    result = cheapestPlain(plays, isNewRound) ?? result;
+    result = cheapestPlain(plays, isNewTrick) ?? result;
   }
 
   if (result && rng() < traits.unpredictability) {
@@ -138,7 +138,7 @@ export function applyPersonality(
   // same-shape alternative, premium ones included, so a floor placed any
   // earlier is overwritten by it.
   if (traits.difficulty === "hard" && result && isPremiumPlay(result)) {
-    result = cheapestPlain(plays, isNewRound) ?? result;
+    result = cheapestPlain(plays, isNewTrick) ?? result;
   }
 
   return result;
@@ -222,7 +222,7 @@ export function isExchangeCardStillOut(
 export function aiChoosePlay(
   player: Player,
   lastPlayed: Combination | null,
-  isNewRound: boolean,
+  isNewTrick: boolean,
   otherPlayersHandCount: number[],
   requireCard?: Card,
   rng: () => number = Math.random,
@@ -230,7 +230,7 @@ export function aiChoosePlay(
   playedRanks?: number[],
   knownOpponentCard?: Card
 ): Combination | null {
-  const plays = getAllValidPlays(player.hand, lastPlayed, isNewRound, requireCard);
+  const plays = getAllValidPlays(player.hand, lastPlayed, isNewTrick, requireCard);
   if (plays.length === 0) return null;
 
   const personality = getBotPersonality(player.personality);
@@ -246,8 +246,8 @@ export function aiChoosePlay(
   // Every tier's floor (#907): never lead into a known, still-live loss when
   // a lead without that problem is legal. Only bears on a lead: a response
   // is not "leading into" anything.
-  const safeLeads = knownCard && isNewRound ? plays.filter((p) => !losesLeadToExchangeCard(p, knownCard)) : [];
-  const leadPlays = isNewRound && safeLeads.length > 0 ? safeLeads : plays;
+  const safeLeads = knownCard && isNewTrick ? plays.filter((p) => !losesLeadToExchangeCard(p, knownCard)) : [];
+  const leadPlays = isNewTrick && safeLeads.length > 0 ? safeLeads : plays;
 
   /**
    * Whether leading this card takes the round on everything a tally can see:
@@ -264,7 +264,7 @@ export function aiChoosePlay(
    * one: it is the strongest hand in the game (§7.4), so drawing one out to
    * answer a single card is a trade worth inducing.
    */
-  const takesTheRound = (play: Combination) =>
+  const takesTheTrick = (play: Combination) =>
     play.cards.length === 1 &&
     outstandingAbove(cardStrength(play.cards[0]), playedRanks, player.hand) === 0 &&
     !bombPossible(playedRanks, player.hand);
@@ -276,14 +276,13 @@ export function aiChoosePlay(
     return finishingPlays[0];
   }
 
-  // Beating the partner takes the round off the team that already had it, so
+  // Beating the partner takes the trick off the team that already had it, so
   // no tier answers and no knob contests. Below the finishing branch on
-  // purpose: emptying the hand ends the manche in the team's favour, which is
-  // not contesting anything. A new round cannot be passed at all.
-  if (partnerHoldsTop && !isNewRound) return null;
+  // purpose: emptying the hand is never contesting anything. A new trick cannot be passed at all.
+  if (partnerHoldsTop && !isNewTrick) return null;
 
   const withPersonality = (choice: Combination | null) =>
-    applyPersonality(choice, leadPlays, isNewRound, personality, rng);
+    applyPersonality(choice, leadPlays, isNewTrick, personality, rng);
 
   if (diff === "easy") {
     return withPersonality([...leadPlays].sort((a, b) => a.strength - b.strength)[0]);
@@ -294,8 +293,8 @@ export function aiChoosePlay(
   // take the round, not to spend the best card doing it. Above the knobs
   // deliberately: aggression and unpredictability exist to colour a judgement
   // call, and this is as close to a counted one as the tally gets.
-  if (isNewRound) {
-    const certain = leadPlays.filter(takesTheRound);
+  if (isNewTrick) {
+    const certain = leadPlays.filter(takesTheTrick);
     if (certain.length > 0) {
       return certain.sort((a, b) => a.strength - b.strength)[0];
     }
@@ -310,7 +309,7 @@ export function aiChoosePlay(
 
   if (diff === "medium") {
     const pool = normal.length > 0 ? normal : bombs;
-    if (isNewRound && myCards > 8 && normal.length > 0) {
+    if (isNewTrick && myCards > 8 && normal.length > 0) {
       const multi = normal.filter((p) => p.cards.length >= 2);
       if (multi.length > 0)
         return withPersonality(
@@ -330,11 +329,11 @@ export function aiChoosePlay(
 
   // Emergency: opponent about to finish — use lowest bomb immediately. The one
   // decision no personality softens, or a cautious bot hoards a bomb into a loss.
-  if (minOpponent <= 1 && !isNewRound && bombs.length > 0) {
+  if (minOpponent <= 1 && !isNewTrick && bombs.length > 0) {
     return bombs.sort((a, b) => a.strength - b.strength)[0];
   }
 
-  if (isNewRound) {
+  if (isNewTrick) {
     const near3 = leadPlays.filter((p) => p.cards.length >= myCards - 2);
     if (near3.length > 0)
       return withPersonality(near3.sort((a, b) => b.cards.length - a.cards.length)[0]);

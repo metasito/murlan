@@ -33,9 +33,9 @@ const flat = (n: TestInstance) => (StyleSheet.flatten(n.props.style) ?? {}) as F
 const scaledBy = (n: TestInstance | null): number => (n ? (flat(n).transform?.find((t) => "scale" in t)?.scale ?? 1) * scaledBy(n.parent) : 1);
 
 async function drawnAt(scale: number) {
-  const r = await render(pileOf({ comboLabel: SINGLE, roundWinner: "Ana", scale }));
+  const r = await render(pileOf({ comboLabel: SINGLE, trickWinner: "Ana", scale }));
   const chip = mark();
-  const tag = screen.getByTestId("notice-roundWinner");
+  const tag = screen.getByTestId("notice-trickWinner");
   const drawn = {
     chip: flat(chip),
     chipScale: scaledBy(chip),

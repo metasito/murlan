@@ -21,7 +21,7 @@ const finished = (gameMode: GameState['gameMode'], rankings: string[]): GameStat
   lastPlayedBy: 0,
   passCount: 0,
   gameMode,
-  roundWinner: null,
+  trickWinner: null,
   gameOver: true,
   rankings,
   firstPlayMade: true,

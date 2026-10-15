@@ -70,19 +70,19 @@ function playOutHand(
     turns++;
     const seat = state.currentTurnIndex;
     const player = state.players[seat];
-    const isNewRound = state.lastPlayedCombination === null;
+    const isNewTrick = state.lastPlayedCombination === null;
     const requireCard = !state.firstPlayMade ? state.startCard : undefined;
     const legal = getAllValidPlays(
       player.hand,
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
+      isNewTrick ? null : state.lastPlayedCombination,
+      isNewTrick,
       requireCard
     );
 
     const choice = aiChoosePlay(
       player,
-      isNewRound ? null : state.lastPlayedCombination,
-      isNewRound,
+      isNewTrick ? null : state.lastPlayedCombination,
+      isNewTrick,
       state.players.filter((_, i) => i !== seat).map((p) => p.hand.length),
       requireCard,
       rng
@@ -101,7 +101,7 @@ function playOutHand(
       continue;
     }
 
-    assert.ok(!isNewRound, `${personality} passed while leading a round`);
+    assert.ok(!isNewTrick, `${personality} passed while leading a round`);
     state = processPass(state);
   }
 

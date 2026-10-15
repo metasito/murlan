@@ -209,7 +209,7 @@ export default function GameScreen() {
       turnTimer={{
         seconds: HUMAN_TURN_SECONDS,
         // Leading a round has no deadline offline.
-        includeNewRound: false,
+        includeNewTrick: false,
         // Nothing else is keeping this clock, so it can be stopped while an
         // announcement holds the table.
         pausable: true,
