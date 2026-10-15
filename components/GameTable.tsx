@@ -50,7 +50,6 @@ import type { CardFrom } from "@/components/flightPose";
 import { NO_LANDING, type LandingSignal } from "@/components/table/useFlightClock";
 import {
   anchorPoints,
-  comboKey,
   JOKERS,
   NO_STAGES,
   readExchange,
@@ -59,6 +58,7 @@ import {
   seatsJustPassed,
   tableGeometry,
   exchangeKey,
+  turnKey,
   type ExchangeStages,
 } from "@/components/flightPhysics";
 import { FloatSlot, type Float } from "@/components/table/notices/floats";
@@ -1049,13 +1049,7 @@ export function GameTable({
       announcementHolds,
     });
 
-  // Changes on every move and every pass, so the countdown restarts once per
-  // turn — including when the same seat leads a new trick after winning one.
-  const turnToken =
-    `${gameState.currentTurnIndex}|${gameState.passCount}|` +
-    (gameState.lastPlayedCombination
-      ? comboKey(gameState.lastPlayedCombination, gameState.lastPlayedBy)
-      : "-");
+  const turnToken = turnKey(gameState);
 
   const top = topPlay(trick.plays);
   const onTop = top?.combo ?? null;
