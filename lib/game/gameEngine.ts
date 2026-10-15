@@ -1409,14 +1409,16 @@ export function foldHandIntoMatch(input: FoldHandInput): FoldHandResult {
 
   if (length === "single") {
     const championId = rankings[0];
-    const championTeam = championId === undefined ? undefined : teamOf[championId];
-    if (gameMode === "teams" && championTeam !== undefined) {
+    if (gameMode === "teams" && championId !== undefined && teamOf[championId] !== undefined) {
       // A manche is taken by a pair (docs/GAME-RULES.md §11), so a vacated seat's
       // partner is named and the seat itself never is.
+      const teamPoints = aggregateTeamScores(scoreHand(rankings, playerCount), teamOf);
+      const best = Math.max(...Object.values(teamPoints));
+      const topTeams = new Set(Object.keys(teamPoints).filter((team) => teamPoints[team] === best));
       const winners = Object.entries(teamOfKey)
-        .filter(([key, team]) => team === championTeam && nameable(key))
+        .filter(([key, team]) => topTeams.has(team) && nameable(key))
         .map(([key]) => key);
-      return { handByKey, cumulative, target, over: true, winners, isDraw: false };
+      return { handByKey, cumulative, target, over: true, winners, isDraw: topTeams.size > 1 };
     }
     // The best-placed seat someone is still sitting in. The top one may have
     // been walked out of, and `vacateSeat` keeps the departed player's name —
