@@ -38,7 +38,7 @@ export interface PresenceContext {
   userId: string;
 }
 
-export function registerFriendHandlers({ io, socket, userId }: PresenceContext) {
+export function registerFriendHandlers({ socket, userId }: PresenceContext) {
 
     onEvent(
       socket,
