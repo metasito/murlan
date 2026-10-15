@@ -6,7 +6,6 @@
 import type { ServerToClientEvents } from "../../shared/protocol.ts";
 import type { SocketServer } from "./socketTypes.ts";
 import { logger } from "../http/logger.ts";
-import { friendStore } from "../store/friendStore.ts";
 import { socketRoomMap, userRoom, userSocketMap } from "../game/gameRoom.ts";
 import { safeTimer } from "../game/gamePersistence.ts";
 import { announceRoomChanged, handleSeatRelease } from "./socketTable.ts";
@@ -185,28 +184,13 @@ export async function evictUser(userId: string, seatedRoomIds: readonly string[]
 }
 
 /**
- * Declines an invite and tells the room in the same event. `server/http/routes.ts`
- * has no `io` of its own — this is the one path from an HTTP handler to a
- * room broadcast, so a row-deleting endpoint added there later has somewhere
+ * `announceRoomChanged` for a caller with no `io` of its own: the one path from
+ * an HTTP handler to a room broadcast, so a row-deleting endpoint has somewhere
  * to route through instead of reaching for the socket server directly.
  */
-export async function declineGameInviteAndNotify(
-  inviteeId: string,
-  roomCode: string
-): Promise<void> {
-  // Deliberately unguarded: a decline that did not happen must reach the
-  // caller as a failure, not as an ok with the invite still standing.
-  // `announceRoomChanged` swallows its own read failures.
-  const roomId = await friendStore.declineGameInvite(inviteeId, roomCode);
-  if (!roomId || !_io) return;
-  await announceRoomChanged(_io, roomId);
-}
-
-/** An invite rides the friendship, so ending one frees the seats the other held. */
-export async function removeFriendAndNotify(userId: string, friendUserId: string): Promise<void> {
-  const roomIds = await friendStore.removeFriend(userId, friendUserId);
+export async function announceRoom(roomId: string): Promise<void> {
   if (!_io) return;
-  for (const roomId of roomIds) await announceRoomChanged(_io, roomId);
+  await announceRoomChanged(_io, roomId);
 }
 
 /**
