@@ -1,5 +1,5 @@
 ##
-# New match flow: plays a real offline "Round secca" (single-hand) match to
+# New match flow: plays a real offline "Manche secca" (single-hand) match to
 # its end and confirms "New match" actually starts a new match — see
 # #55 and docs/GAME-RULES.md. `MatchLength = "single"` means "one round and
 # done" (lib/game/gameEngine.ts), so a single hand is a genuine match ending, not

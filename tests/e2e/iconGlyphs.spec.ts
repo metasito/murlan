@@ -97,8 +97,8 @@ test("online screens render every icon glyph, across the states reachable once s
   await page.waitForLoadState("networkidle");
 
   await page.getByRole("button", { name: "Il mio profilo" }).click();
-  await expect(page.getByText("Ancora nessuna match", { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Nessuna match ancora", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Ancora nessuna partita", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Nessuna partita ancora", { exact: true })).toBeVisible({ timeout: 15_000 });
   await assertAllGlyphsRender(page, "profile — empty state", 15);
 
   expect(consoleErrors.entries, "no console errors/warnings across the online screens").toEqual([]);
@@ -116,14 +116,14 @@ test("the replay screen renders the correct transport icon in both its paused an
   await goToOnlineLobby(page);
   await createRoom(page, { playerCount: 2, gameMode: "free_for_all" });
 
-  // "Round secca" (single hand) so the first hand ending is the match
+  // "Manche secca" (single hand) so the first hand ending is the match
   // ending — gameOver.ts writes a replay after any hand with a human seat,
   // and this is the cheapest way to reach one. Not load-bearing for
   // correctness (a multi-hand "Match" would also eventually reach
   // the board's home button and still produce a replay) — only for speed — so a
   // generous budget below covers either outcome rather than trusting this
   // click took effect.
-  await page.getByRole("radio", { name: /Round secca/ }).first().click();
+  await page.getByRole("radio", { name: /Manche secca/ }).first().click();
   await fillWithBotsAndStart(page);
 
   await driveGameToCompletion(page, {

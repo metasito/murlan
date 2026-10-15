@@ -61,11 +61,11 @@ export async function fillWithBotsAndStart(page: Page): Promise<void> {
   // react-native-web's Switch renders both a wrapping div and an inner
   // checkbox input under the same role/label.
   await page.getByRole("switch", { name: "Riempi i posti liberi con bot" }).first().click();
-  await page.getByRole("button", { name: "Inizia Match" }).click();
+  await page.getByRole("button", { name: "Inizia Partita" }).click();
   await page.waitForURL(/\/game/);
 }
 
 export async function startRoom(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Inizia Match" }).click();
+  await page.getByRole("button", { name: "Inizia Partita" }).click();
   await page.waitForURL(/\/game/);
 }

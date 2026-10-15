@@ -66,10 +66,10 @@ export async function startOfflineGame(page: Page, setup: OfflineSetup): Promise
   }
 
   if (setup.format === "single") {
-    await page.getByRole("radio", { name: "Round secca" }).click();
+    await page.getByRole("radio", { name: "Manche secca" }).click();
   }
 
-  await page.getByRole("button", { name: "Inizia Match" }).click();
+  await page.getByRole("button", { name: "Inizia Partita" }).click();
   await page.locator('[data-testid="game-table"]').waitFor({ timeout: 60_000 });
   await dismissStartAnnouncement(page);
 }

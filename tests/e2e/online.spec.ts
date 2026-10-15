@@ -167,7 +167,7 @@ test("online — a room can be created on a phone in portrait", async ({ page, b
   await expect(invitePanel).toBeInViewport();
 
   // The start button stays pinned outside the scroll area regardless — still
-  // "waiting for players" with three empty seats, not yet "Inizia Match".
+  // "waiting for players" with three empty seats, not yet "Inizia Partita".
   // The room screen renders both its landscape and portrait branches at
   // once (shown/hidden by CSS), so more than one copy can match.
   await expect(
